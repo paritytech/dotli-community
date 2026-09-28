@@ -37,14 +37,14 @@ import {
 // because the CLI attests on a different chain than the host listens on.
 const NETWORK = requiredEnv("SIGNING_HOST_NETWORK");
 // The truapi-host CLI from paritytech/host-rust-core, on PATH by default.
-// `||` not `??` because the .env loader can hand us empty strings.
-const SIGNING_HOST_BIN = process.env.SIGNING_HOST_BIN || "truapi-host";
+// The .env loader can hand us empty strings, so these treat "" as unset.
+const SIGNING_HOST_BIN = nonEmptyEnv("SIGNING_HOST_BIN") ?? "truapi-host";
 const SIGNING_HOST_BASE_PATH =
-  process.env.SIGNING_HOST_BASE_PATH || SIGNING_HOST_STATE_DIR;
+  nonEmptyEnv("SIGNING_HOST_BASE_PATH") ?? SIGNING_HOST_STATE_DIR;
 // The product the tests exercise, mirroring fixtures/paired.ts. The CLI
 // scopes wallet-level signing (signRaw) to this id.
 const PRODUCT_ID =
-  process.env.SIGNING_HOST_PRODUCT_ID ||
+  nonEmptyEnv("SIGNING_HOST_PRODUCT_ID") ??
   (process.env.E2E_PRODUCT_URL === undefined
     ? `${process.env.E2E_HOST ?? "host-playground"}.dot`
     : new URL(process.env.E2E_PRODUCT_URL).host);
@@ -56,9 +56,15 @@ const PORT = process.env.PORT ?? "5173";
 // auth button is clicked, so keep global auth setup on the bare host origin.
 const AUTH_HOST = process.env.E2E_AUTH_HOST ?? "localhost";
 
-function requiredEnv(name: string): string {
+/** The env var `name`, or undefined when it is unset or empty. */
+function nonEmptyEnv(name: string): string | undefined {
   const value = process.env[name];
-  if (!value) {
+  return value === "" ? undefined : value;
+}
+
+function requiredEnv(name: string): string {
+  const value = nonEmptyEnv(name);
+  if (value === undefined) {
     console.error(
       `[globalSetup] ${name} not set. Required: see apps/host/tests/e2e/global-setup.ts and .github/workflows/test.yml.`,
     );
@@ -69,7 +75,9 @@ function requiredEnv(name: string): string {
 
 function positiveIntegerEnv(name: string, fallback: number): number {
   const raw = process.env[name];
-  if (raw === undefined) return fallback;
+  if (raw === undefined) {
+    return fallback;
+  }
 
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -131,9 +139,10 @@ function signingHostConfig(): SigningHostConfig {
     productId: PRODUCT_ID,
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
-    liteUsernamePrefix: process.env.HOST_CLI_SIGNER_MNEMONIC?.trim()
-      ? undefined
-      : randomLiteUsernamePrefix(),
+    liteUsernamePrefix:
+      (process.env.HOST_CLI_SIGNER_MNEMONIC?.trim() ?? "") !== ""
+        ? undefined
+        : randomLiteUsernamePrefix(),
   };
 }
 
@@ -172,7 +181,10 @@ export default async function globalSetup(
   // Honor HEADED=1 here too so a local repro can watch the pair flow.
   const browser = await chromium.launch({
     headless: process.env.HEADED !== "1",
-    slowMo: process.env.SLOWMO ? Number(process.env.SLOWMO) : 0,
+    slowMo:
+      process.env.SLOWMO !== undefined && process.env.SLOWMO !== ""
+        ? Number(process.env.SLOWMO)
+        : 0,
   });
   let lastErr: unknown = null;
 
@@ -190,7 +202,7 @@ export default async function globalSetup(
       };
       writeFileSync(SESSION_FILE, JSON.stringify(session, null, 2));
       console.log(
-        `[globalSetup] paired as "${result.username}" signing-host pid=${session.pid} (attempt ${attempt}/${PAIR_ATTEMPTS})`,
+        `[globalSetup] paired as "${result.username}" signing-host pid=${String(session.pid)} (attempt ${String(attempt)}/${String(PAIR_ATTEMPTS)})`,
       );
       await browser.close();
       // Playwright runs this closure as the global teardown. Clearing the
@@ -199,13 +211,13 @@ export default async function globalSetup(
         await stopSigningHost(result.signingHost);
         rmSync(SESSION_FILE, { force: true });
         console.log(
-          `[globalTeardown] stopped signing-host pid=${session.pid} ("${result.username}")`,
+          `[globalTeardown] stopped signing-host pid=${String(session.pid)} ("${result.username}")`,
         );
       };
     } catch (e) {
       lastErr = e;
       console.warn(
-        `[globalSetup] attempt ${attempt}/${PAIR_ATTEMPTS} failed: ${(e as Error).message}`,
+        `[globalSetup] attempt ${String(attempt)}/${String(PAIR_ATTEMPTS)} failed: ${(e as Error).message}`,
       );
       if (attempt < PAIR_ATTEMPTS) {
         await new Promise((r) => setTimeout(r, PAIR_ATTEMPT_BACKOFF_MS));
@@ -215,7 +227,7 @@ export default async function globalSetup(
 
   await browser.close();
   console.error(
-    `[globalSetup] PAIR EXHAUSTED after ${PAIR_ATTEMPTS} attempts: ${(lastErr as Error).message}`,
+    `[globalSetup] PAIR EXHAUSTED after ${String(PAIR_ATTEMPTS)} attempts: ${(lastErr as Error).message}`,
   );
   // A usage error or instant death is deterministic; hard-fail so a broken
   // release can't soft-pass the suite forever as an "outage".
@@ -229,17 +241,20 @@ export default async function globalSetup(
 // A crashed prior run can leave its signing host alive and still holding the
 // state dir lock. Wait for it to die before pairing, then clear the record.
 async function killStaleSigningHost(): Promise<void> {
-  if (!existsSync(SESSION_FILE)) return;
+  if (!existsSync(SESSION_FILE)) {
+    return;
+  }
   try {
     const stale = JSON.parse(
       readFileSync(SESSION_FILE, "utf-8"),
     ) as PersistedSession;
     if (stale.pid > 0) {
       console.warn(
-        `[globalSetup] stopping stale signing-host pid=${stale.pid}`,
+        `[globalSetup] stopping stale signing-host pid=${String(stale.pid)}`,
       );
       await stopSigningHostPid(stale.pid);
     }
+    // eslint-disable-next-line no-restricted-syntax -- an unreadable session file names no process to stop, so there is nothing to report.
   } catch {
     // Unreadable session file: nothing identifiable to stop.
   }
@@ -307,7 +322,9 @@ async function pairOnce(
     signingHost = startSigningHostPair(signingHostConfig(), deeplink);
 
     await waitForSignedIn(page, signingHost, badgeTimeoutMs, pairStart);
-    console.log(`[globalSetup] signed in after ${Date.now() - pairStart}ms.`);
+    console.log(
+      `[globalSetup] signed in after ${String(Date.now() - pairStart)}ms.`,
+    );
 
     const username = (
       await page

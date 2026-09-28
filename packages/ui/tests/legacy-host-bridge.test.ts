@@ -38,7 +38,7 @@ import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
 } from "@dotli/ui/legacy-host-bridge";
-import { unwrap } from "./support";
+import { unwrap, must } from "./support";
 
 const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
@@ -47,9 +47,8 @@ describe("createWindowMessageProvider", () => {
   it("As a dotli integrator, the host pins outbound and inbound frames to the product origin", () => {
     // Given
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const targetWindow = {
-      postMessage: vi.fn(),
-    } as unknown as Window;
+    const postMessage = vi.fn();
+    const targetWindow = { postMessage } as unknown as Window;
     const targetOrigin = "https://product.app.paseoli.dev";
     const provider = createWindowMessageProvider(targetWindow, targetOrigin);
     const listener = vi.fn();
@@ -81,10 +80,7 @@ describe("createWindowMessageProvider", () => {
     );
 
     // Then
-    expect(targetWindow.postMessage).toHaveBeenCalledWith(
-      message,
-      targetOrigin,
-    );
+    expect(postMessage).toHaveBeenCalledWith(message, targetOrigin);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(message);
 
@@ -92,13 +88,13 @@ describe("createWindowMessageProvider", () => {
   });
 });
 
-type FollowBoundRequest = {
+interface FollowBoundRequest {
   tag: "V1";
   value: {
     genesisHash: string;
     followSubscriptionId: string;
   };
-};
+}
 
 function createHarness(productId?: string): {
   adapted: WireProvider;
@@ -191,6 +187,24 @@ function decodedFollowId<T extends FollowBoundRequest>(
   return codec.dec(decoded.payload.value).value.followSubscriptionId;
 }
 
+/**
+ * One follow-bound request with its codec bound in, so a list of them can mix
+ * request types.
+ */
+function followBoundCase<T extends FollowBoundRequest>(
+  ids: MethodIds,
+  codec: Codec<T>,
+  request: T,
+): {
+  frame(requestId: string): Uint8Array;
+  followId(message: Uint8Array): string;
+} {
+  return {
+    frame: (requestId) => followBoundFrame(requestId, ids, codec, request),
+    followId: (message) => decodedFollowId(message, codec),
+  };
+}
+
 describe("createLegacyNovaChainHeadProvider", () => {
   it("As a dotli integrator, the host normalizes the legacy .dot suffix for a localhost product account", () => {
     // Given
@@ -215,7 +229,9 @@ describe("createLegacyNovaChainHeadProvider", () => {
     );
 
     // Then
-    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    const decoded = unwrap(
+      decodeWireMessage(must(harness.received.at(-1), "a received message")),
+    );
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
         .productAccountId.dotNsIdentifier,
@@ -245,7 +261,9 @@ describe("createLegacyNovaChainHeadProvider", () => {
     );
 
     // Then
-    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    const decoded = unwrap(
+      decodeWireMessage(must(harness.received.at(-1), "a received message")),
+    );
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
         .productAccountId.dotNsIdentifier,
@@ -258,10 +276,10 @@ describe("createLegacyNovaChainHeadProvider", () => {
     harness.emit(followStart("wire-follow"));
 
     const cases = [
-      {
-        ids: CHAIN_GET_HEAD_HEADER,
-        codec: VersionedRemoteChainHeadHeaderRequest,
-        request: {
+      followBoundCase(
+        CHAIN_GET_HEAD_HEADER,
+        VersionedRemoteChainHeadHeaderRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -269,11 +287,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             hash: blockHash,
           },
         },
-      },
-      {
-        ids: CHAIN_GET_HEAD_BODY,
-        codec: VersionedRemoteChainHeadBodyRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_GET_HEAD_BODY,
+        VersionedRemoteChainHeadBodyRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -281,11 +299,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             hash: blockHash,
           },
         },
-      },
-      {
-        ids: CHAIN_GET_HEAD_STORAGE,
-        codec: VersionedRemoteChainHeadStorageRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_GET_HEAD_STORAGE,
+        VersionedRemoteChainHeadStorageRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -294,37 +312,29 @@ describe("createLegacyNovaChainHeadProvider", () => {
             items: [],
           },
         },
-      },
-      {
-        ids: CHAIN_CALL_HEAD,
-        codec: VersionedRemoteChainHeadCallRequest,
-        request: {
-          tag: "V1",
-          value: {
-            genesisHash,
-            followSubscriptionId: "follow_0",
-            hash: blockHash,
-            function: "Metadata_metadata",
-            callParameters: "0x" as const,
-          },
+      ),
+      followBoundCase(CHAIN_CALL_HEAD, VersionedRemoteChainHeadCallRequest, {
+        tag: "V1",
+        value: {
+          genesisHash,
+          followSubscriptionId: "follow_0",
+          hash: blockHash,
+          function: "Metadata_metadata",
+          callParameters: "0x" as const,
         },
-      },
-      {
-        ids: CHAIN_UNPIN_HEAD,
-        codec: VersionedRemoteChainHeadUnpinRequest,
-        request: {
-          tag: "V1",
-          value: {
-            genesisHash,
-            followSubscriptionId: "follow_0",
-            hashes: [blockHash],
-          },
+      }),
+      followBoundCase(CHAIN_UNPIN_HEAD, VersionedRemoteChainHeadUnpinRequest, {
+        tag: "V1",
+        value: {
+          genesisHash,
+          followSubscriptionId: "follow_0",
+          hashes: [blockHash],
         },
-      },
-      {
-        ids: CHAIN_CONTINUE_HEAD,
-        codec: VersionedRemoteChainHeadContinueRequest,
-        request: {
+      }),
+      followBoundCase(
+        CHAIN_CONTINUE_HEAD,
+        VersionedRemoteChainHeadContinueRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -332,11 +342,11 @@ describe("createLegacyNovaChainHeadProvider", () => {
             operationId: "operation-1",
           },
         },
-      },
-      {
-        ids: CHAIN_STOP_HEAD_OPERATION,
-        codec: VersionedRemoteChainHeadStopOperationRequest,
-        request: {
+      ),
+      followBoundCase(
+        CHAIN_STOP_HEAD_OPERATION,
+        VersionedRemoteChainHeadStopOperationRequest,
+        {
           tag: "V1",
           value: {
             genesisHash,
@@ -344,26 +354,16 @@ describe("createLegacyNovaChainHeadProvider", () => {
             operationId: "operation-1",
           },
         },
-      },
-    ] as const;
+      ),
+    ];
 
     for (const [index, item] of cases.entries()) {
       // When
-      harness.emit(
-        followBoundFrame(
-          `request-${index}`,
-          item.ids,
-          item.codec as Codec<FollowBoundRequest>,
-          item.request,
-        ),
-      );
+      harness.emit(item.frame(`request-${String(index)}`));
 
       // Then
       expect(
-        decodedFollowId(
-          harness.received.at(-1)!,
-          item.codec as Codec<FollowBoundRequest>,
-        ),
+        item.followId(must(harness.received.at(-1), "a received message")),
       ).toBe("wire-follow");
     }
   });
@@ -385,7 +385,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };
@@ -448,7 +448,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     expect(harness.sent).toHaveLength(1);
     expect(
       decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       ),
     ).toBe("wire-new");
@@ -485,7 +485,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     // Then
     expect(
       decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       ),
     ).toBe("wire-new");
@@ -516,7 +516,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };
@@ -563,7 +563,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };

@@ -13,6 +13,7 @@ import {
   recordTransfer,
   subscribeNetwork,
   type BlockSource,
+  type ChainStatus,
 } from "@dotli/ui/network-monitor";
 import { getActiveChainRoles } from "@dotli/config/network";
 
@@ -122,6 +123,28 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0].bars).toEqual([
       { number: 101, health: "onTime", gapMs: relay.blockTimeMs },
     ]);
+  });
+
+  it("As a reader holding a snapshot, later blocks do not change its bars", () => {
+    // Given
+    const { source, emit } = fakeSource();
+    setBlockSource(source);
+    startNetworkWatch();
+    const relay = getNetworkStatus()[0];
+    const genesis = relayGenesis();
+    emit(genesis, 100);
+    vi.advanceTimersByTime(relay.blockTimeMs);
+    emit(genesis, 101);
+    const held = getNetworkStatus()[0].bars;
+
+    // When
+    vi.advanceTimersByTime(relay.blockTimeMs);
+    emit(genesis, 102);
+
+    // Then
+    expect(held.map((b) => b.number)).toEqual([101]);
+    expect(Object.isFrozen(held)).toBe(true);
+    expect(getNetworkStatus()[0].bars.map((b) => b.number)).toEqual([101, 102]);
   });
 
   it("As a user on a degraded chain, the bar for a slow block is not green", () => {
@@ -485,7 +508,8 @@ describe("The network monitor tracks the phase of each chain", () => {
     const { source } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    const relay = () => getNetworkStatus().find((c) => c.role === "relay");
+    const relay = (): ChainStatus | undefined =>
+      getNetworkStatus().find((c) => c.role === "relay");
 
     // When
     recordChainPhase("relay", "connecting");

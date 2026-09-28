@@ -1,17 +1,23 @@
 import { describe, expect, it } from "vitest";
+import type { ProductContext } from "@parity/truapi-host";
 import { createProductOperations } from "@dotli/ui/host-callbacks/ProductOperations";
+
+// Operations belong to Worker executions.
+const PRODUCT: ProductContext = {
+  productId: "chat.dot",
+  executionKind: "Worker",
+};
 
 describe("product operations", () => {
   it("As a worker product, each open operation gets its own id", async () => {
     // Given
     const operations = createProductOperations();
-    const product = { productId: "chat.dot" };
 
     // When
-    const first = await operations.beginOperation(product, "send");
-    const second = await operations.beginOperation(product, "");
-    await operations.endOperation(product, first.id);
-    const third = await operations.beginOperation(product, "send");
+    const first = await operations.beginOperation(PRODUCT, "send");
+    const second = await operations.beginOperation(PRODUCT, "");
+    await operations.endOperation(PRODUCT, first.id);
+    const third = await operations.beginOperation(PRODUCT, "send");
 
     // Then
     expect(new Set([first.id, second.id, third.id]).size).toBe(3);
@@ -19,7 +25,7 @@ describe("product operations", () => {
 
   it("As a worker product, ending an unknown operation succeeds", async () => {
     await expect(
-      createProductOperations().endOperation({ productId: "chat.dot" }, 42),
+      createProductOperations().endOperation(PRODUCT, 42),
     ).resolves.toBeUndefined();
   });
 });

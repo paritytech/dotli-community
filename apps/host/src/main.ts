@@ -15,21 +15,21 @@ if (typeof globalThis.requestIdleCallback !== "function") {
     }, 1) as unknown as number;
 }
 
+// Must stay the first import: it starts Sentry before any other module
+// evaluates, then starts loading the shell's islands (see boot.ts).
+import "./boot";
 import "./pwa";
-import "./offline";
 import "@dotli/ui/styles.css";
 import * as Sentry from "@sentry/browser";
-import {
-  initSentry,
-  installGlobalErrorHandlers,
-  captureException,
-} from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics/sentry";
 import {
   SETTINGS_GLYPH,
   showError,
   showErrorPage,
   showNoContentError,
-  showLanding,
+} from "@dotli/ui/ui";
+import { showLanding } from "@dotli/ui/landing/load";
+import {
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -41,8 +41,8 @@ import {
   stopStatusTick,
   listenForSandboxStatus,
   onSandboxDone,
-} from "@dotli/ui/ui";
-import type { LoadingPhase } from "@dotli/ui/ui";
+} from "@dotli/ui/loading-controller";
+import type { LoadingPhase } from "@dotli/ui/loading-controller";
 import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
 import { chainRoleForKey } from "@dotli/ui/chain-roles";
 import type { ChainRole } from "@dotli/config/network";
@@ -61,19 +61,17 @@ import {
   WARNING_MIN_LOAD_MS,
   type CriticalChain,
 } from "./warnings";
-import {
-  initTopBar,
-  setChainsButtonVisible,
-  wipeOriginState,
-} from "@dotli/ui/topbar";
+import { initTopBar, setChainsButtonVisible } from "@dotli/ui/topbar";
+import { wipeOriginState } from "@dotli/ui/settings-actions";
 import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
+import type { ShieldState } from "@dotli/ui/verification-shield";
 import {
-  bindVerificationShield,
   setVerificationShieldState,
-  verificationShieldMarkup,
-  type ShieldState,
-} from "@dotli/ui/verification-shield";
+  showLocalhostPill,
+  showProductPill,
+} from "@dotli/ui/state/url-pill";
 import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
+import { initSettingsStore } from "@dotli/ui/state/settings";
 import {
   bitswapGet,
   listenForSandboxBitswap,
@@ -117,9 +115,10 @@ import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
-import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
+import { isValidDotLabel } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
+import { prefetchOverlays } from "@dotli/ui/overlays/load";
 import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
 import {
   BACKEND_KEY,
@@ -179,6 +178,10 @@ window.addEventListener("vite:preloadError", (event) => {
   });
 });
 
+// Fetch the toast/modal chunk while the browser is idle, so it is in memory
+// before a deploy could make later chunk loads fail.
+prefetchOverlays();
+
 const errorIcon = (paths: string): string =>
   `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
 
@@ -211,9 +214,6 @@ if (!isMobileDevice()) {
     });
   }
 }
-
-initSentry("host");
-installGlobalErrorHandlers("host");
 
 import { m, setResolutionId } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
@@ -919,7 +919,7 @@ async function main(): Promise<void> {
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
-    void import("@dotli/truapi-debug/panel").then(
+    void import("@dotli/ui/components/truapi-debug/mount").then(
       ({ setupTruapiDebugPanel }) => {
         setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
         log.warn(`[dot.li] TrUAPI debug panel enabled`);
@@ -965,6 +965,7 @@ async function main(): Promise<void> {
   // reload. The reload then replaces the page, so anything below it never
   // runs.
   await applyUrlSettings();
+  initSettingsStore();
 
   const chainBackend = getBackend();
   const cacheSettings = getCacheSettings();
@@ -1052,10 +1053,7 @@ async function main(): Promise<void> {
 
     initScheduledNotifications({ label: host });
 
-    const urlBar = document.getElementById("topbar-url");
-    if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
-    }
+    showLocalhostPill(host);
 
     // Local products carry no worker manifest to read the chat flag from,
     // so the debug paths enable chat unconditionally for product testing.
@@ -1094,10 +1092,7 @@ async function main(): Promise<void> {
 
     initScheduledNotifications({ label: host });
 
-    const urlBar = document.getElementById("topbar-url");
-    if (urlBar !== null) {
-      urlBar.innerHTML = `<div class="topbar-url-pill localhost-pill" id="url-pill"><svg class="localhost-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg><span class="topbar-url-text"><span class="dot-domain">${escapeHtml(host)}</span></span></div>`;
-    }
+    showLocalhostPill(host);
 
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
@@ -1133,7 +1128,7 @@ async function main(): Promise<void> {
 
   if (label === null) {
     log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
-    showLanding();
+    void showLanding();
     performance.mark("dotli:main:end");
     emitDotliDebugEvent({
       layer: "boot",
@@ -1179,6 +1174,7 @@ async function main(): Promise<void> {
   // `index.html`. Their absence is a build/deploy bug, not a recoverable
   // runtime branch, so fail loud so monitoring catches it instead of silently
   // leaving the page in its initial loading state.
+  // `urlBar` is looked up only for this invariant check.
   const urlBar = document.getElementById("topbar-url");
   if (urlBar === null) {
     const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
@@ -1192,8 +1188,7 @@ async function main(): Promise<void> {
     });
     return;
   }
-  urlBar.innerHTML = `<div class="topbar-url-pill" id="url-pill">${verificationShieldMarkup()}<span class="topbar-url-text"><span class="dot-domain">${escapeHtml(label)}</span><span class="dot-tld">${escapeHtml(getActiveTldSuffix())}</span></span></div>`;
-  bindVerificationShield();
+  showProductPill(label, getActiveTldSuffix());
 
   // Listen for status messages from the sandbox iframe so the loading
   // UI continues seamlessly from resolution into content fetching.

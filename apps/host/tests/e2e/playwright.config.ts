@@ -13,11 +13,16 @@ try {
   const env = readFileSync(resolve(repoRoot, ".env"), "utf-8");
   for (const line of env.split("\n")) {
     const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!m) continue;
+    if (!m) {
+      continue;
+    }
     const [, key, raw] = m;
-    if (process.env[key]) continue;
+    if ((process.env[key] ?? "") !== "") {
+      continue;
+    }
     process.env[key] = raw.replace(/^['"]|['"]$/g, "");
   }
+  // eslint-disable-next-line no-restricted-syntax -- no .env is the normal CI case: the env must already be set.
 } catch {
   /* no .env, env must already be set */
 }
@@ -46,6 +51,7 @@ if (process.env.CI !== "true") {
     if (e instanceof Error && e.message.includes("ENOENT")) {
       throw new Error(
         "dist directories missing — run `bun run build` from the repo root before running e2e.",
+        { cause: e },
       );
     }
     throw e;
@@ -59,11 +65,9 @@ const dotliWebServer = {
   timeout: 30_000,
 };
 
-const webServer: Array<
-  typeof dotliWebServer & {
-    cwd?: string;
-  }
-> = [dotliWebServer];
+const webServer: (typeof dotliWebServer & {
+  cwd?: string;
+})[] = [dotliWebServer];
 if (localProductUrl !== undefined) {
   const productUrl = new URL(localProductUrl);
   if (

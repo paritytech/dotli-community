@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { createThemeSubscribe } from "@dotli/ui/host-callbacks/Theme";
+import { yielded } from "./support";
 
 describe("theme host callbacks", () => {
   beforeEach(() => {
@@ -18,8 +19,8 @@ describe("theme host callbacks", () => {
 
     // Then
     expect(first.done).toBe(false);
-    expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toEqual({
+    expect(yielded(first).isOk()).toBe(true);
+    expect(yielded(first)._unsafeUnwrap()).toEqual({
       name: { tag: "Default" },
       variant: "Light",
     });
@@ -44,14 +45,14 @@ describe("theme host callbacks", () => {
 
     // Then
     expect(first.done).toBe(false);
-    expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toEqual({
+    expect(yielded(first).isOk()).toBe(true);
+    expect(yielded(first)._unsafeUnwrap()).toEqual({
       name: { tag: "Default" },
       variant: "Dark",
     });
     expect(changed.done).toBe(false);
-    expect(changed.value.isOk()).toBe(true);
-    expect(changed.value._unsafeUnwrap()).toEqual({
+    expect(yielded(changed).isOk()).toBe(true);
+    expect(yielded(changed)._unsafeUnwrap()).toEqual({
       name: { tag: "Default" },
       variant: "Light",
     });

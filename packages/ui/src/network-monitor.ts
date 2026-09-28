@@ -341,7 +341,9 @@ export function getNetworkStatus(): ChainStatus[] {
   return roles.map((state) => ({
     role: state.role.role,
     label: state.role.label,
-    bars: state.bars,
+    // A frozen copy: the monitor pushes and shifts its own array in place,
+    // which would change a snapshot a reader still holds.
+    bars: Object.freeze([...state.bars]),
     latest: state.latest,
     sinceLast: state.lastAt === null ? null : now - state.lastAt,
     blockTimeMs: state.role.blockTimeMs,

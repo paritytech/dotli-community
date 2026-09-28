@@ -35,7 +35,7 @@ import { test, expect } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
 import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
 import { findAppFrame } from "../product-frame";
-import { seedBackend, seedSettings, type Backend } from "./fixtures/settings";
+import { seedBackend, seedSettings } from "./fixtures/settings";
 import { resetSharedMode } from "./helpers/shared-mode-reset";
 
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -121,7 +121,7 @@ for (const [label, backend, expected] of [
     // Given
     await resetSharedMode(request);
     await request.delete(METRICS_URL);
-    await seedSettings(context, { backend: backend as Backend });
+    await seedSettings(context, { backend: backend });
     await context.addInitScript((ms: number) => {
       try {
         sessionStorage.setItem("dotli:truapi-debug", "0");

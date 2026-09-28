@@ -56,12 +56,12 @@ async function disableTruapiDebugPanel(page: Page): Promise<void> {
  * Specs that seed `dotli:chain-backend` in `localStorage` should
  * import `test` from here.
  */
-export const test = base.extend<{ _resetSharedMode: void }>({
+export const test = base.extend<{ _resetSharedMode: undefined }>({
   _resetSharedMode: [
     async ({ request, page }, use) => {
       await resetSharedMode(request);
       await disableTruapiDebugPanel(page);
-      await use();
+      await use(undefined);
     },
     { auto: true },
   ],

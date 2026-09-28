@@ -3,6 +3,7 @@
 
 import js from "@eslint/js";
 import eslintConfigPrettier from "eslint-config-prettier";
+import solid from "eslint-plugin-solid";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
 /**
@@ -113,10 +114,7 @@ export const config = [
     // Only the logging + metrics entry points may call `console.*`
     // directly. Everywhere else must go through `log.*` so DEBUG
     // gating + Sentry breadcrumb wiring applies uniformly.
-    files: [
-      "**/src/**/*.ts",
-      "**/src/**/*.tsx",
-    ],
+    files: ["**/src/**/*.ts", "**/src/**/*.tsx"],
     ignores: [
       "**/packages/shared/src/log.ts",
       "**/packages/metrics/src/**",
@@ -133,6 +131,27 @@ export const config = [
     },
   },
   {
+    // Test doubles are often deliberate no-ops: a stubbed listener, a
+    // silenced console, an async adapter method with nothing to do, or a
+    // best-effort Playwright step (`.catch(() => {})` on an optional click or
+    // wait). The empty body is the point there, so the rule only adds noise.
+    // `src` keeps the rule.
+    files: ["tests/**/*.ts", "tests/**/*.tsx"],
+    rules: {
+      "@typescript-eslint/no-empty-function": "off",
+    },
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "*.js", "*.cjs"],
+  },
+  {
+    files: ["**/*.tsx"],
+    plugins: { solid },
+    rules: {
+      ...solid.configs["flat/typescript"].rules,
+      // Components return JSX.Element by inference; annotating every one adds
+      // noise without catching anything.
+      "@typescript-eslint/explicit-function-return-type": "off",
+    },
   },
 ];

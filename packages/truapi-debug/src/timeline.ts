@@ -437,8 +437,8 @@ function buildSegmentTooltip(seg: SegmentEntry): string {
 
 /**
  * Flip the `selected` class and highlight stroke between two segments
- * without recomputing anything else. Called from panel.ts on click.
- * Searches across every swimlane's SVG within the container.
+ * without recomputing anything else. Called from `TimelineView.tsx` on
+ * click. Searches across every swimlane's SVG within the container.
  */
 export function applyTimelineSelection(
   container: HTMLDivElement,

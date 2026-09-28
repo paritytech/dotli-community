@@ -130,7 +130,7 @@ test.describe("Settings works", () => {
     // Then
     const state = await readChainBackendState(page, "smoldot-direct");
     expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).toContain("chainBackend=smoldot-direct");
+    expect(state.url).not.toContain("chainBackend=");
   });
 
   test("As a user who arrived through such a link, reloading without it keeps me in the mode I landed in", async ({
@@ -144,6 +144,9 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
     const state = await readChainBackendState(page, "rpc-gateway");
     expect(state.chainBackend).toBe("rpc-gateway");
     expect(state.url).toContain("chainBackend=rpc-gateway");
@@ -194,6 +197,9 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=smoldot-shared-worker(&|$)/);
     const state = await readChainBackendState(page, "smoldot-shared-worker");
     expect(state.url).toContain("chainBackend=smoldot-shared-worker");
   });
@@ -210,6 +216,9 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
     const state = await readChainBackendState(page, "rpc-gateway");
     expect(state.url).toContain("chainBackend=rpc-gateway");
   });
@@ -234,7 +243,7 @@ test.describe("Settings works", () => {
     expect(cache.skipWorkerCache).toBe(false);
     expect(state.url).toContain("skipCidCache=1");
     expect(state.url).toContain("skipArchiveCache=1");
-    expect(state.url).toContain("skipWorkerCache=0");
+    expect(state.url).not.toContain("skipWorkerCache=");
   });
 
   for (const backend of BACKENDS) {

@@ -6,9 +6,11 @@ import {
   onProgressStall,
   stopProgressWatch,
   type LoadingPhase,
-} from "@dotli/ui/ui";
+} from "@dotli/ui/loading-controller";
+import { getLoadingState } from "@dotli/ui/state/loading";
+import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 
-// Mirror of PROGRESS_STALL_MS in ui.ts.
+// Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;
 
 const PHASES: LoadingPhase[] = [
@@ -29,24 +31,10 @@ const PHASES: LoadingPhase[] = [
   },
 ];
 
-function installLoadingDom(): void {
-  document.body.innerHTML = `
-    <div id="app">
-      <div class="loading">
-        <div class="loading-progress" id="loading-progress">
-          <div class="loading-progress-fill" id="loading-progress-fill"></div>
-          <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
-        </div>
-        <p id="status"></p>
-        <p class="sr-only" id="status-sr"></p>
-      </div>
-    </div>`;
-}
-
 describe("The loading bar reports when it stops moving", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    installLoadingDom();
+    resetAllStoresForTests();
   });
 
   afterEach(() => {
@@ -132,7 +120,7 @@ describe("The loading bar reports when it stops moving", () => {
 describe("The loading bar never stands still", () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    installLoadingDom();
+    resetAllStoresForTests();
   });
 
   afterEach(() => {
@@ -140,12 +128,9 @@ describe("The loading bar never stands still", () => {
     vi.useRealTimers();
   });
 
+  /** The whole number the bar shows. */
   function shownPercent(): number {
-    return Number(
-      (
-        document.getElementById("loading-progress-pct")?.textContent ?? "0%"
-      ).replace("%", ""),
-    );
+    return Math.round(getLoadingState().progress);
   }
 
   it("As a user whose download reports nothing at all, the number still moves every 3 seconds", () => {

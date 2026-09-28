@@ -8,10 +8,10 @@
 // so home, settings, permissions and login never become mouse-only.
 //
 import { isMobileDevice } from "@dotli/shared/device";
-import { productIframeBox } from "./product-iframe-box";
+import { setTopbarLayout } from "./product-frame-layout";
+import { getLoggedIn } from "./state/auth";
+import { setTopbarVisible } from "./state/topbar";
 
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
-const SAFE_TOP = "var(--safe-top, 0px)";
 const HIDE_DELAY_MS = 5000;
 const SLIDE_TRANSITION = "transform 0.3s ease";
 const HOVER_STRIP_HEIGHT = "6px";
@@ -30,6 +30,7 @@ const TOPBAR_SURFACE_IDS = [
   "mode-popover",
   "permissions-popover",
   "auth-modal-backdrop",
+  "chains-popover",
 ];
 
 // The mobile "more" flyout and the shield explainer live inside #topbar, so
@@ -41,6 +42,7 @@ const OPEN_SURFACE_IDS = [
 ];
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
+let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 let hoverStrip: HTMLElement | null = null;
 let revealButton: HTMLButtonElement | null = null;
@@ -59,8 +61,11 @@ function getAppFrame(): HTMLIFrameElement | null {
   );
 }
 
+// The session store, not the `.user-badge` it renders: the badge island
+// renders on Solid's next flush, after `dotli:authenticated`, whose listener
+// arms the auto-hide, and not at all before the islands chunk arrives.
 function isLoggedIn(): boolean {
-  return document.querySelector(".user-badge") !== null;
+  return getLoggedIn();
 }
 
 function reducedMotionQuery(): MediaQueryList | null {
@@ -87,28 +92,17 @@ function applySlideTransition(): void {
  * the product document never relayouts. Cost: the app's bottom strip sits
  * off-screen for the moment the bar is revealed.
  */
-function applyAppFrameGeometry(): void {
-  const frame = getAppFrame();
-  if (frame === null) {
-    return;
-  }
-  if (appFrameTracking) {
-    const box = productIframeBox({ topbarOffset: false });
-    frame.style.top = box.top;
-    frame.style.height = box.height;
-    frame.style.transition =
-      reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION;
-    // --topbar-height already includes the top inset, so shift by the rest.
-    frame.style.transform = visible
-      ? `translateY(calc(${TOPBAR_HEIGHT} - ${SAFE_TOP}))`
-      : "translateY(0)";
-  } else {
-    const box = productIframeBox({ topbarOffset: true });
-    frame.style.top = box.top;
-    frame.style.height = box.height;
-    frame.style.transition = "";
-    frame.style.transform = "";
-  }
+function syncFrameLayout(): void {
+  setTopbarLayout(
+    appFrameTracking
+      ? {
+          offset: false,
+          shown: visible,
+          transition:
+            reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION,
+        }
+      : { offset: true, shown: true, transition: "" },
+  );
 }
 
 function setVisible(next: boolean): void {
@@ -125,11 +119,9 @@ function setVisible(next: boolean): void {
     appFrameTracking = true;
   }
   if (appFrameTracking) {
-    applyAppFrameGeometry();
+    syncFrameLayout();
   }
-  window.dispatchEvent(
-    new CustomEvent<boolean>("topbar:visibility", { detail: next }),
-  );
+  setTopbarVisible(next);
 }
 
 function cancelHide(): void {
@@ -319,16 +311,17 @@ function bindListeners(): void {
     "focusout",
     () => {
       // activeElement only settles after focusout, so check on the next tick.
-      setTimeout(syncFocus, 0);
+      if (focusoutTimer !== null) {
+        clearTimeout(focusoutTimer);
+      }
+      focusoutTimer = setTimeout(() => {
+        focusoutTimer = null;
+        syncFocus();
+      }, 0);
     },
     { signal },
   );
   document.addEventListener("keydown", onKeyDown, { signal });
-
-  // Rendering a product restyles the frame, so restate the geometry.
-  window.addEventListener("dotli:product-loaded", applyAppFrameGeometry, {
-    signal,
-  });
 
   const reducedMotion = reducedMotionQuery();
   if (typeof reducedMotion?.addEventListener === "function") {
@@ -336,7 +329,7 @@ function bindListeners(): void {
       "change",
       () => {
         applySlideTransition();
-        applyAppFrameGeometry();
+        syncFrameLayout();
       },
       { signal },
     );
@@ -367,6 +360,12 @@ export function armTopbarAutoHide(): void {
 export function pinTopbarVisible(): void {
   armed = false;
   cancelHide();
+  // A focus check queued by focusout must not run against a pinned or
+  // disposed bar.
+  if (focusoutTimer !== null) {
+    clearTimeout(focusoutTimer);
+    focusoutTimer = null;
+  }
   getTopbar()?.removeAttribute("aria-keyshortcuts");
   // A pinned bar needs no reveal control, and a stray tab stop would just
   // sit in the way.
@@ -375,7 +374,7 @@ export function pinTopbarVisible(): void {
   }
   if (appFrameTracking) {
     appFrameTracking = false;
-    applyAppFrameGeometry();
+    syncFrameLayout();
   }
   setVisible(true);
 }

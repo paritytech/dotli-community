@@ -3,7 +3,10 @@
 
 // TrUAPI debug package public API.
 //
-// Host-side debug panel that renders dotli-internal events in a docked,
-// filterable panel.
-
-export { setupTruapiDebugPanel, type SetupOptions } from "./panel.ts";
+// This package has no root-level barrel export. Consumers import its
+// modules directly via the `./*` subpath map in package.json (for
+// example `@dotli/truapi-debug/event-store`,
+// `@dotli/truapi-debug/dotli-debug-bus`). The Solid panel UI itself
+// lives in `packages/ui/src/components/truapi-debug/` (entry
+// `mount.tsx`, exporting `setupTruapiDebugPanel`), which this package
+// must not import (dependency cycle).

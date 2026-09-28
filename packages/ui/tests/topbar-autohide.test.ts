@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as TopbarAutohideModule from "@dotli/ui/topbar-autohide";
+import { byId } from "./support";
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
 // box helper is mocked with plain stand-in values here. The real inset math and
@@ -31,6 +33,7 @@ function installTopbarDom(): void {
     <div class="mode-popover" id="mode-popover"></div>
     <div class="permissions-popover" id="permissions-popover"></div>
     <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
+    <div class="more-popover chains-popover" id="chains-popover"><button id="chains-row">row</button></div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
@@ -39,11 +42,11 @@ function installTopbarDom(): void {
 }
 
 function appFrame(): HTMLIFrameElement {
-  return document.getElementById("app-frame") as HTMLIFrameElement;
+  return byId("app-frame", HTMLIFrameElement);
 }
 
 function topbar(): HTMLElement {
-  return document.getElementById("topbar") as HTMLElement;
+  return byId("topbar");
 }
 
 function isHidden(): boolean {
@@ -69,9 +72,13 @@ function stubReducedMotion(reduce: boolean): void {
 // its document listeners or it keeps acting on the shared DOM.
 let dispose: (() => void) | null = null;
 
-async function loadAutoHide(): Promise<
-  typeof import("@dotli/ui/topbar-autohide")
-> {
+async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
+  // Logged in, as the auth controller records it (state/auth.ts).
+  const { setLoggedIn } = await import("@dotli/ui/state/auth");
+  setLoggedIn(true);
+  // The bridge hands each rendered product frame to the layout module.
+  const { attachProductFrame } = await import("@dotli/ui/product-frame-layout");
+  attachProductFrame(appFrame());
   const mod = await import("@dotli/ui/topbar-autohide");
   dispose = mod.disposeTopbarAutoHide;
   return mod;
@@ -91,6 +98,20 @@ afterEach(() => {
 });
 
 describe("topbar auto-hide reveal", () => {
+  it("As a user who just logged in, the bar arms from the session before the badge renders", async () => {
+    // Given: the auth button island renders the badge on Solid's next flush,
+    // after the dotli:authenticated listener has armed the auto-hide.
+    document.querySelector(".user-badge")?.remove();
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
   it("As a dotli integrator, the host hides the bar once the session settles", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
@@ -111,7 +132,7 @@ describe("topbar auto-hide reveal", () => {
     expect(isHidden()).toBe(true);
 
     // When
-    focusElement(document.getElementById("topbar-home") as HTMLElement);
+    focusElement(byId("topbar-home"));
 
     // Then
     expect(isHidden()).toBe(false);
@@ -127,7 +148,7 @@ describe("topbar auto-hide reveal", () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    focusElement(document.getElementById("mode-button") as HTMLElement);
+    focusElement(byId("mode-button"));
     expect(isHidden()).toBe(false);
 
     // When
@@ -178,6 +199,65 @@ describe("topbar auto-hide reveal", () => {
     expect(isHidden()).toBe(true);
   });
 
+  it("As a keyboard user, the bar stays up while I read the open chains popover", async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    const chains = byId("chains-popover");
+    chains.classList.add("open");
+
+    // When focus sits inside it, outside #topbar
+    focusElement(byId("chains-row"));
+    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When it closes and focus returns to the app, the bar hides again
+    chains.classList.remove("open");
+    focusElement(appFrame());
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it("As a keyboard user, Alt+Shift+T leaves the bar under an open chains popover", async () => {
+    // Given the bar is up and the chains popover is open
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    document.getElementById("chains-popover")?.classList.add("open");
+
+    // When
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        code: "KeyT",
+        altKey: true,
+        shiftKey: true,
+        bubbles: true,
+      }),
+    );
+
+    // Then the popover owns the moment, so the bar stays
+    expect(isHidden()).toBe(false);
+  });
+
+  it("As a dotli integrator, pinning the bar drops a queued focus check", async () => {
+    // Given a focusout has queued its next-tick focus check
+    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
+    armTopbarAutoHide();
+    // Armed: the hide timer is pending, alongside timers owned by other modules.
+    const armedTimers = vi.getTimerCount();
+    document.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+    expect(vi.getTimerCount()).toBe(armedTimers + 1);
+
+    // When
+    pinTopbarVisible();
+
+    // Then both the hide timer and the queued focus check are gone
+    expect(vi.getTimerCount()).toBe(armedTimers - 1);
+  });
+
   it("As a keyboard user, Alt+Shift+T toggles the bar and moves focus with it", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
@@ -218,24 +298,23 @@ describe("topbar auto-hide reveal", () => {
     const { armTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
     armTopbarAutoHide();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
-    const button = document.getElementById(TOPBAR_REVEAL_BUTTON_ID);
+    const button = byId(TOPBAR_REVEAL_BUTTON_ID);
 
     // Then it is focusable and sits between the frame and the toasts, so one
     // forward Tab out of the dApp reaches it
-    expect(button?.tagName).toBe("BUTTON");
+    expect(button.tagName).toBe("BUTTON");
     expect(
-      appFrame().compareDocumentPosition(button as Node) &
+      appFrame().compareDocumentPosition(button) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      (document.getElementById("toast") as Node).compareDocumentPosition(
-        button as Node,
-      ) & Node.DOCUMENT_POSITION_PRECEDING,
+      byId("toast").compareDocumentPosition(button) &
+        Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
 
     // When
-    (button as HTMLElement).focus();
-    (button as HTMLElement).dispatchEvent(new FocusEvent("focus"));
+    button.focus();
+    button.dispatchEvent(new FocusEvent("focus"));
 
     // Then focus alone reveals the bar and holds it there
     expect(isHidden()).toBe(false);
@@ -271,9 +350,7 @@ describe("topbar auto-hide reveal", () => {
 
     // Then
     expect(topbar().hasAttribute("aria-keyshortcuts")).toBe(false);
-    expect(
-      (document.getElementById(TOPBAR_REVEAL_BUTTON_ID) as HTMLElement).hidden,
-    ).toBe(true);
+    expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(true);
   });
 });
 
@@ -314,7 +391,7 @@ describe("topbar auto-hide motion and layout", () => {
     expect(appFrame().style.transform).toBe("translateY(0)");
 
     // When
-    focusElement(document.getElementById("topbar-home") as HTMLElement);
+    focusElement(byId("topbar-home"));
 
     // Then the layout box is untouched (no relayout) and a transform moves
     // the frame under the bar, so the app's top content is never covered
@@ -328,23 +405,39 @@ describe("topbar auto-hide motion and layout", () => {
     );
   });
 
+  it("As a reduced-motion user, the app frame follows the bar without a slide", async () => {
+    // Given
+    stubReducedMotion(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    vi.advanceTimersByTime(HIDE_DELAY_MS);
+
+    // Then
+    expect(appFrame().style.transform).toBe("translateY(0)");
+    expect(appFrame().style.transition).toBe("none");
+  });
+
   it("As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry", async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
 
-    // When a new render restyles the frame with the topbar offset
-    appFrame().style.top = "56px";
-    appFrame().style.height = "calc(100dvh - 56px)";
-    window.dispatchEvent(
-      new CustomEvent("dotli:product-loaded", { detail: { label: "demo" } }),
-    );
+    // When a new render hands the layout module a fresh frame
+    const { attachProductFrame } =
+      await import("@dotli/ui/product-frame-layout");
+    const frame = document.createElement("iframe");
+    appFrame().replaceWith(frame);
+    frame.id = "app-frame";
+    attachProductFrame(frame);
 
     // Then
     expect(appFrame().style.top).toBe("0px");
     expect(appFrame().style.height).toBe("100vh");
     expect(appFrame().style.transform).toBe("translateY(0)");
+    expect(appFrame().style.transition).toContain("transform");
   });
 
   it("As a logged-out user, the bar is pinned and the app frame makes room for it", async () => {
@@ -355,6 +448,8 @@ describe("topbar auto-hide motion and layout", () => {
     expect(isHidden()).toBe(true);
 
     // When
+    const { setLoggedIn } = await import("@dotli/ui/state/auth");
+    setLoggedIn(false);
     document.querySelector(".user-badge")?.remove();
     pinTopbarVisible();
     vi.advanceTimersByTime(HIDE_DELAY_MS * 2);

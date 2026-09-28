@@ -41,6 +41,8 @@ test-results/
 playwright-report/
 **/results.json
 apps/host/**/.auth/
+# Machine-local cold-start runs; CI keeps its own baseline as an artifact.
+apps/host/tests/performance/results/
 
 # PAPI
 .papi/descriptors
@@ -81,3 +83,6 @@ GEMINI.md
 !vendor/truapi-debug/**/dist/**
 !vendor/truapi-debug/**/.papi
 !vendor/truapi-debug/**/.papi/**
+
+# Local planning docs (specs, plans) written by agent workflows
+docs/superpowers/

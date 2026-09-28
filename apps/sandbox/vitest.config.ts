@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "vitest/config";
+import solid from "@solidjs/vite-plugin";
 import { resolve } from "node:path";
 
 export default defineConfig({
+  plugins: [solid()],
   resolve: {
     alias: {
       "@dotli/config": resolve(
@@ -18,7 +20,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["tests/**/*.test.ts"],
+    include: ["tests/**/*.test.{ts,tsx}"],
     environment: "happy-dom",
     globals: false,
   },

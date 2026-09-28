@@ -6,11 +6,13 @@ import { defineConfig, type Plugin } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
+import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
+import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -250,6 +252,16 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    // `ssr: true` gives the ssr environment Solid's server codegen, which
+    // prerenderPlugin (below) needs to render the shell into index.html; a
+    // plain `solid()` compiles that environment for the DOM too. Nothing on
+    // the client hydrates (the prerendered shell is inert HTML, and its
+    // reactive pieces are client-rendered islands swapped in over it, see
+    // packages/ui/src/mount/load-islands.ts), so both environments compile
+    // non-hydratable: the client output is a plain SPA compile, without
+    // hydration keys or claim walks, and the prerender carries no `_hk`
+    // markers.
+    solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({
@@ -261,6 +273,11 @@ export default defineConfig({
       imageAlt: "Polkadot logo",
     }),
     preloadCriticalAssets(),
+    prerenderPlugin({
+      placeholder: "<!--ssr:shell-->",
+      entry: resolve(PACKAGES, "ui/src/components/shell/shell.server.tsx"),
+      exportName: "renderShell",
+    }),
     previewCoepHeaders(),
     sentry(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The

@@ -15,6 +15,7 @@ import {
   captureException,
 } from "@dotli/metrics/sentry";
 import { showNotification } from "@dotli/ui/notification";
+import { prefetchOverlays } from "@dotli/ui/overlays/load";
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -35,6 +36,11 @@ window.addEventListener("vite:preloadError", (event) => {
     },
   });
 });
+
+// Fetch the toast/modal chunk while the browser is idle, so it is in memory
+// before a deploy could make later chunk loads fail.
+prefetchOverlays();
+
 import { packArchive, type ArchiveFiles } from "@dotli/content/archive";
 import type { FetchResult } from "@dotli/content/fetch";
 import { isEncrypted, decryptContent } from "@dotli/content/decrypt";

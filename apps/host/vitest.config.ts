@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "vitest/config";
+import solid from "@solidjs/vite-plugin";
 
 export default defineConfig({
+  plugins: [solid()],
   test: {
     // Only unit tests. The e2e, functional and performance suites are
     // Playwright and have their own configs and runners. Tests sitting beside
     // the file they cover are picked up from `src` too.
-    include: ["tests/unit/**/*.test.ts", "src/**/*.test.ts"],
+    include: ["tests/unit/**/*.test.{ts,tsx}", "src/**/*.test.{ts,tsx}"],
     environment: "happy-dom",
     globals: false,
   },

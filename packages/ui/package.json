@@ -8,13 +8,15 @@
     "./*": "./src/*"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "lint": "bunx eslint src/ tests/",
     "test": "vitest run"
   },
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
+    "@solidjs/testing-library": "1.0.0-beta.3",
+    "@solidjs/vite-plugin": "3.0.0-next.44",
     "@types/qrcode": "^1.5.6",
     "eslint": "^10.11.0",
     "fake-indexeddb": "^6.2.5",
@@ -37,9 +39,11 @@
     "@parity/truapi-host": "0.21.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.4.0",
+    "@solidjs/web": "2.0.0-rc.9",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^3.1.0",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "solid-js": "2.0.0-rc.9"
   },
   "peerDependencies": {
     "@dotli/resolver": "workspace:*"

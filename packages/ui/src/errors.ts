@@ -11,7 +11,15 @@
 export const ERRORS = {
   PREIMAGE_SUBMIT_DENIED: "User denied preimage submit",
   DECRYPTION_CANCELLED: "User cancelled decryption",
+  /**
+   * @deprecated Nothing produces this since the alias permission modal was
+   * removed. Kept because a product may still match on the text.
+   */
   ALIAS_PERMISSION_DENIED: "User denied alias permission",
+  /**
+   * @deprecated Nothing produces this since the alias permission modal was
+   * removed. Kept because a product may still match on the text.
+   */
   ALIAS_PERMISSION_DISMISSED: "User dismissed alias permission dialog",
   IDENTITY_DISCLOSURE_DISMISSED: "User dismissed identity disclosure dialog",
   PERMISSION_DIALOG_DISMISSED: "User dismissed permission dialog",

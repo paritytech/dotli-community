@@ -15,15 +15,19 @@ export async function extractQrPayload(
       .locator(canvasSelector)
       .getAttribute("data-qr-payload", { timeout: 250 })
       .catch(() => null);
-    if (embedded?.startsWith("polkadotapp://")) {
+    if (embedded?.startsWith("polkadotapp://") === true) {
       return embedded;
     }
 
     const px = await page.evaluate((sel) => {
-      const canvas = document.querySelector(sel) as HTMLCanvasElement | null;
-      if (!canvas || canvas.width === 0) return null;
+      const canvas = document.querySelector<HTMLCanvasElement>(sel);
+      if (!canvas || canvas.width === 0) {
+        return null;
+      }
       const ctx = canvas.getContext("2d");
-      if (!ctx) return null;
+      if (!ctx) {
+        return null;
+      }
       const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
       return {
         data: Array.from(img.data),
@@ -34,7 +38,7 @@ export async function extractQrPayload(
 
     if (px) {
       const code = jsQR(new Uint8ClampedArray(px.data), px.width, px.height);
-      if (code?.data?.startsWith("polkadotapp://")) {
+      if (code?.data.startsWith("polkadotapp://") === true) {
         return code.data;
       }
     }

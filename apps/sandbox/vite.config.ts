@@ -5,6 +5,7 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, build as viteBuild, type Plugin } from "vite";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
+import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
@@ -145,6 +146,7 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    solid(),
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({

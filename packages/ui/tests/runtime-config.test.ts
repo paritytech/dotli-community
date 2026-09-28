@@ -47,7 +47,7 @@ describe("createTruapiRuntimeConfig", () => {
         version: undefined,
       },
       platform: {
-        type: expect.any(String),
+        type: expect.any(String) as unknown,
         version: undefined,
       },
       people: {

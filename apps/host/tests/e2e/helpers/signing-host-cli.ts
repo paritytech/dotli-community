@@ -32,7 +32,9 @@ export interface SigningHostProcess {
 // spawn ENOENT buried in the pair retry loop.
 export function signingHostVersion(binary: string): string | null {
   const probe = spawnSync(binary, ["--version"], { encoding: "utf8" });
-  if (probe.error || probe.status !== 0) return null;
+  if (probe.error || probe.status !== 0) {
+    return null;
+  }
   return probe.stdout.trim();
 }
 
@@ -94,18 +96,23 @@ export function startSigningHostPair(
 }
 
 export async function stopSigningHost(proc: SigningHostProcess): Promise<void> {
-  if (proc.child.exitCode !== null || proc.child.signalCode !== null) {
+  // A function, so the check after the await below reads the child afresh.
+  const exited = (): boolean =>
+    proc.child.exitCode !== null || proc.child.signalCode !== null;
+  if (exited()) {
     return;
   }
   proc.child.kill("SIGTERM");
   const stopped = await Promise.race([
     proc.completed.then(() => true),
     new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 5_000);
+      const timer = setTimeout(() => {
+        resolve(false);
+      }, 5_000);
       timer.unref();
     }),
   ]);
-  if (!stopped && proc.child.exitCode === null) {
+  if (!stopped && !exited()) {
     proc.child.kill("SIGKILL");
     await proc.completed;
   }
@@ -121,11 +128,14 @@ export async function stopSigningHostPid(pid: number): Promise<void> {
   }
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    if (!isAlive(pid)) return;
+    if (!isAlive(pid)) {
+      return;
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
   try {
     process.kill(pid, "SIGKILL");
+    // eslint-disable-next-line no-restricted-syntax -- the process exited between the last check and now, which is the outcome we wanted.
   } catch {
     // Exited between the last check and now.
   }
@@ -147,7 +157,7 @@ export function formatSigningHostExit(
   const status =
     result.error ??
     (result.code !== null
-      ? `exit code ${result.code}`
+      ? `exit code ${String(result.code)}`
       : `signal ${result.signal ?? "unknown"}`);
   const detail = sanitizeSigningHostOutput(output).trim();
   return detail.length > 0

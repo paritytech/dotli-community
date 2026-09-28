@@ -1,5 +1,5 @@
 import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { labelToProductId } from "@dotli/ui/runtime-config";
 import { setChatCapability } from "@dotli/shared/chat-capability";
 import type {
@@ -8,14 +8,39 @@ import type {
   ProductRendererRenderRequest,
 } from "@parity/truapi";
 import type { RenderSink } from "@parity/truapi-host";
+import type * as AuthModule from "@dotli/ui/state/auth";
+import type * as TopbarModule from "@dotli/ui/state/topbar";
+import type * as PanelModule from "@dotli/ui/chat/panel";
+import type * as ServiceModule from "@dotli/ui/chat/service";
+import { byId, query } from "./support";
+
+// happy-dom drops a calc() that holds a var(), so the box helper returns plain
+// stand-in values here. product-frame-layout tests cover the inset terms.
+vi.mock("@dotli/ui/product-iframe-box", () => ({
+  productIframeBox: () => ({
+    top: "56px",
+    left: "0px",
+    width: "calc(100% - 10px)",
+    height: "calc(100dvh - 56px)",
+  }),
+}));
 
 // The panel and service keep module-level state (listeners, connection
 // registry), so each test loads a fresh module instance via resetModules.
+// The session and topbar stores the panel follows come from the same graph.
+let stores: {
+  auth: typeof AuthModule;
+  topbar: typeof TopbarModule;
+};
 async function loadChatModules(): Promise<{
-  panel: typeof import("@dotli/ui/chat/panel");
-  service: typeof import("@dotli/ui/chat/service");
+  panel: typeof PanelModule;
+  service: typeof ServiceModule;
 }> {
   vi.resetModules();
+  stores = {
+    auth: await import("@dotli/ui/state/auth"),
+    topbar: await import("@dotli/ui/state/topbar"),
+  };
   return {
     panel: await import("@dotli/ui/chat/panel"),
     service: await import("@dotli/ui/chat/service"),
@@ -27,29 +52,14 @@ function installChatDom(): void {
     <button id="chat-button" aria-expanded="false" hidden>
       <span id="chat-unread-badge" hidden></span>
     </button>
-    <button id="more-row-chat" hidden></button>
-    <aside id="chat-panel" hidden>
-      <div id="chat-panel-resize"></div>
-      <button id="chat-panel-back" hidden></button>
-      <span id="chat-panel-title"></span>
-      <button id="chat-panel-close"></button>
-      <div id="chat-panel-rooms" hidden></div>
-      <div id="chat-panel-messages"></div>
-      <p id="chat-panel-hint" hidden></p>
-      <form id="chat-panel-composer">
-        <input id="chat-panel-input" type="text" />
-        <button type="submit" id="chat-panel-send"></button>
-      </form>
-    </aside>
+    <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
+    <div id="app"><iframe></iframe></div>
   `;
 }
 
+/** What the auth controller records on Connected and Disconnected. */
 function setLoggedIn(loggedIn: boolean): void {
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-auth-state", {
-      detail: { tag: loggedIn ? "Connected" : "Disconnected" },
-    }),
-  );
+  stores.auth.setLoggedIn(loggedIn);
 }
 
 function loadProduct(label: string): void {
@@ -74,18 +84,16 @@ async function settle(ready: () => boolean): Promise<void> {
   );
 }
 
-const byId = <T extends HTMLElement>(id: string): T => {
-  const node = document.getElementById(id);
-  if (node === null) {
-    throw new Error(`missing #${id}`);
-  }
-  return node as T;
-};
-
 describe("chat panel", () => {
   beforeEach(() => {
     localStorage.clear();
     installChatDom();
+    // Prefetch fires a real idle timer that outlives the test otherwise.
+    vi.stubGlobal("requestIdleCallback", () => 0);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("As a user, the chat button appears only for chat-capable products", async () => {
@@ -103,6 +111,28 @@ describe("chat panel", () => {
 
     window.dispatchEvent(new CustomEvent("dotli:product-error"));
     expect(button.hidden).toBe(true);
+  });
+
+  it("As a user, the chat button works on a page without the More menu's static Chat row", async () => {
+    // Given: the More menu is an island that renders its Chat row from the
+    // chat-panel store, so the panel neither needs nor touches the static
+    // row (installChatDom has none).
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    const button = byId("chat-button");
+
+    // When
+    loadProduct("chatty-no-row");
+
+    // Then
+    expect(button.hidden).toBe(false);
+
+    // When
+    button.click();
+
+    // Then
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("As a user, the chat button is hidden until I log in and hides again on logout", async () => {
@@ -131,11 +161,11 @@ describe("chat panel", () => {
     loadProduct("chatty-empty");
 
     byId("chat-button").click();
-    await settle(() => !byId("chat-panel-hint").hidden);
+    await settle(() => byId("chat-panel-hint").hidden === false);
 
     expect(byId("chat-panel").hidden).toBe(false);
     expect(byId("chat-panel-hint").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(true);
   });
 
   it("As a user, opening the panel lists rooms with icon and name", async () => {
@@ -164,7 +194,7 @@ describe("chat panel", () => {
     );
 
     expect(byId("chat-panel-rooms").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(true);
     const items =
       document.querySelectorAll<HTMLButtonElement>(".chat-room-item");
     expect(items).toHaveLength(2);
@@ -178,14 +208,14 @@ describe("chat panel", () => {
     ).toBe("G");
 
     items[1].click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
     expect(byId("chat-panel-back").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(false);
 
     byId("chat-panel-back").click();
-    await settle(() => !byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === false);
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId("chat-panel-back").hidden).toBe(true);
   });
@@ -195,14 +225,10 @@ describe("chat panel", () => {
     panel.initChatPanel();
     const panelEl = byId("chat-panel");
 
-    window.dispatchEvent(
-      new CustomEvent<boolean>("topbar:visibility", { detail: false }),
-    );
+    stores.topbar.setTopbarVisible(false);
     expect(panelEl.classList.contains("topbar-hidden")).toBe(true);
 
-    window.dispatchEvent(
-      new CustomEvent<boolean>("topbar:visibility", { detail: true }),
-    );
+    stores.topbar.setTopbarVisible(true);
     expect(panelEl.classList.contains("topbar-hidden")).toBe(false);
   });
 
@@ -213,10 +239,11 @@ describe("chat panel", () => {
     const productId = labelToProductId("chatty-send");
     const published: HostChatActionSubscribeItem[] = [];
     service.registerChatConnection(productId, {
-      publish: async (action) => {
+      publish: (action) => {
         published.push(action);
+        return Promise.resolve();
       },
-      publishRendererAction: async () => undefined,
+      publishRendererAction: () => Promise.resolve(),
       render: () => () => undefined,
     });
 
@@ -237,11 +264,8 @@ describe("chat panel", () => {
       document.querySelector<HTMLButtonElement>(".chat-room-item");
     expect(roomItem?.textContent).toContain("Main");
     roomItem?.click();
-    await settle(
-      () =>
-        byId("chat-panel-messages").textContent?.includes(
-          "hello from the app",
-        ) === true,
+    await settle(() =>
+      byId("chat-panel-messages").textContent.includes("hello from the app"),
     );
     expect(byId("chat-panel-messages").textContent).toContain(
       "hello from the app",
@@ -251,13 +275,13 @@ describe("chat panel", () => {
     expect(time?.textContent).toBe("just now");
     expect(time?.title).not.toBe("");
 
-    const input = byId<HTMLInputElement>("chat-panel-input");
+    const input = byId("chat-panel-input", HTMLInputElement);
     input.value = "hello back";
-    byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
+    byId("chat-panel-composer", HTMLFormElement).requestSubmit();
     await settle(
       () =>
-        byId("chat-panel-messages").textContent?.includes("hello back") ===
-          true && published.length === 1,
+        byId("chat-panel-messages").textContent.includes("hello back") &&
+        published.length === 1,
     );
 
     expect(published).toHaveLength(1);
@@ -337,9 +361,9 @@ describe("chat panel", () => {
       botRow.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
     botRow.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-title").textContent).toBe("Echo Bot");
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(false);
 
     // The bot messages the user through its own conversation: the product
     // posts with the botId as the roomId.
@@ -347,18 +371,15 @@ describe("chat panel", () => {
       tag: "Text",
       value: { text: "hi, I am the bot" },
     });
-    await settle(
-      () =>
-        byId("chat-panel-messages").textContent?.includes(
-          "hi, I am the bot",
-        ) === true,
+    await settle(() =>
+      byId("chat-panel-messages").textContent.includes("hi, I am the bot"),
     );
     // Messages carry no sender label above them.
     expect(document.querySelector(".chat-msg-sender")).toBeNull();
 
     // With the newest message, the bot now leads the list.
     byId("chat-panel-back").click();
-    await settle(() => !byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === false);
     const reordered = [
       ...document.querySelectorAll<HTMLElement>(".chat-room-item"),
     ].map((row) => row.querySelector(".chat-room-name")?.textContent);
@@ -383,11 +404,13 @@ describe("chat panel", () => {
       }[] = [];
       const disposeRender = vi.fn();
       service.registerChatConnection(productId, {
-        publish: async (action) => {
+        publish: (action) => {
           published.push(action);
+          return Promise.resolve();
         },
-        publishRendererAction: async (item) => {
+        publishRendererAction: (item) => {
           rendererActions.push(item);
+          return Promise.resolve();
         },
         render: (request, sink) => {
           renders.push({ request, sink });
@@ -450,6 +473,9 @@ describe("chat panel", () => {
           ],
         },
       });
+      await settle(() =>
+        byId("chat-panel-messages").textContent.includes("Pick one"),
+      );
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
       // Tapping the rendered button publishes a renderer action naming the
@@ -463,6 +489,9 @@ describe("chat panel", () => {
 
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));
+      await settle(
+        () => !byId("chat-panel-messages").textContent.includes("Pick one"),
+      );
       expect(byId("chat-panel-messages").textContent).not.toContain("Pick one");
       expect(byId("chat-panel-messages").textContent).toContain(
         "This message can’t be shown right now.",
@@ -498,7 +527,7 @@ describe("chat panel", () => {
     expect(badge.textContent).toBe("1");
 
     byId("chat-button").click();
-    await settle(() => badge.hidden);
+    await settle(() => badge.hidden === true);
     expect(badge.hidden).toBe(true);
   });
 
@@ -541,12 +570,12 @@ describe("chat panel", () => {
     expect(roomBadges[0].textContent).toBe("2");
     const busyRow = [
       ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
-    ].find((row) => row.textContent?.includes("Busy"));
+    ].find((row) => row.textContent.includes("Busy"));
     expect(busyRow?.querySelector(".chat-room-unread")).not.toBeNull();
 
     // A message for another room while viewing this one stays unread.
     busyRow?.click();
-    await settle(() => byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === true);
     await service.productPostMessage(productId, "quiet", {
       tag: "Text",
       value: { text: "psst" },
@@ -567,5 +596,328 @@ describe("chat panel", () => {
     byId("chat-panel-close").click();
     expect(badge.hidden).toBe(false);
     expect(badge.textContent).toBe("1");
+  });
+
+  it("As a user, opening the panel narrows the app and closing restores it", async () => {
+    const { panel } = await loadChatModules();
+    const layout = await import("@dotli/ui/product-frame-layout");
+    const iframe = query(document, "#app iframe", HTMLIFrameElement);
+    layout.attachProductFrame(iframe);
+    panel.initChatPanel();
+    loadProduct("chatty-iframe");
+
+    byId("chat-button").click();
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(byId("chat-button").getAttribute("aria-expanded")).toBe("true");
+    expect(byId("chat-button").classList.contains("active")).toBe(true);
+    expect(byId("chat-panel").style.width).toBe("360px");
+    expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 360px)");
+
+    // Dragging the resize handle follows the panel's width.
+    const state = await import("@dotli/ui/state/chat-panel");
+    state.setChatPanelWidth(420);
+    expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 420px)");
+
+    await settle(() => document.getElementById("chat-panel-close") !== null);
+    byId("chat-panel-close").click();
+    expect(byId("chat-panel").hidden).toBe(true);
+    expect(byId("chat-button").getAttribute("aria-expanded")).toBe("false");
+    // Closed, the frame gets the whole safe box, as a fresh render does.
+    expect(iframe.style.width).toBe("calc(100% - 10px)");
+  });
+
+  it("As a user, reloading the product with the panel open keeps the app narrowed", async () => {
+    const { panel } = await loadChatModules();
+    const layout = await import("@dotli/ui/product-frame-layout");
+    layout.attachProductFrame(
+      query(document, "#app iframe", HTMLIFrameElement),
+    );
+    panel.initChatPanel();
+    loadProduct("chatty-reload");
+    byId("chat-button").click();
+
+    // A reload renders a fresh frame and hands it to the layout module.
+    const fresh = document.createElement("iframe");
+    byId("app").replaceChildren(fresh);
+    layout.attachProductFrame(fresh);
+    loadProduct("chatty-reload");
+
+    expect(byId("chat-panel").hidden).toBe(false);
+    expect(fresh.style.width).toBe("calc(calc(100% - 10px) - 360px)");
+  });
+
+  it("As a user, Escape closes the panel and returns focus to the chat button", async () => {
+    const { panel } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-escape");
+
+    byId("chat-button").click();
+    await settle(() => document.getElementById("chat-panel-close") !== null);
+    byId("chat-panel-close").focus();
+    byId("chat-panel").dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true }),
+    );
+
+    expect(byId("chat-panel").hidden).toBe(true);
+    expect(document.activeElement).toBe(byId("chat-button"));
+  });
+
+  it("As a user, a message for another room does not reload the conversation I am reading", async () => {
+    vi.stubGlobal("IntersectionObserver", undefined);
+    try {
+      const { panel, service } = await loadChatModules();
+      panel.initChatPanel();
+      loadProduct("chatty-steady");
+      const productId = labelToProductId("chatty-steady");
+      const render = vi.fn(() => () => undefined);
+      service.registerChatConnection(productId, {
+        publish: () => Promise.resolve(),
+        publishRendererAction: () => Promise.resolve(),
+        render,
+      });
+      await service.productCreateRoom(productId, {
+        roomId: "main",
+        name: "Main",
+        icon: "",
+      });
+      await new Promise((resolve) => setTimeout(resolve, 2));
+      await service.productCreateRoom(productId, {
+        roomId: "side",
+        name: "Side",
+        icon: "",
+      });
+      await service.productPostMessage(productId, "main", {
+        tag: "Custom",
+        value: { messageType: "poll", payload: "0x01" },
+      });
+
+      byId("chat-button").click();
+      await settle(
+        () => document.querySelectorAll(".chat-room-item").length === 2,
+      );
+      [...document.querySelectorAll<HTMLButtonElement>(".chat-room-item")]
+        .find((row) => row.textContent.includes("Main"))
+        ?.click();
+      await settle(() => render.mock.calls.length === 1);
+
+      await service.productPostMessage(productId, "side", {
+        tag: "Text",
+        value: { text: "elsewhere" },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(render).toHaveBeenCalledTimes(1);
+      expect(byId("chat-panel-title").textContent).toBe("Main");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("As a user, loading another product while the panel is open shows that product's contacts", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("first-app");
+    await service.productCreateRoom(labelToProductId("first-app"), {
+      roomId: "a",
+      name: "First room",
+      icon: "",
+    });
+    await service.productCreateRoom(labelToProductId("second-app"), {
+      roomId: "b",
+      name: "Second room",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(() =>
+      byId("chat-panel-rooms").textContent.includes("First room"),
+    );
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => byId("chat-panel-rooms").hidden === true);
+
+    loadProduct("second-app");
+    await settle(() =>
+      byId("chat-panel-rooms").textContent.includes("Second room"),
+    );
+    expect(byId("chat-panel-rooms").hidden).toBe(false);
+    expect(byId("chat-panel-rooms").textContent).not.toContain("First room");
+  });
+
+  it("As a user, a failed reply keeps the message and shows why", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-composer-error");
+    const productId = labelToProductId("chatty-composer-error");
+    let denied = true;
+    service.registerChatConnection(productId, {
+      publish: () =>
+        Promise.reject(
+          denied ? new Error("request denied") : new Error("boom"),
+        ),
+      publishRendererAction: () => Promise.resolve(),
+      render: () => () => undefined,
+    });
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => byId("chat-panel-rooms").hidden === true);
+
+    const input = byId("chat-panel-input", HTMLInputElement);
+    const composer = byId("chat-panel-composer", HTMLFormElement);
+    input.value = "hello";
+    composer.requestSubmit();
+    // The hint appears as soon as the send fails, but the thread re-reads
+    // the saved message from IndexedDB afterwards, so wait for both.
+    await settle(
+      () =>
+        byId("chat-panel-hint").hidden === false &&
+        byId("chat-panel-messages").textContent.includes("hello"),
+    );
+    expect(byId("chat-panel-hint").textContent).toBe(
+      "Log in to chat with this app.",
+    );
+    expect(byId("chat-panel-messages").textContent).toContain("hello");
+
+    denied = false;
+    input.value = "again";
+    composer.requestSubmit();
+    await settle(
+      () =>
+        byId("chat-panel-hint").textContent ===
+          "Message saved, but the app could not be reached." &&
+        byId("chat-panel-messages").textContent.includes("again"),
+    );
+    expect(byId("chat-panel-messages").textContent).toContain("again");
+  });
+
+  it("As a user, opening a room focuses the composer", async () => {
+    const { panel, service } = await loadChatModules();
+    panel.initChatPanel();
+    loadProduct("chatty-focus");
+    const productId = labelToProductId("chatty-focus");
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+
+    byId("chat-button").click();
+    await settle(() => document.querySelector(".chat-room-item") !== null);
+    document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+    await settle(() => document.activeElement === byId("chat-panel-input"));
+    expect(document.activeElement).toBe(byId("chat-panel-input"));
+  });
+
+  it("As a user, a messages read that finishes after I closed the panel leaves the room unread", async () => {
+    const { panel, service } = await loadChatModules();
+    const state = await import("@dotli/ui/state/chat-panel");
+    panel.initChatPanel();
+    loadProduct("chatty-late-read");
+    const productId = labelToProductId("chatty-late-read");
+    await service.productCreateRoom(productId, {
+      roomId: "main",
+      name: "Main",
+      icon: "",
+    });
+    await service.productPostMessage(productId, "main", {
+      tag: "Text",
+      value: { text: "ping" },
+    });
+    expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+
+    // Gate the room's message read so it resolves only after the panel has
+    // already closed, the way a slow IndexedDB read would.
+    const original = service.chatMessages;
+    let release: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const readSpy = vi
+      .spyOn(service, "chatMessages")
+      .mockImplementation(async (readProductId, readRoomId) => {
+        await gate;
+        return original(readProductId, readRoomId);
+      });
+    try {
+      byId("chat-button").click();
+      await settle(() => document.querySelector(".chat-room-item") !== null);
+      document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
+      await settle(() => byId("chat-panel-rooms").hidden === true);
+
+      byId("chat-panel-close").click();
+      expect(byId("chat-panel").hidden).toBe(true);
+
+      release?.();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      // The read resolved after the panel closed: it must not have marked
+      // the room seen behind the user's back.
+      expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+    } finally {
+      readSpy.mockRestore();
+    }
+  });
+
+  it("As a user, a render error closes the panel and the next open recovers it", async () => {
+    const { panel } = await loadChatModules();
+    const manifest = await import("@dotli/shared/active-manifest");
+    panel.initChatPanel();
+    loadProduct("chatty-broken-render");
+
+    // ChatPanel's title() reads this only when no room is open; failing it
+    // once throws synchronously during the panel's first render, the same
+    // way the overlays render-error test fails a top-level store read.
+    const manifestSpy = vi
+      .spyOn(manifest, "getActiveRootManifest")
+      .mockImplementationOnce(() => {
+        throw new Error("render boom");
+      });
+    try {
+      byId("chat-button").click();
+      await settle(() => byId("chat-panel").hidden === true);
+      expect(byId("chat-panel").hidden).toBe(true);
+
+      byId("chat-button").click();
+      await settle(() => document.getElementById("chat-panel-close") !== null);
+      expect(byId("chat-panel-close")).not.toBeNull();
+    } finally {
+      manifestSpy.mockRestore();
+    }
+  });
+
+  // This test resets the module registry via vi.doMock, so it must stay last
+  // in this describe block.
+  it("As a user, if the chat code cannot load, the panel closes and the next open retries", async () => {
+    vi.resetModules();
+    let calls = 0;
+    vi.doMock("@dotli/ui/components/chat/mount", () => {
+      calls += 1;
+      throw new Error("chunk failed");
+    });
+    try {
+      const panel = await import("@dotli/ui/chat/panel");
+      const load = await import("@dotli/ui/chat/load");
+      panel.initChatPanel();
+      loadProduct("chatty-broken");
+
+      byId("chat-button").click();
+      await load.ensureChatPanel();
+      expect(byId("chat-panel").hidden).toBe(true);
+      expect(calls).toBe(1);
+
+      byId("chat-button").click();
+      await load.ensureChatPanel();
+      expect(calls).toBe(2);
+      expect(byId("chat-panel").hidden).toBe(true);
+    } finally {
+      vi.doUnmock("@dotli/ui/components/chat/mount");
+      vi.resetModules();
+    }
   });
 });

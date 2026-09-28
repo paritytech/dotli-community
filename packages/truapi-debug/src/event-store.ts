@@ -65,8 +65,14 @@ export class EventStore {
   private paused = false;
   private nextSeq = 0;
   private droppedCount = 0;
+  /** Backing counter for `version()`. */
+  private versionCount = 0;
   /** Correlation key mapped to the first event observed with that key. */
   private readonly firstByKey = new Map<string, StoredEvent>();
+  /** Each event's group anchor as it stood at insert time. */
+  private readonly anchors = new WeakMap<StoredEvent, StoredEvent>();
+  /** Retained TrUAPI events per product id, so `productIds()` needs no scan. */
+  private readonly productCounts = new Map<string | undefined, number>();
   private readonly listeners = new Set<Listener>();
 
   constructor(config: EventStoreConfig) {
@@ -93,6 +99,7 @@ export class EventStore {
   clear(): void {
     this.buf.length = 0;
     this.firstByKey.clear();
+    this.productCounts.clear();
     this.droppedCount = 0;
     this.notify();
   }
@@ -136,9 +143,13 @@ export class EventStore {
   private pushAndEvict(stored: StoredEvent): void {
     this.buf.push(stored);
     const key = correlationKeyOf(stored);
-    if (!this.firstByKey.has(key)) {
+    const anchor = this.firstByKey.get(key);
+    if (anchor === undefined) {
       this.firstByKey.set(key, stored);
+    } else {
+      this.anchors.set(stored, anchor);
     }
+    this.countProduct(stored, 1);
     while (this.buf.length > this.capacity) {
       const evicted = this.buf.shift();
       this.droppedCount++;
@@ -148,9 +159,22 @@ export class EventStore {
         if (head?.seq === evicted.seq) {
           this.firstByKey.delete(evictedKey);
         }
+        this.countProduct(evicted, -1);
       }
     }
     this.notify();
+  }
+
+  private countProduct(ev: StoredEvent, delta: 1 | -1): void {
+    if (ev.kind !== "truapi") {
+      return;
+    }
+    const next = (this.productCounts.get(ev.productId) ?? 0) + delta;
+    if (next > 0) {
+      this.productCounts.set(ev.productId, next);
+    } else {
+      this.productCounts.delete(ev.productId);
+    }
   }
 
   list(): readonly StoredEvent[] {
@@ -163,6 +187,16 @@ export class EventStore {
    */
   firstInGroup(key: string): StoredEvent | undefined {
     return this.firstByKey.get(key);
+  }
+
+  /**
+   * The first event of `ev`'s group as it stood when `ev` was inserted, or
+   * undefined when `ev` itself opened the group. Unlike `firstInGroup`, it
+   * survives the anchor's eviction, so a row's latency never depends on when
+   * the row was drawn.
+   */
+  anchorOf(ev: StoredEvent): StoredEvent | undefined {
+    return this.anchors.get(ev);
   }
 
   /** Lookup by seq. O(N) scan, used only on click/detail paths. */
@@ -194,13 +228,7 @@ export class EventStore {
   /** Discover every distinct productId present in the buffer (incl. `undefined`).
    *  System events have no productId and do not contribute. */
   productIds(): (string | undefined)[] {
-    const seen = new Set<string | undefined>();
-    for (const e of this.buf) {
-      if (e.kind === "truapi") {
-        seen.add(e.productId);
-      }
-    }
-    return Array.from(seen);
+    return Array.from(this.productCounts.keys());
   }
 
   subscribe(l: Listener): () => void {
@@ -208,7 +236,18 @@ export class EventStore {
     return () => this.listeners.delete(l);
   }
 
+  /**
+   * Monotonic counter bumped every time subscribers are notified (insert,
+   * clear, prune, pause/resume). Lets a consumer snapshot `list()` cheaply
+   * by comparing versions rather than diffing the array on every render.
+   * A paused insert returns before `notify()` runs, so it never bumps this.
+   */
+  version(): number {
+    return this.versionCount;
+  }
+
   private notify(): void {
+    this.versionCount++;
     for (const l of this.listeners) {
       try {
         l();
@@ -218,4 +257,32 @@ export class EventStore {
       }
     }
   }
+}
+
+/**
+ * Index in `next` of the first event `prev` did not hold, for two snapshots
+ * of one store taken in order. Events are appended in seq order and only
+ * ever leave from the head (or all at once on `clear()`), so everything past
+ * `prev`'s last seq is new. Walks back from the end: O(new events).
+ *
+ * A caller that reads the live ring buffer, which it cannot keep as a
+ * snapshot, passes the last seq it saw as `{ lastSeq }` (-1 for none).
+ */
+export function firstNewIndex(
+  prev: readonly StoredEvent[] | { readonly lastSeq: EventSeq },
+  next: readonly StoredEvent[],
+): number {
+  let lastSeen: EventSeq;
+  if ("lastSeq" in prev) {
+    lastSeen = prev.lastSeq;
+  } else if (prev.length === 0) {
+    return 0;
+  } else {
+    lastSeen = prev[prev.length - 1].seq;
+  }
+  let i = next.length;
+  while (i > 0 && next[i - 1].seq > lastSeen) {
+    i--;
+  }
+  return i;
 }

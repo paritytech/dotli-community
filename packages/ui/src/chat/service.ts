@@ -31,6 +31,11 @@ import {
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from "@dotli/storage/chat";
+import {
+  recordBotsChanged,
+  recordMessage,
+  recordRoomsChanged,
+} from "../state/chat";
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
 
@@ -73,10 +78,6 @@ export function registerChatConnection(
   };
 }
 
-function emit(name: string, detail: unknown): void {
-  window.dispatchEvent(new CustomEvent(name, { detail }));
-}
-
 /** Product-initiated room creation. A repeat for an existing (productId,
  *  roomId) refreshes the room's name and icon, so always notify. */
 export async function productCreateRoom(
@@ -84,7 +85,7 @@ export async function productCreateRoom(
   room: { roomId: string; name: string; icon: string },
 ): Promise<"New" | "Exists"> {
   const status = await createRoom({ productId, ...room });
-  emit(CHAT_ROOMS_CHANGED_EVENT, { productId });
+  recordRoomsChanged(productId);
   return status;
 }
 
@@ -103,7 +104,7 @@ export async function productPostMessage(
     content,
     timestamp: Date.now(),
   });
-  emit(CHAT_MESSAGE_EVENT, {
+  recordMessage({
     productId,
     roomId,
     author: "product",
@@ -137,7 +138,7 @@ export async function userPostMessage(
     content,
     timestamp: Date.now(),
   });
-  emit(CHAT_MESSAGE_EVENT, {
+  recordMessage({
     productId,
     roomId,
     author: "user",
@@ -213,7 +214,7 @@ export async function registerBot(
   bot: { botId: string; name: string; icon: string },
 ): Promise<"New" | "Exists"> {
   const status = await storeBot({ productId, ...bot });
-  emit(CHAT_BOTS_CHANGED_EVENT, { productId });
+  recordBotsChanged(productId);
   return status;
 }
 

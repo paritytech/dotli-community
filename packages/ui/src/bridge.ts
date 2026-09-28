@@ -48,8 +48,9 @@ import { createHostCallbacks } from "./host-callbacks/handlers";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
 import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
 import { LoginRequestError } from "./login-request-error";
-import { productIframeBox } from "./product-iframe-box";
+import { attachProductFrame } from "./product-frame-layout";
 import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
+import { setProductLoaded } from "./state/product";
 import { describeWireFrame } from "./debug-wire-describe";
 // TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
 import {
@@ -60,6 +61,7 @@ import type { BlockingModalCoordinator } from "./blocking-modal-queue";
 import { registerChatConnection } from "./chat/service";
 import { showNotification } from "./notification";
 import { ERRORS } from "./errors";
+import { disposeAppRoot, disposeAppRoots } from "./mount/app-roots";
 
 const noop = (): void => undefined;
 
@@ -421,13 +423,12 @@ function getDeepPath(): string {
   return p + search + hash;
 }
 
-/** Pin the product iframe to the area the host chrome and the insets leave. */
-function applyIframeStyling(
-  iframe: HTMLIFrameElement,
-  opts: { topbarOffset: boolean },
-): void {
-  const box = productIframeBox(opts);
-  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
+/**
+ * Pin the product iframe to the area the host chrome and the insets leave.
+ * product-frame-layout owns its geometry from here on.
+ */
+function applyIframeStyling(iframe: HTMLIFrameElement): void {
+  attachProductFrame(iframe);
   document.body.style.margin = "0";
   document.body.style.overflow = "hidden";
 }
@@ -990,6 +991,9 @@ export async function renderIframe(
   // permission-triggered reloads look like a permanently blank application.
   const previousHost = currentHost;
   if (previousHost === null) {
+    // This path has no loading overlay to keep, so the tracked roots go first
+    // and whatever else the page left in `#app` goes with them.
+    disposeAppRoots();
     app.innerHTML = "";
   }
   disposeLandingAuthHost();
@@ -1001,7 +1005,6 @@ export async function renderIframe(
     productId: options.productId,
   };
 
-  const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
   emitDotliDebugEvent({
     layer: "bridge",
@@ -1032,7 +1035,7 @@ export async function renderIframe(
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost);
   host.iframe.addEventListener(
     "load",
@@ -1051,13 +1054,13 @@ export async function renderIframe(
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    const { mountViolationPanel } =
+      await import("./components/sandbox-checker/mount");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -1065,14 +1068,7 @@ export async function renderIframe(
 
   // Carry the runtime productId so listeners key chat data the same way
   // storage does when the debug path overrides the label-derived id.
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: {
-        label,
-        productId: options.productId ?? labelToProductId(label),
-      },
-    }),
-  );
+  setProductLoaded(label, options.productId ?? labelToProductId(label));
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_ready",
@@ -1163,16 +1159,11 @@ export async function renderAppSubdomain(
 
   // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only prepare it on the initial render. During a permission refresh the
-  // current iframe remains visible until the replacement is ready.
+  // Only on the initial render: `activateHost` keeps it as a retained child.
+  // During a permission refresh the current iframe remains visible until the
+  // replacement is ready, and the overlay, if still up, is disposed then.
   const loading =
     previousHost === null ? app.querySelector<HTMLElement>(".loading") : null;
-  if (previousHost === null) {
-    app.innerHTML = "";
-    if (loading) {
-      app.appendChild(loading);
-    }
-  }
 
   const iframeUrl = new URL(url);
   emitDotliDebugEvent({
@@ -1210,7 +1201,7 @@ export async function renderAppSubdomain(
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: true });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost, loading === null ? [] : [loading]);
   host.iframe.addEventListener(
     "load",
@@ -1229,23 +1220,19 @@ export async function renderAppSubdomain(
   if (
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+    const { mountViolationPanel } =
+      await import("./components/sandbox-checker/mount");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
   document.title = withActiveTld(label);
 
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: { label, productId: labelToProductId(label) },
-    }),
-  );
+  setProductLoaded(label, labelToProductId(label));
   emitDotliDebugEvent({
     layer: "render",
     event: "iframe_ready",
@@ -1273,12 +1260,17 @@ function activateHost(
     currentPanelDispose();
     currentPanelDispose = null;
   }
+  // The previous frame leaves with its host.
   previousHost?.dispose();
-  const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);
-  for (const child of [...app.children]) {
-    if (!retained.has(child as HTMLElement)) {
-      child.remove();
-    }
+  disposeAppRoot("page");
+  if (!retainedChildren.some((child) => child.classList.contains("loading"))) {
+    disposeAppRoot("loading");
+  }
+  // The one untracked child: an error page written over a product whose frame
+  // was already up (a failure after `activateHost`), which a later rebuild of
+  // that product has to clear.
+  for (const stray of app.querySelectorAll(":scope > .error-page")) {
+    stray.remove();
   }
   currentHost = host;
 }

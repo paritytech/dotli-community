@@ -12,4 +12,16 @@ export default [
       },
     },
   },
+  {
+    // The Playwright suites (functional, e2e, performance) and their shared
+    // config read run-time knobs such as PORT, HEADED or E2E_PRODUCT_URL,
+    // which reach `playwright test` straight from the shell, never through a
+    // turbo task, so turbo has no cache to key on them. The Vitest unit tests,
+    // which run under the turbo `test` task, keep the rule.
+    files: ["tests/**/*.ts"],
+    ignores: ["tests/unit/**"],
+    rules: {
+      "turbo/no-undeclared-env-vars": "off",
+    },
+  },
 ];

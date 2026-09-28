@@ -14,6 +14,8 @@
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
+    "@solidjs/testing-library": "1.0.0-beta.3",
+    "@solidjs/vite-plugin": "3.0.0-next.44",
     "@types/node": "^26.6.2",
     "eslint": "^10.11.0",
     "happy-dom": "^20.14.5",

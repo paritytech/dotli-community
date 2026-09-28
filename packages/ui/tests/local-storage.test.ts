@@ -5,6 +5,7 @@ import {
   createLocalStorageSubscribe,
   createLocalStorageWrite,
 } from "@dotli/ui/host-callbacks/LocalStorage";
+import { yielded } from "./support";
 
 describe("local-storage host callbacks", () => {
   beforeEach(() => {
@@ -74,9 +75,9 @@ describe("local-storage host callbacks", () => {
     await items.return?.();
 
     // Then
-    expect(initial.value?._unsafeUnwrap()).toEqual({ value: "0x01" });
-    expect(written.value?._unsafeUnwrap()).toEqual({ value: "0x0203" });
-    expect(cleared.value?._unsafeUnwrap()).toEqual({});
+    expect(yielded(initial)._unsafeUnwrap()).toEqual({ value: "0x01" });
+    expect(yielded(written)._unsafeUnwrap()).toEqual({ value: "0x0203" });
+    expect(yielded(cleared)._unsafeUnwrap()).toEqual({});
   });
 
   it("As a product, my storage subscription ignores other keys and follows other tabs", async () => {
@@ -96,6 +97,6 @@ describe("local-storage host callbacks", () => {
     await items.return?.();
 
     // Then
-    expect(fromOtherTab.value?._unsafeUnwrap()).toEqual({ value: "0x04" });
+    expect(yielded(fromOtherTab)._unsafeUnwrap()).toEqual({ value: "0x04" });
   });
 });

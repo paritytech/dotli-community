@@ -21,7 +21,7 @@ describe("full reset", () => {
     // Given
     localStorage.setItem("dotli-theme", "light");
     localStorage.setItem("dotli:network", "paseo");
-    const { wipeOriginState } = await import("@dotli/ui/topbar");
+    const { wipeOriginState } = await import("@dotli/ui/settings-actions");
 
     // When
     await wipeOriginState();
@@ -35,7 +35,7 @@ describe("full reset", () => {
   it("As a dotli user who never picked a theme, the reset does not invent one", async () => {
     // Given
     localStorage.setItem("dotli:network", "paseo");
-    const { wipeOriginState } = await import("@dotli/ui/topbar");
+    const { wipeOriginState } = await import("@dotli/ui/settings-actions");
 
     // When
     await wipeOriginState();

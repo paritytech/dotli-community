@@ -311,7 +311,9 @@ async function withTimeout<T>(
     });
     return await Promise.race([promise, timeout]);
   } finally {
-    if (timer !== undefined) clearTimeout(timer);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+    }
   }
 }
 

@@ -23,6 +23,7 @@ import type {
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
+import { overlaysReady, resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -44,25 +45,29 @@ beforeEach(() => {
 afterEach(() => {
   unregisterMyapp?.();
   unregisterMyapp = null;
+  resetOverlays();
 });
 
 function registerTestProvider(label: string, store: Store): () => void {
   return registerPermissionAuthorizationProvider(label, {
-    async getPermissionAuthorizationStatuses(requests) {
+    getPermissionAuthorizationStatuses(requests) {
       if (label === "myapp") {
         myappBatchReads += 1;
       }
-      return requests.map(
-        (request) => store.get(requestKey(request)) ?? "NotDetermined",
+      return Promise.resolve(
+        requests.map(
+          (request) => store.get(requestKey(request)) ?? "NotDetermined",
+        ),
       );
     },
-    async setPermissionAuthorizationStatus(request, status) {
+    setPermissionAuthorizationStatus(request, status) {
       const key = requestKey(request);
       if (status === "NotDetermined") {
         store.delete(key);
       } else {
         store.set(key, status);
       }
+      return Promise.resolve();
     },
   });
 }
@@ -75,6 +80,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Remote:${request.value.permission.tag}`;
     case "IdentityDisclosure":
       return "IdentityDisclosure";
+    case "AccountAccess":
+      return `AccountAccess:${request.value.targetProductId}`;
   }
 }
 
@@ -90,11 +97,11 @@ describe("getPermissionStatus / setPermissionStatus", () => {
   it("As a product, my status defaults to ask when the provider returns fewer statuses than requested", async () => {
     // Given: a provider that violates the length contract.
     const unregister = registerPermissionAuthorizationProvider("shortapp", {
-      async getPermissionAuthorizationStatuses() {
-        return [];
+      getPermissionAuthorizationStatuses() {
+        return Promise.resolve([]);
       },
-      async setPermissionAuthorizationStatus() {
-        return;
+      setPermissionAuthorizationStatus() {
+        return Promise.resolve();
       },
     });
 
@@ -415,6 +422,11 @@ describe("three-way permission prompts", () => {
 
   it("As a dotli user, always allowing transactions saves the grant", async () => {
     // Given
+    const events: unknown[] = [];
+    const onPermissionChanged = (e: Event): void => {
+      events.push((e as CustomEvent).detail);
+    };
+    window.addEventListener("dotli:permission-changed", onPermissionChanged);
     const response = createPromptPermission("myapp").remotePermission(PRODUCT, {
       permission: { tag: "ChainSubmit" },
     });
@@ -425,6 +437,8 @@ describe("three-way permission prompts", () => {
     // Then
     await expect(response).resolves.toBe("AllowAlways");
     expect(await getPermissionStatus("myapp", "ChainSubmit")).toBe("granted");
+    expect(events).toEqual([{ label: "myapp", permission: "ChainSubmit" }]);
+    window.removeEventListener("dotli:permission-changed", onPermissionChanged);
   });
 
   it("As a dotli user, denying transactions saves the refusal", async () => {
@@ -500,6 +514,7 @@ describe("three-way permission prompts", () => {
     // Then
     await expect(response).resolves.toBe("Deny");
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    await overlaysReady();
     expect(document.body.textContent).toContain(
       "Notifications access is blocked. Use the permissions menu in the top bar to change this.",
     );
@@ -529,7 +544,7 @@ function promptButtonTexts(): string[] {
     document.querySelectorAll<HTMLButtonElement>(
       ".signing-modal-footer button",
     ),
-    (button) => button.textContent ?? "",
+    (button) => button.textContent,
   );
 }
 

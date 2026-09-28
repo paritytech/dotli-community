@@ -34,6 +34,12 @@ body {
   color: #e0e0e0;
   font-family: system-ui, sans-serif;
 }
+/* A modal shell dialog is open (components/shell/popover.ts lockScroll):
+   the page does not scroll. An attribute, not the inline style, so the
+   page's own inline overflow (bridge.ts sets one) survives the dialog. */
+body[data-scroll-locked] {
+  overflow: hidden !important;
+}
 
 /* Spinner (shared) */
 .spinner {
@@ -83,7 +89,7 @@ body {
   text-align: center;
 }
 
-/* Loading logo spinner. rAF-driven via JS, CSS just sets transform-origin. */
+/* Loading logo spinner. */
 .loading-logo {
   /* The desktop `gap-10` between the spinner and the copy below it. */
   margin-bottom: 40px;
@@ -95,6 +101,44 @@ body {
 .loading-petal {
   fill: #fff;
   transform-origin: 128px 128px;
+}
+/* The petals light up in turn, one 1.4 s cycle for all six: each jumps to
+   full opacity and scale 1 on its turn, then eases down to its 0.15 floor
+   (scale 0.932) over the next 24.5% of the cycle, along
+   (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
+   Negative delays put each petal at its place in the cycle from the start:
+   petal i peaks i/6 of a turn after petal 0. Still under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .loading-petal {
+    animation: loading-petal 1.4s linear infinite;
+  }
+  .loading-petal:nth-child(2) {
+    animation-delay: -1166.667ms;
+  }
+  .loading-petal:nth-child(3) {
+    animation-delay: -933.333ms;
+  }
+  .loading-petal:nth-child(4) {
+    animation-delay: -700ms;
+  }
+  .loading-petal:nth-child(5) {
+    animation-delay: -466.667ms;
+  }
+  .loading-petal:nth-child(6) {
+    animation-delay: -233.333ms;
+  }
+}
+@keyframes loading-petal {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.3333, 0.4806, 0.6667, 0.8139);
+  }
+  24.508%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.932);
+  }
 }
 
 /* Progress bar */

@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 import { m } from "@dotli/metrics/metrics";
+import { updateLoading } from "@dotli/ui/state/loading";
 import { startResolutionTrace } from "../../src/resolution-trace";
 
 /**
@@ -275,18 +276,19 @@ describe("A resolution reports how it ended", () => {
   });
 
   it("As a maintainer, I see the progress the visitor actually saw, not a forced 100%", () => {
-    // Given
-    document.body.innerHTML =
-      '<div class="loading-progress-fill" style="width: 62%"></div>';
+    // Given the bar at 62%, with no loading screen markup on the page, as
+    // before the loading island mounts or when its chunk failed
+    updateLoading({ progress: 62 });
     const trace = startResolutionTrace(OPTS);
     trace.bytes(1_000);
 
-    // When
-    document.body.innerHTML = "";
+    // When the load completes and the bar is forced full
+    updateLoading({ progress: 100 });
     trace.finish("rendered");
 
     // Then
     expect(span("resolution")?.attributes.bar_at_render).toBe(62);
+    updateLoading({ progress: 0 });
   });
 
   it("As a maintainer, I can read how much the load downloaded", () => {

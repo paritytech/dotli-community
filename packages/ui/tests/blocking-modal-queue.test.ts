@@ -5,6 +5,7 @@ import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserCon
 import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
 import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
 import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
+import { overlaysReady, resetOverlays } from "./helpers/overlays";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",
@@ -12,6 +13,7 @@ const PRODUCT: ProductContext = {
 };
 
 afterEach(() => {
+  resetOverlays();
   document.body.replaceChildren();
 });
 
@@ -33,6 +35,7 @@ describe("blocking modal queue", () => {
       },
     });
     const camera = callbacks.permissions.devicePermission(PRODUCT, "Camera");
+    await overlaysReady();
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -47,6 +50,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
+    await overlaysReady();
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
         "Permission Request",
@@ -61,6 +65,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(camera).resolves.toEqual("AllowAlways");
+    await overlaysReady();
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     scope.dispose();
   });
@@ -69,21 +74,23 @@ describe("blocking modal queue", () => {
     // Given
     let status: "NotDetermined" | "Authorized" = "NotDetermined";
     const unregister = registerPermissionAuthorizationProvider("myapp", {
-      async getPermissionAuthorizationStatuses(requests) {
-        return requests.map(() => status);
+      getPermissionAuthorizationStatuses(requests) {
+        return Promise.resolve(requests.map(() => status));
       },
-      async setPermissionAuthorizationStatus(_request, nextStatus) {
+      setPermissionAuthorizationStatus(_request, nextStatus) {
         if (nextStatus === "Authorized" || nextStatus === "NotDetermined") {
           status = nextStatus;
         }
+        return Promise.resolve();
       },
     });
     const scope = createBlockingModalCoordinator().createScope();
-    const { devicePermission } = createPromptPermission("myapp", scope);
+    const permissions = createPromptPermission("myapp", scope);
 
     // When
-    const first = devicePermission(PRODUCT, "Notifications");
-    const second = devicePermission(PRODUCT, "Notifications");
+    const first = permissions.devicePermission(PRODUCT, "Notifications");
+    const second = permissions.devicePermission(PRODUCT, "Notifications");
+    await overlaysReady();
     await vi.waitFor(() => {
       expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
         1,
@@ -101,6 +108,7 @@ describe("blocking modal queue", () => {
       "AllowAlways",
       "AllowOnce",
     ]);
+    await overlaysReady();
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     expect(status).toBe("Authorized");
     scope.dispose();
@@ -126,6 +134,7 @@ describe("blocking modal queue", () => {
       tag: "IdentityDisclosure",
       value: { productId: "second.dot" },
     });
+    await overlaysReady();
 
     // Then
     expect(document.querySelector(".signing-field-value")?.textContent).toBe(
@@ -137,6 +146,7 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await overlaysReady();
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
       1,
     );
@@ -187,13 +197,9 @@ describe("blocking modal queue", () => {
     const coordinator = createBlockingModalCoordinator();
     const activeScope = coordinator.createScope();
     const disposedScope = coordinator.createScope();
-    let finishActive: (() => void) | null = null;
-    const active = activeScope.enqueue(
-      () =>
-        new Promise<void>((resolve) => {
-          finishActive = resolve;
-        }),
-    );
+    const { promise: held, resolve: finishActive }: PromiseWithResolvers<void> =
+      Promise.withResolvers();
+    const active = activeScope.enqueue(() => held);
     const queued = disposedScope.enqueue(() => "queued");
 
     // When
@@ -204,7 +210,7 @@ describe("blocking modal queue", () => {
     await expect(disposedScope.enqueue(() => "late")).rejects.toMatchObject({
       name: "AbortError",
     });
-    finishActive?.();
+    finishActive();
     await active;
     activeScope.dispose();
   });
