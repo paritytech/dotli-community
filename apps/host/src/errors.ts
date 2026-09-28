@@ -30,6 +30,7 @@ export const HOST_ERRORS = {
   SW_SYNC_TIMEOUT:
     "The light client couldn't sync in time on the shared worker.",
   SW_TIMED_OUT: "The light client timed out during startup.",
+  WORKER_INIT_TIMEOUT: "The browser worker took too long to start.",
   HUB_SYNC_TIMEOUT:
     "Light client timed out syncing to Asset Hub - no connection with peers.",
   LIGHT_CLIENT_TIMEOUT: "The connection with other peers is too slow.",
@@ -165,6 +166,7 @@ export const ERROR_TITLES = {
 export type ErrorKind =
   | "protocol-fatal"
   | "protocol-init-failed"
+  | "worker-init-timeout"
   | "chain-spec-rejected"
   | "module-fetch-failed"
   | "executable-manifest-invalid"
@@ -426,6 +428,16 @@ function classifyError(
       kind: "hub-sync-timeout",
       message: HOST_ERRORS.HUB_SYNC_TIMEOUT,
       recovery: "switch-backend",
+    };
+  }
+  if (msg.includes("worker init timed out")) {
+    return {
+      kind: "worker-init-timeout",
+      title: ERROR_TITLES.HOST_UNAVAILABLE,
+      message: HOST_ERRORS.WORKER_INIT_TIMEOUT,
+      recovery: "switch-backend",
+      tips: [],
+      resetProtocol: true,
     };
   }
   if (err instanceof ProtocolInitFailedError) {
