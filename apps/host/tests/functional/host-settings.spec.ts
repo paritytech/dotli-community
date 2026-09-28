@@ -160,9 +160,6 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    // localStorage already holds the mode, so the read below can pass before
-    // the app writes it into the address bar during startup. Wait for that.
-    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
     const state = await readChainBackendState(page, "rpc-gateway");
     expect(state.chainBackend).toBe("rpc-gateway");
     expect(state.url).toContain("chainBackend=rpc-gateway");
@@ -213,9 +210,6 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    // localStorage already holds the mode, so the read below can pass before
-    // the app writes it into the address bar during startup. Wait for that.
-    await expect(page).toHaveURL(/[?&]chainBackend=smoldot-shared-worker(&|$)/);
     const state = await readChainBackendState(page, "smoldot-shared-worker");
     expect(state.url).toContain("chainBackend=smoldot-shared-worker");
   });
@@ -232,9 +226,6 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    // localStorage already holds the mode, so the read below can pass before
-    // the app writes it into the address bar during startup. Wait for that.
-    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
     const state = await readChainBackendState(page, "rpc-gateway");
     expect(state.url).toContain("chainBackend=rpc-gateway");
   });
@@ -314,8 +305,8 @@ test.describe("Settings works", () => {
         // assertion above mean "skipped the cache" rather than "had nothing to
         // skip". It survives because `updateCacheSettings` writes the stored
         // setting directly. A user flipping the same switch on the settings
-        // screen would also hit `clearCidCache` in `packages/ui/src/topbar.ts`, which
-        // no test covers.
+        // screen would also hit `clearCidCache` in
+        // `packages/ui/src/settings-actions.ts`, which no test covers.
         expect(await hasCachedCid(page, DOMAIN)).toBe(true);
       } finally {
         await context.close();

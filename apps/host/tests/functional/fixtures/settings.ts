@@ -22,7 +22,7 @@ export type Backend = (typeof BACKENDS)[number];
  * they name the transport after the choice the settings screen offers rather
  * than by its stored value. The screen's own wording is "Light Client
  * Per-Tab", "Light Client Shared" and "Trusted Providers"
- * (`packages/ui/src/topbar.ts`), reworded here only to read as prose mid
+ * (`packages/config/src/mode.ts`), reworded here only to read as prose mid
  * sentence.
  */
 export const TRANSPORT_LABELS: Record<Backend, string> = {
