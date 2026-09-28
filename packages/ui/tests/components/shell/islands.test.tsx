@@ -15,11 +15,11 @@ import {
   it,
   vi,
 } from "vitest";
+import { disposeAppRoot } from "@dotli/ui/mount/app-roots";
 import { flush } from "solid-js";
 import { renderShellOnServer } from "../../helpers/shell-ssr";
 import { stubColorScheme } from "../../helpers/color-scheme";
 import { mountIslands } from "@dotli/ui/components/shell/islands";
-import { disposeRoot } from "@dotli/ui/mount/root";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 import { setTopbarVisible } from "@dotli/ui/state/topbar";
@@ -211,16 +211,16 @@ describe("shell islands", () => {
   afterEach(() => {
     landing?.dispose();
     landing = null;
-    disposeRoot("island:theme");
-    disposeRoot("island:url-pill");
-    disposeRoot("island:offline-banner");
-    disposeRoot("island:auth-button");
-    disposeRoot("island:user-popover");
-    disposeRoot("island:auth-modal");
-    disposeRoot("island:permissions");
-    disposeRoot("island:chains");
-    disposeRoot("island:settings");
-    disposeRoot("island:more");
+    disposeAppRoot("island:theme");
+    disposeAppRoot("island:url-pill");
+    disposeAppRoot("island:offline-banner");
+    disposeAppRoot("island:auth-button");
+    disposeAppRoot("island:user-popover");
+    disposeAppRoot("island:auth-modal");
+    disposeAppRoot("island:permissions");
+    disposeAppRoot("island:chains");
+    disposeAppRoot("island:settings");
+    disposeAppRoot("island:more");
     resetAllStoresForTests();
     document.body.innerHTML = "";
     vi.restoreAllMocks();

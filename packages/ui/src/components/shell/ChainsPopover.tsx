@@ -12,7 +12,7 @@ import {
   untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { reportRootErrorOnce } from "../../mount/root";
+import { captureException } from "@dotli/metrics/sentry";
 import type { ChainStatus } from "../../network-monitor";
 import { shallowEqual } from "../../state/create-store";
 import { networkStore, watchNetwork } from "../../state/network";
@@ -472,7 +472,7 @@ export function ChainsPopover(): JSX.Element {
               afresh. */}
           <Errored
             fallback={(err: () => unknown) => {
-              reportRootErrorOnce(err(), "island:chains");
+              captureException(err(), { root: "island:chains" });
               surface.setOpen(false);
               return null;
             }}

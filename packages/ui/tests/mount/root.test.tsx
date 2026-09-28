@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createSignal, flush, onCleanup } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { settle } from "../helpers/solid";
 
@@ -36,16 +37,17 @@ describe("mountRoot", () => {
     expect(el.childNodes.length).toBe(0);
   });
 
-  it("As activateHost, disposeRoot by name unmounts a root and is a no-op for unknown names", async () => {
+  it("As activateHost, disposeAppRoot by name unmounts a root and is a no-op for unknown names", async () => {
     // Given
-    const { disposeRoot, mountRoot } = await import("@dotli/ui/mount/root");
+    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
     const el = container("b");
     mountRoot("b", el, () => <span>b</span>);
     await settle();
 
     // When
-    disposeRoot("b");
-    disposeRoot("never-mounted");
+    disposeAppRoot("b");
+    disposeAppRoot("never-mounted");
 
     // Then
     expect(el.childNodes.length).toBe(0);
@@ -73,39 +75,6 @@ describe("mountRoot", () => {
     expect(document.body.contains(good)).toBe(true);
   });
 
-  it("As a user, the same error object is reported to Sentry once per root, but a different error is reported again", async () => {
-    // Given
-    const { reportRootErrorOnce } = await import("@dotli/ui/mount/root");
-    const err = new Error("boom");
-    const otherErr = new Error("boom again");
-
-    // When
-    reportRootErrorOnce(err, "dup-error-root");
-    reportRootErrorOnce(err, "dup-error-root");
-    reportRootErrorOnce(otherErr, "dup-error-root");
-
-    // Then
-    expect(sentry.captureException).toHaveBeenCalledTimes(2);
-    expect(sentry.captureException).toHaveBeenNthCalledWith(1, err, {
-      root: "dup-error-root",
-    });
-    expect(sentry.captureException).toHaveBeenNthCalledWith(2, otherErr, {
-      root: "dup-error-root",
-    });
-  });
-
-  it("As a user, a non-object thrown value is always reported since it cannot be tracked in a WeakSet", async () => {
-    // Given
-    const { reportRootErrorOnce } = await import("@dotli/ui/mount/root");
-
-    // When
-    reportRootErrorOnce("boom", "string-error-root");
-    reportRootErrorOnce("boom", "string-error-root");
-
-    // Then
-    expect(sentry.captureException).toHaveBeenCalledTimes(2);
-  });
-
   it("As a sub-project, mounting the same name twice disposes the first root", async () => {
     // Given
     const { mountRoot } = await import("@dotli/ui/mount/root");
@@ -122,22 +91,106 @@ describe("mountRoot", () => {
     expect(second.textContent).toBe("2");
   });
 
-  it("As a dotli developer, a root's onError runs after a render error is reported", async () => {
+  it("As a sub-project, a disposer runs once and removeContainer takes the container out", async () => {
     // Given
-    const { disposeRoot, mountRoot } = await import("@dotli/ui/mount/root");
-    const el = container("broken-with-hook");
-    const onError = vi.fn();
-    const boom = new Error("render failed");
+    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const el = container("removable");
+    const cleanups = vi.fn();
+    const dispose = mountRoot(
+      "removable",
+      el,
+      () => {
+        onCleanup(cleanups);
+        return <span>x</span>;
+      },
+      { removeContainer: true },
+    );
+    await settle();
+
+    // When
+    dispose();
+    dispose();
+    disposeAppRoot("removable");
+
+    // Then
+    expect(cleanups).toHaveBeenCalledTimes(1);
+    expect(el.isConnected).toBe(false);
+  });
+
+  it("As a sub-project, a root that breaks after it mounted is reported once, disposed, then hears onBroken once", async () => {
+    // Given a view that throws a new error on every change
+    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const el = container("late");
+    const order: string[] = [];
+    let breakAgain = (): void => {};
+    const view = (): JSX.Element => {
+      const [breaks, setBreaks] = createSignal(0, { ownedWrite: true });
+      breakAgain = () => setBreaks((n) => n + 1);
+      onCleanup(() => order.push("disposed"));
+      return [
+        <span class="live">live</span>,
+        (): null => {
+          if (breaks() > 0) {
+            throw new Error(`broke ${String(breaks())}`);
+          }
+          return null;
+        },
+      ];
+    };
+    const onError = vi.fn(() => {
+      order.push(`onError:${String(el.querySelector(".live") !== null)}`);
+    });
+    const onBroken = vi.fn(() => order.push("onBroken"));
+    mountRoot("late", el, view, { onError, onBroken });
+    await settle();
+    expect(el.querySelector(".live")).not.toBeNull();
+
+    // When it breaks twice before the microtask, so Solid runs the fallback
+    // twice
+    breakAgain();
+    flush();
+    breakAgain();
+    flush();
+
+    // Then onError ran inside the boundary, with the nodes still there, and
+    // the rest waits a microtask
+    expect(order).toEqual(["onError:true"]);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(order).toEqual(["onError:true", "disposed", "onBroken"]);
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onBroken).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "broke 1" }),
+      { root: "late" },
+    );
+  });
+
+  it("As a sub-project, a view that throws on its first render is disposed and hears onBroken once", async () => {
+    // Given
+    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const el = container("broken-at-once");
+    const onBroken = vi.fn();
     const Broken = (): JSX.Element => {
-      throw boom;
+      throw new Error("render failed");
     };
 
     // When
-    mountRoot("broken-with-hook", el, () => <Broken />, { onError });
+    mountRoot("broken-at-once", el, () => <Broken />, {
+      onBroken,
+      removeContainer: true,
+    });
+    expect(onBroken).not.toHaveBeenCalled();
     await settle();
+    await Promise.resolve();
 
     // Then
-    expect(onError).toHaveBeenCalledWith(boom);
-    disposeRoot("broken-with-hook");
+    expect(onBroken).toHaveBeenCalledTimes(1);
+    expect(el.isConnected).toBe(false);
+    disposeAppRoot("broken-at-once");
+    expect(onBroken).toHaveBeenCalledTimes(1);
   });
 });

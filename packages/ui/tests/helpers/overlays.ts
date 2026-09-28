@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { disposeRoot } from "@dotli/ui/mount/root";
+import { disposeAppRoot } from "@dotli/ui/mount/app-roots";
 import {
   ensureOverlays,
   resetOverlayLoaderForTests,
@@ -18,7 +18,7 @@ export async function overlaysReady(): Promise<void> {
 
 /** Unmount the overlays root and forget queued dialogs and toasts. */
 export function resetOverlays(): void {
-  disposeRoot("overlays");
+  disposeAppRoot("overlays");
   resetOverlayLoaderForTests();
   resetModalsForTests();
   resetToastsForTests();

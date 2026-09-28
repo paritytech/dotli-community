@@ -16,12 +16,5 @@ export function mountLandingPage(): {
   const view = document.createElement("div");
   view.id = "app-view";
   document.body.append(view);
-  const dispose = mountLanding(view);
-  return {
-    view,
-    dispose: () => {
-      dispose();
-      view.remove();
-    },
-  };
+  return { view, dispose: mountLanding(view, () => {}) };
 }

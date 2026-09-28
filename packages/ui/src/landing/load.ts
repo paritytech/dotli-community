@@ -6,7 +6,7 @@
 // chunk dynamically.
 
 import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot, registerAppRoot } from "../mount/app-roots";
+import { disposeAppRoot } from "../mount/app-roots";
 import { showError } from "../ui";
 
 let showing: Promise<void> | null = null;
@@ -49,21 +49,7 @@ export function showLanding(): Promise<void> {
       // Whatever else `#app` holds goes too, as when the page was written
       // over it.
       app.replaceChildren(view);
-      let broken = false;
-      const dispose = mountLanding(view, () => {
-        if (broken) {
-          return;
-        }
-        broken = true;
-        // Already reported. The root cannot be disposed from inside its own
-        // error fallback, so the error page, which disposes it, waits a
-        // microtask.
-        queueMicrotask(showBroken);
-      });
-      registerAppRoot("page", () => {
-        dispose();
-        view.remove();
-      });
+      mountLanding(view, showBroken);
     })
     .catch((err: unknown) => {
       captureException(err, { kind: "landing_load_error" });

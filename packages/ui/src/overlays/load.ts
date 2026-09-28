@@ -5,7 +5,7 @@
 // bundle carries Solid. Everything here is Solid-free: it writes the stores
 // and imports the chunk dynamically.
 
-import { captureException } from "@dotli/metrics/sentry";
+import { createLazyRoot } from "../mount/lazy-root";
 import {
   failAllModals,
   openModal,
@@ -18,11 +18,6 @@ import {
   toastsStore,
   type ToastInput,
 } from "../state/toasts";
-
-const PREFETCH_FALLBACK_MS = 2000;
-
-let loading: Promise<void> | null = null;
-let dispose: (() => void) | null = null;
 
 /**
  * When the chunk cannot load, or the mounted root later throws while
@@ -44,56 +39,20 @@ function fallBack(): void {
   failAllModals();
 }
 
-/**
- * Build a one-shot `onBroken` for a single mount attempt. `mountRoot`'s
- * `Errored` boundary can re-invoke its fallback more than once for the same
- * underlying error, so this guards against running the recovery twice for
- * that mount.
- */
-function createOnBroken(): () => void {
-  let handled = false;
-  return () => {
-    if (handled) {
-      return;
-    }
-    handled = true;
-    // A render error must not leave a permission or signing promise hanging,
-    // but the root cannot be disposed from inside its own error fallback, so
-    // the cleanup is deferred one microtask.
-    queueMicrotask(() => {
-      loading = null;
-      dispose?.();
-      dispose = null;
-      fallBack();
-    });
-  };
-}
+const overlays = createLazyRoot({
+  load: (onBroken) =>
+    import("../components/overlays/mount").then(({ mountOverlays }) =>
+      mountOverlays(onBroken),
+    ),
+  errorKind: "overlays_load_error",
+  onFailure: fallBack,
+});
 
 /** Import and mount the overlays root once. Never rejects. */
-export function ensureOverlays(): Promise<void> {
-  loading ??= import("../components/overlays/mount")
-    .then(({ mountOverlays }) => {
-      dispose = mountOverlays(createOnBroken());
-    })
-    .catch((err: unknown) => {
-      loading = null;
-      captureException(err, { kind: "overlays_load_error" });
-      fallBack();
-    });
-  return loading;
-}
+export const ensureOverlays = overlays.ensure;
 
 /** Load the overlays when the browser is idle, before anything needs them. */
-export function prefetchOverlays(): void {
-  const run = (): void => {
-    void ensureOverlays();
-  };
-  if (typeof window.requestIdleCallback === "function") {
-    window.requestIdleCallback(run, { timeout: PREFETCH_FALLBACK_MS });
-  } else {
-    setTimeout(run, PREFETCH_FALLBACK_MS);
-  }
-}
+export const prefetchOverlays = overlays.prefetch;
 
 /** Queue a dialog and make sure the overlays are there to show it. */
 export function presentModal<R extends string>(
@@ -114,7 +73,4 @@ export function presentToast(input: ToastInput): void {
 }
 
 /** Tests only. */
-export function resetOverlayLoaderForTests(): void {
-  loading = null;
-  dispose = null;
-}
+export const resetOverlayLoaderForTests = overlays.reset;

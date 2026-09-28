@@ -7,12 +7,16 @@ import { mountRoot } from "../../mount/root";
 import { Landing } from "./Landing";
 
 /**
- * Mount the landing page into `container` as the `"page"` root. `onError`
- * runs after a render error has been reported.
+ * Mount the landing page into `container` as the `"page"` app root, which
+ * takes `container` with it when disposed. `onBroken` runs once the page
+ * broke and was disposed.
  */
 export function mountLanding(
   container: HTMLElement,
-  onError?: (err: unknown) => void,
+  onBroken: () => void,
 ): () => void {
-  return mountRoot("page", container, () => <Landing />, { onError });
+  return mountRoot("page", container, () => <Landing />, {
+    onBroken,
+    removeContainer: true,
+  });
 }

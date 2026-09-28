@@ -243,37 +243,4 @@ describe("landing loader", () => {
     expect(reload).toHaveBeenCalledTimes(1);
     vi.doUnmock("@dotli/ui/components/landing/Landing");
   });
-  it("As a visitor, a landing page whose error fallback runs twice shows the error page once", async () => {
-    // Given a landing chunk whose root reports its render error twice
-    vi.doMock(CHUNK, () => ({
-      mountLanding: (_view: HTMLElement, onError: (err: unknown) => void) => {
-        onError(new Error("first"));
-        onError(new Error("second"));
-        return () => {};
-      },
-    }));
-    await importFresh();
-    let errorPagesWritten = 0;
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) {
-          if (node instanceof HTMLElement && node.matches(".error-page")) {
-            errorPagesWritten++;
-          }
-        }
-      }
-    });
-    observer.observe(app(), { childList: true });
-
-    // When
-    await load.showLanding();
-    await settle();
-    observer.disconnect();
-
-    // Then
-    expect(errorPagesWritten).toBe(1);
-    expect(document.querySelector(".error-page-title")?.textContent).toBe(
-      "Something went wrong on our side",
-    );
-  });
 });

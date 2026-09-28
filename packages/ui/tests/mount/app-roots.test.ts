@@ -179,4 +179,26 @@ describe("app roots", () => {
     // Then
     expect(latest).toHaveBeenCalledTimes(1);
   });
+
+  it("As a root, the disposer registering returns runs once and leaves a newer root under its name alone", () => {
+    // Given
+    const first = vi.fn();
+    const disposeFirst = registerAppRoot("page", first);
+    disposeFirst();
+    const second = vi.fn();
+    registerAppRoot("page", second);
+
+    // When
+    disposeFirst();
+
+    // Then
+    expect(first).toHaveBeenCalledTimes(1);
+    expect(second).not.toHaveBeenCalled();
+
+    // When
+    disposeAppRoot("page");
+
+    // Then
+    expect(second).toHaveBeenCalledTimes(1);
+  });
 });

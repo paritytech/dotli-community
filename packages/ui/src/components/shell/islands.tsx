@@ -16,7 +16,9 @@
 // `on*` JSX props under components/shell/ (packages/ui/eslint.config.js).
 
 import type { JSX } from "@solidjs/web";
-import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
+import { captureException } from "@dotli/metrics/sentry";
+import { disposeAppRoot } from "../../mount/app-roots";
+import { mountRoot } from "../../mount/root";
 import { adoptLoadingScreen } from "../../loading-controller";
 import { getLoadingState } from "../../state/loading";
 import { AuthButton } from "./AuthButton";
@@ -94,9 +96,9 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * An island that throws while rendering after it was swapped in cannot be
  * cleaned up by its error boundary: its nodes have left the container, and
  * the boundary either leaves them frozen in the page or takes them out,
- * leaving a hole. Once the error is reported, the island is disposed (a
- * microtask later, not from inside its own boundary), each static node goes
- * back where its live one was, focus with it, and `onLateFailure` hears the
+ * leaving a hole. Once mountRoot has reported the error and disposed the
+ * island, each static node goes back where its live one was, focus with it,
+ * and `onLateFailure` hears the
  * island's name, so the loader can fall back as for an island that failed to
  * mount.
  * Returns whether the island was swapped in.
@@ -109,7 +111,7 @@ function mountIsland(
 ): boolean {
   const container = document.createElement("div");
   let swapped = false;
-  let failed = false;
+  let swapBack: (() => void) | null = null;
   const pairs: [stale: Element, fresh: Element][] = [];
   // Runs from inside the error boundary's fallback, while the live nodes are
   // still where the swap put them: the boundary may take them out of the page
@@ -141,18 +143,17 @@ function mountIsland(
     };
   };
   const dispose = mountRoot(`island:${name}`, container, view, {
+    // A render error before the swap is handled below, synchronously.
     onError: () => {
-      // A render error before the swap is handled below, synchronously.
-      if (!swapped || failed) {
-        return;
+      if (swapped) {
+        swapBack = markPlaces();
       }
-      failed = true;
-      const swapBack = markPlaces();
-      queueMicrotask(() => {
-        dispose();
+    },
+    onBroken: () => {
+      if (swapBack !== null) {
         swapBack();
         onLateFailure?.(name);
-      });
+      }
     },
   });
   for (const id of ids) {
@@ -162,12 +163,11 @@ function mountIsland(
       // An island that rendered nothing failed to render, which mountRoot
       // has already reported.
       if (container.hasChildNodes()) {
-        reportRootErrorOnce(
+        captureException(
           new Error(
             `[islands] island:${name} has no #${id} on the ${stale === null ? "page" : "island"}`,
           ),
-          `island:${name}`,
-          { kind: "island_missing_node" },
+          { root: `island:${name}`, kind: "island_missing_node" },
         );
       }
       dispose();
@@ -205,8 +205,11 @@ function mountIsolated(
   try {
     return mountIsland(name, view, ids, onLateFailure);
   } catch (err) {
-    reportRootErrorOnce(err, `island:${name}`, { kind: "island_mount_error" });
-    disposeRoot(`island:${name}`);
+    captureException(err, {
+      root: `island:${name}`,
+      kind: "island_mount_error",
+    });
+    disposeAppRoot(`island:${name}`);
     return false;
   }
 }
@@ -241,7 +244,7 @@ export function mountLoadingIsland(
   if (mounted) {
     const screen = document.getElementById(LOADING_ID);
     adoptLoadingScreen(() => {
-      disposeRoot("island:loading");
+      disposeAppRoot("island:loading");
       screen?.remove();
       // Back in the page if the island failed late (see mountIsland).
       staticScreen.remove();

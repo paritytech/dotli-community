@@ -17,24 +17,7 @@ const ROOT = "sandbox-checker";
 export function mountViolationPanel(iframe: HTMLIFrameElement): () => void {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  let disposed = false;
-  const dispose = (): void => {
-    if (disposed) {
-      return;
-    }
-    disposed = true;
-    disposeView();
-    container.remove();
-  };
-  const disposeView = mountRoot(
-    ROOT,
-    container,
-    () => <ViolationPanel iframe={iframe} />,
-    {
-      onError: () => {
-        queueMicrotask(dispose);
-      },
-    },
-  );
-  return dispose;
+  return mountRoot(ROOT, container, () => <ViolationPanel iframe={iframe} />, {
+    removeContainer: true,
+  });
 }

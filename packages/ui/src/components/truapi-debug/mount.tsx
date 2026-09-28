@@ -98,16 +98,6 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
     }
   });
 
-  let disposed = false;
-  const dispose = (): void => {
-    if (disposed) {
-      return;
-    }
-    disposed = true;
-    unsubscribe();
-    disposeView();
-    container.remove();
-  };
   const disposeView = mountRoot(
     ROOT,
     container,
@@ -118,17 +108,15 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
         startCollapsed={options.startCollapsed ?? false}
       />
     ),
-    {
-      // A render error, even a late one, tears the panel down (a microtask
-      // later, not from inside its own error boundary) instead of leaving it
-      // frozen with its timers running.
-      onError: () => {
-        queueMicrotask(dispose);
-      },
-    },
+    // A render error, even a late one, tears the panel down instead of
+    // leaving it frozen with its timers running.
+    { onBroken: unsubscribe, removeContainer: true },
   );
   // The panel, its layout and the iframe fit are in place when setup returns.
   flush();
 
-  return dispose;
+  return () => {
+    unsubscribe();
+    disposeView();
+  };
 }

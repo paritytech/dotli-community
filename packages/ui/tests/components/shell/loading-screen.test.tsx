@@ -35,7 +35,6 @@ import {
   disposeAppRoots,
   registerAppRoot,
 } from "@dotli/ui/mount/app-roots";
-import { disposeRoot } from "@dotli/ui/mount/root";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 import { getLoadingState, updateLoading } from "@dotli/ui/state/loading";
 import { showErrorPage } from "@dotli/ui/ui";
@@ -148,7 +147,7 @@ beforeEach(() => {
 
 afterEach(() => {
   disposeAppRoots();
-  disposeRoot("island:loading");
+  disposeAppRoot("island:loading");
   ctl.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = "";
@@ -225,7 +224,7 @@ describe("Loading screen island", () => {
       "settings",
       "more",
     ]) {
-      disposeRoot(`island:${name}`);
+      disposeAppRoot(`island:${name}`);
     }
   });
 

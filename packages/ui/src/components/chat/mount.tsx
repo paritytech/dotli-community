@@ -11,7 +11,5 @@ export function mountChatPanel(onBroken: () => void): () => void {
   if (container === null) {
     throw new Error("chat panel container is missing");
   }
-  return mountRoot("chat", container, () => <ChatPanel />, {
-    onError: onBroken,
-  });
+  return mountRoot("chat", container, () => <ChatPanel />, { onBroken });
 }
