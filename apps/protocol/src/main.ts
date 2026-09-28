@@ -712,23 +712,23 @@ async function initDirectMode(): Promise<void> {
     waitForPeopleFinalized,
   } = resolve;
   // Sync reporting is only worth its cost when a loading UI can observe it.
-  // Direct mode is that case and the SharedWorker never enables it. The
-  // host moves the bar on the relay and the Asset Hub, and shows a peer
-  // count for the Asset Hub alone.
+  // Direct mode is that case and the SharedWorker never enables it.
   //
   // Enabled before the first `createChainProvider` call: a connection that
-  // opens without it carries no side channel.
-  resolve.enableSyncReporting({
-    // All three chains the load waits on, in the order it waits on them.
-    // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
-    // serves the content over bitswap. Bulletin is not even created until
-    // after the content phase begins, and takes roughly another second and
-    // a half to find a peer, which is a gap the loading screen has to cover.
-    milestones: ["relay", "asset-hub", "bulletin"],
-    // People is not on the loading path, but the network panel lists it, so
-    // it is sampled for peers without asking for milestones.
-    peerCounts: ["relay", "asset-hub", "bulletin", "people"],
-  });
+  // opens without it carries no lifecycle watch.
+  resolve.enableSyncReporting([
+    // The chains the load waits on, in the order it waits on them. The relay
+    // warps, the Asset Hub bootstraps on top of it, and Bulletin serves the
+    // content over bitswap. Bulletin is not even created until after the
+    // content phase begins, and takes roughly another second and a half to
+    // find a peer, which is a gap the loading screen has to cover.
+    "relay",
+    "asset-hub",
+    "bulletin",
+    // People is not on the loading path, but the network panel lists its
+    // peer count.
+    "people",
+  ]);
   const { onChainSync } = resolve;
 
   // Two chains nothing else opens in time, for two different reasons.

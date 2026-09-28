@@ -36,7 +36,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.21.0"
+    "@parity/truapi": "0.22.0"
   },
   "overrides": {
     "@solidjs/signals": "2.0.0-rc.9",

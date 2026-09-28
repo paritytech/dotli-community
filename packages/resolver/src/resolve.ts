@@ -52,7 +52,6 @@ export type {
   ChainKey,
   ChainDetail,
   ChainPeer,
-  SyncReportingConfig,
 } from "./chain-sync";
 
 const HUB_CHAIN = "Asset Hub Paseo";

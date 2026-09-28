@@ -20,6 +20,10 @@ export default defineConfig({
     // test build supplies it the same way a deployment does.
     "import.meta.env.VITE_NETWORKS": '"paseo-next-v2,previewnet"',
   },
+  // `bun run link:truapi` points @parity/truapi-provider at a checkout outside
+  // this workspace, and its `?url` wasm import would be refused by Vite's
+  // workspace-only file serving.
+  server: { fs: { strict: false } },
   test: {
     name: "ui",
     include: ["tests/**/*.test.{ts,tsx}"],

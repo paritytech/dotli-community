@@ -339,16 +339,21 @@ export function createChainProvider(
           candidate.send(message);
         }
         queued.length = 0;
-        // Sync reporting rides this connection under reserved ids. Attached
-        // after the queue flush so our first request cannot jump ahead of a
-        // caller's, and only for a chain the loading screen observes.
+        // Sync reporting watches the chain's lifecycle, and its one request
+        // rides this connection under a reserved id. Attached after the queue
+        // flush so that request cannot jump ahead of a caller's, and only for
+        // a chain the loading screen observes.
         const chain = chainKeyForGenesis(key);
         state.sync =
           chain === null
             ? null
-            : attachChainSync(chain, (raw) => {
-                candidate.send(raw);
-              });
+            : attachChainSync(
+                chain,
+                (raw) => {
+                  candidate.send(raw);
+                },
+                () => handle.lifecycle(key),
+              );
         for (;;) {
           const response = await candidate.nextResponse();
           if (response === undefined) {
