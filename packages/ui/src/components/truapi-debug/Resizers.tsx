@@ -13,6 +13,7 @@
 import { onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { DockPosition } from "@dotli/truapi-debug/dock-storage";
+import { startDrag } from "../drag";
 
 /** Events list / top pane: filter chips and tabs need room. */
 const MIN_PRIMARY_PX = 220;
@@ -23,19 +24,6 @@ const SPLITTER_PX = 6;
 const MIN_BOTTOM_HEIGHT_PX = 120;
 const MIN_RIGHT_WIDTH_PX = 280;
 const MAX_VIEWPORT_SHARE = 0.8;
-
-/** Window-level drag tracking, removed with the component. */
-function trackDrag(handlers: {
-  move: (e: PointerEvent) => void;
-  up: () => void;
-}): void {
-  window.addEventListener("pointermove", handlers.move);
-  window.addEventListener("pointerup", handlers.up);
-  onCleanup(() => {
-    window.removeEventListener("pointermove", handlers.move);
-    window.removeEventListener("pointerup", handlers.up);
-  });
-}
 
 /** Top edge (bottom dock) or left edge (right dock) of the panel. */
 export function ResizeHandle(props: {
@@ -48,57 +36,47 @@ export function ResizeHandle(props: {
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let handle: HTMLDivElement | undefined;
-  let dragging = false;
+  let stopDrag: (() => void) | undefined;
   let resized: number | null = null;
   let frame: number | null = null;
   onCleanup(() => {
+    stopDrag?.();
     if (frame !== null) {
       cancelAnimationFrame(frame);
     }
   });
 
-  const stop = (): void => {
-    if (!dragging) {
+  const move = (e: PointerEvent): void => {
+    const panel = panelEl();
+    if (panel === undefined) {
       return;
     }
-    dragging = false;
-    document.body.style.userSelect = "";
+    let clamped: number;
+    if (props.dock === "right") {
+      const newWidth = window.innerWidth - e.clientX;
+      clamped = Math.max(
+        MIN_RIGHT_WIDTH_PX,
+        Math.min(newWidth, window.innerWidth * MAX_VIEWPORT_SHARE),
+      );
+      panel.style.width = `${String(clamped)}px`;
+    } else {
+      const newHeight = window.innerHeight - e.clientY;
+      clamped = Math.max(
+        MIN_BOTTOM_HEIGHT_PX,
+        Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE),
+      );
+      panel.style.height = `${String(clamped)}px`;
+    }
+    // The size is already known: hand it over rather than read it back.
+    resized = clamped;
+    frame ??= requestAnimationFrame(() => {
+      frame = null;
+      if (resized !== null) {
+        props.onResize(resized);
+        resized = null;
+      }
+    });
   };
-  trackDrag({
-    move: (e) => {
-      const panel = panelEl();
-      if (!dragging || panel === undefined) {
-        return;
-      }
-      let clamped: number;
-      if (props.dock === "right") {
-        const newWidth = window.innerWidth - e.clientX;
-        clamped = Math.max(
-          MIN_RIGHT_WIDTH_PX,
-          Math.min(newWidth, window.innerWidth * MAX_VIEWPORT_SHARE),
-        );
-        panel.style.width = `${String(clamped)}px`;
-      } else {
-        const newHeight = window.innerHeight - e.clientY;
-        clamped = Math.max(
-          MIN_BOTTOM_HEIGHT_PX,
-          Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE),
-        );
-        panel.style.height = `${String(clamped)}px`;
-      }
-      // The size is already known: hand it over rather than read it back.
-      resized = clamped;
-      frame ??= requestAnimationFrame(() => {
-        frame = null;
-        if (resized !== null) {
-          props.onResize(resized);
-          resized = null;
-        }
-      });
-    },
-    up: stop,
-  });
-  onCleanup(stop);
 
   return (
     <div
@@ -109,12 +87,9 @@ export function ResizeHandle(props: {
         handle = el;
       }}
       onPointerDown={(e) => {
-        if (props.collapsed) {
-          return;
+        if (!props.collapsed && handle !== undefined) {
+          stopDrag = startDrag(handle, e, { move });
         }
-        dragging = true;
-        handle?.setPointerCapture(e.pointerId);
-        document.body.style.userSelect = "none";
       }}
     />
   );
@@ -132,50 +107,37 @@ export function BodySplitter(props: {
 }): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let splitter: HTMLDivElement | undefined;
-  let dragging = false;
-  /** The body's box, measured once when the drag starts: it does not change
-   *  size while the splitter moves, and measuring on every move would read
-   *  layout right after the previous move's write. */
-  let bodyRect: DOMRect | undefined;
+  let stopDrag: (() => void) | undefined;
+  onCleanup(() => {
+    stopDrag?.();
+  });
 
-  const stop = (): void => {
-    if (!dragging) {
+  /** `body` is the body's box, measured once when the drag starts: it does
+   *  not change size while the splitter moves, and measuring on every move
+   *  would read layout right after the previous move's write. */
+  const move = (e: PointerEvent, body: DOMRect): void => {
+    const panel = panelEl();
+    if (panel === undefined) {
       return;
     }
-    dragging = false;
-    splitter?.classList.remove("dragging");
-    document.body.style.userSelect = "";
+    if (props.dock === "right") {
+      const relY = e.clientY - body.top;
+      const maxTop = Math.max(
+        MIN_PRIMARY_PX,
+        body.height - MIN_SECONDARY_PX - SPLITTER_PX,
+      );
+      const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relY, maxTop));
+      panel.style.setProperty("--td-top-height", `${String(clamped)}px`);
+    } else {
+      const relX = e.clientX - body.left;
+      const maxLeft = Math.max(
+        MIN_PRIMARY_PX,
+        body.width - MIN_SECONDARY_PX - SPLITTER_PX,
+      );
+      const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relX, maxLeft));
+      panel.style.setProperty("--td-left-width", `${String(clamped)}px`);
+    }
   };
-  trackDrag({
-    move: (e) => {
-      const panel = panelEl();
-      if (!dragging || panel === undefined) {
-        return;
-      }
-      if (bodyRect === undefined) {
-        return;
-      }
-      if (props.dock === "right") {
-        const relY = e.clientY - bodyRect.top;
-        const maxTop = Math.max(
-          MIN_PRIMARY_PX,
-          bodyRect.height - MIN_SECONDARY_PX - SPLITTER_PX,
-        );
-        const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relY, maxTop));
-        panel.style.setProperty("--td-top-height", `${String(clamped)}px`);
-      } else {
-        const relX = e.clientX - bodyRect.left;
-        const maxLeft = Math.max(
-          MIN_PRIMARY_PX,
-          bodyRect.width - MIN_SECONDARY_PX - SPLITTER_PX,
-        );
-        const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relX, maxLeft));
-        panel.style.setProperty("--td-left-width", `${String(clamped)}px`);
-      }
-    },
-    up: stop,
-  });
-  onCleanup(stop);
 
   return (
     <div
@@ -188,11 +150,20 @@ export function BodySplitter(props: {
         splitter = el;
       }}
       onPointerDown={(e) => {
-        dragging = true;
-        bodyRect = splitter?.parentElement?.getBoundingClientRect();
-        splitter?.setPointerCapture(e.pointerId);
-        splitter?.classList.add("dragging");
-        document.body.style.userSelect = "none";
+        const el = splitter;
+        const body = el?.parentElement?.getBoundingClientRect();
+        if (el === undefined || body === undefined) {
+          return;
+        }
+        el.classList.add("dragging");
+        stopDrag = startDrag(el, e, {
+          move: (m) => {
+            move(m, body);
+          },
+          end: () => {
+            el.classList.remove("dragging");
+          },
+        });
       }}
       onDblClick={() => {
         const panel = panelEl();

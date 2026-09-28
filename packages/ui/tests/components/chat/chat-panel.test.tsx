@@ -90,6 +90,7 @@ vi.mock("@dotli/metrics/sentry", () => ({
 import { ChatPanel } from "@dotli/ui/components/chat/ChatPanel";
 import {
   backToChatRooms,
+  chatPanelStore,
   initChatPanelState,
   openChatRoom,
   setChatPanelOpen,
@@ -677,6 +678,50 @@ describe("chat panel, scrolling", () => {
 
     // Then
     expect(list.scrollTop).toBe(1100);
+  });
+});
+
+describe("chat panel, resizing", () => {
+  it("As a user dragging the panel's edge, it resizes within 280 to 560 px and keeps the width, even when the drag is cancelled", async () => {
+    // Given: a 360 px panel.
+    await openPanel(3);
+    // The handle measures the panel it sits in; the test renders the panel's
+    // contents into a container of its own, which stands in for it.
+    const handle = byId("chat-panel-resize");
+    const container = handle.parentElement!;
+    byId("chat-panel").removeAttribute("id");
+    container.id = "chat-panel";
+    Object.defineProperty(container, "offsetWidth", {
+      configurable: true,
+      get: () => 360,
+    });
+    const drag = (type: string, clientX = 0): void => {
+      handle.dispatchEvent(
+        new PointerEvent(type, { bubbles: true, pointerId: 1, clientX }),
+      );
+    };
+
+    // When
+    drag("pointerdown", 1000);
+    drag("pointermove", 900);
+
+    // Then
+    expect(chatPanelStore.get().width).toBe(460);
+
+    // When
+    drag("pointermove", 0);
+
+    // Then
+    expect(chatPanelStore.get().width).toBe(560);
+
+    // When: the pointer is cancelled, then moves on.
+    drag("pointermove", 950);
+    drag("pointercancel");
+    drag("pointermove", 1100);
+
+    // Then
+    expect(chatPanelStore.get().width).toBe(410);
+    expect(localStorage.getItem("dotli:chat-panel-width")).toBe("410");
   });
 });
 

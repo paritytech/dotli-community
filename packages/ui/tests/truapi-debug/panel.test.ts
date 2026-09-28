@@ -1414,8 +1414,8 @@ describe("truapi debug panel: dock, collapse and resize", () => {
       () => undefined,
     );
     pointer(q(".td-resize-handle"), "pointerdown");
-    pointer(window, "pointermove", 0, 500);
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointermove", 0, 500);
+    pointer(q(".td-resize-handle"), "pointerup");
     panel().style.setProperty("--td-left-width", "300px");
     expect(panel().style.height).toBe("268px");
 
@@ -1435,8 +1435,8 @@ describe("truapi debug panel: dock, collapse and resize", () => {
       () => undefined,
     );
     pointer(q(".td-resize-handle"), "pointerdown");
-    pointer(window, "pointermove", 0, 400);
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointermove", 0, 400);
+    pointer(q(".td-resize-handle"), "pointerup");
     expect(panel().style.height).toBe("368px");
 
     // When
@@ -1449,8 +1449,8 @@ describe("truapi debug panel: dock, collapse and resize", () => {
 
     // When a drag is attempted while collapsed
     pointer(q(".td-resize-handle"), "pointerdown");
-    pointer(window, "pointermove", 0, 100);
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointermove", 0, 100);
+    pointer(q(".td-resize-handle"), "pointerup");
 
     // Then it is ignored
     expect(panel().style.height).toBe("");
@@ -1473,7 +1473,7 @@ describe("truapi debug panel: dock, collapse and resize", () => {
     const handle = q(".td-resize-handle");
 
     // When a move happens without a drag
-    pointer(window, "pointermove", 0, 500);
+    pointer(handle, "pointermove", 0, 500);
 
     // Then
     expect(panel().style.height).toBe("");
@@ -1485,30 +1485,65 @@ describe("truapi debug panel: dock, collapse and resize", () => {
     expect(document.body.style.userSelect).toBe("none");
 
     // When
-    pointer(window, "pointermove", 0, 500);
+    pointer(handle, "pointermove", 0, 500);
 
     // Then
     expect(panel().style.height).toBe("268px");
 
     // When
-    pointer(window, "pointermove", 0, 740);
+    pointer(handle, "pointermove", 0, 740);
 
     // Then
     expect(panel().style.height).toBe("120px");
 
     // When
-    pointer(window, "pointermove", 0, 0);
+    pointer(handle, "pointermove", 0, 0);
 
     // Then
     expect(panel().style.height).toBe("614.4px");
 
     // When
-    pointer(window, "pointerup");
-    pointer(window, "pointermove", 0, 500);
+    pointer(handle, "pointerup");
+    pointer(handle, "pointermove", 0, 500);
 
     // Then
     expect(document.body.style.userSelect).toBe("");
     expect(panel().style.height).toBe("614.4px");
+  });
+
+  it("As a dotli developer, a cancelled drag of the edge or the splitter ends it: later moves change nothing and text selection comes back", () => {
+    // Given
+    mount();
+    vi.spyOn(HTMLElement.prototype, "setPointerCapture").mockImplementation(
+      () => undefined,
+    );
+    const handle = q(".td-resize-handle");
+    const splitter = q(".td-body-splitter");
+    vi.spyOn(splitter.parentElement!, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 1000, 400),
+    );
+    pointer(handle, "pointerdown");
+    pointer(handle, "pointermove", 0, 500);
+    expect(panel().style.height).toBe("268px");
+
+    // When
+    pointer(handle, "pointercancel");
+    pointer(handle, "pointermove", 0, 400);
+
+    // Then
+    expect(panel().style.height).toBe("268px");
+    expect(document.body.style.userSelect).toBe("");
+
+    // When
+    pointer(splitter, "pointerdown");
+    pointer(splitter, "pointermove", 400, 0);
+    pointer(splitter, "pointercancel");
+    pointer(splitter, "pointermove", 500, 0);
+
+    // Then
+    expect(panel().style.getPropertyValue("--td-left-width")).toBe("400px");
+    expect(splitter.classList.contains("dragging")).toBe(false);
+    expect(document.body.style.userSelect).toBe("");
   });
 
   it("As a dotli developer, dragging the left edge resizes the right-docked panel within 280px and 80% of the viewport", () => {
@@ -1521,23 +1556,23 @@ describe("truapi debug panel: dock, collapse and resize", () => {
 
     // When
     pointer(q(".td-resize-handle"), "pointerdown");
-    pointer(window, "pointermove", 600, 0);
+    pointer(q(".td-resize-handle"), "pointermove", 600, 0);
 
     // Then
     expect(panel().style.width).toBe("424px");
 
     // When
-    pointer(window, "pointermove", 1000, 0);
+    pointer(q(".td-resize-handle"), "pointermove", 1000, 0);
 
     // Then
     expect(panel().style.width).toBe("280px");
 
     // When
-    pointer(window, "pointermove", 0, 0);
+    pointer(q(".td-resize-handle"), "pointermove", 0, 0);
 
     // Then
     expect(panel().style.width).toBe("819.2px");
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointerup");
   });
 
   it("As a dotli developer, the body splitter rebalances the panes within the documented minimums", () => {
@@ -1568,25 +1603,25 @@ describe("truapi debug panel: dock, collapse and resize", () => {
     expect(document.body.style.userSelect).toBe("none");
 
     // When
-    pointer(window, "pointermove", 510, 0);
+    pointer(splitter, "pointermove", 510, 0);
 
     // Then
     expect(panel().style.getPropertyValue("--td-left-width")).toBe("500px");
 
     // When
-    pointer(window, "pointermove", 50, 0);
+    pointer(splitter, "pointermove", 50, 0);
 
     // Then the list keeps 220px
     expect(panel().style.getPropertyValue("--td-left-width")).toBe("220px");
 
     // When
-    pointer(window, "pointermove", 1000, 0);
+    pointer(splitter, "pointermove", 1000, 0);
 
     // Then the detail keeps 260px plus the 6px splitter
     expect(panel().style.getPropertyValue("--td-left-width")).toBe("734px");
 
     // When
-    pointer(window, "pointerup");
+    pointer(splitter, "pointerup");
 
     // Then
     expect(splitter.classList.contains("dragging")).toBe(false);
@@ -1612,25 +1647,25 @@ describe("truapi debug panel: dock, collapse and resize", () => {
 
     // When
     pointer(splitter, "pointerdown");
-    pointer(window, "pointermove", 0, 320);
+    pointer(splitter, "pointermove", 0, 320);
 
     // Then
     expect(panel().style.getPropertyValue("--td-top-height")).toBe("300px");
 
     // When
-    pointer(window, "pointermove", 0, 30);
+    pointer(splitter, "pointermove", 0, 30);
 
     // Then
     expect(panel().style.getPropertyValue("--td-top-height")).toBe("220px");
 
     // When
-    pointer(window, "pointermove", 0, 700);
+    pointer(splitter, "pointermove", 0, 700);
 
     // Then
     expect(panel().style.getPropertyValue("--td-top-height")).toBe("334px");
 
     // When
-    pointer(window, "pointerup");
+    pointer(splitter, "pointerup");
     splitter.dispatchEvent(new MouseEvent("dblclick", { bubbles: true }));
 
     // Then
@@ -1717,13 +1752,13 @@ describe("truapi debug panel: product iframe geometry", () => {
 
     // When
     pointer(q(".td-resize-handle"), "pointerdown");
-    pointer(window, "pointermove", 0, 500);
+    pointer(q(".td-resize-handle"), "pointermove", 0, 500);
     // The refit lands on the next animation frame.
     vi.advanceTimersByTime(20);
 
     // Then
     expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointerup");
   });
 
   it("As a dotli developer, a product reload with chat open and a right dock keeps both", () => {

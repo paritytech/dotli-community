@@ -6,6 +6,7 @@ import {
   persistChatPanelWidth,
   setChatPanelWidth,
 } from "../../state/chat-panel";
+import { startDrag } from "../drag";
 
 /** Drag handle on the panel's left edge. */
 export function ResizeHandle(): JSX.Element {
@@ -16,25 +17,15 @@ export function ResizeHandle(): JSX.Element {
     if (handle === undefined || panel === null || panel === undefined) {
       return;
     }
-    const target = handle;
     down.preventDefault();
-    target.setPointerCapture(down.pointerId);
     const startX = down.clientX;
     const startWidth = panel.offsetWidth;
-    const onMove = (move: PointerEvent): void => {
-      setChatPanelWidth(startWidth + (startX - move.clientX));
-    };
-    // pointercancel is never followed by pointerup, so both ends of the drag
-    // must detach the listeners or they leak and act on later hovers.
-    const onEnd = (): void => {
-      target.removeEventListener("pointermove", onMove);
-      target.removeEventListener("pointerup", onEnd);
-      target.removeEventListener("pointercancel", onEnd);
-      persistChatPanelWidth();
-    };
-    target.addEventListener("pointermove", onMove);
-    target.addEventListener("pointerup", onEnd);
-    target.addEventListener("pointercancel", onEnd);
+    startDrag(handle, down, {
+      move: (move) => {
+        setChatPanelWidth(startWidth + (startX - move.clientX));
+      },
+      end: persistChatPanelWidth,
+    });
   };
 
   return (

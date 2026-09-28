@@ -170,7 +170,7 @@ describe("sandbox checker violation panel", () => {
     // When: resizing while collapsed does nothing
     const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
-    fireEvent.pointerMove(window, { clientY: 100 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 100 });
     await settle();
 
     // Then
@@ -215,6 +215,61 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(document.getElementById("sandbox-checker-panel")).toBeNull();
     expect(frame.height).toBe(BELOW_BAR_HEIGHT);
+  });
+
+  it("As a dotli developer, dragging the handle resizes the panel within 40px and 80% of the viewport, until the drag ends or is cancelled", async () => {
+    // Given (happy-dom viewport: 1024 x 768)
+    violation({
+      type: "DOTLI_API_VIOLATION",
+      api: "x",
+      details: {},
+      timestamp: 0,
+    });
+    await settle();
+    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+
+    // When
+    fireEvent.pointerDown(handle, { pointerId: 1, clientY: 600 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 568 });
+    await settle();
+
+    // Then
+    expect(document.body.style.userSelect).toBe("none");
+    expect(panel().style.height).toBe("200px");
+
+    // When
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 760 });
+    await settle();
+
+    // Then
+    expect(panel().style.height).toBe("40px");
+
+    // When
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 0 });
+    await settle();
+
+    // Then
+    expect(panel().style.height).toBe("614.4px");
+
+    // When: a cancelled pointer ends the drag.
+    fireEvent.pointerCancel(handle, { pointerId: 1 });
+    fireEvent.pointerMove(handle, { pointerId: 1, clientY: 568 });
+    await settle();
+
+    // Then
+    expect(document.body.style.userSelect).toBe("");
+    expect(panel().style.height).toBe("614.4px");
+
+    // When: a new drag, released.
+    fireEvent.pointerDown(handle, { pointerId: 2, clientY: 600 });
+    fireEvent.pointerMove(handle, { pointerId: 2, clientY: 568 });
+    fireEvent.pointerUp(handle, { pointerId: 2 });
+    fireEvent.pointerMove(handle, { pointerId: 2, clientY: 468 });
+    await settle();
+
+    // Then
+    expect(document.body.style.userSelect).toBe("");
+    expect(panel().style.height).toBe("200px");
   });
 
   it("As a dotli developer, disposing while dragging cleans up the drag state", async () => {

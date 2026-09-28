@@ -633,7 +633,7 @@ describe("truapi debug panel work: pointer moves", () => {
 
     // When five moves land in one frame
     for (let i = 0; i < 5; i++) {
-      pointer(window, "pointermove", 0, 500 + i);
+      pointer(q(".td-resize-handle"), "pointermove", 0, 500 + i);
     }
 
     // Then
@@ -647,7 +647,7 @@ describe("truapi debug panel work: pointer moves", () => {
     // Then
     expect(appFrame.writes() - writesBefore).toBe(1);
     expect(appFrame.style.height).toMatch(/ - 264px\)$/);
-    pointer(window, "pointerup");
+    pointer(q(".td-resize-handle"), "pointerup");
   });
 
   it("As a dotli developer, dragging the body splitter measures the body once per drag", () => {
@@ -664,10 +664,10 @@ describe("truapi debug panel work: pointer moves", () => {
 
     // When
     pointer(q(".td-body-splitter"), "pointerdown");
-    pointer(window, "pointermove", 510, 0);
-    pointer(window, "pointermove", 520, 0);
-    pointer(window, "pointermove", 530, 0);
-    pointer(window, "pointerup");
+    pointer(q(".td-body-splitter"), "pointermove", 510, 0);
+    pointer(q(".td-body-splitter"), "pointermove", 520, 0);
+    pointer(q(".td-body-splitter"), "pointermove", 530, 0);
+    pointer(q(".td-body-splitter"), "pointerup");
 
     // Then
     expect(panel().style.getPropertyValue("--td-left-width")).toBe("520px");

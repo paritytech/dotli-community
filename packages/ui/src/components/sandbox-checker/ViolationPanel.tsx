@@ -14,6 +14,7 @@
 import { createEffect, createSignal, For, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { setDockInset } from "../../product-frame-layout";
+import { startDrag } from "../drag";
 
 interface Violation {
   id: number;
@@ -80,7 +81,7 @@ export function ViolationPanel(props: {
   let log: HTMLDivElement | undefined;
   let handle: HTMLDivElement | undefined;
   let nextId = 0;
-  let dragging = false;
+  let stopDrag: (() => void) | undefined;
 
   // The frame layout keeps the product clear of the panel's height.
   const reserve = (bottom: number): void => {
@@ -108,10 +109,7 @@ export function ViolationPanel(props: {
     setTotal((n) => n + 1);
   };
 
-  const onPointerMove = (event: PointerEvent): void => {
-    if (!dragging) {
-      return;
-    }
+  const onDragMove = (event: PointerEvent): void => {
     const viewportHeight = window.innerHeight;
     setHeight(
       Math.max(
@@ -124,25 +122,10 @@ export function ViolationPanel(props: {
     );
   };
 
-  const onPointerUp = (): void => {
-    if (!dragging) {
-      return;
-    }
-    dragging = false;
-    document.body.style.userSelect = "";
-  };
-
   window.addEventListener("message", onMessage);
-  window.addEventListener("pointermove", onPointerMove);
-  window.addEventListener("pointerup", onPointerUp);
   onCleanup(() => {
     window.removeEventListener("message", onMessage);
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", onPointerUp);
-    if (dragging) {
-      dragging = false;
-      document.body.style.userSelect = "";
-    }
+    stopDrag?.();
     reserve(0);
   });
 
@@ -192,17 +175,9 @@ export function ViolationPanel(props: {
           handle = el;
         }}
         onPointerDown={(event) => {
-          if (collapsed() || handle === undefined) {
-            return;
+          if (!collapsed() && handle !== undefined) {
+            stopDrag = startDrag(handle, event, { move: onDragMove });
           }
-          dragging = true;
-          try {
-            handle.setPointerCapture(event.pointerId);
-            // eslint-disable-next-line no-restricted-syntax -- happy-dom throws for synthetic pointer ids in tests; capture is best-effort in real browsers too.
-          } catch {
-            /* synthetic event */
-          }
-          document.body.style.userSelect = "none";
         }}
       />
       <div class="sc-header">
