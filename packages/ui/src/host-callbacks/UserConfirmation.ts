@@ -9,6 +9,7 @@ import type {
   PermissionDecision,
   PreimageSubmitReview,
   ProductSubtreeReview,
+  ProfileDisclosureReview,
   ResourceAllocationReview,
   SignPayloadReview,
   SignRawReview,
@@ -213,6 +214,8 @@ function confirmationDisplay(
       return { fields: createChatAuthorityFields(review.value) };
     case "MainPurseChatPayment":
       return { fields: createMainPurseChatPaymentFields(review.value) };
+    case "ProfileDisclosure":
+      return { fields: createProfileDisclosureFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
   }
@@ -413,6 +416,19 @@ function createChatAuthorityFields(
   ];
 }
 
+function createProfileDisclosureFields(
+  review: ProfileDisclosureReview,
+): ConfirmationField[] {
+  return [
+    { label: "Requesting product", value: review.productId },
+    {
+      label: "Permission",
+      value:
+        "Show this app's profile photo and mood to the people you chat with",
+    },
+  ];
+}
+
 function createMainPurseChatPaymentFields(
   review: MainPurseChatPaymentReview,
 ): ConfirmationField[] {
@@ -544,6 +560,12 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
+    case "ProfileDisclosure":
+      return {
+        title: "Share Profile with Chat Contacts",
+        action: "Allow",
+        cancelAction: "Deny",
+      };
   }
 }
 
@@ -575,6 +597,11 @@ async function handleConfirmationReview(
   );
   if (decision === "dismissed" && review.tag === "IdentityDisclosure") {
     throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
+  }
+  // A failed prompt leaves the grant undetermined in the core, so dismissing
+  // the dialog asks again next time instead of storing a refusal.
+  if (decision === "dismissed" && review.tag === "ProfileDisclosure") {
+    throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
   return decision;
 }

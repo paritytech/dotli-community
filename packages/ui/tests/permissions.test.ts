@@ -73,6 +73,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Remote:${request.value.permission.tag}`;
     case "IdentityDisclosure":
       return "IdentityDisclosure";
+    case "ProfileDisclosure":
+      return "ProfileDisclosure";
   }
 }
 
@@ -169,6 +171,22 @@ describe("resetPermission", () => {
   it("As a product, resetting an unknown permission leaves my grants unchanged", async () => {
     await resetPermission("myapp", "Camera");
     expect(await getPermissionStatus("myapp", "Camera")).toBe("ask");
+  });
+
+  it("As a dotli user, revoking profile disclosure leaves identity disclosure granted", async () => {
+    // Given
+    await setPermissionStatus("myapp", "ProfileDisclosure", "granted");
+    await setPermissionStatus("myapp", "IdentityDisclosure", "granted");
+    expect(myappStore.get("ProfileDisclosure")).toBe("Authorized");
+
+    // When
+    await resetPermission("myapp", "ProfileDisclosure");
+
+    // Then
+    expect(await getPermissionStatus("myapp", "ProfileDisclosure")).toBe("ask");
+    expect(await getPermissionStatus("myapp", "IdentityDisclosure")).toBe(
+      "granted",
+    );
   });
 });
 

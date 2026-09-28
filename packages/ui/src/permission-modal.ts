@@ -38,6 +38,8 @@ export const PERMISSION_DESCRIPTIONS: Record<
   ChatAuthority:
     "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
   IdentityDisclosure: "Share your primary DotNS identity with this app",
+  ProfileDisclosure:
+    "Show this app's profile photo and mood to the people you chat with",
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",
@@ -89,6 +91,12 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<circle cx="12" cy="8" r="4"/>' +
     '<path d="M4 21a8 8 0 0 1 16 0"/>' +
     '<path d="M19 3v4h4"/></svg>',
+  ProfileDisclosure:
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>' +
+    '<circle cx="9" cy="7" r="4"/>' +
+    '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/>' +
+    '<path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
   ChainSubmit:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/>' +
