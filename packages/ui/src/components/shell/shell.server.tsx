@@ -5,9 +5,13 @@
 // Loaded only through Vite's SSR module loading at build/dev time, never
 // bundled into the client.
 
-import { renderHydratableToString } from "../../mount/render-hydratable";
-import { SHELL_RENDER_ID, Shell } from "./Shell";
+import { renderToString } from "@solidjs/web";
+import { Shell } from "./Shell";
 
+/**
+ * The static shell markup for index.html. The client never hydrates it, so
+ * the render carries no hydration keys; an error in Shell fails the build.
+ */
 export function renderShell(): string {
-  return renderHydratableToString(() => <Shell />, SHELL_RENDER_ID);
+  return renderToString(() => <Shell />);
 }

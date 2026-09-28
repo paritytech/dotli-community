@@ -5,15 +5,17 @@
 // apps/host/index.html (see tests/components/shell/original-shell.html for
 // the frozen fixture this must match). Every id, class, attribute and SVG
 // path here is part of the DOM contract: packages/ui/src/topbar.ts and the
-// Playwright suite select these nodes by id/class. No behavior lives here -
-// hydration (mount/hydrate-shell.tsx) claims the prerendered markup, and the
-// imperative code in topbar.ts wires up against the hydrated DOM, exactly
-// like it did against the static HTML before. The reactive pieces (the theme
-// toggle, the URL bar, the offline banner) stay static here too: after boot,
-// the lazily loaded islands chunk (components/shell/islands.tsx)
-// client-renders each one and swaps it in for its static nodes by id. This
-// file therefore stays free of components and control flow, since its client
-// templates are stripped (mount/strip-client-templates-plugin.ts).
+// Playwright suite select these nodes by id/class. No behavior lives here:
+// it is rendered once, at build time (shell.server.tsx, through
+// mount/prerender-plugin.ts), into index.html, and the client never runs it.
+// The imperative code in topbar.ts wires up against that static DOM exactly
+// like it did against the hand-written HTML before. The reactive pieces
+// (the theme toggle, the URL bar, the offline banner, ...) stay static here
+// too: after boot, the lazily loaded islands chunk
+// (components/shell/islands.tsx) client-renders each one and swaps it in
+// for its static nodes by id. This file therefore stays free of components,
+// control flow and anything else reactive, which would be frozen at its
+// build-time state (tests/components/shell/fidelity.test.ts checks it).
 //
 // The section comments below (Top Bar, QR Pairing Modal, ...) mirror the
 // original HTML comments. They're written as JSX comments on purpose: a JSX
@@ -21,12 +23,6 @@
 // comments aren't part of it either.
 
 import type { JSX } from "@solidjs/web";
-
-/**
- * Hydration id namespace of the shell: shell.server.tsx renders with it and
- * mount/hydrate-shell.tsx hydrates with it, so the keys line up.
- */
-export const SHELL_RENDER_ID = "shell";
 
 export function Shell(): JSX.Element {
   return (

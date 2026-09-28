@@ -12,11 +12,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
-import {
-  PRERENDER_BUILD_SERVER_ENV,
-  prerenderPlugin,
-} from "../../packages/ui/src/mount/prerender-plugin";
-import { stripClientTemplatesPlugin } from "../../packages/ui/src/mount/strip-client-templates-plugin";
+import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -256,28 +252,16 @@ export default defineConfig({
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
-    // Hydratable client output, plus the SSR transform that prerenderPlugin
-    // (below) uses to server-render the shell. The build-time render server
-    // is a `serve` server, which would compile in dev posture; it is forced
-    // to production posture so the prerendered HTML is what the production
-    // client bundle hydrates.
-    solid({
-      ssr: true,
-      ...(process.env[PRERENDER_BUILD_SERVER_ENV] === "1"
-        ? { dev: false }
-        : {}),
-    }),
-    // The prerendered shell is only ever hydrated, so its client module
-    // does not need its DOM templates (~4 KB gzip on the startup path).
-    // `vite dev` keeps them, so Solid's HMR can still re-render it. That dev
-    // HMR re-render replaces Shell.tsx's DOM nodes with fresh ones, so the
-    // imperative topbar wiring (packages/ui/src/topbar.ts) - which runs once
-    // against the hydrated DOM - goes stale; a full reload after editing
-    // Shell.tsx in dev is expected.
-    stripClientTemplatesPlugin({
-      files: [resolve(PACKAGES, "ui/src/components/shell/Shell.tsx")],
-      apply: "build",
-    }),
+    // `ssr: true` gives the ssr environment Solid's server codegen, which
+    // prerenderPlugin (below) needs to render the shell into index.html; a
+    // plain `solid()` compiles that environment for the DOM too. Nothing on
+    // the client hydrates (the prerendered shell is inert HTML, and its
+    // reactive pieces are client-rendered islands swapped in over it, see
+    // packages/ui/src/mount/load-islands.ts), so both environments compile
+    // non-hydratable: the client output is a plain SPA compile, without
+    // hydration keys or claim walks, and the prerender carries no `_hk`
+    // markers.
+    solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
     socialMetaTags({

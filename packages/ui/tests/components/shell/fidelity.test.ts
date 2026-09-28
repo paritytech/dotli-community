@@ -7,8 +7,9 @@
 // tests/components/shell/original-shell.html - the exact block that used to
 // live in apps/host/index.html before it was replaced by the `#shell`
 // placeholder - node for node: same elements, same attributes, same text,
-// same order. Solid's hydration markers (`_hk=...`) and HTML comments are
-// not part of that contract, so both are stripped before comparing.
+// same order. HTML comments are not part of that contract, so they are
+// dropped before comparing. Nothing hydrates the shell, so the render must
+// carry no hydration markers (`_hk=...`) or scripts either.
 //
 // The rendered side is the real SSR output (see helpers/shell-ssr.ts).
 //
@@ -27,6 +28,10 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { renderShellOnServer } from "../../helpers/shell-ssr";
 
 const FIXTURE_PATH = resolve(import.meta.dirname, "original-shell.html");
+const SHELL_PATH = resolve(
+  import.meta.dirname,
+  "../../../src/components/shell/Shell.tsx",
+);
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -53,7 +58,7 @@ interface NormalizedElement {
 /**
  * Depth-first structural view of `node`'s children: element name + sorted
  * attributes + recursively-normalized children, trimmed non-empty text as
- * its own entry, comments and Solid's `_hk` hydration markers dropped.
+ * its own entry, comments dropped.
  * Child order is preserved, since it is part of the DOM contract.
  */
 function normalizeChildren(node: DomNode): NormalizedChild[] {
@@ -72,9 +77,6 @@ function normalizeChildren(node: DomNode): NormalizedChild[] {
     if (child.nodeType === ELEMENT_NODE) {
       const attrs: [string, string][] = [];
       for (const attr of child.attributes ?? []) {
-        if (attr.name === "_hk") {
-          continue;
-        }
         attrs.push([attr.name, attr.value]);
       }
       attrs.sort(([a], [b]) => a.localeCompare(b));
@@ -112,5 +114,23 @@ describe("Shell prerender fidelity", () => {
 
     // When / Then
     expect(normalizeFragment(rendered)).toEqual(normalizeFragment(fixture));
+  });
+
+  it("As a prerender nothing hydrates, the shell carries no hydration markers and no script", () => {
+    // Then
+    expect(rendered).not.toMatch(/\s_hk=|data-hk/);
+    expect(rendered).not.toContain("<script");
+  });
+
+  it("As markup the client never runs, Shell.tsx imports nothing but types, so it stays free of components and reactivity", () => {
+    // Given
+    const source = readFileSync(SHELL_PATH, "utf8");
+    const imports = source.match(/^import\b[^;]*;/gm) ?? [];
+
+    // Then: anything reactive would be frozen at its build-time state.
+    expect(imports.length).toBeGreaterThan(0);
+    for (const statement of imports) {
+      expect(statement).toMatch(/^import type\b/);
+    }
   });
 });

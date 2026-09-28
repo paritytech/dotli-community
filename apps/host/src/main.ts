@@ -15,8 +15,8 @@ if (typeof globalThis.requestIdleCallback !== "function") {
     }, 1) as unknown as number;
 }
 
-// Must stay the first import: it hydrates the prerendered shell before any
-// other module can query it (see boot.ts).
+// Must stay the first import: it starts Sentry before any other module
+// evaluates, then starts loading the shell's islands (see boot.ts).
 import "./boot";
 import "./pwa";
 import "@dotli/ui/styles.css";

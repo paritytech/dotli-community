@@ -10,104 +10,15 @@
 // file and closed after the render. A missing placeholder or entry fails the
 // build: shipping an empty shell must never be silent.
 //
+// The rendered markup is inert HTML: no client code hydrates it, so nothing
+// has to match it key for key, and the build-time server compiling Solid in
+// dev posture (it is a `serve` server) is harmless.
+//
 // Imported by apps/host/vite.config.ts, alongside `prodNoAnalyticsAliases`.
 
 import { existsSync } from "node:fs";
 import { basename } from "node:path";
 import { createServer, type Plugin, type ViteDevServer } from "vite";
-
-/**
- * Set to `"1"` in `process.env` while the build-time render server loads its
- * config. The config reads it to compile Solid in production posture there
- * (`solid({ dev: false })`, no `development` resolve condition): that server
- * is a `serve`-command server, so `@solidjs/vite-plugin` would otherwise pick
- * dev posture, while the client bundle it has to match is a production build.
- */
-export const PRERENDER_BUILD_SERVER_ENV = "DOTLI_PRERENDER_BUILD_SERVER";
-
-/**
- * The subset of a resolved Vite server's config this file's posture check
- * reads. `ResolvedConfig.ssr.resolve.conditions` is where `@solidjs/vite-plugin`
- * (via its `configEnvironment` hook) lists the ssr environment's resolve
- * conditions, adding `"development"` there only when it compiled Solid in dev
- * posture (verified empirically: with `solid({ dev: false })` the condition
- * is absent; without it, an inner server created via `createServer` - always
- * `command: "serve"` - defaults to dev posture and the condition is present).
- */
-interface ServerWithSsrPosture {
-  config: {
-    ssr?: { resolve?: { conditions?: readonly string[] } };
-  };
-}
-
-/**
- * Throws if `server`'s ssr environment resolved with the `"development"`
- * condition, meaning `@solidjs/vite-plugin` compiled Solid in dev posture.
- * The build-time render server's client bundle counterpart is always a
- * production build, so a dev-posture render would silently prerender markup
- * that doesn't match what the shipped client hydrates against. This can
- * happen even though {@link PRERENDER_BUILD_SERVER_ENV} is set correctly
- * around `createServer` - e.g. `configLoader: "native"` serving a config
- * module cached from a previous, differently-flagged resolution, or
- * `NODE_ENV=development` steering `@solidjs/vite-plugin`'s own posture
- * detection - so this checks the server's actual resolved posture rather
- * than trusting the env flag was honored.
- */
-export function assertProductionSsrPosture(server: ServerWithSsrPosture): void {
-  const conditions = server.config.ssr?.resolve?.conditions ?? [];
-  if (conditions.includes("development")) {
-    throw new Error(
-      "[prerender] the build-time render server resolved its ssr environment " +
-        'with the "development" condition, meaning Solid compiled in dev ' +
-        "posture; it must render in production posture to match the " +
-        'production client bundle. A cached config (configLoader: "native") ' +
-        "or NODE_ENV=development can defeat the " +
-        `${PRERENDER_BUILD_SERVER_ENV} env flag that @solidjs/vite-plugin's ` +
-        "`dev` option depends on - check that first.",
-    );
-  }
-}
-
-/**
- * Creates the build-time render server with {@link PRERENDER_BUILD_SERVER_ENV}
- * set while its config file is loaded and resolved, then restores the
- * variable, so nothing else in this process sees it. Asserts the server
- * actually resolved to production ssr posture (see
- * {@link assertProductionSsrPosture}) before handing it back, closing it
- * first if the assertion fails so a posture bug doesn't also leak the
- * server.
- */
-async function createBuildRenderServer(
-  config: Parameters<typeof createServer>[0],
-): Promise<ViteDevServer> {
-  const previous = process.env[PRERENDER_BUILD_SERVER_ENV];
-  process.env[PRERENDER_BUILD_SERVER_ENV] = "1";
-  try {
-    const server = await createServer(config);
-    try {
-      assertProductionSsrPosture(server);
-    } catch (postureError) {
-      try {
-        await server.close();
-      } catch (closeError) {
-        // The posture error is the one worth surfacing; a close failure on
-        // top of it would otherwise silently replace it.
-        console.error(
-          "[prerender] server.close() also failed after a posture assertion failure",
-          closeError,
-        );
-      }
-      throw postureError;
-    }
-    return server;
-  } finally {
-    if (previous === undefined) {
-      Reflect.deleteProperty(process.env, PRERENDER_BUILD_SERVER_ENV);
-    } else {
-      process.env[PRERENDER_BUILD_SERVER_ENV] = previous;
-    }
-  }
-}
 
 export interface PrerenderOptions {
   /** Marker in the HTML replaced by the rendered markup, e.g. `<!--ssr:shell-->`. */
@@ -249,7 +160,7 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
           if (!buildServerConfig) {
             throw new Error("[prerender] no dev server and not a build");
           }
-          const server = await createBuildRenderServer(buildServerConfig);
+          const server = await createServer(buildServerConfig);
           try {
             rendered = await renderWith(server, options);
           } catch (renderError) {

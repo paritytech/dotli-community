@@ -3,10 +3,8 @@
 
 // The shell islands chunk (components/shell/islands.tsx) swapping its live
 // components in for the static markup of the real prerendered shell
-// (helpers/shell-ssr.ts), after the shell has hydrated, as the host boots.
-// Runs in the `hydration` vitest project, which compiles components
-// hydratable and strips Shell.tsx's templates the way the host build does
-// (see vitest.config.ts).
+// (helpers/shell-ssr.ts), which the page shows as static HTML until then, as
+// the host boots.
 
 import {
   afterEach,
@@ -21,7 +19,6 @@ import { flush } from "solid-js";
 import { renderShellOnServer } from "../../helpers/shell-ssr";
 import { stubColorScheme } from "../../helpers/color-scheme";
 import { mountIslands } from "@dotli/ui/components/shell/islands";
-import { hydrateShell } from "@dotli/ui/mount/hydrate-shell";
 import { disposeRoot } from "@dotli/ui/mount/root";
 import { initTheme } from "@dotli/ui/theme-controller";
 import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
@@ -143,13 +140,12 @@ function placeOf(el: Element): { parent: Element | null; index: number } {
 
 /**
  * `el` without what differs by design between the prerender and the island:
- * the prerender's hydration keys, and the labels and checks the island
- * renders from the theme store (the prerender shows no preference).
+ * the labels and checks the island renders from the theme store (the
+ * prerender shows no preference).
  */
 function withoutStoreState(el: Element): Element {
   const copy = el.cloneNode(true) as Element;
   for (const node of [copy, ...copy.querySelectorAll("*")]) {
-    node.removeAttribute("_hk");
     if (node.id === "theme-toggle") {
       node.setAttribute("title", "Theme");
       node.setAttribute("aria-label", "Theme");
@@ -208,9 +204,7 @@ describe("shell islands", () => {
     themeIsland.breakLater = null;
     themeIsland.disposed = 0;
     sentry.captureException.mockClear();
-    delete (globalThis as { _$HY?: unknown })._$HY;
     document.body.innerHTML = `<div id="shell" style="display: contents">${serverHtml}</div>`;
-    hydrateShell();
     await flushAll();
   });
 
@@ -227,15 +221,15 @@ describe("shell islands", () => {
     disposeRoot("island:chains");
     disposeRoot("island:settings");
     disposeRoot("island:more");
-    disposeRoot("shell");
     resetAllStoresForTests();
     document.body.innerHTML = "";
     vi.restoreAllMocks();
   });
 
   it("As a dotli user, the theme toggle's static markup is swapped in place for the live island, one element per id, with no warning", async () => {
-    // Given
-    expect(byId("shell").dataset.hydrated).toBe("shell");
+    // Given: the prerendered static toggle, as the page shows it before
+    // the islands load.
+    expect(byId("shell").contains(byId("theme-toggle"))).toBe(true);
     const warn = vi.spyOn(console, "warn");
     const error = vi.spyOn(console, "error");
     const before = THEME_IDS.map((id) => {

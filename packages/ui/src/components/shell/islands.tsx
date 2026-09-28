@@ -3,7 +3,7 @@
 
 // The shell's islands: its reactive pieces, loaded lazily after boot by
 // mount/load-islands.ts. Shell.tsx keeps every piece's static markup, which
-// is prerendered and hydrated as it is; here each island is client-rendered
+// is prerendered into index.html as it is; here each island is client-rendered
 // into a detached container and swapped in for those static nodes by id,
 // wherever they are now (the landing page, components/landing/, moves the
 // auth and theme nodes out of `#shell`). The loading screen is an island

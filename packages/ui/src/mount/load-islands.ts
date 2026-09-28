@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Loads the shell's islands after boot. The prerendered shell hydrates fully
-// static (mount/hydrate-shell.tsx); its reactive pieces (listed in
+// Loads the shell's islands after boot. The prerendered shell is static HTML
+// that no client code hydrates; its reactive pieces (listed in
 // mountIslands()) come from one lazily loaded chunk,
 // components/shell/islands.tsx, which client-renders each and swaps it in
-// for its static markup. Keeping
-// them off the startup bundle is the point, so everything here is Solid-free.
+// for its static markup. Keeping them off the startup bundle is the point,
+// so everything here is Solid-free.
 
 import { captureException } from "@dotli/metrics/sentry";
 import { disableAuthModal } from "../auth-controller";
@@ -47,7 +47,7 @@ function followOfflineWithoutIslands(banner: HTMLElement | null): void {
 
 /**
  * Import the islands chunk and mount the islands, once; called by the host
- * right after hydrateShell(). Never rejects.
+ * at boot (apps/host/src/boot.ts). Never rejects.
  *
  * Until the islands mount, a click on a trigger is held back (its default
  * prevented), and the last one is replayed once on the live trigger

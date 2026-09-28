@@ -3,7 +3,6 @@
 
 import { describe, expect, it, vi } from "vitest";
 import {
-  assertProductionSsrPosture,
   injectPrerendered,
   prerenderPlugin,
 } from "@dotli/ui/mount/prerender-plugin";
@@ -66,7 +65,7 @@ describe("injectPrerendered", () => {
   it("As the build output, the placeholder is replaced by the rendered HTML verbatim", () => {
     // Given
     const html = `<body><div id="shell">${PLACEHOLDER}</div><div id="app"></div></body>`;
-    const rendered = `<span _hk=shell0>a $& b $1</span>`;
+    const rendered = `<span>a $& b $1</span>`;
 
     // When
     const result = injectPrerendered(html, PLACEHOLDER, rendered);
@@ -98,40 +97,6 @@ describe("injectPrerendered", () => {
   });
 });
 
-describe("assertProductionSsrPosture", () => {
-  it("As the ssr environment resolved with the dev condition, it fails loudly", () => {
-    // Given
-    const server = {
-      config: {
-        ssr: { resolve: { conditions: ["solid", "development", "node"] } },
-      },
-    };
-
-    // When / Then
-    expect(() => assertProductionSsrPosture(server)).toThrow(
-      /resolved its ssr environment.*"development"/s,
-    );
-  });
-
-  it("As the ssr environment resolved without the dev condition, it passes", () => {
-    // Given
-    const server = {
-      config: { ssr: { resolve: { conditions: ["solid", "node"] } } },
-    };
-
-    // When / Then
-    expect(() => assertProductionSsrPosture(server)).not.toThrow();
-  });
-
-  it("As `ssr.resolve` is absent entirely, it does not mistake that for dev posture", () => {
-    // Given
-    const server = { config: { ssr: {} } };
-
-    // When / Then
-    expect(() => assertProductionSsrPosture(server)).not.toThrow();
-  });
-});
-
 describe("prerenderPlugin", () => {
   it("As a missing entry would silently ship an empty shell, configResolved fails loudly", () => {
     // Given
@@ -153,14 +118,12 @@ describe("prerenderPlugin", () => {
     ).toThrow(/entry not found/);
   });
 
-  it("As the build-time render server resolves to dev ssr posture, it fails loudly and closes the server", async () => {
+  it("As a build, the shell is rendered by a short-lived render server, which is closed afterwards", async () => {
     // Given
     const close = vi.fn().mockResolvedValue(undefined);
     vite.createServer.mockResolvedValue({
-      config: {
-        ssr: { resolve: { conditions: ["solid", "development", "node"] } },
-      },
-      ssrLoadModule: vi.fn(),
+      ssrLoadModule: () =>
+        Promise.resolve({ renderShell: () => `<div id="topbar"></div>` }),
       close,
     });
     const plugin = prerenderPlugin({
@@ -176,13 +139,15 @@ describe("prerenderPlugin", () => {
       mode: "production",
     });
 
-    // When / Then
-    await expect(
-      callTransformIndexHtml(plugin, `<body>${PLACEHOLDER}</body>`, {
-        path: "/index.html",
-        filename: "index.html",
-      }),
-    ).rejects.toThrow(/resolved its ssr environment/);
+    // When
+    const result = await callTransformIndexHtml(
+      plugin,
+      `<body>${PLACEHOLDER}</body>`,
+      { path: "/index.html", filename: "index.html" },
+    );
+
+    // Then
+    expect(result).toBe(`<body><div id="topbar"></div></body>`);
     expect(close).toHaveBeenCalledTimes(1);
   });
 
@@ -255,7 +220,6 @@ describe("prerenderPlugin", () => {
       /* asserted on below, not printed */
     });
     vite.createServer.mockResolvedValue({
-      config: { ssr: { resolve: { conditions: ["solid", "node"] } } },
       ssrLoadModule: () => Promise.reject(new Error("boom-render")),
       close: () => Promise.reject(new Error("boom-close")),
     });

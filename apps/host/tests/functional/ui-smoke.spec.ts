@@ -50,26 +50,38 @@ test.describe("Shell UI smoke", () => {
     await expect(page).toHaveURL(/\/\/browse\./);
   });
 
-  test("As a user, the prerendered shell is hydrated in place and its login button opens the QR modal", async ({
+  test("As a user, the prerendered shell's islands swap in over it without errors, and its login button opens the QR modal", async ({
     page,
   }) => {
     // Given
-    const consoleMessages: string[] = [];
+    const problems: string[] = [];
     page.on("console", (message) => {
-      consoleMessages.push(message.text());
+      if (message.type() === "error" || message.type() === "warning") {
+        problems.push(message.text());
+      }
+    });
+    page.on("pageerror", (err) => {
+      problems.push(err.message);
     });
 
     // When
     await page.goto(LANDING_URL);
 
-    // Then
-    // Set by hydrateShell() only when Solid claimed every prerendered node;
-    // a mismatch restores the prerendered markup and sets "fallback" instead.
-    await expect(page.locator("#shell")).toHaveAttribute(
-      "data-hydrated",
-      "shell",
+    // Then: the islands chunk replaced the static markup. The static theme
+    // button is titled "Theme"; only the live island names the preference,
+    // and only the live More button announces its menu.
+    await expect(page.locator("#theme-toggle")).toHaveAttribute(
+      "title",
+      /^Theme: /,
     );
-    expect(consoleMessages.filter((text) => /hydrat/i.test(text))).toEqual([]);
+    await expect(page.locator("#more-button")).toHaveAttribute(
+      "aria-haspopup",
+      "menu",
+    );
+    await expect(page.locator("#theme-toggle")).toHaveCount(1);
+    expect(
+      problems.filter((text) => /solid|island|hydrat/i.test(text)),
+    ).toEqual([]);
 
     // When
     await page.locator("#auth-button").click();
@@ -184,6 +196,11 @@ test.describe("Shell UI smoke", () => {
     // Then
     await expect(page.locator("#topbar")).toBeAttached();
     await expect(page.locator("#auth-button")).toBeAttached();
+    // The islands' static markup, which no script replaced.
+    await expect(page.locator("#theme-toggle")).toHaveAttribute(
+      "title",
+      "Theme",
+    );
 
     await context.close();
   });

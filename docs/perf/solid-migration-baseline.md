@@ -1056,3 +1056,28 @@ pre-migration 74,649 B, i.e. 110,489 B. HEAD is at +14,526 B, leaving
 Functional suite (`bun run test:functional`, including `ui-smoke` and
 `host-settings`): 71 passed, 2 skipped, 0 failed. Cold start was not re-run,
 because this change does no startup work.
+
+## After dropping shell hydration (architecture review F1)
+
+The prerendered shell is no longer hydrated: it stays the static HTML
+`index.html` paints, and the lazy islands chunk swaps its reactive pieces in
+by id as before. Client code compiles non-hydratable
+(`solid({ ssr: true, solid: { hydratable: false } })`; the ssr environment
+keeps Solid's server codegen for the build-time prerender only). The hydration
+code (`hydrateShell`, `hydrateRoot`, the hydration boundary,
+`render-hydratable`, the `_$HY` shim, the posture guard) and the
+strip-client-templates plugin are gone, and Solid has left the startup path:
+no eager chunk imports it. The prerendered shell markup is byte-identical to
+before apart from the 7 `_hk` hydration keys on its top-level elements. Both
+builds use `VITE_NETWORKS=paseo-next-v2,previewnet`.
+
+| Measurement                     | `9b9d8bfd` | F1 |              Δ |
+|---------------------------------|-----------:|---:|---------------:|
+| Host startup, eager path (gzip) |   89,560 B | 67,132 B | **-22,428 B** |
+| Solid chunk (`root-*`, gzip)    | 22,195 B (eager) | 17,768 B (lazy) | -4,427 B |
+| Islands chunk (lazy, gzip)      |   18,672 B | 18,316 B |         -356 B |
+
+Startup is now 7,517 B below the pre-migration 74,649 B. A first visit still
+downloads Solid, but after boot, in parallel with the islands chunk.
+
+Functional suite (`bun run test:functional`): 71 passed, 2 skipped, 0 failed.
