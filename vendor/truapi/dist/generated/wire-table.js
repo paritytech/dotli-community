@@ -425,27 +425,27 @@ export const WORKER_END_OPERATION = {
     kind: "request",
 };
 export const PROFILE_PRESENT = {
-    trait: 22,
+    trait: 69,
     method: 0,
     kind: "request",
 };
 export const PROFILE_DISCLOSE = {
-    trait: 22,
+    trait: 69,
     method: 1,
     kind: "request",
 };
 export const PROFILE_RETRACT = {
-    trait: 22,
+    trait: 69,
     method: 2,
     kind: "request",
 };
 export const PROFILE_PRESENT_CONTACT = {
-    trait: 22,
+    trait: 69,
     method: 3,
     kind: "request",
 };
 export const PROFILE_PLACE_CONTACT_AVATARS = {
-    trait: 22,
+    trait: 69,
     method: 4,
     kind: "request",
 };

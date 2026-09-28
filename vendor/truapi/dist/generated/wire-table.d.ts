@@ -414,27 +414,27 @@ export declare const WORKER_END_OPERATION: {
     readonly kind: "request";
 };
 export declare const PROFILE_PRESENT: {
-    readonly trait: 22;
+    readonly trait: 69;
     readonly method: 0;
     readonly kind: "request";
 };
 export declare const PROFILE_DISCLOSE: {
-    readonly trait: 22;
+    readonly trait: 69;
     readonly method: 1;
     readonly kind: "request";
 };
 export declare const PROFILE_RETRACT: {
-    readonly trait: 22;
+    readonly trait: 69;
     readonly method: 2;
     readonly kind: "request";
 };
 export declare const PROFILE_PRESENT_CONTACT: {
-    readonly trait: 22;
+    readonly trait: 69;
     readonly method: 3;
     readonly kind: "request";
 };
 export declare const PROFILE_PLACE_CONTACT_AVATARS: {
-    readonly trait: 22;
+    readonly trait: 69;
     readonly method: 4;
     readonly kind: "request";
 };
