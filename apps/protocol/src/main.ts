@@ -115,6 +115,11 @@ import {
   isSharedWalletOperation,
   isSharedWalletState,
 } from "@dotli/protocol/wallet-storage";
+import {
+  createWalletOwner,
+  isWalletOwnerOperation,
+  type WalletOwner,
+} from "@dotli/protocol/wallet-owner";
 import { PROTOCOL_APP_ERRORS } from "./errors";
 
 initSentry("host");
@@ -354,6 +359,7 @@ function bindSharedWalletListener(): void {
     return;
   }
   const channel = new BroadcastChannel("dotli:shared-wallet");
+  const walletOwner = createPageWalletOwner();
   channel.addEventListener("message", (event: MessageEvent) => {
     const data: unknown = event.data;
     if (
@@ -388,7 +394,7 @@ function bindSharedWalletListener(): void {
     if (
       !isProtocolEnvelope(request) ||
       request.kind !== "request" ||
-      request.method !== "walletStorage"
+      (request.method !== "walletStorage" && request.method !== "walletOwner")
     ) {
       return;
     }
@@ -405,12 +411,31 @@ function bindSharedWalletListener(): void {
         typeof payload !== "object" ||
         payload === null ||
         !("siteId" in payload) ||
-        !("operation" in payload) ||
-        !isSharedWalletOperation(payload.operation)
+        !("operation" in payload)
       ) {
         throw new Error("Invalid wallet operation");
       }
       assertSharedAuthSiteId(payload.siteId);
+      if (request.method === "walletOwner") {
+        if (!isWalletOwnerOperation(payload.operation)) {
+          throw new Error("Invalid wallet owner operation");
+        }
+        const lease = await walletOwner.handle(
+          payload.operation,
+          request.deadlineMs,
+        );
+        postToSource(event.source, event.origin, {
+          namespace: "dotli:protocol",
+          kind: "response",
+          id: request.id,
+          ok: true,
+          result: lease,
+        });
+        return;
+      }
+      if (!isSharedWalletOperation(payload.operation)) {
+        throw new Error("Invalid wallet operation");
+      }
       const result = await handleWalletOperation(
         payload.operation,
         (state) => {
@@ -452,6 +477,47 @@ function bindSharedWalletListener(): void {
       });
     });
   });
+}
+
+// One tab of the profile runs the test wallet. The lease lives here, on the
+// host origin every app page shares, and ends when this page goes away.
+function createPageWalletOwner(): WalletOwner {
+  if (typeof navigator.locks === "undefined") {
+    // No Web Locks: keep the old behaviour rather than lock the wallet out.
+    return {
+      handle: (operation) =>
+        Promise.resolve(
+          operation.action === "acquire" ? "unlocked" : undefined,
+        ),
+      onRevoked: () => undefined,
+      releaseAll: () => undefined,
+    };
+  }
+  const owner = createWalletOwner({
+    locks: navigator.locks,
+    channel: new BroadcastChannel("dotli:test-wallet-owner"),
+    randomId: () => crypto.randomUUID(),
+  });
+  owner.onRevoked((lease) => {
+    if (parentOrigin === null || window.parent === window) {
+      void owner.handle({ action: "release", lease });
+      return;
+    }
+    // The page stops its wallet workers, then releases the lease itself.
+    window.parent.postMessage(
+      {
+        namespace: "dotli:protocol",
+        kind: "wallet-owner-revoked",
+        siteId: SITE_ID,
+        lease,
+      },
+      parentOrigin,
+    );
+  });
+  window.addEventListener("pagehide", () => {
+    owner.releaseAll();
+  });
+  return owner;
 }
 
 function signalReady(): void {
@@ -772,7 +838,8 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     if (
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
-      data.method === "walletStorage"
+      data.method === "walletStorage" ||
+      data.method === "walletOwner"
     ) {
       return;
     }
@@ -1051,7 +1118,8 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
     if (
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
-      data.method === "walletStorage"
+      data.method === "walletStorage" ||
+      data.method === "walletOwner"
     ) {
       return;
     }
@@ -1370,7 +1438,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     if (
       isSharedAuthRequestMethod(request.method) ||
       isSharedModeRequestMethod(request.method) ||
-      request.method === "walletStorage"
+      request.method === "walletStorage" ||
+      request.method === "walletOwner"
     ) {
       throw new Error(
         `Shared storage request reached the chain engine: ${request.method}`,

@@ -12,6 +12,7 @@ import type {
   SharedWalletOperation,
   SharedWalletState,
 } from "./wallet-storage";
+import type { WalletOwnerOperation } from "./wallet-owner";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -34,6 +35,7 @@ export interface ProtocolRequestMap {
   modeStorageWrite: { siteId: string; key: string; value: string };
   modeStorageClear: { siteId: string; key: string };
   walletStorage: { siteId: string; operation: SharedWalletOperation };
+  walletOwner: { siteId: string; operation: WalletOwnerOperation };
   chainConnect: { genesisHash: string; connectionId: string };
   chainSend: { connectionId: string; message: string };
   chainDisconnect: { connectionId: string };
@@ -246,6 +248,14 @@ export interface ProtocolWalletStorageChangedEnvelope {
   state: SharedWalletState;
 }
 
+/** Another tab asked for the test wallet; stop it, then release the lease. */
+export interface ProtocolWalletOwnerRevokedEnvelope {
+  namespace: "dotli:protocol";
+  kind: "wallet-owner-revoked";
+  siteId: string;
+  lease: string;
+}
+
 export type ProtocolEnvelope =
   | ProtocolRequestEnvelope
   | ProtocolProgressEnvelope
@@ -261,7 +271,8 @@ export type ProtocolEnvelope =
   | ProtocolChainDetailEnvelope
   | ProtocolNetBytesEnvelope
   | ProtocolAuthStorageChangedEnvelope
-  | ProtocolWalletStorageChangedEnvelope;
+  | ProtocolWalletStorageChangedEnvelope
+  | ProtocolWalletOwnerRevokedEnvelope;
 
 const VALID_KINDS = new Set([
   "request",
@@ -278,6 +289,7 @@ const VALID_KINDS = new Set([
   "net-bytes",
   "auth-storage-changed",
   "wallet-storage-changed",
+  "wallet-owner-revoked",
 ]);
 
 // postMessage data is untrusted and the envelope type alone cannot reject a

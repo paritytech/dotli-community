@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "11e5fe21ba1c8220";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "03ed2f7272b4248c";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;

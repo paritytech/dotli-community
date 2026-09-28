@@ -549,6 +549,7 @@ async function handleRequest(
     }
 
     case "walletStorage":
+    case "walletOwner":
       throw new Error(
         "Wallet storage is only available through the trusted protocol iframe",
       );

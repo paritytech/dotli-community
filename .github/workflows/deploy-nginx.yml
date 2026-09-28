@@ -1,0 +1,72 @@
+name: Deploy nginx
+
+# Renders nginx/nginx.conf.template for one environment and installs it, plus
+# nginx/snippets/, on that environment's box via `make deploy-nginx`.
+#
+# Approval comes from the target environment's own protection rules. The config
+# is taken from the ref the workflow is dispatched on, so each environment's
+# deployment branch policy also applies (paseo.li only accepts release tags,
+# paseoli.dev only main). Snippets are shared by every site on a
+# box, so a deploy to one environment reloads them for its neighbours too.
+
+run-name: Deploy nginx to ${{ inputs.environment }} from ${{ github.ref_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Environment to deploy the nginx config to"
+        required: true
+        type: choice
+        options:
+          - paseoli.dev
+          - paseo.fyi
+          - testnet.li
+          - paseo.li
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-nginx-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy nginx to ${{ inputs.environment }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # GitHub environments are named by domain; the Makefile keys envs by tag.
+      - name: Resolve Makefile ENV
+        id: env
+        env:
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+          case "$ENVIRONMENT" in
+            paseo.li) TAG=paseo ;;
+            paseoli.dev) TAG=dev-paseo ;;
+            paseo.fyi) TAG=fyi-paseo ;;
+            testnet.li) TAG=dev-test ;;
+            *) echo "::error::No Makefile ENV for $ENVIRONMENT"; exit 1 ;;
+          esac
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - uses: webfactory/ssh-agent@e83874834305fe9a4a2997156cb26c5de65a8555 # v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - run: ssh-keyscan "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+
+      - name: Deploy nginx config
+        run: make deploy-nginx ENV="$ENV_TAG" REMOTE="$DEPLOY_USER@$DEPLOY_HOST"
+        env:
+          ENV_TAG: ${{ steps.env.outputs.tag }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}

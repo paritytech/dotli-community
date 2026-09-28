@@ -109,6 +109,8 @@ export interface InspectorIdentity {
   liteUsername?: string;
   fullUsername?: string;
   publicKey?: string;
+  /** The username (or its absence) was read from chain in this session. */
+  usernameVerified?: boolean;
 }
 
 export interface InspectorResource {
@@ -739,7 +741,7 @@ function installExperimentalWalletControls(
   scope.textContent =
     "English BIP-39: 12, 15, 18, 21 or 24 words. No passphrase or custom derivation path. " +
     "Uses native Polkadot host/Substrate account derivation, not Bitcoin/Ethereum seed derivation. " +
-    "Restores keys, not permissions. Check username after import. Keep the phrase private; anyone with it controls the wallet.";
+    "Restores keys, not permissions. The username is looked up automatically after import. Keep the phrase private; anyone with it controls the wallet.";
   const importButton = document.createElement("button");
   importButton.type = "button";
   importButton.className = "td-btn";
@@ -1104,6 +1106,25 @@ function installExperimentalWalletControls(
           title: "Username not checked",
           detail: "",
         };
+      }
+      // The host already read the username from chain while connecting, so
+      // report that result rather than asking for a manual check.
+      if (
+        usernameStatus.kind === "unknown" &&
+        currentIdentity.usernameVerified === true
+      ) {
+        usernameStatus =
+          (currentIdentity.liteUsername ?? "") !== ""
+            ? {
+                kind: "claimed",
+                title: currentIdentity.liteUsername ?? "",
+                detail: "Ownership confirmed",
+              }
+            : {
+                kind: "unclaimed",
+                title: "No username registered",
+                detail: "Checked on this network.",
+              };
       }
     } catch (error) {
       if (!disposed && generation === identityReadGeneration) {

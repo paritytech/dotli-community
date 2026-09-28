@@ -108,6 +108,11 @@ import {
 } from "./chat/service";
 import { showNotification } from "./notification";
 import { ERRORS } from "./errors";
+import {
+  requestWalletOwner,
+  subscribeWalletOwnerRevoked,
+} from "@dotli/protocol/client";
+import { WALLET_OWNER_REVOKED_EVENT } from "@dotli/protocol/wallet-owner";
 
 const noop = (): void => undefined;
 
@@ -264,6 +269,8 @@ interface LiveLocalWallet {
   runtime: WorkerSigningHostRuntime;
   binding: LocalWalletIdentityBinding;
   identity: LocalIdentity;
+  /** Whether `identity`'s username came from a chain read in this session. */
+  usernameVerified: boolean;
   nativeSessionUiInfo?: { publicKey?: string; fullUsername?: string };
 }
 
@@ -278,6 +285,39 @@ function disposeWalletRuntimes(): void {
   for (const dispose of [...localRuntimeDisposers]) {
     dispose();
   }
+}
+
+// One tab of the profile runs the test wallet. Every wallet core this page
+// starts shares one lease, acquired before the first one starts.
+let walletOwnerLease: Promise<string | undefined> | undefined;
+let walletOwnerRevocationBound = false;
+
+async function ensureWalletOwner(): Promise<void> {
+  if (!walletOwnerRevocationBound) {
+    walletOwnerRevocationBound = true;
+    subscribeWalletOwnerRevoked(yieldWalletOwner);
+  }
+  walletOwnerLease ??= requestWalletOwner({ action: "acquire" }).catch(
+    (error: unknown) => {
+      walletOwnerLease = undefined;
+      throw error;
+    },
+  );
+  await walletOwnerLease;
+}
+
+// Another tab asked for the wallet: stop this page's cores first, then release,
+// so the two tabs never run the wallet at the same time.
+function yieldWalletOwner(lease: string): void {
+  walletOwnerLease = undefined;
+  if (
+    isExperimentalWalletActive() &&
+    (liveLocalWallets.size > 0 || localRuntimeDisposers.size > 0)
+  ) {
+    disposeWalletRuntimes();
+    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
+  }
+  void requestWalletOwner({ action: "release", lease }).catch(noop);
 }
 const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
 const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
@@ -370,6 +410,7 @@ async function updateLocalIdentity(
         throw new Error("Test wallet changed while confirming its username.");
       }
       wallet.identity = identity;
+      wallet.usernameVerified = true;
       if (baseUsername !== undefined && identity.liteUsername !== undefined) {
         showNotification({
           text: `${identity.liteUsername} is confirmed on-chain and ready to use.`,
@@ -419,6 +460,7 @@ async function updateLocalIdentity(
               );
             }
             entry.identity = refreshed;
+            entry.usernameVerified = true;
           }),
       );
       if (!isCurrentLocalWallet(wallet.binding)) {
@@ -796,12 +838,14 @@ export const experimentalWalletControls = {
       network: string;
       publicKey?: string;
       fullUsername?: string;
+      usernameVerified: boolean;
     }
   > {
     const wallet = await activeLocalWallet();
     assertInspectorWallet(wallet);
     return {
       ...wallet.identity,
+      usernameVerified: wallet.usernameVerified,
       ...wallet.nativeSessionUiInfo,
       network: getActiveServicesConfig().label,
     };
@@ -2111,6 +2155,10 @@ async function createCoreProvider(
       }
     };
     if (localContext !== undefined) {
+      await ensureWalletOwner();
+      if (isRuntimeDisposed()) {
+        throw new Error("Wallet host closed while taking the test wallet");
+      }
       const secret = await readLocalWalletSecret();
       if (secret === undefined) {
         throw new Error(
@@ -2165,6 +2213,7 @@ async function createCoreProvider(
           if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
             throw new Error("Test wallet changed during username restoration.");
           }
+          let usernameVerified = false;
           if (usernameHint !== undefined) {
             // Neither disk hints nor another runtime's session prove this
             // product's native identity. Verify without resetting its grants.
@@ -2174,6 +2223,31 @@ async function createCoreProvider(
             ) {
               throw new Error(
                 "Restored username did not match the active wallet.",
+              );
+            }
+            usernameVerified = true;
+          } else if (owner === undefined) {
+            // No username is known. A cached absence is not trusted: the
+            // identity is keyed by account, so it outlives re-imports and misses
+            // a claim made in another browser. Look it up, as a known username
+            // is re-verified above. A failed lookup is not evidence of absence
+            // and must not block the wallet; the next load or Check username
+            // retries.
+            try {
+              const lookedUp = await signing.refreshLocalIdentity();
+              if (
+                lookedUp.identityAccountId === binding.identityAccountId &&
+                !isRuntimeDisposed() &&
+                isCurrentLocalWallet(binding)
+              ) {
+                activatedIdentity = lookedUp;
+                usernameVerified = true;
+                await writeVerifiedLocalIdentity(binding, lookedUp);
+              }
+            } catch (error) {
+              log.warn(
+                "[dot.li] automatic test-wallet username lookup failed:",
+                error,
               );
             }
           }
@@ -2188,6 +2262,7 @@ async function createCoreProvider(
             runtime: signing,
             binding,
             identity: activatedIdentity,
+            usernameVerified,
             nativeSessionUiInfo,
           };
           liveLocalWallets.set(signing, liveWallet);
