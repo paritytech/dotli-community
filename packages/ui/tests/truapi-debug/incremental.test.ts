@@ -7,6 +7,8 @@
 // costing work proportional to what changed, not to what is retained.
 
 import { describe, expect, it } from "vitest";
+import { createRenderEffect, createRoot, flush } from "solid-js";
+import { createKeyedSignals } from "@dotli/ui/components/truapi-debug/keyed-signals";
 import {
   EventStore,
   firstNewIndex,
@@ -191,5 +193,47 @@ describe("createResolutionRecorder()", () => {
     expect(recorder.version()).toBe(v0 + 1);
     recorder.clear();
     expect(recorder.version()).toBe(v0 + 2);
+  });
+});
+
+describe("createKeyedSignals()", () => {
+  it("re-runs only the readers of a written key, and releases a key when its readers go", () => {
+    const map = createKeyedSignals<string, number>();
+    map.write("a", 1);
+    const runs = { a: 0, b: 0 };
+    const seen: (number | undefined)[] = [];
+    const dispose = createRoot((d) => {
+      createRenderEffect(
+        () => {
+          runs.a++;
+          return map.read("a");
+        },
+        (v) => {
+          seen.push(v);
+        },
+      );
+      createRenderEffect(
+        () => {
+          runs.b++;
+          return map.read("b");
+        },
+        () => undefined,
+      );
+      return d;
+    });
+    flush();
+    expect([...map.subscribedKeys()].sort()).toEqual(["a", "b"]);
+
+    map.write("a", 2);
+    map.write("a", 2);
+    flush();
+    expect(runs).toEqual({ a: 2, b: 1 });
+    expect(seen).toEqual([1, 2]);
+
+    dispose();
+    expect([...map.subscribedKeys()]).toEqual([]);
+    map.write("b", 5);
+    expect(map.read("b")).toBe(5);
+    expect([...map.keys()].sort()).toEqual(["a", "b"]);
   });
 });

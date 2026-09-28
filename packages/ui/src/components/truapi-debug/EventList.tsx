@@ -11,7 +11,6 @@
 
 import {
   createEffect,
-  createProjection,
   createSignal,
   flush,
   For,
@@ -39,6 +38,7 @@ import {
   systemRowData,
   truapiRowData,
 } from "@dotli/truapi-debug/row-format";
+import { createKeyedSignals, type KeyedSignals } from "./keyed-signals";
 
 /** A pending badge counts up with the clock rather than with traffic, and a
  *  host that has stalled is precisely one that has stopped emitting events,
@@ -52,20 +52,19 @@ export interface Selection {
 }
 
 /**
- * Per-row reactive inputs, shared by every row. Both are keyed stores, so a
- * row subscribes to its own entry only: a click, an arrow key or a pending
+ * Per-row reactive inputs, shared by every row. Each is a map of per-key
+ * signals, so a row subscribes to its own entries only: a click, an arrow key or a pending
  * call's clock re-runs the rows it changes, never all 2000 (one signal read
  * by every row is a HUGE_FAN_OUT at capacity).
  */
 interface RowContext {
-  /** The selected event by seq, and its group by correlation key. */
-  marks: {
-    seq: Record<EventSeq, true | undefined>;
-    key: Record<string, true | undefined>;
-  };
+  /** The selected event, by seq. */
+  selectedSeq: KeyedSignals<EventSeq, true>;
+  /** The selected event's group, by correlation key. */
+  selectedKey: KeyedSignals<string, true>;
   /** How long each call still waiting on a reply has waited, in ms, by
    *  pending key. Absent once the reply lands. */
-  waiting: Record<string, number | undefined>;
+  waiting: KeyedSignals<string, number>;
 }
 
 export function EventList(props: {
@@ -85,28 +84,35 @@ export function EventList(props: {
 }): JSX.Element {
   let list: HTMLDivElement | undefined;
 
-  const marks = createProjection<RowContext["marks"]>(
-    (draft) => {
-      const selection = props.selection;
-      // Only the entries that flip are written, so only their rows re-run.
-      for (const seq of Object.keys(draft.seq)) {
-        if (Number(seq) !== selection?.seq) {
-          Reflect.deleteProperty(draft.seq, seq);
+  // Writes happen in effect functions, never in a compute. Only the entries
+  // that flip are written, so only their rows re-run.
+  const selectedSeq = createKeyedSignals<EventSeq, true>();
+  const selectedKey = createKeyedSignals<string, true>();
+  let shownSelection: Selection | null = null;
+  createEffect(
+    () => props.selection,
+    (selection) => {
+      const prev = shownSelection;
+      shownSelection = selection;
+      if (prev?.seq !== selection?.seq) {
+        if (prev !== null) {
+          selectedSeq.write(prev.seq, undefined);
+        }
+        if (selection !== null) {
+          selectedSeq.write(selection.seq, true);
         }
       }
-      for (const key of Object.keys(draft.key)) {
-        if (key !== selection?.key) {
-          Reflect.deleteProperty(draft.key, key);
+      const prevKey = prev?.key ?? null;
+      const nextKey = selection?.key ?? null;
+      if (prevKey !== nextKey) {
+        if (prevKey !== null) {
+          selectedKey.write(prevKey, undefined);
         }
-      }
-      if (selection !== null) {
-        draft.seq[selection.seq] = true;
-        if (selection.key !== null) {
-          draft.key[selection.key] = true;
+        if (nextKey !== null) {
+          selectedKey.write(nextKey, true);
         }
       }
     },
-    { seq: {}, key: {} },
   );
 
   // The badge clock. Ticks only while the rows are on screen, and renders
@@ -132,42 +138,48 @@ export function EventList(props: {
 
   // Traffic writes only the calls it opened or closed; the tick, or coming
   // back on screen, rewrites every badge once.
+  const waiting = createKeyedSignals<string, number>();
   let clockAt = 0;
   let wasLive = false;
-  const waiting = createProjection<RowContext["waiting"]>((draft) => {
-    if (!props.active || props.collapsed) {
-      wasLive = false;
-      return;
-    }
-    tracker.update(props.allEvents);
-    const tick = tickedAt();
-    // The latest clock reading: the refresh that brought the rows, or the tick.
-    const now = Math.max(props.refreshedAt, tick);
-    const open = tracker.open;
-    if (!wasLive || tick !== clockAt) {
-      wasLive = true;
-      clockAt = tick;
-      for (const key of Object.keys(draft)) {
-        if (!open.has(key)) {
-          Reflect.deleteProperty(draft, key);
+  createEffect(
+    () =>
+      props.active && !props.collapsed
+        ? {
+            events: props.allEvents,
+            // The latest clock reading: the refresh that brought the rows,
+            // or the tick.
+            tick: tickedAt(),
+            now: Math.max(props.refreshedAt, tickedAt()),
+          }
+        : null,
+    (input) => {
+      if (input === null) {
+        wasLive = false;
+        return;
+      }
+      tracker.update(input.events);
+      const open = tracker.open;
+      if (!wasLive || input.tick !== clockAt) {
+        wasLive = true;
+        clockAt = input.tick;
+        for (const key of [...waiting.keys()]) {
+          if (!open.has(key)) {
+            waiting.write(key, undefined);
+          }
         }
+        for (const [key, since] of open) {
+          waiting.write(key, input.now - since);
+        }
+        return;
       }
-      for (const [key, since] of open) {
-        draft[key] = now - since;
+      for (const key of tracker.changedKeys) {
+        const since = open.get(key);
+        waiting.write(key, since === undefined ? undefined : input.now - since);
       }
-      return;
-    }
-    for (const key of tracker.changedKeys) {
-      const since = open.get(key);
-      if (since === undefined) {
-        Reflect.deleteProperty(draft, key);
-      } else {
-        draft[key] = now - since;
-      }
-    }
-  }, {});
+    },
+  );
 
-  const ctx: RowContext = { marks, waiting };
+  const ctx: RowContext = { selectedSeq, selectedKey, waiting };
 
   const rowFor = (seq: EventSeq): HTMLElement | null =>
     list?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`) ??
@@ -260,8 +272,8 @@ function renderRow(
       : null;
 
   const rowClass = (): string => {
-    const isSelected = ctx.marks.seq[ev.seq] === true;
-    const isPaired = !isSelected && ctx.marks.key[key] === true;
+    const isSelected = ctx.selectedSeq.read(ev.seq) === true;
+    const isPaired = !isSelected && ctx.selectedKey.read(key) === true;
     return rowClassName(isSelected, isPaired, ev.kind === "system");
   };
 
@@ -306,7 +318,7 @@ function TruapiCells(props: {
   const pendingKey = data.pendingKey;
   /** Reads this row's own entry only. */
   const waiting = (): number | undefined =>
-    pendingKey === null ? undefined : ctx.waiting[pendingKey];
+    pendingKey === null ? undefined : ctx.waiting.read(pendingKey);
 
   return (
     <>

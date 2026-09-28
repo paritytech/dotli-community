@@ -85,6 +85,28 @@ vi.mock("@dotli/truapi-debug/resolution-view", async (importOriginal) => {
   };
 });
 
+/** Every keyed-signal map the list creates, in creation order. */
+const keyedMaps = vi.hoisted(
+  () => [] as { subscribedKeys: () => IterableIterator<unknown> }[],
+);
+vi.mock(
+  "@dotli/ui/components/truapi-debug/keyed-signals",
+  async (importOriginal) => {
+    const real =
+      await importOriginal<
+        typeof import("@dotli/ui/components/truapi-debug/keyed-signals")
+      >();
+    return {
+      ...real,
+      createKeyedSignals: () => {
+        const map = real.createKeyedSignals();
+        keyedMaps.push(map);
+        return map;
+      },
+    };
+  },
+);
+
 type Bus = typeof import("@dotli/truapi-debug/dotli-debug-bus");
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
 type PanelModule = typeof import("@dotli/ui/components/truapi-debug/mount");
@@ -121,6 +143,7 @@ beforeEach(async () => {
   bus.enableDotliDebugBuffering();
   warn = vi.spyOn(console, "warn");
   resetCalls();
+  keyedMaps.length = 0;
 });
 
 afterEach(() => {
@@ -705,5 +728,34 @@ describe("truapi debug panel work: pointer moves", () => {
     expect(textWrites).toBe(0);
     expect(tooltip.style.left).toBe("47px");
     expect(tooltip.textContent).toBe(box.getAttribute("data-tooltip"));
+  });
+});
+
+describe("truapi debug panel work: keyed row state", () => {
+  it("As a dotli developer, evicted rows release their per-row selection and badge entries", () => {
+    // Given
+    mount({ capacity: 10 });
+    for (let i = 0; i < 10; i++) {
+      truapi("host_sign_request", `old${String(i)}`);
+    }
+    frame();
+    click(rows()[0]);
+    const subscribed = (): string[] =>
+      keyedMaps.flatMap((map) => [...map.subscribedKeys()].map(String));
+    expect(subscribed().some((k) => k.includes("old"))).toBe(true);
+
+    // When ten new requests evict every row
+    for (let i = 0; i < 10; i++) {
+      truapi("host_sign_request", `new${String(i)}`);
+    }
+    frame();
+
+    // Then only the current rows hold entries: a seq, a group key and a
+    // pending key each
+    const seqs = rows().map((r) => r.dataset.seq ?? "");
+    const keys = subscribed();
+    expect(keys.filter((k) => k.includes("old"))).toEqual([]);
+    expect(keys).toHaveLength(30);
+    expect(seqs.every((seq) => keys.includes(seq))).toBe(true);
   });
 });
