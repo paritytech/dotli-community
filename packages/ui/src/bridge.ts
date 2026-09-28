@@ -92,6 +92,7 @@ import {
   importLocalWalletMnemonic,
   isExperimentalWalletActive,
   initializeLocalWalletState,
+  isLocalWalletStoredInOtherApp,
   setLocalWalletEnabled,
   onVerifiedLocalIdentityChanged,
   localWalletContext,
@@ -794,6 +795,15 @@ export const experimentalWalletControls = {
     return display === undefined
       ? undefined
       : { ...display, network: getActiveServicesConfig().label };
+  },
+  async storedInOtherApp(): Promise<boolean> {
+    try {
+      await initializeLocalWalletState();
+    } catch (error) {
+      log.warn("[dot.li] Shared wallet state unavailable:", error);
+      return false;
+    }
+    return isLocalWalletStoredInOtherApp();
   },
   async getIdentity(): Promise<
     LocalIdentity & {

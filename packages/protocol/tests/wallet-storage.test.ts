@@ -46,10 +46,54 @@ beforeEach(() => {
   vi.stubGlobal("indexedDB", new IDBFactory());
   vi.stubGlobal("navigator", { locks: exclusiveLocks() });
   vi.stubGlobal("crypto", webcrypto);
+  const items = new Map<string, string>();
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => items.get(key) ?? null,
+    setItem: (key: string, value: string) => items.set(key, value),
+    removeItem: (key: string) => items.delete(key),
+  });
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("browsers that keep the wallet store per app", () => {
+  it("tells an app with no wallet that another app holds one", async () => {
+    expect((await operate({ action: "state" })).state.storedInOtherApp).toBe(
+      false,
+    );
+    const created = await operate({ action: "create", expectedVersion: 0 });
+    expect(created.state.storedInOtherApp).toBe(false);
+
+    // Safari: another app's frame gets its own IndexedDB but the same localStorage.
+    vi.stubGlobal("indexedDB", new IDBFactory());
+    const other = await operate({ action: "state" });
+    expect(other.state).toMatchObject({
+      hasWallet: false,
+      storedInOtherApp: true,
+    });
+
+    const imported = await operate({
+      action: "import",
+      expectedVersion: other.state.version,
+      secret: entropy(3),
+    });
+    expect(imported.state.storedInOtherApp).toBe(false);
+  });
+
+  it("does not report another app's wallet after deleting the shared one", async () => {
+    const created = await operate({ action: "create", expectedVersion: 0 });
+    const deleted = await operate({
+      action: "delete",
+      expectedVersion: created.state.version,
+    });
+
+    expect(deleted.state).toMatchObject({
+      hasWallet: false,
+      storedInOtherApp: false,
+    });
+  });
 });
 
 describe("shared wallet custody", () => {
