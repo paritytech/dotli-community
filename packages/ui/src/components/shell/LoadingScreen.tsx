@@ -1,13 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, onCleanup } from "solid-js";
+import { createMemo } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { loadingStore } from "../../state/loading";
 import { useStore } from "../use-store";
-
-/** One turn of the petal spinner, as the inline script in index.html runs it. */
-const SPIN_CYCLE_MS = 1_400;
 
 /**
  * The loading screen (`#app-loading`), an island (see islands.tsx) swapped in
@@ -15,9 +12,7 @@ const SPIN_CYCLE_MS = 1_400;
  * markup. It renders the loading store, which loading-controller.ts writes,
  * so progress made before the swap shows straight away. It fades while the
  * screen is dismissed. Removing it is the `"loading"` app root's job.
- *
- * The petals cycle the way the inline spinner cycled the static ones, which
- * stops at the swap, and stay still for a visitor who prefers reduced motion.
+ * The petals cycle in CSS (styles/base.css).
  */
 export function LoadingScreen(): JSX.Element {
   // One selector per field, so a line is only written when it changes:
@@ -30,36 +25,6 @@ export function LoadingScreen(): JSX.Element {
   const srText = useStore(loadingStore, (s) => s.srText);
   const warning = useStore(loadingStore, (s) => s.warning);
   const dismissing = useStore(loadingStore, (s) => s.phase === "dismissing");
-
-  let frame: number | null = null;
-  onCleanup(() => {
-    if (frame !== null) {
-      cancelAnimationFrame(frame);
-      frame = null;
-    }
-  });
-  const spin = (svg: SVGSVGElement): void => {
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      return;
-    }
-    const petals = [...svg.querySelectorAll<SVGPathElement>(".loading-petal")];
-    let start: number | null = null;
-    const tick = (now: number): void => {
-      start ??= now;
-      const p = ((now - start) % SPIN_CYCLE_MS) / SPIN_CYCLE_MS;
-      for (const [i, petal] of petals.entries()) {
-        let dist = p - i / petals.length;
-        if (dist < 0) {
-          dist += 1;
-        }
-        const b = Math.max(0.15, Math.max(0, 1 - dist * 2.5) ** 2);
-        petal.style.opacity = String(b);
-        petal.style.transform = `scale(${String(0.92 + 0.08 * b)})`;
-      }
-      frame = requestAnimationFrame(tick);
-    };
-    frame = requestAnimationFrame(tick);
-  };
 
   return (
     <div
@@ -77,7 +42,6 @@ export function LoadingScreen(): JSX.Element {
     >
       <div class="loading-logo" id="loading-logo">
         <svg
-          ref={spin}
           width="120"
           height="120"
           viewBox="0 0 256 256"

@@ -365,26 +365,20 @@ describe("The loading controller drives the loading store", () => {
 
   it("As the shell, the static screen is the loading root from the moment the controller loads", async () => {
     // Given a controller that has started nothing
-    const stopSpinner = vi.fn();
-    window.__stopLoadingSpinner = stopSpinner;
     const screen = document.getElementById("app-loading");
     const roots = await import("@dotli/ui/mount/app-roots");
 
     // When whatever replaces the screen disposes the roots
     roots.disposeAppRoots();
 
-    // Then the spinner stopped and the static screen went with it
-    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    // Then the static screen went
     expect(screen?.isConnected).toBe(false);
     expect(store.getLoadingState().phase).toBe("gone");
     expect(vi.getTimerCount()).toBe(0);
-    delete window.__stopLoadingSpinner;
   });
 
   it("As the shell, starting the phases keeps the root the controller registered on load", async () => {
     // Given
-    const stopSpinner = vi.fn();
-    window.__stopLoadingSpinner = stopSpinner;
     const screen = document.getElementById("app-loading");
 
     // When
@@ -395,7 +389,6 @@ describe("The loading controller drives the loading store", () => {
 
     // Then the screen is still up and the load is running
     expect(screen?.isConnected).toBe(true);
-    expect(stopSpinner).not.toHaveBeenCalled();
     expect(store.getLoadingState().phase).toBe("active");
 
     // When
@@ -403,10 +396,8 @@ describe("The loading controller drives the loading store", () => {
     roots.disposeAppRoot("loading");
 
     // Then one root, disposed once
-    expect(stopSpinner).toHaveBeenCalledTimes(1);
     expect(screen?.isConnected).toBe(false);
     expect(vi.getTimerCount()).toBe(0);
-    delete window.__stopLoadingSpinner;
   });
 
   it("As the shell, a page without the static screen gets no loading root when the controller loads", async () => {
@@ -418,17 +409,13 @@ describe("The loading controller drives the loading store", () => {
       import("@dotli/ui/state/loading"),
       import("@dotli/ui/mount/app-roots"),
     ]);
-    const stopSpinner = vi.fn();
-    window.__stopLoadingSpinner = stopSpinner;
 
     // When
     roots.disposeAppRoots();
 
     // Then nothing was registered to dispose
-    expect(stopSpinner).not.toHaveBeenCalled();
     expect(freshStore.getLoadingState().phase).toBe("active");
     expect(fresh.LOADING_STAGES).toContain("starting");
-    delete window.__stopLoadingSpinner;
   });
 
   it("As a visitor whose app loaded, the dismiss stops the headline rotation and the typing", () => {
@@ -479,10 +466,8 @@ describe("The loading controller drives the loading store", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("As the shell, disposing the loading root before the island mounts removes the static screen and stops its spinner", async () => {
+  it("As the shell, disposing the loading root before the island mounts removes the static screen", async () => {
     // Given
-    const stopSpinner = vi.fn();
-    window.__stopLoadingSpinner = stopSpinner;
     ctl.initPhases([
       { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
     ]);
@@ -494,8 +479,6 @@ describe("The loading controller drives the loading store", () => {
 
     // Then
     expect(screen?.isConnected).toBe(false);
-    expect(stopSpinner).toHaveBeenCalledTimes(1);
-    delete window.__stopLoadingSpinner;
   });
 
   it("As a visitor whose app loaded before the island mounted, the static screen goes after 300 ms", () => {

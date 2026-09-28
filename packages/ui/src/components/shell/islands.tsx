@@ -17,10 +17,7 @@
 
 import type { JSX } from "@solidjs/web";
 import { disposeRoot, mountRoot, reportRootErrorOnce } from "../../mount/root";
-import {
-  adoptLoadingScreen,
-  stopStaticSpinner,
-} from "../../loading-controller";
+import { adoptLoadingScreen } from "../../loading-controller";
 import { getLoadingState } from "../../state/loading";
 import { AuthButton } from "./AuthButton";
 import { AuthModal } from "./AuthModal";
@@ -92,7 +89,7 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * (reported by mountRoot) or an id is missing on either side (reported here
  * as `island_missing_node`), the static nodes stay and the island is
  * unmounted. Focus inside a static node moves into its replacement (see
- * carryFocus). `beforeSwap` runs once the swap is certain, right before it.
+ * carryFocus).
  *
  * An island that throws while rendering after it was swapped in cannot be
  * cleaned up by its error boundary: its nodes have left the container, and
@@ -108,7 +105,6 @@ function mountIsland(
   name: string,
   view: () => JSX.Element,
   ids: string[],
-  beforeSwap?: () => void,
   onLateFailure?: (name: string) => void,
 ): boolean {
   const container = document.createElement("div");
@@ -179,7 +175,6 @@ function mountIsland(
     }
     pairs.push([stale, fresh]);
   }
-  beforeSwap?.();
   const focused = document.activeElement;
   let refocus: [focused: Element, stale: Element, fresh: Element] | null = null;
   for (const [stale, fresh] of pairs) {
@@ -205,11 +200,10 @@ function mountIsolated(
   name: string,
   view: () => JSX.Element,
   ids: string[],
-  beforeSwap?: () => void,
   onLateFailure?: (name: string) => void,
 ): boolean {
   try {
-    return mountIsland(name, view, ids, beforeSwap, onLateFailure);
+    return mountIsland(name, view, ids, onLateFailure);
   } catch (err) {
     reportRootErrorOnce(err, `island:${name}`, { kind: "island_mount_error" });
     disposeRoot(`island:${name}`);
@@ -229,7 +223,7 @@ const LOADING_ID = "app-loading";
  * Skipped when there is no screen left to take over: the static one is gone
  * (an error page, a direct iframe render or the landing page replaced it) or
  * the loading root was already disposed. Returns false only when mounting
- * failed, which leaves the static screen and its inline spinner in place.
+ * failed, which leaves the static screen in place.
  */
 export function mountLoadingIsland(
   onLateFailure?: (name: string) => void,
@@ -242,8 +236,6 @@ export function mountLoadingIsland(
     "loading",
     () => <LoadingScreen />,
     [LOADING_ID],
-    // The inline script would otherwise keep animating the detached petals.
-    stopStaticSpinner,
     onLateFailure,
   );
   if (mounted) {
@@ -272,7 +264,7 @@ export function mountIslands(onLateFailure?: (name: string) => void): string[] {
     view: () => JSX.Element,
     ids: string[],
   ): void => {
-    if (!mountIsolated(name, view, ids, undefined, onLateFailure)) {
+    if (!mountIsolated(name, view, ids, onLateFailure)) {
       failed.push(name);
     }
   };

@@ -153,26 +153,19 @@ describe("The loading screen is a tracked app root", () => {
     ["an error page", (u: Ui) => u.showErrorPage({ title: "Failed" })],
     ["a no-content page", (u: Ui) => u.showNoContentError("nothing")],
   ])(
-    "As a visitor, %s shown before the load starts stops the static screen's spinner",
+    "As a visitor, %s shown before the load starts removes the static screen",
     (_name, show) => {
       // Given the static screen, with no phases started
-      const stopSpinner = vi.fn();
-      window.__stopLoadingSpinner = stopSpinner;
       const screen = document.getElementById("app-loading");
 
-      try {
-        // When
-        show(ui);
+      // When
+      show(ui);
 
-        // Then
-        expect(stopSpinner).toHaveBeenCalledTimes(1);
-        expect(screen?.isConnected).toBe(false);
-        expect(state.getLoadingState().phase).toBe("gone");
-        expect(vi.getTimerCount()).toBe(0);
-        expect(document.querySelector(".error-page-title")).not.toBeNull();
-      } finally {
-        delete window.__stopLoadingSpinner;
-      }
+      // Then
+      expect(screen?.isConnected).toBe(false);
+      expect(state.getLoadingState().phase).toBe("gone");
+      expect(vi.getTimerCount()).toBe(0);
+      expect(document.querySelector(".error-page-title")).not.toBeNull();
     },
   );
 

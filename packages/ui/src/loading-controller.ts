@@ -13,13 +13,6 @@ import { withActiveTld } from "@dotli/config/network";
 import { disposeAppRoot, registerAppRoot } from "./mount/app-roots";
 import { getLoadingState, updateLoading } from "./state/loading";
 
-declare global {
-  interface Window {
-    /** Set by the inline petal spinner in apps/host/index.html. */
-    __stopLoadingSpinner?: () => void;
-  }
-}
-
 // Phase-based loading indicator.
 //
 // Each phase owns a `[base, target]` band of the bar plus an `expectedMs`:
@@ -548,14 +541,8 @@ export function stopStatusTick(): void {
 /** True while the loading screen is registered as the `"loading"` app root. */
 let loadingRootLive = false;
 
-/** Stop the inline petal spinner that animates the static screen. */
-export function stopStaticSpinner(): void {
-  window.__stopLoadingSpinner?.();
-}
-
-/** The static screen apps/host/index.html paints, with its spinner. */
+/** The static screen apps/host/index.html paints. */
 function removeStaticScreen(): void {
-  stopStaticSpinner();
   document.getElementById("app-loading")?.remove();
 }
 
@@ -612,8 +599,7 @@ export function adoptLoadingScreen(dispose: () => void): void {
 // The static screen is live from first paint, so it is a root before any
 // timer starts. Whatever replaces it first (the landing page, a preview or
 // local-target frame, an error page shown before the phases start) then
-// stops its inline spinner and removes it, instead of leaving the spinner
-// animating detached petals for the life of the tab.
+// removes it.
 if (typeof document !== "undefined" && document.getElementById("app-loading")) {
   trackLoadingRoot();
 }

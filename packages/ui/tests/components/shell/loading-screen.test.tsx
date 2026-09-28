@@ -66,7 +66,6 @@ const FADE_MS = 300;
 let reducedMotion = false;
 let frames: Map<number, FrameRequestCallback>;
 let nextFrame = 0;
-let stopStaticSpinner: ReturnType<typeof vi.fn>;
 
 /** Run every animation frame requested so far, at `now`. */
 function runFrames(now: number): void {
@@ -143,8 +142,6 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) => {
     frames.delete(id);
   });
-  stopStaticSpinner = vi.fn();
-  window.__stopLoadingSpinner = stopStaticSpinner as () => void;
   app().innerHTML = staticLoadingMarkup();
   sentry.captureException.mockClear();
 });
@@ -155,7 +152,6 @@ afterEach(() => {
   ctl.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = "";
-  delete window.__stopLoadingSpinner;
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -352,8 +348,8 @@ describe("Loading screen island", () => {
     await settle();
     const screen = byId("app-loading");
     runFrames(100);
-    // The spinner's next frame and the typewriter's.
-    expect(frames.size).toBe(2);
+    // The typewriter's next frame.
+    expect(frames.size).toBe(1);
 
     // When
     showErrorPage({ title: "Failed" });
@@ -388,47 +384,92 @@ describe("Loading screen island", () => {
     expect(frames.size).toBe(0);
   });
 
-  it("As a visitor, the petals cycle once the island takes over, and stop when it is disposed", async () => {
-    // Given
+  it("As a visitor, the petals are animated by the stylesheet alone, with no frames or inline styles", async () => {
+    // When
     mountLoadingIsland();
     await settle();
-
-    // Then the inline spinner no longer drives the static petals
-    expect(stopStaticSpinner).toHaveBeenCalledTimes(1);
-
-    // When
-    runFrames(1_000);
-    runFrames(1_350);
-
-    // Then the petals light up in turn, on the inline spinner's curve: 350 ms
-    // into the 1400 ms cycle, petal 1 is lit and petal 0 is back at its floor.
-    const live = petals();
-    const lit = (1 - 2.5 * (0.25 - 1 / 6)) ** 2;
-    expect(Number(live[1].style.opacity)).toBeCloseTo(lit, 5);
-    expect(live[1].style.transform).toMatch(/^scale\(0\.97/);
-    expect(Number(live[0].style.opacity)).toBeCloseTo(0.15, 5);
-    expect(live[0].style.transform).toMatch(/^scale\(0\.93/);
-    expect(frames.size).toBe(1);
-
-    // When
-    disposeAppRoot("loading");
+    runFrames(100);
 
     // Then
+    expect(petals()).toHaveLength(6);
+    expect(petals().every((p) => !p.hasAttribute("style"))).toBe(true);
     expect(frames.size).toBe(0);
-    expect(live[0].isConnected).toBe(false);
   });
 
-  it("As a visitor who prefers reduced motion, the petals stay still", async () => {
-    // Given
-    reducedMotion = true;
+  it("As a visitor, the CSS petal cycle matches the old rAF spinner's curve, and stays still under reduced motion", () => {
+    // Given the rules in styles/base.css
+    const css = readFileSync(
+      resolve(import.meta.dirname, "../../../src/styles/base.css"),
+      "utf8",
+    );
+    const motion =
+      /@media \(prefers-reduced-motion: no-preference\) \{\s*\.loading-petal \{\s*animation: loading-petal ([\d.]+)s linear infinite;([\s\S]*?)\n\}/.exec(
+        css,
+      );
+    if (motion === null) {
+      throw new Error("no motion-gated .loading-petal animation");
+    }
+    const cycleMs = Number(motion[1]) * 1_000;
+    const delays = [0];
+    for (const [, nth, ms] of motion[2].matchAll(
+      /:nth-child\((\d)\) \{\s*animation-delay: (-?[\d.]+)ms;/g,
+    )) {
+      delays[Number(nth) - 1] = Number(ms);
+    }
+    const frames =
+      /@keyframes loading-petal \{\s*0% \{\s*opacity: 1;\s*transform: scale\(1\);\s*animation-timing-function: cubic-bezier\(([^)]+)\);\s*\}\s*([\d.]+)%,\s*100% \{\s*opacity: ([\d.]+);\s*transform: scale\(([\d.]+)\);/.exec(
+        css,
+      );
+    if (frames === null) {
+      throw new Error("no loading-petal keyframes");
+    }
+    const [x1, y1, x2, y2] = frames[1].split(",").map(Number);
+    const stop = Number(frames[2]) / 100;
+    const floor = Number(frames[3]);
+    const floorScale = Number(frames[4]);
+    const bezier = (t: number, a: number, b: number): number =>
+      3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
+    const ease = (x: number): number => {
+      let lo = 0;
+      let hi = 1;
+      for (let i = 0; i < 60; i++) {
+        const mid = (lo + hi) / 2;
+        if (bezier(mid, x1, x2) < x) {
+          lo = mid;
+        } else {
+          hi = mid;
+        }
+      }
+      return bezier(lo, y1, y2);
+    };
+    /** Opacity of petal `i` at `ms`, as the browser plays the CSS. */
+    const cssOpacity = (i: number, ms: number): number => {
+      const p = ((((ms - delays[i]) % cycleMs) + cycleMs) % cycleMs) / cycleMs;
+      return p >= stop ? floor : 1 - (1 - floor) * ease(p / stop);
+    };
+    /** Opacity of petal `i` at `ms`, as the old rAF loop computed it. */
+    const rafOpacity = (i: number, ms: number): number => {
+      let dist = (ms % 1_400) / 1_400 - i / 6;
+      if (dist < 0) {
+        dist += 1;
+      }
+      return Math.max(0.15, Math.max(0, 1 - dist * 2.5) ** 2);
+    };
 
-    // When
-    mountLoadingIsland();
-    await settle();
-
-    // Then
-    expect(frames.size).toBe(0);
-    expect(petals().every((p) => !p.hasAttribute("style"))).toBe(true);
+    // Then every petal follows the old curve through two cycles
+    expect(delays).toHaveLength(6);
+    expect(floorScale).toBeCloseTo(0.92 + 0.08 * floor, 5);
+    for (let ms = 0; ms < 2_800; ms += 7) {
+      for (let i = 0; i < 6; i++) {
+        expect(
+          cssOpacity(i, ms),
+          `petal ${String(i)} at ${String(ms)} ms`,
+        ).toBeCloseTo(rafOpacity(i, ms), 3);
+      }
+    }
+    // And the petals are only animated inside the no-preference query
+    const outside = css.replace(motion[0], "");
+    expect(outside).not.toMatch(/animation[^;]*loading-petal/);
   });
 
   it("As the shell, disposing the loading root stops the loading timers along with the island", async () => {
@@ -530,7 +571,6 @@ describe("Loading screen island", () => {
       // Then it did not fail, and nothing changed
       expect(mounted).toBe(true);
       expect(app().innerHTML).toBe(markup);
-      expect(stopStaticSpinner).not.toHaveBeenCalled();
       expect(frames.size).toBe(0);
       expect(dispose).not.toHaveBeenCalled();
       expect(sentry.captureException).not.toHaveBeenCalled();

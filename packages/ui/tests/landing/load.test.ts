@@ -41,13 +41,6 @@ async function importFresh(): Promise<void> {
   ]);
 }
 
-/** Stand in for the inline petal spinner's stop hook in apps/host/index.html. */
-function stubSpinner(): ReturnType<typeof vi.fn> {
-  const stop = vi.fn();
-  window.__stopLoadingSpinner = stop;
-  return stop;
-}
-
 /** Hold the landing chunk back until the returned function is called. */
 function gateChunk(): () => void {
   let release = (): void => {};
@@ -86,7 +79,6 @@ beforeEach(async () => {
 
 afterEach(() => {
   roots.disposeAppRoots();
-  delete window.__stopLoadingSpinner;
   vi.doUnmock(CHUNK);
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -98,14 +90,12 @@ describe("landing loader", () => {
     // Given
     const release = gateChunk();
     await importFresh();
-    const stopSpinner = stubSpinner();
 
     // When
     const shown = load.showLanding();
     await settle();
 
     // Then: nothing changed while the chunk downloads.
-    expect(stopSpinner).not.toHaveBeenCalled();
     expect(loading.getLoadingState().phase).toBe("active");
     expect(byId("app-loading")).not.toBeNull();
     expect(byId("topbar")?.style.display).toBe("");
@@ -116,8 +106,7 @@ describe("landing loader", () => {
     await shown;
     await settle();
 
-    // Then the static screen went, its spinner stopped with it
-    expect(stopSpinner).toHaveBeenCalledTimes(1);
+    // Then the static screen went
     expect(byId("app-loading")).toBeNull();
     expect(loading.getLoadingState().phase).toBe("gone");
     expect(byId("topbar")?.style.display).toBe("none");
@@ -192,7 +181,6 @@ describe("landing loader", () => {
       throw new Error("chunk failed");
     });
     await importFresh();
-    const stopSpinner = stubSpinner();
     const reload = vi.fn();
     vi.stubGlobal("location", { reload });
 
@@ -205,7 +193,6 @@ describe("landing loader", () => {
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
       kind: "landing_load_error",
     });
-    expect(stopSpinner).toHaveBeenCalledTimes(1);
     expect(byId("app-loading")).toBeNull();
     expect(document.querySelector(".error-page-title")?.textContent).toBe(
       "Something went wrong on our side",

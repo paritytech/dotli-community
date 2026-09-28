@@ -121,33 +121,6 @@
                 </div>
             </div>
         </div>
-        <script>
-            // Logo spinner, rAF-driven for smooth petal cycling
-            (function(){
-                var petals = document.querySelectorAll('.loading-petal');
-                if (!petals.length) return;
-                if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-                var count = petals.length;
-                var cycle = 1400;
-                var start = null;
-                var raf;
-                function tick(ts) {
-                    if (!start) start = ts;
-                    var p = ((ts - start) % cycle) / cycle;
-                    for (var i = 0; i < count; i++) {
-                        var dist = p - i / count;
-                        if (dist < 0) dist += 1;
-                        var b = Math.max(0.15, Math.pow(Math.max(0, 1 - dist * 2.5), 2));
-                        petals[i].style.opacity = b;
-                        petals[i].style.transform = 'scale(' + (0.92 + 0.08 * b) + ')';
-                    }
-                    raf = requestAnimationFrame(tick);
-                }
-                raf = requestAnimationFrame(tick);
-                // Stop when loading is replaced
-                window.__stopLoadingSpinner = function() { cancelAnimationFrame(raf); };
-            })();
-        </script>
         <script type="module" src="/src/main.ts"></script>
     </body>
 </html>
