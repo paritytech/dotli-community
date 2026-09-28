@@ -1,6 +1,6 @@
 import { type GenericError, type Result } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "./runtime.js";
-import type { ChainProvider, CoinageWalletHost, HopProvider, NativeChatFilesHost } from "./generated/host-callbacks.js";
+import type { ChainProvider, CoinageWalletHost, HopProvider, NativeChatFilesHost, ProfilePlatform } from "./generated/host-callbacks.js";
 type WireResult<T, E> = {
     success: true;
     value: T;
@@ -27,6 +27,12 @@ export declare function chainConnectAdapter(host: Pick<ChainProvider, "connect">
 export declare const unavailableHopProvider: Required<HopProvider>;
 /** Native exceptions may contain bearer material; preserve only typed failure values. */
 export declare function coinageWalletHostAdapter(host: Required<CoinageWalletHost> | undefined): Required<CoinageWalletHost> | undefined;
+/**
+ * A profile host built before `presentContactProfile` still shows a contact's
+ * profile: without it, the contact's reference is presented as
+ * `presentProfile` would, the core's own default, rather than failing.
+ */
+export declare function profileHostAdapter(host: Required<ProfilePlatform> | undefined): Required<ProfilePlatform> | undefined;
 /** Optional SDK embeddings must fail closed, never invent successful file handles. */
 export declare const unavailableNativeChatFilesHost: Required<NativeChatFilesHost>;
 export declare function hopConnectAdapter(host: Required<HopProvider>): HopConnect;

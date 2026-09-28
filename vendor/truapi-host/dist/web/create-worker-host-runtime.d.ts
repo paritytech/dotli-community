@@ -125,6 +125,10 @@ export declare function resolveDebuggerEnablement(fromOption: string | null | un
 interface CreateWebWorkerHostRuntimeOptions {
     logLevel?: LogLevel;
     hostConfig: WebWorkerHostConfig | WebWorkerSigningHostConfig;
+    /**
+     * Maximum inactivity during each worker startup phase. Loading the WASM and
+     * constructing the runtime each get a full interval. Defaults to 30s.
+     */
     initTimeoutMs?: number;
     /**
      * Dev-only: a loopback `ws://` wire debugger to stream tapped frames to.
