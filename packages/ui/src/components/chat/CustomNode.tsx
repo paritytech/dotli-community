@@ -1,0 +1,281 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Renders a product-authored render tree (chat custom messages) as host UI.
+//
+// Product strings land as JSX text, so they can never inject markup, and
+// every style comes from the closed mapping in chat/custom-styles.ts.
+//
+// A new tree from the product updates the one on screen in place: a node
+// is matched by its tag and its children by position, so an element whose
+// tag stays the same is kept. A text field being typed in therefore keeps
+// its focus, caret and typed text across updates, and its value is only
+// written when the product changes the text it sends.
+
+import { createEffect, For, Match, Show, Switch, untrack } from "solid-js";
+import type { JSX } from "@solidjs/web";
+import type { RendererNode } from "@parity/truapi";
+import {
+  boxStyle,
+  columnStyle,
+  modifierStyle,
+  rowStyle,
+  textStyle,
+} from "../../chat/custom-styles";
+
+/** Reports a user gesture inside a rendered tree back to the product. */
+export type CustomActionHandler = (
+  actionId: string,
+  payload?: Uint8Array,
+) => void;
+
+type NodeTag = Exclude<RendererNode["tag"], "Nil">;
+type NodeValues = {
+  [N in RendererNode as N["tag"]]: N extends { value: infer V } ? V : never;
+};
+type NodeValue<T extends NodeTag> = NodeValues[T];
+
+const textEncoder = new TextEncoder();
+
+/** `node`'s value when it is a `tag` node, for a non-keyed `Match`. */
+function valueOf<T extends NodeTag>(
+  node: RendererNode,
+  tag: T,
+): NodeValue<T> | false {
+  // A matching tag is a node whose value is NodeValue<T>; TypeScript
+  // cannot narrow a union by a generic tag, so say so once here.
+  return node.tag === tag
+    ? ((node as { value?: unknown }).value as NodeValue<T>)
+    : false;
+}
+
+function buttonVariant(
+  variant: NodeValue<"Button">["props"]["variant"],
+): string {
+  if (variant === "Primary" || variant === undefined) {
+    return "primary";
+  }
+  return variant === "Secondary" ? "secondary" : "text";
+}
+
+function Children(props: {
+  nodes: RendererNode[];
+  onAction: CustomActionHandler;
+}): JSX.Element {
+  return (
+    <For each={props.nodes} keyed={false}>
+      {(child) => <CustomNode node={child()} onAction={props.onAction} />}
+    </For>
+  );
+}
+
+/**
+ * What makes a text field the same field from one tree to the next: the
+ * action its edits report and its label.
+ */
+function fieldIdentity(value: NodeValue<"TextField">): string {
+  return `${value.props.valueChangeAction ?? ""}\u0000${value.props.label ?? ""}`;
+}
+
+function TextField(props: {
+  value: NodeValue<"TextField">;
+  onAction: CustomActionHandler;
+}): JSX.Element {
+  let input: HTMLInputElement | undefined;
+  // The product text last written into the field.
+  let written: string | undefined;
+  // Not a `value` binding, which Solid rewrites on every new tree: the value
+  // is written only when the product sends different text, and not even
+  // then when the field already shows it, so resending the same text never
+  // overwrites what the user is typing or moves their caret.
+  createEffect(
+    () => props.value.props.text,
+    (text) => {
+      if (input === undefined || text === written) {
+        return;
+      }
+      written = text;
+      if (input.value !== text) {
+        input.value = text;
+      }
+    },
+  );
+  // Children are matched by position, so a field the product inserts or
+  // removes above this one hands this element another field. Start that
+  // field fresh, as a new element would: its own text, and not the focus
+  // the user had in the other field.
+  createEffect(
+    () => fieldIdentity(props.value),
+    (identity, previous) => {
+      if (
+        input === undefined ||
+        previous === undefined ||
+        identity === previous
+      ) {
+        return;
+      }
+      written = untrack(() => props.value.props.text);
+      input.value = written;
+      if (document.activeElement === input) {
+        input.blur();
+      }
+    },
+  );
+  return (
+    <div class="chat-custom-field" style={modifierStyle(props.value.modifiers)}>
+      <Show
+        when={
+          props.value.props.label !== undefined &&
+          props.value.props.label !== ""
+        }
+      >
+        <label class="chat-custom-field-label">{props.value.props.label}</label>
+      </Show>
+      <input
+        ref={(el) => {
+          input = el;
+          written = untrack(() => props.value.props.text);
+          el.value = written;
+        }}
+        type="text"
+        class="chat-custom-field-input"
+        placeholder={props.value.props.placeholder}
+        disabled={props.value.props.enabled === false}
+        onInput={(event) => {
+          const action = props.value.props.valueChangeAction;
+          if (action !== undefined) {
+            props.onAction(
+              action,
+              textEncoder.encode(event.currentTarget.value),
+            );
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+/** One node of a product-authored render tree. `Nil` renders nothing. */
+export function CustomNode(props: {
+  node: RendererNode;
+  onAction: CustomActionHandler;
+}): JSX.Element {
+  return (
+    <Switch>
+      <Match when={valueOf(props.node, "String")}>
+        {(value) => <>{value().text}</>}
+      </Match>
+
+      <Match when={valueOf(props.node, "Box")}>
+        {(value) => (
+          <div
+            class="chat-custom-box"
+            style={boxStyle(value().props.contentAlignment, value().modifiers)}
+          >
+            <Children nodes={value().children} onAction={props.onAction} />
+          </div>
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Column")}>
+        {(value) => (
+          <div
+            class="chat-custom-column"
+            style={columnStyle(
+              value().props.horizontalAlignment,
+              value().props.verticalArrangement,
+              value().modifiers,
+            )}
+          >
+            <Children nodes={value().children} onAction={props.onAction} />
+          </div>
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Row")}>
+        {(value) => (
+          <div
+            class="chat-custom-row"
+            style={rowStyle(
+              value().props.horizontalArrangement,
+              value().props.verticalAlignment,
+              value().modifiers,
+            )}
+          >
+            <Children nodes={value().children} onAction={props.onAction} />
+          </div>
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Spacer")}>
+        {(value) => (
+          <div
+            class="chat-custom-spacer"
+            style={modifierStyle(value().modifiers)}
+          />
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Text")}>
+        {(value) => (
+          <span
+            class="chat-custom-text"
+            style={textStyle(
+              value().props.style,
+              value().props.color,
+              value().modifiers,
+            )}
+          >
+            <Children nodes={value().children} onAction={props.onAction} />
+          </span>
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Button")}>
+        {(value) => (
+          <button
+            type="button"
+            class={`chat-custom-btn chat-custom-btn-${buttonVariant(value().props.variant)}${value().props.loading === true ? " chat-custom-btn-loading" : ""}`}
+            disabled={
+              value().props.enabled === false || value().props.loading === true
+            }
+            style={modifierStyle(value().modifiers)}
+            onClick={() => {
+              const action = value().props.clickAction;
+              if (action !== undefined) {
+                props.onAction(action);
+              }
+            }}
+          >
+            {value().props.text}
+          </button>
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "TextField")}>
+        {(value) => <TextField value={value()} onAction={props.onAction} />}
+      </Match>
+
+      {/* No fetch path for Bulletin or archive image bytes in the host frame
+          yet, so an image draws as the empty space the RFC gives a miss. */}
+      <Match when={valueOf(props.node, "Image")}>
+        {(value) => (
+          <div
+            class="chat-custom-image"
+            style={modifierStyle(value().modifiers)}
+          />
+        )}
+      </Match>
+
+      <Match when={valueOf(props.node, "Effect")}>
+        {(value) => (
+          <div
+            class={`chat-custom-effect chat-custom-effect-${value().props.effect.toLowerCase()}`}
+          >
+            <Children nodes={value().children} onAction={props.onAction} />
+          </div>
+        )}
+      </Match>
+    </Switch>
+  );
+}

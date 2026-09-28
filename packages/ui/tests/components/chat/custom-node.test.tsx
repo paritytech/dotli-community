@@ -1,8 +1,23 @@
+import { createSignal } from "solid-js";
 import { describe, expect, it, vi } from "vitest";
 import type { RendererNode } from "@parity/truapi";
-import { renderCustomNode } from "@dotli/ui/chat/custom-renderer";
+import {
+  CustomNode,
+  type CustomActionHandler,
+} from "@dotli/ui/components/chat/CustomNode";
+import { renderComponent, settle } from "../../helpers/solid";
 
 const noAction = (): void => undefined;
+
+function renderCustomNode(
+  node: RendererNode,
+  onAction: CustomActionHandler,
+): Element | null {
+  const { container } = renderComponent(() => (
+    <CustomNode node={node} onAction={onAction} />
+  ));
+  return container.firstElementChild;
+}
 
 function renderElement(node: RendererNode): HTMLElement {
   const rendered = renderCustomNode(node, noAction);
@@ -207,7 +222,7 @@ describe("chat custom renderer", () => {
     expect(input.value).toBe("start");
     expect(input.placeholder).toBe("Your name");
     input.value = "Alice";
-    input.dispatchEvent(new Event("input"));
+    input.dispatchEvent(new Event("input", { bubbles: true }));
     expect(onAction).toHaveBeenCalledWith(
       "name-changed",
       new TextEncoder().encode("Alice"),
@@ -281,5 +296,249 @@ describe("chat custom renderer", () => {
     });
     expect(text.querySelector("img")).toBeNull();
     expect(text.textContent).toBe("<img src=x onerror=alert(1)>");
+  });
+});
+
+describe("chat custom renderer, updates", () => {
+  function field(text: string, label = "Name"): RendererNode {
+    return {
+      tag: "TextField",
+      value: {
+        modifiers: [],
+        props: {
+          text,
+          label,
+          enabled: true,
+          valueChangeAction: "name-changed",
+        },
+      },
+    };
+  }
+
+  function form(heading: string, fieldNode: RendererNode): RendererNode {
+    return {
+      tag: "Column",
+      value: {
+        modifiers: [{ tag: "Padding", value: { top: 4, end: 4 } }],
+        props: {},
+        children: [
+          {
+            tag: "Text",
+            value: {
+              modifiers: [],
+              props: {},
+              children: [{ tag: "String", value: { text: heading } }],
+            },
+          },
+          fieldNode,
+        ],
+      },
+    };
+  }
+
+  function renderLive(initial: RendererNode): {
+    container: HTMLElement;
+    update: (next: RendererNode) => Promise<void>;
+  } {
+    const [node, setNode] = createSignal(initial);
+    const { container } = renderComponent(() => (
+      <CustomNode node={node()} onAction={noAction} />
+    ));
+    return {
+      container,
+      update: async (next) => {
+        setNode(next);
+        await settle();
+      },
+    };
+  }
+
+  it("As a user typing in a text field, a new tree from the product keeps my focus, caret and text", async () => {
+    // Given: I am typing in the field of a live message.
+    const { container, update } = renderLive(form("Sign up", field("")));
+    const input = container.querySelector("input");
+    if (input === null) {
+      throw new Error("expected an input");
+    }
+    input.focus();
+    input.value = "Ali";
+    input.setSelectionRange(2, 2);
+
+    // When: the product sends a new tree that changes the heading only.
+    await update(form("Sign up (2 left)", field("")));
+
+    // Then: the same field is still there, focused, with my text and caret.
+    expect(container.querySelector("input")).toBe(input);
+    expect(document.activeElement).toBe(input);
+    expect(input.value).toBe("Ali");
+    expect(input.selectionStart).toBe(2);
+    expect(container.textContent).toContain("Sign up (2 left)");
+  });
+
+  it("As a product, changing the text I send for a field replaces its value", async () => {
+    // Given
+    const { container, update } = renderLive(form("Sign up", field("")));
+    const input = container.querySelector("input");
+
+    // When
+    await update(form("Sign up", field("Bob")));
+
+    // Then
+    expect(container.querySelector("input")).toBe(input);
+    expect(input?.value).toBe("Bob");
+  });
+
+  it("As a product, a modifier I drop from the next tree is removed from the element", async () => {
+    // Given
+    const { container, update } = renderLive(form("Sign up", field("")));
+    const column = container.firstElementChild as HTMLElement;
+    expect(column.style.padding).toBe("4px");
+
+    // When
+    await update({
+      tag: "Column",
+      value: { modifiers: [], props: {}, children: [] },
+    });
+
+    // Then: the same element, without the padding or the old children.
+    expect(container.firstElementChild).toBe(column);
+    expect(column.style.padding).toBe("");
+    expect(column.children).toHaveLength(0);
+  });
+
+  it("As a product, a node that changes kind is replaced", async () => {
+    // Given
+    const { container, update } = renderLive(form("Sign up", field("")));
+
+    // When: the field becomes a button.
+    await update(
+      form("Sign up", {
+        tag: "Button",
+        value: {
+          modifiers: [],
+          props: { text: "Done", clickAction: "done" },
+          children: [],
+        },
+      }),
+    );
+
+    // Then
+    expect(container.querySelector("input")).toBeNull();
+    expect(container.querySelector("button")?.textContent).toBe("Done");
+  });
+
+  function labelled(label: string, action: string): RendererNode {
+    return {
+      tag: "TextField",
+      value: {
+        modifiers: [],
+        props: { text: "", label, valueChangeAction: action },
+      },
+    };
+  }
+
+  function fields(...nodes: RendererNode[]): RendererNode {
+    return {
+      tag: "Column",
+      value: { modifiers: [], props: {}, children: nodes },
+    };
+  }
+
+  it("As a user typing in a field, a field the product inserts above it does not take my text or focus", async () => {
+    // Given: I am typing in Email.
+    const typed = vi.fn();
+    const [node, setNode] = createSignal(fields(labelled("Email", "email")));
+    const { container } = renderComponent(() => (
+      <CustomNode node={node()} onAction={typed} />
+    ));
+    const email = container.querySelector("input");
+    if (email === null) {
+      throw new Error("expected an input");
+    }
+    email.focus();
+    email.value = "bob@";
+
+    // When: the product inserts Name above Email.
+    setNode(fields(labelled("Name", "name"), labelled("Email", "email")));
+    await settle();
+
+    // Then: the Name field is empty, and nothing I typed reports as a name.
+    const [name] = Array.from(container.querySelectorAll("input"));
+    expect(name.closest(".chat-custom-field")?.textContent).toBe("Name");
+    expect(name.value).toBe("");
+    expect(document.activeElement).not.toBe(name);
+    name.value = "x";
+    name.dispatchEvent(new Event("input", { bubbles: true }));
+    expect(typed).toHaveBeenCalledWith("name", new TextEncoder().encode("x"));
+    expect(typed).not.toHaveBeenCalledWith(
+      "name",
+      new TextEncoder().encode("bob@x"),
+    );
+  });
+
+  it("As a user, a field the product removes above another does not leave its text in that one", async () => {
+    // Given: I typed in Name, above Email.
+    const [node, setNode] = createSignal(
+      fields(labelled("Name", "name"), labelled("Email", "email")),
+    );
+    const { container } = renderComponent(() => (
+      <CustomNode node={node()} onAction={noAction} />
+    ));
+    const [name] = Array.from(container.querySelectorAll("input"));
+    name.value = "Alice";
+
+    // When: the product removes Name.
+    setNode(fields(labelled("Email", "email")));
+    await settle();
+
+    // Then: Email does not show Name's text.
+    const inputs = Array.from(container.querySelectorAll("input"));
+    expect(inputs).toHaveLength(1);
+    expect(inputs[0].closest(".chat-custom-field")?.textContent).toBe("Email");
+    expect(inputs[0].value).toBe("");
+  });
+
+  it("As a product, a button I update keeps its element and reports its current action", async () => {
+    // Given
+    const onAction = vi.fn();
+    const buttonNode = (
+      loading: boolean,
+      clickAction: string,
+    ): RendererNode => ({
+      tag: "Button",
+      value: {
+        modifiers: [],
+        props: { text: "Vote", loading, clickAction },
+        children: [],
+      },
+    });
+    const [node, setNode] = createSignal(buttonNode(true, "vote:1"));
+    const { container } = renderComponent(() => (
+      <CustomNode node={node()} onAction={onAction} />
+    ));
+    const button = container.querySelector("button");
+    expect(button?.disabled).toBe(true);
+    expect(button?.classList.contains("chat-custom-btn-loading")).toBe(true);
+
+    // When
+    setNode(buttonNode(false, "vote:2"));
+    await settle();
+    button?.click();
+
+    // Then
+    expect(container.querySelector("button")).toBe(button);
+    expect(button?.disabled).toBe(false);
+    expect(button?.classList.contains("chat-custom-btn-loading")).toBe(false);
+    expect(onAction).toHaveBeenCalledWith("vote:2");
+  });
+
+  it("As a product, a Nil tree renders nothing", () => {
+    // When
+    const { container } = renderComponent(() => (
+      <CustomNode node={{ tag: "Nil" }} onAction={noAction} />
+    ));
+
+    // Then
+    expect(container.childNodes).toHaveLength(0);
   });
 });

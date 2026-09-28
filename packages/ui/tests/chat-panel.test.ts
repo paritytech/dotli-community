@@ -477,6 +477,11 @@ describe("chat panel", () => {
           ],
         },
       });
+      await settle(
+        () =>
+          byId("chat-panel-messages").textContent?.includes("Pick one") ===
+          true,
+      );
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
       // Tapping the rendered button publishes a renderer action naming the
@@ -490,6 +495,11 @@ describe("chat panel", () => {
 
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));
+      await settle(
+        () =>
+          byId("chat-panel-messages").textContent?.includes("Pick one") !==
+          true,
+      );
       expect(byId("chat-panel-messages").textContent).not.toContain("Pick one");
       expect(byId("chat-panel-messages").textContent).toContain(
         "This message can’t be shown right now.",

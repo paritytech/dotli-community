@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // One message row. Product text only ever lands as JSX text, so it cannot
-// inject markup; custom messages go through custom-message.ts, whose
+// inject markup; custom messages go through CustomMessage.tsx, whose
 // renderer maps a closed token vocabulary to DOM.
 
-import { For, onCleanup, onSettled, Show, untrack } from "solid-js";
+import { For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ChatMessageContent } from "@parity/truapi";
-import { mountCustomMessage } from "../../chat/custom-message";
 import { userTriggerAction, type ChatMessageRecord } from "../../chat/service";
+import { CustomMessage } from "./CustomMessage";
 import { relativeTime } from "./contacts";
 
 export function MessageBubble(props: {
@@ -113,38 +113,19 @@ export function MessageBubble(props: {
             {time}
           </div>
         );
-      case "Custom": {
-        let host: HTMLDivElement | undefined;
-        let dispose: (() => void) | undefined;
-        onSettled(() => {
-          if (host === undefined) {
-            return;
-          }
-          dispose = mountCustomMessage(host, {
-            productId: record.productId,
-            roomId: record.roomId,
-            messageId: record.messageId,
-            messageType: content.value.messageType,
-            payload: content.value.payload,
-          });
-          // mountCustomMessage appends its root; keep it before the time.
-          const root = host.lastElementChild;
-          if (root !== null && root !== host.firstElementChild) {
-            host.insertBefore(root, host.firstChild);
-          }
-        });
-        onCleanup(() => dispose?.());
+      case "Custom":
         return (
-          <div
-            class="chat-msg-bubble chat-msg-custom"
-            ref={(el) => {
-              host = el;
-            }}
-          >
+          <div class="chat-msg-bubble chat-msg-custom">
+            <CustomMessage
+              productId={record.productId}
+              roomId={record.roomId}
+              messageId={record.messageId}
+              messageType={content.value.messageType}
+              payload={content.value.payload}
+            />
             {time}
           </div>
         );
-      }
       default:
         return (
           <div class="chat-msg-bubble chat-msg-event">
