@@ -6,7 +6,7 @@
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
 import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, coinageWalletHostAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
@@ -84,6 +84,7 @@ export function createWasmRawCallbacks(callbacks) {
         ...(profile
             ? {
                 presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), HostProfilePresentRequest.dec(request)),
+                placeContactAvatars: async (product, placed) => await profile.placeContactAvatars(ProductContext.dec(product), PlacedAvatars.dec(placed)),
             }
             : {}),
         subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(HostThemeSubscribeItem.enc(item)), sendError),

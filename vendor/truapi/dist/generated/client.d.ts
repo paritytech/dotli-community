@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "034025152ab6b451";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "bb70fece291da443";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -347,6 +347,28 @@ export declare class ProfileClient {
      * reaches the product. A contact who shared nothing is `NotShared`.
      */
     presentContact(request: T.HostProfilePresentContactRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentContactError>>;
+    /**
+     * Tell the host where this product draws chat contacts' avatars, so it
+     * can draw each contact's shared photo and mood ring over them on its own
+     * layer.
+     *
+     * Each call replaces the product's placement; an empty `slots` clears it.
+     * The host draws only for contacts who shared a profile with the user,
+     * and keeps the placement current as they share or withdraw one, until
+     * the product replaces it or goes away. The answer is the same whoever
+     * shared: nothing about any slot, and no profile data, returns to the
+     * product. Taps still reach the product, which opens a profile with
+     * `presentContact`.
+     *
+     * App executions only. Rects are in the units of the surface size the
+     * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
+     * its viewport for a web product. A placement with more than 64 slots, a
+     * surface side outside 1 to 16384, an avatar that is not square or is
+     * outside 1 to 1024 a side, or a repeated `slot` is `Unknown`. A host that
+     * cannot draw over the product is `Unsupported`; with no user signed in
+     * the call is `NotConnected`.
+     */
+    placeContactAvatars(request: T.HostProfilePlaceContactAvatarsRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePlaceContactAvatarsError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {

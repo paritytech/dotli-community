@@ -1,5 +1,5 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
 import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationId, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
@@ -829,6 +829,47 @@ export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Author
  */
 export type PermissionDecision = "AllowOnce" | "AllowAlways" | "Deny";
 /**
+ * One avatar to draw over a product.
+ */
+export interface PlacedAvatar {
+    /**
+     * The product's id for this on-screen avatar, stable across updates.
+     */
+    slot: number;
+    /**
+     * Bounding box of the avatar circle, in surface units.
+     */
+    rect: AvatarRect;
+    /**
+     * Visible region the avatar is cut to, in surface units.
+     */
+    clip: AvatarRect;
+    /**
+     * The profile reference the contact disclosed. A bearer capability, as
+     * in `ProfilePlatform::present_profile`.
+     */
+    reference: string;
+}
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export interface PlacedAvatars {
+    /**
+     * Width of the product's surface, in the units of every rect.
+     */
+    surfaceWidth: number;
+    /**
+     * Height of the product's surface, in the same units.
+     */
+    surfaceHeight: number;
+    /**
+     * Avatars to draw, in the product's slot order.
+     */
+    avatars: Array<PlacedAvatar>;
+}
+/**
  * Review shown before a preimage is submitted.
  */
 export interface PreimageSubmitReview {
@@ -1270,6 +1311,16 @@ export declare const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizat
  * User decision including how long an authorization should last.
  */
 export declare const PermissionDecision: S.Codec<PermissionDecision>;
+/**
+ * One avatar to draw over a product.
+ */
+export declare const PlacedAvatar: S.Codec<PlacedAvatar>;
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export declare const PlacedAvatars: S.Codec<PlacedAvatars>;
 /**
  * Review shown before a preimage is submitted.
  */
@@ -1850,6 +1901,19 @@ export interface ProfilePlatform {
      * `InvalidReference`; show load and fetch failures in the UI instead.
      */
     presentProfile(product: ProductContext, request: HostProfilePresentRequest): Promise<void>;
+    /**
+     * Draw the contact avatars a product placed, on the host's own layer over
+     * the product's surface, replacing what was drawn for it before; an empty
+     * `avatars` clears it. The layer must let pointer input through to the
+     * product and must never tell the product what it drew.
+     *
+     * The core calls this again, with the product's last geometry, whenever
+     * a contact on it shares or withdraws a profile, and with no avatars once
+     * the product's connection goes away. Answer `Unsupported` if this host
+     * cannot draw over the product; the product is told so. The default draws
+     * nothing.
+     */
+    placeContactAvatars?(product: ProductContext, placed: PlacedAvatars): Promise<void>;
 }
 /**
  * Host theme source.

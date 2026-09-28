@@ -5,6 +5,7 @@ export const ActionTrigger = S.lazy(() => S.Struct({ messageId: S.str, actionId:
 export const AllocatableResource = S.lazy(() => S.TaggedUnion({ StatementStoreAllowance: S._void, BulletinAllowance: S._void, SmartContractAllowance: DerivationIndex, AutoSigning: S._void, ProductStatementStoreAllowance: DerivationIndex }));
 export const AllocationOutcome = S.lazy(() => S.Status("Allocated", "Rejected", "NotAvailable"));
 export const Arrangement = S.lazy(() => S.Status("Start", "End", "Center", "SpaceBetween", "SpaceAround", "SpaceEvenly"));
+export const AvatarRect = S.lazy(() => S.Struct({ x: S.i32, y: S.i32, width: S.u32, height: S.u32 }));
 export const Background = S.lazy(() => S.Struct({ color: ColorToken, shape: S.Option(Shape) }));
 export const Balance = S.lazy(() => S.u128);
 export const BlendingMode = S.lazy(() => S.Status("Normal", "Multiply", "Screen", "Overlay", "Darken", "Lighten", "ColorDodge", "ColorBurn", "HardLight", "SoftLight", "Difference", "Exclusion", "Hue", "Saturation", "Color", "Luminosity"));
@@ -45,6 +46,7 @@ export const CoinPaymentTransactionHash = S.lazy(() => S.Hex(32));
 export const CoinPaymentTransmissionChannel = S.lazy(() => S.TaggedUnion({ Standard: S.Struct({ sssTopic: S.Hex(32) }) }));
 export const ColorToken = S.lazy(() => S.Status("FgPrimary", "FgSecondary", "FgTertiary", "BgSurfaceMain", "BgSurfaceContainer", "BgSurfaceNested", "FgSuccess", "FgError", "FgWarning"));
 export const ColumnProps = S.lazy(() => S.Struct({ horizontalAlignment: S.Option(HorizontalAlignment), verticalArrangement: S.Option(Arrangement) }));
+export const ContactAvatarSlot = S.lazy(() => S.Struct({ slot: S.u32, peerIdentity: S.Hex(32), rect: AvatarRect, clip: AvatarRect }));
 export const ContentAlignment = S.lazy(() => S.Status("TopStart", "TopCenter", "TopEnd", "CenterStart", "Center", "CenterEnd", "BottomStart", "BottomCenter", "BottomEnd"));
 export const ContextualAlias = S.lazy(() => S.Struct({ context: S.Hex(32), alias: S.Hex() }));
 export const DerivationIndex = S.lazy(() => S.TaggedUnion({ Index: S.u32, Raw: S.Hex(32) }));
@@ -217,6 +219,9 @@ export const VersionedHostProductDeviceChatResponse = S.lazy(() => S.indexedTagg
 export const VersionedHostProfileDiscloseError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfileDiscloseError] }));
 export const VersionedHostProfileDiscloseRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfileDiscloseRequest] }));
 export const VersionedHostProfileDiscloseResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const VersionedHostProfilePlaceContactAvatarsError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfilePlaceContactAvatarsError] }));
+export const VersionedHostProfilePlaceContactAvatarsRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfilePlaceContactAvatarsRequest] }));
+export const VersionedHostProfilePlaceContactAvatarsResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
 export const VersionedHostProfilePresentContactError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfilePresentContactError] }));
 export const VersionedHostProfilePresentContactRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostProfilePresentContactRequest] }));
 export const VersionedHostProfilePresentContactResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -459,6 +464,8 @@ export const HostPocketRemoveCardError = S.lazy(() => S.TaggedUnion({ Privileged
 export const HostPocketRemoveCardRequest = S.lazy(() => S.Struct({ cardId: S.str }));
 export const HostProfileDiscloseError = S.lazy(() => S.TaggedUnion({ InvalidReference: S._void, PermissionDenied: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostProfileDiscloseRequest = S.lazy(() => S.Struct({ reference: S.str }));
+export const HostProfilePlaceContactAvatarsError = S.lazy(() => S.TaggedUnion({ Unsupported: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostProfilePlaceContactAvatarsRequest = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, slots: S.Vector(ContactAvatarSlot) }));
 export const HostProfilePresentContactError = S.lazy(() => S.TaggedUnion({ NotShared: S._void, InvalidReference: S._void, NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostProfilePresentContactRequest = S.lazy(() => S.Struct({ peerIdentity: S.Hex(32) }));
 export const HostProfilePresentError = S.lazy(() => S.TaggedUnion({ InvalidReference: S._void, Unknown: S.Struct({ reason: S.str }) }));

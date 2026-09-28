@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -134,6 +134,16 @@ export const PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermine
  * User decision including how long an authorization should last.
  */
 export const PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
+/**
+ * One avatar to draw over a product.
+ */
+export const PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: AvatarRect, clip: AvatarRect, reference: S.str }));
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export const PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
 /**
  * Review shown before a preimage is submitted.
  */

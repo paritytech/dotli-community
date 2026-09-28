@@ -433,3 +433,8 @@ export declare const PROFILE_PRESENT_CONTACT: {
     readonly method: 3;
     readonly kind: "request";
 };
+export declare const PROFILE_PLACE_CONTACT_AVATARS: {
+    readonly trait: 22;
+    readonly method: 4;
+    readonly kind: "request";
+};

@@ -67,6 +67,18 @@ export declare const AllocationOutcome: S.Codec<AllocationOutcome>;
 /** Main-axis distribution of children. */
 export type Arrangement = "Start" | "End" | "Center" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly";
 export declare const Arrangement: S.Codec<Arrangement>;
+/** A rectangle in surface units, relative to the surface's top-left corner. */
+export interface AvatarRect {
+    /** Left edge. */
+    x: number;
+    /** Top edge. */
+    y: number;
+    /** Width. */
+    width: number;
+    /** Height. */
+    height: number;
+}
+export declare const AvatarRect: S.Codec<AvatarRect>;
 /** Background styling. */
 export interface Background {
     /** Background color. */
@@ -391,6 +403,22 @@ export interface ColumnProps {
     verticalArrangement?: Arrangement;
 }
 export declare const ColumnProps: S.Codec<ColumnProps>;
+/** One avatar the product draws for a chat contact. */
+export interface ContactAvatarSlot {
+    /**
+     * Product-chosen id, stable for one on-screen avatar (a list row, a
+     * header). The host uses it only to keep what it draws stable across
+     * updates.
+     */
+    slot: number;
+    /** The contact's authenticated root identity, as the chat API names it. */
+    peerIdentity: HexString;
+    /** Bounding box of the avatar circle: square, 1 to 1024 units a side. */
+    rect: AvatarRect;
+    /** Visible region the avatar is cut to, such as the scroll area. */
+    clip: AvatarRect;
+}
+export declare const ContactAvatarSlot: S.Codec<ContactAvatarSlot>;
 /** Placement of content within a `Box`. */
 export type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd";
 export declare const ContentAlignment: S.Codec<ContentAlignment>;
@@ -1921,6 +1949,30 @@ export type VersionedHostProfileDiscloseResponse =
     value?: undefined;
 };
 export declare const VersionedHostProfileDiscloseResponse: S.Codec<VersionedHostProfileDiscloseResponse>;
+/** Versioned envelope for [`HostProfilePlaceContactAvatarsError`]. */
+export type VersionedHostProfilePlaceContactAvatarsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePlaceContactAvatarsError;
+};
+export declare const VersionedHostProfilePlaceContactAvatarsError: S.Codec<VersionedHostProfilePlaceContactAvatarsError>;
+/** Versioned envelope for [`HostProfilePlaceContactAvatarsRequest`]. */
+export type VersionedHostProfilePlaceContactAvatarsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePlaceContactAvatarsRequest;
+};
+export declare const VersionedHostProfilePlaceContactAvatarsRequest: S.Codec<VersionedHostProfilePlaceContactAvatarsRequest>;
+/** Versioned envelope for [`HostProfilePlaceContactAvatarsResponse`]. */
+export type VersionedHostProfilePlaceContactAvatarsResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfilePlaceContactAvatarsResponse: S.Codec<VersionedHostProfilePlaceContactAvatarsResponse>;
 /** Versioned envelope for [`HostProfilePresentContactError`]. */
 export type VersionedHostProfilePresentContactError = 
 /** Version 1 payload. */
@@ -4583,6 +4635,49 @@ export interface HostProfileDiscloseRequest {
     reference: string;
 }
 export declare const HostProfileDiscloseRequest: S.Codec<HostProfileDiscloseRequest>;
+/** Contact avatar placement failure. Says nothing about any one slot. */
+export type HostProfilePlaceContactAvatarsError = 
+/** This host cannot draw over the product's surface. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all, including a malformed placement. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfilePlaceContactAvatarsError: S.Codec<HostProfilePlaceContactAvatarsError>;
+/**
+ * Where a chat product draws contact avatars, so the host can draw the
+ * photo and mood ring each contact shared over them, on its own layer.
+ *
+ * The product sends geometry only. The host decides which slots it can fill
+ * and never says which, so the product cannot learn who shared a profile.
+ */
+export interface HostProfilePlaceContactAvatarsRequest {
+    /**
+     * Width of the product's drawing surface, in the units of every rect:
+     * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
+     * for a web product. 1 to 16384.
+     */
+    surfaceWidth: number;
+    /** Height of the drawing surface, in the same units. 1 to 16384. */
+    surfaceHeight: number;
+    /**
+     * Replaces the product's previous placement entirely; empty clears it.
+     * At most 64, each with its own `slot`.
+     */
+    slots: Array<ContactAvatarSlot>;
+}
+export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
 /** Contact profile presentation failure. */
 export type HostProfilePresentContactError = 
 /** This contact has not shared a profile with the user. */
