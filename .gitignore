@@ -41,6 +41,8 @@ test-results/
 playwright-report/
 **/results.json
 apps/host/**/.auth/
+# Machine-local cold-start runs; CI keeps its own baseline as an artifact.
+apps/host/tests/performance/results/
 
 # PAPI
 .papi/descriptors
