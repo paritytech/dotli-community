@@ -87,7 +87,6 @@ import {
   type ChainBrokerManager,
 } from "@dotli/protocol/broker";
 import {
-  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -128,14 +127,6 @@ function adoptResolutionId(): void {
     // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot. An untagged iframe is the acceptable outcome.
   } catch {
     /* URL unparseable, carry on untagged */
-  }
-}
-
-function clearLegacySharedAuthSession(): void {
-  try {
-    localStorage.removeItem(buildLegacySharedAuthSessionStorageKey(SITE_ID));
-  } catch (err) {
-    log.warn("[dot.li protocol] Legacy auth session cleanup failed:", err);
   }
 }
 
@@ -1468,7 +1459,6 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   return { handleRequest, cleanup };
 }
 
-clearLegacySharedAuthSession();
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
