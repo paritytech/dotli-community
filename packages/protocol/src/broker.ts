@@ -6,6 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
+import { log } from "@dotli/shared/log";
 
 /**
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
@@ -224,9 +225,16 @@ export function requireBrokerLocalProvider(
   return provider;
 }
 
+// Per-message chain traffic tracing: debug level, so it only prints with
+// VITE_APP_DEBUG and stays out of the console otherwise.
 const BROKER_TAG = "[dot.li broker]";
 function brokerLog(...args: unknown[]): void {
-  console.warn(BROKER_TAG, ...args);
+  log.debug(BROKER_TAG, ...args);
+}
+// Protocol anomalies (malformed, unmatched or dropped messages): warn, so
+// they reach the Sentry breadcrumb sink in every build.
+function brokerWarn(...args: unknown[]): void {
+  log.warn(BROKER_TAG, ...args);
 }
 
 class ChainBroker {
@@ -321,7 +329,7 @@ class ChainBroker {
   private sendFromSession(sessionId: string, message: unknown): void {
     const session = this.sessions.get(sessionId);
     if (session?.connected !== true) {
-      brokerLog(
+      brokerWarn(
         `sendFromSession: session ${sessionId} not connected, dropping message`,
       );
       return;
@@ -335,7 +343,7 @@ class ChainBroker {
     try {
       parsed = parseInbound(message);
     } catch {
-      brokerLog(`sendFromSession: invalid JSON from session ${sessionId}`);
+      brokerWarn(`sendFromSession: invalid JSON from session ${sessionId}`);
       this.sendToSession(session, {
         jsonrpc: "2.0",
         id: null,
@@ -353,7 +361,7 @@ class ChainBroker {
     }
 
     if (!isRequestMessage(parsed)) {
-      brokerLog(
+      brokerWarn(
         `sendFromSession: not a request from session ${sessionId}:`,
         parsed,
       );
@@ -396,7 +404,7 @@ class ChainBroker {
 
     const rewritten = this.rewriteOwnedToken(session, request);
     if (rewritten === null) {
-      brokerLog(
+      brokerWarn(
         `routeGenericRequest: unknown token for session ${session.id}, method=${method}`,
       );
       this.sendToSession(
@@ -664,7 +672,7 @@ class ChainBroker {
         typeof message === "string"
           ? message.slice(0, 200)
           : JSON.stringify(message).slice(0, 200);
-      brokerLog(`← upstream: unparseable message: ${preview} (${reason})`);
+      brokerWarn(`← upstream: unparseable message: ${preview} (${reason})`);
       if (typeof message === "string") {
         const idMatch = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message);
         if (idMatch !== null) {
@@ -692,7 +700,7 @@ class ChainBroker {
     }
 
     if (Array.isArray(parsed)) {
-      brokerLog(`← upstream: unexpected batch message, ignoring`);
+      brokerWarn(`← upstream: unexpected batch message, ignoring`);
       return;
     }
 
@@ -736,7 +744,7 @@ class ChainBroker {
       return;
     }
 
-    brokerLog(
+    brokerWarn(
       `← upstream: unrecognized message type:`,
       JSON.stringify(parsed).slice(0, 200),
     );
@@ -745,7 +753,7 @@ class ChainBroker {
   private handleUpstreamResponse(response: JsonRpcResponse): void {
     const pending = this.pending.get(String(response.id));
     if (!pending) {
-      brokerLog(`← upstream response for unknown id=${String(response.id)}`);
+      brokerWarn(`← upstream response for unknown id=${String(response.id)}`);
       return;
     }
     this.pending.delete(String(response.id));
@@ -769,7 +777,7 @@ class ChainBroker {
     ) {
       const sharedFollow = this.sharedFollows.get(pending.sessionId);
       if (!sharedFollow) {
-        brokerLog(`Missing shared follow state for key ${pending.sessionId}`);
+        brokerWarn(`Missing shared follow state for key ${pending.sessionId}`);
         return;
       }
       sharedFollow.requestInFlight = false;
@@ -791,7 +799,7 @@ class ChainBroker {
 
     const session = this.sessions.get(pending.sessionId);
     if (session?.connected !== true) {
-      brokerLog(
+      brokerWarn(
         `← upstream response for disconnected session: sessionId=${JSON.stringify(pending.sessionId)}, method=${pending.method}, responseId=${String(response.id)}, sessions=[${[...this.sessions.keys()].join(",")}]`,
       );
       return;
@@ -838,7 +846,7 @@ class ChainBroker {
   private handleUpstreamSubscription(message: SubscriptionMessage): void {
     const upstreamToken = message.params?.subscription;
     if (typeof upstreamToken !== "string") {
-      brokerLog(
+      brokerWarn(
         `← upstream subscription with non-string token:`,
         message.params?.subscription,
       );
@@ -903,7 +911,7 @@ class ChainBroker {
         this.bufferEarlySubscription(upstreamToken, message);
         return;
       }
-      brokerLog(`← upstream subscription for unknown token: ${upstreamToken}`);
+      brokerWarn(`← upstream subscription for unknown token: ${upstreamToken}`);
       return;
     }
 
@@ -922,7 +930,7 @@ class ChainBroker {
 
       const session = this.sessions.get(owned.sessionId);
       if (session?.connected !== true) {
-        brokerLog(
+        brokerWarn(
           `← upstream subscription for disconnected session: ${owned.sessionId}`,
         );
         continue;
@@ -966,7 +974,7 @@ class ChainBroker {
         const oldestToken = this.earlySubscriptions.keys().next().value;
         if (oldestToken !== undefined) {
           this.earlySubscriptions.delete(oldestToken);
-          brokerLog(
+          brokerWarn(
             `early-subscription token cap hit; dropping buffered events for oldest token: ${oldestToken}`,
           );
         }
@@ -979,7 +987,7 @@ class ChainBroker {
     } else {
       // Memory bound, not correctness: events for a token that never maps
       // to a local subscription would otherwise grow without limit.
-      brokerLog(
+      brokerWarn(
         `early-subscription event cap hit; dropping event for token: ${upstreamToken}`,
       );
     }
