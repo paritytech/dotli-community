@@ -104,10 +104,19 @@ function readVersionedPackages(): PkgVersion[] {
   const result: PkgVersion[] = [];
   for (const file of findPackageJsons()) {
     const text = readFileSync(file, "utf8");
-    const pkg = JSON.parse(text) as { version?: unknown };
-    if (typeof pkg.version === "string") {
-      result.push({ file, version: pkg.version, text });
+    const pkg = JSON.parse(text) as { version?: unknown; private?: unknown };
+    if (typeof pkg.version !== "string") {
+      continue;
     }
+    // PUBLISHED packages (not `private: true`) version independently: their
+    // semver tracks their own API and releases via their own tags (e.g.
+    // `host-cli-v0.1.0`), not the app's release cadence. Syncing them here
+    // would republish-or-break them on every app release. (The root
+    // package.json is private and versionless, so it is skipped above.)
+    if (pkg.private !== true) {
+      continue;
+    }
+    result.push({ file, version: pkg.version, text });
   }
   return result;
 }
