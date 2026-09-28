@@ -11,7 +11,6 @@ export type SharedModeRequestMethod =
   "modeStorageRead" | "modeStorageWrite" | "modeStorageClear";
 
 export const SHARED_CORE_SESSION_KEY = "session";
-const LEGACY_SHARED_AUTH_SESSION_KEY = "SsoSessionsV3";
 
 // Both the shared-auth and shared-mode stores accept the same key shape, an
 // alphanumeric token with dots, underscores, colons and dashes. Keep the
@@ -69,17 +68,6 @@ export function isValidSharedAuthKey(key: string): boolean {
 
 export function buildSharedAuthStorageKey(siteId: SiteId, key: string): string {
   return `TRUAPI_${siteId}_${key}`;
-}
-
-/** Storage key used by the removed Nova host runtime. Its session encoding is
- * incompatible with TrUAPI, so the protocol host deletes this key at boot.
- *
- * TODO(remove-legacy-nova): this cleanup is gated on returning browsers, not
- * product migration. Delete it (with `LEGACY_SHARED_AUTH_SESSION_KEY` above
- * and `clearLegacySharedAuthSession` in `apps/protocol/src/main.ts`) once stale
- * `PAPP_*` keys in long-lived browser profiles are no longer a concern. */
-export function buildLegacySharedAuthSessionStorageKey(siteId: SiteId): string {
-  return `PAPP_${siteId}_${LEGACY_SHARED_AUTH_SESSION_KEY}`;
 }
 
 /**
