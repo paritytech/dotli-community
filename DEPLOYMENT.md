@@ -94,4 +94,9 @@ site is live at `https://<base-domain>`.
 
 - `make provision` is idempotent; re-run it to pick up nginx config or build changes.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
-- For nginx-only updates, `make deploy-nginx ENV=<env>`.
+- For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the
+  **Deploy nginx** workflow from the Actions tab: pick the environment and it
+  runs the same target against that environment's box, behind that
+  environment's protection rules. It deploys the config from the ref it was
+  dispatched on, so `paseo.li` has to be dispatched from a release tag and
+  `paseoli.dev` from `main`.
