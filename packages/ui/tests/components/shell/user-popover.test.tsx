@@ -3,7 +3,6 @@
 
 import { describe, expect, it } from "vitest";
 import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
-import { UserPopover } from "@dotli/ui/components/shell/UserPopover";
 import { requestTruapiDisconnect } from "@dotli/ui/auth-controller";
 import { setAuthState } from "@dotli/ui/state/auth";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
@@ -28,14 +27,13 @@ useAuthController();
 const PUBLIC_KEY =
   "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
 
-/** The button and the popover, as their two islands, plus a button outside. */
+/** The button and the popover, as their island, plus a button outside. */
 async function renderAccount(
   session?: TruapiSessionUiState,
 ): Promise<HTMLElement> {
   renderComponent(() => (
     <div>
       <AuthButton />
-      <UserPopover />
       <button id="outside" type="button">
         Outside
       </button>

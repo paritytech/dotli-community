@@ -217,7 +217,6 @@ describe("Loading screen island", () => {
       "url-pill",
       "offline-banner",
       "auth-button",
-      "user-popover",
       "auth-modal",
       "permissions",
       "chains",

@@ -32,7 +32,6 @@ import { PermissionsPopover } from "./PermissionsPopover";
 import { SettingsPopover } from "./SettingsPopover";
 import { ThemeToggle } from "./ThemeToggle";
 import { UrlPill } from "./UrlPill";
-import { UserPopover } from "./UserPopover";
 
 /** The child indexes that lead from `ancestor` down to `el`. */
 function childPath(ancestor: Element, el: Element): number[] {
@@ -271,8 +270,7 @@ export function mountIslands(onLateFailure?: (name: string) => void): string[] {
   // The static auth button stays disabled until this swap (it is none of
   // the loader's click triggers). The popover and the modal render the auth
   // stores, which the eager auth controller has kept since boot.
-  mount("auth-button", () => <AuthButton />, ["auth-button"]);
-  mount("user-popover", () => <UserPopover />, ["user-popover"]);
+  mount("auth-button", () => <AuthButton />, ["auth-button", "user-popover"]);
   mount("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
   // The static permissions button is enabled, so a click on it before this
   // swap is held back and replayed by the loader (one of its triggers).

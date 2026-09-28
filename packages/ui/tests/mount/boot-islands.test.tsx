@@ -84,7 +84,6 @@ describe("host boot over the prerendered shell", () => {
     disposeAppRoot("island:url-pill");
     disposeAppRoot("island:offline-banner");
     disposeAppRoot("island:auth-button");
-    disposeAppRoot("island:user-popover");
     disposeAppRoot("island:auth-modal");
     disposeAppRoot("island:permissions");
     disposeAppRoot("island:chains");
