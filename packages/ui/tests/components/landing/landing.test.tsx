@@ -281,6 +281,37 @@ describe("landing page", () => {
     expect(window.location.href).toMatch(/^https:\/\/playground\.[^/]+$/);
   });
 
+  it("As a visitor, the input's first placeholder is the first example name, without the suffix", async () => {
+    // Given: what the input showed each time the typing placeholder wrote it.
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "placeholder",
+    );
+    if (descriptor?.set === undefined) {
+      throw new Error("expected a placeholder setter");
+    }
+    const setter = descriptor.set;
+    const shown: (string | null)[] = [];
+    const spy = vi
+      .spyOn(HTMLInputElement.prototype, "placeholder", "set")
+      .mockImplementation(function (this: HTMLInputElement, value: string) {
+        shown.push(this.getAttribute("placeholder"));
+        setter.call(this, value);
+      });
+
+    // When
+    mount();
+    await settle();
+    spy.mockRestore();
+
+    // Then: the suffix never showed in the input; it is the label beside it.
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown[0]).toBe("browse");
+    expect(byId<HTMLInputElement>("dotli-nav-input").placeholder).toBe(
+      "browse",
+    );
+  });
+
   it("As a visitor, the placeholder types example names in turn, pauses while I type, and stops when the page goes", async () => {
     // Given
     mount();

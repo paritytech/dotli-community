@@ -241,4 +241,79 @@ describe("toast stack", () => {
     // Then
     expect(document.querySelector(".notif-stack")).toBeNull();
   });
+
+  it("As a dotli user, new toasts while the stack is expanded do not re-scroll it or re-add its listeners", async () => {
+    // Given: an expanded stack.
+    for (const label of ["A", "B", "C", "D"]) {
+      pushToast(input(label));
+    }
+    await mountStack();
+    fireEvent.click(
+      document.querySelector<HTMLElement>(".notif-cards .notif-text")!,
+    );
+    await settle();
+    expect(toastsStore.get().expanded).toBe(true);
+    const list = document.querySelector<HTMLElement>(".notif-cards")!;
+    let scrolls = 0;
+    Object.defineProperty(list, "scrollTop", {
+      configurable: true,
+      get: () => 0,
+      set: () => {
+        scrolls += 1;
+      },
+    });
+    const adds = vi.spyOn(document, "addEventListener");
+
+    // When
+    pushToast(input("E"));
+    await settle();
+    pushToast(input("F"));
+    await settle();
+
+    // Then
+    expect(visibleTitles()).toEqual(["A", "B", "C", "D", "E", "F"]);
+    expect(adds).not.toHaveBeenCalled();
+    expect(scrolls).toBe(0);
+    adds.mockRestore();
+  });
+
+  it("As a dotli user, a toast update works out the visible cards once, not once per card", async () => {
+    // Given
+    const ids = ["A", "B", "C", "D", "E", "F", "G", "H"].map((label) =>
+      pushToast(input(label)),
+    );
+    await mountStack();
+    const filter = vi.spyOn(Array.prototype, "filter");
+
+    // When: a visible card starts to leave.
+    dismissToast(ids[7]);
+    await settle();
+
+    // Then
+    const items = toastsStore.get().items;
+    const passes = filter.mock.contexts.filter((c) => c === items).length;
+    filter.mockRestore();
+    expect(passes).toBe(1);
+  });
+
+  it("As a dotli user, clicking a stack of one live toast and one leaving does not expand it", async () => {
+    // Given
+    const first = pushToast(input("A"));
+    pushToast(input("B"));
+    await mountStack();
+    dismissToast(first);
+    await settle();
+    expect(
+      document.querySelector(".notif-stack")?.classList.contains("single"),
+    ).toBe(true);
+
+    // When
+    fireEvent.click(
+      document.querySelectorAll<HTMLElement>(".notif-cards .notif-text")[1],
+    );
+    await settle();
+
+    // Then
+    expect(toastsStore.get().expanded).toBe(false);
+  });
 });

@@ -10,9 +10,19 @@
 // is matched by its tag and its children by position, so an element whose
 // tag stays the same is kept. A text field being typed in therefore keeps
 // its focus, caret and typed text across updates, and its value is only
-// written when the product changes the text it sends.
+// written when the product changes the text it sends (and, while the user
+// is typing, only once they pause: see TextField).
 
-import { createEffect, For, Match, Show, Switch, untrack } from "solid-js";
+import {
+  createEffect,
+  createUniqueId,
+  For,
+  Match,
+  onCleanup,
+  Show,
+  Switch,
+  untrack,
+} from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { RendererNode } from "@parity/truapi";
 import {
@@ -77,17 +87,63 @@ function fieldIdentity(value: NodeValue<"TextField">): string {
   return `${value.props.valueChangeAction ?? ""}\u0000${value.props.label ?? ""}`;
 }
 
+/**
+ * How long after the last keystroke a focused field still counts as being
+ * typed in. Product text that arrives meanwhile is held until then.
+ */
+const TYPING_HOLD_MS = 1000;
+
 function TextField(props: {
   value: NodeValue<"TextField">;
   onAction: CustomActionHandler;
 }): JSX.Element {
+  const inputId = createUniqueId();
   let input: HTMLInputElement | undefined;
-  // The product text last written into the field.
+  // The product text last seen, applied or held.
   let written: string | undefined;
+  // Product text that arrived while the user was typing, and the timer that
+  // applies it once typing pauses.
+  let held: string | undefined;
+  let holdTimer: ReturnType<typeof setTimeout> | undefined;
+  let lastTypedAt = Number.NEGATIVE_INFINITY;
+
+  const apply = (text: string): void => {
+    if (input !== undefined && input.value !== text) {
+      input.value = text;
+    }
+  };
+  const dropHeld = (): void => {
+    held = undefined;
+    if (holdTimer !== undefined) {
+      clearTimeout(holdTimer);
+      holdTimer = undefined;
+    }
+  };
+  // Apply the held text when typing has paused, or wait for the pause.
+  const settleHeld = (): void => {
+    holdTimer = undefined;
+    if (held === undefined) {
+      return;
+    }
+    const wait = lastTypedAt + TYPING_HOLD_MS - Date.now();
+    if (wait > 0 && document.activeElement === input) {
+      holdTimer = setTimeout(settleHeld, wait);
+      return;
+    }
+    const text = held;
+    held = undefined;
+    apply(text);
+  };
+  onCleanup(dropHeld);
+
   // Not a `value` binding, which Solid rewrites on every new tree: the value
   // is written only when the product sends different text, and not even
   // then when the field already shows it, so resending the same text never
-  // overwrites what the user is typing or moves their caret.
+  // overwrites what the user is typing or moves their caret. The product
+  // echoes each edit back after a round trip, so an echo of an earlier
+  // keystroke can land while the user types on: text that arrives while the
+  // field is focused and was typed in within TYPING_HOLD_MS is held, and
+  // applied when typing pauses, if it still differs from the field.
   createEffect(
     () => props.value.props.text,
     (text) => {
@@ -95,9 +151,19 @@ function TextField(props: {
         return;
       }
       written = text;
-      if (input.value !== text) {
-        input.value = text;
+      if (
+        document.activeElement === input &&
+        Date.now() - lastTypedAt < TYPING_HOLD_MS
+      ) {
+        held = text;
+        holdTimer ??= setTimeout(
+          settleHeld,
+          lastTypedAt + TYPING_HOLD_MS - Date.now(),
+        );
+        return;
       }
+      dropHeld();
+      apply(text);
     },
   );
   // Children are matched by position, so a field the product inserts or
@@ -114,6 +180,8 @@ function TextField(props: {
       ) {
         return;
       }
+      dropHeld();
+      lastTypedAt = Number.NEGATIVE_INFINITY;
       written = untrack(() => props.value.props.text);
       input.value = written;
       if (document.activeElement === input) {
@@ -129,7 +197,9 @@ function TextField(props: {
           props.value.props.label !== ""
         }
       >
-        <label class="chat-custom-field-label">{props.value.props.label}</label>
+        <label class="chat-custom-field-label" for={inputId}>
+          {props.value.props.label}
+        </label>
       </Show>
       <input
         ref={(el) => {
@@ -137,11 +207,13 @@ function TextField(props: {
           written = untrack(() => props.value.props.text);
           el.value = written;
         }}
+        id={inputId}
         type="text"
         class="chat-custom-field-input"
         placeholder={props.value.props.placeholder}
         disabled={props.value.props.enabled === false}
         onInput={(event) => {
+          lastTypedAt = Date.now();
           const action = props.value.props.valueChangeAction;
           if (action !== undefined) {
             props.onAction(

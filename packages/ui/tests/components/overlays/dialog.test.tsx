@@ -335,4 +335,51 @@ describe("signing dialog", () => {
       document.querySelector(".signing-modal"),
     );
   });
+
+  it("As a keyboard user, focus goes back to where it was after two queued dialogs close", async () => {
+    // Given: a permission prompt, then a signing prompt, opened from a button.
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: "Second" }));
+    await mountOutlet();
+
+    // When: both are answered.
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
+    );
+    await settle();
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
+    );
+    await settle();
+
+    // Then
+    expect(document.querySelector(".signing-modal")).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it("As a keyboard user, when the element I came from is gone, focus goes to the app, not the page", async () => {
+    // Given: the app frame, and a button that goes away while the dialog is up.
+    const app = document.createElement("div");
+    app.id = "app";
+    const frame = document.createElement("iframe");
+    app.appendChild(frame);
+    const opener = document.createElement("button");
+    document.body.append(app, opener);
+    opener.focus();
+    void openModal(permissionLike());
+    await mountOutlet();
+    opener.remove();
+
+    // When
+    fireEvent.click(
+      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
+    );
+    await settle();
+
+    // Then
+    expect(document.activeElement).toBe(frame);
+  });
 });

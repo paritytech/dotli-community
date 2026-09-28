@@ -41,13 +41,48 @@ function trapTab(event: KeyboardEvent, dialog: HTMLElement): void {
   }
 }
 
+/** Where each open dialog returns focus when it closes. */
+const restoreTargets = new WeakMap<Element, HTMLElement | null>();
+
+/**
+ * Where a dialog opening now returns focus. Queued dialogs open one after
+ * another, and the next one opens while the last one still holds focus:
+ * it inherits that dialog's target, so the queue as a whole returns focus
+ * to where it was before the first dialog.
+ */
+function restoreTargetNow(): HTMLElement | null {
+  const active = document.activeElement;
+  if (!(active instanceof HTMLElement)) {
+    return null;
+  }
+  const outer = active.closest(".signing-modal");
+  if (outer !== null && restoreTargets.has(outer)) {
+    return restoreTargets.get(outer) ?? null;
+  }
+  return active;
+}
+
+/**
+ * Put focus back on `target`, or, when it left the page meanwhile, on the
+ * product frame the dialog was most likely raised from, rather than let it
+ * fall to the page body. Nothing to restore (focus was on the body) leaves
+ * focus alone.
+ */
+function restoreFocus(target: HTMLElement | null): void {
+  if (target === null) {
+    return;
+  }
+  if (target.isConnected) {
+    target.focus();
+    return;
+  }
+  document.querySelector<HTMLElement>("#app iframe")?.focus();
+}
+
 export function Dialog(props: DialogProps): JSX.Element {
   let backdrop!: HTMLDivElement;
   let dialog!: HTMLDivElement;
-  const previouslyFocused =
-    document.activeElement instanceof HTMLElement
-      ? document.activeElement
-      : null;
+  const previouslyFocused = restoreTargetNow();
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === "Escape") {
@@ -67,9 +102,7 @@ export function Dialog(props: DialogProps): JSX.Element {
   document.addEventListener("keydown", onKeyDown, true);
   onCleanup(() => {
     document.removeEventListener("keydown", onKeyDown, true);
-    if (previouslyFocused?.isConnected === true) {
-      previouslyFocused.focus();
-    }
+    restoreFocus(previouslyFocused);
   });
 
   return (
@@ -88,6 +121,7 @@ export function Dialog(props: DialogProps): JSX.Element {
         class="signing-modal"
         ref={(el) => {
           dialog = el;
+          restoreTargets.set(el, previouslyFocused);
         }}
         role="dialog"
         aria-modal="true"

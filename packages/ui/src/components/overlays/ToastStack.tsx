@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, For, Show } from "solid-js";
+import { createEffect, createMemo, For, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import {
   dismissAllToasts,
@@ -14,55 +14,59 @@ import { CLOSE_SVG, ToastCard } from "./ToastCard";
 const MAX_STACK = 3;
 
 export function ToastStack(): JSX.Element {
-  const state = useStore(toastsStore);
+  const items = useStore(toastsStore, (s) => s.items);
+  const expanded = useStore(toastsStore, (s) => s.expanded);
   let root: HTMLDivElement | undefined;
   let cards: HTMLDivElement | undefined;
 
-  const active = () => state().items.filter((t) => !t.leaving);
-  const visible = () =>
-    state().expanded ? active() : active().slice(-MAX_STACK);
-  const isHidden = (id: number): boolean => !visible().some((t) => t.id === id);
-  const depthOf = (id: number): number => {
-    if (state().expanded) {
-      return 0;
-    }
+  // Worked out once per update, not once per card.
+  const active = createMemo(() => items().filter((t) => !t.leaving));
+  const visible = createMemo(() =>
+    expanded() ? active() : active().slice(-MAX_STACK),
+  );
+  // Each visible card's depth in the collapsed pile (0 = newest). A card
+  // missing from the map is hidden, and sits just behind the pile.
+  const depths = createMemo(() => {
     const shown = visible();
-    return shown.length - 1 - shown.findIndex((t) => t.id === id);
-  };
+    const collapsed = !expanded();
+    const map = new Map<number, number>();
+    shown.forEach((t, i) => {
+      map.set(t.id, collapsed ? shown.length - 1 - i : 0);
+    });
+    return map;
+  });
+  const many = createMemo(() => active().length > 1);
 
   // While expanded: scroll to the newest card, and collapse on an outside
   // click (capture phase) or when the window loses focus.
-  createEffect(
-    () => state().expanded,
-    (expanded) => {
-      if (!expanded) {
-        return;
-      }
-      if (cards !== undefined) {
-        cards.scrollTop = cards.scrollHeight;
-      }
-      const onOutsideClick = (event: MouseEvent): void => {
-        if (root !== undefined && !root.contains(event.target as Node)) {
-          setToastsExpanded(false);
-        }
-      };
-      const onBlur = (): void => {
+  createEffect(expanded, (isExpanded) => {
+    if (!isExpanded) {
+      return;
+    }
+    if (cards !== undefined) {
+      cards.scrollTop = cards.scrollHeight;
+    }
+    const onOutsideClick = (event: MouseEvent): void => {
+      if (root !== undefined && !root.contains(event.target as Node)) {
         setToastsExpanded(false);
-      };
-      document.addEventListener("click", onOutsideClick, true);
-      window.addEventListener("blur", onBlur);
-      return () => {
-        document.removeEventListener("click", onOutsideClick, true);
-        window.removeEventListener("blur", onBlur);
-      };
-    },
-  );
+      }
+    };
+    const onBlur = (): void => {
+      setToastsExpanded(false);
+    };
+    document.addEventListener("click", onOutsideClick, true);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      document.removeEventListener("click", onOutsideClick, true);
+      window.removeEventListener("blur", onBlur);
+    };
+  });
 
   const onStackClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
     if (
-      !state().expanded &&
-      state().items.length > 1 &&
+      !expanded() &&
+      many() &&
       target.closest(".notif-cards") !== null &&
       target.closest("a") === null
     ) {
@@ -71,15 +75,12 @@ export function ToastStack(): JSX.Element {
   };
 
   return (
-    <Show when={state().items.length > 0}>
+    <Show when={items().length > 0}>
       <div
         ref={(el) => {
           root = el;
         }}
-        class={[
-          "notif-stack",
-          { expanded: state().expanded, single: active().length <= 1 },
-        ]}
+        class={["notif-stack", { expanded: expanded(), single: !many() }]}
         onClick={onStackClick}
       >
         <div
@@ -90,15 +91,18 @@ export function ToastStack(): JSX.Element {
           role="status"
           aria-live="polite"
           style={{
-            cursor: !state().expanded && active().length > 1 ? "pointer" : "",
+            cursor: !expanded() && many() ? "pointer" : "",
           }}
         >
-          <For each={state().items} keyed={(t) => t.id}>
+          <For each={items()} keyed={(t) => t.id}>
             {(entry) => (
               <ToastCard
                 entry={entry()}
-                hidden={isHidden(entry().id)}
-                depth={depthOf(entry().id)}
+                hidden={!depths().has(entry().id)}
+                depth={
+                  depths().get(entry().id) ??
+                  (expanded() ? 0 : visible().length)
+                }
               />
             )}
           </For>
@@ -109,7 +113,7 @@ export function ToastStack(): JSX.Element {
           aria-label="Dismiss all"
           // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
           innerHTML={CLOSE_SVG}
-          style={{ display: active().length > 1 ? "" : "none" }}
+          style={{ display: many() ? "" : "none" }}
           onClick={(event) => {
             event.stopPropagation();
             dismissAllToasts();

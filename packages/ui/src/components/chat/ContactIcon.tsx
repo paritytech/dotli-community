@@ -12,12 +12,14 @@ export function ContactIcon(props: {
   icon: string;
   iconClass: string;
 }): JSX.Element {
-  const [failed, setFailed] = createSignal(false);
+  // The icon that failed to load, so a new icon from the product gets its
+  // own chance instead of inheriting the old one's failure.
+  const [failedIcon, setFailedIcon] = createSignal<string | null>(null);
   const initial = (): string =>
     (props.name.trim().charAt(0) || "#").toUpperCase();
   return (
     <Show
-      when={props.icon !== "" && !failed()}
+      when={props.icon !== "" && failedIcon() !== props.icon}
       fallback={
         <span
           class={`${props.iconClass} ${props.iconClass}-fallback`}
@@ -31,7 +33,7 @@ export function ContactIcon(props: {
         class={props.iconClass}
         alt=""
         src={props.icon}
-        onError={() => setFailed(true)}
+        onError={() => setFailedIcon(props.icon)}
       />
     </Show>
   );

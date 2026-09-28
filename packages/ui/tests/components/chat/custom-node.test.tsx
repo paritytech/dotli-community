@@ -1,5 +1,5 @@
 import { createSignal } from "solid-js";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RendererNode } from "@parity/truapi";
 import {
   CustomNode,
@@ -540,5 +540,149 @@ describe("chat custom renderer, updates", () => {
 
     // Then
     expect(container.childNodes).toHaveLength(0);
+  });
+});
+
+describe("chat custom renderer, a text field the product echoes", () => {
+  // The product's round trip (worker, product, render stream) lands its
+  // echo of a keystroke after later keystrokes.
+  function echo(text: string): RendererNode {
+    return {
+      tag: "TextField",
+      value: {
+        modifiers: [],
+        props: { text, label: "Name", valueChangeAction: "name-changed" },
+      },
+    };
+  }
+
+  function renderEchoed(): {
+    input: HTMLInputElement;
+    send: (text: string) => Promise<void>;
+    type: (...values: string[]) => void;
+  } {
+    const [node, setNode] = createSignal(echo(""));
+    const { container } = renderComponent(() => (
+      <CustomNode node={node()} onAction={noAction} />
+    ));
+    const input = container.querySelector("input");
+    if (input === null) {
+      throw new Error("expected an input");
+    }
+    return {
+      input,
+      send: async (text) => {
+        setNode(echo(text));
+        await settle();
+      },
+      type: (...values) => {
+        for (const value of values) {
+          input.value = value;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          vi.advanceTimersByTime(100);
+        }
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("As a user typing, a late echo of an earlier keystroke does not replace my text", async () => {
+    // Given
+    vi.useFakeTimers();
+    const { input, send, type } = renderEchoed();
+    input.focus();
+    type("a", "ab", "abc");
+
+    // When: the echo of "a" arrives.
+    await send("a");
+
+    // Then
+    expect(input.value).toBe("abc");
+
+    // When: I keep typing, and the later echoes arrive in between.
+    await send("ab");
+    type("abcd");
+    await send("abc");
+
+    // Then
+    expect(input.value).toBe("abcd");
+  });
+
+  it("As a user who stopped typing, the product's latest text applies only when it differs from mine", async () => {
+    // Given: echoes of my own text, held while I typed.
+    vi.useFakeTimers();
+    const { input, send, type } = renderEchoed();
+    input.focus();
+    type("a", "ab", "abc");
+    input.setSelectionRange(1, 1);
+    await send("a");
+    await send("abc");
+
+    // When: typing pauses.
+    vi.advanceTimersByTime(1000);
+    await settle();
+
+    // Then: my text and caret stay, since the product agrees with them.
+    expect(input.value).toBe("abc");
+    expect(input.selectionStart).toBe(1);
+
+    // When: the product rewrites the text while I type, then I pause.
+    type("abcd");
+    await send("ABCD");
+
+    // Then: held while I type.
+    expect(input.value).toBe("abcd");
+
+    // When
+    vi.advanceTimersByTime(1000);
+    await settle();
+
+    // Then
+    expect(input.value).toBe("ABCD");
+  });
+
+  it("As a user who left the field, the product's text applies at once", async () => {
+    // Given: I typed, then moved focus away.
+    vi.useFakeTimers();
+    const { input, send, type } = renderEchoed();
+    input.focus();
+    type("a", "ab");
+    input.blur();
+
+    // When
+    await send("Bob");
+
+    // Then
+    expect(input.value).toBe("Bob");
+  });
+
+  it("As a screen reader user, a text field's label names its input", () => {
+    // When
+    const { container } = renderComponent(() => (
+      <CustomNode
+        node={{
+          tag: "Column",
+          value: {
+            modifiers: [],
+            props: {},
+            children: [echo(""), echo("")],
+          },
+        }}
+        onAction={noAction}
+      />
+    ));
+
+    // Then
+    const inputs = Array.from(container.querySelectorAll("input"));
+    const labels = Array.from(container.querySelectorAll("label"));
+    expect(inputs).toHaveLength(2);
+    expect(inputs[0].id).not.toBe("");
+    expect(inputs[0].id).not.toBe(inputs[1].id);
+    expect(labels.map((label) => label.htmlFor)).toEqual(
+      inputs.map((input) => input.id),
+    );
   });
 });

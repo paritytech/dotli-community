@@ -154,7 +154,7 @@ describe("chat panel state", () => {
     expect(totalChatUnread()).toBe(0);
   });
 
-  it("As a dotli integrator, each message bumps only its own room's sequence, and any change bumps the contact version", () => {
+  it("As a dotli integrator, each message bumps only its own room's sequence, and a room or bot change bumps the contact version", () => {
     // Given
     showProduct("app");
     const before = chatPanelStore.get().contactsVersion;
@@ -168,7 +168,7 @@ describe("chat panel state", () => {
 
     // Then
     expect(chatPanelStore.get().roomSeq).toEqual({ a: 1, b: 1 });
-    expect(chatPanelStore.get().contactsVersion).toBe(before + 4);
+    expect(chatPanelStore.get().contactsVersion).toBe(before + 2);
   });
 
   it("As a user, loading a different product resets the open room, unread counts and composer error", () => {

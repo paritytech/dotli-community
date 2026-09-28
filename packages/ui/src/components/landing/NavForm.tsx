@@ -120,8 +120,9 @@ export function NavForm(): JSX.Element {
     if (input === undefined) {
       return;
     }
-    // The placeholder shows the active TLD, and `validateDotLabel` rejects any
-    // dot, so a name typed with the suffix has to lose it here.
+    // The active TLD shows beside the input, so a visitor may type it too,
+    // and `validateDotLabel` rejects any dot: a name typed with the suffix
+    // has to lose it here.
     const typed = input.value.trim().toLowerCase();
     const name = typed.endsWith(suffix)
       ? typed.slice(0, -suffix.length)
@@ -164,7 +165,7 @@ export function NavForm(): JSX.Element {
           id="dotli-nav-input"
           class="landing-search-input"
           type="text"
-          placeholder={`browse${suffix}`}
+          placeholder={PLACEHOLDER_NAMES[0]}
           spellcheck="false"
           autocomplete="off"
           aria-label={`Search a ${suffix} name`}

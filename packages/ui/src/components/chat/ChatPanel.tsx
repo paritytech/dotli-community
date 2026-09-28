@@ -12,9 +12,12 @@ import {
   createSignal,
   For,
   onCleanup,
+  onSettled,
   Show,
+  untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
+import { captureException } from "@dotli/metrics/sentry";
 import { getActiveRootManifest } from "@dotli/shared/active-manifest";
 import {
   chatBots,
@@ -54,12 +57,19 @@ const SEND_SVG =
 
 type View = "loading" | "empty" | "list" | "conversation";
 
+// Within this many px of the end, the reader counts as at the newest message.
+const STICK_THRESHOLD_PX = 24;
+
+const READ_ERROR = "Chat could not be loaded.";
+
 function ContactRow(props: {
   contact: ContactEntry;
   unread: number;
+  ref: (el: HTMLButtonElement) => void;
 }): JSX.Element {
   return (
     <button
+      ref={props.ref}
       type="button"
       class="chat-room-item"
       role="listitem"
@@ -85,14 +95,35 @@ function ContactRow(props: {
   );
 }
 
+function totalSeq(roomSeq: Readonly<Record<string, number>>): number {
+  let total = 0;
+  for (const seq of Object.values(roomSeq)) {
+    total += seq;
+  }
+  return total;
+}
+
 function PanelBody(): JSX.Element {
-  const state = useStore(chatPanelStore);
+  // Slices, not the whole store: a width drag, a topbar toggle or the
+  // composer-focus flag must not re-run the rows and derivations below.
+  const productId = useStore(chatPanelStore, currentChatProductId);
+  const loggedIn = useStore(chatPanelStore, (s) => s.loggedIn);
+  const label = useStore(chatPanelStore, (s) => s.label);
+  const activeRoomId = useStore(chatPanelStore, (s) => s.activeRoomId);
+  const unreadByRoom = useStore(chatPanelStore, (s) => s.unreadByRoom);
+  const roomSeq = useStore(chatPanelStore, (s) => s.roomSeq);
+  const contactsVersion = useStore(chatPanelStore, (s) => s.contactsVersion);
+  const composerError = useStore(chatPanelStore, (s) => s.composerError);
   const [contacts, setContacts] = createSignal<ContactEntry[] | null>(null);
   const [messages, setMessages] = createSignal<ChatMessageRecord[]>([]);
+  const [readError, setReadError] = createSignal(false);
   const [refresh, setRefresh] = createSignal(0);
   const [now, setNow] = createSignal(Date.now());
   let messagesEl: HTMLDivElement | undefined;
   let inputEl: HTMLInputElement | undefined;
+  // Room rows by room id, to put focus back on a row the list moved.
+  const rowEls = new Map<string, HTMLButtonElement>();
+  let refocusRoomId: string | null = null;
   // A contacts/messages read started before the panel closed must not act
   // on a store that has moved on (e.g. marking a room seen after leaving).
   let disposed = false;
@@ -107,44 +138,81 @@ function PanelBody(): JSX.Element {
     clearInterval(timer);
   });
 
-  // Contacts: re-read when the product, the session, or the contact version
-  // changes. A newer read supersedes an older one that resolves late.
+  const failedRead = (error: unknown): void => {
+    captureException(error, { kind: "chat_panel_read_error" });
+    setReadError(true);
+  };
+
+  const activeContact = createMemo(() => {
+    const id = activeRoomId();
+    return id === null ? undefined : contacts()?.find((c) => c.id === id);
+  });
+
+  // Messages move the list's recency order, but the list is only re-read
+  // for them while it shows: a memo that holds the message count from the
+  // last time the list showed, so reading a conversation re-reads nothing
+  // and going back re-reads once, only if messages came in meanwhile.
+  const messageCount = createMemo(() => totalSeq(roomSeq()));
+  const listMessageCount = createMemo<number>((previous) =>
+    activeContact() === undefined || previous === undefined
+      ? messageCount()
+      : previous,
+  );
+
+  // Contacts: re-read when the product, the session, the room and bot lists,
+  // or (while the list shows) the messages change. A newer read supersedes
+  // an older one that resolves late.
   const contactsKey = createMemo(() => {
-    const s = state();
-    const productId = currentChatProductId(s);
-    return productId === null
+    const id = productId();
+    return id === null
       ? null
-      : `${productId}\u0000${String(s.loggedIn)}\u0000${String(s.contactsVersion)}\u0000${String(refresh())}`;
+      : `${id}\u0000${String(loggedIn())}\u0000${String(contactsVersion())}\u0000${String(listMessageCount())}`;
   });
   let contactsPass = 0;
   createEffect(contactsKey, (key) => {
-    const productId = currentChatProductId(chatPanelStore.get());
-    if (key === null || productId === null) {
+    const id = currentChatProductId(chatPanelStore.get());
+    if (key === null || id === null) {
       return;
     }
     const pass = ++contactsPass;
-    void Promise.all([
-      chatRooms(productId),
-      chatBots(productId),
-      chatLatestMessageTimes(productId),
-    ]).then(([rooms, bots, times]) => {
-      if (disposed || pass !== contactsPass) {
-        return;
-      }
-      setContacts(contactEntries(rooms, bots, times));
-    });
+    Promise.all([chatRooms(id), chatBots(id), chatLatestMessageTimes(id)])
+      .then(([rooms, bots, times]) => {
+        if (disposed || pass !== contactsPass) {
+          return;
+        }
+        // A keyed list moves rows with insertBefore, which blurs a moved
+        // row; note the focused one to focus again after the update.
+        refocusRoomId = null;
+        for (const [roomId, el] of rowEls) {
+          if (el === document.activeElement) {
+            refocusRoomId = roomId;
+          }
+        }
+        setReadError(false);
+        setContacts(contactEntries(rooms, bots, times));
+      })
+      .catch((error: unknown) => {
+        if (!disposed && pass === contactsPass) {
+          failedRead(error);
+        }
+      });
   });
 
-  const activeContact = createMemo(() => {
-    const id = state().activeRoomId;
-    return id === null ? undefined : contacts()?.find((c) => c.id === id);
+  // After the rows move: focus the row that had it, if the move blurred it.
+  createEffect(contacts, () => {
+    const roomId = refocusRoomId;
+    refocusRoomId = null;
+    const el = roomId === null ? undefined : rowEls.get(roomId);
+    if (el !== undefined && document.activeElement !== el) {
+      el.focus();
+    }
   });
 
   // The open room vanished, or there are no contacts: back to the list.
   createEffect(
     () => {
       const list = contacts();
-      const id = state().activeRoomId;
+      const id = activeRoomId();
       return list !== null && id !== null && !list.some((c) => c.id === id);
     },
     (stale) => {
@@ -154,7 +222,7 @@ function PanelBody(): JSX.Element {
     },
   );
 
-  const view = (): View => {
+  const view = createMemo((): View => {
     const list = contacts();
     if (list === null) {
       return "loading";
@@ -163,74 +231,108 @@ function PanelBody(): JSX.Element {
       return "empty";
     }
     return activeContact() === undefined ? "list" : "conversation";
-  };
+  });
 
   // Messages of the open room: re-read when that room gets a message (its
   // roomSeq moves) or after sending. A message for another room leaves this
   // key alone, so the conversation and its live custom renders stay put.
   const messagesKey = createMemo(() => {
-    const s = state();
-    const productId = currentChatProductId(s);
+    const id = productId();
     const roomId = activeContact()?.id;
-    return productId === null || roomId === undefined
+    return id === null || roomId === undefined
       ? null
-      : `${productId}\u0000${roomId}\u0000${String(s.roomSeq[roomId] ?? 0)}\u0000${String(refresh())}`;
+      : `${id}\u0000${roomId}\u0000${String(roomSeq()[roomId] ?? 0)}\u0000${String(refresh())}`;
   });
   let messagesPass = 0;
   let shownRoomId: string | null = null;
+  // Whether the reader is at the newest message. Only a scroll moves it, so
+  // content that grows under a reader at the bottom keeps them there.
+  let stuck = true;
   createEffect(messagesKey, (key) => {
     const current = chatPanelStore.get();
-    const productId = currentChatProductId(current);
+    const id = currentChatProductId(current);
     const roomId = current.activeRoomId;
-    if (key === null || productId === null || roomId === null) {
+    if (key === null || id === null || roomId === null) {
       shownRoomId = null;
       setMessages([]);
       return;
     }
     if (roomId !== shownRoomId) {
       shownRoomId = roomId;
+      stuck = true;
       setMessages([]);
     }
     const pass = ++messagesPass;
-    void chatMessages(productId, roomId).then((records) => {
-      if (
-        disposed ||
-        pass !== messagesPass ||
-        chatPanelStore.get().activeRoomId !== roomId
-      ) {
-        return;
-      }
-      setMessages(records);
-      markChatRoomSeen(roomId);
-    });
+    chatMessages(id, roomId)
+      .then((records) => {
+        if (
+          disposed ||
+          pass !== messagesPass ||
+          chatPanelStore.get().activeRoomId !== roomId
+        ) {
+          return;
+        }
+        setReadError(false);
+        setMessages(records);
+        markChatRoomSeen(roomId);
+      })
+      .catch((error: unknown) => {
+        if (!disposed && pass === messagesPass) {
+          failedRead(error);
+        }
+      });
   });
 
-  // After each message render: jump to the newest, and focus the composer
-  // once after picking a room.
-  createEffect(messages, () => {
-    if (messagesEl !== undefined) {
+  const stickToBottom = (): void => {
+    if (stuck && messagesEl !== undefined) {
       messagesEl.scrollTop = messagesEl.scrollHeight;
     }
+  };
+
+  // After each message render: keep a reader at the newest message there,
+  // and focus the composer once after picking a room.
+  createEffect(messages, () => {
+    stickToBottom();
     if (chatPanelStore.get().focusComposer && inputEl !== undefined) {
       inputEl.focus();
       consumeComposerFocus();
     }
   });
 
+  // Custom messages draw their trees after the list renders, which makes it
+  // taller: follow that growth while the reader is at the bottom.
+  onSettled(() => {
+    if (messagesEl === undefined || typeof MutationObserver === "undefined") {
+      return;
+    }
+    const observer = new MutationObserver(stickToBottom);
+    observer.observe(messagesEl, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+    return () => {
+      observer.disconnect();
+    };
+  });
+
   const title = (): string =>
     activeContact()?.name ??
     getActiveRootManifest()?.displayName ??
-    state().label ??
+    label() ??
     "Chat";
 
   const hint = (): string | null => {
+    if (readError()) {
+      return READ_ERROR;
+    }
     const v = view();
     if (v === "empty") {
-      return state().loggedIn
+      return loggedIn()
         ? "Waiting for the app to start a chat."
         : "Log in to chat with this app.";
     }
-    return v === "conversation" ? state().composerError : null;
+    return v === "conversation" ? composerError() : null;
   };
 
   const submit = async (event: SubmitEvent): Promise<void> => {
@@ -244,6 +346,8 @@ function PanelBody(): JSX.Element {
     if (inputEl !== undefined) {
       inputEl.value = "";
     }
+    // Sending shows the sent message, even to a reader scrolled up.
+    stuck = true;
     try {
       await userPostMessage(productId, current.activeRoomId, text);
       setChatComposerError(null);
@@ -298,12 +402,22 @@ function PanelBody(): JSX.Element {
       >
         <Show when={view() === "list"}>
           <For each={contacts() ?? []} keyed={(c) => c.id}>
-            {(contact) => (
-              <ContactRow
-                contact={contact()}
-                unread={state().unreadByRoom[contact().id] ?? 0}
-              />
-            )}
+            {(contact) => {
+              // Rows are keyed by id, so a row's id never changes.
+              const id = untrack(() => contact().id);
+              onCleanup(() => {
+                rowEls.delete(id);
+              });
+              return (
+                <ContactRow
+                  ref={(el) => {
+                    rowEls.set(id, el);
+                  }}
+                  contact={contact()}
+                  unread={unreadByRoom()[id] ?? 0}
+                />
+              );
+            }}
           </For>
         </Show>
       </div>
@@ -314,6 +428,12 @@ function PanelBody(): JSX.Element {
         hidden={view() !== "conversation"}
         ref={(el) => {
           messagesEl = el;
+        }}
+        onScroll={(event) => {
+          const el = event.currentTarget;
+          stuck =
+            el.scrollHeight - el.scrollTop - el.clientHeight <=
+            STICK_THRESHOLD_PX;
         }}
       >
         <Show when={view() === "conversation"}>
@@ -368,11 +488,11 @@ function PanelBody(): JSX.Element {
 }
 
 export function ChatPanel(): JSX.Element {
-  const state = useStore(chatPanelStore);
+  const open = useStore(chatPanelStore, (s) => s.open);
   return (
     <>
       <ResizeHandle />
-      <Show when={state().open}>
+      <Show when={open()}>
         <PanelBody />
       </Show>
     </>

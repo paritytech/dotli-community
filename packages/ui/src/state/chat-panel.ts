@@ -42,9 +42,13 @@ export interface ChatPanelState {
   /** null shows the room list. */
   activeRoomId: string | null;
   unreadByRoom: Readonly<Record<string, number>>;
-  /** Messages seen per room since the product loaded; moves on every message. */
+  /**
+   * Messages seen per room since the product loaded; moves on every message.
+   * Messages also reorder the contact list, which the panel re-reads for
+   * them only while the list shows.
+   */
   roomSeq: Readonly<Record<string, number>>;
-  /** Moves whenever the contact list may have changed. */
+  /** Moves whenever the product, its rooms or its bots may have changed. */
   contactsVersion: number;
   composerError: string | null;
   /** One-shot: focus the composer after picking a room. */
@@ -270,7 +274,6 @@ export function initChatPanelState(): () => void {
         ...state.roomSeq,
         [detail.roomId]: (state.roomSeq[detail.roomId] ?? 0) + 1,
       },
-      contactsVersion: state.contactsVersion + 1,
     });
   };
 

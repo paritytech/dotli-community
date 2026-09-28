@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
 import type { ChatMessageRecord } from "@dotli/ui/chat/service";
@@ -242,6 +243,28 @@ describe("message bubble", () => {
     expect(
       view.container.querySelectorAll(".chat-room-icon-fallback"),
     ).toHaveLength(2);
+  });
+
+  it("As a user, a contact whose broken icon the product replaces shows the new icon", async () => {
+    // Given: the first icon failed to load.
+    const [icon, setIcon] = createSignal("https://example.invalid/old.png");
+    const view = renderComponent(() => (
+      <ContactIcon name="Support" icon={icon()} iconClass="chat-room-icon" />
+    ));
+    await settle();
+    fireEvent.error(view.container.querySelector("img.chat-room-icon")!);
+    await settle();
+    expect(view.container.querySelector("img")).toBeNull();
+
+    // When: the product sends a new icon for the room.
+    setIcon("https://example.invalid/new.png");
+    await settle();
+
+    // Then
+    expect(
+      view.container.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
+    ).toBe("https://example.invalid/new.png");
+    expect(view.container.querySelector(".chat-room-icon-fallback")).toBeNull();
   });
 
   it("As a user, contacts are ordered by last message, falling back to creation time", () => {
