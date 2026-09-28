@@ -27,6 +27,7 @@ import {
 import { normalized } from "./old-auth-markup";
 import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
 import type * as ChainsFormatModule from "@dotli/ui/components/shell/chains-format";
+import { focusables } from "@dotli/ui/components/focus";
 import { byId, query } from "../../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -510,21 +511,24 @@ describe("The network popover island", () => {
     expect(button.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("As a keyboard user, Tab out of the popover closes it and focus moves on", async () => {
+  it("As a keyboard user, Tab stays inside the popover and it stays open", async () => {
     // Given
     await renderPopover();
     byId("chains-button").focus();
     await openPopover();
-    expect(byId("chains-popover").contains(document.activeElement)).toBe(true);
+    const popover = byId("chains-popover");
+    expect(popover.contains(document.activeElement)).toBe(true);
+    const controls = focusables(popover);
+    controls.at(-1)?.focus();
 
     // When
     const tab = tabTo(byId("outside"));
     await settle();
 
-    // Then
-    expect(tab.defaultPrevented).toBe(false);
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(byId("outside"));
+    // Then: focus loops back into the popover.
+    expect(tab.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(controls[0] ?? popover);
   });
 
   it("As a dotli user, a press outside closes it without handing focus back to the button", async () => {

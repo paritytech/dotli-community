@@ -681,7 +681,7 @@ describe("The settings popover island", () => {
     expect(assign).toHaveBeenCalledWith("https://app.dot.li/?debug=off");
   });
 
-  it("As a keyboard user, opening it focuses its first control, Tab is not trapped, and Escape closes it, handing focus back to the button", async () => {
+  it("As a keyboard user, opening it focuses its first control, Tab loops inside, and Escape closes it, handing focus back to the button", async () => {
     // Given
     await renderPopover();
 
@@ -700,8 +700,9 @@ describe("The settings popover island", () => {
     // When
     const tab = press("Tab");
 
-    // Then: a non-modal popover lets Tab move on.
-    expect(tab.defaultPrevented).toBe(false);
+    // Then: Tab loops back to the first control.
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(focusables[0]);
 
     // When
     press("Escape");
@@ -736,7 +737,7 @@ describe("The settings popover island", () => {
     expect(settingsButton.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("As a keyboard user on desktop, Tab past the last control closes it and focus moves on", async () => {
+  it("As a keyboard user on desktop, Tab past the last control keeps focus in the popover and leaves it open", async () => {
     // Given
     await renderPopover();
     byId("mode-button").focus();
@@ -754,12 +755,9 @@ describe("The settings popover island", () => {
     await settle();
 
     // Then
-    expect(tab.defaultPrevented).toBe(false);
-    expect(isOpen()).toBe(false);
-    expect(byId("mode-popover-backdrop").classList.contains("open")).toBe(
-      false,
-    );
-    expect(document.activeElement).toBe(byId("outside"));
+    expect(tab.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(byId("mode-popover").contains(document.activeElement)).toBe(true);
   });
 
   it("As a dotli user on desktop, a press on the backdrop closes it without handing focus back to the button", async () => {
@@ -883,7 +881,7 @@ describe("The settings popover island", () => {
     expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
   });
 
-  it("As a desktop user, the settings popover is not modal: no aria-modal, no scroll lock, and Tab moves on", async () => {
+  it("As a desktop user, the settings popover is not modal: no aria-modal and no scroll lock, though Tab loops inside", async () => {
     // Given
     stubViewport(false);
     document.body.style.overflow = "";
@@ -897,7 +895,8 @@ describe("The settings popover island", () => {
     expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
     const controls = tabbables();
     controls[controls.length - 1].focus();
-    expect(press("Tab").defaultPrevented).toBe(false);
+    expect(press("Tab").defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(controls[0]);
   });
 
   it("As a user who resized the window, the settings open as a sheet or a popover by the width at each opening", async () => {

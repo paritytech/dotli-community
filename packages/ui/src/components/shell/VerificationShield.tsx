@@ -54,6 +54,8 @@ export function VerificationShield(props: {
     trigger: () => button,
     surface: () => tooltip,
     closeOnBlur: true,
+    // Nothing inside takes focus, so Tab moves on (and closes it).
+    trapFocus: false,
   });
   const label = (): string =>
     props.state === null

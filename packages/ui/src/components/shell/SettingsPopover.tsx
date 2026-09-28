@@ -270,8 +270,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * must see the saved value first.
  *
  * On a wide screen it is a non-modal popover (createPopover's `popover`
- * mode): a press outside (the backdrop included), focus leaving it, Escape
- * and a blocking modal close it. On a narrow screen, where CSS makes it a
+ * mode): Tab loops inside it, and a press outside (the backdrop included),
+ * focus moved out, Escape and a blocking modal close it. On a narrow screen, where CSS makes it a
  * full-screen sheet, it is a modal dialog (`dialog` mode, `aria-modal`):
  * Tab stays inside, the page does not scroll, and Escape, the sheet's close
  * button and a blocking modal close it. The width is read at each opening,

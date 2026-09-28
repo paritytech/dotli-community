@@ -11,7 +11,7 @@ import { useStore } from "../use-store";
  * corresponds to. The primitive handles focus and dismissal; the component
  * renders the markup, which each mode expects to carry:
  *
- * - `popover` (Radix Popover, non-modal): the trigger has
+ * - `popover` (Radix Popover, non-modal, with a focus trap): the trigger has
  *   `aria-haspopup="dialog"`, `aria-expanded` and `aria-controls`; the
  *   surface has `role="dialog"` and `tabindex="-1"`.
  * - `menu` (Radix DropdownMenu, modal): the trigger has
@@ -41,6 +41,12 @@ export interface PopoverOptions {
    * reaches this document, but it does blur the window.
    */
   closeOnBlur?: boolean;
+  /**
+   * `popover` mode: loop Tab and Shift+Tab inside the surface. Default true;
+   * false for a disclosure with nothing to focus inside (the verification
+   * shield's explainer), where a trap would leave Tab going nowhere.
+   */
+  trapFocus?: boolean;
   /**
    * Close when a blocking modal comes up (`topbarStore`'s
    * `blockingModalActive` turning true). Default true; false for the
@@ -174,9 +180,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * trigger, unless the user moved it elsewhere (or, for `popover`, closed it
  * by interacting outside). Per mode:
  *
- * - `popover`: no focus trap; focus leaving the trigger and the surface
- *   closes it, and an outside pointerdown closes it without taking focus
- *   back, so focus follows the click.
+ * - `popover`: Tab and Shift+Tab loop inside the surface (with `trapFocus`
+ *   false, Tab moves on and closes it), but the page stays live: focus
+ *   moved out any other way (a click, a script) closes it, and
+ *   an outside pointerdown closes it without taking focus back, so focus
+ *   and the click follow the pointer.
  * - `menu`: Enter, Space or ArrowDown on the trigger opens it and focuses the
  *   first item (the click a browser may still fire for the key is dropped),
  *   and so does a trigger click with `detail` 0, while a pointer opening
@@ -360,7 +368,11 @@ export function createPopover(options: PopoverOptions): Popover {
       if (surface === undefined) {
         return;
       }
-      if (mode === "dialog" && ev.key === "Tab") {
+      if (
+        ev.key === "Tab" &&
+        (mode === "dialog" ||
+          (mode === "popover" && options.trapFocus !== false))
+      ) {
         containTab(ev, surface);
       } else if (mode === "menu" && surface.contains(document.activeElement)) {
         if (ev.key === "Tab") {

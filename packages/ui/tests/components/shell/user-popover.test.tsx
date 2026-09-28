@@ -193,7 +193,7 @@ describe("UserPopover", () => {
     expect(disconnects.details).toHaveLength(1);
   });
 
-  it("As a keyboard user, the open popover takes focus, does not trap Tab and closes on Escape, handing focus back to the account button", async () => {
+  it("As a keyboard user, the open popover takes focus, traps Tab and closes on Escape, handing focus back to the account button", async () => {
     // Given
     await renderAccount({ connected: true, liteUsername: "pgherveou.04" });
     byId("auth-button").focus();
@@ -207,8 +207,9 @@ describe("UserPopover", () => {
     // When
     const tab = press("Tab");
 
-    // Then: a non-modal popover lets Tab move on.
-    expect(tab.defaultPrevented).toBe(false);
+    // Then: Tab loops inside the popover, onto its only control.
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
 
     // When
     press("Escape");
@@ -257,7 +258,7 @@ describe("UserPopover", () => {
     expect(button.getAttribute("aria-controls")).toBe("auth-modal-backdrop");
   });
 
-  it("As a keyboard user, Tab past Log out closes the popover and focus moves on", async () => {
+  it("As a keyboard user, Tab past Log out keeps focus in the popover and leaves it open", async () => {
     // Given
     await renderAccount({ connected: true, liteUsername: "pgherveou.04" });
     byId("auth-button").focus();
@@ -269,9 +270,9 @@ describe("UserPopover", () => {
     await settleAll();
 
     // Then
-    expect(tab.defaultPrevented).toBe(false);
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(byId("outside"));
+    expect(tab.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(byId("user-popover-disconnect"));
   });
 
   it("As a logged-in user, a press outside closes the popover without handing focus back to the account button", async () => {

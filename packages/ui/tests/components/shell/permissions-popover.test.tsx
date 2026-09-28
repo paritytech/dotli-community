@@ -29,6 +29,7 @@ import {
 } from "./old-permissions-markup";
 import { normalized } from "./old-auth-markup";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
+import { focusables } from "@dotli/ui/components/focus";
 import { byId, must } from "../../support";
 
 const LABEL = "localhost:3000";
@@ -512,7 +513,7 @@ describe("PermissionsPopover", () => {
     expect(button.getAttribute("aria-expanded")).toBe("true");
   });
 
-  it("As a keyboard user, opening it moves focus in, and Tab past the last select closes it and focus moves on", async () => {
+  it("As a keyboard user, opening it moves focus in, and Tab past the last select loops back to the first control", async () => {
     // Given
     provide();
     setProductLoaded(LABEL, "app.dot");
@@ -541,9 +542,11 @@ describe("PermissionsPopover", () => {
     await settleAll();
 
     // Then
-    expect(tab.defaultPrevented).toBe(false);
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(byId("outside"));
+    expect(tab.defaultPrevented).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(
+      focusables(byId("permissions-popover"))[0],
+    );
   });
 
   it("As a user, a press on the backdrop closes the popover without handing focus back to the button", async () => {

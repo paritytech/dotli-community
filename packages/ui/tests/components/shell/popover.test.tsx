@@ -530,9 +530,28 @@ describe("createPopover, in every mode", () => {
 });
 
 describe("createPopover, popover mode (Radix Popover, non-modal)", () => {
-  it("As a keyboard user, Tab is not trapped: it moves on naturally from the last element", async () => {
+  it("As a keyboard user, Tab and Shift+Tab loop inside the popover", async () => {
     // Given
     const popover = renderPopover("popover");
+    await openPopover(popover);
+
+    // When / Then
+    byId("last").focus();
+    let event = press("Tab");
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(byId("first"));
+    event = press("Tab", { shiftKey: true });
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(byId("last"));
+    byId("first").focus();
+    event = press("Tab");
+    expect(event.defaultPrevented).toBe(false);
+    expect(popover.open()).toBe(true);
+  });
+
+  it("As a keyboard user, with trapFocus false Tab moves on from the last element", async () => {
+    // Given
+    const popover = renderPopover("popover", { trapFocus: false });
     await openPopover(popover);
     byId("last").focus();
 
@@ -541,6 +560,20 @@ describe("createPopover, popover mode (Radix Popover, non-modal)", () => {
 
     // Then
     expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("As a keyboard user on the trigger, Tab moves into the open popover", async () => {
+    // Given
+    const popover = renderPopover("popover");
+    await openPopover(popover);
+    byId("trigger").focus();
+
+    // When
+    const event = press("Tab");
+
+    // Then
+    expect(event.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(byId("first"));
   });
 
   it("As a keyboard user, focus leaving the trigger and the popover closes it and stays where it went", async () => {
@@ -1064,10 +1097,8 @@ describe("createPopover, mode chosen on each opening", () => {
     // When
     await openPopover(popover);
 
-    // Then: a non-modal popover, which leaves Tab and scroll alone.
+    // Then: a non-modal popover, which leaves scroll alone.
     expect(document.activeElement).toBe(byId("first"));
-    byId("last").focus();
-    expect(press("Tab").defaultPrevented).toBe(false);
     expect(scrollLocked()).toBe(false);
 
     // When: it closes and opens again, now asked for a dialog.
@@ -1085,10 +1116,9 @@ describe("createPopover, mode chosen on each opening", () => {
 
     // When: the mode changes while it is open.
     mode = "popover";
-    byId("last").focus();
 
     // Then: the opening keeps the mode it opened in.
-    expect(press("Tab").defaultPrevented).toBe(true);
+    expect(scrollLocked()).toBe(true);
 
     // When
     popover.setOpen(false);
