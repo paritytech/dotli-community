@@ -88,12 +88,9 @@ export function EventList(props: {
   // that flip are written, so only their rows re-run.
   const selectedSeq = createKeyedSignals<EventSeq, true>();
   const selectedKey = createKeyedSignals<string, true>();
-  let shownSelection: Selection | null = null;
   createEffect(
     () => props.selection,
-    (selection) => {
-      const prev = shownSelection;
-      shownSelection = selection;
+    (selection, prev = null) => {
       if (prev?.seq !== selection?.seq) {
         if (prev !== null) {
           selectedSeq.write(prev.seq, undefined);
