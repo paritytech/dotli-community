@@ -5087,6 +5087,19 @@ export type HostProfileDiscloseError =
     tag: "InvalidReference";
     value?: undefined;
 }
+/**
+ * The user declined to let this product disclose a profile to their
+ * chat contacts.
+ */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** No user is signed in, so there are no contacts to disclose to. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
 /** Catch-all. */
  | {
     tag: "Unknown";
@@ -5116,6 +5129,11 @@ export type HostProfilePresentContactError =
 /** The host holds a reference it cannot parse. */
  | {
     tag: "InvalidReference";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
     value?: undefined;
 }
 /** Catch-all. */
@@ -5170,6 +5188,11 @@ export type HostProfileRetractError =
 /** Another product disclosed the reference the host holds. */
 {
     tag: "NotDiscloser";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
     value?: undefined;
 }
 /** Catch-all. */
@@ -7043,7 +7066,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "7eb6dbf2b5c734ff";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "034025152ab6b451";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7363,8 +7386,10 @@ export declare class ProfileClient {
      *
      * The host stores it as the user's own and relays it to each contact,
      * replacing whatever it sent before; the product never learns who they
-     * are. App executions only. A reference this core cannot screen is
-     * \`InvalidReference\`.
+     * are. App executions only. The first disclosure asks the user once for
+     * this product; a refusal, then or remembered, is \`PermissionDenied\`. A
+     * reference this core cannot screen is \`InvalidReference\`, and with no
+     * user signed in the call is \`NotConnected\`.
      */
     disclose(request: T.HostProfileDiscloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfileDiscloseError>>;
     /**

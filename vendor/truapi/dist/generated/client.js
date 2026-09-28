@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "7eb6dbf2b5c734ff";
+export const TRUAPI_WIRE_SCHEMA_HASH = "034025152ab6b451";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1025,8 +1025,10 @@ export class ProfileClient {
      *
      * The host stores it as the user's own and relays it to each contact,
      * replacing whatever it sent before; the product never learns who they
-     * are. App executions only. A reference this core cannot screen is
-     * `InvalidReference`.
+     * are. App executions only. The first disclosure asks the user once for
+     * this product; a refusal, then or remembered, is `PermissionDenied`. A
+     * reference this core cannot screen is `InvalidReference`, and with no
+     * user signed in the call is `NotConnected`.
      */
     disclose(request, options) {
         return this.#transport.request({

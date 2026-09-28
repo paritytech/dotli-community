@@ -690,7 +690,7 @@ export const services = [
                 type: "unary",
                 signature: "disclose(request: HostProfileDiscloseRequest): Promise<Result<undefined, S.CallErrorValue<VersionedHostProfileDiscloseError>>>",
                 docUrl: "api/profile/trait.Profile.html#method.disclose",
-                description: "Give the user's chat contacts this reference to their profile.\n\nThe host stores it as the user's own and relays it to each contact,\nreplacing whatever it sent before; the product never learns who they\nare. App executions only. A reference this core cannot screen is\n`InvalidReference`.",
+                description: "Give the user's chat contacts this reference to their profile.\n\nThe host stores it as the user's own and relays it to each contact,\nreplacing whatever it sent before; the product never learns who they\nare. App executions only. The first disclosure asks the user once for\nthis product; a refusal, then or remembered, is `PermissionDenied`. A\nreference this core cannot screen is `InvalidReference`, and with no\nuser signed in the call is `NotConnected`.",
                 requestDescription: "HostProfileDiscloseRequest",
                 exampleSource: 'const result = await truapi.profile.disclose({\n  reference: "seity-contacts:v1:" + "00".repeat(64),\n});\nconsole.log("profile disclosed:", result);',
                 requestType: "host-profile-disclose-request",

@@ -4551,6 +4551,19 @@ export type HostProfileDiscloseError =
     tag: "InvalidReference";
     value?: undefined;
 }
+/**
+ * The user declined to let this product disclose a profile to their
+ * chat contacts.
+ */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** No user is signed in, so there are no contacts to disclose to. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
 /** Catch-all. */
  | {
     tag: "Unknown";
@@ -4580,6 +4593,11 @@ export type HostProfilePresentContactError =
 /** The host holds a reference it cannot parse. */
  | {
     tag: "InvalidReference";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
     value?: undefined;
 }
 /** Catch-all. */
@@ -4634,6 +4652,11 @@ export type HostProfileRetractError =
 /** Another product disclosed the reference the host holds. */
 {
     tag: "NotDiscloser";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
     value?: undefined;
 }
 /** Catch-all. */
