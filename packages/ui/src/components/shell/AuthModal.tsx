@@ -1,7 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, Match, Show, Switch } from "solid-js";
+import {
+  createEffect,
+  createMemo,
+  createSignal,
+  Match,
+  Show,
+  Switch,
+} from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { isMobileDevice } from "@dotli/shared/device";
 import { log } from "@dotli/shared/log";
@@ -11,6 +18,7 @@ import {
   getAuthModalState,
   type AuthModalView,
 } from "../../state/auth-modal";
+import { shallowEqual } from "../../state/create-store";
 import { useStore } from "../use-store";
 import { createPopover } from "./popover";
 
@@ -101,15 +109,24 @@ export function AuthModal(): JSX.Element {
   const state = useStore(authModalStore);
   const mobile = isMobileDevice();
 
+  // The effects below compute from memos, not from `state()`: Solid 2 runs an
+  // effect's function every time its compute re-runs, so a compute over the
+  // whole store would re-run them on any write (a new reason, say), and the
+  // memos only notify when their own value changes.
+  const open = createMemo(() => state().open);
   /** The view on show: none while closed, as the topbar emptied it. */
-  const view = (): AuthModalView | null => {
-    const s = state();
-    return s.open ? s.view : null;
-  };
-  const pairingPayload = (): string | null => {
+  const view = createMemo<AuthModalView | null>(
+    () => {
+      const s = state();
+      return s.open ? s.view : null;
+    },
+    // The store rebuilds the view on writes that keep it.
+    { equals: shallowEqual },
+  );
+  const pairingPayload = createMemo((): string | null => {
     const v = view();
     return v?.kind === "pairing" ? v.payload : null;
-  };
+  });
 
   // The phone's "Show QR instead": the QR's hint replaces the deeplink's
   // until the next presentation. Login progress keeps whichever is up.
@@ -176,23 +193,20 @@ export function AuthModal(): JSX.Element {
     },
   });
   // The dialog follows the store.
-  createEffect(
-    () => state().open,
-    (open) => {
-      if (!open || backdrop?.isConnected !== false) {
-        dialog.setOpen(open);
-        return;
+  createEffect(open, (isOpen) => {
+    if (!isOpen || backdrop?.isConnected !== false) {
+      dialog.setOpen(isOpen);
+      return;
+    }
+    // Already open as the island mounts: it renders detached and is swapped
+    // in right after (islands.tsx), so open the dialog, which takes the
+    // focus, once it is in the document.
+    queueMicrotask(() => {
+      if (getAuthModalState().open) {
+        dialog.setOpen(true);
       }
-      // Already open as the island mounts: it renders detached and is
-      // swapped in right after (islands.tsx), so open the dialog, which
-      // takes the focus, once it is in the document.
-      queueMicrotask(() => {
-        if (getAuthModalState().open) {
-          dialog.setOpen(true);
-        }
-      });
-    },
-  );
+    });
+  });
 
   const hint = (): string =>
     mobile && !qrShown()
@@ -231,7 +245,7 @@ export function AuthModal(): JSX.Element {
         backdrop = el;
         el.addEventListener("click", onBackdropClick);
       }}
-      class={["auth-modal-backdrop", { open: state().open }]}
+      class={["auth-modal-backdrop", { open: open() }]}
       id="auth-modal-backdrop"
       role="dialog"
       aria-modal="true"

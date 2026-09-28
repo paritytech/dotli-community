@@ -4,7 +4,7 @@
 import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { startLogin } from "../../auth-controller";
-import { authStore, getAuthState } from "../../state/auth";
+import { getAuthState } from "../../state/auth";
 import { authModalStore } from "../../state/auth-modal";
 import { useStore } from "../use-store";
 import { sessionInitials, useAccount } from "./account";
@@ -50,13 +50,12 @@ function UserIcon(): JSX.Element {
  */
 export function AuthButton(): JSX.Element {
   const account = useAccount();
-  const auth = useStore(authStore);
   const authModal = useStore(authModalStore);
   /**
    * A click toggles the user popover, else opens the auth modal (see
    * onClick), so the ARIA says so.
    */
-  const opensPopover = (): boolean => auth().tag === "Connected";
+  const opensPopover = account.connected;
   const label = (): string =>
     account.loggedIn() ? "Account" : "Login with Polkadot Mobile";
 

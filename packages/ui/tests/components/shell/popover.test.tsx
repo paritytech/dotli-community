@@ -9,7 +9,11 @@ import {
   type PopoverMode,
   type PopoverOptions,
 } from "@dotli/ui/components/shell/popover";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import {
+  recordChainsButtonVisible,
+  setBlockingModalActive,
+  setTopbarVisible,
+} from "@dotli/ui/state/topbar";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
 
 type Popover = ReturnType<typeof createPopover>;
@@ -373,6 +377,27 @@ describe("createPopover, in every mode", () => {
     setBlockingModalActive(true);
     await settle();
     expect(popover.open()).toBe(false);
+  });
+
+  it("As a user, a popover opened while a blocking modal is up stays open across unrelated topbar writes", async () => {
+    // Given
+    setBlockingModalActive(true);
+    const onClose = vi.fn();
+    const popover = renderPopover("popover", { onClose });
+    await openPopover(popover);
+
+    // When: the auto-hide hides and reveals the topbar, and the chains
+    // button shows, while the modal is still up.
+    setTopbarVisible(false);
+    await settle();
+    setTopbarVisible(true);
+    await settle();
+    recordChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(0);
   });
 
   it("As the auth modal, a surface with closeOnBlockingModal false stays open when a blocking modal comes up", async () => {

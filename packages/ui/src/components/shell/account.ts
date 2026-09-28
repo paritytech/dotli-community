@@ -19,6 +19,8 @@ export interface Account {
    * followed by another state) shows as a bare `connected: true`.
    */
   session: Accessor<TruapiSessionUiState | undefined>;
+  /** True while the auth state is `Connected` (authStore). */
+  connected: Accessor<boolean>;
 }
 
 /** Read the account from the auth stores. Call inside a component. */
@@ -29,9 +31,11 @@ export function useAccount(): Account {
     const state = auth();
     return state.tag === "Connected" ? state.session : prev;
   });
+  const connected = createMemo(() => auth().tag === "Connected");
   return {
     loggedIn,
     session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
+    connected,
   };
 }
 

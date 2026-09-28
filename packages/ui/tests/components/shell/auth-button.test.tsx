@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
 import { getAuthModalState } from "@dotli/ui/state/auth-modal";
-import { setAuthState } from "@dotli/ui/state/auth";
+import { authStore, setAuthState } from "@dotli/ui/state/auth";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
 import { renderComponent } from "../../helpers/solid";
 import {
@@ -46,6 +46,18 @@ function expectMarkup(button: Element, expected: Element): void {
 }
 
 describe("AuthButton", () => {
+  it("As a dotli user, the button follows the auth store through one subscription", async () => {
+    // Given
+    const subscribe = vi.spyOn(authStore, "subscribe");
+
+    // When
+    await renderButton();
+
+    // Then
+    expect(subscribe).toHaveBeenCalledTimes(1);
+    subscribe.mockRestore();
+  });
+
   it("As a logged-out user, I see the login button, enabled, with the markup the topbar rendered", async () => {
     // When
     const button = await renderButton();

@@ -29,6 +29,17 @@ import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
 
+/** The verdict, counted as the popover computes it. */
+const format = vi.hoisted(() => ({ describeLiveNetwork: vi.fn() }));
+vi.mock("@dotli/ui/components/shell/chains-format", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@dotli/ui/components/shell/chains-format")
+    >();
+  format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
+  return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
+});
+
 /** The network monitor, as a test drives it. */
 const monitor = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
@@ -587,5 +598,195 @@ describe("The network popover island", () => {
 
     // Then
     expect(byId("chains-button").classList.contains("visible")).toBe(false);
+  });
+});
+
+describe("The network popover island, on network updates", () => {
+  /** A stand-in ResizeObserver whose callbacks a test fires. */
+  let resizeCallbacks: (() => void)[] = [];
+  /** The width the bar strips lay out at. */
+  let stripWidth = 0;
+
+  beforeEach(() => {
+    resizeCallbacks = [];
+    stripWidth = 0;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        private readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+        }
+        observe(): void {
+          resizeCallbacks.push(this.callback);
+        }
+        unobserve(): void {}
+        disconnect(): void {
+          resizeCallbacks = resizeCallbacks.filter(
+            (cb) => cb !== this.callback,
+          );
+        }
+      },
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** Strips lay out `stripWidth` wide; 4px bars with 4px gaps. */
+  function spyStripLayout(): {
+    rects: ReturnType<typeof vi.spyOn>;
+    styles: ReturnType<typeof vi.spyOn>;
+  } {
+    const rects = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const width = this.classList.contains("chains-bars") ? stripWidth : 0;
+        return { width, height: 0 } as DOMRect;
+      });
+    const styles = vi.spyOn(window, "getComputedStyle");
+    return { rects, styles };
+  }
+
+  function shownBlocks(): string[] {
+    return [
+      ...document.querySelectorAll<HTMLElement>(".chains-bar[data-block]"),
+    ].map((bar) => bar.dataset.block ?? "");
+  }
+
+  it("As a dotli user watching the download, updates that land no block read no layout", async () => {
+    // Given
+    stripWidth = 76;
+    const strip = bars(1, 10);
+    monitor.status = [chain({ latest: 10, bars: strip, sinceLast: 0 })];
+    notify();
+    await renderPopover();
+    await openPopover();
+    const { rects, styles } = spyStripLayout();
+
+    // When: five speed samples, the same bars each time.
+    for (let i = 0; i < 5; i += 1) {
+      monitor.transfer = {
+        bytesPerSecond: 1000 + i,
+        fetched: null,
+        total: null,
+      };
+      monitor.status = [chain({ latest: 10, bars: [...strip], sinceLast: 0 })];
+      notify();
+      await settle();
+    }
+
+    // Then
+    expect(rects).toHaveBeenCalledTimes(0);
+    expect(styles).toHaveBeenCalledTimes(0);
+    expect(shownBlocks()).toHaveLength(10);
+  });
+
+  it("As a dotli user, the strip shows the bars that fit as it opens, and more once it widens", async () => {
+    // Given: 20 bars; the strip fits 10 of them.
+    spyStripLayout();
+    stripWidth = 76;
+    monitor.status = [chain({ latest: 20, bars: bars(1, 20), sinceLast: 0 })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(shownBlocks()).toEqual(
+      Array.from({ length: 10 }, (_, i) => String(11 + i)),
+    );
+
+    // When: the panel widens to fit all 20, with no network update.
+    stripWidth = 156;
+    for (const callback of resizeCallbacks) {
+      callback();
+    }
+    await settle();
+
+    // Then: the older bars are revealed, not slid in as new blocks.
+    expect(shownBlocks()).toHaveLength(20);
+    expect(document.querySelectorAll(".chains-bar.is-new")).toHaveLength(0);
+  });
+
+  it("As a dotli user watching a chain between blocks, the countdown is computed once per tick", async () => {
+    // Given
+    let reads = 0;
+    const pending = Object.defineProperty(
+      chain({ latest: 10, sinceLast: 1000 }),
+      "blockTimeMs",
+      {
+        get: () => {
+          reads += 1;
+          return 6000;
+        },
+      },
+    );
+    monitor.status = [pending];
+    notify();
+    await renderPopover();
+    await openPopover();
+    reads = 0;
+
+    // When
+    vi.advanceTimersByTime(250);
+    await settle();
+
+    // Then: one computation reads the block time twice.
+    expect(reads).toBe(2);
+    expect(waitingText()).toBe("next block in about 5s");
+  });
+
+  it("As a dotli user, the verdict is worked out once per network update", async () => {
+    // Given
+    monitor.status = [chain({ latest: 10, bars: bars(1, 10), sinceLast: 0 })];
+    notify();
+    await renderPopover();
+    await openPopover();
+    format.describeLiveNetwork.mockClear();
+
+    // When
+    monitor.status = [chain({ latest: 11, bars: bars(1, 11), sinceLast: 0 })];
+    notify();
+    await settle();
+
+    // Then
+    expect(format.describeLiveNetwork).toHaveBeenCalledTimes(1);
+    expect(document.querySelector(".chains-status")?.textContent).toBe(
+      "Your connection is good",
+    );
+  });
+
+  it("As a dotli user, the countdown ticker stops once no chain is waiting for its first block", async () => {
+    // Given
+    monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
+    notify();
+    await renderPopover();
+    await openPopover();
+    expect(vi.getTimerCount()).toBe(1);
+
+    // When
+    monitor.status = [chain({ latest: 11, bars: bars(11, 1), sinceLast: 0 })];
+    notify();
+    await settle();
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
+    expect(shownBlocks()).toEqual(["11"]);
+  });
+
+  it("As a dotli user opening it with every chain showing bars, no countdown ticker runs", async () => {
+    // Given
+    monitor.status = [chain({ latest: 10, bars: bars(1, 10), sinceLast: 0 })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

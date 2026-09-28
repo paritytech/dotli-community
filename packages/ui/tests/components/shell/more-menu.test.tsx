@@ -10,7 +10,11 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setChatCapability } from "@dotli/shared/chat-capability";
-import { initChatPanelState } from "@dotli/ui/state/chat-panel";
+import { flush } from "solid-js";
+import {
+  initChatPanelState,
+  setChatPanelWidth,
+} from "@dotli/ui/state/chat-panel";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import {
   mouseClick,
@@ -23,6 +27,15 @@ import { mountMoreMenu } from "./more-menu-harness";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
+
+/** Whether the Chat row shows, counted as it is worked out. */
+const chatPanel = vi.hoisted(() => ({ chatButtonVisible: vi.fn() }));
+vi.mock("@dotli/ui/state/chat-panel", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@dotli/ui/state/chat-panel")>();
+  chatPanel.chatButtonVisible.mockImplementation(actual.chatButtonVisible);
+  return { ...actual, chatButtonVisible: chatPanel.chatButtonVisible };
+});
 
 const FIXTURE = readFileSync(
   resolve(import.meta.dirname, "original-shell.html"),
@@ -239,6 +252,21 @@ describe("MoreMenu", () => {
     await settle();
 
     // Then
+    expect(byId("more-row-chat").hidden).toBe(true);
+  });
+
+  it("As a mobile user dragging the chat panel wider, the Chat row is not worked out again on render", async () => {
+    // Given
+    await renderMenu();
+
+    // When: two width writes, then the render they batch into.
+    setChatPanelWidth(300);
+    setChatPanelWidth(320);
+    chatPanel.chatButtonVisible.mockClear();
+    flush();
+
+    // Then
+    expect(chatPanel.chatButtonVisible).toHaveBeenCalledTimes(0);
     expect(byId("more-row-chat").hidden).toBe(true);
   });
 

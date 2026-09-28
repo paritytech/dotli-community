@@ -278,17 +278,20 @@ export function createPopover(options: PopoverOptions): Popover {
     }
   };
 
-  const topbar = useStore(topbarStore);
-  // Runs when the flag changes, so a popover opened while a modal is already
-  // up stays open until the next one comes up.
-  createEffect(
-    () => topbar().blockingModalActive,
-    (active) => {
-      if (active && options.closeOnBlockingModal !== false) {
-        setOpen(false);
-      }
-    },
+  // A selector, not `() => topbar().blockingModalActive`: Solid 2 runs an
+  // effect's function every time its compute re-runs, so a compute over the
+  // whole store would close the popover on any topbar write. This runs when
+  // the flag changes, so a popover opened while a modal is already up stays
+  // open until the next one comes up.
+  const blockingModalActive = useStore(
+    topbarStore,
+    (s) => s.blockingModalActive,
   );
+  createEffect(blockingModalActive, (active) => {
+    if (active && options.closeOnBlockingModal !== false) {
+      setOpen(false);
+    }
+  });
 
   if (options.mode === "menu") {
     /** Ends the guard against the click of the last key handled below. */

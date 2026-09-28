@@ -7,13 +7,14 @@ import {
   createSignal,
   Errored,
   For,
+  onSettled,
   Show,
   untrack,
-  type Accessor,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import { reportRootErrorOnce } from "../../mount/root";
 import type { ChainStatus } from "../../network-monitor";
+import { shallowEqual } from "../../state/create-store";
 import { networkStore, watchNetwork } from "../../state/network";
 import { productStore } from "../../state/product";
 import { topbarStore } from "../../state/topbar";
@@ -27,7 +28,10 @@ import {
 } from "./chains-format";
 import { createPopover } from "./popover";
 
-/** How often the pending cells' countdown is recomputed while open. */
+/**
+ * How often the pending cells' countdown is recomputed while open and a
+ * chain is waiting for its first block.
+ */
 const PENDING_TICK_MS = 250;
 
 const TIPS = [
@@ -86,29 +90,32 @@ function PendingBar(props: {
   chain: ChainStatus;
   sinceLast: number | null;
 }): JSX.Element {
-  const pending = (): {
-    modifier: string;
-    height?: string;
-    text: string;
-  } => {
-    const since = props.sinceLast;
-    if (since === null) {
-      return {
-        modifier: " is-searching",
-        text: props.chain.phase ?? "connecting",
-      };
-    }
-    const fraction = Math.min(since / props.chain.blockTimeMs, 1);
-    const height = `${String(Math.round(20 + fraction * 80))}%`;
-    const leftMs = props.chain.blockTimeMs - since;
-    return leftMs > 0
-      ? {
-          modifier: "",
-          height,
-          text: `next block in about ${String(Math.ceil(leftMs / 1000))}s`,
-        }
-      : { modifier: " is-due", height, text: "due any moment" };
-  };
+  // Read four times per render: computed once per tick.
+  const pending = createMemo(
+    (): {
+      modifier: string;
+      height?: string;
+      text: string;
+    } => {
+      const since = props.sinceLast;
+      if (since === null) {
+        return {
+          modifier: " is-searching",
+          text: props.chain.phase ?? "connecting",
+        };
+      }
+      const fraction = Math.min(since / props.chain.blockTimeMs, 1);
+      const height = `${String(Math.round(20 + fraction * 80))}%`;
+      const leftMs = props.chain.blockTimeMs - since;
+      return leftMs > 0
+        ? {
+            modifier: "",
+            height,
+            text: `next block in about ${String(Math.ceil(leftMs / 1000))}s`,
+          }
+        : { modifier: " is-due", height, text: "due any moment" };
+    },
+  );
   return (
     <>
       <span
@@ -134,24 +141,57 @@ function BarStrip(props: {
   sinceLast: number | null;
 }): JSX.Element {
   let strip: HTMLDivElement | undefined;
+  // The network store is rebuilt on every monitor notification, speed
+  // samples included. The monitor adds a new bar object per block and never
+  // changes one, so the same bars mean no block landed, and nothing below
+  // runs for such an update.
+  const bars = createMemo(() => props.chain.bars, { equals: shallowEqual });
+  /** How many bars the strip fits: all of them until it is measured. */
+  const [capacity, setCapacity] = createSignal(Number.POSITIVE_INFINITY);
+  const measure = (): void => {
+    if (strip !== undefined) {
+      setCapacity(stripCapacity(strip, Number.POSITIVE_INFINITY));
+    }
+  };
+  // Measured once the strip is in the page, which is as the popover opens
+  // (the strip mounts with the popover's content), and again whenever it
+  // resizes. Network updates read no layout.
+  onSettled(() => {
+    measure();
+    if (strip === undefined || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(strip);
+    return () => {
+      observer.disconnect();
+    };
+  });
   // Only the newest marks the strip can fit are rendered. The rest stay in
   // the monitor, so widening the panel reveals more history rather than
   // starting it over.
-  const visible = createMemo(() => {
-    const bars = props.chain.bars;
-    return bars.slice(
-      -(strip === undefined ? bars.length : stripCapacity(strip, bars.length)),
-    );
-  });
-  createEffect(visible, (bars, prev) => {
+  const visible = createMemo(
+    () => {
+      const list = bars();
+      const fit = capacity();
+      return fit >= list.length ? list : list.slice(-fit);
+    },
+    { equals: shallowEqual },
+  );
+  createEffect(visible, (list, prev) => {
     if (strip === undefined || prev === undefined) {
       return;
     }
-    const before = new Set(prev.map((bar) => bar.number));
-    const landed = bars.filter((bar) => !before.has(bar.number)).length;
+    // Only blocks newer than the newest shown landed: bars revealed on the
+    // left by a wider strip are history, not arrivals.
+    const newest = prev.at(-1)?.number;
+    const landed =
+      newest === undefined
+        ? list.length
+        : list.filter((bar) => bar.number > newest).length;
     // Bars landing in a strip that showed none (on opening, or after the
     // pending cell) appear without sliding.
-    if (landed > 0 && bars.length > landed) {
+    if (landed > 0 && list.length > landed) {
       slideStrip(strip, landed);
     }
   });
@@ -245,18 +285,41 @@ function ChainGroup(props: {
  * The popover's content, rendered while it is open: the verdict, the chains,
  * the transfer footer and the tips.
  */
-function ChainsPanel(props: { now: Accessor<number> }): JSX.Element {
+function ChainsPanel(): JSX.Element {
   const network = useStore(networkStore);
   const product = useStore(productStore);
   // The verdict reads from block arrivals, which both backends produce, so a
   // gateway connection reports its health the same way a light client does.
-  const verdict = (): { text: string; tone: string } =>
-    describeLiveNetwork(network().chains);
+  // Read twice per render: worked out once per update.
+  const verdict = createMemo(() => describeLiveNetwork(network().chains));
+
+  const [now, setNow] = createSignal(Date.now());
+  // Only a chain still waiting for its first block shows a countdown (its
+  // pending cell); once every chain has bars, nothing reads `now`, so the
+  // ticker stops. A memo, as Solid 2 runs an effect's function every time
+  // its compute re-runs.
+  const counting = createMemo(() =>
+    network().chains.some(
+      (chain) =>
+        chain.reachable && chain.bars.length === 0 && chain.sinceLast !== null,
+    ),
+  );
+  createEffect(counting, (on) => {
+    if (!on) {
+      return;
+    }
+    const ticker = setInterval(() => {
+      setNow(Date.now());
+    }, PENDING_TICK_MS);
+    return () => {
+      clearInterval(ticker);
+    };
+  });
   /** How long ago the chain's last block landed, as of the latest tick. */
   const sinceLast = (chain: ChainStatus): number | null =>
     chain.sinceLast === null
       ? null
-      : chain.sinceLast + Math.max(0, props.now() - network().readAt);
+      : chain.sinceLast + Math.max(0, now() - network().readAt);
   // Speed and size describe the load. Once the product is on screen they
   // describe history, so the footer empties rather than sitting at its final
   // numbers forever.
@@ -334,8 +397,8 @@ function ChainsPanel(props: { now: Accessor<number> }): JSX.Element {
  * The popover renders the network store: the overall verdict, a strip of
  * block bars and the peer count per chain, the download while the product is
  * loading, and tips. While it is open, every chain's block arrivals are
- * watched (watchNetwork) and a 250 ms ticker keeps the pending countdowns
- * current. Both stop when it closes, including the close a render error in
+ * watched (watchNetwork), and while a chain waits for its first block a
+ * 250 ms ticker keeps its pending countdown current. Both stop when it closes, including the close a render error in
  * the content forces (reported once, as `island:chains`), and when the island
  * unmounts.
  *
@@ -351,20 +414,11 @@ export function ChainsPopover(): JSX.Element {
     trigger: () => button,
     surface: () => popover,
   });
-  const [now, setNow] = createSignal(Date.now());
-
   createEffect(surface.open, (open) => {
     if (!open) {
       return;
     }
-    const stopWatch = watchNetwork();
-    const ticker = setInterval(() => {
-      setNow(Date.now());
-    }, PENDING_TICK_MS);
-    return () => {
-      clearInterval(ticker);
-      stopWatch();
-    };
+    return watchNetwork();
   });
 
   return (
@@ -423,7 +477,7 @@ export function ChainsPopover(): JSX.Element {
               return null;
             }}
           >
-            <ChainsPanel now={now} />
+            <ChainsPanel />
           </Errored>
         </Show>
       </div>

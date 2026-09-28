@@ -32,7 +32,9 @@ export function MoreMenu(): JSX.Element {
     trigger: () => button,
     surface: () => popover,
   });
-  const chat = useStore(chatPanelStore);
+  // Only the flag: the store is written on every chat message and every
+  // move of a panel-width drag.
+  const chatVisible = useStore(chatPanelStore, chatButtonVisible);
 
   const onClick = (e: MouseEvent): void => {
     const row = (e.target as Element).closest<HTMLElement>(".more-row");
@@ -96,7 +98,7 @@ export function MoreMenu(): JSX.Element {
           role="menuitem"
           tabindex="-1"
           data-target="chat-button"
-          hidden={!chatButtonVisible(chat())}
+          hidden={!chatVisible()}
         >
           <svg
             width="14"

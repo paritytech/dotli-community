@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
 import { AuthModal } from "@dotli/ui/components/shell/AuthModal";
 import { setAuthState } from "@dotli/ui/state/auth";
+import { updateAuthModal } from "@dotli/ui/state/auth-modal";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
 import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
@@ -743,6 +744,62 @@ describe("AuthModal QR", () => {
   });
 });
 
+describe("AuthModal on unrelated store writes", () => {
+  it("As a user shown a QR, it is drawn once and keeps its canvas while other modal fields change", async () => {
+    // Given
+    await renderModal();
+    const createElement = vi.spyOn(document, "createElement");
+    const canvases = (): number =>
+      createElement.mock.calls.filter(([tag]) => tag === "canvas").length;
+    await authState(pairing());
+    const canvas = document.querySelector("#auth-modal-qr canvas");
+    expect(canvas).not.toBeNull();
+    expect(canvases()).toBe(1);
+
+    // When: the reason changes twice, the code does not.
+    updateAuthModal({ reason: "first" });
+    await settleQr();
+    updateAuthModal({ reason: "second" });
+    await settleQr();
+
+    // Then
+    expect(canvases()).toBe(1);
+    expect(qr.toCanvas).toHaveBeenCalledTimes(1);
+    expect(document.querySelector("#auth-modal-qr canvas")).toBe(canvas);
+  });
+
+  it("As a user, the open modal's dialog is set once per open, not again on other modal writes", async () => {
+    // Given
+    const backdrop = await renderModal();
+    await authState(pairing());
+    expect(isOpen()).toBe(true);
+    // The dialog effect checks the backdrop is in the page each time it
+    // runs with the modal open.
+    let runs = 0;
+    const connected = Object.getOwnPropertyDescriptor(
+      Node.prototype,
+      "isConnected",
+    );
+    Object.defineProperty(backdrop, "isConnected", {
+      configurable: true,
+      get(this: Node) {
+        runs += 1;
+        return connected?.get?.call(this) as boolean;
+      },
+    });
+
+    // When
+    updateAuthModal({ reason: "first" });
+    await settleQr();
+    updateAuthModal({ productLabel: "other.dot" });
+    await settleQr();
+
+    // Then
+    expect(runs).toBe(0);
+    expect(isOpen()).toBe(true);
+  });
+});
+
 describe("AuthModal on a phone", () => {
   it("As a new user on a phone without the app, the login modal shows me where to get Polkadot Mobile", async () => {
     // Given
@@ -832,6 +889,30 @@ describe("AuthModal on a phone", () => {
       mobileClass: true,
       body: { kind: "mobile-qr", payload: DEEPLINK, qrShown: false },
     });
+  });
+});
+
+describe("AuthModal on a phone, on unrelated store writes", () => {
+  it("As a phone user who chose Show QR instead, the QR stays shown while other modal fields change", async () => {
+    // Given
+    device.mobile = true;
+    await renderModal();
+    await authState(pairing());
+    (document.querySelector(".auth-modal-qr-toggle") as HTMLElement).click();
+    await settleQr();
+    expect(
+      (document.querySelector(".auth-modal-qr-link") as HTMLElement).hidden,
+    ).toBe(false);
+
+    // When
+    updateAuthModal({ reason: "first" });
+    await settleQr();
+
+    // Then
+    expect(
+      (document.querySelector(".auth-modal-qr-link") as HTMLElement).hidden,
+    ).toBe(false);
+    expect(byId("auth-modal-hint").textContent).toBe(DESKTOP_HINT);
   });
 });
 
