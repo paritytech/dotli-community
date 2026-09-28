@@ -32,17 +32,25 @@ const VECTOR = JSON.parse(
 };
 
 const mocks = vi.hoisted(() => ({
+  backend: "smoldot-direct" as string,
   bitswapGet: vi.fn(
     async (_cid: string): Promise<Uint8Array> => new Uint8Array(),
   ),
   resolveSeitySlotRemote: vi.fn(),
+  resolveSeitySlotViaRpc: vi.fn(),
 }));
 
 vi.mock("@dotli/content/bitswap", () => ({ bitswapGet: mocks.bitswapGet }));
-vi.mock("@dotli/content/ipfs", () => ({ fetchFromIpfs: vi.fn() }));
-vi.mock("@dotli/config/mode", () => ({ getBackend: () => "smoldot-direct" }));
+// The gateway backend fetches preimages over HTTP instead of bitswap.
+vi.mock("@dotli/content/ipfs", () => ({
+  fetchFromIpfs: async (cid: string) => ({ data: await mocks.bitswapGet(cid) }),
+}));
+vi.mock("@dotli/config/mode", () => ({ getBackend: () => mocks.backend }));
 vi.mock("@dotli/protocol/client", () => ({
   resolveSeitySlotRemote: mocks.resolveSeitySlotRemote,
+}));
+vi.mock("@dotli/resolver/rpc-resolve", () => ({
+  resolveSeitySlotViaRpc: mocks.resolveSeitySlotViaRpc,
 }));
 
 const product: ProductContext = {
@@ -79,6 +87,8 @@ async function settle(): Promise<void> {
 describe("Seity contacts references", () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    mocks.backend = "smoldot-direct";
+    mocks.resolveSeitySlotViaRpc.mockReset();
     // An hour after the vector's mood was set, so it is still current.
     vi.setSystemTime((VECTOR.expect.mood.setAt + 3600) * 1000);
     mocks.bitswapGet.mockReset();
@@ -153,6 +163,63 @@ describe("Seity contacts references", () => {
 
     expect(drawer()?.querySelector(".profile-drawer-status")?.textContent).toBe(
       "This person is not sharing a profile right now.",
+    );
+  });
+
+  it("reads the slot over the gateway RPC on the Trusted Providers backend", async () => {
+    mocks.backend = "rpc-gateway";
+    mocks.resolveSeitySlotViaRpc.mockImplementation(async () => ({
+      owner: `0x${"aa".repeat(20)}`,
+      cidDigest: VECTOR.registry.cidDigest,
+      version: 1n,
+    }));
+    await createProfilePlatform().presentProfile(product, {
+      reference: VECTOR.reference,
+    });
+    await settle();
+
+    expect(mocks.resolveSeitySlotViaRpc).toHaveBeenCalledWith(
+      VECTOR.registry.lookupKey,
+    );
+    expect(mocks.resolveSeitySlotRemote).not.toHaveBeenCalled();
+    expect(drawer()?.querySelector("img")).not.toBeNull();
+    expect(drawer()?.querySelector(".profile-mood-ring")).not.toBeNull();
+  });
+
+  it("keeps the mood when the avatar cannot be opened", async () => {
+    // The record opens; the avatar's decrypt (the second one) fails, as a
+    // re-sealed avatar would.
+    const decrypt = crypto.subtle.decrypt.bind(crypto.subtle);
+    let calls = 0;
+    const spy = vi
+      .spyOn(crypto.subtle, "decrypt")
+      .mockImplementation((...args: Parameters<SubtleCrypto["decrypt"]>) =>
+        ++calls === 2
+          ? Promise.reject(new DOMException("bad tag", "OperationError"))
+          : decrypt(...args),
+      );
+    try {
+      await createProfilePlatform().presentProfile(product, {
+        reference: VECTOR.reference,
+      });
+      await settle();
+    } finally {
+      spy.mockRestore();
+    }
+
+    expect(calls).toBe(2);
+    expect(drawer()?.querySelector("img")).toBeNull();
+    expect(drawer()?.querySelector(".profile-mood-ring")).not.toBeNull();
+    expect(drawer()?.querySelector(".profile-drawer-mood")?.textContent).toBe(
+      "Hyped · loud · 23 h left",
+    );
+  });
+
+  it("accepts a contacts reference spelled in uppercase hex", () => {
+    const prefix = "seity-contacts:v1:";
+    const body = VECTOR.reference.slice(prefix.length);
+    expect(parseContactsReference(prefix + body.toUpperCase()).lookupKey).toBe(
+      VECTOR.registry.lookupKey,
     );
   });
 

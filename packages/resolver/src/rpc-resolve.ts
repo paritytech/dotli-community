@@ -34,6 +34,7 @@ import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
 import type { StatusCallback } from "./access-raw-storage";
 import { ApiStoppedError, createRawApi, type Api } from "./api";
 import { readExecutableManifest, readRootManifest } from "./manifest";
+import { readSeitySlot, type SeitySlot } from "./seity-registry";
 import type {
   ExecutableKind,
   ExecutableManifest,
@@ -263,6 +264,23 @@ export async function resolveOwnerViaRpc(
       dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
     );
   });
+}
+
+/**
+ * Read one Seity registry slot over JSON-RPC: the gateway-mode counterpart of
+ * `resolveSeitySlot`. Null when the network has no Seity registry, matching
+ * the protocol-worker path.
+ */
+export async function resolveSeitySlotViaRpc(
+  lookupKey: `0x${string}`,
+): Promise<SeitySlot | null> {
+  const registry = getActiveServicesConfig().seity?.REGISTRY;
+  if (registry === undefined) {
+    return null;
+  }
+  return retryStoppedGeneration(async () =>
+    readSeitySlot(await ensureClient(), registry, lookupKey),
+  );
 }
 
 /**
