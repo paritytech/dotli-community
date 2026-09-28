@@ -6,7 +6,11 @@
 // resumes from what was left. The overlays root renders this store.
 
 import { captureException } from "@dotli/metrics/sentry";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 export interface ToastAction {
   label: string;
@@ -50,7 +54,7 @@ interface Timer {
 }
 
 const INITIAL: ToastsState = { items: [], expanded: false };
-const toasts = createSyncStore<ToastsState>(INITIAL);
+const toasts = createSyncStore<ToastsState>(INITIAL, { equals: shallowEqual });
 export const toastsStore: ReadableStore<ToastsState> = toasts;
 
 const timers = new Map<number, Timer>();

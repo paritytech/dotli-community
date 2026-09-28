@@ -8,15 +8,33 @@ import { ViolationPanel } from "./ViolationPanel";
 
 const ROOT = "sandbox-checker";
 
-/** Show the violation panel for `iframe`. Returns the dispose function. */
+/**
+ * Show the violation panel for `iframe`. Returns the dispose function, which
+ * may run more than once. A render error, even a late one, disposes the
+ * panel and removes it (a microtask later, not from inside its own error
+ * boundary), so it never stays frozen and running.
+ */
 export function mountViolationPanel(iframe: HTMLIFrameElement): () => void {
   const container = document.createElement("div");
   document.body.appendChild(container);
-  const disposeView = mountRoot(ROOT, container, () => (
-    <ViolationPanel iframe={iframe} />
-  ));
-  return () => {
+  let disposed = false;
+  const dispose = (): void => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
     disposeView();
     container.remove();
   };
+  const disposeView = mountRoot(
+    ROOT,
+    container,
+    () => <ViolationPanel iframe={iframe} />,
+    {
+      onError: () => {
+        queueMicrotask(dispose);
+      },
+    },
+  );
+  return dispose;
 }

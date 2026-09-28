@@ -1,7 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 export interface TopbarState {
   visible: boolean;
@@ -9,17 +13,28 @@ export interface TopbarState {
   chainsButtonVisible: boolean;
 }
 
-const topbar = createSyncStore<TopbarState>({
-  visible: true,
-  blockingModalActive: false,
-  chainsButtonVisible: false,
-});
+const topbar = createSyncStore<TopbarState>(
+  {
+    visible: true,
+    blockingModalActive: false,
+    chainsButtonVisible: false,
+  },
+  { equals: shallowEqual },
+);
 
 export const topbarStore: ReadableStore<TopbarState> = topbar;
 export const getTopbarState = topbar.get;
 
-/** Also dispatches `topbar:visibility` with the boolean as detail. */
+/**
+ * Also dispatches `topbar:visibility` with the boolean as detail. An
+ * unchanged value does nothing: no write, no event.
+ */
 export function setTopbarVisible(visible: boolean): void {
+  // The auto-hide reveals on every mouseenter, visible or not. The event's
+  // only listener (the chat panel) cares about changes alone.
+  if (topbar.get().visible === visible) {
+    return;
+  }
   topbar.set({ ...topbar.get(), visible });
   window.dispatchEvent(
     new CustomEvent<boolean>("topbar:visibility", { detail: visible }),

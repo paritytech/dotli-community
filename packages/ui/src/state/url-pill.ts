@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ShieldState } from "../verification-shield";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 /**
  * What the topbar's URL pill shows. `none` is the landing page (and the
@@ -19,7 +23,10 @@ export type UrlPillState =
       shield: ShieldState | null;
     };
 
-const urlPill = createSyncStore<UrlPillState>({ kind: "none" });
+const urlPill = createSyncStore<UrlPillState>(
+  { kind: "none" },
+  { equals: shallowEqual },
+);
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
 

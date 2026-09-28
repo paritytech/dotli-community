@@ -90,8 +90,17 @@ export function ensureIslands(): Promise<void> {
     ({ mountIslands }) => {
       stopHoldingBack();
       const banner = staticBanner();
+      // An island that fails after it was swapped in has its static markup
+      // back by now: fall back for it as for one that failed to mount.
+      const onLateFailure = (name: string): void => {
+        if (name === "auth-modal") {
+          disableAuthModal();
+        } else if (name === "offline-banner") {
+          followOfflineWithoutIslands(banner);
+        }
+      };
       try {
-        if (mountIslands().includes("auth-modal")) {
+        if (mountIslands(onLateFailure).includes("auth-modal")) {
           disableAuthModal();
         }
       } catch (err) {

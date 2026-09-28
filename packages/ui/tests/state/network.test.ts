@@ -33,7 +33,11 @@ describe("network store", () => {
   afterEach(() => {
     resetStores();
     monitor.listeners.clear();
-    monitor.status = [];
+    Object.defineProperty(monitor, "status", {
+      configurable: true,
+      writable: true,
+      value: [],
+    });
     monitor.watching = false;
   });
 
@@ -55,6 +59,52 @@ describe("network store", () => {
     ]);
     stop();
     expect(monitor.listeners.size).toBe(0);
+  });
+
+  it("As the host with no reader subscribed, monitor changes build no snapshot until one is read", async () => {
+    // Given
+    const { getNetworkState, networkStore, startNetworkStore } =
+      await import("@dotli/ui/state/network");
+    let reads = 0;
+    const stop = startNetworkStore();
+    const status = [{ role: "relay", label: "Relay" }];
+    Object.defineProperty(monitor, "status", {
+      configurable: true,
+      get: () => {
+        reads += 1;
+        return status;
+      },
+    });
+
+    // When: five notifications with nobody subscribed.
+    for (let i = 0; i < 5; i += 1) {
+      for (const l of monitor.listeners) {
+        l();
+      }
+    }
+
+    // Then
+    expect(reads).toBe(0);
+    expect(getNetworkState().chains).toEqual(status);
+    expect(networkStore.get().chains).toEqual(status);
+    expect(reads).toBe(1);
+
+    // When: a reader subscribes, each notification builds one snapshot.
+    const seen: unknown[] = [];
+    const unsubscribe = networkStore.subscribe(() => {
+      seen.push(networkStore.get().chains);
+    });
+    for (let i = 0; i < 2; i += 1) {
+      for (const l of monitor.listeners) {
+        l();
+      }
+    }
+
+    // Then
+    expect(reads).toBe(3);
+    expect(seen).toHaveLength(2);
+    unsubscribe();
+    stop();
   });
 
   it("As the host, the store does nothing until started", async () => {

@@ -67,19 +67,38 @@ vi.mock("@dotli/ui/recent-labels", () => ({
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-// Lets a test make the theme island throw while it renders.
-const themeIsland = vi.hoisted(() => ({ broken: false }));
+// Lets a test make the theme island throw while it renders, or later, once
+// it has swapped in (`breakLater`), and count its disposals.
+const themeIsland = vi.hoisted(() => ({
+  broken: false,
+  breakLater: null as (() => void) | null,
+  disposed: 0,
+}));
 vi.mock("@dotli/ui/components/shell/ThemeToggle", async (importOriginal) => {
   const actual =
     await importOriginal<
       typeof import("@dotli/ui/components/shell/ThemeToggle")
     >();
+  const { createSignal, onCleanup } = await import("solid-js");
   return {
     ThemeToggle: () => {
       if (themeIsland.broken) {
         throw new Error("the theme island broke");
       }
-      return actual.ThemeToggle();
+      const [late, setLate] = createSignal(false, { ownedWrite: true });
+      themeIsland.breakLater = () => setLate(true);
+      onCleanup(() => {
+        themeIsland.disposed += 1;
+      });
+      return [
+        actual.ThemeToggle(),
+        () => {
+          if (late()) {
+            throw new Error("the theme island broke later");
+          }
+          return null;
+        },
+      ];
     },
   };
 });
@@ -186,6 +205,8 @@ describe("shell islands", () => {
     stubColorScheme("dark");
     localStorage.clear();
     themeIsland.broken = false;
+    themeIsland.breakLater = null;
+    themeIsland.disposed = 0;
     sentry.captureException.mockClear();
     delete (globalThis as { _$HY?: unknown })._$HY;
     document.body.innerHTML = `<div id="shell" style="display: contents">${serverHtml}</div>`;
@@ -417,6 +438,39 @@ describe("shell islands", () => {
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: "the theme island broke" }),
+      { root: "island:theme" },
+    );
+  });
+
+  it("As a dotli user, a theme island that throws after it swapped in is disposed once, its static markup comes back with focus, and the loader hears of it", async () => {
+    // Given
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const before = THEME_IDS.map(byId);
+    const failures: string[] = [];
+    expect(mountIslands((name) => failures.push(name))).toEqual([]);
+    await flushAll();
+    const live = THEME_IDS.map(byId);
+    expect(live[0]).not.toBe(before[0]);
+    live[0].focus();
+
+    // When
+    themeIsland.breakLater?.();
+    await flushAll();
+    await Promise.resolve();
+
+    // Then
+    for (const [i, id] of THEME_IDS.entries()) {
+      expect(byId(id)).toBe(before[i]);
+      expect(countById(id)).toBe(1);
+      expect(live[i].isConnected).toBe(false);
+    }
+    expect(document.activeElement).toBe(before[0]);
+    expect(themeIsland.disposed).toBe(1);
+    expect(failures).toEqual(["theme"]);
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "the theme island broke later" }),
       { root: "island:theme" },
     );
   });

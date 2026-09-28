@@ -93,6 +93,15 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * as `island_missing_node`), the static nodes stay and the island is
  * unmounted. Focus inside a static node moves into its replacement (see
  * carryFocus). `beforeSwap` runs once the swap is certain, right before it.
+ *
+ * An island that throws while rendering after it was swapped in cannot be
+ * cleaned up by its error boundary: its nodes have left the container, and
+ * the boundary either leaves them frozen in the page or takes them out,
+ * leaving a hole. Once the error is reported, the island is disposed (a
+ * microtask later, not from inside its own boundary), each static node goes
+ * back where its live one was, focus with it, and `onLateFailure` hears the
+ * island's name, so the loader can fall back as for an island that failed to
+ * mount.
  * Returns whether the island was swapped in.
  */
 function mountIsland(
@@ -100,10 +109,56 @@ function mountIsland(
   view: () => JSX.Element,
   ids: string[],
   beforeSwap?: () => void,
+  onLateFailure?: (name: string) => void,
 ): boolean {
   const container = document.createElement("div");
-  const dispose = mountRoot(`island:${name}`, container, view);
+  let swapped = false;
+  let failed = false;
   const pairs: [stale: Element, fresh: Element][] = [];
+  // Runs from inside the error boundary's fallback, while the live nodes are
+  // still where the swap put them: the boundary may take them out of the page
+  // right after. A marker keeps each one's place, and the focus is noted.
+  // Returns the swap-back, to run once the island is disposed.
+  const markPlaces = (): (() => void) => {
+    const focused = document.activeElement;
+    let refocus: [focused: Element, live: Element, back: Element] | null = null;
+    const places: [marker: Comment, stale: Element, fresh: Element][] = [];
+    for (const [stale, fresh] of pairs) {
+      if (!fresh.isConnected) {
+        continue;
+      }
+      if (focused !== null && fresh.contains(focused)) {
+        refocus = [focused, fresh, stale];
+      }
+      const marker = document.createComment(`island:${name}`);
+      fresh.before(marker);
+      places.push([marker, stale, fresh]);
+    }
+    return () => {
+      for (const [marker, stale, fresh] of places) {
+        fresh.remove();
+        marker.replaceWith(stale);
+      }
+      if (refocus !== null) {
+        carryFocus(...refocus);
+      }
+    };
+  };
+  const dispose = mountRoot(`island:${name}`, container, view, {
+    onError: () => {
+      // A render error before the swap is handled below, synchronously.
+      if (!swapped || failed) {
+        return;
+      }
+      failed = true;
+      const swapBack = markPlaces();
+      queueMicrotask(() => {
+        dispose();
+        swapBack();
+        onLateFailure?.(name);
+      });
+    },
+  });
   for (const id of ids) {
     const stale = document.getElementById(id);
     const fresh = container.querySelector(`[id="${id}"]`);
@@ -133,6 +188,7 @@ function mountIsland(
     }
     stale.replaceWith(fresh);
   }
+  swapped = true;
   if (refocus !== null) {
     carryFocus(...refocus);
   }
@@ -150,9 +206,10 @@ function mountIsolated(
   view: () => JSX.Element,
   ids: string[],
   beforeSwap?: () => void,
+  onLateFailure?: (name: string) => void,
 ): boolean {
   try {
-    return mountIsland(name, view, ids, beforeSwap);
+    return mountIsland(name, view, ids, beforeSwap, onLateFailure);
   } catch (err) {
     reportRootErrorOnce(err, `island:${name}`, { kind: "island_mount_error" });
     disposeRoot(`island:${name}`);
@@ -174,11 +231,11 @@ const LOADING_ID = "app-loading";
  * the loading root was already disposed. Returns false only when mounting
  * failed, which leaves the static screen and its inline spinner in place.
  */
-export function mountLoadingIsland(): boolean {
-  if (
-    document.getElementById(LOADING_ID) === null ||
-    getLoadingState().phase === "gone"
-  ) {
+export function mountLoadingIsland(
+  onLateFailure?: (name: string) => void,
+): boolean {
+  const staticScreen = document.getElementById(LOADING_ID);
+  if (staticScreen === null || getLoadingState().phase === "gone") {
     return true;
   }
   const mounted = mountIsolated(
@@ -187,12 +244,15 @@ export function mountLoadingIsland(): boolean {
     [LOADING_ID],
     // The inline script would otherwise keep animating the detached petals.
     stopStaticSpinner,
+    onLateFailure,
   );
   if (mounted) {
     const screen = document.getElementById(LOADING_ID);
     adoptLoadingScreen(() => {
       disposeRoot("island:loading");
       screen?.remove();
+      // Back in the page if the island failed late (see mountIsland).
+      staticScreen.remove();
     });
   }
   return mounted;
@@ -201,16 +261,18 @@ export function mountLoadingIsland(): boolean {
 /**
  * Mount every shell island over its static markup. Returns the names of the
  * islands that failed to mount (already reported), so the loader can fall
- * back for them.
+ * back for them. `onLateFailure` hears the name of an island that fails
+ * later, after it was swapped in: by then its static markup is back (see
+ * mountIsland), and the loader can fall back for it the same way.
  */
-export function mountIslands(): string[] {
+export function mountIslands(onLateFailure?: (name: string) => void): string[] {
   const failed: string[] = [];
   const mount = (
     name: string,
     view: () => JSX.Element,
     ids: string[],
   ): void => {
-    if (!mountIsolated(name, view, ids)) {
+    if (!mountIsolated(name, view, ids, undefined, onLateFailure)) {
       failed.push(name);
     }
   };
@@ -250,7 +312,7 @@ export function mountIslands(): string[] {
   mount("more", () => <MoreMenu />, ["more-button", "more-popover"]);
   // Not a loader trigger: nothing on it is clickable. The one island that is
   // also an app root (see mountLoadingIsland).
-  if (!mountLoadingIsland()) {
+  if (!mountLoadingIsland(onLateFailure)) {
     failed.push("loading");
   }
   return failed;

@@ -1,7 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 /**
  * Up while loading, fading out once dismissed, then gone. `"gone"` is
@@ -25,14 +29,18 @@ export interface LoadingState {
 }
 
 // Matches the static markup in apps/host/index.html, which paints first.
-const loading = createSyncStore<LoadingState>({
-  progress: 0,
-  statusText: "Reaching out",
-  statusOpacity: 1,
-  srText: "",
-  warning: null,
-  phase: "active",
-});
+const loading = createSyncStore<LoadingState>(
+  {
+    progress: 0,
+    statusText: "Reaching out",
+    statusOpacity: 1,
+    srText: "",
+    warning: null,
+    phase: "active",
+  },
+  // The typing loop writes every frame; an unchanged frame notifies nobody.
+  { equals: shallowEqual },
+);
 
 export const loadingStore: ReadableStore<LoadingState> = loading;
 export const getLoadingState = loading.get;

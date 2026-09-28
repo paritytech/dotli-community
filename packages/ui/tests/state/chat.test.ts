@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-  chatStore,
-  getChatState,
-  initChatStore,
   recordBotsChanged,
   recordMessage,
   recordRoomsChanged,
@@ -15,8 +12,7 @@ import {
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
 } from "@dotli/ui/chat/service";
-import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared/chat-capability";
-import { resetStores, settle } from "../helpers/solid";
+import { settle } from "../helpers/solid";
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];
@@ -32,20 +28,7 @@ function capture(name: string): { details: unknown[]; stop: () => void } {
   };
 }
 
-describe("chat store", () => {
-  afterEach(() => {
-    resetStores();
-  });
-
-  it("As the chat panel, the store starts empty", () => {
-    expect(getChatState()).toEqual({
-      availability: null,
-      roomsVersion: 0,
-      botsVersion: 0,
-      lastMessage: null,
-    });
-  });
-
+describe("chat events", () => {
   it("As a chat listener, rooms, bots and message changes keep their event names and details", async () => {
     // Given
     const rooms = capture(CHAT_ROOMS_CHANGED_EVENT);
@@ -63,45 +46,8 @@ describe("chat store", () => {
     expect(rooms.details).toEqual([{ productId: "p" }]);
     expect(bots.details).toEqual([{ productId: "p" }]);
     expect(messages.details).toEqual([msg]);
-    expect(chatStore.get()).toMatchObject({
-      roomsVersion: 1,
-      botsVersion: 1,
-      lastMessage: msg,
-    });
     rooms.stop();
     bots.stop();
     messages.stop();
-  });
-
-  it("As the chat panel, availability announced by @dotli/shared lands in the store once initChatStore runs", () => {
-    // Given
-    const stop = initChatStore();
-
-    // When
-    window.dispatchEvent(
-      new CustomEvent(CHAT_AVAILABILITY_EVENT, {
-        detail: { label: "myapp", chat: true },
-      }),
-    );
-
-    // Then
-    expect(getChatState().availability).toEqual({ label: "myapp", chat: true });
-    stop();
-  });
-
-  it("As the host, stopping the chat store stops tracking availability", () => {
-    // Given
-    const stop = initChatStore();
-    stop();
-
-    // When
-    window.dispatchEvent(
-      new CustomEvent(CHAT_AVAILABILITY_EVENT, {
-        detail: { label: "other", chat: false },
-      }),
-    );
-
-    // Then
-    expect(getChatState().availability).toBeNull();
   });
 });

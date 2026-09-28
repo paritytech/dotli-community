@@ -1,7 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 export type ThemePref = "light" | "dark" | "system";
 
@@ -13,7 +17,10 @@ export interface ThemeState {
 // Dark is the stylesheet default; the real value is written at boot by the
 // theme-controller.ts (initTheme, called from initTopBar), which reads
 // localStorage and matchMedia.
-const theme = createSyncStore<ThemeState>({ pref: "system", resolved: "dark" });
+const theme = createSyncStore<ThemeState>(
+  { pref: "system", resolved: "dark" },
+  { equals: shallowEqual },
+);
 
 export const themeStore: ReadableStore<ThemeState> = theme;
 export const getThemeState = theme.get;

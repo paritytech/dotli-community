@@ -889,6 +889,67 @@ describe("ensureIslands and the auth modal", () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
+  it("As a product, when the auth-modal island fails after it mounted, my pending login is cancelled and later logins are cancelled", async () => {
+    // Given
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const auth = await initAuth();
+    const loading = ensureIslands();
+    await chunk.arrive();
+    await loading;
+    requestLogin();
+    expect(auth.modalOpen()).toBe(true);
+    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [
+      (name: string) => void,
+    ];
+
+    // When
+    onLateFailure("theme");
+
+    // Then: another island failing leaves the login alone.
+    expect(auth.modalOpen()).toBe(true);
+
+    // When
+    onLateFailure("auth-modal");
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.cancels()).toBe(1);
+
+    // When
+    requestLogin();
+    corePairing();
+
+    // Then
+    expect(auth.modalOpen()).toBe(false);
+    expect(auth.loginRequests()).toBe(1);
+  });
+
+  it("As a user offline, when the banner island fails after it mounted and its static banner is back, the static banner follows the connection", async () => {
+    // Given
+    let online = true;
+    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    const chunk = stubChunk();
+    const { ensureIslands } = await loadLoader();
+    const staticBanner = byId("offline-banner");
+    const loading = ensureIslands();
+    await chunk.arrive();
+    await loading;
+    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [
+      (name: string) => void,
+    ];
+
+    // When: the islands chunk puts the static banner back, as it does for a
+    // late render error, and reports it.
+    byId("offline-banner").replaceWith(staticBanner);
+    onLateFailure("offline-banner");
+    online = false;
+    window.dispatchEvent(new Event("offline"));
+
+    // Then
+    expect(staticBanner.style.display).toBe("block");
+  });
+
   it("As a product, when the auth-modal island mounts, even if another island fails, my login keeps its modal and lease", async () => {
     // Given
     const chunk = stubChunk({ failedIslands: ["theme"] });

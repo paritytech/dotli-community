@@ -1,7 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 /**
  * What the modal body shows. `error` carries the raw failure `message` plus
@@ -40,7 +44,19 @@ const INITIAL: AuthModalState = {
   view: { kind: "spinner" },
 };
 
-const authModal = createSyncStore<AuthModalState>(INITIAL);
+/** Shallow, with the view compared one level deeper: it is rebuilt per write. */
+function sameAuthModal(a: AuthModalState, b: AuthModalState): boolean {
+  return (
+    a.open === b.open &&
+    a.productLabel === b.productLabel &&
+    a.reason === b.reason &&
+    shallowEqual(a.view, b.view)
+  );
+}
+
+const authModal = createSyncStore<AuthModalState>(INITIAL, {
+  equals: sameAuthModal,
+});
 
 export const authModalStore: ReadableStore<AuthModalState> = authModal;
 export const getAuthModalState = authModal.get;

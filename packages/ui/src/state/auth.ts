@@ -2,9 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { DotliAuthState } from "../host-callbacks/AuthState";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
-const auth = createSyncStore<DotliAuthState>({ tag: "Disconnected" });
+// Equal states notify nobody; setAuthState still dispatches its event.
+const auth = createSyncStore<DotliAuthState>(
+  { tag: "Disconnected" },
+  { equals: shallowEqual },
+);
 const session = createSyncStore<boolean>(false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;

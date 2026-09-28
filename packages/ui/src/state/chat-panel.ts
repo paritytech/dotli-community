@@ -18,7 +18,11 @@ import {
   type ChatMessageEventDetail,
 } from "../chat/service";
 import { labelToProductId } from "../runtime-config";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 export const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
 export const MIN_PANEL_WIDTH = 280;
@@ -65,7 +69,11 @@ const INITIAL: ChatPanelState = {
   topbarVisible: true,
 };
 
-const panel = createSyncStore<ChatPanelState>(INITIAL);
+// A width drag past the clamp, a cleared composer error and repeated
+// availability or topbar events rebuild an equal state: nobody is notified.
+const panel = createSyncStore<ChatPanelState>(INITIAL, {
+  equals: shallowEqual,
+});
 export const chatPanelStore: ReadableStore<ChatPanelState> = panel;
 
 export function currentChatProductId(

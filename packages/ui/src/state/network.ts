@@ -28,15 +28,56 @@ const network = createSyncStore<NetworkState>({
   readAt: 0,
 });
 
-export const networkStore: ReadableStore<NetworkState> = network;
-export const getNetworkState = network.get;
+let readers = 0;
+/** The monitor changed while nobody was subscribed; `get` rebuilds. */
+let stale = false;
 
-function sync(): void {
-  network.set({
+function snapshot(): NetworkState {
+  return {
     chains: getNetworkStatus(),
     transfer: getTransfer(),
     readAt: Date.now(),
-  });
+  };
+}
+
+function read(): NetworkState {
+  if (stale) {
+    stale = false;
+    network.set(snapshot());
+  }
+  return network.get();
+}
+
+/**
+ * The monitor notifies on every content chunk, speed sample and block, and
+ * the chains popover, the store's only reader, is mounted only while open.
+ * With nobody subscribed, a change only marks the store stale, and the next
+ * `get` builds the snapshot.
+ */
+export const networkStore: ReadableStore<NetworkState> = {
+  get: read,
+  subscribe: (listener) => {
+    readers += 1;
+    const unsubscribe = network.subscribe(listener);
+    let subscribed = true;
+    return () => {
+      if (subscribed) {
+        subscribed = false;
+        readers -= 1;
+        unsubscribe();
+      }
+    };
+  },
+};
+export const getNetworkState = read;
+
+function sync(): void {
+  if (readers === 0) {
+    stale = true;
+    return;
+  }
+  stale = false;
+  network.set(snapshot());
 }
 
 /**

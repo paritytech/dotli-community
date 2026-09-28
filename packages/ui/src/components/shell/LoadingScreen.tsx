@@ -20,16 +20,16 @@ const SPIN_CYCLE_MS = 1_400;
  * stops at the swap, and stay still for a visitor who prefers reduced motion.
  */
 export function LoadingScreen(): JSX.Element {
-  const loading = useStore(loadingStore);
-  // One memo per field, so a line is only written when it changes: writing an
-  // unchanged live region could make a screen reader announce it again.
-  const progress = createMemo(() => loading().progress);
+  // One selector per field, so a line is only written when it changes:
+  // writing an unchanged live region could make a screen reader announce it
+  // again.
+  const progress = useStore(loadingStore, (s) => s.progress);
   const shown = createMemo(() => Math.round(progress()));
-  const statusText = createMemo(() => loading().statusText);
-  const statusOpacity = createMemo(() => loading().statusOpacity);
-  const srText = createMemo(() => loading().srText);
-  const warning = createMemo(() => loading().warning);
-  const dismissing = createMemo(() => loading().phase === "dismissing");
+  const statusText = useStore(loadingStore, (s) => s.statusText);
+  const statusOpacity = useStore(loadingStore, (s) => s.statusOpacity);
+  const srText = useStore(loadingStore, (s) => s.srText);
+  const warning = useStore(loadingStore, (s) => s.warning);
+  const dismissing = useStore(loadingStore, (s) => s.phase === "dismissing");
 
   let frame: number | null = null;
   onCleanup(() => {

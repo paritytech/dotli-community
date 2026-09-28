@@ -1,14 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSyncStore, type ReadableStore } from "./create-store";
+import {
+  createSyncStore,
+  shallowEqual,
+  type ReadableStore,
+} from "./create-store";
 
 export type ProductState =
   | { status: "none" }
   | { status: "loaded"; label: string; productId: string }
   | { status: "error" };
 
-const product = createSyncStore<ProductState>({ status: "none" });
+// Reloading the same product notifies nobody; the setters still dispatch
+// their events.
+const product = createSyncStore<ProductState>(
+  { status: "none" },
+  { equals: shallowEqual },
+);
 
 export const productStore: ReadableStore<ProductState> = product;
 export const getProductState = product.get;
