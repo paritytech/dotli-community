@@ -9,7 +9,7 @@
       },
       "devDependencies": {
         "prettier": "3.9.9",
-        "turbo": "^2.11.3",
+        "turbo": "^2.11.5",
         "typescript": "^6.0.3",
       },
     },
@@ -923,17 +923,17 @@
 
     "@trickfilm400/rollup-plugin-off-main-thread": ["@trickfilm400/rollup-plugin-off-main-thread@3.0.0-pre1", "", { "dependencies": { "ejs": "^3.1.10", "json5": "^2.2.3", "magic-string": "^0.30.21", "string.prototype.matchall": "^4.0.12" } }, "sha512-/67zpWDBLV+oYAEL682s1ktXL0HgqX76f6gaVGkGnVZlBbm1zd0v4Bz8MFF2GGhoX9rvfq3KSQHubFHwa6w6/Q=="],
 
-    "@turbo/darwin-64": ["@turbo/darwin-64@2.11.3", "", { "os": "darwin", "cpu": "x64" }, "sha512-D4EIKTgPpxFQL5aZNbNqy57XOiRldM+mwP1ME9ZLM4DJoV3oNK7GKyQWVusz1umjiFNmLvunNGw7Jq4RUyYL3A=="],
+    "@turbo/darwin-64": ["@turbo/darwin-64@2.11.5", "", { "os": "darwin", "cpu": "x64" }, "sha512-KdY4y7BBjIisl+jAkb3FFaRjClGqHyaeHCcVcCT8LBzFFwUu6thgfxyRZAx0uL4KoxLmH+iOan8UhVf/aDDcaA=="],
 
-    "@turbo/darwin-arm64": ["@turbo/darwin-arm64@2.11.3", "", { "os": "darwin", "cpu": "arm64" }, "sha512-WOvgWIO86LzBQmL9aRFekROing1CZMVDjmdD7Dk6R65qFAFdrlKkufojenjW1AbUAqytpG6xsXzq8UEScdSdDQ=="],
+    "@turbo/darwin-arm64": ["@turbo/darwin-arm64@2.11.5", "", { "os": "darwin", "cpu": "arm64" }, "sha512-ToZDGi2u410+TfRtC/O1/LpujGgvNJoRBZnwVXob7oO0+3OSlwIO3zofXKUvwQvlba7a8ZXPyCZwufjAXd7f0w=="],
 
-    "@turbo/linux-64": ["@turbo/linux-64@2.11.3", "", { "os": [ "linux", "android", ], "cpu": "x64" }, "sha512-zIgNl9KkMnsdU54JrnazELatpMJDSktKjD3kjKVliUNMl/5uhFRrqQ+Z1qaACKw/2ybL7xzlsHir9s5q7sYlQg=="],
+    "@turbo/linux-64": ["@turbo/linux-64@2.11.5", "", { "os": [ "linux", "android", ], "cpu": "x64" }, "sha512-Ub2d/nAbdWLaSytcEaPp1wm/YuIvHEIqNrCRMI/UgOGyFdOhgxm8VyWPAJilQWRYxYVrqEUoy2K5S5K8SG50rA=="],
 
-    "@turbo/linux-arm64": ["@turbo/linux-arm64@2.11.3", "", { "os": [ "linux", "android", ], "cpu": "arm64" }, "sha512-aJToWHx5JYvpPwIrAt1DuYrHWcpQGjGf0XVPRMKQBHou//JUYR6oowHeUZp9Oq7e3XDWA75E37C2GnNaBqCVnA=="],
+    "@turbo/linux-arm64": ["@turbo/linux-arm64@2.11.5", "", { "os": [ "linux", "android", ], "cpu": "arm64" }, "sha512-JQjmGxp724Wuft9FAxPMtmBur1CEdUyxJ+FVoIvKkgj63rXHl9PYCWrsU2tMjVi609XTQ3M8vZD9Yc9qVAVYrw=="],
 
-    "@turbo/windows-64": ["@turbo/windows-64@2.11.3", "", { "os": "win32", "cpu": "x64" }, "sha512-hu5biiwVGdMvHB/vvaoPjtudNBn3TqcsKK2A06ap3O0wnSZwAtTXe92tKTckpecDeVs+IC+4r8s2wXpbdSPWoA=="],
+    "@turbo/windows-64": ["@turbo/windows-64@2.11.5", "", { "os": "win32", "cpu": "x64" }, "sha512-AFkbPmXNd8XgCi/66YEHR2bVl3gtusXyDihTIVEPAuSB+7ulLmJePvz1unWPVKLHdbCTTIdKq2mpJ1B1e3lJXw=="],
 
-    "@turbo/windows-arm64": ["@turbo/windows-arm64@2.11.3", "", { "os": "win32", "cpu": "arm64" }, "sha512-naDEb/31UmOOJOChi+LebLMKWKa1kId0yig1yTRZzDViDg1lBw1Ptu5iQYCvOfOOrx6swUUucf3zPWuPGWz7Jw=="],
+    "@turbo/windows-arm64": ["@turbo/windows-arm64@2.11.5", "", { "os": "win32", "cpu": "arm64" }, "sha512-52ziXYP3snGOxjv19xA3WL1WDKv9Q6uDAa/7EKIR5j4hocMlYURkrOHbJ2ZZI+VfPU5MwKpcGeRfHxHJu7Y/Pw=="],
 
     "@tybys/wasm-util": ["@tybys/wasm-util@0.10.4", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-W3c4gRigFS0T/Ma4qIYF3GDAc5AQdHb1yL5znJT1Zv1YaD9Kitx656wBjvr19qbiosmZT8lWDM5BEMynUqX65A=="],
 
@@ -1693,7 +1693,7 @@
 
     "tslib": ["tslib@2.8.1", "", {}, "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w=="],
 
-    "turbo": ["turbo@2.11.3", "", { "optionalDependencies": { "@turbo/darwin-64": "2.11.3", "@turbo/darwin-arm64": "2.11.3", "@turbo/linux-64": "2.11.3", "@turbo/linux-arm64": "2.11.3", "@turbo/windows-64": "2.11.3", "@turbo/windows-arm64": "2.11.3" }, "bin": { "turbo": "bin/turbo" } }, "sha512-Pfg2dWNOUPwJYbR+eYAcjoBbo4Kmoc8uQb80hzKrBgNEQtxvwf2ucXG7C28MyLVhV/zJSKvChrR+2CP/BONpoA=="],
+    "turbo": ["turbo@2.11.5", "", { "optionalDependencies": { "@turbo/darwin-64": "2.11.5", "@turbo/darwin-arm64": "2.11.5", "@turbo/linux-64": "2.11.5", "@turbo/linux-arm64": "2.11.5", "@turbo/windows-64": "2.11.5", "@turbo/windows-arm64": "2.11.5" }, "bin": { "turbo": "bin/turbo" } }, "sha512-qLXheqz3TUvJpHIV6MUBwkNkvwKxMVG/QsimyiKT9DfNWPHJ294G/i5nDaH+fbHJt3UH7orubNNxAqYkbUNGAQ=="],
 
     "type-check": ["type-check@0.4.0", "", { "dependencies": { "prelude-ls": "^1.2.1" } }, "sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew=="],
 
