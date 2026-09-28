@@ -99,8 +99,9 @@ export function PermissionsPopover(): JSX.Element {
     onClose: closeDropdown,
   });
 
-  // Moves on each event that may change the statuses, so the reads below
-  // run again even for the product already on show.
+  // Moves on each event that may change the statuses. The reads below key on
+  // it next to the label, so they run again even for the product already on
+  // show.
   const [changes, setChanges] = createSignal(0);
   const refresh = (): void => {
     setChanges((n) => n + 1);
@@ -114,48 +115,54 @@ export function PermissionsPopover(): JSX.Element {
     }
   });
   const label = (): string | null => {
-    changes();
     const current = product();
     return current.status === "loaded" ? current.label : null;
   };
 
   // Each read lands only while it is current: a later read, the product
   // changing or (for the list) the popover closing drops it, as effect
-  // cleanup runs before each re-run.
-  createEffect(label, (current) => {
-    if (current === null) {
-      setHasGrants(false);
-      return;
-    }
-    let live = true;
-    const land = (granted: boolean): void => {
-      if (live) {
-        setHasGrants(granted);
+  // cleanup runs before each re-run. Each effect keys on a fresh object that
+  // carries the change count, so a change re-runs it even when the label is
+  // the same.
+  createEffect(
+    () => ({ label: label(), change: changes() }),
+    ({ label: current }) => {
+      if (current === null) {
+        setHasGrants(false);
+        return;
       }
-    };
-    hasAnyGrant(current).then(land, () => {
-      land(false);
-    });
-    return () => {
-      live = false;
-    };
-  });
+      let live = true;
+      const land = (granted: boolean): void => {
+        if (live) {
+          setHasGrants(granted);
+        }
+      };
+      hasAnyGrant(current).then(land, () => {
+        land(false);
+      });
+      return () => {
+        live = false;
+      };
+    },
+  );
 
   // The list is read when the popover opens, and on each change or failed
   // write while open. Closing drops what was read: the next open reads
   // afresh instead of showing statuses that may have changed since.
   const [retries, setRetries] = createSignal(0);
   createEffect(
-    () => {
-      retries();
-      return surface.open() ? label() : undefined;
-    },
-    (current) => {
+    () =>
+      surface.open()
+        ? { label: label(), change: changes(), retry: retries() }
+        : undefined,
+    (key) => {
       closeDropdown();
-      if (current === undefined) {
+      if (key === undefined) {
         setFetched(null);
+        return;
       }
-      if (current === undefined || current === null) {
+      const current = key.label;
+      if (current === null) {
         // The hint for no product renders from productStore.
         return;
       }

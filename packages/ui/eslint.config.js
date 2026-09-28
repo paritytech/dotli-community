@@ -40,4 +40,25 @@ export default [
       ],
     },
   },
+  {
+    // Shell.tsx is prerendered into index.html and never runs on the client,
+    // so anything reactive in it would be frozen at its build-time state. It
+    // may import types only: no components, no signals, no stores.
+    files: ["src/components/shell/Shell.tsx"],
+    rules: {
+      "@typescript-eslint/no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: ["*"],
+              allowTypeImports: true,
+              message:
+                "Shell.tsx is static markup the client never runs: import types only (see shell.server.tsx).",
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

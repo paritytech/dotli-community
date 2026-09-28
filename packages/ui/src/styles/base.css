@@ -104,8 +104,8 @@ body[data-scroll-locked] {
 }
 /* The petals light up in turn, one 1.4 s cycle for all six: each jumps to
    full opacity and scale 1 on its turn, then eases down to its 0.15 floor
-   (scale 0.932) over the next 24.5% of the cycle. The curve is the old rAF
-   loop's (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
+   (scale 0.932) over the next 24.5% of the cycle, along
+   (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
    Negative delays put each petal at its place in the cycle from the start:
    petal i peaks i/6 of a turn after petal 0. Still under reduced motion. */
 @media (prefers-reduced-motion: no-preference) {

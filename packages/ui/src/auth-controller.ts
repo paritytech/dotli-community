@@ -41,8 +41,8 @@ export function initAuthController(
   });
 
   // Single ordered auth-state stream owned by the Rust core (plus the boot
-  // rehydration and bridge transport-failure synthetics). The store notifies
-  // on every state, an equal one too. The modal closes only on `Connected`
+  // rehydration and bridge transport-failure synthetics). The store never
+  // drops a set as equal, so every step reaches here. The modal closes only on `Connected`
   // or explicit user action; a `Disconnected` can never tear down an
   // in-flight pairing presentation.
   authStore.subscribe(() => {

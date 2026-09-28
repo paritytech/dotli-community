@@ -226,15 +226,16 @@ describe("store equality", () => {
     toasts.stop();
   });
 
-  it("As the auth controller, an equal auth state still notifies, and dotli:truapi-auth-state fires every time", () => {
+  it("As the auth controller, every auth step notifies, even the same object again, and dotli:truapi-auth-state fires every time", () => {
     // Given
-    setAuthState({ tag: "Authenticating" });
+    const step = { tag: "Authenticating" } as const;
+    setAuthState(step);
     const auth = countNotifications(authStore);
     const events = countEvents("dotli:truapi-auth-state");
 
     // When
-    setAuthState({ tag: "Authenticating" });
-    setAuthState({ tag: "Authenticating" });
+    setAuthState(step);
+    setAuthState(step);
 
     // Then
     expect(auth.count()).toBe(2);

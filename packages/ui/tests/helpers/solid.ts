@@ -10,11 +10,15 @@ afterEach(() => {
   cleanup();
 });
 
-/** Render a Solid view into a fresh container. Cleaned up after each test. */
+/**
+ * Render a Solid view into `options.container`, or a fresh one when none is
+ * given. Cleaned up after each test.
+ */
 export function renderComponent(
   view: () => JSX.Element,
+  options: { container?: HTMLElement } = {},
 ): ReturnType<typeof render> {
-  return render(view);
+  return render(view, options);
 }
 
 /**

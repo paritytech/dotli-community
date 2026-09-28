@@ -28,10 +28,6 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { renderShellOnServer } from "../../helpers/shell-ssr";
 
 const FIXTURE_PATH = resolve(import.meta.dirname, "original-shell.html");
-const SHELL_PATH = resolve(
-  import.meta.dirname,
-  "../../../src/components/shell/Shell.tsx",
-);
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -120,17 +116,5 @@ describe("Shell prerender fidelity", () => {
     // Then
     expect(rendered).not.toMatch(/\s_hk=|data-hk/);
     expect(rendered).not.toContain("<script");
-  });
-
-  it("As markup the client never runs, Shell.tsx imports nothing but types, so it stays free of components and reactivity", () => {
-    // Given
-    const source = readFileSync(SHELL_PATH, "utf8");
-    const imports = source.match(/^import\b[^;]*;/gm) ?? [];
-
-    // Then: anything reactive would be frozen at its build-time state.
-    expect(imports.length).toBeGreaterThan(0);
-    for (const statement of imports) {
-      expect(statement).toMatch(/^import type\b/);
-    }
   });
 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // What the auth button's badge and the user popover show about the logged-in
-// account, shared by their two islands.
+// account; both live in the one auth island.
 
 import { createMemo, type Accessor } from "solid-js";
 import type { TruapiSessionUiState } from "../../host-callbacks/SessionStore";

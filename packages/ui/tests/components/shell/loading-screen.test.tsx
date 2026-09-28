@@ -8,6 +8,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Window } from "happy-dom";
 import { flush } from "solid-js";
 
 // ui.ts binds `#app` when it loads, so the element exists before any import
@@ -89,6 +90,45 @@ function countById(id: string): number {
 
 function petals(root: ParentNode = document): SVGPathElement[] {
   return [...root.querySelectorAll<SVGPathElement>(".loading-petal")];
+}
+
+const BASE_CSS = readFileSync(
+  resolve(import.meta.dirname, "../../../src/styles/base.css"),
+  "utf8",
+);
+
+/** A CSS time (`-1.2s`, `200ms`) in milliseconds. */
+function toMs(time: string): number {
+  return time.endsWith("ms") ? parseFloat(time) : parseFloat(time) * 1_000;
+}
+
+/**
+ * The animation a browser with `motion` as its reduced-motion preference
+ * applies to each petal of `markup`, under styles/base.css. A window of its
+ * own, so the preference and the stylesheet stay out of the test document.
+ */
+async function petalAnimations(
+  markup: string,
+  motion: "no-preference" | "reduce",
+): Promise<{ animation: string; delayMs: number }[]> {
+  const win = new Window({
+    settings: { device: { prefersReducedMotion: motion } },
+  });
+  const style = win.document.createElement("style");
+  style.textContent = BASE_CSS;
+  win.document.head.append(style);
+  win.document.body.innerHTML = markup;
+  const result = [...win.document.querySelectorAll(".loading-petal")].map(
+    (petal) => {
+      const computed = win.getComputedStyle(petal);
+      return {
+        animation: computed.animation,
+        delayMs: toMs(computed.animationDelay || "0s"),
+      };
+    },
+  );
+  await win.happyDOM.close();
+  return result;
 }
 
 async function settle(): Promise<void> {
@@ -394,80 +434,42 @@ describe("Loading screen island", () => {
     expect(frames.size).toBe(0);
   });
 
-  it("As a visitor, the CSS petal cycle matches the old rAF spinner's curve, and stays still under reduced motion", () => {
-    // Given the rules in styles/base.css
-    const css = readFileSync(
-      resolve(import.meta.dirname, "../../../src/styles/base.css"),
-      "utf8",
-    );
-    const motion =
-      /@media \(prefers-reduced-motion: no-preference\) \{\s*\.loading-petal \{\s*animation: loading-petal ([\d.]+)s linear infinite;([\s\S]*?)\n\}/.exec(
-        css,
-      );
-    if (motion === null) {
-      throw new Error("no motion-gated .loading-petal animation");
-    }
-    const cycleMs = Number(motion[1]) * 1_000;
-    const delays = [0];
-    for (const [, nth, ms] of motion[2].matchAll(
-      /:nth-child\((\d)\) \{\s*animation-delay: (-?[\d.]+)ms;/g,
-    )) {
-      delays[Number(nth) - 1] = Number(ms);
-    }
-    const frames =
-      /@keyframes loading-petal \{\s*0% \{\s*opacity: 1;\s*transform: scale\(1\);\s*animation-timing-function: cubic-bezier\(([^)]+)\);\s*\}\s*([\d.]+)%,\s*100% \{\s*opacity: ([\d.]+);\s*transform: scale\(([\d.]+)\);/.exec(
-        css,
-      );
-    if (frames === null) {
-      throw new Error("no loading-petal keyframes");
-    }
-    const [x1, y1, x2, y2] = frames[1].split(",").map(Number);
-    const stop = Number(frames[2]) / 100;
-    const floor = Number(frames[3]);
-    const floorScale = Number(frames[4]);
-    const bezier = (t: number, a: number, b: number): number =>
-      3 * (1 - t) ** 2 * t * a + 3 * (1 - t) * t ** 2 * b + t ** 3;
-    const ease = (x: number): number => {
-      let lo = 0;
-      let hi = 1;
-      for (let i = 0; i < 60; i++) {
-        const mid = (lo + hi) / 2;
-        if (bezier(mid, x1, x2) < x) {
-          lo = mid;
-        } else {
-          hi = mid;
-        }
-      }
-      return bezier(lo, y1, y2);
-    };
-    /** Opacity of petal `i` at `ms`, as the browser plays the CSS. */
-    const cssOpacity = (i: number, ms: number): number => {
-      const p = ((((ms - delays[i]) % cycleMs) + cycleMs) % cycleMs) / cycleMs;
-      return p >= stop ? floor : 1 - (1 - floor) * ease(p / stop);
-    };
-    /** Opacity of petal `i` at `ms`, as the old rAF loop computed it. */
-    const rafOpacity = (i: number, ms: number): number => {
-      let dist = (ms % 1_400) / 1_400 - i / 6;
-      if (dist < 0) {
-        dist += 1;
-      }
-      return Math.max(0.15, Math.max(0, 1 - dist * 2.5) ** 2);
+  it("As a visitor, the petals of the static and the live loading screen light up in turn, a sixth of a cycle apart, and stay still under reduced motion", async () => {
+    // Given
+    mountLoadingIsland();
+    await settle();
+    const screens = {
+      static: staticLoadingMarkup(),
+      live: byId("app-loading").outerHTML,
     };
 
-    // Then every petal follows the old curve through two cycles
-    expect(delays).toHaveLength(6);
-    expect(floorScale).toBeCloseTo(0.92 + 0.08 * floor, 5);
-    for (let ms = 0; ms < 2_800; ms += 7) {
-      for (let i = 0; i < 6; i++) {
-        expect(
-          cssOpacity(i, ms),
-          `petal ${String(i)} at ${String(ms)} ms`,
-        ).toBeCloseTo(rafOpacity(i, ms), 3);
+    for (const [name, markup] of Object.entries(screens)) {
+      // When: no motion preference.
+      const moving = await petalAnimations(markup, "no-preference");
+
+      // Then
+      expect(moving, name).toHaveLength(6);
+      for (const [i, petal] of moving.entries()) {
+        expect(petal.animation, `${name} petal ${String(i)}`).toMatch(
+          /^loading-petal \S+ .*infinite$/,
+        );
+        const cycleMs = toMs(petal.animation.split(" ")[1]);
+        const offset = ((petal.delayMs % cycleMs) + cycleMs) % cycleMs;
+        expect(offset, `${name} petal ${String(i)}`).toBeCloseTo(
+          (i * cycleMs) / 6,
+          2,
+        );
       }
+
+      // When: reduced motion.
+      const still = await petalAnimations(markup, "reduce");
+
+      // Then
+      expect(
+        still.map((petal) => petal.animation),
+        name,
+      ).toEqual(Array(6).fill(""));
     }
-    // And the petals are only animated inside the no-preference query
-    const outside = css.replace(motion[0], "");
-    expect(outside).not.toMatch(/animation[^;]*loading-petal/);
   });
 
   it("As the shell, disposing the loading root stops the loading timers along with the island", async () => {

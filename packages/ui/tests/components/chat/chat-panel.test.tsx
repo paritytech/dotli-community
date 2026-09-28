@@ -572,7 +572,7 @@ describe("chat panel, scrolling", () => {
     // Then
     expect(list.scrollTop).toBe(1300);
   });
-  it("As a user at the newest message, growth that changes no markup (an image, a font, a narrower panel) keeps me there", async () => {
+  it("As a user at the newest message, growth that changes no markup (an image, a font, a narrower panel) or a shorter list keeps me there", async () => {
     // Given: a conversation at the bottom.
     const observers = fakeResizeObservers();
     await openPanel(3);
@@ -582,10 +582,17 @@ describe("chat panel, scrolling", () => {
     openChatRoom("r0");
     await idle();
     expect(list.scrollTop).toBe(1000);
-    // One observer, on the thread wrapping the bubbles and on the list.
     const observer = observers.observing(thread());
-    expect(observer?.targets).toEqual(new Set([thread(), list]));
     expect(thread().querySelectorAll(":scope > .chat-msg")).toHaveLength(2);
+
+    // When: the list gets shorter (the window shrinks), which leaves the
+    // scroll position short of the bottom without a scroll event, and the
+    // browser reports the list's new size.
+    list.scrollTop = 900;
+    observers.observing(list)?.callback();
+
+    // Then
+    expect(list.scrollTop).toBe(1000);
 
     // When: the thread grows with no DOM change, and the observer reports it.
     height = 1250;
@@ -685,13 +692,8 @@ describe("chat panel, resizing", () => {
   it("As a user dragging the panel's edge, it resizes within 280 to 560 px and keeps the width, even when the drag is cancelled", async () => {
     // Given: a 360 px panel.
     await openPanel(3);
-    // The handle measures the panel it sits in; the test renders the panel's
-    // contents into a container of its own, which stands in for it.
     const handle = byId("chat-panel-resize");
-    const container = handle.parentElement!;
-    byId("chat-panel").removeAttribute("id");
-    container.id = "chat-panel";
-    Object.defineProperty(container, "offsetWidth", {
+    Object.defineProperty(byId("chat-panel"), "offsetWidth", {
       configurable: true,
       get: () => 360,
     });

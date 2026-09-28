@@ -4,10 +4,14 @@
 import type { DotliAuthState } from "../host-callbacks/AuthState";
 import { createSyncStore, type ReadableStore } from "./create-store";
 
-// Every state notifies, an equal one too: each is a step of the core's login
-// flow that the auth controller acts on (a second identical LoginFailed after
-// a retry must show its error again).
-const auth = createSyncStore<DotliAuthState>({ tag: "Disconnected" });
+// Each value is one step of the core's login flow, not a state to dedupe: the
+// auth controller must see every step as it happens, including a repeated
+// LoginFailed (a retry that fails the same way shows its error again). So no
+// set is ever dropped as equal.
+const auth = createSyncStore<DotliAuthState>(
+  { tag: "Disconnected" },
+  { equals: () => false },
+);
 const session = createSyncStore<boolean>(false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;
