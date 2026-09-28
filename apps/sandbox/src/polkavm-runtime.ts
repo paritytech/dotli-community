@@ -1710,7 +1710,7 @@ function createShell(): {
   style.id = "dotli-polkavm-style";
   style.textContent = `
     html,body{width:100%;height:100%;margin:0;background:#050505;color:#fff;overflow:hidden;overscroll-behavior:none}
-    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr) minmax(29px,auto);position:relative;overflow:hidden;background:#050505}
+    #dotli-polkavm-shell{width:100%;height:100%;display:grid;grid-template-rows:minmax(0,1fr);position:relative;overflow:hidden;background:#050505}
     #dotli-polkavm-surface{position:relative;min-width:0;min-height:0;overflow:hidden;container-type:size}
     #dotli-polkavm-surface.dotli-file-drag{outline:2px solid #e6007a;outline-offset:-2px}
     #dotli-polkavm-canvas{position:absolute;inset:0;display:block;width:100%;height:100%;min-width:0;min-height:0;image-rendering:pixelated;outline:none;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
