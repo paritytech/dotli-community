@@ -447,13 +447,23 @@ describe("createPopover, in every mode", () => {
     const popover = renderPopover("popover", { closeOnBlur: true, onClose });
     const closers = [
       () => pointerClick(byId("outside")),
-      () => byId("outside").focus(),
+      () => {
+        byId("outside").focus();
+      },
       () => press("Escape"),
       () => window.dispatchEvent(new Event("blur")),
-      () => setBlockingModalActive(true),
-      () => popover.setOpen(false),
-      () => popover.toggle(),
-      () => popover.onItemChosen(),
+      () => {
+        setBlockingModalActive(true);
+      },
+      () => {
+        popover.setOpen(false);
+      },
+      () => {
+        popover.toggle();
+      },
+      () => {
+        popover.onItemChosen();
+      },
     ];
 
     for (const [i, close] of closers.entries()) {

@@ -89,9 +89,7 @@ export async function trackArchiveCacheLookups(
     let count = 0;
     const proto = (
       globalThis as { ServiceWorker?: { prototype: ServiceWorker } }
-    ).ServiceWorker?.prototype as
-      | (ServiceWorker & { postMessage: ServiceWorker["postMessage"] })
-      | undefined;
+    ).ServiceWorker?.prototype;
     if (proto !== undefined && typeof proto.postMessage === "function") {
       const orig = proto.postMessage;
       proto.postMessage = function (
@@ -103,7 +101,7 @@ export async function trackArchiveCacheLookups(
         if (m?.type === "SW_CACHE_LOOKUP_EVENT") {
           count++;
         }
-        return (orig as (m: unknown, t?: unknown) => void).call(
+        (orig as (m: unknown, t?: unknown) => void).call(
           this,
           message,
           transfer,

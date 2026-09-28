@@ -44,9 +44,9 @@ vi.mock("@dotli/ui/components/shell/chains-format", async (importOriginal) => {
 const monitor = vi.hoisted(() => ({
   listeners: new Set<() => void>(),
   status: [] as unknown[],
-  transfer: { bytesPerSecond: null, fetched: null, total: null } as unknown,
-  startNetworkWatch: (() => undefined) as () => void,
-  stopNetworkWatch: (() => undefined) as () => void,
+  transfer: { bytesPerSecond: null, fetched: null, total: null } as TransferState,
+  startNetworkWatch: () => undefined,
+  stopNetworkWatch: () => undefined,
 }));
 
 vi.mock("@dotli/ui/network-monitor", () => ({
@@ -82,7 +82,7 @@ function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
     phase: null,
     peers: null,
     ...overrides,
-  } as ChainStatus;
+  };
 }
 
 function bars(from: number, count: number, gapMs = 6000): BlockBar[] {

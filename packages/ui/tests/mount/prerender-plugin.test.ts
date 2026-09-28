@@ -107,15 +107,15 @@ describe("prerenderPlugin", () => {
     });
 
     // When / Then
-    expect(() =>
+    expect(() => {
       callConfigResolved(plugin, {
         command: "serve",
         configFile: "/repo/apps/host/vite.config.ts",
         inlineConfig: {},
         root: "/repo/apps/host",
         mode: "development",
-      }),
-    ).toThrow(/entry not found/);
+      });
+    }).toThrow(/entry not found/);
   });
 
   it("As a build, the shell is rendered by a short-lived render server, which is closed afterwards", async () => {
@@ -203,15 +203,15 @@ describe("prerenderPlugin", () => {
     });
 
     // When / Then
-    expect(() =>
+    expect(() => {
       callConfigResolved(plugin, {
         command: "build",
         configFile: undefined,
         inlineConfig: {},
         root: "/repo/apps/host",
         mode: "production",
-      }),
-    ).toThrow(/no configFile resolved/);
+      });
+    }).toThrow(/no configFile resolved/);
   });
 
   it("As the inner server also fails to close after a render error, the render error still surfaces and the close failure is only logged", async () => {

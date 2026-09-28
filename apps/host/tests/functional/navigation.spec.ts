@@ -199,7 +199,9 @@ test.describe("Validator regression guards", () => {
     // history.replaceState here is the only reliable way to corrupt the
     // sandbox URL the validator actually reads.
     await context.addInitScript(() => {
-      if (!window.location.host.includes(".app.localhost")) return;
+      if (!window.location.host.includes(".app.localhost")) {
+        return;
+      }
       const u = new URL(window.location.href);
       u.searchParams.set("chainBackend", "bogus");
       history.replaceState(null, "", u.toString());
@@ -304,9 +306,13 @@ test.describe("Sandbox side-effects from URL contract keys", () => {
               req.result.close();
               resolve();
             };
-            tx.onerror = () => reject(tx.error as Error);
+            tx.onerror = () => {
+              reject(tx.error);
+            };
           };
-          req.onerror = () => reject(req.error as Error);
+          req.onerror = () => {
+            reject(req.error);
+          };
         });
       }, PURGE_MARKER_DB);
 

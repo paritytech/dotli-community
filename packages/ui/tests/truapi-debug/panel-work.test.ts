@@ -241,15 +241,18 @@ function attachCountingFrame(): {
   writes: () => number;
 } {
   let writes = 0;
-  const style = new Proxy({} as Record<string, string>, {
-    set(target, prop, value: string) {
-      if (prop === "height") {
-        writes++;
-      }
-      target[prop as string] = value;
-      return true;
+  const style = new Proxy<Record<string, string>>(
+    {},
+    {
+      set(target, prop, value: string) {
+        if (prop === "height") {
+          writes++;
+        }
+        target[prop as string] = value;
+        return true;
+      },
     },
-  });
+  );
   layout.attachProductFrame({ style } as unknown as HTMLIFrameElement);
   return { style, writes: () => writes };
 }

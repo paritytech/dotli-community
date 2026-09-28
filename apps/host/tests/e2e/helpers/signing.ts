@@ -105,7 +105,9 @@ async function clickHostDialogs(
     for (const name of buttonNames) {
       const btn = page.getByRole("button", { name, exact: true }).first();
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
       if (preClickDelayMs > 0) {
         console.log(

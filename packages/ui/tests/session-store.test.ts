@@ -387,8 +387,12 @@ describe("session-store host callbacks", () => {
     // derivable from public bundle data.
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const request = indexedDB.open("dotli-core");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        reject(request.error);
+      };
     });
     const stored = await new Promise<CryptoKey | undefined>(
       (resolve, reject) => {
@@ -396,8 +400,12 @@ describe("session-store host callbacks", () => {
           .transaction("keys")
           .objectStore("keys")
           .get("allowance-keys");
-        request.onsuccess = () => resolve(request.result as CryptoKey);
-        request.onerror = () => reject(request.error);
+        request.onsuccess = () => {
+          resolve(request.result as CryptoKey);
+        };
+        request.onerror = () => {
+          reject(request.error);
+        };
       },
     );
     db.close();

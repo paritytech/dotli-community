@@ -124,7 +124,7 @@ function room(i: number): ChatRoomRecord {
     name: `Room ${String(i)}`,
     icon: "",
     createdAt: i,
-  } as ChatRoomRecord;
+  };
 }
 
 function text(seq: number, roomId = "r0"): ChatMessageRecord {
@@ -136,14 +136,14 @@ function text(seq: number, roomId = "r0"): ChatMessageRecord {
     author: "product",
     content: { tag: "Text", value: { text: `t${String(seq)}` } },
     timestamp: 1_700_000_000_000 + seq,
-  } as ChatMessageRecord;
+  };
 }
 
 function custom(seq: number, roomId = "r0"): ChatMessageRecord {
   return {
     ...text(seq, roomId),
     content: { tag: "Custom", value: { messageType: "poll", payload: "0x01" } },
-  } as ChatMessageRecord;
+  };
 }
 
 function rows(): HTMLButtonElement[] {
@@ -656,7 +656,7 @@ describe("chat panel, scrolling", () => {
 
     // When
     byId<HTMLInputElement>("chat-panel-input").value = "hi";
-    h.messages.push({ ...text(3), author: "user" } as ChatMessageRecord);
+    h.messages.push({ ...text(3), author: "user" });
     height = 1100;
     byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
     await idle();

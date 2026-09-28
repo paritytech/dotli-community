@@ -69,7 +69,9 @@ function requiredEnv(name: string): string {
 
 function positiveIntegerEnv(name: string, fallback: number): number {
   const raw = process.env[name];
-  if (raw === undefined) return fallback;
+  if (raw === undefined) {
+    return fallback;
+  }
 
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value <= 0) {
@@ -229,7 +231,9 @@ export default async function globalSetup(
 // A crashed prior run can leave its signing host alive and still holding the
 // state dir lock. Wait for it to die before pairing, then clear the record.
 async function killStaleSigningHost(): Promise<void> {
-  if (!existsSync(SESSION_FILE)) return;
+  if (!existsSync(SESSION_FILE)) {
+    return;
+  }
   try {
     const stale = JSON.parse(
       readFileSync(SESSION_FILE, "utf-8"),

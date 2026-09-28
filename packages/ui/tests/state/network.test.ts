@@ -9,7 +9,7 @@ const monitor = vi.hoisted(() => {
   return {
     listeners,
     status: [] as unknown[],
-    transfer: { bytesPerSecond: null, fetched: null, total: null } as unknown,
+    transfer: { bytesPerSecond: null, fetched: null, total: null },
     watching: false,
   };
 });

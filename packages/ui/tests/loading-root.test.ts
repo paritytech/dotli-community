@@ -150,8 +150,18 @@ describe("The loading screen is a tracked app root", () => {
   });
 
   it.each([
-    ["an error page", (u: Ui) => u.showErrorPage({ title: "Failed" })],
-    ["a no-content page", (u: Ui) => u.showNoContentError("nothing")],
+    [
+      "an error page",
+      (u: Ui) => {
+        u.showErrorPage({ title: "Failed" });
+      },
+    ],
+    [
+      "a no-content page",
+      (u: Ui) => {
+        u.showNoContentError("nothing");
+      },
+    ],
   ])(
     "As a visitor, %s shown before the load starts removes the static screen",
     (_name, show) => {
@@ -239,8 +249,18 @@ describe("The loading screen is a tracked app root", () => {
   });
 
   it.each([
-    ["error page", (u: Ui) => u.showErrorPage({ title: "Failed" })],
-    ["no-content page", (u: Ui) => u.showNoContentError("nothing")],
+    [
+      "error page",
+      (u: Ui) => {
+        u.showErrorPage({ title: "Failed" });
+      },
+    ],
+    [
+      "no-content page",
+      (u: Ui) => {
+        u.showNoContentError("nothing");
+      },
+    ],
   ])(
     "As a visitor, the %s still renders when the page root fails to dispose",
     (_name, show) => {

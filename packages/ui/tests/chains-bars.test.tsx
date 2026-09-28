@@ -29,7 +29,7 @@ function stubLayout(): void {
         x: 0,
         y: 0,
         toJSON: () => ({}),
-      } as DOMRect;
+      };
     },
   );
 }

@@ -266,11 +266,8 @@ describe("chat panel", () => {
       document.querySelector<HTMLButtonElement>(".chat-room-item");
     expect(roomItem?.textContent).toContain("Main");
     roomItem?.click();
-    await settle(
-      () =>
-        byId("chat-panel-messages").textContent?.includes(
-          "hello from the app",
-        ) === true,
+    await settle(() =>
+      byId("chat-panel-messages").textContent?.includes("hello from the app"),
     );
     expect(byId("chat-panel-messages").textContent).toContain(
       "hello from the app",
@@ -285,8 +282,8 @@ describe("chat panel", () => {
     byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
     await settle(
       () =>
-        byId("chat-panel-messages").textContent?.includes("hello back") ===
-          true && published.length === 1,
+        byId("chat-panel-messages").textContent?.includes("hello back") &&
+        published.length === 1,
     );
 
     expect(published).toHaveLength(1);
@@ -376,11 +373,8 @@ describe("chat panel", () => {
       tag: "Text",
       value: { text: "hi, I am the bot" },
     });
-    await settle(
-      () =>
-        byId("chat-panel-messages").textContent?.includes(
-          "hi, I am the bot",
-        ) === true,
+    await settle(() =>
+      byId("chat-panel-messages").textContent?.includes("hi, I am the bot"),
     );
     // Messages carry no sender label above them.
     expect(document.querySelector(".chat-msg-sender")).toBeNull();
@@ -479,10 +473,8 @@ describe("chat panel", () => {
           ],
         },
       });
-      await settle(
-        () =>
-          byId("chat-panel-messages").textContent?.includes("Pick one") ===
-          true,
+      await settle(() =>
+        byId("chat-panel-messages").textContent?.includes("Pick one"),
       );
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
@@ -498,9 +490,7 @@ describe("chat panel", () => {
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));
       await settle(
-        () =>
-          byId("chat-panel-messages").textContent?.includes("Pick one") !==
-          true,
+        () => !byId("chat-panel-messages").textContent?.includes("Pick one"),
       );
       expect(byId("chat-panel-messages").textContent).not.toContain("Pick one");
       expect(byId("chat-panel-messages").textContent).toContain(
@@ -739,17 +729,15 @@ describe("chat panel", () => {
     });
 
     byId("chat-button").click();
-    await settle(
-      () =>
-        byId("chat-panel-rooms").textContent?.includes("First room") === true,
+    await settle(() =>
+      byId("chat-panel-rooms").textContent?.includes("First room"),
     );
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
     await settle(() => byId("chat-panel-rooms").hidden === true);
 
     loadProduct("second-app");
-    await settle(
-      () =>
-        byId("chat-panel-rooms").textContent?.includes("Second room") === true,
+    await settle(() =>
+      byId("chat-panel-rooms").textContent?.includes("Second room"),
     );
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId("chat-panel-rooms").textContent).not.toContain("First room");

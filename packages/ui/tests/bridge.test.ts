@@ -13,13 +13,13 @@ import {
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
 
-type Deferred<T> = {
+interface Deferred<T> {
   promise: Promise<T>;
   resolve: (value: T) => void;
   reject: (error: unknown) => void;
-};
+}
 
-type MockProvider = {
+interface MockProvider {
   postMessage: Mock<WireProvider["postMessage"]>;
   subscribe: Mock<WireProvider["subscribe"]>;
   subscribeClose: Mock<NonNullable<WireProvider["subscribeClose"]>>;
@@ -29,14 +29,14 @@ type MockProvider = {
   setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
   disconnect: ReturnType<typeof vi.fn>;
   dispose: Mock<WireProvider["dispose"]>;
-};
+}
 
-type MockRuntime = {
+interface MockRuntime {
   createProvider: ReturnType<typeof vi.fn>;
   cancelPairing: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
-};
+}
 
 type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;

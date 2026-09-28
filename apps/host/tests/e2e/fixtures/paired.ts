@@ -61,7 +61,9 @@ function startAutoAllow(page: Page): () => void {
           await page.waitForTimeout(POLL_MS);
         }
       } catch {
-        if (!stopped) await page.waitForTimeout(POLL_MS);
+        if (!stopped) {
+          await page.waitForTimeout(POLL_MS);
+        }
       }
     }
   })();
@@ -82,7 +84,9 @@ async function waitForHostPlaygroundFrame(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const f of page.frames()) {
-      if (f === page.mainFrame()) continue;
+      if (f === page.mainFrame()) {
+        continue;
+      }
       const ok = await f
         .locator('h1:has-text("Host Playground")')
         .first()

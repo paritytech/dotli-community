@@ -92,13 +92,13 @@ describe("createWindowMessageProvider", () => {
   });
 });
 
-type FollowBoundRequest = {
+interface FollowBoundRequest {
   tag: "V1";
   value: {
     genesisHash: string;
     followSubscriptionId: string;
   };
-};
+}
 
 function createHarness(productId?: string): {
   adapted: WireProvider;

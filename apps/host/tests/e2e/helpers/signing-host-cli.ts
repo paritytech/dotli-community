@@ -32,7 +32,9 @@ export interface SigningHostProcess {
 // spawn ENOENT buried in the pair retry loop.
 export function signingHostVersion(binary: string): string | null {
   const probe = spawnSync(binary, ["--version"], { encoding: "utf8" });
-  if (probe.error || probe.status !== 0) return null;
+  if (probe.error || probe.status !== 0) {
+    return null;
+  }
   return probe.stdout.trim();
 }
 
@@ -101,7 +103,9 @@ export async function stopSigningHost(proc: SigningHostProcess): Promise<void> {
   const stopped = await Promise.race([
     proc.completed.then(() => true),
     new Promise<boolean>((resolve) => {
-      const timer = setTimeout(() => resolve(false), 5_000);
+      const timer = setTimeout(() => {
+        resolve(false);
+      }, 5_000);
       timer.unref();
     }),
   ]);
@@ -121,7 +125,9 @@ export async function stopSigningHostPid(pid: number): Promise<void> {
   }
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
-    if (!isAlive(pid)) return;
+    if (!isAlive(pid)) {
+      return;
+    }
     await new Promise((r) => setTimeout(r, 200));
   }
   try {

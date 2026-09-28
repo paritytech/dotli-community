@@ -13,9 +13,13 @@ try {
   const env = readFileSync(resolve(repoRoot, ".env"), "utf-8");
   for (const line of env.split("\n")) {
     const m = /^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)$/.exec(line);
-    if (!m) continue;
+    if (!m) {
+      continue;
+    }
     const [, key, raw] = m;
-    if (process.env[key]) continue;
+    if (process.env[key]) {
+      continue;
+    }
     process.env[key] = raw.replace(/^['"]|['"]$/g, "");
   }
 } catch {
@@ -59,11 +63,9 @@ const dotliWebServer = {
   timeout: 30_000,
 };
 
-const webServer: Array<
-  typeof dotliWebServer & {
-    cwd?: string;
-  }
-> = [dotliWebServer];
+const webServer: (typeof dotliWebServer & {
+  cwd?: string;
+})[] = [dotliWebServer];
 if (localProductUrl !== undefined) {
   const productUrl = new URL(localProductUrl);
   if (

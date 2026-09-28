@@ -341,16 +341,19 @@ describe("sandbox checker violation panel", () => {
       },
     );
     let heightWrites = 0;
-    const style = new Proxy({} as Record<string, string>, {
-      set(target, prop, value: string) {
-        if (prop === "height") {
-          heightWrites++;
-          log.push("write");
-        }
-        target[prop as string] = value;
-        return true;
+    const style = new Proxy<Record<string, string>>(
+      {},
+      {
+        set(target, prop, value: string) {
+          if (prop === "height") {
+            heightWrites++;
+            log.push("write");
+          }
+          target[prop as string] = value;
+          return true;
+        },
       },
-    });
+    );
     attachProductFrame({ style } as unknown as HTMLIFrameElement);
     const send = async (i: number): Promise<void> => {
       violation({
