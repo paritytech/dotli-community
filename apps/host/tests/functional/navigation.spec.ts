@@ -307,11 +307,11 @@ test.describe("Sandbox side-effects from URL contract keys", () => {
               resolve();
             };
             tx.onerror = () => {
-              reject(tx.error);
+              reject(tx.error ?? new Error("marker write failed"));
             };
           };
           req.onerror = () => {
-            reject(req.error);
+            reject(req.error ?? new Error("marker db open failed"));
           };
         });
       }, PURGE_MARKER_DB);

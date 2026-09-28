@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stubColorScheme } from "./helpers/color-scheme";
+import { byId } from "./support";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -9,18 +10,15 @@ const sharedAuth = vi.hoisted(() => ({
 }));
 
 vi.mock("@dotli/protocol/client", () => ({
-  readSharedAuthStorage: async (siteId: string, key: string) => {
-    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
-  },
-  writeSharedAuthStorage: async (
-    siteId: string,
-    key: string,
-    value: string,
-  ) => {
+  readSharedAuthStorage: (siteId: string, key: string) =>
+    Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
+  writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
     sharedAuth.storage.set(`${siteId}:${key}`, value);
+    return Promise.resolve();
   },
-  clearSharedAuthStorage: async (siteId: string, key: string) => {
+  clearSharedAuthStorage: (siteId: string, key: string) => {
     sharedAuth.storage.delete(`${siteId}:${key}`);
+    return Promise.resolve();
   },
   subscribeSharedAuthStorage: (
     listener: (change: {
@@ -134,11 +132,9 @@ describe("topbar boot wiring", () => {
       expect(boot.startNetworkStore).toHaveBeenCalledTimes(1);
       expect(boot.initChatPanel).toHaveBeenCalledTimes(1);
       expect(boot.initTheme).toHaveBeenCalledTimes(1);
-      expect(
-        (
-          document.getElementById("topbar-home") as HTMLAnchorElement
-        ).getAttribute("href"),
-      ).toBe("https://app.example/home");
+      expect(byId("topbar-home", HTMLAnchorElement).getAttribute("href")).toBe(
+        "https://app.example/home",
+      );
       expect(boot.emitPersistedSessionUiState).not.toHaveBeenCalled();
 
       // When

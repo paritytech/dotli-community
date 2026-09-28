@@ -10,6 +10,7 @@ import {
   setChatWidth,
 } from "@dotli/ui/product-frame-layout";
 import { settle } from "../../helpers/solid";
+import { byId, query } from "../../support";
 
 const BELOW_BAR_HEIGHT =
   "calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))";
@@ -31,7 +32,7 @@ function violation(
 }
 
 function panel(): HTMLElement {
-  return document.getElementById("sandbox-checker-panel")!;
+  return byId("sandbox-checker-panel");
 }
 
 beforeEach(() => {
@@ -105,7 +106,7 @@ describe("sandbox checker violation panel", () => {
     await settle();
 
     // Then
-    const entry = panel().querySelector(".sc-entry")!;
+    const entry = query(panel(), ".sc-entry", Element);
     expect(entry.querySelector("img")).toBeNull();
     expect(entry.querySelector("b")).toBeNull();
     expect(entry.querySelector(".sc-api")?.textContent).toBe(
@@ -145,7 +146,7 @@ describe("sandbox checker violation panel", () => {
       timestamp: 0,
     });
     await settle();
-    const toggle = panel().querySelector<HTMLButtonElement>(".sc-toggle")!;
+    const toggle = query(panel(), ".sc-toggle", HTMLButtonElement);
 
     // Then
     expect(toggle.getAttribute("aria-label")).toBe("Toggle panel");
@@ -168,7 +169,7 @@ describe("sandbox checker violation panel", () => {
     expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
 
     // When: resizing while collapsed does nothing
-    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+    const handle = query(panel(), ".sc-resize-handle");
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
     fireEvent.pointerMove(handle, { pointerId: 1, clientY: 100 });
     await settle();
@@ -226,7 +227,7 @@ describe("sandbox checker violation panel", () => {
       timestamp: 0,
     });
     await settle();
-    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+    const handle = query(panel(), ".sc-resize-handle");
 
     // When
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 600 });
@@ -281,7 +282,7 @@ describe("sandbox checker violation panel", () => {
       timestamp: 0,
     });
     await settle();
-    const handle = panel().querySelector<HTMLElement>(".sc-resize-handle")!;
+    const handle = query(panel(), ".sc-resize-handle");
 
     // When
     fireEvent.pointerDown(handle, { pointerId: 1, clientY: 100 });
@@ -367,7 +368,7 @@ describe("sandbox checker violation panel", () => {
       await settle();
     };
     await send(0);
-    const logEl = panel().querySelector<HTMLElement>(".sc-log")!;
+    const logEl = query(panel(), ".sc-log");
     let top = 0;
     Object.defineProperty(logEl, "scrollTop", {
       configurable: true,

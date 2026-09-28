@@ -23,10 +23,13 @@ import {
   oldModePopover,
   type OldSettings,
 } from "./old-settings-markup";
+import type * as SettingsActionsModule from "@dotli/ui/settings-actions";
+import type * as NetworkModule from "@dotli/config/network";
+import { byId, query } from "../../support";
 
 const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
 vi.mock("@dotli/ui/settings-actions", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@dotli/ui/settings-actions")>()),
+  ...(await importOriginal<typeof SettingsActionsModule>()),
   applyAndReset: actions.applyAndReset,
 }));
 
@@ -41,14 +44,14 @@ vi.mock("@dotli/resolver/rpc-resolve", () => ({
   getConnectedAssetHubRpcEndpoint: () => rpc.live,
 }));
 
-const networks = vi.hoisted(() => ({ enabled: null as string[] | null }));
+const networks = vi.hoisted(() => ({
+  enabled: null as ReturnType<typeof NetworkModule.getEnabledNetworks> | null,
+}));
 vi.mock("@dotli/config/network", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@dotli/config/network")>();
+  const actual = await importOriginal<typeof NetworkModule>();
   return {
     ...actual,
-    getEnabledNetworks: () =>
-      (networks.enabled as ReturnType<typeof actual.getEnabledNetworks>) ??
-      actual.getEnabledNetworks(),
+    getEnabledNetworks: () => networks.enabled ?? actual.getEnabledNetworks(),
   };
 });
 
@@ -97,10 +100,6 @@ async function drain(): Promise<void> {
   }
 }
 
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
-
 function isOpen(): boolean {
   return byId("mode-popover").classList.contains("open");
 }
@@ -127,19 +126,23 @@ function button(text: string): HTMLButtonElement {
 }
 
 function applyButton(): HTMLButtonElement {
-  return document.querySelector(".mode-apply-row button") as HTMLButtonElement;
+  return query(document, ".mode-apply-row button", HTMLButtonElement);
 }
 
 function toggle(label: string): HTMLButtonElement {
-  return document.querySelector(
+  return query(
+    document,
     `[role="switch"][aria-label="${label}"]`,
-  ) as HTMLButtonElement;
+    HTMLButtonElement,
+  );
 }
 
 function radio(name: string, value: string): HTMLInputElement {
-  return document.querySelector(
+  return query(
+    document,
     `input[name="${name}"][value="${value}"]`,
-  ) as HTMLInputElement;
+    HTMLInputElement,
+  );
 }
 
 function infoRow(label: string): HTMLElement {
@@ -313,9 +316,7 @@ describe("The settings popover island", () => {
 
     // When
     await openPopover();
-    (
-      document.querySelector(".mode-popover-sheet-close") as HTMLElement
-    ).click();
+    query(document, ".mode-popover-sheet-close").click();
     await settle();
 
     // Then
@@ -514,9 +515,11 @@ describe("The settings popover island", () => {
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {
       forceFullWipe: true,
     });
-    const clear = document.querySelector(
+    const clear = query(
+      document,
       ".mode-clear-all-row button",
-    ) as HTMLButtonElement;
+      HTMLButtonElement,
+    );
     expect(clear.disabled).toBe(true);
     expect(clear.textContent).toBe("Clearing…");
 
@@ -530,7 +533,7 @@ describe("The settings popover island", () => {
 
   it("As a dotli user, clicking a copyable diagnostics row copies it and flashes Copied for a second", async () => {
     // Given
-    const writeText = vi.fn(async () => undefined);
+    const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, "clipboard", {
       configurable: true,
       value: { writeText },
@@ -539,7 +542,7 @@ describe("The settings popover island", () => {
     await openPopover();
     vi.useFakeTimers();
     const site = infoRow("Site");
-    const value = site.querySelector("code") as HTMLElement;
+    const value = query(site, "code");
 
     // When
     site.click();
@@ -785,9 +788,7 @@ describe("The settings popover island", () => {
     await openPopover();
 
     // When
-    (
-      document.querySelector(".mode-popover-sheet-close") as HTMLElement
-    ).click();
+    query(document, ".mode-popover-sheet-close").click();
     await settle();
 
     // Then
@@ -801,7 +802,7 @@ describe("The settings popover island", () => {
     await openPopover();
 
     // When
-    (document.querySelector(".mode-popover-columns") as HTMLElement).click();
+    query(document, ".mode-popover-columns").click();
     await settle();
 
     // Then
@@ -873,9 +874,7 @@ describe("The settings popover island", () => {
     expect(isOpen()).toBe(true);
 
     // When
-    (
-      document.querySelector(".mode-popover-sheet-close") as HTMLElement
-    ).click();
+    query(document, ".mode-popover-sheet-close").click();
     await settle();
 
     // Then

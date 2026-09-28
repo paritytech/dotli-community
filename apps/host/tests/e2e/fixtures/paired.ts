@@ -37,10 +37,13 @@ const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
  * loop on fixture teardown.
  */
 function startAutoAllow(page: Page): () => void {
-  let stopped = false;
+  // Read through a function: TypeScript would narrow a plain flag, set only
+  // in the stop closure, to `false` for the whole loop.
+  const stop = new AbortController();
+  const stopped = (): boolean => stop.signal.aborted;
   const POLL_MS = 300;
   void (async () => {
-    while (!stopped) {
+    while (!stopped()) {
       try {
         // Three-way prompts label the lasting grant "Always allow"; two-way
         // ones keep "Allow". Neither picks the one-time grant, so a test's
@@ -61,14 +64,14 @@ function startAutoAllow(page: Page): () => void {
           await page.waitForTimeout(POLL_MS);
         }
       } catch {
-        if (!stopped) {
+        if (!stopped()) {
           await page.waitForTimeout(POLL_MS);
         }
       }
     }
   })();
   return () => {
-    stopped = true;
+    stop.abort();
   };
 }
 
@@ -149,7 +152,7 @@ export async function openHostPlayground(page: Page): Promise<void> {
     .locator("#auth-button .user-badge")
     .waitFor({ state: "visible", timeout: USER_BADGE_TIMEOUT_MS });
   console.log(
-    `[pairedPage] session restored in ${Date.now() - restoreStart}ms`,
+    `[pairedPage] session restored in ${String(Date.now() - restoreStart)}ms`,
   );
 }
 
@@ -200,7 +203,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       });
       page.on("pageerror", (err) => {
         console.log(`[browser:pageerror] ${err.message}`);
-        if (err.stack) {
+        if (err.stack !== undefined && err.stack !== "") {
           console.log(`[browser:pageerror:stack] ${err.stack}`);
         }
       });
@@ -262,7 +265,9 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         PRODUCT_IFRAME_TIMEOUT_MS,
       );
       await waitForHostModalsSettled(pairedPage);
-      console.log(`[productFrame] iframe ready in ${Date.now() - start}ms`);
+      console.log(
+        `[productFrame] iframe ready in ${String(Date.now() - start)}ms`,
+      );
       await use(frame);
     },
     // Test-scoped: dot.li replaces the product iframe when the page navigates

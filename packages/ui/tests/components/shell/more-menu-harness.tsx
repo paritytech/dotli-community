@@ -4,6 +4,7 @@
 import { MoreMenu } from "@dotli/ui/components/shell/MoreMenu";
 import { mountRoot } from "@dotli/ui/mount/root";
 import { pointerPress, settle } from "../../helpers/solid";
+import { byId, query } from "../../support";
 
 const MORE_IDS = ["more-button", "more-popover"];
 
@@ -40,11 +41,9 @@ export function mountMoreMenu(): () => void {
 
 /** Open the More menu and tap the row that forwards to `targetId`. */
 export async function tapMoreRow(targetId: string): Promise<void> {
-  pointerPress(document.getElementById("more-button") as HTMLElement);
+  pointerPress(byId("more-button"));
   await settle();
   pointerPress(
-    document.querySelector(
-      `#more-popover .more-row[data-target="${targetId}"]`,
-    ) as HTMLElement,
+    query(document, `#more-popover .more-row[data-target="${targetId}"]`),
   );
 }

@@ -3,14 +3,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadingPhase } from "@dotli/ui/loading-controller";
+import type * as UiModule from "@dotli/ui/ui";
+import type * as LoadingControllerModule from "@dotli/ui/loading-controller";
+import type * as AppRootsModule from "@dotli/ui/mount/app-roots";
+import type * as LoadingModule from "@dotli/ui/state/loading";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
 
-type Ui = typeof import("@dotli/ui/ui");
-type Controller = typeof import("@dotli/ui/loading-controller");
-type AppRoots = typeof import("@dotli/ui/mount/app-roots");
-type LoadingState = typeof import("@dotli/ui/state/loading");
+type Ui = typeof UiModule;
+type Controller = typeof LoadingControllerModule;
+type AppRoots = typeof AppRootsModule;
+type LoadingState = typeof LoadingModule;
 
 // Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;

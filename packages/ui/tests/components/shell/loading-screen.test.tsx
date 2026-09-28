@@ -40,6 +40,7 @@ import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
 import { getLoadingState, updateLoading } from "@dotli/ui/state/loading";
 import { showErrorPage } from "@dotli/ui/ui";
 import { showLanding } from "@dotli/ui/landing/load";
+import { byId } from "../../support";
 
 const INDEX_HTML = readFileSync(
   resolve(import.meta.dirname, "../../../../../apps/host/index.html"),
@@ -78,11 +79,7 @@ function runFrames(now: number): void {
 }
 
 function app(): HTMLElement {
-  return document.getElementById("app") as HTMLElement;
-}
-
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
+  return byId("app");
 }
 
 function countById(id: string): number {

@@ -60,9 +60,7 @@ export async function runWebSignedTest(
     const visibleButtons = await hostPage
       .locator("button:visible")
       .evaluateAll((els) =>
-        els
-          .map((e) => (e.textContent ?? "").trim().slice(0, 60))
-          .filter(Boolean),
+        els.map((e) => e.textContent.trim().slice(0, 60)).filter(Boolean),
       )
       .catch(() => []);
     console.log(
@@ -111,7 +109,7 @@ async function clickHostDialogs(
 
       if (preClickDelayMs > 0) {
         console.log(
-          `[signed] dialog "${name}" visible — pausing ${preClickDelayMs}ms before click`,
+          `[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`,
         );
         await page.waitForTimeout(preClickDelayMs);
       }
@@ -120,8 +118,9 @@ async function clickHostDialogs(
       // wait for a button that never returns and never reach the next dialog
       // (e.g. "Sign"), so bound it and let the next pass move on.
       console.log(`[signed] dialog "${name}" — clicking`);
-      await btn.click({ timeout: 2_000 }).catch((e: Error) => {
-        console.log(`[signed] dialog "${name}" click skipped: ${e.message}`);
+      await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
+        const reason = e instanceof Error ? e.message : String(e);
+        console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
       });
       seen.add(name);
       lastSeenAt = Date.now();

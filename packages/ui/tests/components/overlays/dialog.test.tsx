@@ -14,6 +14,7 @@ import {
   resetProductFrameLayout,
 } from "@dotli/ui/product-frame-layout";
 import { renderComponent, settle } from "../../helpers/solid";
+import { query } from "../../support";
 
 type Choice = "deny" | "allow" | "once" | "dismissed";
 
@@ -123,7 +124,7 @@ describe("signing dialog", () => {
 
     // When
     fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-secondary")!,
+      query(document, ".signing-btn-secondary", HTMLButtonElement),
     );
     await settle();
 
@@ -139,7 +140,7 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(document.querySelector<HTMLElement>(".signing-modal")!);
+    fireEvent.click(query(document, ".signing-modal"));
     await settle();
 
     // Then
@@ -148,9 +149,7 @@ describe("signing dialog", () => {
     );
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".signing-modal-backdrop")!,
-    );
+    fireEvent.click(query(document, ".signing-modal-backdrop"));
     await settle();
 
     // Then
@@ -169,7 +168,7 @@ describe("signing dialog", () => {
     // Given
     void openModal(permissionLike());
     await mountOutlet();
-    const modal = document.querySelector<HTMLElement>(".signing-modal")!;
+    const modal = query(document, ".signing-modal");
     const bubbleListener = vi.fn();
     document.addEventListener("keydown", bubbleListener);
 
@@ -192,9 +191,7 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".signing-modal-backdrop")!,
-    );
+    fireEvent.click(query(document, ".signing-modal-backdrop"));
     fireEvent.keyDown(document, { key: "Escape" });
     await settle();
 
@@ -214,7 +211,7 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // Then
-    const modal = document.querySelector<HTMLElement>(".signing-modal")!;
+    const modal = query(document, ".signing-modal");
     expect(document.activeElement).toBe(modal);
     const buttons = [
       ...document.querySelectorAll<HTMLButtonElement>(
@@ -245,9 +242,7 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then
@@ -258,11 +253,12 @@ describe("signing dialog", () => {
     // Given
     const outcome = openModal(passwordView("Wrong password"));
     await mountOutlet();
-    const input = document.querySelector<HTMLInputElement>(
+    const input = query(
+      document,
       "input.password-prompt-input",
-    )!;
-    const unlock =
-      document.querySelector<HTMLButtonElement>(".signing-btn-sign")!;
+      HTMLInputElement,
+    );
+    const unlock = query(document, ".signing-btn-sign", HTMLButtonElement);
 
     // Then
     expect(document.activeElement).toBe(input);
@@ -305,7 +301,7 @@ describe("signing dialog", () => {
     const outcome = openModal(passwordView());
     await mountOutlet();
     fireEvent.input(
-      document.querySelector<HTMLInputElement>("input.password-prompt-input")!,
+      query(document, "input.password-prompt-input", HTMLInputElement),
       {
         target: { value: "typed" },
       },
@@ -313,9 +309,7 @@ describe("signing dialog", () => {
     await settle();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then
@@ -329,9 +323,7 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then
@@ -351,13 +343,9 @@ describe("signing dialog", () => {
     await mountOutlet();
 
     // When: both are answered.
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then
@@ -380,9 +368,7 @@ describe("signing dialog", () => {
     opener.remove();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then
@@ -406,9 +392,7 @@ describe("signing dialog", () => {
     opener.remove();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!,
-    );
+    fireEvent.click(query(document, ".signing-btn-cancel", HTMLButtonElement));
     await settle();
 
     // Then

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as TopbarAutohideModule from "@dotli/ui/topbar-autohide";
+import { byId } from "./support";
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
 // box helper is mocked with plain stand-in values here. The real inset math and
@@ -40,11 +42,11 @@ function installTopbarDom(): void {
 }
 
 function appFrame(): HTMLIFrameElement {
-  return document.getElementById("app-frame") as HTMLIFrameElement;
+  return byId("app-frame", HTMLIFrameElement);
 }
 
 function topbar(): HTMLElement {
-  return document.getElementById("topbar") as HTMLElement;
+  return byId("topbar");
 }
 
 function isHidden(): boolean {
@@ -70,9 +72,7 @@ function stubReducedMotion(reduce: boolean): void {
 // its document listeners or it keeps acting on the shared DOM.
 let dispose: (() => void) | null = null;
 
-async function loadAutoHide(): Promise<
-  typeof import("@dotli/ui/topbar-autohide")
-> {
+async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   // Logged in, as the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import("@dotli/ui/state/auth");
   setLoggedIn(true);
@@ -132,7 +132,7 @@ describe("topbar auto-hide reveal", () => {
     expect(isHidden()).toBe(true);
 
     // When
-    focusElement(document.getElementById("topbar-home") as HTMLElement);
+    focusElement(byId("topbar-home"));
 
     // Then
     expect(isHidden()).toBe(false);
@@ -148,7 +148,7 @@ describe("topbar auto-hide reveal", () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    focusElement(document.getElementById("mode-button") as HTMLElement);
+    focusElement(byId("mode-button"));
     expect(isHidden()).toBe(false);
 
     // When
@@ -203,11 +203,11 @@ describe("topbar auto-hide reveal", () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    const chains = document.getElementById("chains-popover") as HTMLElement;
+    const chains = byId("chains-popover");
     chains.classList.add("open");
 
     // When focus sits inside it, outside #topbar
-    focusElement(document.getElementById("chains-row") as HTMLElement);
+    focusElement(byId("chains-row"));
     vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
 
     // Then
@@ -298,24 +298,23 @@ describe("topbar auto-hide reveal", () => {
     const { armTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
     armTopbarAutoHide();
     vi.advanceTimersByTime(HIDE_DELAY_MS);
-    const button = document.getElementById(TOPBAR_REVEAL_BUTTON_ID);
+    const button = byId(TOPBAR_REVEAL_BUTTON_ID);
 
     // Then it is focusable and sits between the frame and the toasts, so one
     // forward Tab out of the dApp reaches it
-    expect(button?.tagName).toBe("BUTTON");
+    expect(button.tagName).toBe("BUTTON");
     expect(
-      appFrame().compareDocumentPosition(button as Node) &
+      appFrame().compareDocumentPosition(button) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(
-      (document.getElementById("toast") as Node).compareDocumentPosition(
-        button as Node,
-      ) & Node.DOCUMENT_POSITION_PRECEDING,
+      byId("toast").compareDocumentPosition(button) &
+        Node.DOCUMENT_POSITION_PRECEDING,
     ).toBeTruthy();
 
     // When
-    (button as HTMLElement).focus();
-    (button as HTMLElement).dispatchEvent(new FocusEvent("focus"));
+    button.focus();
+    button.dispatchEvent(new FocusEvent("focus"));
 
     // Then focus alone reveals the bar and holds it there
     expect(isHidden()).toBe(false);
@@ -351,9 +350,7 @@ describe("topbar auto-hide reveal", () => {
 
     // Then
     expect(topbar().hasAttribute("aria-keyshortcuts")).toBe(false);
-    expect(
-      (document.getElementById(TOPBAR_REVEAL_BUTTON_ID) as HTMLElement).hidden,
-    ).toBe(true);
+    expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(true);
   });
 });
 
@@ -394,7 +391,7 @@ describe("topbar auto-hide motion and layout", () => {
     expect(appFrame().style.transform).toBe("translateY(0)");
 
     // When
-    focusElement(document.getElementById("topbar-home") as HTMLElement);
+    focusElement(byId("topbar-home"));
 
     // Then the layout box is untouched (no relayout) and a transform moves
     // the frame under the bar, so the app's top content is never covered

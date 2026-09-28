@@ -7,6 +7,7 @@
 // island tests compare against it node for node.
 
 import { escapeHtml } from "@dotli/shared/html";
+import { query } from "../../support";
 
 const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
@@ -81,7 +82,7 @@ export function oldUserPopover(opts: {
   open: boolean;
 }): HTMLElement {
   const popover = fromHtml(STATIC_USER_POPOVER);
-  const name = popover.querySelector("#user-popover-username") as HTMLElement;
+  const name = query(popover, "#user-popover-username");
   name.textContent = opts.username;
   if (opts.hint) {
     const hint = document.createElement("div");
@@ -126,8 +127,7 @@ export function oldModal(opts: {
   backdrop.setAttribute("aria-modal", "true");
   backdrop.setAttribute("aria-labelledby", "auth-modal-title");
   backdrop.tabIndex = -1;
-  const find = (id: string): HTMLElement =>
-    backdrop.querySelector(`#${id}`) as HTMLElement;
+  const find = (id: string): HTMLElement => query(backdrop, `#${id}`);
   const title = find("auth-modal-title");
   const reason = find("auth-modal-reason");
   const hint = find("auth-modal-hint");

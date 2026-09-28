@@ -7,6 +7,7 @@ import { ERRORS } from "@dotli/ui/errors";
 import { failAllModals } from "@dotli/ui/state/modals";
 import { settle } from "./helpers/solid";
 import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { query } from "./support";
 
 afterEach(() => {
   resetOverlays();
@@ -14,9 +15,11 @@ afterEach(() => {
 });
 
 function type(value: string): void {
-  const input = document.querySelector<HTMLInputElement>(
+  const input = query(
+    document,
     "input.password-prompt-input",
-  )!;
+    HTMLInputElement,
+  );
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }

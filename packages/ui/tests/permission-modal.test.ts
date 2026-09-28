@@ -132,7 +132,7 @@ function footerButtons(): { text: string; className: string }[] {
       ".signing-modal-footer button",
     ),
     (button) => ({
-      text: button.textContent ?? "",
+      text: button.textContent,
       className: button.className,
     }),
   );

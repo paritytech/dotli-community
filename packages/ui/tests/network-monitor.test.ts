@@ -13,6 +13,7 @@ import {
   recordTransfer,
   subscribeNetwork,
   type BlockSource,
+  type ChainStatus,
 } from "@dotli/ui/network-monitor";
 import { getActiveChainRoles } from "@dotli/config/network";
 
@@ -507,7 +508,8 @@ describe("The network monitor tracks the phase of each chain", () => {
     const { source } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    const relay = () => getNetworkStatus().find((c) => c.role === "relay");
+    const relay = (): ChainStatus | undefined =>
+      getNetworkStatus().find((c) => c.role === "relay");
 
     // When
     recordChainPhase("relay", "connecting");

@@ -29,6 +29,7 @@ import {
 } from "./old-permissions-markup";
 import { normalized } from "./old-auth-markup";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
+import { byId, must } from "../../support";
 
 const LABEL = "localhost:3000";
 
@@ -50,7 +51,8 @@ function nameOf(request: PermissionAuthorizationRequest): string {
       return request.value;
     case "Remote":
       return request.value.permission.tag;
-    default:
+    case "IdentityDisclosure":
+    case "AccountAccess":
       return request.tag;
   }
 }
@@ -68,18 +70,21 @@ function provide(
 ): Provider {
   const stored = new Map(Object.entries(initial));
   const set = vi.fn(
-    async (
+    (
       request: PermissionAuthorizationRequest,
       status: PermissionAuthorizationStatus,
     ) => {
       stored.set(nameOf(request), status);
+      return Promise.resolve();
     },
   );
   cleanups.push(
     registerPermissionAuthorizationProvider(label, {
-      getPermissionAuthorizationStatuses: async (requests) =>
-        requests.map(
-          (request) => stored.get(nameOf(request)) ?? "NotDetermined",
+      getPermissionAuthorizationStatuses: (requests) =>
+        Promise.resolve(
+          requests.map(
+            (request) => stored.get(nameOf(request)) ?? "NotDetermined",
+          ),
         ),
       setPermissionAuthorizationStatus: set,
     }),
@@ -107,10 +112,6 @@ async function settleAll(): Promise<void> {
     await Promise.resolve();
   }
   flush();
-}
-
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -147,7 +148,7 @@ async function openPopover(): Promise<void> {
 }
 
 function select(name: string): HTMLButtonElement {
-  return byId(`permissions-popover-select-${name}`);
+  return byId(`permissions-popover-select-${name}`, HTMLButtonElement);
 }
 
 function menu(): HTMLElement | null {
@@ -155,11 +156,14 @@ function menu(): HTMLElement | null {
 }
 
 function option(label: string): HTMLButtonElement {
-  return Array.from(
-    document.querySelectorAll<HTMLButtonElement>(
-      ".permissions-popover-menu-item",
-    ),
-  ).find((item) => item.textContent === label) as HTMLButtonElement;
+  return must(
+    Array.from(
+      document.querySelectorAll<HTMLButtonElement>(
+        ".permissions-popover-menu-item",
+      ),
+    ).find((item) => item.textContent === label),
+    `the "${label}" menu item`,
+  );
 }
 
 function expectPopover(opts: {
@@ -354,9 +358,9 @@ describe("PermissionsPopover", () => {
     let reads = 0;
     cleanups.push(
       registerPermissionAuthorizationProvider(LABEL, {
-        getPermissionAuthorizationStatuses: async (requests) => {
+        getPermissionAuthorizationStatuses: (requests) => {
           reads += 1;
-          return requests.map(() => "NotDetermined" as const);
+          return Promise.resolve(requests.map(() => "NotDetermined" as const));
         },
         setPermissionAuthorizationStatus: () =>
           new Promise((_resolve, reject) => {

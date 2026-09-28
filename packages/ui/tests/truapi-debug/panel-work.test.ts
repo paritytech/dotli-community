@@ -7,6 +7,17 @@
 // dev diagnostics are read off `console.warn`.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
+import type * as FiltersModule from "@dotli/truapi-debug/filters";
+import type * as PendingModule from "@dotli/truapi-debug/pending";
+import type * as RowFormatModule from "@dotli/truapi-debug/row-format";
+import type * as TimelineModule from "@dotli/truapi-debug/timeline";
+import type * as ResolutionViewModule from "@dotli/truapi-debug/resolution-view";
+import type * as KeyedSignalsModule from "@dotli/ui/components/truapi-debug/keyed-signals";
+import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
+import type * as MountModule from "@dotli/ui/components/truapi-debug/mount";
+import type * as ProductFrameLayoutModule from "@dotli/ui/product-frame-layout";
+import { query } from "../support";
 
 const calls = vi.hoisted(() => ({
   matches: 0,
@@ -24,8 +35,7 @@ function resetCalls(): void {
 }
 
 vi.mock("@dotli/truapi-debug/filters", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("@dotli/truapi-debug/filters")>();
+  const real = await importOriginal<typeof FiltersModule>();
   return {
     ...real,
     matches: (...args: Parameters<typeof real.matches>) => {
@@ -35,8 +45,7 @@ vi.mock("@dotli/truapi-debug/filters", async (importOriginal) => {
   };
 });
 vi.mock("@dotli/truapi-debug/pending", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("@dotli/truapi-debug/pending")>();
+  const real = await importOriginal<typeof PendingModule>();
   return {
     ...real,
     openCalls: (...args: Parameters<typeof real.openCalls>) => {
@@ -50,8 +59,7 @@ vi.mock("@dotli/truapi-debug/pending", async (importOriginal) => {
   };
 });
 vi.mock("@dotli/truapi-debug/row-format", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("@dotli/truapi-debug/row-format")>();
+  const real = await importOriginal<typeof RowFormatModule>();
   return {
     ...real,
     rowClassName: (...args: Parameters<typeof real.rowClassName>) => {
@@ -61,8 +69,7 @@ vi.mock("@dotli/truapi-debug/row-format", async (importOriginal) => {
   };
 });
 vi.mock("@dotli/truapi-debug/timeline", async (importOriginal) => {
-  const real =
-    await importOriginal<typeof import("@dotli/truapi-debug/timeline")>();
+  const real = await importOriginal<typeof TimelineModule>();
   return {
     ...real,
     renderSwimlanes: (...args: Parameters<typeof real.renderSwimlanes>) => {
@@ -72,10 +79,7 @@ vi.mock("@dotli/truapi-debug/timeline", async (importOriginal) => {
   };
 });
 vi.mock("@dotli/truapi-debug/resolution-view", async (importOriginal) => {
-  const real =
-    await importOriginal<
-      typeof import("@dotli/truapi-debug/resolution-view")
-    >();
+  const real = await importOriginal<typeof ResolutionViewModule>();
   return {
     ...real,
     buildResolution: (...args: Parameters<typeof real.buildResolution>) => {
@@ -92,10 +96,7 @@ const keyedMaps = vi.hoisted(
 vi.mock(
   "@dotli/ui/components/truapi-debug/keyed-signals",
   async (importOriginal) => {
-    const real =
-      await importOriginal<
-        typeof import("@dotli/ui/components/truapi-debug/keyed-signals")
-      >();
+    const real = await importOriginal<typeof KeyedSignalsModule>();
     return {
       ...real,
       createKeyedSignals: () => {
@@ -107,17 +108,17 @@ vi.mock(
   },
 );
 
-type Bus = typeof import("@dotli/truapi-debug/dotli-debug-bus");
+type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
-type PanelModule = typeof import("@dotli/ui/components/truapi-debug/mount");
+type PanelModule = typeof MountModule;
 
 const PANEL_ID = "truapi-debug-panel";
 
 let bus: Bus;
-let layout: typeof import("@dotli/ui/product-frame-layout");
+let layout: typeof ProductFrameLayoutModule;
 let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
-let warn: ReturnType<typeof vi.spyOn>;
+let warn: MockInstance<typeof console.warn>;
 
 beforeEach(async () => {
   const { settings } = (
@@ -159,7 +160,10 @@ afterEach(() => {
 
 // Helpers
 
-function mount(options?: { capacity?: number; startCollapsed?: boolean }) {
+function mount(options?: {
+  capacity?: number;
+  startCollapsed?: boolean;
+}): void {
   disposers.push(panelModule.setupTruapiDebugPanel(options));
 }
 
@@ -171,12 +175,8 @@ function panel(): HTMLElement {
   return el;
 }
 
-function q<T extends Element = HTMLElement>(selector: string): T {
-  const el = panel().querySelector<T>(selector);
-  if (el === null) {
-    throw new Error(`missing ${selector}`);
-  }
-  return el;
+function q(selector: string): HTMLElement {
+  return query(panel(), selector);
 }
 
 function rows(): HTMLElement[] {
@@ -260,8 +260,8 @@ function attachCountingFrame(): {
 /** Solid's HUGE_FAN_OUT dev warnings logged since the last clear. */
 function fanOutWarnings(): string[] {
   return warn.mock.calls
-    .map((c: unknown[]) => String(c[0]))
-    .filter((m: string) => m.includes("HUGE_FAN_OUT"));
+    .map((c) => String(c[0]))
+    .filter((m) => m.includes("HUGE_FAN_OUT"));
 }
 
 /** Fill the store to capacity with unanswered requests, and render them. */
@@ -399,7 +399,7 @@ describe("truapi debug panel work: collapsed and hidden views", () => {
     // Below capacity: at capacity every new event evicts a visible one.
     mount();
     fillWithAnsweredPairs(500);
-    type(q<HTMLInputElement>(".td-exclude-input"), "noise");
+    type(query(panel(), ".td-exclude-input", HTMLInputElement), "noise");
     click(q('.td-tab[data-view="timeline"]'));
     resetCalls();
 
@@ -525,11 +525,15 @@ describe("truapi debug panel work: filters and detail", () => {
     truapi("host_sign_request", "a1");
     frame();
     click(rows()[0]);
-    const explanation = q<HTMLDetailsElement>(".td-detail details");
+    const explanation = query(
+      panel(),
+      ".td-detail details",
+      HTMLDetailsElement,
+    );
     explanation.open = true;
 
     // When
-    const input = q<HTMLInputElement>(".td-tag-input");
+    const input = query(panel(), ".td-tag-input", HTMLInputElement);
     type(input, "b");
     type(input, "bo");
     type(input, "boo");
@@ -560,7 +564,7 @@ describe("truapi debug panel work: rows", () => {
 
     // When the reply row is filtered out, the request is evicted, and the
     // reply row is created again
-    const exclude = q<HTMLInputElement>(".td-exclude-input");
+    const exclude = query(panel(), ".td-exclude-input", HTMLInputElement);
     type(exclude, "response");
     truapi("noise_receive", "n1");
     truapi("noise_receive", "n2");
@@ -685,7 +689,11 @@ describe("truapi debug panel work: pointer moves", () => {
     truapi("host_sign_response", "r1", "incoming");
     frame();
     click(q('.td-tab[data-view="timeline"]'));
-    const box = q(".td-timeline rect.td-tl-segment[data-tooltip]");
+    const box = query(
+      panel(),
+      ".td-timeline rect.td-tl-segment[data-tooltip]",
+      SVGRectElement,
+    );
     const tooltip = q(".td-tooltip");
     // happy-dom lays nothing out: give the panel and the tooltip a box.
     let measures = 0;

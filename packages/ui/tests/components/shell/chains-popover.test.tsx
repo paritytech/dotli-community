@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { MockInstance } from "vitest";
 import { flush } from "solid-js";
 import type {
   BlockBar,
@@ -25,6 +26,8 @@ import {
 } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
+import type * as ChainsFormatModule from "@dotli/ui/components/shell/chains-format";
+import { byId, query } from "../../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -32,22 +35,26 @@ vi.mock("@dotli/metrics/sentry", () => sentry);
 /** The verdict, counted as the popover computes it. */
 const format = vi.hoisted(() => ({ describeLiveNetwork: vi.fn() }));
 vi.mock("@dotli/ui/components/shell/chains-format", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@dotli/ui/components/shell/chains-format")
-    >();
+  const actual = await importOriginal<typeof ChainsFormatModule>();
   format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
   return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
 });
 
 /** The network monitor, as a test drives it. */
-const monitor = vi.hoisted(() => ({
-  listeners: new Set<() => void>(),
-  status: [] as unknown[],
-  transfer: { bytesPerSecond: null, fetched: null, total: null } as TransferState,
-  startNetworkWatch: () => undefined,
-  stopNetworkWatch: () => undefined,
-}));
+const monitor = vi.hoisted(() => {
+  const transfer: TransferState = {
+    bytesPerSecond: null,
+    fetched: null,
+    total: null,
+  };
+  return {
+    listeners: new Set<() => void>(),
+    status: [] as unknown[],
+    transfer,
+    startNetworkWatch: () => undefined,
+    stopNetworkWatch: () => undefined,
+  };
+});
 
 vi.mock("@dotli/ui/network-monitor", () => ({
   subscribeNetwork: (l: () => void) => {
@@ -130,10 +137,6 @@ async function settle(): Promise<void> {
   flush();
   await Promise.resolve();
   flush();
-}
-
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
 }
 
 function isOpen(): boolean {
@@ -454,7 +457,7 @@ describe("The network popover island", () => {
     await openPopover();
     const rows = (): string[] =>
       [...document.querySelectorAll(".chains-transfer-row")].map(
-        (row) => row.textContent ?? "",
+        (row) => row.textContent,
       );
     expect(rows()).toEqual(["Speed2 kB/s", "Downloading1 kB / 4 kB"]);
 
@@ -545,7 +548,7 @@ describe("The network popover island", () => {
     await openPopover();
 
     // When
-    (document.querySelector(".chains-tips") as HTMLElement).click();
+    query(document, ".chains-tips").click();
     await settle();
 
     // Then
@@ -636,8 +639,8 @@ describe("The network popover island, on network updates", () => {
 
   /** Strips lay out `stripWidth` wide; 4px bars with 4px gaps. */
   function spyStripLayout(): {
-    rects: ReturnType<typeof vi.spyOn>;
-    styles: ReturnType<typeof vi.spyOn>;
+    rects: MockInstance<HTMLElement["getBoundingClientRect"]>;
+    styles: MockInstance<typeof window.getComputedStyle>;
   } {
     const rects = vi
       .spyOn(HTMLElement.prototype, "getBoundingClientRect")

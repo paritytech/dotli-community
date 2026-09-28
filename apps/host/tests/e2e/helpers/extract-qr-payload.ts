@@ -15,7 +15,7 @@ export async function extractQrPayload(
       .locator(canvasSelector)
       .getAttribute("data-qr-payload", { timeout: 250 })
       .catch(() => null);
-    if (embedded?.startsWith("polkadotapp://")) {
+    if (embedded?.startsWith("polkadotapp://") === true) {
       return embedded;
     }
 
@@ -38,7 +38,7 @@ export async function extractQrPayload(
 
     if (px) {
       const code = jsQR(new Uint8ClampedArray(px.data), px.width, px.height);
-      if (code?.data?.startsWith("polkadotapp://")) {
+      if (code?.data.startsWith("polkadotapp://") === true) {
         return code.data;
       }
     }

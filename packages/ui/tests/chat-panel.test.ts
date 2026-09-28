@@ -8,6 +8,11 @@ import type {
   ProductRendererRenderRequest,
 } from "@parity/truapi";
 import type { RenderSink } from "@parity/truapi-host";
+import type * as AuthModule from "@dotli/ui/state/auth";
+import type * as TopbarModule from "@dotli/ui/state/topbar";
+import type * as PanelModule from "@dotli/ui/chat/panel";
+import type * as ServiceModule from "@dotli/ui/chat/service";
+import { byId, query } from "./support";
 
 // happy-dom drops a calc() that holds a var(), so the box helper returns plain
 // stand-in values here. product-frame-layout tests cover the inset terms.
@@ -24,12 +29,12 @@ vi.mock("@dotli/ui/product-iframe-box", () => ({
 // registry), so each test loads a fresh module instance via resetModules.
 // The session and topbar stores the panel follows come from the same graph.
 let stores: {
-  auth: typeof import("@dotli/ui/state/auth");
-  topbar: typeof import("@dotli/ui/state/topbar");
+  auth: typeof AuthModule;
+  topbar: typeof TopbarModule;
 };
 async function loadChatModules(): Promise<{
-  panel: typeof import("@dotli/ui/chat/panel");
-  service: typeof import("@dotli/ui/chat/service");
+  panel: typeof PanelModule;
+  service: typeof ServiceModule;
 }> {
   vi.resetModules();
   stores = {
@@ -78,14 +83,6 @@ async function settle(ready: () => boolean): Promise<void> {
     { timeout: 5000 },
   );
 }
-
-const byId = <T extends HTMLElement>(id: string): T => {
-  const node = document.getElementById(id);
-  if (node === null) {
-    throw new Error(`missing #${id}`);
-  }
-  return node as T;
-};
 
 describe("chat panel", () => {
   beforeEach(() => {
@@ -164,11 +161,11 @@ describe("chat panel", () => {
     loadProduct("chatty-empty");
 
     byId("chat-button").click();
-    await settle(() => !byId("chat-panel-hint").hidden);
+    await settle(() => byId("chat-panel-hint").hidden === false);
 
     expect(byId("chat-panel").hidden).toBe(false);
     expect(byId("chat-panel-hint").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(true);
   });
 
   it("As a user, opening the panel lists rooms with icon and name", async () => {
@@ -197,7 +194,7 @@ describe("chat panel", () => {
     );
 
     expect(byId("chat-panel-rooms").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(true);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(true);
     const items =
       document.querySelectorAll<HTMLButtonElement>(".chat-room-item");
     expect(items).toHaveLength(2);
@@ -215,10 +212,10 @@ describe("chat panel", () => {
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
     expect(byId("chat-panel-back").hidden).toBe(false);
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(false);
 
     byId("chat-panel-back").click();
-    await settle(() => !byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === false);
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId("chat-panel-back").hidden).toBe(true);
   });
@@ -242,10 +239,11 @@ describe("chat panel", () => {
     const productId = labelToProductId("chatty-send");
     const published: HostChatActionSubscribeItem[] = [];
     service.registerChatConnection(productId, {
-      publish: async (action) => {
+      publish: (action) => {
         published.push(action);
+        return Promise.resolve();
       },
-      publishRendererAction: async () => undefined,
+      publishRendererAction: () => Promise.resolve(),
       render: () => () => undefined,
     });
 
@@ -267,7 +265,7 @@ describe("chat panel", () => {
     expect(roomItem?.textContent).toContain("Main");
     roomItem?.click();
     await settle(() =>
-      byId("chat-panel-messages").textContent?.includes("hello from the app"),
+      byId("chat-panel-messages").textContent.includes("hello from the app"),
     );
     expect(byId("chat-panel-messages").textContent).toContain(
       "hello from the app",
@@ -277,12 +275,12 @@ describe("chat panel", () => {
     expect(time?.textContent).toBe("just now");
     expect(time?.title).not.toBe("");
 
-    const input = byId<HTMLInputElement>("chat-panel-input");
+    const input = byId("chat-panel-input", HTMLInputElement);
     input.value = "hello back";
-    byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
+    byId("chat-panel-composer", HTMLFormElement).requestSubmit();
     await settle(
       () =>
-        byId("chat-panel-messages").textContent?.includes("hello back") &&
+        byId("chat-panel-messages").textContent.includes("hello back") &&
         published.length === 1,
     );
 
@@ -365,7 +363,7 @@ describe("chat panel", () => {
     botRow.click();
     await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-title").textContent).toBe("Echo Bot");
-    expect(byId<HTMLFormElement>("chat-panel-composer").hidden).toBe(false);
+    expect(byId("chat-panel-composer", HTMLFormElement).hidden).toBe(false);
 
     // The bot messages the user through its own conversation: the product
     // posts with the botId as the roomId.
@@ -374,14 +372,14 @@ describe("chat panel", () => {
       value: { text: "hi, I am the bot" },
     });
     await settle(() =>
-      byId("chat-panel-messages").textContent?.includes("hi, I am the bot"),
+      byId("chat-panel-messages").textContent.includes("hi, I am the bot"),
     );
     // Messages carry no sender label above them.
     expect(document.querySelector(".chat-msg-sender")).toBeNull();
 
     // With the newest message, the bot now leads the list.
     byId("chat-panel-back").click();
-    await settle(() => !byId("chat-panel-rooms").hidden);
+    await settle(() => byId("chat-panel-rooms").hidden === false);
     const reordered = [
       ...document.querySelectorAll<HTMLElement>(".chat-room-item"),
     ].map((row) => row.querySelector(".chat-room-name")?.textContent);
@@ -406,11 +404,13 @@ describe("chat panel", () => {
       }[] = [];
       const disposeRender = vi.fn();
       service.registerChatConnection(productId, {
-        publish: async (action) => {
+        publish: (action) => {
           published.push(action);
+          return Promise.resolve();
         },
-        publishRendererAction: async (item) => {
+        publishRendererAction: (item) => {
           rendererActions.push(item);
+          return Promise.resolve();
         },
         render: (request, sink) => {
           renders.push({ request, sink });
@@ -474,7 +474,7 @@ describe("chat panel", () => {
         },
       });
       await settle(() =>
-        byId("chat-panel-messages").textContent?.includes("Pick one"),
+        byId("chat-panel-messages").textContent.includes("Pick one"),
       );
       expect(byId("chat-panel-messages").textContent).toContain("Pick one");
 
@@ -490,7 +490,7 @@ describe("chat panel", () => {
       // A failed render must not leave a partial tree standing.
       renders[0].sink.onError?.(new Error("render refused"));
       await settle(
-        () => !byId("chat-panel-messages").textContent?.includes("Pick one"),
+        () => !byId("chat-panel-messages").textContent.includes("Pick one"),
       );
       expect(byId("chat-panel-messages").textContent).not.toContain("Pick one");
       expect(byId("chat-panel-messages").textContent).toContain(
@@ -570,7 +570,7 @@ describe("chat panel", () => {
     expect(roomBadges[0].textContent).toBe("2");
     const busyRow = [
       ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
-    ].find((row) => row.textContent?.includes("Busy"));
+    ].find((row) => row.textContent.includes("Busy"));
     expect(busyRow?.querySelector(".chat-room-unread")).not.toBeNull();
 
     // A message for another room while viewing this one stays unread.
@@ -601,7 +601,7 @@ describe("chat panel", () => {
   it("As a user, opening the panel narrows the app and closing restores it", async () => {
     const { panel } = await loadChatModules();
     const layout = await import("@dotli/ui/product-frame-layout");
-    const iframe = document.querySelector<HTMLIFrameElement>("#app iframe")!;
+    const iframe = query(document, "#app iframe", HTMLIFrameElement);
     layout.attachProductFrame(iframe);
     panel.initChatPanel();
     loadProduct("chatty-iframe");
@@ -630,7 +630,7 @@ describe("chat panel", () => {
     const { panel } = await loadChatModules();
     const layout = await import("@dotli/ui/product-frame-layout");
     layout.attachProductFrame(
-      document.querySelector<HTMLIFrameElement>("#app iframe")!,
+      query(document, "#app iframe", HTMLIFrameElement),
     );
     panel.initChatPanel();
     loadProduct("chatty-reload");
@@ -671,8 +671,8 @@ describe("chat panel", () => {
       const productId = labelToProductId("chatty-steady");
       const render = vi.fn(() => () => undefined);
       service.registerChatConnection(productId, {
-        publish: async () => undefined,
-        publishRendererAction: async () => undefined,
+        publish: () => Promise.resolve(),
+        publishRendererAction: () => Promise.resolve(),
         render,
       });
       await service.productCreateRoom(productId, {
@@ -696,7 +696,7 @@ describe("chat panel", () => {
         () => document.querySelectorAll(".chat-room-item").length === 2,
       );
       [...document.querySelectorAll<HTMLButtonElement>(".chat-room-item")]
-        .find((row) => row.textContent?.includes("Main"))
+        .find((row) => row.textContent.includes("Main"))
         ?.click();
       await settle(() => render.mock.calls.length === 1);
 
@@ -730,14 +730,14 @@ describe("chat panel", () => {
 
     byId("chat-button").click();
     await settle(() =>
-      byId("chat-panel-rooms").textContent?.includes("First room"),
+      byId("chat-panel-rooms").textContent.includes("First room"),
     );
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
     await settle(() => byId("chat-panel-rooms").hidden === true);
 
     loadProduct("second-app");
     await settle(() =>
-      byId("chat-panel-rooms").textContent?.includes("Second room"),
+      byId("chat-panel-rooms").textContent.includes("Second room"),
     );
     expect(byId("chat-panel-rooms").hidden).toBe(false);
     expect(byId("chat-panel-rooms").textContent).not.toContain("First room");
@@ -750,10 +750,11 @@ describe("chat panel", () => {
     const productId = labelToProductId("chatty-composer-error");
     let denied = true;
     service.registerChatConnection(productId, {
-      publish: async () => {
-        throw denied ? new Error("request denied") : new Error("boom");
-      },
-      publishRendererAction: async () => undefined,
+      publish: () =>
+        Promise.reject(
+          denied ? new Error("request denied") : new Error("boom"),
+        ),
+      publishRendererAction: () => Promise.resolve(),
       render: () => () => undefined,
     });
     await service.productCreateRoom(productId, {
@@ -767,11 +768,11 @@ describe("chat panel", () => {
     document.querySelector<HTMLButtonElement>(".chat-room-item")?.click();
     await settle(() => byId("chat-panel-rooms").hidden === true);
 
-    const input = byId<HTMLInputElement>("chat-panel-input");
-    const composer = byId<HTMLFormElement>("chat-panel-composer");
+    const input = byId("chat-panel-input", HTMLInputElement);
+    const composer = byId("chat-panel-composer", HTMLFormElement);
     input.value = "hello";
     composer.requestSubmit();
-    await settle(() => !byId("chat-panel-hint").hidden);
+    await settle(() => byId("chat-panel-hint").hidden === false);
     expect(byId("chat-panel-hint").textContent).toBe(
       "Log in to chat with this app.",
     );

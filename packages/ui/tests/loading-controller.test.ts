@@ -3,9 +3,11 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadingPhase } from "@dotli/ui/loading-controller";
+import type * as LoadingControllerModule from "@dotli/ui/loading-controller";
+import type * as LoadingModule from "@dotli/ui/state/loading";
 
-type Controller = typeof import("@dotli/ui/loading-controller");
-type LoadingStateModule = typeof import("@dotli/ui/state/loading");
+type Controller = typeof LoadingControllerModule;
+type LoadingStateModule = typeof LoadingModule;
 
 // Mirrors of the constants in loading-controller.ts.
 const STALL_MS = 4_000;

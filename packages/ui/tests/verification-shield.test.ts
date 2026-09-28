@@ -15,13 +15,14 @@ import {
   settle,
   tabTo,
 } from "./helpers/solid";
+import { byId, query } from "./support";
 
 function button(): HTMLButtonElement {
-  return document.getElementById(VERIFICATION_SHIELD_ID) as HTMLButtonElement;
+  return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);
 }
 
 function panel(): HTMLElement {
-  return document.getElementById(VERIFICATION_TOOLTIP_ID) as HTMLElement;
+  return byId(VERIFICATION_TOOLTIP_ID);
 }
 
 // topbar-autohide.ts finds open surfaces by this id and the `.open` class.
@@ -41,9 +42,7 @@ function isClosed(): boolean {
 }
 
 function rowFor(state: string): HTMLElement {
-  return panel().querySelector(
-    `.verification-tooltip-row[data-state="${state}"]`,
-  ) as HTMLElement;
+  return query(panel(), `.verification-tooltip-row[data-state="${state}"]`);
 }
 
 async function openShield(): Promise<void> {
@@ -161,7 +160,7 @@ describe("verification shield", () => {
   it("As a keyboard user, Escape leaves focus elsewhere in the bar where it is", async () => {
     // Given
     await openShield();
-    const other = document.getElementById("other-button") as HTMLElement;
+    const other = byId("other-button");
     other.focus();
 
     // When
@@ -189,7 +188,7 @@ describe("verification shield", () => {
     expect(isOpen()).toBe(true);
 
     // When: a tap lands outside the shield
-    pointerPress(document.getElementById("other-button") as HTMLElement);
+    pointerPress(byId("other-button"));
     await settle();
 
     // Then

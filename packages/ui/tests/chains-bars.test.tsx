@@ -7,6 +7,7 @@ import { ChainsPopover } from "@dotli/ui/components/shell/ChainsPopover";
 import { resetNetworkMonitor, setBlockSource } from "@dotli/ui/network-monitor";
 import { startNetworkStore } from "@dotli/ui/state/network";
 import { renderComponent, resetStores, settle } from "./helpers/solid";
+import { query } from "./support";
 
 const BAR = ".chains-bar[data-block]";
 
@@ -141,9 +142,7 @@ describe("The network panel blocks arrive as motion", () => {
     await emit(101);
     await emit(102);
     await emit(103);
-    const newest = strip.querySelector<HTMLElement>(
-      '[data-block="103"]',
-    ) as HTMLElement;
+    const newest = query(strip, '[data-block="103"]');
     expect(newest.classList.contains("is-new")).toBe(true);
 
     // When

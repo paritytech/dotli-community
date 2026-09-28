@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OfflineBanner } from "@dotli/ui/components/shell/OfflineBanner";
 import { setTopbarVisible } from "@dotli/ui/state/topbar";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
+import { byId } from "../../support";
 
 // The inline style apps/host/src/offline.ts gave the banner it appended to
 // `#topbar`, before the banner became a component (less `display`).
@@ -46,7 +47,7 @@ function goOnline(): void {
 }
 
 function banner(): HTMLElement {
-  return document.getElementById("offline-banner") as HTMLElement;
+  return byId("offline-banner");
 }
 
 beforeEach(() => {

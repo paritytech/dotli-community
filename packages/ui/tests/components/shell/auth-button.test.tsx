@@ -23,7 +23,7 @@ const PUBLIC_KEY =
 async function renderButton(): Promise<HTMLButtonElement> {
   renderComponent(() => <AuthButton />);
   await settleAll();
-  return byId<HTMLButtonElement>("auth-button");
+  return byId("auth-button", HTMLButtonElement);
 }
 
 /**

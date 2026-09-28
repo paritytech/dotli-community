@@ -9,6 +9,7 @@ import {
   focusInto,
   lockScroll,
 } from "@dotli/ui/components/focus";
+import { query } from "../support";
 
 function surface(html: string): HTMLElement {
   const el = document.createElement("div");
@@ -75,7 +76,7 @@ describe("focusables", () => {
     const root = surface(
       `<button id="shown"></button><button id="hidden"></button>`,
     );
-    const hidden = root.querySelector("#hidden") as HTMLElement;
+    const hidden = query(root, "#hidden");
     hidden.checkVisibility = () => false;
 
     // Then
@@ -89,8 +90,8 @@ describe("containTab", () => {
     const root = surface(
       `<button id="first"></button><select id="mid"></select><textarea id="last"></textarea>`,
     );
-    const first = root.querySelector<HTMLElement>("#first") as HTMLElement;
-    const last = root.querySelector<HTMLElement>("#last") as HTMLElement;
+    const first = query(root, "#first");
+    const last = query(root, "#last");
 
     // When
     last.focus();
@@ -113,7 +114,7 @@ describe("containTab", () => {
     const root = surface(
       `<button id="first"></button><button id="mid"></button><button id="last"></button>`,
     );
-    (root.querySelector("#mid") as HTMLElement).focus();
+    query(root, "#mid").focus();
 
     // Then
     expect(tab(root).defaultPrevented).toBe(false);
@@ -212,7 +213,7 @@ describe("focusFirst and focusInto", () => {
     root.tabIndex = -1;
 
     // When
-    focusInto(root, [root.querySelector("#item") as HTMLElement]);
+    focusInto(root, [query(root, "#item")]);
 
     // Then
     expect(document.activeElement?.id).toBe("item");

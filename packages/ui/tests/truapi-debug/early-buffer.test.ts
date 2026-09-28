@@ -14,8 +14,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPanel, type PanelModule } from "./panel-entry";
+import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
+import { query } from "../support";
 
-type Bus = typeof import("@dotli/truapi-debug/dotli-debug-bus");
+type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
 
 const PANEL_ID = "truapi-debug-panel";
@@ -75,12 +77,8 @@ function panel(): HTMLElement {
   return el;
 }
 
-function q<T extends Element = HTMLElement>(selector: string): T {
-  const el = panel().querySelector<T>(selector);
-  if (el === null) {
-    throw new Error(`missing ${selector}`);
-  }
-  return el;
+function q(selector: string): HTMLElement {
+  return query(panel(), selector);
 }
 
 function rows(): HTMLElement[] {

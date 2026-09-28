@@ -15,6 +15,7 @@ import {
   setTopbarVisible,
 } from "@dotli/ui/state/topbar";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
+import { byId, must } from "../../support";
 
 type Popover = ReturnType<typeof createPopover>;
 
@@ -110,16 +111,12 @@ function renderPopover(
     );
   }
   const { unmount } = renderComponent(() => <Harness />);
-  return { ...(popover as Popover), unmount };
+  return { ...must(popover, "the popover"), unmount };
 }
 
 /** Whether a dialog holds the page's scroll lock. */
 function scrollLocked(): boolean {
   return document.body.hasAttribute("data-scroll-locked");
-}
-
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
 }
 
 async function openPopover(popover: Popover): Promise<void> {
@@ -335,7 +332,7 @@ describe("createPopover, in every mode", () => {
       });
       return null;
     });
-    await openPopover(popover as Popover);
+    await openPopover(must(popover, "the popover"));
 
     // When
     press("Escape");
@@ -1044,7 +1041,7 @@ describe("createPopover, dialog mode (Radix Dialog, modal)", () => {
     // When: the backdrop (here the harness's wrapper, which takes no focus)
     // is outside the dialog's surface.
     const { click, reached } = pointerClick(
-      byId("surface").parentElement as HTMLElement,
+      must(byId("surface").parentElement, "the surface's wrapper"),
     );
     await settle();
 

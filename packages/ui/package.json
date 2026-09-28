@@ -9,7 +9,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
-    "lint": "bunx eslint src/",
+    "lint": "bunx eslint src/ tests/",
     "test": "vitest run"
   },
   "devDependencies": {

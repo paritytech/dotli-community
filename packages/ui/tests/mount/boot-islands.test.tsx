@@ -32,13 +32,10 @@ import {
   setVerificationShieldState,
   showProductPill,
 } from "@dotli/ui/state/url-pill";
+import { byId } from "../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
-
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
-}
 
 /** How many elements in the document carry `id`. */
 function countById(id: string): number {

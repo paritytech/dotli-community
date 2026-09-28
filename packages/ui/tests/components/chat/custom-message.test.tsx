@@ -25,11 +25,11 @@ vi.mock("@dotli/ui/chat/service", () => ({
       service.stops += 1;
     };
   },
-  userTriggerRendererAction: async (_productId: string, item: unknown) => {
+  userTriggerRendererAction: (_productId: string, item: unknown) => {
     service.actions.push(item);
-    if (service.actionFails) {
-      throw new Error("unreachable");
-    }
+    return service.actionFails
+      ? Promise.reject(new Error("unreachable"))
+      : Promise.resolve();
   },
 }));
 

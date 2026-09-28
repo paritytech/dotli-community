@@ -38,7 +38,7 @@ import {
   createLegacyNovaChainHeadProvider,
   createWindowMessageProvider,
 } from "@dotli/ui/legacy-host-bridge";
-import { unwrap } from "./support";
+import { unwrap, must } from "./support";
 
 const genesisHash = `0x${"11".repeat(32)}` as const;
 const blockHash = `0x${"22".repeat(32)}` as const;
@@ -47,9 +47,8 @@ describe("createWindowMessageProvider", () => {
   it("As a dotli integrator, the host pins outbound and inbound frames to the product origin", () => {
     // Given
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const targetWindow = {
-      postMessage: vi.fn(),
-    } as unknown as Window;
+    const postMessage = vi.fn();
+    const targetWindow = { postMessage } as unknown as Window;
     const targetOrigin = "https://product.app.paseoli.dev";
     const provider = createWindowMessageProvider(targetWindow, targetOrigin);
     const listener = vi.fn();
@@ -81,10 +80,7 @@ describe("createWindowMessageProvider", () => {
     );
 
     // Then
-    expect(targetWindow.postMessage).toHaveBeenCalledWith(
-      message,
-      targetOrigin,
-    );
+    expect(postMessage).toHaveBeenCalledWith(message, targetOrigin);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(listener).toHaveBeenCalledWith(message);
 
@@ -233,7 +229,9 @@ describe("createLegacyNovaChainHeadProvider", () => {
     );
 
     // Then
-    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    const decoded = unwrap(
+      decodeWireMessage(must(harness.received.at(-1), "a received message")),
+    );
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
         .productAccountId.dotNsIdentifier,
@@ -263,7 +261,9 @@ describe("createLegacyNovaChainHeadProvider", () => {
     );
 
     // Then
-    const decoded = unwrap(decodeWireMessage(harness.received.at(-1)!));
+    const decoded = unwrap(
+      decodeWireMessage(must(harness.received.at(-1), "a received message")),
+    );
     expect(
       VersionedHostAccountGetRequest.dec(decoded.payload.value).value
         .productAccountId.dotNsIdentifier,
@@ -359,10 +359,12 @@ describe("createLegacyNovaChainHeadProvider", () => {
 
     for (const [index, item] of cases.entries()) {
       // When
-      harness.emit(item.frame(`request-${index}`));
+      harness.emit(item.frame(`request-${String(index)}`));
 
       // Then
-      expect(item.followId(harness.received.at(-1)!)).toBe("wire-follow");
+      expect(
+        item.followId(must(harness.received.at(-1), "a received message")),
+      ).toBe("wire-follow");
     }
   });
 
@@ -383,7 +385,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };
@@ -446,7 +448,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     expect(harness.sent).toHaveLength(1);
     expect(
       decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       ),
     ).toBe("wire-new");
@@ -483,7 +485,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
     // Then
     expect(
       decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       ),
     ).toBe("wire-new");
@@ -514,7 +516,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };
@@ -561,7 +563,7 @@ describe("createLegacyNovaChainHeadProvider", () => {
         ),
       );
       return decodedFollowId(
-        harness.received.at(-1)!,
+        must(harness.received.at(-1), "a received message"),
         VersionedRemoteChainHeadHeaderRequest,
       );
     };

@@ -87,26 +87,27 @@ export async function trackArchiveCacheLookups(
 ): Promise<void> {
   await context.addInitScript(() => {
     let count = 0;
+    // postMessage as a function-typed property, not a method: the patch
+    // calls the original with the worker it was invoked on.
+    type PostMessage = (
+      this: ServiceWorker,
+      message: unknown,
+      transfer?: unknown,
+    ) => void;
     const proto = (
-      globalThis as { ServiceWorker?: { prototype: ServiceWorker } }
+      globalThis as {
+        ServiceWorker?: { prototype: { postMessage: PostMessage } };
+      }
     ).ServiceWorker?.prototype;
-    if (proto !== undefined && typeof proto.postMessage === "function") {
+    if (proto !== undefined) {
       const orig = proto.postMessage;
-      proto.postMessage = function (
-        this: ServiceWorker,
-        message: unknown,
-        transfer?: unknown,
-      ) {
+      proto.postMessage = function (message, transfer) {
         const m = message as { type?: string } | null;
         if (m?.type === "SW_CACHE_LOOKUP_EVENT") {
           count++;
         }
-        (orig as (m: unknown, t?: unknown) => void).call(
-          this,
-          message,
-          transfer,
-        );
-      } as typeof proto.postMessage;
+        orig.call(this, message, transfer);
+      };
     }
     Object.defineProperty(globalThis, "__dotliArchiveCacheLookups", {
       get() {

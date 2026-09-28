@@ -134,6 +134,15 @@ export const config = [
     },
   },
   {
+    // Test doubles are often deliberate no-ops: a stubbed listener, a
+    // silenced console, an async adapter method with nothing to do. The empty
+    // body is the point of the stub, so the rule only adds noise there.
+    files: ["tests/**/*.ts", "tests/**/*.tsx"],
+    rules: {
+      "@typescript-eslint/no-empty-function": "off",
+    },
+  },
+  {
     ignores: ["dist/**", "node_modules/**", "*.js", "*.cjs"],
   },
   {

@@ -6,11 +6,15 @@ import type {
   BlockingModalCoordinator,
   BlockingModalScope,
 } from "@dotli/ui/blocking-modal-queue";
+import type * as AuthControllerModule from "@dotli/ui/auth-controller";
+import type * as AuthModalModule from "@dotli/ui/state/auth-modal";
+import type * as AuthModule from "@dotli/ui/state/auth";
+import type * as BlockingModalQueueModule from "@dotli/ui/blocking-modal-queue";
 
-type Modules = typeof import("@dotli/ui/auth-controller") &
-  typeof import("@dotli/ui/state/auth-modal") &
-  typeof import("@dotli/ui/state/auth") &
-  typeof import("@dotli/ui/blocking-modal-queue");
+type Modules = typeof AuthControllerModule &
+  typeof AuthModalModule &
+  typeof AuthModule &
+  typeof BlockingModalQueueModule;
 
 // Window listeners the controller under test added; removed after each test
 // so an earlier test's controller never reacts to a later test's events.
@@ -186,8 +190,10 @@ describe("auth controller: blocking-modal lease", () => {
     const { coordinator, getAuthModalState, openAuthModal, closeAuthModal } =
       await load();
     const scope = coordinator.createScope();
-    const { promise: held, resolve: releasePrompt } =
-      Promise.withResolvers<void>();
+    const {
+      promise: held,
+      resolve: releasePrompt,
+    }: PromiseWithResolvers<void> = Promise.withResolvers();
     const prompt = scope.enqueue(() => held);
 
     // When

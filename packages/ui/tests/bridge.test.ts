@@ -97,9 +97,11 @@ function makeProvider(): MockProvider {
       () => () => {},
     ),
     disconnectSession: vi.fn(async () => {}),
-    getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
-    getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-      requests.map(() => "NotDetermined"),
+    getPermissionAuthorizationStatus: vi.fn(() =>
+      Promise.resolve("NotDetermined"),
+    ),
+    getPermissionAuthorizationStatuses: vi.fn((requests: unknown[]) =>
+      Promise.resolve(requests.map(() => "NotDetermined")),
     ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),
@@ -134,9 +136,11 @@ function makeLoginProvider(options: {
       };
     }),
     disconnectSession: vi.fn(async () => {}),
-    getPermissionAuthorizationStatus: vi.fn(async () => "NotDetermined"),
-    getPermissionAuthorizationStatuses: vi.fn(async (requests: unknown[]) =>
-      requests.map(() => "NotDetermined"),
+    getPermissionAuthorizationStatus: vi.fn(() =>
+      Promise.resolve("NotDetermined"),
+    ),
+    getPermissionAuthorizationStatuses: vi.fn((requests: unknown[]) =>
+      Promise.resolve(requests.map(() => "NotDetermined")),
     ),
     setPermissionAuthorizationStatus: vi.fn(async () => {}),
     disconnect: vi.fn(async () => {}),

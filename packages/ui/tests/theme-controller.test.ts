@@ -3,6 +3,8 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { stubColorScheme } from "./helpers/color-scheme";
+import type * as ThemeControllerModule from "@dotli/ui/theme-controller";
+import type * as ThemeModule from "@dotli/ui/state/theme";
 
 beforeEach(() => {
   vi.resetModules();
@@ -15,8 +17,7 @@ beforeEach(() => {
 // A fresh module per test: initTheme() adds a matchMedia listener that lives
 // as long as the module, and the store starts from its default.
 async function loadController(): Promise<
-  typeof import("@dotli/ui/theme-controller") &
-    typeof import("@dotli/ui/state/theme")
+  typeof ThemeControllerModule & typeof ThemeModule
 > {
   const controller = await import("@dotli/ui/theme-controller");
   const store = await import("@dotli/ui/state/theme");

@@ -6,6 +6,11 @@
 // shows the error page if the chunk cannot load.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as LoadModule from "@dotli/ui/landing/load";
+import type * as AppRootsModule from "@dotli/ui/mount/app-roots";
+import type * as UiModule from "@dotli/ui/ui";
+import type * as LoadingModule from "@dotli/ui/state/loading";
+import { must } from "../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -16,10 +21,10 @@ vi.mock("@dotli/ui/recent-labels", () => ({
 
 const CHUNK = "@dotli/ui/components/landing/mount";
 
-type Loader = typeof import("@dotli/ui/landing/load");
-type AppRoots = typeof import("@dotli/ui/mount/app-roots");
-type Ui = typeof import("@dotli/ui/ui");
-type LoadingState = typeof import("@dotli/ui/state/loading");
+type Loader = typeof LoadModule;
+type AppRoots = typeof AppRootsModule;
+type Ui = typeof UiModule;
+type LoadingState = typeof LoadingModule;
 
 let load: Loader;
 let roots: AppRoots;
@@ -59,7 +64,7 @@ function byId(id: string): HTMLElement | null {
 }
 
 function app(): HTMLElement {
-  return byId("app") as HTMLElement;
+  return must(byId("app"), "#app");
 }
 
 /** Let queued microtasks run, Solid's batched updates among them. */
@@ -69,7 +74,7 @@ async function settle(): Promise<void> {
   }
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
   // Shaped like apps/host/index.html: the topbar, then `#app` holding the
@@ -113,10 +118,12 @@ describe("landing loader", () => {
     expect(app().style.marginTop).toBe("0px");
     expect(app().style.minHeight).toBe("100dvh");
     expect([...app().children].map((el) => el.id)).toEqual(["app-view"]);
-    const view = byId("app-view") as HTMLElement;
+    const view = must(byId("app-view"), "#app-view");
     expect(view.firstElementChild?.className).toBe("landing");
     expect(
-      [...(byId("landing-auth") as HTMLElement).children].map((el) => el.id),
+      [...must(byId("landing-auth"), "#landing-auth").children].map(
+        (el) => el.id,
+      ),
     ).toEqual(["auth-button", "theme-toggle", "theme-popover"]);
     expect(sentry.captureException).not.toHaveBeenCalled();
   });

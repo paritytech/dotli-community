@@ -19,6 +19,9 @@ import {
   mountMoreMenu,
   tapMoreRow,
 } from "../components/shell/more-menu-harness";
+import type * as LoadIslandsModule from "@dotli/ui/mount/load-islands";
+import type * as AuthModule from "@dotli/ui/state/auth";
+import { byId, query } from "../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -131,7 +134,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
     return failed;
   });
   vi.doMock(ISLANDS_CHUNK, async () => {
-    const request = Promise.withResolvers<void>();
+    const request: PromiseWithResolvers<void> = Promise.withResolvers();
     requests.push(request);
     await request.promise;
     return { mountIslands };
@@ -156,9 +159,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
   };
 }
 
-async function loadLoader(): Promise<
-  typeof import("@dotli/ui/mount/load-islands")
-> {
+async function loadLoader(): Promise<typeof LoadIslandsModule> {
   return import("@dotli/ui/mount/load-islands");
 }
 
@@ -212,7 +213,7 @@ function requestLogin(): void {
 }
 
 /** The auth store of the controller initAuth wired. */
-let recordAuthState: (typeof import("@dotli/ui/state/auth"))["setAuthState"];
+let recordAuthState: (typeof AuthModule)["setAuthState"];
 
 function corePairing(): void {
   recordAuthState({
@@ -237,10 +238,6 @@ async function blockingPromptRuns(
   await tick();
   scope.dispose();
   return ran;
-}
-
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
 }
 
 /**
@@ -299,7 +296,7 @@ describe("ensureIslands", () => {
     // When: clicked twice, once on the icon inside the button.
     const first = click(byId("theme-toggle").querySelector("path") as Element);
     const second = click(byId("theme-toggle"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -320,7 +317,7 @@ describe("ensureIslands", () => {
       byId("permissions-button").querySelector("rect") as Element,
     );
     const second = click(byId("permissions-button"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -348,7 +345,7 @@ describe("ensureIslands", () => {
       byId("chains-button").querySelector("circle") as Element,
     );
     const second = click(byId("chains-button"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -375,7 +372,7 @@ describe("ensureIslands", () => {
     // When: clicked twice, once on the icon inside the button.
     const first = click(byId("mode-button").querySelector("circle") as Element);
     const second = click(byId("mode-button"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -401,11 +398,9 @@ describe("ensureIslands", () => {
     const loading = ensureIslands();
 
     // When: clicked twice, once on the icon inside the button.
-    const first = click(
-      byId("more-button").querySelector(".hamburger") as Element,
-    );
+    const first = click(query(byId("more-button"), ".hamburger", Element));
     const second = click(byId("more-button"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -433,7 +428,7 @@ describe("ensureIslands", () => {
 
     // When
     await tapMoreRow("mode-button");
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -455,7 +450,7 @@ describe("ensureIslands", () => {
 
     // When
     await tapMoreRow("permissions-button");
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -492,7 +487,7 @@ describe("ensureIslands", () => {
       for (const id of clicked) {
         click(byId(id));
       }
-      chunk.arrive();
+      await chunk.arrive();
       await loading;
 
       // Then
@@ -522,7 +517,7 @@ describe("ensureIslands", () => {
 
       // When
       click(byId("theme-toggle"), detail);
-      chunk.arrive();
+      await chunk.arrive();
       await loading;
 
       // Then
@@ -538,7 +533,7 @@ describe("ensureIslands", () => {
 
     // When
     const elsewhere = click(byId("other"));
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
     const after = click(byId("theme-toggle"));
 
@@ -556,7 +551,7 @@ describe("ensureIslands", () => {
     // When
     const first = ensureIslands();
     const second = ensureIslands();
-    chunk.arrive();
+    await chunk.arrive();
     await Promise.all([first, second]);
     await ensureIslands();
 
@@ -612,7 +607,7 @@ describe("ensureIslands", () => {
 
     // When
     await tapMoreRow("theme-toggle");
-    chunk.arrive();
+    await chunk.arrive();
     await loading;
 
     // Then
@@ -637,7 +632,7 @@ describe("ensureIslands", () => {
     click(staticButton);
 
     // When
-    chunk.arrive();
+    await chunk.arrive();
 
     // Then
     await expect(loading).resolves.toBeUndefined();

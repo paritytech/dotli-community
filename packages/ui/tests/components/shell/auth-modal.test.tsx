@@ -19,6 +19,8 @@ import {
   useAuthController,
 } from "./auth-harness";
 import { normalized, oldModal, type OldModalBody } from "./old-auth-markup";
+import type * as PopoverModule from "@dotli/ui/components/shell/popover";
+import { query } from "../../support";
 
 const device = vi.hoisted(() => ({ mobile: false }));
 vi.mock("@dotli/shared/device", () => ({
@@ -47,8 +49,7 @@ vi.mock("qrcode", () => {
 // one in `dialog` mode here.
 const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
 vi.mock("@dotli/ui/components/shell/popover", async (importOriginal) => {
-  const actual =
-    await importOriginal<typeof import("@dotli/ui/components/shell/popover")>();
+  const actual = await importOriginal<typeof PopoverModule>();
   return {
     ...actual,
     createPopover: (options: Parameters<typeof actual.createPopover>[0]) => {
@@ -121,7 +122,7 @@ function isOpen(): boolean {
 }
 
 function qrText(): string {
-  return byId("auth-modal-qr").textContent ?? "";
+  return byId("auth-modal-qr").textContent;
 }
 
 function expectMarkup(
@@ -276,7 +277,7 @@ describe("AuthModal markup", () => {
     });
 
     // When
-    (document.querySelector(".auth-modal-retry") as HTMLElement).click();
+    query(document, ".auth-modal-retry").click();
     await settleQr();
 
     // Then
@@ -316,8 +317,10 @@ describe("AuthModal login flow", () => {
     // Given
     await renderModal();
     const scope = coordinator.createScope();
-    const { promise: held, resolve: releaseBlockingPrompt } =
-      Promise.withResolvers<void>();
+    const {
+      promise: held,
+      resolve: releaseBlockingPrompt,
+    }: PromiseWithResolvers<void> = Promise.withResolvers();
     const blockingPrompt = scope.enqueue(() => held);
 
     // When
@@ -749,7 +752,8 @@ describe("AuthModal QR", () => {
     // Given: a prompt holds the blocking-modal queue.
     await renderModal();
     const scope = coordinator.createScope();
-    const { promise: held, resolve: release } = Promise.withResolvers<void>();
+    const { promise: held, resolve: release }: PromiseWithResolvers<void> =
+      Promise.withResolvers();
     const prompt = scope.enqueue(() => held);
 
     // When: the core pairs while the modal waits for its lease.
@@ -816,7 +820,7 @@ describe("AuthModal on a phone", () => {
     // Given
     device.mobile = true;
     await renderModal();
-    const getApp = byId<HTMLAnchorElement>("auth-modal-get-app");
+    const getApp = byId("auth-modal-get-app", HTMLAnchorElement);
 
     // When
     await authState(pairing());
@@ -862,7 +866,7 @@ describe("AuthModal on a phone", () => {
     });
 
     // When
-    (document.querySelector(".auth-modal-qr-toggle") as HTMLElement).click();
+    query(document, ".auth-modal-qr-toggle").click();
     await settleQr();
 
     // Then
@@ -909,20 +913,16 @@ describe("AuthModal on a phone, on unrelated store writes", () => {
     device.mobile = true;
     await renderModal();
     await authState(pairing());
-    (document.querySelector(".auth-modal-qr-toggle") as HTMLElement).click();
+    query(document, ".auth-modal-qr-toggle").click();
     await settleQr();
-    expect(
-      (document.querySelector(".auth-modal-qr-link") as HTMLElement).hidden,
-    ).toBe(false);
+    expect(query(document, ".auth-modal-qr-link").hidden).toBe(false);
 
     // When
     updateAuthModal({ reason: "first" });
     await settleQr();
 
     // Then
-    expect(
-      (document.querySelector(".auth-modal-qr-link") as HTMLElement).hidden,
-    ).toBe(false);
+    expect(query(document, ".auth-modal-qr-link").hidden).toBe(false);
     expect(byId("auth-modal-hint").textContent).toBe(DESKTOP_HINT);
   });
 });

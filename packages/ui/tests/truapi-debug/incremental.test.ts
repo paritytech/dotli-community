@@ -112,7 +112,7 @@ describe("EventStore.anchorOf()", () => {
 });
 
 describe("firstNewIndex()", () => {
-  const ev = (seq: number) => ({ seq }) as StoredEvent;
+  const ev = (seq: number): StoredEvent => ({ seq }) as StoredEvent;
 
   it("finds the first event past the previous snapshot's last one", () => {
     expect(firstNewIndex([], [ev(0), ev(1)])).toBe(0);

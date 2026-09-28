@@ -17,11 +17,12 @@ try {
       continue;
     }
     const [, key, raw] = m;
-    if (process.env[key]) {
+    if ((process.env[key] ?? "") !== "") {
       continue;
     }
     process.env[key] = raw.replace(/^['"]|['"]$/g, "");
   }
+  // eslint-disable-next-line no-restricted-syntax -- no .env is the normal CI case: the env must already be set.
 } catch {
   /* no .env, env must already be set */
 }
@@ -50,6 +51,7 @@ if (process.env.CI !== "true") {
     if (e instanceof Error && e.message.includes("ENOENT")) {
       throw new Error(
         "dist directories missing — run `bun run build` from the repo root before running e2e.",
+        { cause: e },
       );
     }
     throw e;

@@ -31,7 +31,7 @@ const h = vi.hoisted(() => ({
 }));
 
 vi.mock("@dotli/ui/chat/service", async (original) => {
-  const actual = await original<typeof import("@dotli/ui/chat/service")>();
+  const actual = await original<typeof ServiceModule>();
   return {
     ...actual,
     chatRooms: vi.fn(async () => {
@@ -45,8 +45,8 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
       }
       return rooms;
     }),
-    chatBots: vi.fn(async () => []),
-    chatLatestMessageTimes: vi.fn(async () => new Map(h.times)),
+    chatBots: vi.fn(() => Promise.resolve([])),
+    chatLatestMessageTimes: vi.fn(() => Promise.resolve(new Map(h.times))),
     chatMessages: vi.fn(async () => {
       h.reads.messages += 1;
       if (h.messagesFail) {
@@ -58,7 +58,7 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
       }
       return messages;
     }),
-    userPostMessage: vi.fn(async () => undefined),
+    userPostMessage: vi.fn(() => Promise.resolve()),
     renderCustomMessage: (
       _productId: string,
       _request: unknown,
@@ -71,7 +71,7 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
 });
 
 vi.mock("@dotli/ui/state/chat-panel", async (original) => {
-  const actual = await original<typeof import("@dotli/ui/state/chat-panel")>();
+  const actual = await original<typeof ChatPanelModule>();
   return {
     ...actual,
     chatUnreadLabel: (count: number) => {
@@ -98,6 +98,9 @@ import {
 } from "@dotli/ui/state/chat-panel";
 import { setLoggedIn } from "@dotli/ui/state/auth";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
+import type * as ServiceModule from "@dotli/ui/chat/service";
+import type * as ChatPanelModule from "@dotli/ui/state/chat-panel";
+import { byId } from "../../support";
 
 const PRODUCT = "chatty.dot";
 
@@ -148,14 +151,6 @@ function custom(seq: number, roomId = "r0"): ChatMessageRecord {
 
 function rows(): HTMLButtonElement[] {
   return [...document.querySelectorAll<HTMLButtonElement>(".chat-room-item")];
-}
-
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  const node = document.getElementById(id);
-  if (node === null) {
-    throw new Error(`missing #${id}`);
-  }
-  return node as T;
 }
 
 let removeRules: (() => void) | undefined;
@@ -655,10 +650,10 @@ describe("chat panel, scrolling", () => {
     scrollTo(list, 100);
 
     // When
-    byId<HTMLInputElement>("chat-panel-input").value = "hi";
+    byId("chat-panel-input", HTMLInputElement).value = "hi";
     h.messages.push({ ...text(3), author: "user" });
     height = 1100;
-    byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
+    byId("chat-panel-composer", HTMLFormElement).requestSubmit();
     await idle();
 
     // Then

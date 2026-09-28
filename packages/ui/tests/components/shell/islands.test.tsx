@@ -54,6 +54,8 @@ import {
   showLocalhostPill,
   showProductPill,
 } from "@dotli/ui/state/url-pill";
+import type * as ThemeToggleModule from "@dotli/ui/components/shell/ThemeToggle";
+import { byId, must } from "../../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -72,10 +74,7 @@ const themeIsland = vi.hoisted(() => ({
   disposed: 0,
 }));
 vi.mock("@dotli/ui/components/shell/ThemeToggle", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@dotli/ui/components/shell/ThemeToggle")
-    >();
+  const actual = await importOriginal<typeof ThemeToggleModule>();
   const { createSignal, onCleanup } = await import("solid-js");
   return {
     ThemeToggle: () => {
@@ -113,10 +112,6 @@ const MORE_IDS = ["more-button", "more-popover"];
 
 let serverHtml = "";
 let landing: ReturnType<typeof mountLandingPage> | null = null;
-
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
-}
 
 function themeOption(pref: string): HTMLElement | null {
   return document.querySelector(
@@ -359,7 +354,7 @@ describe("shell islands", () => {
 
   it("As a keyboard user focused on a static element without an id, focus moves to the live element at the same place", async () => {
     // Given: the options are buttons with tabindex="-1".
-    const staticOption = themeOption("dark") as HTMLElement;
+    const staticOption = must(themeOption("dark"), "the dark theme option");
     staticOption.focus();
     expect(document.activeElement).toBe(staticOption);
 
@@ -416,7 +411,7 @@ describe("shell islands", () => {
     themeIsland.broken = true;
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const before = THEME_IDS.map(byId);
+    const before = THEME_IDS.map((id) => byId(id));
 
     // When
     const failed = mountIslands();
@@ -439,11 +434,11 @@ describe("shell islands", () => {
     // Given
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    const before = THEME_IDS.map(byId);
+    const before = THEME_IDS.map((id) => byId(id));
     const failures: string[] = [];
     expect(mountIslands((name) => failures.push(name))).toEqual([]);
     await flushAll();
-    const live = THEME_IDS.map(byId);
+    const live = THEME_IDS.map((id) => byId(id));
     expect(live[0]).not.toBe(before[0]);
     live[0].focus();
 
@@ -902,11 +897,13 @@ describe("shell islands", () => {
     // is an island too, whose rows forward a tap as a click on the button
     // they look up by id at click time.
     const unregister = registerPermissionAuthorizationProvider("app.dot", {
-      getPermissionAuthorizationStatuses: async (requests) =>
-        requests.map((request) =>
-          request.tag === "Device" && request.value === "Camera"
-            ? "Authorized"
-            : "NotDetermined",
+      getPermissionAuthorizationStatuses: (requests) =>
+        Promise.resolve(
+          requests.map((request) =>
+            request.tag === "Device" && request.value === "Camera"
+              ? "Authorized"
+              : "NotDetermined",
+          ),
         ),
       setPermissionAuthorizationStatus: async () => {},
     });

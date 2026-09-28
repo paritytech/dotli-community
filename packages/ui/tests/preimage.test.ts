@@ -3,10 +3,11 @@ import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
 import { computePreimageKey } from "@dotli/content/preimage";
 import { fromHex } from "@dotli/shared/hex";
 import type { bitswapGet } from "@dotli/content/bitswap";
+import { yielded } from "./support";
 
 const mocks = vi.hoisted(() => ({
-  fetchFromIpfs: vi.fn(async () => ({ data: new Uint8Array() })),
-  bitswapGet: vi.fn<typeof bitswapGet>(async () => new Uint8Array()),
+  fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
+  bitswapGet: vi.fn<typeof bitswapGet>(() => Promise.resolve(new Uint8Array())),
   getBackend: vi.fn(() => "rpc-gateway"),
 }));
 
@@ -42,8 +43,8 @@ describe("preimage host callbacks", () => {
 
     // Then
     expect(first.done).toBe(false);
-    expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toBeUndefined();
+    expect(yielded(first).isOk()).toBe(true);
+    expect(yielded(first)._unsafeUnwrap()).toBeUndefined();
   });
 
   it("only exposes the lookup callback (submission is core-owned)", () => {
@@ -76,8 +77,8 @@ describe("preimage host callbacks", () => {
 
       // Then
       expect(first.done).toBe(false);
-      expect(first.value.isOk()).toBe(true);
-      expect(first.value._unsafeUnwrap()).toBeUndefined();
+      expect(yielded(first).isOk()).toBe(true);
+      expect(yielded(first)._unsafeUnwrap()).toBeUndefined();
       expect(secondSettled).toBe(false);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
 
@@ -87,8 +88,8 @@ describe("preimage host callbacks", () => {
       // Then
       const second = await secondPromise;
       expect(second.done).toBe(false);
-      expect(second.value.isOk()).toBe(true);
-      expect(second.value._unsafeUnwrap()).toEqual(found);
+      expect(yielded(second).isOk()).toBe(true);
+      expect(yielded(second)._unsafeUnwrap()).toEqual(found);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(2);
       await iterator.return?.();
     } finally {
@@ -115,16 +116,16 @@ describe("preimage host callbacks", () => {
 
       // Then
       expect(found.done).toBe(false);
-      expect(found.value.isOk()).toBe(true);
-      expect(found.value._unsafeUnwrap()).toEqual(data);
+      expect(yielded(found).isOk()).toBe(true);
+      expect(yielded(found)._unsafeUnwrap()).toEqual(data);
 
       // When
       const cached = await lookupPreimage(key)[Symbol.asyncIterator]().next();
 
       // Then
       expect(cached.done).toBe(false);
-      expect(cached.value.isOk()).toBe(true);
-      expect(cached.value._unsafeUnwrap()).toEqual(data);
+      expect(yielded(cached).isOk()).toBe(true);
+      expect(yielded(cached)._unsafeUnwrap()).toEqual(data);
       expect(mocks.fetchFromIpfs).toHaveBeenCalledTimes(1);
     } finally {
       vi.useRealTimers();
@@ -156,8 +157,8 @@ describe("preimage host callbacks", () => {
 
         // Then
         expect(firstError.done).toBe(false);
-        expect(firstError.value.isErr()).toBe(true);
-        expect(firstError.value._unsafeUnwrapErr().reason).toContain(
+        expect(yielded(firstError).isErr()).toBe(true);
+        expect(yielded(firstError)._unsafeUnwrapErr().reason).toContain(
           "Content hash mismatch",
         );
 
@@ -169,8 +170,8 @@ describe("preimage host callbacks", () => {
         const secondError = await secondErrorPromise;
 
         // Then
-        expect(secondMiss.value._unsafeUnwrap()).toBeUndefined();
-        expect(secondError.value.isErr()).toBe(true);
+        expect(yielded(secondMiss)._unsafeUnwrap()).toBeUndefined();
+        expect(yielded(secondError).isErr()).toBe(true);
         const fetch =
           backend === "rpc-gateway" ? mocks.fetchFromIpfs : mocks.bitswapGet;
         expect(fetch).toHaveBeenCalledTimes(2);

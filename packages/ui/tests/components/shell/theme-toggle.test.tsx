@@ -15,6 +15,7 @@ import {
 import { stubColorScheme } from "../../helpers/color-scheme";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
 import { mountLandingPage } from "../../helpers/landing";
+import { byId } from "../../support";
 
 // The landing page loads the recent names from the shared storage frame,
 // which happy-dom would try to fetch.
@@ -35,11 +36,11 @@ afterEach(() => {
 });
 
 function themeButton(): HTMLButtonElement {
-  return document.getElementById("theme-toggle") as HTMLButtonElement;
+  return byId("theme-toggle", HTMLButtonElement);
 }
 
 function themePopover(): HTMLElement {
-  return document.getElementById("theme-popover") as HTMLElement;
+  return byId("theme-popover");
 }
 
 function themeOption(pref: string): HTMLButtonElement | null {
@@ -380,7 +381,7 @@ describe("ThemeToggle", () => {
     const btn = await openThemeMenu("dark", "dark");
 
     // When
-    pointerPress(document.getElementById("outside") as HTMLElement);
+    pointerPress(byId("outside"));
     await settle();
 
     // Then
@@ -391,7 +392,7 @@ describe("ThemeToggle", () => {
   it("As a dotli user, a click outside the theme menu only closes it: the click does not reach what is underneath", async () => {
     // Given
     await openThemeMenu("dark", "dark");
-    const outside = document.getElementById("outside") as HTMLElement;
+    const outside = byId("outside");
     const clicks = vi.fn();
     outside.addEventListener("click", clicks);
 

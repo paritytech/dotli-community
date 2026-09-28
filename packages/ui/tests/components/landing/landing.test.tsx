@@ -10,6 +10,7 @@ import { flush } from "solid-js";
 import { escapeHtml } from "@dotli/shared/html";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
 import { mountLandingPage } from "../../helpers/landing";
+import { byId, query, must } from "../../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -59,9 +60,11 @@ function oldLandingMarkup(): Element {
       </div>
     </div>
   `;
-  const landing = template.content.firstElementChild as Element;
-  (landing.querySelector("#dotli-nav-input") as HTMLInputElement).placeholder =
-    "browse";
+  const landing = must(
+    template.content.firstElementChild,
+    "the landing markup",
+  );
+  query(landing, "#dotli-nav-input", HTMLInputElement).placeholder = "browse";
   return landing;
 }
 
@@ -80,7 +83,7 @@ function oldPillMarkup(label: string): Element {
           <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
         </button>
       </span>`;
-  return template.content.firstElementChild as Element;
+  return must(template.content.firstElementChild, "the recent item markup");
 }
 
 /**
@@ -114,10 +117,6 @@ function mount(): ReturnType<typeof mountLandingPage> {
   return page;
 }
 
-function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
-
 /** Let the recents load and render. */
 async function settle(): Promise<void> {
   flush();
@@ -127,7 +126,7 @@ async function settle(): Promise<void> {
 }
 
 function type(value: string): void {
-  const input = byId<HTMLInputElement>("dotli-nav-input");
+  const input = byId("dotli-nav-input", HTMLInputElement);
   input.value = value;
   input.dispatchEvent(new Event("input", { bubbles: true }));
 }
@@ -214,7 +213,7 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    const input = byId<HTMLInputElement>("dotli-nav-input");
+    const input = byId("dotli-nav-input", HTMLInputElement);
     const error = byId("dotli-nav-error");
     expect(event.defaultPrevented).toBe(true);
     expect(error.hidden).toBe(false);
@@ -290,6 +289,7 @@ describe("landing page", () => {
     if (descriptor?.set === undefined) {
       throw new Error("expected a placeholder setter");
     }
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- the native setter is called with the input as its receiver below.
     const setter = descriptor.set;
     const shown: (string | null)[] = [];
     const spy = vi
@@ -307,7 +307,7 @@ describe("landing page", () => {
     // Then: the suffix never showed in the input; it is the label beside it.
     expect(shown.length).toBeGreaterThan(0);
     expect(shown[0]).toBe("browse");
-    expect(byId<HTMLInputElement>("dotli-nav-input").placeholder).toBe(
+    expect(byId("dotli-nav-input", HTMLInputElement).placeholder).toBe(
       "browse",
     );
   });
@@ -316,7 +316,7 @@ describe("landing page", () => {
     // Given
     mount();
     await settle();
-    const input = byId<HTMLInputElement>("dotli-nav-input");
+    const input = byId("dotli-nav-input", HTMLInputElement);
     expect(input.placeholder).toBe("browse");
 
     // When: the hold ends, then one character is erased.
@@ -364,7 +364,7 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    expect(byId<HTMLInputElement>("dotli-nav-input").placeholder).toBe(
+    expect(byId("dotli-nav-input", HTMLInputElement).placeholder).toBe(
       "browse",
     );
     expect(vi.getTimerCount()).toBe(0);
@@ -442,9 +442,7 @@ describe("landing page", () => {
     await settle();
 
     // When
-    const event = click(
-      items()[0].querySelector(".landing-recent-remove") as Element,
-    );
+    const event = click(query(items()[0], ".landing-recent-remove", Element));
     await settle();
 
     // Then
@@ -454,7 +452,7 @@ describe("landing page", () => {
     expect(byId("dotli-recent").hidden).toBe(false);
 
     // When
-    click(items()[0].querySelector(".landing-recent-remove svg") as Element);
+    click(query(items()[0], ".landing-recent-remove svg", Element));
     await settle();
 
     // Then
@@ -470,7 +468,7 @@ describe("landing page", () => {
     mount();
     await settle();
     const [alpha, beta] = items();
-    const alphaPill = alpha.querySelector(".landing-recent-pill") as Element;
+    const alphaPill = query(alpha, ".landing-recent-pill", Element);
 
     // When: a press that moves is a scroll, not a long press.
     touch(alphaPill, "touchstart");
@@ -505,7 +503,7 @@ describe("landing page", () => {
     expect(tap.defaultPrevented).toBe(true);
 
     // When: a long press on another pill moves the reveal there.
-    const betaPill = beta.querySelector(".landing-recent-pill") as Element;
+    const betaPill = query(beta, ".landing-recent-pill", Element);
     touch(betaPill, "touchstart");
     vi.advanceTimersByTime(450);
     await settle();

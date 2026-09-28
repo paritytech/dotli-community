@@ -16,6 +16,7 @@ const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
 
 function Label(props: { store: ReadableStore<string> }): JSX.Element {
+  // eslint-disable-next-line solid/reactivity -- the store object is fixed for the component's life; useStore tracks its value.
   const value = useStore(props.store);
   return <span class="label">{value()}</span>;
 }

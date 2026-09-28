@@ -74,21 +74,22 @@ describe("blocking modal queue", () => {
     // Given
     let status: "NotDetermined" | "Authorized" = "NotDetermined";
     const unregister = registerPermissionAuthorizationProvider("myapp", {
-      async getPermissionAuthorizationStatuses(requests) {
-        return requests.map(() => status);
+      getPermissionAuthorizationStatuses(requests) {
+        return Promise.resolve(requests.map(() => status));
       },
-      async setPermissionAuthorizationStatus(_request, nextStatus) {
+      setPermissionAuthorizationStatus(_request, nextStatus) {
         if (nextStatus === "Authorized" || nextStatus === "NotDetermined") {
           status = nextStatus;
         }
+        return Promise.resolve();
       },
     });
     const scope = createBlockingModalCoordinator().createScope();
-    const { devicePermission } = createPromptPermission("myapp", scope);
+    const permissions = createPromptPermission("myapp", scope);
 
     // When
-    const first = devicePermission(PRODUCT, "Notifications");
-    const second = devicePermission(PRODUCT, "Notifications");
+    const first = permissions.devicePermission(PRODUCT, "Notifications");
+    const second = permissions.devicePermission(PRODUCT, "Notifications");
     await overlaysReady();
     await vi.waitFor(() => {
       expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -196,8 +197,8 @@ describe("blocking modal queue", () => {
     const coordinator = createBlockingModalCoordinator();
     const activeScope = coordinator.createScope();
     const disposedScope = coordinator.createScope();
-    const { promise: held, resolve: finishActive } =
-      Promise.withResolvers<void>();
+    const { promise: held, resolve: finishActive }: PromiseWithResolvers<void> =
+      Promise.withResolvers();
     const active = activeScope.enqueue(() => held);
     const queued = disposedScope.enqueue(() => "queued");
 

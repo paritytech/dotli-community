@@ -14,6 +14,7 @@ import {
   type BlockingModalCoordinator,
 } from "@dotli/ui/blocking-modal-queue";
 import { resetStores } from "../../helpers/solid";
+import { byId } from "../../support";
 
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 let events = new AbortController();
@@ -73,10 +74,6 @@ export async function settleAll(): Promise<void> {
   flush();
 }
 
-export function byId<T extends HTMLElement = HTMLElement>(id: string): T {
-  return document.getElementById(id) as T;
-}
-
 export function press(
   key: string,
   init: KeyboardEventInit = {},
@@ -91,3 +88,5 @@ export function press(
   target.dispatchEvent(event);
   return event;
 }
+
+export { byId };

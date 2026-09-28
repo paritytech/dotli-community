@@ -56,7 +56,7 @@ describe("notification host callbacks", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       [...document.querySelectorAll(".notif-body")].map((node) =>
-        node.textContent?.trim(),
+        node.textContent.trim(),
       ),
     ).toEqual(["hello"]);
   });

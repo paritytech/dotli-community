@@ -20,6 +20,7 @@ import {
   relativeTime,
 } from "@dotli/ui/components/chat/contacts";
 import { renderComponent, settle } from "../../helpers/solid";
+import { query } from "../../support";
 
 const NOW = 1_700_000_000_000;
 
@@ -51,7 +52,7 @@ async function show(
     />
   ));
   await settle();
-  return view.container.querySelector<HTMLElement>(".chat-msg")!;
+  return query(view.container, ".chat-msg");
 }
 
 afterEach(() => {
@@ -69,10 +70,10 @@ describe("message bubble", () => {
 
     // Then
     expect(row.className).toBe("chat-msg chat-msg-product");
-    const bubble = row.querySelector(".chat-msg-bubble")!;
+    const bubble = query(row, ".chat-msg-bubble", Element);
     expect(bubble.querySelector("b")).toBeNull();
     expect(bubble.textContent).toContain("hello <b>there</b>");
-    const time = bubble.querySelector<HTMLTimeElement>("time.chat-msg-time")!;
+    const time = query(bubble, "time.chat-msg-time", HTMLTimeElement);
     expect(time.textContent).toBe("5 mins ago");
     expect(time.dataset.timestamp).toBe(String(NOW - 5 * 60_000));
     expect(time.title).not.toBe("");
@@ -198,8 +199,7 @@ describe("message bubble", () => {
     await settle();
 
     // Then
-    const bubble =
-      view.container.querySelector<HTMLElement>(".chat-msg-bubble")!;
+    const bubble = query(view.container, ".chat-msg-bubble");
     expect(bubble.className).toBe("chat-msg-bubble chat-msg-custom");
     expect(bubble.firstElementChild?.className).toBe("chat-custom-root");
     expect(bubble.lastElementChild?.tagName).toBe("TIME");
@@ -228,11 +228,10 @@ describe("message bubble", () => {
     await settle();
 
     // Then
-    const fallback = view.container.querySelector(".chat-room-icon-fallback")!;
+    const fallback = query(view.container, ".chat-room-icon-fallback", Element);
     expect(fallback.textContent).toBe("G");
     expect(fallback.getAttribute("aria-hidden")).toBe("true");
-    const img =
-      view.container.querySelector<HTMLImageElement>("img.chat-room-icon")!;
+    const img = query(view.container, "img.chat-room-icon", HTMLImageElement);
     expect(img.alt).toBe("");
 
     // When: the image fails to load
@@ -252,7 +251,7 @@ describe("message bubble", () => {
       <ContactIcon name="Support" icon={icon()} iconClass="chat-room-icon" />
     ));
     await settle();
-    fireEvent.error(view.container.querySelector("img.chat-room-icon")!);
+    fireEvent.error(query(view.container, "img.chat-room-icon", Element));
     await settle();
     expect(view.container.querySelector("img")).toBeNull();
 

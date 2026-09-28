@@ -12,6 +12,7 @@ import {
 } from "@dotli/ui/state/url-pill";
 import { setVerificationShieldState as setShieldStateReexport } from "@dotli/ui/verification-shield";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
+import { byId, must } from "../../support";
 
 // The markup main.ts wrote into `#topbar-url` before the pill became a
 // component (its three `urlBar.innerHTML = ...` writes and
@@ -25,7 +26,7 @@ afterEach(() => {
 });
 
 function urlBar(): HTMLElement {
-  return document.getElementById("topbar-url") as HTMLElement;
+  return byId("topbar-url");
 }
 
 function pill(): HTMLElement | null {
@@ -36,7 +37,7 @@ function pill(): HTMLElement | null {
 function parse(html: string): Element {
   const holder = document.createElement("div");
   holder.innerHTML = html;
-  return holder.firstElementChild as Element;
+  return must(holder.firstElementChild, "the parsed element");
 }
 
 describe("URL pill", () => {

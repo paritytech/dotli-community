@@ -50,21 +50,24 @@ afterEach(() => {
 
 function registerTestProvider(label: string, store: Store): () => void {
   return registerPermissionAuthorizationProvider(label, {
-    async getPermissionAuthorizationStatuses(requests) {
+    getPermissionAuthorizationStatuses(requests) {
       if (label === "myapp") {
         myappBatchReads += 1;
       }
-      return requests.map(
-        (request) => store.get(requestKey(request)) ?? "NotDetermined",
+      return Promise.resolve(
+        requests.map(
+          (request) => store.get(requestKey(request)) ?? "NotDetermined",
+        ),
       );
     },
-    async setPermissionAuthorizationStatus(request, status) {
+    setPermissionAuthorizationStatus(request, status) {
       const key = requestKey(request);
       if (status === "NotDetermined") {
         store.delete(key);
       } else {
         store.set(key, status);
       }
+      return Promise.resolve();
     },
   });
 }
@@ -94,11 +97,11 @@ describe("getPermissionStatus / setPermissionStatus", () => {
   it("As a product, my status defaults to ask when the provider returns fewer statuses than requested", async () => {
     // Given: a provider that violates the length contract.
     const unregister = registerPermissionAuthorizationProvider("shortapp", {
-      async getPermissionAuthorizationStatuses() {
-        return [];
+      getPermissionAuthorizationStatuses() {
+        return Promise.resolve([]);
       },
-      async setPermissionAuthorizationStatus() {
-        return;
+      setPermissionAuthorizationStatus() {
+        return Promise.resolve();
       },
     });
 
@@ -541,7 +544,7 @@ function promptButtonTexts(): string[] {
     document.querySelectorAll<HTMLButtonElement>(
       ".signing-modal-footer button",
     ),
-    (button) => button.textContent ?? "",
+    (button) => button.textContent,
   );
 }
 

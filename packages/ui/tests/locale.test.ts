@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createLocaleSubscribe } from "@dotli/ui/host-callbacks/Locale";
+import { yielded } from "./support";
 
 const realLanguage = navigator.language;
 
@@ -29,8 +30,8 @@ describe("locale host callbacks", () => {
 
     // Then
     expect(first.done).toBe(false);
-    expect(first.value.isOk()).toBe(true);
-    expect(first.value._unsafeUnwrap()).toEqual({ languageTag: "pt-BR" });
+    expect(yielded(first).isOk()).toBe(true);
+    expect(yielded(first)._unsafeUnwrap()).toEqual({ languageTag: "pt-BR" });
   });
 
   it("As a dotli integrator, the host emits language changes until unsubscribed", async () => {
@@ -51,10 +52,12 @@ describe("locale host callbacks", () => {
     const afterReturn = await iterator.next();
 
     // Then
-    expect(first.value._unsafeUnwrap()).toEqual({ languageTag: "en" });
+    expect(yielded(first)._unsafeUnwrap()).toEqual({ languageTag: "en" });
     expect(changed.done).toBe(false);
-    expect(changed.value.isOk()).toBe(true);
-    expect(changed.value._unsafeUnwrap()).toEqual({ languageTag: "zh-Hans" });
+    expect(yielded(changed).isOk()).toBe(true);
+    expect(yielded(changed)._unsafeUnwrap()).toEqual({
+      languageTag: "zh-Hans",
+    });
     expect(afterReturn.done).toBe(true);
   });
 });

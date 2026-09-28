@@ -12,14 +12,13 @@ import {
   type ToastInput,
 } from "@dotli/ui/state/toasts";
 import { renderComponent, settle } from "../../helpers/solid";
+import type * as ToastCardModule from "@dotli/ui/components/overlays/ToastCard";
+import { query } from "../../support";
 
 /** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
 const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
 vi.mock("@dotli/ui/components/overlays/ToastCard", async (importOriginal) => {
-  const actual =
-    await importOriginal<
-      typeof import("@dotli/ui/components/overlays/ToastCard")
-    >();
+  const actual = await importOriginal<typeof ToastCardModule>();
   return {
     ...actual,
     ToastCard: (props: Parameters<typeof actual.ToastCard>[0]) =>
@@ -116,7 +115,7 @@ describe("toast stack", () => {
     ).toBe("none");
 
     // When
-    fireEvent.click(card.querySelector<HTMLButtonElement>(".notif-action")!);
+    fireEvent.click(query(card, ".notif-action", HTMLButtonElement));
     fireEvent.animationEnd(card);
     await settle();
 
@@ -157,9 +156,7 @@ describe("toast stack", () => {
     const card = cards()[0];
 
     // When
-    fireEvent.click(
-      card.querySelector<HTMLButtonElement>(".notif-card-close")!,
-    );
+    fireEvent.click(query(card, ".notif-card-close", HTMLButtonElement));
     await settle();
 
     // Then
@@ -201,9 +198,7 @@ describe("toast stack", () => {
     await mountStack();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".notif-cards .notif-text")!,
-    );
+    fireEvent.click(query(document, ".notif-cards .notif-text"));
     await settle();
 
     // Then
@@ -227,7 +222,7 @@ describe("toast stack", () => {
     pushToast(input("A", { deeplink: "https://dot.li/" }));
     pushToast(input("B", { deeplink: "https://dot.li/" }));
     await mountStack();
-    const link = document.querySelector<HTMLAnchorElement>("a.notif-body")!;
+    const link = query(document, "a.notif-body", HTMLAnchorElement);
     link.addEventListener("click", (event) => {
       event.preventDefault();
     });
@@ -247,9 +242,7 @@ describe("toast stack", () => {
     await mountStack();
 
     // When
-    fireEvent.click(
-      document.querySelector<HTMLButtonElement>(".notif-close-all")!,
-    );
+    fireEvent.click(query(document, ".notif-close-all", HTMLButtonElement));
     await settle();
 
     // Then
@@ -272,12 +265,10 @@ describe("toast stack", () => {
     // Given: an expanded stack.
     const ids = ["A", "B", "C", "D"].map((label) => pushToast(input(label)));
     await mountStack();
-    fireEvent.click(
-      document.querySelector<HTMLElement>(".notif-cards .notif-text")!,
-    );
+    fireEvent.click(query(document, ".notif-cards .notif-text"));
     await settle();
     expect(toastsStore.get().expanded).toBe(true);
-    const list = document.querySelector<HTMLElement>(".notif-cards")!;
+    const list = query(document, ".notif-cards");
     let height = 400;
     Object.defineProperty(list, "scrollHeight", {
       configurable: true,
@@ -323,7 +314,7 @@ describe("toast stack", () => {
     pushToast(input("A"));
     pushToast(input("B"));
     await mountStack();
-    const list = document.querySelector<HTMLElement>(".notif-cards")!;
+    const list = query(document, ".notif-cards");
     let scrolls = 0;
     Object.defineProperty(list, "scrollTop", {
       configurable: true,

@@ -130,6 +130,7 @@ describe("mountRoot", () => {
       onCleanup(() => order.push("disposed"));
       return [
         <span class="live">live</span>,
+        // eslint-disable-next-line solid/reactivity -- a function child is tracked by the renderer, which is the point: it throws on change.
         (): null => {
           if (breaks() > 0) {
             throw new Error(`broke ${String(breaks())}`);

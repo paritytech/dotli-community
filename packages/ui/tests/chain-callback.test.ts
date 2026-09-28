@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getActiveServicesConfig } from "@dotli/config/network";
 import { createChainConnect } from "@dotli/ui/host-callbacks/Chain";
+import { yielded } from "./support";
 
 const mocks = vi.hoisted(() => {
   const smoldotBrokerProvider = vi.fn();
@@ -132,7 +133,7 @@ describe("createChainConnect", () => {
 
     // Then
     const responses = connection.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse((await responses.next()).value)).toEqual(ack);
+    expect(JSON.parse(yielded(await responses.next()))).toEqual(ack);
     await responses.return?.();
   });
 

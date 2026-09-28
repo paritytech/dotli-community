@@ -21,6 +21,7 @@ import {
 } from "../../helpers/solid";
 import { normalized } from "./old-auth-markup";
 import { mountMoreMenu } from "./more-menu-harness";
+import { byId, query } from "../../support";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("@dotli/metrics/sentry", () => sentry);
@@ -34,7 +35,7 @@ const FIXTURE = readFileSync(
 function original(id: string): Element {
   const template = document.createElement("template");
   template.innerHTML = FIXTURE;
-  return template.content.querySelector(`[id="${id}"]`) as Element;
+  return query(template.content, `[id="${id}"]`, Element);
 }
 
 /**
@@ -58,14 +59,8 @@ function expected(id: string): Element {
   return el;
 }
 
-function byId(id: string): HTMLElement {
-  return document.getElementById(id) as HTMLElement;
-}
-
 function row(targetId: string): HTMLElement {
-  return document.querySelector(
-    `#more-popover .more-row[data-target="${targetId}"]`,
-  ) as HTMLElement;
+  return query(document, `#more-popover .more-row[data-target="${targetId}"]`);
 }
 
 function isOpen(): boolean {
@@ -189,7 +184,7 @@ describe("MoreMenu", () => {
       const before = target(id);
       const after = target(id);
       before.el.remove();
-      const outsideClicks = vi.fn();
+      const outsideClicks = vi.fn<(event: MouseEvent) => void>();
       document.addEventListener("click", outsideClicks);
       cleanups.push(() => {
         document.removeEventListener("click", outsideClicks);

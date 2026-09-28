@@ -15,15 +15,18 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPanel, type PanelModule } from "./panel-entry";
+import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
+import type * as ProductFrameLayoutModule from "@dotli/ui/product-frame-layout";
+import { query, must } from "../support";
 
-type Bus = typeof import("@dotli/truapi-debug/dotli-debug-bus");
+type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
 type SetupOptions = Parameters<PanelModule["setupTruapiDebugPanel"]>[0];
 
 const PANEL_ID = "truapi-debug-panel";
 
 let bus: Bus;
-let layout: typeof import("@dotli/ui/product-frame-layout");
+let layout: typeof ProductFrameLayoutModule;
 let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
@@ -88,12 +91,8 @@ function panel(): HTMLElement {
   return el;
 }
 
-function q<T extends Element = HTMLElement>(selector: string): T {
-  const el = panel().querySelector<T>(selector);
-  if (el === null) {
-    throw new Error(`missing ${selector}`);
-  }
-  return el;
+function q(selector: string): HTMLElement {
+  return query(panel(), selector);
 }
 
 function rows(): HTMLElement[] {
@@ -250,7 +249,9 @@ const BELOW_BAR_HEIGHT =
 const FULL_HEIGHT =
   "calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))";
 
-function stubClipboard(writeText: ((text: string) => Promise<void>) | null) {
+function stubClipboard(
+  writeText: ((text: string) => Promise<void>) | null,
+): void {
   Object.defineProperty(navigator, "clipboard", {
     configurable: true,
     value: writeText === null ? undefined : { writeText },
@@ -332,12 +333,12 @@ describe("truapi debug panel: mount and dispose", () => {
     const chips = [...root.querySelectorAll<HTMLElement>(".td-product-chip")];
     expect(chips.map((c) => c.textContent)).toEqual(["all"]);
     expect(chips[0].classList.contains("active")).toBe(true);
-    expect(q<HTMLInputElement>(".td-tag-input").placeholder).toBe(
+    expect(query(panel(), ".td-tag-input", HTMLInputElement).placeholder).toBe(
       "filter by method…",
     );
-    expect(q<HTMLInputElement>(".td-exclude-input").placeholder).toBe(
-      "hide by method…",
-    );
+    expect(
+      query(panel(), ".td-exclude-input", HTMLInputElement).placeholder,
+    ).toBe("hide by method…");
 
     const tabs = [...root.querySelectorAll<HTMLElement>(".td-tabs .td-tab")];
     expect(tabs.map((t) => t.textContent)).toEqual([
@@ -598,7 +599,7 @@ describe("truapi debug panel: header actions", () => {
     // Given
     mount();
     seedMixedTraffic();
-    type(q<HTMLInputElement>(".td-exclude-input"), "response");
+    type(query(panel(), ".td-exclude-input", HTMLInputElement), "response");
     const blobs: Blob[] = [];
     vi.spyOn(URL, "createObjectURL").mockImplementation((blob) => {
       blobs.push(blob as Blob);
@@ -657,10 +658,10 @@ describe("truapi debug panel: header actions", () => {
     // Given
     mount();
     seedMixedTraffic();
-    toggle(q<HTMLInputElement>(".td-kind[data-kind='system']"));
+    toggle(query(panel(), ".td-kind[data-kind='system']", HTMLInputElement));
     const writeText = vi.fn((_text: string) => Promise.resolve());
     stubClipboard(writeText);
-    const copy = q<HTMLButtonElement>(".td-copy");
+    const copy = query(panel(), ".td-copy", HTMLButtonElement);
 
     try {
       // When
@@ -699,7 +700,7 @@ describe("truapi debug panel: header actions", () => {
     // Given
     mount();
     seedMixedTraffic();
-    const copy = q<HTMLButtonElement>(".td-copy");
+    const copy = query(panel(), ".td-copy", HTMLButtonElement);
 
     try {
       // When the write is rejected
@@ -778,8 +779,16 @@ describe("truapi debug panel: filters", () => {
     // Given
     mount();
     seedFilterTraffic();
-    const truapiBox = q<HTMLInputElement>(".td-kind[data-kind='truapi']");
-    const systemBox = q<HTMLInputElement>(".td-kind[data-kind='system']");
+    const truapiBox = query(
+      panel(),
+      ".td-kind[data-kind='truapi']",
+      HTMLInputElement,
+    );
+    const systemBox = query(
+      panel(),
+      ".td-kind[data-kind='system']",
+      HTMLInputElement,
+    );
 
     // When
     toggle(truapiBox);
@@ -933,8 +942,8 @@ describe("truapi debug panel: filters", () => {
     // Given
     mount();
     seedFilterTraffic();
-    const include = q<HTMLInputElement>(".td-tag-input");
-    const exclude = q<HTMLInputElement>(".td-exclude-input");
+    const include = query(panel(), ".td-tag-input", HTMLInputElement);
+    const exclude = query(panel(), ".td-exclude-input", HTMLInputElement);
 
     // When
     type(include, "ALPHA");
@@ -1073,8 +1082,10 @@ describe("truapi debug panel: selection and detail", () => {
     expect(q(".td-detail .td-detail-summary").textContent).toBe(
       "Host boot started (mode: direct, chain: smoldot, content: helia).",
     );
-    const explanation = q<HTMLDetailsElement>(
+    const explanation = query(
+      panel(),
       ".td-detail details.td-detail-explanation",
+      HTMLDetailsElement,
     );
     expect(explanation.querySelector("summary")?.textContent).toBe(
       "What is this? — Host boot started",
@@ -1164,7 +1175,11 @@ describe("truapi debug panel: selection and detail", () => {
     mount();
     seedMixedTraffic();
     click(rowByTag("boot.started"));
-    const explanation = q<HTMLDetailsElement>(".td-detail details");
+    const explanation = query(
+      panel(),
+      ".td-detail details",
+      HTMLDetailsElement,
+    );
     explanation.open = true;
 
     // When
@@ -1185,7 +1200,7 @@ describe("truapi debug panel: selection and detail", () => {
     click(rowByTag("system_handshake_request"));
 
     // When
-    type(q<HTMLInputElement>(".td-tag-input"), "handshake");
+    type(query(panel(), ".td-tag-input", HTMLInputElement), "handshake");
 
     // Then
     expect(
@@ -1256,7 +1271,9 @@ describe("truapi debug panel: views", () => {
       ...panel().querySelectorAll<SVGRectElement>(
         ".td-timeline rect.td-tl-segment",
       ),
-    ].find((r) => r.getAttribute("data-tooltip")?.includes("handshake"));
+    ].find(
+      (r) => r.getAttribute("data-tooltip")?.includes("handshake") === true,
+    );
     if (box === undefined) {
       throw new Error("no handshake box");
     }
@@ -1299,7 +1316,11 @@ describe("truapi debug panel: views", () => {
     mount();
     seedMixedTraffic();
     click(tab("timeline"));
-    const box = q(".td-timeline rect.td-tl-segment[data-tooltip]");
+    const box = query(
+      panel(),
+      ".td-timeline rect.td-tl-segment[data-tooltip]",
+      SVGRectElement,
+    );
     const tooltip = q(".td-tooltip");
 
     // When
@@ -1519,9 +1540,10 @@ describe("truapi debug panel: dock, collapse and resize", () => {
     );
     const handle = q(".td-resize-handle");
     const splitter = q(".td-body-splitter");
-    vi.spyOn(splitter.parentElement!, "getBoundingClientRect").mockReturnValue(
-      new DOMRect(0, 0, 1000, 400),
-    );
+    vi.spyOn(
+      must(splitter.parentElement, "the splitter's parent"),
+      "getBoundingClientRect",
+    ).mockReturnValue(new DOMRect(0, 0, 1000, 400));
     pointer(handle, "pointerdown");
     pointer(handle, "pointermove", 0, 500);
     expect(panel().style.height).toBe("268px");

@@ -15,7 +15,7 @@
     "test:perf:base": "PERF_RUNS=20 PERF_SAVE_BASE=1 PERF_DOMAIN_A=browse PERF_DOMAIN_B=host-playground npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts",
     "test:perf:compare": "bun tests/performance/compare.ts",
     "test:perf:compare:md": "bun tests/performance/compare.ts --markdown",
-    "lint": "bunx eslint src/",
+    "lint": "bunx eslint src/ tests/",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
