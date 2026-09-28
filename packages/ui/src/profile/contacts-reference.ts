@@ -33,7 +33,9 @@ export function isContactsReference(reference: string): boolean {
 export function parseContactsReference(
   reference: string,
 ): SeityContactsReference {
-  const body = reference.slice(CONTACTS_REFERENCE_PREFIX.length);
+  // Hex is case-insensitive, like the blob references; the lookup key is
+  // normalised because it becomes a storage-slot input.
+  const body = reference.slice(CONTACTS_REFERENCE_PREFIX.length).toLowerCase();
   if (!isContactsReference(reference) || !BODY_PATTERN.test(body)) {
     throw new InvalidProfileReferenceError(
       "expected seity-contacts:v1:<32-byte lookup key><32-byte seed>",

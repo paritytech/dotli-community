@@ -23,7 +23,12 @@ import {
   openSeityBlob,
   parseSeityBlobReference,
 } from "../profile/seity-reference";
-import { resolveSeitySlotRemote } from "@dotli/protocol/client";
+import {
+  resolveSeitySlotRemote,
+  type RemoteSeitySlot,
+} from "@dotli/protocol/client";
+import { getBackend } from "@dotli/config/mode";
+import { resolveSeitySlotViaRpc } from "@dotli/resolver/rpc-resolve";
 import { createPreimageAdapters } from "./Preimage";
 
 /** Bulletin retrieval can wait on bitswap providers attaching. */
@@ -109,12 +114,26 @@ function profileLoader(
   });
 }
 
+/**
+ * Read the registry slot through whichever chain path is active: the protocol
+ * worker's light client, or the gateway RPC for "Trusted Providers", which
+ * does not route resolution through the protocol iframe.
+ */
+async function readSeitySlot(
+  lookupKey: `0x${string}`,
+): Promise<RemoteSeitySlot | null> {
+  if (getBackend() === "rpc-gateway") {
+    const slot = await resolveSeitySlotViaRpc(lookupKey);
+    return slot === null ? null : { ...slot, version: slot.version.toString() };
+  }
+  return resolveSeitySlotRemote(lookupKey);
+}
+
 async function loadContactsProfile(
   reference: SeityContactsReference,
   signal: AbortSignal,
 ): Promise<LoadedProfile> {
-  // The light client lives in the protocol worker, so the read goes there.
-  const slot = await resolveSeitySlotRemote(reference.lookupKey);
+  const slot = await readSeitySlot(reference.lookupKey);
   // Never anchored, revoked (zero digest) or no registry: nothing to show.
   if (
     slot === null ||
@@ -130,12 +149,23 @@ async function loadContactsProfile(
   if (record.avatarReference === undefined) {
     return { avatar: null, mood: record.mood };
   }
-  const avatarRef = parseSeityBlobReference(record.avatarReference);
-  const avatar = await openSeityBlob(
-    await fetchCiphertext(avatarRef.preimageKey, signal),
-    avatarRef,
+  // An avatar that cannot be fetched or opened still leaves the mood, which
+  // the drawer shows on its own.
+  const avatar = await openAvatar(record.avatarReference, signal).catch(
+    () => null,
   );
   return { avatar, mood: record.mood };
+}
+
+async function openAvatar(
+  reference: string,
+  signal: AbortSignal,
+): Promise<Uint8Array> {
+  const parsed = parseSeityBlobReference(reference);
+  return openSeityBlob(
+    await fetchCiphertext(parsed.preimageKey, signal),
+    parsed,
+  );
 }
 
 export function createProfilePlatform(): Required<ProfilePlatform> {
