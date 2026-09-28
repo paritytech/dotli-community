@@ -7,8 +7,7 @@
 // returns a stop fn.
 
 type SpanArg =
-  | { setAttribute: (key: string, value: string) => void }
-  | undefined;
+  { setAttribute: (key: string, value: string) => void } | undefined;
 
 function span<T>(_name: string, fn: (s: SpanArg) => T): T;
 function span<T>(_name: string, fn: (s: SpanArg) => Promise<T>): Promise<T>;

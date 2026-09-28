@@ -246,8 +246,7 @@ export async function parseCarFile(
   const reader = await CarReader.fromBytes(buffer);
   const roots = await reader.getRoots();
   const rootCid = roots[0] as
-    | Awaited<ReturnType<typeof reader.getRoots>>[number]
-    | undefined;
+    Awaited<ReturnType<typeof reader.getRoots>>[number] | undefined;
 
   if (rootCid === undefined) {
     throw new Error("CAR file has no roots");

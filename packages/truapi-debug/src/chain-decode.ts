@@ -84,8 +84,7 @@ export interface ChainAnnotations {
 }
 
 type ResultValue<T, E> =
-  | { success: true; value: T }
-  | { success: false; value: E };
+  { success: true; value: T } | { success: false; value: E };
 
 /**
  * Extract chain-protocol annotations from a TrUAPI message.

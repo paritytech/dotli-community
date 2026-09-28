@@ -15,11 +15,11 @@
   "devDependencies": {
     "@dotli/eslint-config": "workspace:*",
     "@dotli/typescript-config": "workspace:*",
-    "eslint": "^10.5.0",
-    "happy-dom": "^20.10.3",
+    "eslint": "^10.11.0",
+    "happy-dom": "^20.14.5",
     "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "vite": "^8.3.1",
+    "vitest": "^5.0.1"
   },
   "dependencies": {
     "@dotli/shared": "workspace:*"

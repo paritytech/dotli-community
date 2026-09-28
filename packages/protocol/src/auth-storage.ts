@@ -5,14 +5,10 @@ import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
 import type { ProtocolRequestMethod } from "./messages";
 
 export type SharedAuthRequestMethod =
-  | "authStorageRead"
-  | "authStorageWrite"
-  | "authStorageClear";
+  "authStorageRead" | "authStorageWrite" | "authStorageClear";
 
 export type SharedModeRequestMethod =
-  | "modeStorageRead"
-  | "modeStorageWrite"
-  | "modeStorageClear";
+  "modeStorageRead" | "modeStorageWrite" | "modeStorageClear";
 
 export const SHARED_CORE_SESSION_KEY = "session";
 const LEGACY_SHARED_AUTH_SESSION_KEY = "SsoSessionsV3";

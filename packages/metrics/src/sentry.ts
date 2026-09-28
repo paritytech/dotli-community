@@ -56,6 +56,7 @@ const SMOLDOT_VALUE_RE =
   /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
 
 const BROWSER_API_ERRORS_INTEGRATION = "BrowserApiErrors";
+const CONSOLE_BREADCRUMBS_INTEGRATION = "Console";
 
 /**
  * Exclude Sentry's callback wrapper while retaining its other defaults.
@@ -148,9 +149,13 @@ export function initSentry(source: SentrySource): void {
             history: false, // URL navigation history
             fetch: false, // request URLs
             xhr: false,
-            console: false, // console output can carry user data
           }),
         ];
+  // Console output can carry user data. Sentry 11 records console
+  // breadcrumbs in their own default integration, not in Breadcrumbs, so it
+  // is dropped wherever the Breadcrumbs override above applies.
+  const excludedDefaults =
+    source === "worker" ? [] : [CONSOLE_BREADCRUMBS_INTEGRATION];
   Sentry.init({
     dsn,
     tunnel: "/t",
@@ -158,11 +163,13 @@ export function initSentry(source: SentrySource): void {
     release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
     beforeSend: tagSmoldotEvents,
     integrations: (defaultIntegrations) => [
-      ...excludeBrowserApiErrorsIntegration(defaultIntegrations),
+      ...excludeBrowserApiErrorsIntegration(defaultIntegrations).filter(
+        (integration) => !excludedDefaults.includes(integration.name),
+      ),
       ...extraIntegrations,
     ],
-    // Never attach user info
-    sendDefaultPii: false,
+    // Never attach user info, and never let Sentry infer the user's IP.
+    dataCollection: { userInfo: false },
     // Needed so your manual Sentry.startSpan() calls are sent.
     // WITHOUT browserTracingIntegration there is NO automatic
     // pageload, navigation, INP/interaction, fetch, or XHR spans

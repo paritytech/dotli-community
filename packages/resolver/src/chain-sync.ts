@@ -639,8 +639,7 @@ export function attachChainSync(
     }
     if (parsed.method === "lifecycle_unstable_followEvent") {
       const params = parsed.params as
-        | { subscription?: unknown; result?: unknown }
-        | undefined;
+        { subscription?: unknown; result?: unknown } | undefined;
       // The follow reply always precedes its notifications, so an unknown
       // subscription id means the event belongs to someone else: forward it.
       if (

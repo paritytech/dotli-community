@@ -607,9 +607,7 @@ function startMainThreadMonitor(flowId: string, emit: EmitFn): void {
 function listenForSandboxDebugEvents(emit: EmitFn): void {
   window.addEventListener("message", (event: MessageEvent) => {
     const data = event.data as
-      | { type?: unknown; event?: unknown }
-      | null
-      | undefined;
+      { type?: unknown; event?: unknown } | null | undefined;
     if (
       data === null ||
       data === undefined ||
@@ -619,9 +617,7 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
       return;
     }
     const payload = data.event as
-      | (DotliDebugEvent & { layer?: unknown })
-      | null
-      | undefined;
+      (DotliDebugEvent & { layer?: unknown }) | null | undefined;
     if (
       payload === null ||
       payload === undefined ||

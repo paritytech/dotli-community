@@ -218,9 +218,7 @@ export async function evictCachedCid(label: string): Promise<void> {
 }
 
 export type RevalidateOutcome =
-  | { kind: "match" }
-  | { kind: "update"; cid: string }
-  | { kind: "cleared" };
+  { kind: "match" } | { kind: "update"; cid: string } | { kind: "cleared" };
 
 /** Reconcile a freshly-resolved CID against the served one: write, evict, or noop. */
 export async function recordRevalidateOutcome(

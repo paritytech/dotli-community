@@ -24,6 +24,8 @@ function formatLoginRequestError(error: LoginRequestFailure): string {
       return "Login request denied";
     case "Unsupported":
       return "Login is not supported by this host";
+    case "Cancelled":
+      return "Login request cancelled";
     case "MalformedFrame":
     case "HostFailure":
       return error.value.reason;

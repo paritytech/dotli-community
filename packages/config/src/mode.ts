@@ -12,9 +12,7 @@
 //                fetch via HTTPS IPFS gateway. No smoldot.
 
 export type Backend =
-  | "smoldot-direct"
-  | "smoldot-shared-worker"
-  | "rpc-gateway";
+  "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
 
 /**
  * What the Settings panel calls each backend.
