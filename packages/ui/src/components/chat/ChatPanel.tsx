@@ -123,6 +123,8 @@ function PanelBody(): JSX.Element {
   const [refresh, setRefresh] = createSignal(0);
   const [now, setNow] = createSignal(Date.now());
   let messagesEl: HTMLDivElement | undefined;
+  /** Wraps the bubbles, so its height is the conversation's. */
+  let threadEl: HTMLDivElement | undefined;
   let inputEl: HTMLInputElement | undefined;
   // Room rows by room id, to put focus back on a row the list moved.
   const rowEls = new Map<string, HTMLButtonElement>();
@@ -304,56 +306,23 @@ function PanelBody(): JSX.Element {
     }
   });
 
-  // Custom messages draw their trees after the list renders, which makes it
-  // taller: follow that growth while the reader is at the bottom. A
-  // ResizeObserver on the list and on each bubble also follows growth that
-  // changes no markup: an image or a web font that loads late, or a width
-  // change that reflows the bubbles taller.
+  // Follow any growth while the reader is at the bottom: the thread's height
+  // moves with a message added or removed, a custom tree drawn late, an
+  // image or a web font that loads late, or a reflow; the list's with the
+  // hint line or the window.
   onSettled(() => {
-    const list = messagesEl;
-    if (list === undefined) {
+    if (
+      messagesEl === undefined ||
+      threadEl === undefined ||
+      typeof ResizeObserver === "undefined"
+    ) {
       return;
     }
-    const resize =
-      typeof ResizeObserver === "undefined"
-        ? undefined
-        : new ResizeObserver(stickToBottom);
-    resize?.observe(list);
-    for (const bubble of list.children) {
-      resize?.observe(bubble);
-    }
-    const mutations =
-      typeof MutationObserver === "undefined"
-        ? undefined
-        : new MutationObserver((records) => {
-            stickToBottom();
-            if (resize === undefined) {
-              return;
-            }
-            for (const record of records) {
-              if (record.target !== list) {
-                continue;
-              }
-              for (const node of record.removedNodes) {
-                if (node instanceof Element) {
-                  resize.unobserve(node);
-                }
-              }
-              for (const node of record.addedNodes) {
-                if (node instanceof Element) {
-                  resize.observe(node);
-                }
-              }
-            }
-          });
-    mutations?.observe(list, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    });
+    const resize = new ResizeObserver(stickToBottom);
+    resize.observe(messagesEl);
+    resize.observe(threadEl);
     return () => {
-      mutations?.disconnect();
-      resize?.disconnect();
+      resize.disconnect();
     };
   });
 
@@ -477,19 +446,26 @@ function PanelBody(): JSX.Element {
             STICK_THRESHOLD_PX;
         }}
       >
-        <Show when={view() === "conversation"}>
-          <For each={messages()} keyed={(r) => r.seq}>
-            {(record) => (
-              <MessageBubble
-                record={record()}
-                now={now()}
-                onActionError={() => {
-                  setChatComposerError("The app could not be reached.");
-                }}
-              />
-            )}
-          </For>
-        </Show>
+        <div
+          class="chat-panel-thread"
+          ref={(el) => {
+            threadEl = el;
+          }}
+        >
+          <Show when={view() === "conversation"}>
+            <For each={messages()} keyed={(r) => r.seq}>
+              {(record) => (
+                <MessageBubble
+                  record={record()}
+                  now={now()}
+                  onActionError={() => {
+                    setChatComposerError("The app could not be reached.");
+                  }}
+                />
+              )}
+            </For>
+          </Show>
+        </div>
       </div>
       <p class="chat-panel-hint" id="chat-panel-hint" hidden={hint() === null}>
         {hint() ?? ""}

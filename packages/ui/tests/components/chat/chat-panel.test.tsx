@@ -58,6 +58,7 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
       }
       return messages;
     }),
+    userPostMessage: vi.fn(async () => undefined),
     renderCustomMessage: (
       _productId: string,
       _request: unknown,
@@ -473,6 +474,50 @@ describe("chat panel, scrolling", () => {
     list.dispatchEvent(new Event("scroll"));
   }
 
+  /** Stand-in ResizeObservers: what each observes, and whether it is gone. */
+  interface FakeObserver {
+    callback: () => void;
+    targets: Set<Element>;
+    disconnected: boolean;
+  }
+  function fakeResizeObservers(): {
+    observing: (target: Element) => FakeObserver | undefined;
+  } {
+    const instances: FakeObserver[] = [];
+    class FakeResizeObserver {
+      private entry: FakeObserver;
+      constructor(callback: () => void) {
+        this.entry = { callback, targets: new Set(), disconnected: false };
+        instances.push(this.entry);
+      }
+      observe(target: Element): void {
+        this.entry.targets.add(target);
+      }
+      unobserve(target: Element): void {
+        this.entry.targets.delete(target);
+      }
+      disconnect(): void {
+        this.entry.disconnected = true;
+        this.entry.targets.clear();
+      }
+    }
+    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
+    return {
+      observing: (target) => instances.find((o) => o.targets.has(target)),
+    };
+  }
+
+  /** The wrapper around the bubbles, whose height is the conversation's. */
+  function thread(): HTMLElement {
+    const node = byId("chat-panel-messages").querySelector<HTMLElement>(
+      ".chat-panel-thread",
+    );
+    if (node === null) {
+      throw new Error("missing .chat-panel-thread");
+    }
+    return node;
+  }
+
   it("As a user reading older messages, a new message does not pull me down", async () => {
     // Given: a conversation, scrolled up.
     await openPanel(3);
@@ -498,6 +543,7 @@ describe("chat panel, scrolling", () => {
   it("As a user at the newest message, a custom message that renders later stays in view", async () => {
     // Given: a conversation at the bottom, ending with a custom message.
     vi.stubGlobal("IntersectionObserver", undefined);
+    const observers = fakeResizeObservers();
     await openPanel(3);
     let height = 1000;
     const list = sized(() => height);
@@ -518,50 +564,13 @@ describe("chat panel, scrolling", () => {
       },
     });
     await idle();
+    expect(list.textContent).toContain("Poll");
+    // The thread grew, so the browser reports it.
+    observers.observing(thread())?.callback();
 
     // Then
     expect(list.scrollTop).toBe(1300);
   });
-  /** Stand-in ResizeObservers: what each observes, and whether it is gone. */
-  function fakeResizeObservers(): {
-    instances: {
-      callback: () => void;
-      targets: Set<Element>;
-      disconnected: boolean;
-    }[];
-  } {
-    const record = {
-      instances: [] as {
-        callback: () => void;
-        targets: Set<Element>;
-        disconnected: boolean;
-      }[],
-    };
-    class FakeResizeObserver {
-      private entry: {
-        callback: () => void;
-        targets: Set<Element>;
-        disconnected: boolean;
-      };
-      constructor(callback: () => void) {
-        this.entry = { callback, targets: new Set(), disconnected: false };
-        record.instances.push(this.entry);
-      }
-      observe(target: Element): void {
-        this.entry.targets.add(target);
-      }
-      unobserve(target: Element): void {
-        this.entry.targets.delete(target);
-      }
-      disconnect(): void {
-        this.entry.disconnected = true;
-        this.entry.targets.clear();
-      }
-    }
-    vi.stubGlobal("ResizeObserver", FakeResizeObserver);
-    return record;
-  }
-
   it("As a user at the newest message, growth that changes no markup (an image, a font, a narrower panel) keeps me there", async () => {
     // Given: a conversation at the bottom.
     const observers = fakeResizeObservers();
@@ -572,13 +581,12 @@ describe("chat panel, scrolling", () => {
     openChatRoom("r0");
     await idle();
     expect(list.scrollTop).toBe(1000);
-    const observer = observers.instances.find((o) => o.targets.has(list));
-    expect(observer).toBeDefined();
-    const bubbles = [...list.children];
-    expect(bubbles).toHaveLength(2);
-    expect(bubbles.every((b) => observer?.targets.has(b))).toBe(true);
+    // One observer, on the thread wrapping the bubbles and on the list.
+    const observer = observers.observing(thread());
+    expect(observer?.targets).toEqual(new Set([thread(), list]));
+    expect(thread().querySelectorAll(":scope > .chat-msg")).toHaveLength(2);
 
-    // When: the list grows with no DOM change, and the observer reports it.
+    // When: the thread grows with no DOM change, and the observer reports it.
     height = 1250;
     observer?.callback();
 
@@ -599,6 +607,55 @@ describe("chat panel, scrolling", () => {
 
     // Then
     expect(observer?.disconnected).toBe(true);
+  });
+
+  it("As a user within 24 px of the newest message, I count as at the bottom and new messages keep me there", async () => {
+    // Given: 800 px is the bottom of a 1000 px conversation.
+    const observers = fakeResizeObservers();
+    await openPanel(3);
+    let height = 1000;
+    const list = sized(() => height);
+    h.messages = [text(1)];
+    openChatRoom("r0");
+    await idle();
+
+    // When: 24 px short of the bottom, then growth.
+    scrollTo(list, 776);
+    height = 1100;
+    observers.observing(thread())?.callback();
+
+    // Then
+    expect(list.scrollTop).toBe(1100);
+
+    // When: 25 px short of the bottom, then growth.
+    scrollTo(list, 775);
+    height = 1200;
+    observers.observing(thread())?.callback();
+
+    // Then
+    expect(list.scrollTop).toBe(775);
+  });
+
+  it("As a user reading older messages, sending a message brings me to it", async () => {
+    // Given: a conversation, scrolled up.
+    await openPanel(3);
+    let height = 1000;
+    const list = sized(() => height);
+    h.messages = [text(1), text(2)];
+    openChatRoom("r0");
+    await idle();
+    scrollTo(list, 100);
+
+    // When
+    byId<HTMLInputElement>("chat-panel-input").value = "hi";
+    h.messages.push({ ...text(3), author: "user" } as ChatMessageRecord);
+    height = 1100;
+    byId<HTMLFormElement>("chat-panel-composer").requestSubmit();
+    await idle();
+
+    // Then
+    expect(document.querySelectorAll(".chat-msg")).toHaveLength(3);
+    expect(list.scrollTop).toBe(1100);
   });
 
   it("As a user whose browser has no ResizeObserver, the conversation still follows new messages", async () => {
