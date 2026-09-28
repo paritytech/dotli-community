@@ -498,7 +498,14 @@ export function Shell(): JSX.Element {
       </div>
 
       {/* QR Pairing Modal */}
-      <div class="auth-modal-backdrop" id="auth-modal-backdrop">
+      <div
+        class="auth-modal-backdrop"
+        id="auth-modal-backdrop"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="auth-modal-title"
+        tabindex="-1"
+      >
         <div class="auth-modal">
           <h2 id="auth-modal-title">Login with Polkadot Mobile</h2>
           <p class="auth-modal-reason" id="auth-modal-reason" hidden />

@@ -92,7 +92,11 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                 {(hint) => <div class="signing-field-value">{hint()}</div>}
               </Show>
               <Show when={spec().error}>
-                {(error) => <div class="password-prompt-error">{error()}</div>}
+                {(error) => (
+                  <div class="password-prompt-error" role="alert">
+                    {error()}
+                  </div>
+                )}
               </Show>
               <input
                 ref={(el) => {
@@ -100,6 +104,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                 }}
                 type="password"
                 class="password-prompt-input"
+                aria-labelledby={titleId}
                 placeholder={spec().placeholder}
                 autocomplete="off"
                 spellcheck="false"
