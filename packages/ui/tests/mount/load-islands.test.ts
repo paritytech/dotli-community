@@ -165,12 +165,18 @@ async function initAuth(): Promise<{
   loginRequests: () => number;
   cancels: () => number;
 }> {
-  const [{ initAuthController }, { createBlockingModalCoordinator }, modal] =
-    await Promise.all([
-      import("@dotli/ui/auth-controller"),
-      import("@dotli/ui/blocking-modal-queue"),
-      import("@dotli/ui/state/auth-modal"),
-    ]);
+  const [
+    { initAuthController },
+    { createBlockingModalCoordinator },
+    modal,
+    { setAuthState },
+  ] = await Promise.all([
+    import("@dotli/ui/auth-controller"),
+    import("@dotli/ui/blocking-modal-queue"),
+    import("@dotli/ui/state/auth-modal"),
+    import("@dotli/ui/state/auth"),
+  ]);
+  recordAuthState = setAuthState;
   const coordinator = createBlockingModalCoordinator();
   initAuthController(coordinator);
   let loginRequests = 0;
@@ -197,16 +203,15 @@ function requestLogin(): void {
   );
 }
 
+/** The auth store of the controller initAuth wired. */
+let recordAuthState: (typeof import("@dotli/ui/state/auth"))["setAuthState"];
+
 function corePairing(): void {
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-auth-state", {
-      detail: {
-        tag: "Pairing",
-        deeplink: "polkadotapp://pair?handshake=test",
-        label: "localhost:3000",
-      },
-    }),
-  );
+  recordAuthState({
+    tag: "Pairing",
+    deeplink: "polkadotapp://pair?handshake=test",
+    label: "localhost:3000",
+  });
 }
 
 /** Whether a blocking prompt enqueued now runs (rather than waiting). */

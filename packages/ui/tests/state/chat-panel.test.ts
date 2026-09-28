@@ -9,6 +9,8 @@ import {
   CHAT_ROOMS_CHANGED_EVENT,
 } from "@dotli/ui/chat/service";
 import { labelToProductId } from "@dotli/ui/runtime-config";
+import { setLoggedIn } from "@dotli/ui/state/auth";
+import { setTopbarVisible } from "@dotli/ui/state/topbar";
 import {
   backToChatRooms,
   chatButtonVisible,
@@ -25,6 +27,7 @@ import {
   setChatPanelWidth,
   totalChatUnread,
 } from "@dotli/ui/state/chat-panel";
+import { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-store";
 
 let remove: () => void = () => undefined;
 
@@ -35,7 +38,7 @@ function fire(name: string, detail: unknown): void {
 function showProduct(label: string): void {
   fire("dotli:product-loaded", { label });
   fire(CHAT_AVAILABILITY_EVENT, { label, chat: true });
-  fire("dotli:truapi-auth-state", { tag: "Connected" });
+  setLoggedIn(true);
 }
 
 function productMessage(label: string, roomId: string): void {
@@ -53,6 +56,7 @@ beforeEach(() => {
 
 afterEach(() => {
   remove();
+  resetStores();
   resetChatPanelStateForTests();
 });
 
@@ -71,13 +75,7 @@ describe("chat panel state", () => {
     expect(chatButtonVisible()).toBe(false);
 
     // When
-    fire("dotli:truapi-auth-state", { tag: "Connected" });
-
-    // Then
-    expect(chatButtonVisible()).toBe(true);
-
-    // When: transitional login states change nothing
-    fire("dotli:truapi-auth-state", { tag: "Pairing" });
+    setLoggedIn(true);
 
     // Then
     expect(chatButtonVisible()).toBe(true);
@@ -100,13 +98,13 @@ describe("chat panel state", () => {
     setChatPanelOpen(true);
 
     // When
-    fire("dotli:truapi-auth-state", { tag: "Disconnected" });
+    setLoggedIn(false);
 
     // Then
     expect(chatPanelStore.get().open).toBe(false);
 
     // When
-    fire("dotli:truapi-auth-state", { tag: "Connected" });
+    setLoggedIn(true);
     setChatPanelOpen(true);
     fire("dotli:product-error", undefined);
 
@@ -232,10 +230,26 @@ describe("chat panel state", () => {
 
   it("As a user, the topbar visibility is tracked for the panel", () => {
     // When
-    fire("topbar:visibility", false);
+    setTopbarVisible(false);
 
     // Then
     expect(chatPanelStore.get().topbarVisible).toBe(false);
+  });
+
+  it("As a panel wired after a login, the session and the hidden topbar are already known", () => {
+    // Given
+    remove();
+    setLoggedIn(true);
+    setTopbarVisible(false);
+
+    // When
+    remove = initChatPanelState();
+
+    // Then
+    expect(chatPanelStore.get()).toMatchObject({
+      loggedIn: true,
+      topbarVisible: false,
+    });
   });
 
   it("As a user, unread counts above nine read 9+", () => {

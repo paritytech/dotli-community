@@ -17,9 +17,10 @@ export interface ReadableStore<T> {
   /**
    * Called synchronously after every set that changed the value (see
    * {@link SyncStoreOptions.equals}). Returns the unsubscribe.
-   * Notifications are synchronous. Listeners must not call store setters: a
-   * nested set notifies and dispatches its window event before the outer one
-   * does.
+   * Notifications are synchronous. A listener that calls another store's
+   * setter (the auth controller, the chat panel's rules) runs that nested
+   * set, its listeners and its window event, before the outer setter
+   * dispatches its own event.
    */
   subscribe: (listener: () => void) => () => void;
 }

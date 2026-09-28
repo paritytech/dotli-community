@@ -1,10 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Every store skips a write that would not change what it holds, so no
-// reader recomputes for it. The window events some setters dispatch are not
-// the store's notification: they still fire as before (setTopbarVisible
-// aside, which skips an unchanged value on purpose).
+// Every store but the auth state skips a write that would not change what
+// it holds, so no reader recomputes for it. The window events some setters
+// dispatch are not the store's notification: they still fire as before.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -115,10 +114,9 @@ describe("store equality", () => {
     loading.stop();
   });
 
-  it("As the topbar, an unchanged visibility neither notifies nor dispatches topbar:visibility", () => {
+  it("As the topbar, an unchanged visibility notifies nobody", () => {
     // Given: the topbar starts visible.
     const topbar = countNotifications(topbarStore);
-    const events = countEvents("topbar:visibility");
 
     // When: the auto-hide reveal fires on every mouseenter.
     setTopbarVisible(true);
@@ -126,7 +124,6 @@ describe("store equality", () => {
 
     // Then
     expect(topbar.count()).toBe(0);
-    expect(events.count()).toBe(0);
 
     // When
     setTopbarVisible(false);
@@ -134,17 +131,14 @@ describe("store equality", () => {
 
     // Then
     expect(topbar.count()).toBe(1);
-    expect(events.count()).toBe(1);
     topbar.stop();
-    events.stop();
   });
 
-  it("As the topbar, an unchanged blocking-modal flag or chains button notifies nobody, and dotli:blocking-modal-active still fires on every call", () => {
+  it("As the topbar, an unchanged blocking-modal flag or chains button notifies nobody", () => {
     // Given
     setBlockingModalActive(true);
     recordChainsButtonVisible(true);
     const topbar = countNotifications(topbarStore);
-    const events = countEvents("dotli:blocking-modal-active");
 
     // When
     setBlockingModalActive(true);
@@ -152,12 +146,10 @@ describe("store equality", () => {
 
     // Then
     expect(topbar.count()).toBe(0);
-    expect(events.count()).toBe(1);
     topbar.stop();
-    events.stop();
   });
 
-  it("As the chat panel, a width drag past the clamp, a cleared composer error and a repeated topbar or availability event notify nobody", () => {
+  it("As the chat panel, a width drag past the clamp, a cleared composer error, an unchanged topbar and a repeated availability event notify nobody", () => {
     // Given
     const remove = initChatPanelState();
     window.dispatchEvent(
@@ -172,9 +164,8 @@ describe("store equality", () => {
     setChatPanelWidth(10_000);
     setChatPanelWidth(900);
     setChatComposerError(null);
-    window.dispatchEvent(
-      new CustomEvent<boolean>("topbar:visibility", { detail: true }),
-    );
+    setTopbarVisible(true);
+    setBlockingModalActive(true);
     window.dispatchEvent(
       new CustomEvent(CHAT_AVAILABILITY_EVENT, {
         detail: { label: "app", chat: true },
@@ -235,7 +226,7 @@ describe("store equality", () => {
     toasts.stop();
   });
 
-  it("As the auth store, an equal auth state notifies nobody and dotli:truapi-auth-state still fires every time", () => {
+  it("As the auth controller, an equal auth state still notifies, and dotli:truapi-auth-state fires every time", () => {
     // Given
     setAuthState({ tag: "Authenticating" });
     const auth = countNotifications(authStore);
@@ -246,7 +237,7 @@ describe("store equality", () => {
     setAuthState({ tag: "Authenticating" });
 
     // Then
-    expect(auth.count()).toBe(0);
+    expect(auth.count()).toBe(2);
     expect(events.count()).toBe(2);
     auth.stop();
     events.stop();

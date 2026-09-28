@@ -83,6 +83,7 @@ import {
   setChatPanelOpen,
   setChatPanelWidth,
 } from "@dotli/ui/state/chat-panel";
+import { setLoggedIn } from "@dotli/ui/state/auth";
 import { renderComponent, resetStores, settle } from "../../helpers/solid";
 
 const PRODUCT = "chatty.dot";
@@ -153,7 +154,7 @@ async function openPanel(roomCount = 20): Promise<void> {
   removeRules = initChatPanelState();
   emit("dotli:product-loaded", { label: "chatty", productId: PRODUCT });
   emit("dotli:chat-availability", { label: "chatty", chat: true });
-  emit("dotli:truapi-auth-state", { tag: "Connected" });
+  setLoggedIn(true);
   h.rooms = Array.from({ length: roomCount }, (_, i) => room(i));
   setChatPanelOpen(true);
   renderComponent(() => <ChatPanel />, { container });

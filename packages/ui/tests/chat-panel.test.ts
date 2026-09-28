@@ -22,11 +22,20 @@ vi.mock("@dotli/ui/product-iframe-box", () => ({
 
 // The panel and service keep module-level state (listeners, connection
 // registry), so each test loads a fresh module instance via resetModules.
+// The session and topbar stores the panel follows come from the same graph.
+let stores: {
+  auth: typeof import("@dotli/ui/state/auth");
+  topbar: typeof import("@dotli/ui/state/topbar");
+};
 async function loadChatModules(): Promise<{
   panel: typeof import("@dotli/ui/chat/panel");
   service: typeof import("@dotli/ui/chat/service");
 }> {
   vi.resetModules();
+  stores = {
+    auth: await import("@dotli/ui/state/auth"),
+    topbar: await import("@dotli/ui/state/topbar"),
+  };
   return {
     panel: await import("@dotli/ui/chat/panel"),
     service: await import("@dotli/ui/chat/service"),
@@ -43,12 +52,9 @@ function installChatDom(): void {
   `;
 }
 
+/** What the auth controller records on Connected and Disconnected. */
 function setLoggedIn(loggedIn: boolean): void {
-  window.dispatchEvent(
-    new CustomEvent("dotli:truapi-auth-state", {
-      detail: { tag: loggedIn ? "Connected" : "Disconnected" },
-    }),
-  );
+  stores.auth.setLoggedIn(loggedIn);
 }
 
 function loadProduct(label: string): void {
@@ -222,14 +228,10 @@ describe("chat panel", () => {
     panel.initChatPanel();
     const panelEl = byId("chat-panel");
 
-    window.dispatchEvent(
-      new CustomEvent<boolean>("topbar:visibility", { detail: false }),
-    );
+    stores.topbar.setTopbarVisible(false);
     expect(panelEl.classList.contains("topbar-hidden")).toBe(true);
 
-    window.dispatchEvent(
-      new CustomEvent<boolean>("topbar:visibility", { detail: true }),
-    );
+    stores.topbar.setTopbarVisible(true);
     expect(panelEl.classList.contains("topbar-hidden")).toBe(false);
   });
 

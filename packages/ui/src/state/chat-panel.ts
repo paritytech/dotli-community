@@ -18,11 +18,13 @@ import {
   type ChatMessageEventDetail,
 } from "../chat/service";
 import { labelToProductId } from "../runtime-config";
+import { getLoggedIn, loggedInStore } from "./auth";
 import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
 } from "./create-store";
+import { getTopbarState, topbarStore } from "./topbar";
 
 export const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
 export const MIN_PANEL_WIDTH = 280;
@@ -199,7 +201,7 @@ export function persistChatPanelWidth(): void {
   }
 }
 
-/** Install today's window-event rules. Returns the remove function. */
+/** Install the window-event and store rules. Returns the remove function. */
 export function initChatPanelState(): () => void {
   const onAvailability = (event: Event): void => {
     const detail = (event as CustomEvent<ChatAvailabilityDetail>).detail;
@@ -238,19 +240,6 @@ export function initChatPanelState(): () => void {
     update({ label: null, runtimeProductId: null });
   };
 
-  const onAuthState = (event: Event): void => {
-    const { tag } = (event as CustomEvent<{ tag: string }>).detail;
-    // Pairing/Authenticating/LoginFailed are transitional login-flow states,
-    // not a session change; acting on them would close an open panel mid-flow.
-    if (tag !== "Connected" && tag !== "Disconnected") {
-      return;
-    }
-    const loggedIn = tag === "Connected";
-    if (panel.get().loggedIn !== loggedIn) {
-      update({ loggedIn });
-    }
-  };
-
   const onMessage = (event: Event): void => {
     const detail = (event as CustomEvent<ChatMessageEventDetail>).detail;
     const state = panel.get();
@@ -285,26 +274,36 @@ export function initChatPanelState(): () => void {
     }
   };
 
-  const onTopbarVisibility = (event: Event): void => {
-    update({ topbarVisible: (event as CustomEvent<boolean>).detail });
-  };
-
   const listeners: [string, (event: Event) => void][] = [
     [CHAT_AVAILABILITY_EVENT, onAvailability],
     ["dotli:product-loaded", onProductLoaded],
     ["dotli:product-error", onProductError],
-    ["dotli:truapi-auth-state", onAuthState],
     [CHAT_MESSAGE_EVENT, onMessage],
     [CHAT_ROOMS_CHANGED_EVENT, onContactsChanged],
     [CHAT_BOTS_CHANGED_EVENT, onContactsChanged],
-    ["topbar:visibility", onTopbarVisibility],
   ];
   for (const [name, listener] of listeners) {
     window.addEventListener(name, listener);
   }
+  // The session (the auth controller's rule: only Connected and Disconnected
+  // change it) and the auto-hidden topbar come from their stores.
+  const follow = (): void => {
+    update({
+      loggedIn: getLoggedIn(),
+      topbarVisible: getTopbarState().visible,
+    });
+  };
+  follow();
+  const unsubscribe = [
+    loggedInStore.subscribe(follow),
+    topbarStore.subscribe(follow),
+  ];
   return () => {
     for (const [name, listener] of listeners) {
       window.removeEventListener(name, listener);
+    }
+    for (const stop of unsubscribe) {
+      stop();
     }
   };
 }

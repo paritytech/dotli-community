@@ -145,6 +145,28 @@ describe("auth controller: login requests", () => {
     expect(requests.details).toEqual([{ reason: undefined }]);
   });
 
+  it("As the error view, a retry that fails the same way shows the error again", async () => {
+    // Given: a login failed, and the user retried.
+    const { getAuthModalState, retryLogin, setAuthState } = await load();
+    const failed = {
+      tag: "LoginFailed",
+      kind: "Other",
+      reason: "worker init failed",
+    } as const;
+    setAuthState({ ...failed });
+    retryLogin();
+    expect(getAuthModalState().view).toEqual({ kind: "spinner" });
+
+    // When: the bridge reports the same failure again.
+    setAuthState({ ...failed });
+
+    // Then
+    expect(getAuthModalState().view).toMatchObject({
+      kind: "error",
+      message: "worker init failed",
+    });
+  });
+
   it("As the user popover, requestTruapiDisconnect emits the Rust-core disconnect request", async () => {
     // Given
     const { requestTruapiDisconnect } = await load();
@@ -431,6 +453,41 @@ describe("auth controller: auth states", () => {
     expect(getAuthModalState().open).toBe(true);
     expect(getAuthModalState().view.kind).toBe("pairing");
     expect(getLoggedIn()).toBe(false);
+  });
+
+  it("As the core, the login-flow states in between leave the session alone", async () => {
+    // Given
+    const { getLoggedIn, setAuthState } = await load();
+    setAuthState({ tag: "Connected", session: { connected: true } });
+
+    // When
+    setAuthState(pairing);
+    setAuthState({ tag: "Authenticating" });
+    setAuthState({ tag: "LoginFailed", kind: "Other", reason: "declined" });
+
+    // Then
+    expect(getLoggedIn()).toBe(true);
+  });
+
+  it("As the e2e setup listening for dotli:truapi-auth-state, the controller has already acted on the state", async () => {
+    // Given
+    const { getAuthModalState, getLoggedIn, setAuthState } = await load();
+    const seen: { open: boolean; loggedIn: boolean }[] = [];
+    const listener = (): void => {
+      seen.push({ open: getAuthModalState().open, loggedIn: getLoggedIn() });
+    };
+    window.addEventListener("dotli:truapi-auth-state", listener);
+
+    // When
+    setAuthState(pairing);
+    setAuthState({ tag: "Connected", session: { connected: true } });
+
+    // Then
+    expect(seen).toEqual([
+      { open: true, loggedIn: false },
+      { open: false, loggedIn: true },
+    ]);
+    window.removeEventListener("dotli:truapi-auth-state", listener);
   });
 
   it("As a new user, LoginFailed opens the host-global modal with retryable error copy", async () => {

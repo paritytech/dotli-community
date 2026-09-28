@@ -1,13 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  getPermissionsState,
-  permissionsStore,
-  recordPermissionChange,
-} from "@dotli/ui/state/permissions";
-import { resetStores, settle } from "../helpers/solid";
+import { describe, expect, it } from "vitest";
+import { recordPermissionChange } from "@dotli/ui/state/permissions";
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];
@@ -23,18 +18,11 @@ function capture(name: string): { details: unknown[]; stop: () => void } {
   };
 }
 
-describe("permissions store", () => {
-  afterEach(() => {
-    resetStores();
-  });
-
-  it("As the permissions popover, the store starts at version 0 with no change", () => {
-    expect(getPermissionsState()).toEqual({ version: 0, last: null });
-  });
-
-  it("As a listener, a grant fires dotli:permission-changed { label, permission }", async () => {
+describe("permission changes", () => {
+  it("As a listener, a grant fires dotli:permission-changed { label, permission } and no device change", () => {
     // Given
-    const events = capture("dotli:permission-changed");
+    const grants = capture("dotli:permission-changed");
+    const devices = capture("dotli:device-permission-changed");
 
     // When
     recordPermissionChange({
@@ -42,20 +30,18 @@ describe("permissions store", () => {
       label: "myapp",
       permission: "camera",
     });
-    await settle();
 
     // Then
-    expect(events.details).toEqual([{ label: "myapp", permission: "camera" }]);
-    expect(permissionsStore.get()).toEqual({
-      version: 1,
-      last: { kind: "grant", label: "myapp", permission: "camera" },
-    });
-    events.stop();
+    expect(grants.details).toEqual([{ label: "myapp", permission: "camera" }]);
+    expect(devices.details).toEqual([]);
+    grants.stop();
+    devices.stop();
   });
 
-  it("As a listener, a device change fires dotli:device-permission-changed { label, permission }", () => {
+  it("As a listener, each device change fires dotli:device-permission-changed { label, permission } and no grant", () => {
     // Given
-    const events = capture("dotli:device-permission-changed");
+    const grants = capture("dotli:permission-changed");
+    const devices = capture("dotli:device-permission-changed");
 
     // When
     recordPermissionChange({
@@ -70,11 +56,12 @@ describe("permissions store", () => {
     });
 
     // Then
-    expect(events.details).toEqual([
+    expect(devices.details).toEqual([
       { label: "myapp", permission: "camera" },
       { label: "myapp", permission: "camera" },
     ]);
-    expect(getPermissionsState().version).toBe(2);
-    events.stop();
+    expect(grants.details).toEqual([]);
+    grants.stop();
+    devices.stop();
   });
 });

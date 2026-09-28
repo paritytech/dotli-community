@@ -2,25 +2,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { DotliAuthState } from "../host-callbacks/AuthState";
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store";
+import { createSyncStore, type ReadableStore } from "./create-store";
 
-// Equal states notify nobody; setAuthState still dispatches its event.
-const auth = createSyncStore<DotliAuthState>(
-  { tag: "Disconnected" },
-  { equals: shallowEqual },
-);
+// Every state notifies, an equal one too: each is a step of the core's login
+// flow that the auth controller acts on (a second identical LoginFailed after
+// a retry must show its error again).
+const auth = createSyncStore<DotliAuthState>({ tag: "Disconnected" });
 const session = createSyncStore<boolean>(false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;
 export const getAuthState = auth.get;
 
 /**
- * Also dispatches `dotli:truapi-auth-state` with the same detail as before:
- * the auth controller, the chat panel and the e2e global setup listen for it.
+ * Notifies the store's listeners (the auth controller first: it subscribes at
+ * boot), then dispatches `dotli:truapi-auth-state` with the state as detail,
+ * for the e2e global setup.
  */
 export function setAuthState(next: DotliAuthState): void {
   auth.set(next);

@@ -14,7 +14,7 @@ import type {
 } from "./blocking-modal-queue";
 import { ERRORS } from "./errors";
 import type { DotliAuthState } from "./host-callbacks/AuthState";
-import { setLoggedIn } from "./state/auth";
+import { authStore, setLoggedIn } from "./state/auth";
 import { resetAuthModal, updateAuthModal } from "./state/auth-modal";
 
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
@@ -41,11 +41,12 @@ export function initAuthController(
   });
 
   // Single ordered auth-state stream owned by the Rust core (plus the boot
-  // rehydration and bridge transport-failure synthetics). The modal closes
-  // only on `Connected` or explicit user action; a `Disconnected` can never
-  // tear down an in-flight pairing presentation.
-  window.addEventListener("dotli:truapi-auth-state", (e: Event) => {
-    applyAuthState((e as CustomEvent<DotliAuthState>).detail);
+  // rehydration and bridge transport-failure synthetics). The store notifies
+  // on every state, an equal one too. The modal closes only on `Connected`
+  // or explicit user action; a `Disconnected` can never tear down an
+  // in-flight pairing presentation.
+  authStore.subscribe(() => {
+    applyAuthState(authStore.get());
   });
 
   // Default logged-out state until the core or the boot rehydration says

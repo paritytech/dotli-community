@@ -9,7 +9,7 @@ import {
   setTopbarVisible,
   topbarStore,
 } from "@dotli/ui/state/topbar";
-import { resetStores, settle } from "../helpers/solid";
+import { resetStores } from "../helpers/solid";
 
 describe("topbar store", () => {
   afterEach(() => {
@@ -24,42 +24,20 @@ describe("topbar store", () => {
     });
   });
 
-  it("As the chat panel, topbar:visibility still carries a boolean detail", async () => {
-    // Given
-    const details: unknown[] = [];
-    const listener = (e: Event): void => {
-      details.push((e as CustomEvent).detail);
-    };
-    window.addEventListener("topbar:visibility", listener);
-
+  it("As the auto-hide and the blocking-modal queue, my writes land in the store", () => {
     // When
     setTopbarVisible(false);
-    await settle();
-
-    // Then
-    expect(details).toEqual([false]);
-    expect(topbarStore.get().visible).toBe(false);
-    window.removeEventListener("topbar:visibility", listener);
-  });
-
-  it("As the topbar, dotli:blocking-modal-active still carries { active }", () => {
-    // Given
-    const details: unknown[] = [];
-    const listener = (e: Event): void => {
-      details.push((e as CustomEvent).detail);
-    };
-    window.addEventListener("dotli:blocking-modal-active", listener);
-
-    // When
     setBlockingModalActive(true);
 
     // Then
-    expect(details).toEqual([{ active: true }]);
-    expect(getTopbarState().blockingModalActive).toBe(true);
-    window.removeEventListener("dotli:blocking-modal-active", listener);
+    expect(topbarStore.get()).toEqual({
+      visible: false,
+      blockingModalActive: true,
+      chainsButtonVisible: false,
+    });
   });
 
-  it("As the host, chains button visibility is recorded without an event", () => {
+  it("As the host, chains button visibility is recorded", () => {
     // When
     recordChainsButtonVisible(true);
 

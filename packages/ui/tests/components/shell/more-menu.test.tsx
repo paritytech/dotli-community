@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { setChatCapability } from "@dotli/shared/chat-capability";
+import { setLoggedIn } from "@dotli/ui/state/auth";
 import { initChatPanelState } from "@dotli/ui/state/chat-panel";
 import { setBlockingModalActive } from "@dotli/ui/state/topbar";
 import {
@@ -220,22 +221,14 @@ describe("MoreMenu", () => {
       new CustomEvent("dotli:product-loaded", { detail: { label: "app.dot" } }),
     );
     setChatCapability("app.dot", true);
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: { tag: "Connected" },
-      }),
-    );
+    setLoggedIn(true);
     await settle();
 
     // Then
     expect(byId("more-row-chat").hidden).toBe(false);
 
     // When
-    window.dispatchEvent(
-      new CustomEvent("dotli:truapi-auth-state", {
-        detail: { tag: "Disconnected" },
-      }),
-    );
+    setLoggedIn(false);
     await settle();
 
     // Then
