@@ -114,10 +114,7 @@ export const config = [
     // Only the logging + metrics entry points may call `console.*`
     // directly. Everywhere else must go through `log.*` so DEBUG
     // gating + Sentry breadcrumb wiring applies uniformly.
-    files: [
-      "**/src/**/*.ts",
-      "**/src/**/*.tsx",
-    ],
+    files: ["**/src/**/*.ts", "**/src/**/*.tsx"],
     ignores: [
       "**/packages/shared/src/log.ts",
       "**/packages/metrics/src/**",
@@ -135,8 +132,10 @@ export const config = [
   },
   {
     // Test doubles are often deliberate no-ops: a stubbed listener, a
-    // silenced console, an async adapter method with nothing to do. The empty
-    // body is the point of the stub, so the rule only adds noise there.
+    // silenced console, an async adapter method with nothing to do, or a
+    // best-effort Playwright step (`.catch(() => {})` on an optional click or
+    // wait). The empty body is the point there, so the rule only adds noise.
+    // `src` keeps the rule.
     files: ["tests/**/*.ts", "tests/**/*.tsx"],
     rules: {
       "@typescript-eslint/no-empty-function": "off",

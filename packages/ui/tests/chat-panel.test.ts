@@ -772,7 +772,13 @@ describe("chat panel", () => {
     const composer = byId("chat-panel-composer", HTMLFormElement);
     input.value = "hello";
     composer.requestSubmit();
-    await settle(() => byId("chat-panel-hint").hidden === false);
+    // The hint appears as soon as the send fails, but the thread re-reads
+    // the saved message from IndexedDB afterwards, so wait for both.
+    await settle(
+      () =>
+        byId("chat-panel-hint").hidden === false &&
+        byId("chat-panel-messages").textContent.includes("hello"),
+    );
     expect(byId("chat-panel-hint").textContent).toBe(
       "Log in to chat with this app.",
     );
@@ -784,7 +790,8 @@ describe("chat panel", () => {
     await settle(
       () =>
         byId("chat-panel-hint").textContent ===
-        "Message saved, but the app could not be reached.",
+          "Message saved, but the app could not be reached." &&
+        byId("chat-panel-messages").textContent.includes("again"),
     );
     expect(byId("chat-panel-messages").textContent).toContain("again");
   });
