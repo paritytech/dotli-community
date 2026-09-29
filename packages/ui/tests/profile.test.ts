@@ -145,6 +145,33 @@ describe("profile drawer", () => {
     expect(drawer()).toBeNull();
   });
 
+  it("attributes a contact's profile to the sending account, as plain text", async () => {
+    mocks.bitswapGet.mockReturnValue(new Promise<Uint8Array>(() => undefined));
+    const peerIdentity = Uint8Array.from({ length: 32 }, (_, i) => i);
+
+    await createProfilePlatform().presentContactProfile(
+      { ...product, productId: "<b>echat.paseo</b>" },
+      { reference: VECTOR.reference, peerIdentity, sharedAt: 1_700_000n },
+    );
+
+    const attribution = drawer()?.querySelector(".profile-drawer-attribution");
+    expect(attribution?.textContent).toBe(
+      "Shared with you over Chat by 0x000102...1e1f · shown in <b>echat.paseo</b>. Profile content is self-described; the host confirms who sent it, not who it depicts.",
+    );
+    expect(attribution?.children).toHaveLength(0);
+  });
+
+  it("rejects an unparseable contact reference without opening UI", async () => {
+    await expect(
+      createProfilePlatform().presentContactProfile(product, {
+        reference: "nope",
+        peerIdentity: new Uint8Array(32),
+        sharedAt: 0n,
+      }),
+    ).rejects.toBeInstanceOf(InvalidProfileReferenceError);
+    expect(drawer()).toBeNull();
+  });
+
   it("replaces the drawer on screen and closes on Escape", async () => {
     mocks.bitswapGet.mockReturnValue(new Promise<Uint8Array>(() => undefined));
     const platform = createProfilePlatform();
