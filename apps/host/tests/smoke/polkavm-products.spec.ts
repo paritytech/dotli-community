@@ -46,6 +46,9 @@ const products: readonly ProductSmoke[] = [
     label: "egui-chat",
     profile: "tri2d",
     keys: [],
+    scheduling: "demand-driven",
+    // The signed-out guest's Retry button reopens the host sign-in prompt.
+    clickPosition: { x: 880, y: 132 },
     audio: false,
     nonzeroAudio: false,
     interaction: "host-sign-in",
@@ -135,6 +138,27 @@ async function waitForRuntimeReady(
   );
 }
 
+async function cancelSignIn(page: Page, canvas: Locator): Promise<void> {
+  const signIn = page.locator("#auth-modal-backdrop");
+  await expect(signIn).toBeVisible({ timeout: 30_000 });
+  const responsesBefore = await counter(
+    canvas,
+    "data-polkavm-host-frame-responses",
+  );
+  await signIn.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(signIn).toBeHidden();
+  await expect
+    .poll(() => counter(canvas, "data-polkavm-host-frame-responses"), {
+      timeout: 30_000,
+    })
+    .toBeGreaterThan(responsesBefore);
+  // Wait for the guest to draw the cancellation before the next interaction.
+  const framesAfterResponse = await counter(canvas, "data-polkavm-frames");
+  await expect
+    .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
+    .toBeGreaterThan(framesAfterResponse);
+}
+
 async function smokeProduct(
   page: Page,
   product: ProductSmoke,
@@ -186,10 +210,7 @@ async function smokeProduct(
   }
 
   if (product.interaction === "host-sign-in") {
-    const signIn = page.locator("#auth-modal-backdrop");
-    await expect(signIn).toBeVisible({ timeout: 30_000 });
-    await signIn.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(signIn).toBeHidden();
+    await cancelSignIn(page, canvas);
   }
 
   const framesBefore = await counter(canvas, "data-polkavm-frames");
@@ -278,9 +299,13 @@ async function smokeProduct(
         timeout: 30_000,
       })
       .toBeGreaterThan(hostFrameResponsesBefore);
+  } else if (product.interaction === "host-sign-in") {
+    // A fresh prompt proves the guest handled input after cancellation.
+    await cancelSignIn(page, canvas);
   }
 
   if (product.scheduling === "demand-driven") {
+    // Idle UI guests need not publish the worker's 120-update metrics batch.
     await expect
       .poll(() => counter(canvas, "data-polkavm-frames"), { timeout: 30_000 })
       .toBeGreaterThan(framesBefore);
