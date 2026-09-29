@@ -28,8 +28,9 @@ export interface ProfileDrawerOptions {
   /** Product that asked for the presentation, shown as attribution. */
   readonly productId: string;
   /**
-   * Host-derived name of the Chat contact who shared the reference, for a
-   * profile the host received from that contact. Never product-supplied.
+   * How to name the Chat contact who shared the reference, for a profile the
+   * host received from that contact: the username the core resolved, or a
+   * generic phrase. Never an address, never product-supplied.
    */
   readonly sharedBy?: string;
   /** Fetch and decrypt the profile. Aborted when the drawer closes. */

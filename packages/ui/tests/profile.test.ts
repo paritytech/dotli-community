@@ -145,20 +145,45 @@ describe("profile drawer", () => {
     expect(drawer()).toBeNull();
   });
 
-  it("attributes a contact's profile to the sending account, as plain text", async () => {
+  // Anything that reads as an address: a 0x prefix or a long hex run.
+  const ADDRESS_LIKE = /0x|[0-9a-f]{8,}/i;
+
+  it("names a contact by the username the host resolved, as plain text", async () => {
     mocks.bitswapGet.mockReturnValue(new Promise<Uint8Array>(() => undefined));
     const peerIdentity = Uint8Array.from({ length: 32 }, (_, i) => i);
 
     await createProfilePlatform().presentContactProfile(
       { ...product, productId: "<b>echat.paseo</b>" },
-      { reference: VECTOR.reference, peerIdentity, sharedAt: 1_700_000n },
+      {
+        reference: VECTOR.reference,
+        peerIdentity,
+        sharedAt: 1_700_000n,
+        username: "alice.01",
+      },
     );
 
     const attribution = drawer()?.querySelector(".profile-drawer-attribution");
     expect(attribution?.textContent).toBe(
-      "Shared with you over Chat by 0x000102...1e1f · shown in <b>echat.paseo</b>. Profile content is self-described; the host confirms who sent it, not who it depicts.",
+      "Shared with you over Chat by alice.01 · shown in <b>echat.paseo</b>. Profile content is self-described; the host confirms who sent it, not who it depicts.",
     );
     expect(attribution?.children).toHaveLength(0);
+    expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
+  });
+
+  it("names a contact generically, never by address, when the host knows no username", async () => {
+    mocks.bitswapGet.mockReturnValue(new Promise<Uint8Array>(() => undefined));
+
+    await createProfilePlatform().presentContactProfile(product, {
+      reference: VECTOR.reference,
+      peerIdentity: new Uint8Array(32).fill(0xab),
+      sharedAt: 1_700_000n,
+    });
+
+    const attribution = drawer()?.querySelector(".profile-drawer-attribution");
+    expect(attribution?.textContent).toBe(
+      `Shared with you over Chat by this contact · shown in ${product.productId}. Profile content is self-described; the host confirms who sent it, not who it depicts.`,
+    );
+    expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
   });
 
   it("rejects an unparseable contact reference without opening UI", async () => {

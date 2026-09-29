@@ -15,7 +15,7 @@
 // learn which of its contacts shared a profile.
 
 import type { ProfilePlatform } from "@parity/truapi-host";
-import { fromHex, toHex } from "@dotli/shared/hex";
+import { fromHex } from "@dotli/shared/hex";
 import { showProfileDrawer, type LoadedProfile } from "../profile/drawer";
 import {
   createAvatarProfileCache,
@@ -100,31 +100,25 @@ export function presentProfileReference(
   showProfileDrawer({ productId, loadProfile: profileLoader(reference) });
 }
 
-/**
- * The name a contact's profile is attributed to: a shortened form of the
- * identity account the core authenticated as the Chat sender, the same form
- * the top bar uses for an account without a username. dot.li has no
- * account-to-username lookup, and the product's own label for the contact is
- * never used.
- */
-function contactLabel(peerIdentity: Uint8Array): string {
-  const account = toHex(peerIdentity);
-  return `${account.slice(0, 8)}...${account.slice(-4)}`;
-}
+/** How a contact the host knows no username for is named. */
+const UNNAMED_CONTACT = "this contact";
 
 /**
- * Show the profile a Chat contact shared, attributed to that contact and
- * shown in `productId`. Throws for a reference this host cannot parse, before
- * any UI appears.
+ * Show the profile a Chat contact shared, attributed to that contact by the
+ * username the core resolved for them, or generically when it knows none,
+ * and shown in `productId`. The contact is never named by an address or by
+ * anything the product said. Throws for a reference this host cannot parse,
+ * before any UI appears.
  */
 export function presentContactProfileReference(
   productId: string,
   reference: string,
-  peerIdentity: Uint8Array,
+  username: string | undefined,
 ): void {
   showProfileDrawer({
     productId,
-    sharedBy: contactLabel(peerIdentity),
+    sharedBy:
+      username === undefined || username === "" ? UNNAMED_CONTACT : username,
     loadProfile: profileLoader(reference),
   });
 }
@@ -235,7 +229,7 @@ export function createProfilePlatform(
         presentContactProfileReference(
           product.productId,
           presented.reference,
-          presented.peerIdentity,
+          presented.username,
         );
         resolve();
       });
