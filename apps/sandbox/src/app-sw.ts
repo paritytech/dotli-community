@@ -144,8 +144,8 @@ async function loadArchiveFromDBByDomain(
 
 // Archive storage.
 
-let archivePacked: ArrayBuffer | null = null;
-let archiveFileIndex: Map<string, { o: number; l: number }> | null = null;
+/** Files of the archive the fetch handler serves, keyed by path. */
+let servedFiles: Record<string, ArrayBuffer> | null = null;
 
 const archiveCache = new Map<string, ArchiveEntry>();
 
@@ -171,18 +171,13 @@ function archiveCacheGet(key: string): ArchiveEntry | undefined {
 }
 
 function hasArchive(): boolean {
-  return archivePacked !== null;
+  return servedFiles !== null;
 }
 
-function getFile(path: string): ArrayBuffer | Uint8Array | undefined {
-  if (archiveFileIndex === null || archivePacked === null) {
-    return undefined;
-  }
-  const entry = archiveFileIndex.get(path);
-  if (entry === undefined) {
-    return undefined;
-  }
-  return new Uint8Array(archivePacked, entry.o, entry.l);
+function getFile(path: string): ArrayBuffer | undefined {
+  return servedFiles !== null && Object.hasOwn(servedFiles, path)
+    ? servedFiles[path]
+    : undefined;
 }
 
 // SW lifecycle.
@@ -238,8 +233,11 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       return;
     }
 
-    archivePacked = packed;
-    archiveFileIndex = new Map(idx.map((e) => [e.p, { o: e.o, l: e.l }]));
+    const files: Record<string, ArrayBuffer> = {};
+    for (const entry of idx) {
+      files[entry.p] = packed.slice(entry.o, entry.o + entry.l);
+    }
+    servedFiles = files;
 
     const domain = data.domain as string | undefined;
     const cid = data.cid as string | undefined;
@@ -259,15 +257,9 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       cid !== undefined &&
       cid !== ""
     ) {
-      const p = packed;
-      const i = idx;
       const d = domain;
       const c = cid;
       const cb = contentBackend;
-      const files: Record<string, ArrayBuffer> = {};
-      for (const entry of i) {
-        files[entry.p] = p.slice(entry.o, entry.o + entry.l);
-      }
       const archiveEntry: ArchiveEntry = {
         domain: d,
         cid: c,
@@ -304,6 +296,33 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     if (source) {
       (source as Client).postMessage({ type: "ARCHIVE_READY" });
     }
+    return;
+  }
+
+  if (data.type === "ACTIVATE_ARCHIVE") {
+    // Serve an archive this SW already holds, after the page accepted it from
+    // `SW_CACHE_LOOKUP_EVENT`. It was verified and persisted when it was
+    // stored, so activating it neither re-hashes nor re-writes it.
+    const domain = data.domain as string;
+    const cid = data.cid as string;
+    const contentBackend = data.contentBackend as string;
+    const port = event.ports.at(0);
+    const cached = archiveCacheGet(domain);
+    const found =
+      cached !== undefined
+        ? Promise.resolve(cached)
+        : loadArchiveFromDBByDomain(domain);
+    void found.then((entry) => {
+      const files =
+        entry?.cid === cid && entry.contentBackend === contentBackend
+          ? entry.files
+          : undefined;
+      if (entry !== null && files !== undefined) {
+        servedFiles = files;
+        archiveCacheSet(domain, entry);
+      }
+      port?.postMessage({ activated: files !== undefined });
+    });
     return;
   }
 
@@ -473,14 +492,7 @@ function lookupArchive(
       }
       return makeHtmlResponse(content, mime);
     }
-    const body =
-      content instanceof Uint8Array
-        ? (content.buffer.slice(
-            content.byteOffset,
-            content.byteOffset + content.byteLength,
-          ) as ArrayBuffer)
-        : content;
-    return new Response(body, archiveResponseInit(mime));
+    return new Response(content, archiveResponseInit(mime));
   }
 
   // SPA fallback, only for top-level navigations. Other requests fall

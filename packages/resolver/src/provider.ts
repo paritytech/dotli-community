@@ -123,6 +123,10 @@ function getHandle(): Promise<ChainProviderHandle> {
       }
     ).__truapiProvider = { setLogLevel };
     const builder = new ChainProviderBuilder();
+    // dot.li is served over https, where the browser blocks plain `ws://` to
+    // non-localhost peers as mixed content; don't dial them at all. Localhost
+    // `ws://` stays allowed for local dev nodes.
+    builder.setConnectionTypes({ unsecure: false });
     const store = createSmoldotDb();
     if (store !== null) {
       // Observe every read the crate makes, not just explicit `loadDatabase`
