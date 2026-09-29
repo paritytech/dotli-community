@@ -9,14 +9,14 @@ import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
 import {
   buildInfo,
   readPackageVersion,
-} from "../../packages/config/src/build-info-plugin";
-import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
-import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
+} from "../../packages/config/src/build-info-plugin.ts";
+import { socialMetaTags } from "../../packages/config/src/social-meta-plugin.ts";
+import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin.ts";
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The

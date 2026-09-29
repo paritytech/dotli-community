@@ -5,9 +5,9 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
-import { buildInfo } from "../../packages/config/src/build-info-plugin";
+import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
+import { buildInfo } from "../../packages/config/src/build-info-plugin.ts";
 
 const OUT_DIR = "dist";
 

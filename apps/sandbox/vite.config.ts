@@ -7,10 +7,10 @@ import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
-import { buildInfo } from "../../packages/config/src/build-info-plugin";
-import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
+import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
+import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
+import { buildInfo } from "../../packages/config/src/build-info-plugin.ts";
+import { socialMetaTags } from "../../packages/config/src/social-meta-plugin.ts";
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
