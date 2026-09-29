@@ -198,7 +198,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: paritytech/host-playground
-          ref: 63ba2274648c39ed2431b7548dcd93d50862ea9e
+          ref: f56294cea4430163bf16ec068844b1327441073c
           path: .build/e2e-host-playground
           persist-credentials: false
 
