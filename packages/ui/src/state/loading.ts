@@ -24,7 +24,8 @@ export interface LoadingState {
   phase: LoadingScreenPhase;
 }
 
-// Matches the static markup in apps/host/index.html, which paints first.
+// What the host page's build-time render of the loading screen shows, which
+// paints first.
 const loading = createSyncStore<LoadingState>(
   {
     progress: 0,

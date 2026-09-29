@@ -45,7 +45,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page).toHaveURL(/\/\/browse\./);
   });
 
-  test("As a user, the prerendered shell's islands swap in over it without errors, and its login button opens the QR modal", async ({
+  test("As a user, the shell's islands hydrate without errors, and its login button opens the QR modal", async ({
     page,
   }) => {
     // Given
@@ -62,9 +62,8 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the landing page renders its own theme button, titled with the
-    // preference (the static one is titled "Theme"), and the topbar's action
-    // group, More button included, is gone.
+    // Then: the landing page renders its own theme button, and the topbar's
+    // action group, More button included, is gone.
     await expect(page.locator('#theme-toggle')).toHaveAttribute('title', /^Theme: /);
     await expect(page.locator('#theme-toggle')).toHaveCount(1);
     await expect(page.locator('#more-button')).toHaveCount(0);
@@ -198,11 +197,11 @@ test.describe('Shell UI smoke', () => {
     expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
   });
 
-  test('As a user with JavaScript disabled, the prerendered shell still shows the topbar', async ({ browser }) => {
+  test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {
     // Given
     // The topbar is hidden on the landing page by JS (topbar-autohide.ts),
     // so with JS off it stays present instead: this proves the shell is
-    // prerendered server-side, not painted in by a script.
+    // rendered at build time, not painted in by a script.
     const context = await browser.newContext({ javaScriptEnabled: false });
     const page = await context.newPage();
 
@@ -211,9 +210,10 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#topbar')).toBeAttached();
-    await expect(page.locator('#auth-button')).toBeAttached();
-    // The islands' static markup, which no script replaced.
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme');
+    // The account button's placeholder, until its client-only island renders.
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Connecting...');
+    // A hydrated island's build-time render.
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');
 
     await context.close();
   });

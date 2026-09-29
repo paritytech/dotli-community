@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
+import { createEffect, createSignal, For, onSettled, Show, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
@@ -62,8 +62,8 @@ function LockIcon(props: { size: number }): JSX.Element {
 /**
  * The permissions button (`#permissions-button`), its popover
  * (`#permissions-popover`) and the popover's backdrop, both rendered into the
- * body, an item of the topbar island (see islands.tsx) swapped in for
- * Shell.tsx's static markup after boot.
+ * body, an item of the topbar's action group island (see islands.tsx),
+ * rendered with the host page and hydrated.
  *
  * The popover lists every permission of the loaded product (productStore)
  * with a dropdown to allow, deny or reset it, through the async API in
@@ -117,13 +117,16 @@ export function PermissionsPopover(): JSX.Element {
   const refresh = (): void => {
     setChanges(n => n + 1);
   };
-  for (const name of REFRESH_EVENTS) {
-    window.addEventListener(name, refresh);
-  }
-  onCleanup(() => {
+  // Once mounted: a build-time render has no window.
+  onSettled(() => {
     for (const name of REFRESH_EVENTS) {
-      window.removeEventListener(name, refresh);
+      window.addEventListener(name, refresh);
     }
+    return () => {
+      for (const name of REFRESH_EVENTS) {
+        window.removeEventListener(name, refresh);
+      }
+    };
   });
   const label = (): string | null => {
     const current = product();

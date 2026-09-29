@@ -1,24 +1,31 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+// The host is a static Astro site: one page (src/pages/index.astro), whose
+// shell is plain markup with the reactive pieces as Solid islands
+// (@dotli/astro-solid), server-rendered at build time and hydrated. Astro
+// drives Vite; the build's Vite setup is under `vite` below.
+
 import { sentryVitePlugin } from '@sentry/vite-plugin';
-import { defineConfig, type Plugin, type PluginOption } from 'vite';
+import { defineConfig } from 'astro/config';
+import type { AstroIntegration } from 'astro';
+import type { Plugin, PluginOption } from 'vite';
 import { readFileSync, readdirSync } from 'node:fs';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
-import { resolve } from 'node:path';
-import solid from '@solidjs/vite-plugin';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
-import { VitePWA } from 'vite-plugin-pwa';
+import astroSolid from '@dotli/astro-solid';
 import {
   appBuildOptions,
+  astroPwa,
   rolldownOptions,
   buildInfo,
   readPackageVersion,
   runtimeNetworkConfigScript,
-  socialMetaTags,
 } from '@dotli/config/vite';
 import { stripAnalytics } from '@dotli/metrics/vite';
-import { prerenderPlugin, SHELL_SERVER_ENTRY } from '@dotli/ui/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -127,69 +134,98 @@ function readPolkadotApiVersion(): string {
 }
 
 /**
- * Vite plugin that injects conditional <link rel="modulepreload"> for
- * critical chunks on subdomain pages.
+ * The page's preloads, added to the built page. Every chunk the page's
+ * script and its islands' modules (component and renderer) import
+ * statically, as `<link rel="modulepreload">`: what Vite writes for an HTML
+ * entry, which Astro does not, so the browser fetches them in parallel
+ * rather than one import level at a time. And, on subdomain pages, a script
+ * that preloads the critical lazy chunks (resolve, fetch, render) and the
+ * metadata asset.
  */
-function preloadCriticalAssets(): Plugin {
-  let resolvedBase = '/';
-  return {
-    name: 'preload-critical-assets',
-    configResolved(config) {
-      resolvedBase = config.base;
+function pagePreloads(): AstroIntegration {
+  let base = '/';
+  /** Each client chunk's static imports, by file name. */
+  const imports = new Map<string, readonly string[]>();
+  const graph: Plugin = {
+    name: 'page-preloads:graph',
+    applyToEnvironment: environment => environment.name === 'client',
+    generateBundle(_, bundle) {
+      for (const output of Object.values(bundle)) {
+        if (output.type === 'chunk') {
+          imports.set(output.fileName, output.imports);
+        }
+      }
     },
-    transformIndexHtml: {
-      order: 'post',
-      handler(_html, ctx) {
-        if (!ctx.bundle) {
-          return [];
+  };
+  return {
+    name: 'page-preloads',
+    hooks: {
+      'astro:config:setup': ({ updateConfig }) => {
+        updateConfig({ vite: { plugins: [graph] } });
+      },
+      'astro:config:done': ({ config }) => {
+        base = config.base.endsWith('/') ? config.base : `${config.base}/`;
+      },
+      'astro:build:done': async ({ dir }) => {
+        const out = fileURLToPath(dir);
+        const page = join(out, 'index.html');
+        let html = await readFile(page, 'utf8');
+
+        const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
+        const entries = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
+        const islandModules = [...html.matchAll(/\b(?:component|renderer)-url="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
+        const preload = new Set<string>(islandModules);
+        const visit = (file: string): void => {
+          for (const dependency of imports.get(file) ?? []) {
+            if (!preload.has(dependency)) {
+              preload.add(dependency);
+              visit(dependency);
+            }
+          }
+        };
+        for (const file of [...entries, ...islandModules]) {
+          visit(file);
         }
-
-        const bundleKeys = Object.keys(ctx.bundle);
-        const findChunk = (pattern: RegExp): string | undefined => bundleKeys.find(name => pattern.test(name));
-
-        const resolveChunk = findChunk(/^assets\/resolve-.*\.js$/);
-        const fetchChunk = findChunk(/^assets\/fetch-.*\.js$/);
-        const renderChunk = findChunk(/^assets\/render-.*\.js$/);
-        const metadataAsset = findChunk(/^assets\/ah-.*\.scale$/);
-
-        const chunks = [resolveChunk, fetchChunk, renderChunk].filter((c): c is string => c !== undefined);
-        if (chunks.length === 0) {
-          return [];
+        for (const entry of entries) {
+          preload.delete(entry);
         }
+        const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
 
-        const b = resolvedBase;
-
-        const fetchPreloads = [metadataAsset]
-          .filter((a): a is string => a !== undefined)
-          .map(
-            a =>
-              `l=document.createElement("link");l.rel="preload";l.as="fetch";l.crossOrigin="anonymous";l.href="${b}${a}";document.head.appendChild(l);`,
-          )
-          .join('');
-
-        const preloadStatements = chunks
-          .map(
-            c =>
-              `l=document.createElement("link");l.rel="modulepreload";l.href="${b}${c}";document.head.appendChild(l);`,
-          )
-          .join('');
-        const script = [
-          '(function(){',
-          'var h=location.hostname,l;',
-          'if(h==="dot.li"||h==="localhost")return;',
-          'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
-          fetchPreloads,
-          preloadStatements,
-          '})()',
-        ].join('');
-
-        return [
-          {
-            tag: 'script',
-            children: script,
-            injectTo: 'head',
-          },
-        ];
+        const assets = (await readdir(join(out, 'assets'))).map(name => `assets/${name}`);
+        const find = (pattern: RegExp): string | undefined => assets.find(name => pattern.test(name));
+        const chunks = [
+          find(/^assets\/resolve-.*\.js$/),
+          find(/^assets\/fetch-.*\.js$/),
+          find(/^assets\/render-.*\.js$/),
+        ].filter((c): c is string => c !== undefined);
+        let critical = '';
+        if (chunks.length > 0) {
+          const metadataAsset = find(/^assets\/ah-.*\.scale$/);
+          const fetchPreloads = [metadataAsset]
+            .filter((a): a is string => a !== undefined)
+            .map(
+              a =>
+                `l=document.createElement("link");l.rel="preload";l.as="fetch";l.crossOrigin="anonymous";l.href="${base}${a}";document.head.appendChild(l);`,
+            )
+            .join('');
+          const preloadStatements = chunks
+            .map(
+              c =>
+                `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${c}";document.head.appendChild(l);`,
+            )
+            .join('');
+          critical = `<script>${[
+            '(function(){',
+            'var h=location.hostname,l;',
+            'if(h==="dot.li"||h==="localhost")return;',
+            'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
+            fetchPreloads,
+            preloadStatements,
+            '})()',
+          ].join('')}</script>`;
+        }
+        html = html.replace('</head>', `${links}${critical}</head>`);
+        await writeFile(page, html);
       },
     },
   };
@@ -240,45 +276,22 @@ function sentry(): PluginOption {
 }
 
 export default defineConfig({
-  envDir: resolve(import.meta.dirname, '../..'),
+  output: 'static',
+  outDir: OUT_DIR,
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
-  plugins: [
-    // `ssr: true` gives the ssr environment Solid's server codegen, which
-    // prerenderPlugin (below) needs to render the shell into index.html; a
-    // plain `solid()` compiles that environment for the DOM too. Nothing on
-    // the client hydrates (the prerendered shell is inert HTML, and its
-    // reactive pieces are client-rendered islands swapped in over it, see
-    // packages/ui/src/mount/load-islands.ts), so both environments compile
-    // non-hydratable: the client output is a plain SPA compile, without
-    // hydration keys or claim walks, and the prerender carries no `_hk`
-    // markers.
-    stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
-    solid({ ssr: true, solid: { hydratable: false } }),
-    wasm(),
-    runtimeNetworkConfigScript(),
-    buildInfo('host'),
-    socialMetaTags({
-      title: 'Polkadot - The decentralized web, in your browser',
-      description:
-        'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
-      siteName: 'Polkadot Web',
-      image: '/icon-512.png',
-      imageAlt: 'Polkadot logo',
-    }),
-    preloadCriticalAssets(),
-    prerenderPlugin({
-      placeholder: '<!--ssr:shell-->',
-      entry: SHELL_SERVER_ENTRY,
-      exportName: 'renderShell',
-    }),
-    previewCoepHeaders(),
-    sentry(),
+  // Where the Vite build put them: nginx rate-limits and caches /assets/.
+  build: { assets: 'assets' },
+  devToolbar: { enabled: false },
+  integrations: [
+    // Compiles Solid for the islands: server-rendered at build time and
+    // hydrated in the browser (see packages/astro-solid).
+    astroSolid(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. `registerType:
     // "prompt"` defers update activation to the user via workbox-window in
     // src/pwa.ts.
-    VitePWA({
+    astroPwa({
       injectRegister: false,
       registerType: 'prompt',
       filename: 'host-sw.js',
@@ -319,36 +332,77 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
       },
     }),
+    pagePreloads(),
   ],
-  worker: {
-    plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
-    rolldownOptions: rolldownOptions(),
-  },
-  define: {
-    __BUILD_TARGET__: JSON.stringify('host'),
-    // Baked once at build time, read lazily at the declaration site so a
-    // missing package (shouldn't happen given the monorepo overrides)
-    // falls back to empty/"unknown" rather than failing the build.
-    __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
-    __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
-    __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
-    __POLKADOT_API_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@polkadot-api/')),
-    __PARITY_TRUAPI_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@parity/truapi')),
-  },
-  optimizeDeps: {
-    exclude: ['@polkadot-api/wasm-executor'],
-  },
-  build: {
-    ...appBuildOptions(),
-    target: 'esnext',
-    modulePreload: { polyfill: false },
-    outDir: OUT_DIR,
-    sourcemap: 'hidden',
-  },
-  server: {
-    headers: {
-      'Service-Worker-Allowed': '/',
-      'Access-Control-Allow-Origin': '*',
+  vite: {
+    envDir: resolve(import.meta.dirname, '../..'),
+    // The host's settings are VITE_*, as under plain Vite (Astro's own
+    // default is PUBLIC_*).
+    envPrefix: 'VITE_',
+    plugins: [
+      stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
+      wasm(),
+      // Serves /dotli-network.js under `astro dev`; the page links it
+      // (src/pages/index.astro).
+      runtimeNetworkConfigScript(),
+      buildInfo('host'),
+      previewCoepHeaders(),
+      sentry(),
+    ],
+    worker: {
+      plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
+      rolldownOptions: rolldownOptions(),
+    },
+    define: {
+      __BUILD_TARGET__: JSON.stringify('host'),
+      // Baked once at build time, read lazily at the declaration site so a
+      // missing package (shouldn't happen given the monorepo overrides)
+      // falls back to empty/"unknown" rather than failing the build.
+      __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
+      __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
+      __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
+      __POLKADOT_API_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@polkadot-api/')),
+      __PARITY_TRUAPI_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@parity/truapi')),
+    },
+    optimizeDeps: {
+      exclude: ['@polkadot-api/wasm-executor'],
+    },
+    build: {
+      ...appBuildOptions(),
+      target: 'esnext',
+      modulePreload: { polyfill: false },
+      sourcemap: 'hidden',
+    },
+    environments: {
+      client: {
+        build: {
+          rolldownOptions: {
+            // Vite's file names, which the bundle-size budgets, the eager
+            // path measure and the service worker's rules match: the page's
+            // script is the `index` entry. A page-derived name (`@_@`) keeps
+            // only its page part, as Astro's own naming does.
+            output: {
+              entryFileNames: chunk =>
+                chunk.facadeModuleId?.includes('/src/pages/index.astro?astro&type=script') === true
+                  ? 'assets/index-[hash].js'
+                  : 'assets/[name]-[hash].js',
+              chunkFileNames: 'assets/[name]-[hash].js',
+              assetFileNames: asset => {
+                const [page] = (asset.names[0] ?? '').split('@_@');
+                return page !== undefined && page !== asset.names[0]
+                  ? `assets/${page}-[hash][extname]`
+                  : 'assets/[name]-[hash][extname]';
+              },
+            },
+          },
+        },
+      },
+    },
+    server: {
+      headers: {
+        'Service-Worker-Allowed': '/',
+        'Access-Control-Allow-Origin': '*',
+      },
     },
   },
 });

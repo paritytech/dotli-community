@@ -21,7 +21,7 @@ export {
   stopStatusTick,
   type LoadingPhase,
 } from './loading-controller.js';
-export { ensureIslands } from './mount/load-islands.js';
+export { reportIslandErrors } from './mount/islands.js';
 export { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './network-monitor.js';
 export { showNotification } from './notification.js';
 export { prefetchOverlays } from './overlays/load.js';

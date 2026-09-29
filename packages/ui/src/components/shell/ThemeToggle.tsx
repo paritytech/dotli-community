@@ -82,12 +82,12 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
 
 /**
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`,
- * rendered into the body), an item of the topbar island (see islands.tsx):
- * Shell.tsx prerenders the same markup statically (title "Theme", no option
- * checked), and the island is swapped in for it after boot. The landing
- * page (components/landing/) renders it too, in its corner. The menu is a modal menu, like Radix
- * DropdownMenu with a RadioGroup (createPopover's `menu` mode, which owns
- * its keys and focus): a keyboard opening focuses the first option and a
+ * rendered into the body), an item of the topbar's action group island (see
+ * islands.tsx): rendered with the host page from the theme store's default
+ * ("Theme: System"), then hydrated, which brings the stored preference. The
+ * landing page (components/landing/) renders it too, in its corner. The
+ * menu is a modal menu, like Radix DropdownMenu with a RadioGroup
+ * (createPopover's `menu` mode, which owns its keys and focus): a keyboard opening focuses the first option and a
  * pointer opening the menu itself; ArrowUp/ArrowDown (wrapping), Home, End
  * and typeahead move between the options (`menuitemradio`, `aria-checked`
  * on the current one); Escape closes and hands focus back to the button;
@@ -114,9 +114,7 @@ export function ThemeToggle(): JSX.Element {
     surface: () => popover,
   });
 
-  // Native listeners (added in the refs below), not Solid's onClick: Solid 2
-  // delegates it to the root's container, which is the detached element the
-  // island renders into before it is swapped in (islands.tsx).
+  // Native listeners, added in the refs below, like the rest of the shell.
   const onClick = (e: MouseEvent): void => {
     const option = (e.target as HTMLElement).closest<HTMLElement>('.theme-popover-option');
     const next = option?.dataset['themeOption'];

@@ -61,11 +61,8 @@ function scheduleIdle(callback: () => void): void {
 /**
  * Reveal the network button. The host calls this once a product is on
  * screen, so the icon appears with the app rather than during the load.
- * Writes the store the chains island renders, and the static button's class
- * for the time before the island is swapped in (after the swap the element
- * is the island's, which renders the same class from the store).
+ * Writes the store the chains island renders.
  */
 export function setChainsButtonVisible(visible: boolean): void {
   recordChainsButtonVisible(visible);
-  document.getElementById('chains-button')?.classList.toggle('visible', visible);
 }

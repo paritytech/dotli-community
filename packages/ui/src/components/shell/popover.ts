@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, useContext, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onSettled, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
@@ -272,10 +272,13 @@ export function createPopover(options: PopoverOptions): Popover {
         setOpen(false);
       }
     };
-    document.addEventListener('keydown', onTriggerKeyDown);
-    onCleanup(() => {
-      document.removeEventListener('keydown', onTriggerKeyDown);
-      stopKeyClickGuard?.();
+    // Once mounted: a build-time render has no document.
+    onSettled(() => {
+      document.addEventListener('keydown', onTriggerKeyDown);
+      return () => {
+        document.removeEventListener('keydown', onTriggerKeyDown);
+        stopKeyClickGuard?.();
+      };
     });
   }
 

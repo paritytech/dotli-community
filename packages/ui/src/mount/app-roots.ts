@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Every live root, by name: the Solid roots mountRoot mounts (`"chat"`,
- * `"island:theme"`, ...) and the roots that take turns filling `#app`.
+ * Every live root, by name: the Solid roots mountRoot mounts (`"chat"`, ...)
+ * and the roots that take turns filling `#app`.
  *
  * `"loading"` is the loading overlay and `"page"` is the page content, such as
  * the landing page. Whatever replaces them (a product frame, an error page)

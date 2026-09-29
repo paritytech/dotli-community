@@ -5,9 +5,9 @@ import type { ShieldState } from '../verification-shield.js';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
- * What the topbar's URL pill shows. `none` is the landing page (and the
- * prerendered shell): an empty `#topbar-url`, hidden by CSS. `shield` is null
- * until the host knows how the product was loaded.
+ * What the topbar's URL pill shows. `none` is the landing page (and the host
+ * page before the pill renders): an empty `#topbar-url`, hidden by CSS.
+ * `shield` is null until the host knows how the product was loaded.
  */
 export type UrlPillState =
   | { kind: 'none' }

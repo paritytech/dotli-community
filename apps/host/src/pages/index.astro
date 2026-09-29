@@ -1,0 +1,127 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The host page. Astro renders it at build time: the shell's markup, with
+// its Solid islands server-rendered where they hydrate (see
+// components/Shell.astro), and the loading screen. src/main.ts boots the
+// host from there.
+import { socialMetaAttributes } from '@dotli/config/vite';
+import { LoadingScreen } from '@dotli/ui/islands';
+import Shell from '../components/Shell.astro';
+
+const TITLE = 'Polkadot - The decentralized web, in your browser';
+const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
+// Blocking and classic on purpose: it sets the network config global before
+// the module bundle runs (see runtimeNetworkConfigScript in @dotli/config).
+const runtimeNetworkConfig = process.env['VITE_RUNTIME_NETWORK_CONFIG'] === 'true';
+const socialMeta = socialMetaAttributes({
+  title: TITLE,
+  description:
+    'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
+  siteName: 'Polkadot Web',
+  image: '/icon-512.png',
+  imageAlt: 'Polkadot logo',
+});
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    {runtimeNetworkConfig && <script is:inline src="/dotli-network.js"></script>}
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>{TITLE}</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://host.dot.li" crossorigin />
+    <script is:inline>
+      // Pre-open the shared IndexedDB during HTML parse so it's ready
+      // before main.ts executes. Overlaps IDB open (~10-50ms) with
+      // module loading. Picked up by src/db.ts via window.__dotliDb.
+      window.__dotliDb = new Promise(function (resolve, reject) {
+        var req = indexedDB.open('dotli', 5);
+        req.onupgradeneeded = function () {
+          var db = req.result;
+          if (!db.objectStoreNames.contains('cids')) db.createObjectStore('cids', { keyPath: 'label' });
+          if (!db.objectStoreNames.contains('chains')) db.createObjectStore('chains', { keyPath: 'chain' });
+          // v2: scheduled notifications + per-product id counters.
+          if (!db.objectStoreNames.contains('scheduled_notifications')) {
+            var s = db.createObjectStore('scheduled_notifications', { keyPath: 'hostId', autoIncrement: true });
+            s.createIndex('byProductId', 'productId', { unique: false });
+            s.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
+          }
+          if (!db.objectStoreNames.contains('notification_counters'))
+            db.createObjectStore('notification_counters', { keyPath: 'productId' });
+          // v3: product chat rooms and messages.
+          if (!db.objectStoreNames.contains('chat_rooms'))
+            db.createObjectStore('chat_rooms', { keyPath: ['productId', 'roomId'] });
+          if (!db.objectStoreNames.contains('chat_messages')) {
+            var c = db.createObjectStore('chat_messages', { keyPath: 'seq', autoIncrement: true });
+            c.createIndex('byRoom', ['productId', 'roomId'], { unique: false });
+          }
+          // v4: product chat bot identities.
+          if (!db.objectStoreNames.contains('chat_bots'))
+            db.createObjectStore('chat_bots', { keyPath: ['productId', 'botId'] });
+          // v5: content block cache.
+          if (!db.objectStoreNames.contains('blocks')) db.createObjectStore('blocks', { keyPath: 'cid' });
+          if (!db.objectStoreNames.contains('block_meta')) {
+            var b = db.createObjectStore('block_meta', { keyPath: 'cid' });
+            b.createIndex('byLastUsed', 'lastUsed', { unique: false });
+          }
+        };
+        req.onsuccess = function () {
+          resolve(req.result);
+        };
+        req.onerror = function () {
+          reject(new Error('IDB open failed'));
+        };
+        // A still-open tab on an older schema blocks the upgrade;
+        // reject instead of leaving the promise pending forever.
+        req.onblocked = function () {
+          reject(new Error('IDB open blocked by another tab'));
+        };
+      });
+    </script>
+    <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-collator-node-1.parity-testnet.parity.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-0.polkadot.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-1.polkadot.io" />
+    <link rel="preconnect" href="https://paseo-ipfs.polkadot.io" />
+    <link rel="preconnect" href="https://sys.ibp.network" />
+    {socialMeta.map(attrs => <meta {...attrs} />)}
+    <link rel="manifest" href={`${base}manifest.webmanifest`} />
+  </head>
+  <body>
+    <script is:inline>
+      (function () {
+        var pref = 'system';
+        try {
+          var stored = localStorage.getItem('dotli-theme');
+          if (stored === 'light' || stored === 'dark' || stored === 'system') {
+            pref = stored;
+          }
+        } catch (_) {
+          /* localStorage unavailable: fall back to system */
+        }
+        var theme = pref;
+        if (theme === 'system') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme-pref', pref);
+        document.documentElement.setAttribute('data-theme', theme);
+      })();
+    </script>
+    <div id="shell" style="display: contents"><Shell /></div>
+
+    <!-- Chat Panel (docked right; the panel runtime shrinks the product
+             iframe while open, mirroring the debug panel's right dock).
+             Contents are rendered by components/chat/ChatPanel.tsx. -->
+    <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
+
+    <!-- App Content -->
+    <div id="app">
+      <LoadingScreen client:load />
+    </div>
+    <script src="../main.ts"></script>
+  </body>
+</html>

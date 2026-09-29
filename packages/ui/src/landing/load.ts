@@ -7,7 +7,7 @@
 
 import { captureException } from '@dotli/metrics';
 import { disposeAppRoot } from '../mount/app-roots.js';
-import { TOPBAR_ACTIONS_ID } from '../mount/topbar-ids.js';
+import { unmountIslands } from '../mount/islands.js';
 import { showError } from '../ui.js';
 
 let showing: Promise<void> | null = null;
@@ -40,10 +40,8 @@ export function showLanding(): Promise<void> {
       app.style.marginTop = '0';
       app.style.minHeight = '100dvh';
       // The landing page renders its own auth and theme buttons: the
-      // topbar's action group goes, island or static markup, and the islands
-      // loader no longer mounts it.
-      disposeAppRoot('island:topbar');
-      document.getElementById(TOPBAR_ACTIONS_ID)?.remove();
+      // topbar's actions go, their islands with them.
+      unmountIslands(topbar?.querySelector('.topbar-right') ?? null);
       // The landing page replaces the loading screen, island and all.
       disposeAppRoot('loading');
       const view = document.createElement('div');

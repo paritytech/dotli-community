@@ -4,13 +4,14 @@
 // The loading screen's behaviour: the progress bar, the stage narration, the
 // stall watch and the dismiss. It writes the loading store, which the loading
 // screen island (components/shell/LoadingScreen.tsx) renders, so it stays on
-// the startup path without Solid. The one DOM it touches is the static screen
-// from apps/host/index.html, which it removes when the loading root is
-// disposed before the island has taken the screen over.
+// the startup path without Solid. The one DOM it touches is that island,
+// which the host page paints from the start and this takes out of the page
+// when the loading root is disposed.
 
 import { isSandboxOrigin, withActiveTld } from '@dotli/config';
 
 import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
+import { unmountIslands } from './mount/islands.js';
 import { getLoadingState, updateLoading } from './state/loading.js';
 
 // Phase-based loading indicator.
@@ -507,16 +508,13 @@ export function stopStatusTick(): void {
 /** True while the loading screen is registered as the `"loading"` app root. */
 let loadingRootLive = false;
 
-/** The static screen apps/host/index.html paints. */
-function removeStaticScreen(): void {
-  document.getElementById('app-loading')?.remove();
-}
-
 /**
- * Takes the loading screen off the page, as part of disposing the loading
- * root. The static screen until the island adopts it, then the island.
+ * Takes the loading screen, the LoadingScreen island the host page paints,
+ * off the page, as part of disposing the loading root: hydrated or not yet.
  */
-let disposeScreen: () => void = removeStaticScreen;
+function removeScreen(): void {
+  unmountIslands(document.getElementById('app-loading'));
+}
 
 /**
  * Track the loading screen as the `"loading"` app root, so whatever replaces
@@ -544,25 +542,12 @@ function trackLoadingRoot(): boolean {
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
     updateLoading({ phase: 'gone' });
-    // Back to the static fallback, so the island is never disposed twice.
-    const dispose = disposeScreen;
-    disposeScreen = removeStaticScreen;
-    dispose();
+    removeScreen();
   });
   return true;
 }
 
-/**
- * Hand the loading root's screen over to the island that replaced the static
- * one: disposing the root now runs `dispose` instead of removing the static
- * screen. The root itself, and every timer it tracks, carries on untouched.
- */
-export function adoptLoadingScreen(dispose: () => void): void {
-  disposeScreen = dispose;
-  trackLoadingRoot();
-}
-
-// The static screen is live from first paint, so it is a root before any
+// The screen is live from first paint, so it is a root before any
 // timer starts. Whatever replaces it first (the landing page, a preview or
 // local-target frame, an error page shown before the phases start) then
 // removes it.

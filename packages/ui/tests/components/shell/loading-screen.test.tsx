@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The loading screen island (components/shell/LoadingScreen.tsx) swapped in
-// for the static `.loading` markup of apps/host/index.html, rendering the
-// loading store the controller writes.
+// The loading screen island (components/shell/LoadingScreen.tsx), mounted in
+// an island element through the Astro renderer's client entry, as the host
+// page mounts it, rendering the loading store the controller writes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -26,9 +26,10 @@ vi.mock('../../../src/recent-labels.js', () => ({
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-import { mountIslands, mountLoadingIsland } from '../../../src/components/shell/islands.js';
+import client from '@dotli/astro-solid/client.js';
+import { LoadingScreen } from '../../../src/components/shell/islands.js';
 import * as ctl from '../../../src/loading-controller.js';
-import { disposeAppRoot, disposeAppRoots, registerAppRoot } from '../../../src/mount/app-roots.js';
+import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
@@ -36,21 +37,17 @@ import { showLanding } from '../../../src/landing/load.js';
 import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
-const INDEX_HTML = readFileSync(resolve(import.meta.dirname, '../../../../../apps/host/index.html'), 'utf8');
-
-/** The static loading screen exactly as apps/host/index.html ships it. */
-function staticLoadingMarkup(): string {
-  // Only `#app`, up to the first script after it: parsing the whole page
-  // would make happy-dom fetch its scripts and stylesheets.
-  const start = INDEX_HTML.indexOf(`<div id="app">`);
-  const end = INDEX_HTML.indexOf('<script', start);
-  const template = document.createElement('template');
-  template.innerHTML = INDEX_HTML.slice(start, end);
-  const loading = template.content.querySelector('#app > .loading');
-  if (loading === null) {
-    throw new Error('apps/host/index.html has no #app > .loading');
-  }
-  return loading.outerHTML;
+/**
+ * Mount the loading screen in `#app`, in an island element, as the host page
+ * does (client-rendered: the tests compile Solid for the DOM only).
+ */
+async function mountScreen(): Promise<HTMLElement> {
+  const island = document.createElement('astro-island');
+  island.setAttribute('ssr', '');
+  app().replaceChildren(island);
+  client(island)(LoadingScreen, {}, {}, { client: 'only' });
+  await settle();
+  return island;
 }
 
 const FADE_MS = 300;
@@ -71,10 +68,6 @@ function runFrames(now: number): void {
 
 function app(): HTMLElement {
   return byId('app');
-}
-
-function countById(id: string): number {
-  return document.querySelectorAll(`[id="${id}"]`).length;
 }
 
 function petals(root: ParentNode = document): SVGPathElement[] {
@@ -121,30 +114,6 @@ async function settle(): Promise<void> {
   flush();
 }
 
-/**
- * `el` as tag, attributes (sorted) and children, without what the store
- * writes as it goes (inline styles) and without comments and whitespace, so
- * static and live markup compare node for node.
- */
-function shape(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) {
-    return (node.textContent ?? '').trim();
-  }
-  if (!(node instanceof Element)) {
-    return '';
-  }
-  const attrs = [...node.attributes]
-    .filter(a => a.name !== 'style')
-    .map(a => `${a.name}="${a.value}"`)
-    .sort()
-    .join(' ');
-  const children = [...node.childNodes]
-    .map(shape)
-    .filter(s => s !== '')
-    .join('');
-  return `<${node.tagName.toLowerCase()} ${attrs}>${children}</>`;
-}
-
 beforeEach(() => {
   vi.useFakeTimers({
     toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
@@ -158,13 +127,12 @@ beforeEach(() => {
   vi.stubGlobal('cancelAnimationFrame', (id: number) => {
     frames.delete(id);
   });
-  app().innerHTML = staticLoadingMarkup();
+  app().replaceChildren();
   sentry.captureException.mockClear();
 });
 
 afterEach(() => {
   disposeAppRoots();
-  disposeAppRoot('island:loading');
   ctl.stopStatusTick();
   resetAllStoresForTests();
   app().innerHTML = '';
@@ -173,78 +141,7 @@ afterEach(() => {
 });
 
 describe('Loading screen island', () => {
-  it('As a visitor, the static loading screen is swapped in place for the live one, one element per id, with the same markup', async () => {
-    // Given
-    const stale = byId('app-loading');
-    const before = shape(stale);
-    const warn = vi.spyOn(console, 'warn');
-    const error = vi.spyOn(console, 'error');
-
-    // When
-    const mounted = mountLoadingIsland();
-    await settle();
-
-    // Then
-    expect(mounted).toBe(true);
-    const fresh = byId('app-loading');
-    expect(fresh).not.toBe(stale);
-    expect(stale.isConnected).toBe(false);
-    expect(fresh.parentElement).toBe(app());
-    expect(app().children).toHaveLength(1);
-    expect(fresh.classList.contains('loading')).toBe(true);
-    expect(shape(fresh)).toBe(before);
-    for (const id of [
-      'app-loading',
-      'loading-logo',
-      'loading-progress',
-      'loading-progress-fill',
-      'loading-progress-pct',
-      'loading-text',
-      'loading-status',
-      'status',
-      'status-sr',
-      'loading-warning',
-      'loading-warning-text',
-    ]) {
-      expect(countById(id), id).toBe(1);
-    }
-    expect(petals()).toHaveLength(6);
-    expect(fresh.hasAttribute('style')).toBe(false);
-    expect(sentry.captureException).not.toHaveBeenCalled();
-    expect(warn).not.toHaveBeenCalled();
-    expect(error).not.toHaveBeenCalled();
-  });
-
-  it('As a visitor, the islands chunk mounts the loading screen with the other islands', async () => {
-    // Given
-    const stale = byId('app-loading');
-
-    // When
-    const failed = mountIslands();
-    await settle();
-
-    // Then
-    expect(failed).not.toContain('loading');
-    expect(byId('app-loading')).not.toBe(stale);
-    expect(countById('app-loading')).toBe(1);
-
-    // Cleanup: the shell islands had no static nodes here, so none mounted.
-    for (const name of [
-      'theme',
-      'url-pill',
-      'offline-banner',
-      'auth-button',
-      'auth-modal',
-      'permissions',
-      'chains',
-      'settings',
-      'more',
-    ]) {
-      disposeAppRoot(`island:${name}`);
-    }
-  });
-
-  it('As a visitor, progress, status and warning made before the swap show at once, and nothing restarts', async () => {
+  it('As a visitor, progress, status and warning made before it hydrates show at once, and nothing restarts', async () => {
     // Given a load already underway
     updateLoading({
       progress: 37.4,
@@ -256,7 +153,7 @@ describe('Loading screen island', () => {
     const before = getLoadingState();
 
     // When
-    mountLoadingIsland();
+    await mountScreen();
 
     // Then, straight from the first render
     expect(byId('loading-progress-fill').style.width).toBe('37.4%');
@@ -273,8 +170,7 @@ describe('Loading screen island', () => {
 
   it('As a visitor, the loading screen follows the store', async () => {
     // Given
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
 
     // When
     updateLoading({
@@ -313,8 +209,7 @@ describe('Loading screen island', () => {
     // Given
     ctl.initPhases([{ label: 'a', base: 0, target: 50, expectedMs: 5_000, stage: 'relay' }]);
     ctl.advancePhase(0);
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
     const screen = byId('app-loading');
 
     // When
@@ -353,8 +248,7 @@ describe('Loading screen island', () => {
     // Given a crawling bar under the live screen
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.advancePhase(0);
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
     const screen = byId('app-loading');
     runFrames(100);
     // The typewriter's next frame.
@@ -375,9 +269,9 @@ describe('Loading screen island', () => {
   });
 
   it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {
-    // Given
-    mountLoadingIsland();
-    await settle();
+    // Given: a load underway, which makes the screen the loading root.
+    await mountScreen();
+    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     const screen = byId('app-loading');
     runFrames(100);
 
@@ -393,8 +287,7 @@ describe('Loading screen island', () => {
 
   it('As a visitor, the petals are animated by the stylesheet alone, with no frames or inline styles', async () => {
     // When
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
     runFrames(100);
 
     // Then
@@ -403,12 +296,10 @@ describe('Loading screen island', () => {
     expect(frames.size).toBe(0);
   });
 
-  it('As a visitor, the petals of the static and the live loading screen light up in turn, a sixth of a cycle apart, and stay still under reduced motion', async () => {
+  it('As a visitor, the petals of the loading screen light up in turn, a sixth of a cycle apart, and stay still under reduced motion', async () => {
     // Given
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
     const screens = {
-      static: staticLoadingMarkup(),
       live: byId('app-loading').outerHTML,
     };
 
@@ -451,8 +342,7 @@ describe('Loading screen island', () => {
     ]);
     ctl.onProgressStall(onStall);
     ctl.advancePhase(0);
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
     const screen = byId('app-loading');
 
     // When
@@ -471,7 +361,7 @@ describe('Loading screen island', () => {
     ctl.advancePhase(0);
 
     // When
-    mountLoadingIsland();
+    await mountScreen();
     const before = getLoadingState().progress;
     vi.advanceTimersByTime(1_000);
     await settle();
@@ -484,8 +374,7 @@ describe('Loading screen island', () => {
 
   it('As the shell, the first app-subdomain render keeps the live screen and it still follows the store', async () => {
     // Given
-    mountLoadingIsland();
-    await settle();
+    await mountScreen();
 
     // When the bridge clears `#app` and puts the overlay back, as
     // renderAppSubdomain does on its first render
@@ -500,37 +389,5 @@ describe('Loading screen island', () => {
     // Then it found the island's node, which is still live
     expect(loading).toBe(byId('app-loading'));
     expect(byId('loading-progress-pct').textContent).toBe('80%');
-  });
-
-  it.each([
-    [
-      'the static screen is already gone',
-      () => {
-        app().innerHTML = `<div class="error-page"></div>`;
-      },
-    ],
-    [
-      'the loading root was already disposed',
-      () => {
-        updateLoading({ phase: 'gone' });
-      },
-    ],
-  ])('As the shell, no loading screen is mounted when %s', async (_name, given) => {
-    // Given
-    given();
-    const markup = app().innerHTML;
-    const dispose = vi.fn();
-    registerAppRoot('page', dispose);
-
-    // When
-    const mounted = mountLoadingIsland();
-    await settle();
-
-    // Then it did not fail, and nothing changed
-    expect(mounted).toBe(true);
-    expect(app().innerHTML).toBe(markup);
-    expect(frames.size).toBe(0);
-    expect(dispose).not.toHaveBeenCalled();
-    expect(sentry.captureException).not.toHaveBeenCalled();
   });
 });

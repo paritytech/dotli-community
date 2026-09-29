@@ -9,7 +9,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./vite": "./src/vite.ts",
+    "./islands": "./src/components/shell/islands.tsx",
     "./styles.css": "./src/styles.css",
     "./package.json": "./package.json"
   },
@@ -19,6 +19,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@dotli/astro-solid": "*",
     "@dotli/eslint-config": "*",
     "@dotli/typescript-config": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",

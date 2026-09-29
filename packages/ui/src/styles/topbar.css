@@ -96,9 +96,9 @@
   line-height: 1;
   align-self: center;
 }
-/* The More button shows while the live action group has collapsed items
-   into it (components/shell/topbar/), and in the static group on narrow
-   viewports, until the topbar island is swapped in. */
+/* The More button shows while the action group has collapsed items into it
+   (components/shell/topbar/), and on narrow viewports until the group
+   hydrates and measures. */
 .topbar-btn.topbar-more-btn {
   display: none;
 }
@@ -248,8 +248,8 @@
 }
 /* Narrow viewports: drop the brand wordmark so the URL pill and right-side
    action buttons stay on-screen. Logo + Beta badge are small enough to keep.
-   The static action group, which cannot measure, also hides the buttons the
-   live one would most likely collapse, until the island is swapped in. */
+   Until the action group hydrates and measures, it also hides the buttons it
+   would most likely collapse. */
 @media (max-width: 560px) {
   .topbar-brand,
   .topbar-beta {
@@ -320,15 +320,20 @@
   grid-column: 3;
   display: flex;
   align-items: center;
-  gap: 4px;
-  justify-self: end;
-}
-/* The live action group fills its grid cell: its width is the room its
-   items are fitted into (components/shell/topbar/TopbarActions.tsx). */
-.topbar-right[data-collapsible] {
-  position: relative;
-  justify-self: stretch;
   justify-content: flex-end;
+  gap: 4px;
+  justify-self: stretch;
+  min-width: 0;
+}
+/* The collapsible group takes the room the account button leaves: its width
+   is what its items are fitted into (components/shell/topbar/TopbarActions.tsx). */
+.topbar-actions {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
   min-width: 0;
 }
 .topbar-item {
@@ -340,14 +345,14 @@
 /* Collapsed into the More menu, or the More button with nothing in it: out
    of flow and invisible, but still laid out, so the bar can measure it. */
 .topbar-item.topbar-item-collapsed,
-.topbar-right[data-collapsible] .topbar-more-idle {
+.topbar-actions[data-collapsible] .topbar-more-idle {
   position: absolute;
   top: 0;
   right: 0;
   visibility: hidden;
   pointer-events: none;
 }
-.topbar-right[data-collapsible] .topbar-btn.topbar-more-btn {
+.topbar-actions[data-collapsible] .topbar-btn.topbar-more-btn {
   display: inline-flex;
 }
 @media (max-width: 560px) {

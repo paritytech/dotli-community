@@ -258,9 +258,9 @@ function GearIcon(props: { size: number }): JSX.Element {
 
 /**
  * The settings button (`#mode-button`), its popover (`#mode-popover`) and
- * the popover's backdrop, both rendered into the body, an item of the topbar
- * island (see islands.tsx) swapped in for Shell.tsx's static markup after
- * boot.
+ * the popover's backdrop, both rendered into the body, an item of the
+ * topbar's action group island (see islands.tsx), rendered with the host
+ * page and hydrated.
  *
  * The popover shows the saved settings: the network and transport choices,
  * the cache switches, "Clear all caches" and the diagnostics. Changes stay a

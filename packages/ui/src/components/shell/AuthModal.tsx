@@ -73,9 +73,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 
 /**
  * The QR pairing modal (`#auth-modal-backdrop`), a shell island (see
- * islands.tsx), swapped in for Shell.tsx's static markup after boot. It
- * renders authModalStore, which auth-controller.ts writes from boot onwards,
- * so a login that started before the island mounted shows as it mounts.
+ * islands.tsx) rendered in the browser only (`client:only`). It renders
+ * authModalStore, which auth-controller.ts writes from boot onwards, so a
+ * login that started before the island rendered shows as it renders.
  *
  * The body follows the store's view: a spinner, the pairing QR code, login
  * progress, or an error with the friendly copy and, when it can help, Retry.

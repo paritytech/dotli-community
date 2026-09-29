@@ -8,4 +8,5 @@
 export { appBuildOptions, rolldownOptions } from './build-options.ts';
 export { buildInfo, readPackageVersion } from './build-info-plugin.ts';
 export { runtimeNetworkConfigScript, runtimeNetworkConfigScriptBody } from './runtime-network-config-plugin.ts';
-export { socialMetaTags } from './social-meta-plugin.ts';
+export { socialMetaAttributes, socialMetaTags } from './social-meta-plugin.ts';
+export { astroPwa } from './astro-pwa.ts';

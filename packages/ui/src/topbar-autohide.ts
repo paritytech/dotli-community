@@ -59,7 +59,7 @@ function getAppFrame(): HTMLIFrameElement | null {
 
 // The session store, not the `.user-badge` it renders: the badge island
 // renders on Solid's next flush, after `dotli:authenticated`, whose listener
-// arms the auto-hide, and not at all before the islands chunk arrives.
+// arms the auto-hide, and not at all before the account button's island has.
 function isLoggedIn(): boolean {
   return getLoggedIn();
 }

@@ -32,12 +32,14 @@ function UserIcon(): JSX.Element {
 
 /**
  * The topbar's auth button (`#auth-button`) and the logged-in account's
- * popover (`#user-popover`, rendered into the body), an item of the topbar
- * island (see islands.tsx) that never collapses into More. Shell.tsx
- * prerenders the button disabled and "Connecting...", and it stays so until
- * the island is swapped in, enabled, after boot (so it is none of the
- * islands loader's click triggers). The landing page (components/landing/)
- * renders it too, in its corner.
+ * popover (`#user-popover`, rendered into the body), an island of its own
+ * (see islands.tsx) in the bar's `.topbar-right`, before the collapsible
+ * action group, so it never collapses into More (a TopbarItem with no bar
+ * around it stays inline). It shows the session, which only the browser
+ * knows, so it renders there only (`client:only`): until then the host page
+ * (apps/host/src/components/Shell.astro) shows the button disabled and
+ * "Connecting...". The landing page (components/landing/) renders it too,
+ * in its corner.
  *
  * Logged out, the button shows the person icon and a click starts a login.
  * Logged in, it shows the account's initials (`.user-badge`, or the icon as

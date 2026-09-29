@@ -7,10 +7,10 @@ import { loadingStore } from '../../state/loading.js';
 import { useStore } from '../use-store.js';
 
 /**
- * The loading screen (`#app-loading`), an island (see islands.tsx) swapped in
- * for the static screen apps/host/index.html paints first, with the same
- * markup. It renders the loading store, which loading-controller.ts writes,
- * so progress made before the swap shows straight away. It fades while the
+ * The loading screen (`#app-loading`), an island (see islands.tsx) the host
+ * page paints first and hydrates. It renders the loading store, which
+ * loading-controller.ts writes, so progress made before it hydrates shows
+ * straight away. It fades while the
  * screen is dismissed. Removing it is the `"loading"` app root's job.
  * The petals cycle in CSS (styles/base.css).
  */
@@ -99,7 +99,7 @@ export function LoadingScreen(): JSX.Element {
               class="loading-warning-icon"
               viewBox="0 0 16 16"
               aria-hidden="true"
-              // @ts-expect-error -- not in Solid's SVG types; kept from the static markup
+              // @ts-expect-error -- not in Solid's SVG types, but hides the icon from focus
               focusable="false"
             >
               <path

@@ -1,34 +1,37 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onCleanup } from 'solid-js';
+import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 
 /**
  * The topbar's offline banner (`#offline-banner`), a shell island (see
- * islands.tsx): Shell.tsx prerenders it hidden as the last child of
- * `#topbar`, and this component is swapped in for it after boot, applying
- * the real state straight away. It shows while the browser reports being
- * offline and the topbar is visible, so it rides the topbar's auto-hide
+ * islands.tsx), the last child of `#topbar`: rendered with the host page,
+ * hidden (online, as a build-time render has no navigator), then hydrated,
+ * reading the connection once mounted. It shows while the browser reports
+ * being offline and the topbar is visible, so it rides the topbar's auto-hide
  * instead of dangling into the viewport. As a PWA the host boots from the
  * service worker cache, so losing the connection is otherwise invisible.
  *
- * Not focusable and not clickable: it is a status live region only, so it is
- * none of the islands loader's click triggers.
+ * Not focusable and not clickable: it is a status live region only.
  */
 export function OfflineBanner(): JSX.Element {
   const topbar = useStore(topbarStore);
-  const [online, setOnline] = createSignal(navigator.onLine);
+  // Online until mounted, as in a build-time render, which has no navigator.
+  const [online, setOnline] = createSignal(true);
   const update = (): void => {
     setOnline(navigator.onLine);
   };
-  window.addEventListener('online', update);
-  window.addEventListener('offline', update);
-  onCleanup(() => {
-    window.removeEventListener('online', update);
-    window.removeEventListener('offline', update);
+  onSettled(() => {
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
   });
 
   return (

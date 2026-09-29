@@ -17,6 +17,8 @@
   },
   "devDependencies": {
     "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*"
+    "@dotli/typescript-config": "*",
+    "astro": "^7.3.5",
+    "vite-plugin-pwa": "^1.3.0"
   }
 }

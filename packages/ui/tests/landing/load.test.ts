@@ -77,15 +77,17 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like apps/host/index.html: the topbar, then `#app` holding the
-  // static loading screen.
-  // Shaped like apps/host/index.html: the topbar with its action group, then
-  // `#app` holding the static loading screen.
+  // Shaped like the host page (apps/host/src/pages/index.astro): the topbar
+  // with its actions, the account button and the action group, each an
+  // island, then `#app` holding the loading screen island.
   document.body.innerHTML = [
-    '<div id="topbar"><div class="topbar-right" id="topbar-actions">',
-    '<button id="auth-button"></button><button id="theme-toggle"></button>',
+    '<div id="topbar"><div class="topbar-right">',
+    '<astro-island component-export="AuthButton"><button id="auth-button"></button></astro-island>',
+    '<astro-island component-export="TopbarActionsIsland"><div class="topbar-actions" id="topbar-actions">',
+    '<button id="theme-toggle"></button>',
+    '</div></astro-island>',
     '</div></div>',
-    '<div id="app"><div class="loading" id="app-loading"></div></div>',
+    '<div id="app"><astro-island component-export="LoadingScreen"><div class="loading" id="app-loading"></div></astro-island></div>',
   ].join('');
 });
 
@@ -118,8 +120,9 @@ describe('landing loader', () => {
     await shown;
     await settle();
 
-    // Then the static screen went
+    // Then the loading screen went, its island with it
     expect(byId('app-loading')).toBeNull();
+    expect(document.querySelector('astro-island[component-export="LoadingScreen"]')).toBeNull();
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(byId('topbar')?.style.display).toBe('none');
     expect(app().style.marginTop).toBe('0px');
@@ -141,19 +144,23 @@ describe('landing loader', () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, the landing page disposes the topbar island, when it is up, before taking its place', async () => {
-    // Given: the topbar island, as a root.
+  it("As a visitor, the landing page unmounts the topbar's action islands before taking their place", async () => {
+    // Given
     await importFresh();
-    const disposeTopbar = vi.fn();
-    roots.registerAppRoot('island:topbar', disposeTopbar);
+    const unmounted: string[] = [];
+    for (const island of document.querySelectorAll('#topbar astro-island')) {
+      island.addEventListener('astro:unmount', () => {
+        unmounted.push(island.getAttribute('component-export') ?? '');
+      });
+    }
 
     // When
     await load.showLanding();
     await settle();
 
     // Then
-    expect(disposeTopbar).toHaveBeenCalledTimes(1);
-    expect(byId('topbar-actions')).toBeNull();
+    expect(unmounted).toEqual(['AuthButton', 'TopbarActionsIsland']);
+    expect(document.querySelector('#topbar .topbar-right')).toBeNull();
     expect(byId('landing-auth')?.querySelector('#auth-button')).not.toBeNull();
   });
 
