@@ -124,7 +124,6 @@ jobs:
       - name: Smoke-test the tarball
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
-          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
           cd "dotli-$VERSION"
@@ -144,8 +143,8 @@ jobs:
           curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/dotli-network.js | grep -q '"label":"smoke"' \
             || { echo "::error::DOTLI_NETWORK did not reach the served config"; exit 1; }
           for h in browse.localhost host.localhost x.app.localhost; do
-            curl -fsS -H "Host: $h" http://127.0.0.1:5199/host_version.json | grep -qF "\"hash\":\"$COMMIT\"" \
-              || { echo "::error::host_version.json on $h did not report the built hash"; exit 1; }
+            curl -fsS -H "Host: $h" http://127.0.0.1:5199/host_version.json | grep -qE '"hash":"[0-9a-f]{64}"' \
+              || { echo "::error::host_version.json on $h has no build hash"; exit 1; }
           done
           kill "$SERVER_PID"
 
@@ -195,11 +194,9 @@ jobs:
         env:
           VERSION: ${{ needs.resolve.outputs.version }}
           ARCH: ${{ matrix.arch }}
-          # Same commit as the tarball build; the context has no .git to read it from.
-          COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          docker build --build-arg VITE_COMMIT_SHA="$COMMIT" -t "$IMAGE:$VERSION-$ARCH" .
+          docker build -t "$IMAGE:$VERSION-$ARCH" .
           docker push "$IMAGE:$VERSION-$ARCH"
 
   manifest:

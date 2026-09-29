@@ -7,57 +7,73 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { buildInfo } from "@dotli/config/build-info-plugin";
 
-/** Runs the plugin's hooks against `root` and returns what it emitted. */
-function emit(root: string): { fileName?: string; source?: unknown } {
+type Output =
+  | { type: "chunk"; code: string }
+  | { type: "asset"; source: string | Uint8Array };
+
+/** Runs the plugin's hooks against `root` and `bundle`, returns the JSON. */
+function emit(root: string, bundle: Record<string, Output>): unknown {
   const plugin = buildInfo("host");
   const emitted: { fileName?: string; source?: unknown }[] = [];
   (plugin.configResolved as (config: { root: string }) => void)({ root });
-  (plugin.generateBundle as (this: unknown) => void).call({
-    emitFile: (file: { fileName?: string; source?: unknown }) => {
-      emitted.push(file);
-      return "";
+  const hook = plugin.generateBundle as {
+    handler: (this: unknown, options: unknown, bundle: unknown) => void;
+  };
+  hook.handler.call(
+    {
+      emitFile: (file: { fileName?: string; source?: unknown }) => {
+        emitted.push(file);
+        return "";
+      },
     },
-  });
+    {},
+    bundle,
+  );
   expect(emitted).toHaveLength(1);
-  return emitted[0] ?? {};
+  expect(emitted[0]?.fileName).toBe("host_version.json");
+  return JSON.parse(emitted[0]?.source as string);
 }
+
+const BUNDLE: Record<string, Output> = {
+  "index.html": { type: "asset", source: "<html></html>" },
+  "assets/index-abc.js": { type: "chunk", code: "console.log(1)" },
+  "icon.png": { type: "asset", source: new Uint8Array([1, 2, 3]) },
+};
 
 describe("buildInfo", () => {
   let dir: string;
-  let savedSha: string | undefined;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), "dotli-build-info-"));
-    savedSha = process.env.VITE_COMMIT_SHA;
-    delete process.env.VITE_COMMIT_SHA;
   });
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
-    if (savedSha === undefined) {
-      delete process.env.VITE_COMMIT_SHA;
-    } else {
-      process.env.VITE_COMMIT_SHA = savedSha;
-    }
   });
 
-  it("emits host_version.json with the build, package version and hash", () => {
+  it("reports the build, the package version and a content hash", () => {
     writeFileSync(join(dir, "package.json"), '{"version":"1.2.3"}');
-    process.env.VITE_COMMIT_SHA = "abc123";
-    const file = emit(dir);
-    expect(file.fileName).toBe("host_version.json");
-    expect(JSON.parse(file.source as string)).toEqual({
+    expect(emit(dir, BUNDLE)).toEqual({
       build: "host",
       version: "1.2.3",
-      hash: "abc123",
+      hash: expect.stringMatching(/^[0-9a-f]{64}$/) as unknown,
     });
   });
 
-  it("reports dev and 0.0.0 without a hash or a package.json", () => {
-    expect(JSON.parse(emit(dir).source as string)).toEqual({
-      build: "host",
-      version: "0.0.0",
-      hash: "dev",
-    });
+  it("reports 0.0.0 without a package.json", () => {
+    expect(emit(dir, BUNDLE)).toMatchObject({ version: "0.0.0" });
+  });
+
+  it("hashes contents, independent of bundle order", () => {
+    const hashOf = (bundle: Record<string, Output>) =>
+      (emit(dir, bundle) as { hash: string }).hash;
+    const reordered = Object.fromEntries(Object.entries(BUNDLE).reverse());
+    expect(hashOf(reordered)).toBe(hashOf(BUNDLE));
+    expect(
+      hashOf({
+        ...BUNDLE,
+        "assets/index-abc.js": { type: "chunk", code: "console.log(2)" },
+      }),
+    ).not.toBe(hashOf(BUNDLE));
   });
 });

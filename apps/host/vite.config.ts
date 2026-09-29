@@ -4,6 +4,7 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
+import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
@@ -12,14 +13,27 @@ import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analy
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import {
   buildInfo,
-  ensureCommitSha,
   readPackageVersion,
 } from "../../packages/config/src/build-info-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
-// So Diagnostics shows a real commit in local builds too.
-ensureCommitSha();
+// Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
+// git HEAD so Diagnostics shows a real commit identifier in dev too. The
+// literal "dev" is only used when we're not in a git checkout at all (e.g. a
+// tarball).
+if (!process.env.VITE_COMMIT_SHA) {
+  try {
+    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
+      cwd: import.meta.dirname,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
+  }
+}
 
 const OUT_DIR = "dist";
 

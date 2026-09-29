@@ -3,19 +3,30 @@
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, build as viteBuild, type Plugin } from "vite";
+import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
-import {
-  buildInfo,
-  ensureCommitSha,
-} from "../../packages/config/src/build-info-plugin";
+import { buildInfo } from "../../packages/config/src/build-info-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 
-// So the SW's baked `__SW_VERSION__` is a real commit in local builds too.
-ensureCommitSha();
+// Mirror the host's behavior: fall back to git HEAD when CI didn't inject
+// `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
+// dev builds too.
+if (!process.env.VITE_COMMIT_SHA) {
+  try {
+    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
+      cwd: import.meta.dirname,
+      stdio: ["ignore", "pipe", "ignore"],
+    })
+      .toString()
+      .trim();
+  } catch {
+    // Not a git checkout, leave unset.
+  }
+}
 
 const OUT_DIR = "dist";
 

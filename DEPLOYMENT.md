@@ -107,11 +107,14 @@ Every origin serves its own build's `host_version.json` at the root:
 
 ```sh
 curl -fsS https://paseo.li/host_version.json
-# {"build":"host","version":"0.7.4","hash":"cd93b956…"}
+# {"build":"host","version":"0.7.4","hash":"9f2c41e0…"}
 ```
 
-It is written by the build (`packages/config/src/build-info-plugin.ts`) and
-served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three builds are rsynced separately, so check each origin to cover all of them:
+`hash` is a SHA-256 of the build's output, so it changes whenever the bundle's
+contents do. It is written by the build
+(`packages/config/src/build-info-plugin.ts`) and served `no-cache`
+(`nginx/snippets/dotli-host-version.conf`). The three builds are rsynced
+separately, so check each origin to cover all of them:
 
 | URL                                      | Build    |
 | ---------------------------------------- | -------- |

@@ -7,12 +7,7 @@ import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
-import {
-  buildInfo,
-  ensureCommitSha,
-} from "../../packages/config/src/build-info-plugin";
-
-ensureCommitSha();
+import { buildInfo } from "../../packages/config/src/build-info-plugin";
 
 const OUT_DIR = "dist";
 

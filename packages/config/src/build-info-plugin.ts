@@ -1,42 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Build-time plugin: write the build name, package version and hash to
-// `host_version.json` at the bundle root, so each origin's deploy can be
-// checked with curl. The root, not /assets/, which nginx caches as immutable.
+// Build-time plugin: write the build name, package version and a hash of the
+// bundle's contents to `host_version.json` at the bundle root, so each origin's
+// deploy can be checked with curl. The root, not /assets/, which nginx caches
+// as immutable.
 
 import type { Plugin } from "vite";
-import { execSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-
-/**
- * CI injects `VITE_COMMIT_SHA`; a local build falls back to git HEAD. Outside a
- * git checkout (e.g. the docker build, whose context excludes .git) it stays
- * unset, which every reader treats as "dev".
- */
-export function ensureCommitSha(): void {
-  if ((process.env.VITE_COMMIT_SHA ?? "") !== "") {
-    return;
-  }
-  const head = gitHead();
-  if (head !== undefined) {
-    process.env.VITE_COMMIT_SHA = head;
-  }
-}
-
-function gitHead(): string | undefined {
-  try {
-    return execSync("git rev-parse HEAD", {
-      cwd: import.meta.dirname,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString()
-      .trim();
-  } catch {
-    return undefined;
-  }
-}
 
 export function readPackageVersion(dir: string): string {
   try {
@@ -57,17 +30,30 @@ export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
     configResolved(config) {
       root = config.root;
     },
-    generateBundle() {
-      const info = {
-        build,
-        version: readPackageVersion(root),
-        hash: process.env.VITE_COMMIT_SHA ?? "dev",
-      };
-      this.emitFile({
-        type: "asset",
-        fileName: "host_version.json",
-        source: `${JSON.stringify(info)}\n`,
-      });
+    // Post, so every other plugin has emitted into the bundle and the hash
+    // covers the final bytes. Files written after the bundle (the service
+    // workers) are not part of it.
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        const hash = createHash("sha256");
+        for (const fileName of Object.keys(bundle).sort()) {
+          const output = bundle[fileName];
+          hash.update(`${fileName}\0`);
+          hash.update(output.type === "chunk" ? output.code : output.source);
+          hash.update("\0");
+        }
+        const info = {
+          build,
+          version: readPackageVersion(root),
+          hash: hash.digest("hex"),
+        };
+        this.emitFile({
+          type: "asset",
+          fileName: "host_version.json",
+          source: `${JSON.stringify(info)}\n`,
+        });
+      },
     },
   };
 }
