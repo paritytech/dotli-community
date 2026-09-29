@@ -52,6 +52,14 @@ const SHARED_KEYS: readonly string[] = [
 ];
 
 let bootstrapped = false;
+const pendingWrites = new Set<Promise<void>>();
+
+/** Finish storage requests before replacing their protocol iframe or reloading. */
+export async function flushSharedModeWrites(): Promise<void> {
+  while (pendingWrites.size > 0) {
+    await Promise.all(pendingWrites);
+  }
+}
 
 export interface SharedChannel {
   read: (key: string) => Promise<string | null>;
@@ -170,14 +178,23 @@ export async function bootstrapSharedMode(): Promise<void> {
     return;
   }
 
-  const mirrorUp = (key: string, value: string, label: string): void => {
-    void channel.write(key, value).catch((err: unknown) => {
-      log.warn(
-        `[dot.li shared-mode] ${label} failed for`,
-        key,
-        err instanceof Error ? err.message : err,
-      );
-    });
+  const trackWrite = (
+    operation: Promise<void>,
+    key: string,
+    label: string,
+  ): void => {
+    const pending = operation
+      .catch((err: unknown) => {
+        log.warn(
+          `[dot.li shared-mode] ${label} failed for`,
+          key,
+          err instanceof Error ? err.message : err,
+        );
+      })
+      .finally(() => {
+        pendingWrites.delete(pending);
+      });
+    pendingWrites.add(pending);
   };
 
   SHARED_KEYS.forEach((key, i) => {
@@ -192,7 +209,7 @@ export async function bootstrapSharedMode(): Promise<void> {
     // Production keeps shared over local below (real eTLD+1 sharing).
     if (isLocalhost && seed !== null) {
       if (shared !== seed) {
-        mirrorUp(key, seed, "Localhost mirror-up");
+        trackWrite(channel.write(key, seed), key, "Localhost mirror-up");
       }
       return;
     }
@@ -201,7 +218,7 @@ export async function bootstrapSharedMode(): Promise<void> {
       return;
     }
     if (seed !== null) {
-      mirrorUp(key, seed, "Migration write");
+      trackWrite(channel.write(key, seed), key, "Migration write");
     }
   });
 
@@ -217,13 +234,7 @@ export async function bootstrapSharedMode(): Promise<void> {
       } catch {
         /* localStorage unavailable */
       }
-      void channel.write(key, value).catch((err: unknown) => {
-        log.warn(
-          "[dot.li shared-mode] Write failed for",
-          key,
-          err instanceof Error ? err.message : err,
-        );
-      });
+      trackWrite(channel.write(key, value), key, "Write");
     },
     removeItem: (key) => {
       cache.set(key, null);
@@ -233,24 +244,23 @@ export async function bootstrapSharedMode(): Promise<void> {
       } catch {
         /* localStorage unavailable */
       }
-      void channel.clear(key).catch((err: unknown) => {
-        log.warn(
-          "[dot.li shared-mode] Clear failed for",
-          key,
-          err instanceof Error ? err.message : err,
-        );
-      });
+      trackWrite(channel.clear(key), key, "Clear");
     },
   };
 
   configureModeStorage(adapter);
+  // Normalizing a stored backend can itself write or clear the shared key.
+  const sharedBackend = getBackend();
+  // Migration and normalization writes use the same iframe as the reads.
+  // Finish them before this bootstrap or its caller replaces that iframe.
+  await flushSharedModeWrites();
 
   // The host iframe came up with whatever mode `getBackend()` returned
   // before we swapped the adapter. If the shared store had a different
   // backend, force a fresh iframe so chain operations don't run against
   // a worker mode the user didn't pick. (Only relevant on the iframe
   // path. The dev HTTP channel doesn't load an iframe during reads.)
-  if (!isLocalhost && getBackend() !== localBackendBeforeBootstrap) {
+  if (!isLocalhost && sharedBackend !== localBackendBeforeBootstrap) {
     resetProtocolFrame();
   }
 }

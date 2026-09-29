@@ -123,6 +123,10 @@ import { dotNsUrl } from "@dotli/shared/dotns-url";
 import { escapeHtml, isValidDotLabel } from "@dotli/shared/html";
 import { isMobileDevice } from "@dotli/shared/device";
 import { showNotification } from "@dotli/ui/notification";
+import {
+  bootstrapSharedMode,
+  flushSharedModeWrites,
+} from "@dotli/ui/shared-mode";
 import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
 import {
   BACKEND_KEY,
@@ -855,7 +859,6 @@ async function applyUrlSettings(): Promise<void> {
   // any subsequent `setBackend` / `setCacheSettings` calls below to the
   // shared store, so URL-driven changes propagate across subdomains.
   try {
-    const { bootstrapSharedMode } = await import("@dotli/ui/shared-mode");
     await bootstrapSharedMode();
   } catch (err: unknown) {
     log.warn(
@@ -883,6 +886,9 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
+  // Settings writes still use the bootstrap iframe. Let them finish before
+  // a backend change removes it, otherwise the shared choice is lost.
+  await flushSharedModeWrites();
 
   if (
     writeSettingsToSearch(
@@ -942,6 +948,7 @@ async function applyUrlSettings(): Promise<void> {
   setNetwork(next.network);
   setBackend(next.chain);
   setCacheSettings(next.cache);
+  await flushSharedModeWrites();
   try {
     sessionStorage.setItem("dotli:pending-reset:protocol", "1");
     sessionStorage.setItem("dotli:pending-reset:sandbox", "1");
@@ -1048,25 +1055,6 @@ async function main(): Promise<void> {
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
-    void import("@dotli/truapi-debug/panel").then(
-      async ({ setupTruapiDebugPanel }) => {
-        // Runtime debug opt-ins can open diagnostics in production, but must
-        // never expose wallet creation or key-management controls there.
-        if (DEBUG) {
-          // Preserve the existing lazy render-chunk boundary: a static bridge
-          // import would load its runtime dependencies before they are needed.
-          const { experimentalWalletControls } =
-            await import("@dotli/ui/bridge");
-          setupTruapiDebugPanel({
-            startCollapsed: !debugMode.explicit,
-            experimentalWallet: experimentalWalletControls,
-          });
-        } else {
-          setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
-        }
-        log.warn(`[dot.li] TrUAPI debug panel enabled`);
-      },
-    );
   }
 
   // Per-tab boot flow id. Every boot/resolve/render/bridge event from
@@ -1169,6 +1157,31 @@ async function main(): Promise<void> {
       timestamp: Date.now(),
       payload: { subMode },
     });
+  }
+
+  // Panel wallet hydration uses the protocol iframe too. Start it only after
+  // shared/URL settings have finished replacing the bootstrap iframe; early
+  // events remain buffered above while the selected backend is established.
+  if (debugMode.enabled) {
+    void import("@dotli/truapi-debug/panel").then(
+      async ({ setupTruapiDebugPanel }) => {
+        // Runtime debug opt-ins can open diagnostics in production, but must
+        // never expose wallet creation or key-management controls there.
+        if (DEBUG) {
+          // Preserve the existing lazy render-chunk boundary: a static bridge
+          // import would load its runtime dependencies before they are needed.
+          const { experimentalWalletControls } =
+            await import("@dotli/ui/bridge");
+          setupTruapiDebugPanel({
+            startCollapsed: !debugMode.explicit,
+            experimentalWallet: experimentalWalletControls,
+          });
+        } else {
+          setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+        }
+        log.warn(`[dot.li] TrUAPI debug panel enabled`);
+      },
+    );
   }
 
   const bridgeModulePromise = import("@dotli/ui/bridge");

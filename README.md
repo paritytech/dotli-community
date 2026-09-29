@@ -394,6 +394,8 @@ dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resol
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
 
+During startup, debug events are buffered immediately, but the panel and its wallet-state reads wait until shared preferences and URL settings have selected the protocol backend. Shared preference writes finish before that bootstrap iframe is replaced or the page reloads, so a backend override cannot strand wallet initialization or lose the saved settings.
+
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 
 ### Experimental test wallet
