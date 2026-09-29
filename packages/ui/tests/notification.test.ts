@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   scheduleNotification: vi.fn(),
@@ -6,21 +6,21 @@ const mocks = vi.hoisted(() => ({
   showPermissionRequestModal: vi.fn(),
 }));
 
-vi.mock("@dotli/ui/scheduled-notifications", () => ({
+vi.mock('../src/scheduled-notifications.js', () => ({
   scheduleNotification: mocks.scheduleNotification,
   cancelNotification: mocks.cancelNotification,
 }));
 
-vi.mock("@dotli/ui/permission-modal", () => ({
+vi.mock('../src/permission-modal.js', () => ({
   showPermissionRequestModal: mocks.showPermissionRequestModal,
 }));
 
-describe("notification host callbacks", () => {
+describe('notification host callbacks', () => {
   beforeEach(() => {
     vi.resetModules();
     vi.clearAllMocks();
     localStorage.clear();
-    document.body.innerHTML = "";
+    document.body.innerHTML = '';
     mocks.scheduleNotification.mockResolvedValue({
       ok: true,
       id: 7,
@@ -29,47 +29,40 @@ describe("notification host callbacks", () => {
     mocks.cancelNotification.mockResolvedValue(true);
   });
 
-  it("As a dotli integrator, the host schedules, fires immediate notifications, and returns ids", async () => {
+  it('As a dotli integrator, the host schedules, fires immediate notifications, and returns ids', async () => {
     // Given
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { pushNotification } = createNotificationAdapters('myapp');
 
     // When
     const response = await pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
+      text: 'hello',
     });
 
     // Then
     expect(response).toEqual({ id: 7 });
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productId: "myapp",
-      title: "myapp",
-      text: "hello",
+      productId: 'myapp',
+      title: 'myapp',
+      text: 'hello',
       deeplink: null,
       scheduledAt: null,
     });
-    expect(
-      [...document.querySelectorAll(".notif-body")].map((node) =>
-        node.textContent?.trim(),
-      ),
-    ).toEqual(["hello"]);
+    const { ensureOverlays } = await import('../src/overlays/load.js');
+    await ensureOverlays();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect([...document.querySelectorAll('.notif-body')].map(node => node.textContent.trim())).toEqual(['hello']);
   });
 
-  it("As a dotli user who allowed one notification, delivering it does not prompt again", async () => {
+  it('As a dotli user who allowed one notification, delivering it does not prompt again', async () => {
     // Given: the core already authorized and consumed the one-time grant, so
     // no stored grant is left for a host-side check to find.
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { pushNotification } = createNotificationAdapters('myapp');
 
     // When
     await pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
+      text: 'hello',
     });
 
     // Then
@@ -77,47 +70,42 @@ describe("notification host callbacks", () => {
     expect(mocks.scheduleNotification).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli integrator, the host schedules later notifications and cancels through the shared scheduler", async () => {
+  it('As a dotli integrator, the host schedules later notifications and cancels through the shared scheduler', async () => {
     // Given
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification, cancelNotification } =
-      createNotificationAdapters("myapp");
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { pushNotification, cancelNotification } = createNotificationAdapters('myapp');
 
     // When
     await pushNotification({
-      text: "later",
-      deeplink: "dot://open",
+      text: 'later',
+      deeplink: 'dot://open',
       scheduledAt: 123n,
     });
     await cancelNotification(7);
 
     // Then
     expect(mocks.scheduleNotification).toHaveBeenCalledWith({
-      productId: "myapp",
-      title: "myapp",
-      text: "later",
-      deeplink: "dot://open",
+      productId: 'myapp',
+      title: 'myapp',
+      text: 'later',
+      deeplink: 'dot://open',
       scheduledAt: 123,
     });
-    expect(mocks.cancelNotification).toHaveBeenCalledWith("myapp", 7);
+    expect(mocks.cancelNotification).toHaveBeenCalledWith('myapp', 7);
   });
 
-  it("As a dotli integrator, the host rejects when the schedule limit is reached", async () => {
+  it('As a dotli integrator, the host rejects when the schedule limit is reached', async () => {
     // Given
     mocks.scheduleNotification.mockResolvedValue({ ok: false });
-    const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
-    const { pushNotification } = createNotificationAdapters("myapp");
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { pushNotification } = createNotificationAdapters('myapp');
 
     // When
     const notification = pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
+      text: 'hello',
     });
 
     // Then
-    await expect(notification).rejects.toThrow("ScheduleLimitReached");
+    await expect(notification).rejects.toThrow('ScheduleLimitReached');
   });
 });

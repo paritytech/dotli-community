@@ -20,9 +20,7 @@ export const setMeasurement = noop;
 
 export function startSpan<T>(
   _opts: { op: string; name: string },
-  fn: (
-    span: { setAttribute: (key: string, value: string) => void } | undefined,
-  ) => T,
+  fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => T,
 ): T {
   return fn(undefined);
 }

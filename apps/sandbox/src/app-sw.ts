@@ -4,8 +4,10 @@
 // dot.li app Service Worker.
 //
 // Archive serving only, no smoldot and no chain sync.
-// Runs on <label>.app.dot.li to serve multi-file SPA archives from the
-// in-memory and IndexedDB cache.
+// Runs on <label>.app.dot.li and serves the multi-file SPA archive the page
+// hands it, from memory. It keeps nothing across reloads: the iframe is
+// credentialless, so this origin's storage lasts only as long as the host
+// page. The host keeps the content blocks instead (`@dotli/storage/block-cache`).
 
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
@@ -14,350 +16,100 @@ declare const self: ServiceWorkerGlobalScope;
 // queries this via `GET_SW_VERSION` to detect stale workers.
 declare const __SW_VERSION__: string;
 
-import { getMimeType } from "@dotli/shared/mime";
-import { computeArchiveDigest } from "@dotli/shared/archive-digest";
-import { SW_ARCHIVE_CACHE_MAX } from "@dotli/config/config";
+import { getMimeType } from '@dotli/shared';
 
 // Base path, derived at runtime from the SW script location.
-const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
+const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
 
 function hasExtension(path: string): boolean {
-  const lastSlash = path.lastIndexOf("/");
-  const lastDot = path.lastIndexOf(".");
+  const lastSlash = path.lastIndexOf('/');
+  const lastDot = path.lastIndexOf('.');
   return lastDot > lastSlash;
-}
-
-// IndexedDB archive persistence (pooled connection).
-
-const ARCHIVE_DB_NAME = "dotli-sw";
-const ARCHIVE_DB_VERSION = 1;
-const ARCHIVE_STORE = "archives";
-
-interface ArchiveEntry {
-  domain?: string;
-  cid?: string;
-  files?: Record<string, ArrayBuffer>;
-  /**
-   * Backend the archive was originally fetched under. Cache lookups only
-   * return the entry if the user's current backend matches. Older entries
-   * that lack this field are treated as misses.
-   */
-  contentBackend?: string;
-  /**
-   * Integrity tag over `files`, recomputed on cache read so a corrupted or
-   * tampered IndexedDB entry is discarded instead of served. Defends against
-   * storage corruption and passive tampering (an active same-origin attacker
-   * who can rewrite the store can also rewrite this tag). Entries persisted
-   * before this field existed lack it and are treated as misses.
-   */
-  digest?: string;
-}
-
-let archiveDbPromise: Promise<IDBDatabase> | null = null;
-
-function getArchiveDB(): Promise<IDBDatabase> {
-  if (archiveDbPromise !== null) {
-    return archiveDbPromise;
-  }
-  archiveDbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(ARCHIVE_DB_NAME, ARCHIVE_DB_VERSION);
-    request.onerror = () => {
-      archiveDbPromise = null;
-      reject(new Error("Failed to open archive DB"));
-    };
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onclose = () => {
-        archiveDbPromise = null;
-      };
-      resolve(db);
-    };
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(ARCHIVE_STORE)) {
-        db.createObjectStore(ARCHIVE_STORE, { keyPath: "domain" });
-      }
-    };
-  });
-  return archiveDbPromise;
-}
-
-async function saveArchiveToDB(entry: {
-  domain: string;
-  cid: string;
-  files: Record<string, ArrayBuffer>;
-  contentBackend?: string;
-}): Promise<void> {
-  try {
-    const digest = await computeArchiveDigest(entry.files);
-    const db = await getArchiveDB();
-    const tx = db.transaction(ARCHIVE_STORE, "readwrite");
-    tx.objectStore(ARCHIVE_STORE).put({ ...entry, digest });
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(new Error("Failed to save archive"));
-      };
-    });
-  } catch (error) {
-    console.error("Failed to save archive to IndexedDB:", error);
-  }
-}
-
-async function loadArchiveFromDBByDomain(
-  domain: string,
-): Promise<ArchiveEntry | null> {
-  try {
-    const db = await getArchiveDB();
-    const tx = db.transaction(ARCHIVE_STORE, "readonly");
-    const request = tx.objectStore(ARCHIVE_STORE).get(domain);
-    const entry = await new Promise<ArchiveEntry | null>((resolve, reject) => {
-      request.onsuccess = () => {
-        resolve((request.result as ArchiveEntry | undefined) ?? null);
-      };
-      request.onerror = () => {
-        reject(new Error("Failed to load archive"));
-      };
-    });
-
-    if (entry?.files === undefined) {
-      return entry;
-    }
-
-    // Discard entries whose persisted bytes don't match their integrity tag
-    // (corruption / tampering), and legacy entries that predate the tag. A
-    // miss makes the page re-fetch (and re-persist with a digest), which is
-    // the safe outcome — never serve unverifiable persisted content.
-    const actual = await computeArchiveDigest(entry.files);
-    if (entry.digest === undefined || entry.digest !== actual) {
-      return null;
-    }
-    return entry;
-  } catch (error) {
-    console.error("Failed to load archive from IndexedDB:", error);
-    return null;
-  }
 }
 
 // Archive storage.
 
-let archivePacked: ArrayBuffer | null = null;
-let archiveFileIndex: Map<string, { o: number; l: number }> | null = null;
-
-const archiveCache = new Map<string, ArchiveEntry>();
-
-function archiveCacheSet(key: string, value: ArchiveEntry): void {
-  archiveCache.delete(key);
-  archiveCache.set(key, value);
-  if (archiveCache.size > SW_ARCHIVE_CACHE_MAX) {
-    const oldest = archiveCache.keys().next().value;
-    if (oldest !== undefined) {
-      archiveCache.delete(oldest);
-    }
-  }
-}
-
-function archiveCacheGet(key: string): ArchiveEntry | undefined {
-  const entry = archiveCache.get(key);
-  if (entry === undefined) {
-    return undefined;
-  }
-  archiveCache.delete(key);
-  archiveCache.set(key, entry);
-  return entry;
-}
+/** Files of the archive the fetch handler serves, keyed by path. */
+let servedFiles: Record<string, ArrayBuffer> | null = null;
 
 function hasArchive(): boolean {
-  return archivePacked !== null;
+  return servedFiles !== null;
 }
 
-function getFile(path: string): ArrayBuffer | Uint8Array | undefined {
-  if (archiveFileIndex === null || archivePacked === null) {
-    return undefined;
-  }
-  const entry = archiveFileIndex.get(path);
-  if (entry === undefined) {
-    return undefined;
-  }
-  return new Uint8Array(archivePacked, entry.o, entry.l);
+function getFile(path: string): ArrayBuffer | undefined {
+  return servedFiles !== null && Object.hasOwn(servedFiles, path) ? servedFiles[path] : undefined;
 }
 
 // SW lifecycle.
 
-self.addEventListener("install", () => {
+self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener('activate', event => {
   event.waitUntil(self.clients.claim());
 });
 
 // Message handling.
 
-self.addEventListener("message", (event: ExtendableMessageEvent) => {
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const data = event.data as { type?: string; [key: string]: unknown } | null;
-  if (data?.type === undefined || data.type === "") {
+  if (data?.type === undefined || data.type === '') {
     return;
   }
 
-  if (data.type === "SW_CLAIM_EVENT") {
+  if (data.type === 'SW_CLAIM_EVENT') {
     void self.clients.claim();
     return;
   }
 
-  if (data.type === "GET_SW_VERSION") {
+  if (data.type === 'GET_SW_VERSION') {
     // Reply synchronously via MessageChannel port so the caller doesn't have
     // to wire up a global listener. If no port was provided (older callers),
     // fall back to source.postMessage.
-    const reply = { type: "SW_VERSION", version: __SW_VERSION__ } as const;
-    if (event.ports.length > 0) {
-      event.ports[0].postMessage(reply);
+    const reply = { type: 'SW_VERSION', version: __SW_VERSION__ } as const;
+    const [port] = event.ports;
+    if (port !== undefined) {
+      port.postMessage(reply);
     } else if (event.source) {
       (event.source as Client).postMessage(reply);
     }
     return;
   }
 
-  if (data.type === "SET_ARCHIVE") {
+  if (data.type === 'SET_ARCHIVE') {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed as ArrayBuffer | undefined;
-    const idx = data.index as { p: string; o: number; l: number }[] | undefined;
+    const packed = data['packed'] as ArrayBuffer | undefined;
+    const idx = data['index'] as { p: string; o: number; l: number }[] | undefined;
 
     if (packed === undefined || idx === undefined) {
       if (event.source) {
         (event.source as Client).postMessage({
-          type: "ARCHIVE_ERROR",
-          reason: "SET_ARCHIVE missing packed/index payload",
+          type: 'ARCHIVE_ERROR',
+          reason: 'SET_ARCHIVE missing packed/index payload',
         });
       }
       return;
     }
 
-    archivePacked = packed;
-    archiveFileIndex = new Map(idx.map((e) => [e.p, { o: e.o, l: e.l }]));
-
-    const domain = data.domain as string | undefined;
-    const cid = data.cid as string | undefined;
-    const contentBackend = data.contentBackend as string | undefined;
-    const source = event.source;
-
-    // In-memory tables are live immediately (set above) so fetches can
-    // be served. The ACK waits until the IDB persist completes: a reload
-    // before IDB flush would otherwise find an empty archive store and
-    // fall through to the network for every sub-resource. Splitting this
-    // into two signals (ARCHIVE_INDEXED vs ARCHIVE_PERSISTED) would be
-    // cleaner, but the page today only waits on ARCHIVE_READY, so we
-    // gate ARCHIVE_READY on the slower, authoritative step.
-    if (
-      domain !== undefined &&
-      domain !== "" &&
-      cid !== undefined &&
-      cid !== ""
-    ) {
-      const p = packed;
-      const i = idx;
-      const d = domain;
-      const c = cid;
-      const cb = contentBackend;
-      const files: Record<string, ArrayBuffer> = {};
-      for (const entry of i) {
-        files[entry.p] = p.slice(entry.o, entry.o + entry.l);
-      }
-      const archiveEntry: ArchiveEntry = {
-        domain: d,
-        cid: c,
-        files,
-        contentBackend: cb,
-      };
-      archiveCacheSet(d, archiveEntry);
-      void saveArchiveToDB({
-        domain: d,
-        cid: c,
-        files,
-        contentBackend: cb,
-      })
-        .then(() => {
-          if (source) {
-            (source as Client).postMessage({ type: "ARCHIVE_READY" });
-          }
-        })
-        .catch((err: unknown) => {
-          const reason = err instanceof Error ? err.message : String(err);
-          if (source) {
-            (source as Client).postMessage({
-              type: "ARCHIVE_ERROR",
-              reason: `Failed to persist archive: ${reason}`,
-            });
-          }
-        });
-      return;
+    const files: Record<string, ArrayBuffer> = {};
+    for (const entry of idx) {
+      files[entry.p] = packed.slice(entry.o, entry.o + entry.l);
     }
-
-    // No domain/cid supplied: index is live but there's nothing to
-    // persist. ACK immediately. IDB-lookup consumers will miss, which
-    // is the correct behavior when the caller supplied no key.
-    if (source) {
-      (source as Client).postMessage({ type: "ARCHIVE_READY" });
+    servedFiles = files;
+    if (event.source) {
+      (event.source as Client).postMessage({ type: 'ARCHIVE_READY' });
     }
-    return;
-  }
-
-  if (data.type === "SW_CACHE_LOOKUP_EVENT") {
-    const domain = data.domain as string;
-    // The SW returns `contentBackend` from the stored entry so the page-side
-    // `getCachedArchive` can verify it matches the user's current backend.
-    // (We don't filter here because the page-side check is authoritative
-    // and the SW must remain backend-agnostic for older callers.)
-    const cached = archiveCacheGet(domain);
-    if (cached !== undefined) {
-      for (const port of event.ports) {
-        port.postMessage({
-          found: true,
-          cid: cached.cid,
-          contentBackend: cached.contentBackend,
-          files: cached.files,
-        });
-      }
-      return;
-    }
-    void loadArchiveFromDBByDomain(domain)
-      .then((entry) => {
-        if (entry !== null && entry.cid !== "" && entry.files !== undefined) {
-          archiveCacheSet(domain, entry);
-        }
-        for (const port of event.ports) {
-          port.postMessage({
-            found: entry !== null,
-            cid: entry?.cid ?? null,
-            contentBackend: entry?.contentBackend,
-            files: entry?.files ?? null,
-          });
-        }
-      })
-      .catch((err: unknown) => {
-        // Expose the IDB error to the page instead of pretending it was a
-        // cache miss. Page-side code can decide whether to surface it.
-        for (const port of event.ports) {
-          port.postMessage({
-            found: false,
-            cid: null,
-            files: null,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      });
     return;
   }
 });
 
 // Fetch interception (archive serving).
 
-self.addEventListener("fetch", (event: FetchEvent) => {
+self.addEventListener('fetch', (event: FetchEvent) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
     return;
@@ -389,17 +141,14 @@ self.addEventListener("fetch", (event: FetchEvent) => {
       event.respondWith(
         new Response(null, {
           status: 503,
-          statusText: "App archive not yet loaded",
+          statusText: 'App archive not yet loaded',
         }),
       );
     }
     return;
   }
 
-  if (
-    event.request.mode === "navigate" &&
-    !url.pathname.startsWith(DOTLI_APP_PREFIX)
-  ) {
+  if (event.request.mode === 'navigate' && !url.pathname.startsWith(DOTLI_APP_PREFIX)) {
     return;
   }
 
@@ -425,10 +174,7 @@ self.addEventListener("fetch", (event: FetchEvent) => {
  *     a module import as `NS_ERROR_CORRUPTED_CONTENT`, so the shell's
  *     own bundle fails to load and the page gets stuck on the loader.
  */
-function lookupArchive(
-  pathname: string,
-  requestMode: RequestMode,
-): Response | null {
+function lookupArchive(pathname: string, requestMode: RequestMode): Response | null {
   let filePath = pathname.startsWith(DOTLI_APP_PREFIX)
     ? pathname.slice(DOTLI_APP_PREFIX.length)
     : pathname.startsWith(BASE)
@@ -440,13 +186,13 @@ function lookupArchive(
   let content = getFile(filePath);
 
   if (content === undefined && !hasExtension(filePath)) {
-    const withIndex = filePath !== "" ? filePath + "/index.html" : "index.html";
+    const withIndex = filePath !== '' ? filePath + '/index.html' : 'index.html';
     content = getFile(withIndex);
     if (content !== undefined) {
       filePath = withIndex;
     }
-    if (content === undefined && filePath !== "") {
-      const noSlash = filePath + "index.html";
+    if (content === undefined && filePath !== '') {
+      const noSlash = filePath + 'index.html';
       content = getFile(noSlash);
       if (content !== undefined) {
         filePath = noSlash;
@@ -454,42 +200,32 @@ function lookupArchive(
     }
   }
 
-  if (content === undefined && (filePath === "" || filePath === "/")) {
-    content = getFile("index.html");
+  if (content === undefined && (filePath === '' || filePath === '/')) {
+    content = getFile('index.html');
     if (content !== undefined) {
-      filePath = "index.html";
+      filePath = 'index.html';
     }
   }
 
   if (content !== undefined) {
     const mime = getMimeType(filePath);
-    if (mime === "text/html") {
-      if (
-        pathname === `${DOTLI_APP_PREFIX}index.html` ||
-        pathname === DOTLI_APP_PREFIX
-      ) {
+    if (mime === 'text/html') {
+      if (pathname === `${DOTLI_APP_PREFIX}index.html` || pathname === DOTLI_APP_PREFIX) {
         // Primary index.html: inject only the sandbox checker, no base or prefix rewrite.
         return makePrimaryHtmlResponse(content, mime);
       }
       return makeHtmlResponse(content, mime);
     }
-    const body =
-      content instanceof Uint8Array
-        ? (content.buffer.slice(
-            content.byteOffset,
-            content.byteOffset + content.byteLength,
-          ) as ArrayBuffer)
-        : content;
-    return new Response(body, archiveResponseInit(mime));
+    return new Response(content, archiveResponseInit(mime));
   }
 
   // SPA fallback, only for top-level navigations. Other requests fall
   // through to the network so shell assets (same origin, not in the
   // archive) reach nginx and load correctly.
-  if (requestMode === "navigate") {
-    const indexHtml = getFile("index.html");
+  if (requestMode === 'navigate') {
+    const indexHtml = getFile('index.html');
     if (!hasExtension(filePath) && indexHtml !== undefined) {
-      return makeHtmlResponse(indexHtml, "text/html");
+      return makeHtmlResponse(indexHtml, 'text/html');
     }
   }
 
@@ -498,9 +234,7 @@ function lookupArchive(
 
 /** Inject the sandbox checker script into HTML, inlined for the SW context. */
 function injectSandboxScript(html: string): string {
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) === undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
     return html;
   }
   // Inline the same IIFE as sandbox-checker.ts to avoid importing from main bundle.
@@ -525,8 +259,8 @@ if(window.caches){var _co=window.caches.open.bind(window.caches);var _cd=window.
 var _ck=Object.getOwnPropertyDescriptor(Document.prototype,"cookie")||Object.getOwnPropertyDescriptor(HTMLDocument.prototype,"cookie");if(_ck){Object.defineProperty(document,"cookie",{configurable:true,enumerable:true,get:function(){__dotliReport("Direct storage access (cookie)",{action:"read"});return _ck.get.call(document)},set:function(v){__dotliReport("Direct storage access (cookie)",{action:"write"});return _ck.set.call(document,v)}})}
 var __wr=false;setTimeout(function(){__wr=true},3000);["injectedWeb3","polkadot","ethereum"].forEach(function(p){var s=window[p];var fw=true;Object.defineProperty(window,p,{configurable:true,enumerable:true,get:function(){if(s!==undefined&&__wr){__dotliReport("Direct wallet access ("+p+")",{action:"read"})}return s},set:function(v){if(fw){fw=false}else{__dotliReport("Direct wallet access ("+p+")",{action:"write"})}s=v}})});
 })()</script>`;
-  if (html.includes("<head>")) {
-    return html.replace("<head>", "<head>" + script);
+  if (html.includes('<head>')) {
+    return html.replace('<head>', '<head>' + script);
   }
   return script + html;
 }
@@ -540,9 +274,9 @@ function archiveResponseInit(mime: string): ResponseInit {
   return {
     status: 200,
     headers: {
-      "Content-Type": mime,
-      "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "no-cache",
+      'Content-Type': mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache',
     },
   };
 }
@@ -551,33 +285,18 @@ function archiveResponseInit(mime: string): ResponseInit {
  * Response for the primary index.html, with only sandbox checker injection
  * and no base href or prefix stripping (those are only for sub-pages).
  */
-function makePrimaryHtmlResponse(
-  content: ArrayBuffer | Uint8Array,
-  mime: string,
-): Response {
+function makePrimaryHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
   let html = new TextDecoder().decode(content);
   html = injectSandboxScript(html);
-  return new Response(
-    new TextEncoder().encode(html),
-    archiveResponseInit(mime),
-  );
+  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
 }
 
-function makeHtmlResponse(
-  content: ArrayBuffer | Uint8Array,
-  mime: string,
-): Response {
+function makeHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
   let html = new TextDecoder().decode(content);
   const prefixNoSlash = DOTLI_APP_PREFIX.slice(0, -1);
   const prefixLen = String(prefixNoSlash.length);
   const stripPrefix = `<script>if(location.pathname.startsWith('${prefixNoSlash}')){history.replaceState(null,'',(location.pathname.slice(${prefixLen})||'/')+location.search+location.hash)}</script>`;
-  html = html.replace(
-    "<head>",
-    `<head><base href="${DOTLI_APP_PREFIX}">${stripPrefix}`,
-  );
+  html = html.replace('<head>', `<head><base href="${DOTLI_APP_PREFIX}">${stripPrefix}`);
   html = injectSandboxScript(html);
-  return new Response(
-    new TextEncoder().encode(html),
-    archiveResponseInit(mime),
-  );
+  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
 }

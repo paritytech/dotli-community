@@ -75,11 +75,11 @@ APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-s
 .PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build: link-truapi-local
-	bun run build
+	npm run build
 
 link-truapi-local:
 	@if [ -f "$(TRUAPI_LOCAL_PACKAGE)" ] && [ -f "$(TRUAPI_HOST_LOCAL_PACKAGE)" ]; then \
-		TRUAPI_REPO="$(TRUAPI_REPO)" bun run link:truapi; \
+		TRUAPI_REPO="$(TRUAPI_REPO)" npm run link:truapi; \
 	else \
 		echo "No local TrUAPI checkout found at $(TRUAPI_REPO); using package manager dependencies."; \
 	fi
@@ -146,10 +146,13 @@ deploy: _require-env build
 # env tag → envsubst tokens for nginx/nginx.conf.template. ZONE is a unique
 # per-domain limit_req zone name; RL is "" (rate-limiting on) for the
 # RATE_LIMITED_ENVS and "#" (commented out) for everything else.
+# A literal "#" goes through _hash: make >= 4.3 keeps the backslash of a "\#"
+# written inside a function call, rendering "\#" into the nginx config.
+_hash := \#
 _nginx_render = DOMAIN='$(SITE_$(ENV))' WEBROOT='$(DEPLOY_PATH_$(ENV))' \
 	ZONE='rl_$(subst .,_,$(SITE_$(ENV)))' \
-	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,\#)' \
-	SENTRY='$(if $(SENTRY_DSN),,\#)' \
+	RL='$(if $(filter $(ENV),$(RATE_LIMITED_ENVS)),,$(_hash))' \
+	SENTRY='$(if $(SENTRY_DSN),,$(_hash))' \
 	SENTRY_INGEST='$(SENTRY_INGEST)' SENTRY_PROJECT='$(SENTRY_PROJECT)' \
 	envsubst '$$DOMAIN $$WEBROOT $$ZONE $$RL $$SENTRY $$SENTRY_INGEST $$SENTRY_PROJECT' < nginx/nginx.conf.template
 

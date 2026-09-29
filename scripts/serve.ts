@@ -7,8 +7,8 @@
 //   node serve.mjs          # or: bun serve.mjs
 //
 // Written against node builtins only, so one implementation runs under both
-// node and bun. Bundled to serve.mjs at release time because node cannot
-// execute TypeScript directly.
+// node and bun. Bundled to serve.mjs at release time so the tarball carries no
+// TypeScript and none of the packages/ tree it imports from.
 //
 // Mirrors nginx/nginx.docker.conf.template: same hostname routing, the same
 // headers, precompressed siblings, immutable asset caching and SPA fallback.
@@ -39,30 +39,30 @@
 // the default HTTP port, so the protocol iframe would be looked for on the wrong
 // port and never load.
 
-import { createServer, type ServerResponse } from "node:http";
-import { createReadStream, existsSync, statSync } from "node:fs";
-import { extname, join, normalize, resolve } from "node:path";
-import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+import { createServer, type ServerResponse } from 'node:http';
+import { createReadStream, existsSync, statSync } from 'node:fs';
+import { extname, join, normalize, resolve } from 'node:path';
+import { runtimeNetworkConfigScriptBody } from '@dotli/config/vite';
 
-const PORT = Number(process.env.PORT ?? "5173");
-const HOST = process.env.HOST ?? "127.0.0.1";
-const DIST = resolve(process.env.DIST ?? "dist");
-const RUNTIME_CONFIG_PATH = "/dotli-network.js";
+const PORT = Number(process.env['PORT'] ?? '5173');
+const HOST = process.env['HOST'] ?? '127.0.0.1';
+const DIST = resolve(process.env['DIST'] ?? 'dist');
+const RUNTIME_CONFIG_PATH = '/dotli-network.js';
 
 const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".mjs": "text/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".wasm": "application/wasm",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
-  ".webp": "image/webp",
-  ".txt": "text/plain",
-  ".scale": "application/octet-stream",
-  ".map": "application/json",
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
+  '.webp': 'image/webp',
+  '.txt': 'text/plain',
+  '.scale': 'application/octet-stream',
+  '.map': 'application/json',
 };
 
 /**
@@ -71,14 +71,14 @@ const MIME: Record<string, string> = {
  * it is the longer match, and everything else is the host shell.
  */
 function routeFor(hostHeader: string): { dir: string; iframeable: boolean } {
-  const hostname = (hostHeader.split(":")[0] ?? "").toLowerCase();
-  if (hostname === "host.localhost") {
-    return { dir: join(DIST, "protocol"), iframeable: true };
+  const hostname = (hostHeader.split(':')[0] ?? '').toLowerCase();
+  if (hostname === 'host.localhost') {
+    return { dir: join(DIST, 'protocol'), iframeable: true };
   }
-  if (hostname.includes(".app.")) {
-    return { dir: join(DIST, "app"), iframeable: true };
+  if (hostname.includes('.app.')) {
+    return { dir: join(DIST, 'app'), iframeable: true };
   }
-  return { dir: join(DIST, "host"), iframeable: false };
+  return { dir: join(DIST, 'host'), iframeable: false };
 }
 
 /**
@@ -88,33 +88,32 @@ function routeFor(hostHeader: string): { dir: string; iframeable: boolean } {
  */
 function securityHeaders(iframeable: boolean): Record<string, string> {
   const shared = {
-    "X-Content-Type-Options": "nosniff",
-    "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Access-Control-Allow-Origin": "*",
+    'X-Content-Type-Options': 'nosniff',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Access-Control-Allow-Origin': '*',
   };
   if (!iframeable) {
-    return { ...shared, "X-Frame-Options": "SAMEORIGIN" };
+    return { ...shared, 'X-Frame-Options': 'SAMEORIGIN' };
   }
   return {
     ...shared,
     // Ports matter: CSP host-sources without one mean the scheme's default.
-    "Content-Security-Policy":
-      "frame-ancestors http://localhost:* http://*.localhost:*",
-    "Cross-Origin-Resource-Policy": "cross-origin",
-    "Cross-Origin-Embedder-Policy": "credentialless",
-    "Cross-Origin-Opener-Policy": "same-origin",
+    'Content-Security-Policy': 'frame-ancestors http://localhost:* http://*.localhost:*',
+    'Cross-Origin-Resource-Policy': 'cross-origin',
+    'Cross-Origin-Embedder-Policy': 'credentialless',
+    'Cross-Origin-Opener-Policy': 'same-origin',
   };
 }
 
 /** Cache policy per path, matching dotli-assets-*.conf and dotli-sw-*.conf. */
 function cacheControl(pathname: string): string {
-  if (pathname.startsWith("/assets/")) {
-    return "public, max-age=31536000, immutable";
+  if (pathname.startsWith('/assets/')) {
+    return 'public, max-age=31536000, immutable';
   }
-  if (pathname === "/host-sw.js" || pathname === "/app-sw.js") {
-    return "no-cache";
+  if (pathname === '/host-sw.js' || pathname === '/app-sw.js') {
+    return 'no-cache';
   }
-  return "no-cache";
+  return 'no-cache';
 }
 
 /**
@@ -122,15 +121,12 @@ function cacheControl(pathname: string): string {
  * `brotli_static` / `gzip_static`. Brotli first: the build emits both and it is
  * the smaller of the two.
  */
-function negotiate(
-  filePath: string,
-  acceptEncoding: string,
-): { path: string; encoding?: string } {
-  if (acceptEncoding.includes("br") && existsSync(`${filePath}.br`)) {
-    return { path: `${filePath}.br`, encoding: "br" };
+function negotiate(filePath: string, acceptEncoding: string): { path: string; encoding?: string } {
+  if (acceptEncoding.includes('br') && existsSync(`${filePath}.br`)) {
+    return { path: `${filePath}.br`, encoding: 'br' };
   }
-  if (acceptEncoding.includes("gzip") && existsSync(`${filePath}.gz`)) {
-    return { path: `${filePath}.gz`, encoding: "gzip" };
+  if (acceptEncoding.includes('gzip') && existsSync(`${filePath}.gz`)) {
+    return { path: `${filePath}.gz`, encoding: 'gzip' };
   }
   return { path: filePath };
 }
@@ -153,16 +149,16 @@ function send(
   const chosen = negotiate(filePath, acceptEncoding);
   const headers: Record<string, string> = {
     // Content-Type comes from the *logical* path, not the .br/.gz sibling.
-    "Content-Type": MIME[extname(filePath)] ?? "application/octet-stream",
-    "Cache-Control": cacheControl(pathname),
+    'Content-Type': MIME[extname(filePath)] ?? 'application/octet-stream',
+    'Cache-Control': cacheControl(pathname),
     ...securityHeaders(iframeable),
   };
   if (chosen.encoding !== undefined) {
-    headers["Content-Encoding"] = chosen.encoding;
-    headers.Vary = "Accept-Encoding";
+    headers['Content-Encoding'] = chosen.encoding;
+    headers['Vary'] = 'Accept-Encoding';
   }
-  if (pathname === "/host-sw.js" || pathname === "/app-sw.js") {
-    headers["Service-Worker-Allowed"] = "/";
+  if (pathname === '/host-sw.js' || pathname === '/app-sw.js') {
+    headers['Service-Worker-Allowed'] = '/';
   }
   res.writeHead(200, headers);
   createReadStream(chosen.path).pipe(res);
@@ -171,13 +167,13 @@ function send(
 if (PORT === 80) {
   console.error(
     "serve: PORT=80 is not supported — the bundle derives the protocol iframe's\n" +
-      "origin from window.location.port, which browsers leave empty on port 80, so\n" +
-      "the iframe would be looked for on port 5173 and never load. Use another port.",
+      'origin from window.location.port, which browsers leave empty on port 80, so\n' +
+      'the iframe would be looked for on port 5173 and never load. Use another port.',
   );
   process.exit(1);
 }
 
-for (const sub of ["host", "app", "protocol"]) {
+for (const sub of ['host', 'app', 'protocol']) {
   if (!existsSync(join(DIST, sub))) {
     console.error(
       `serve: ${join(DIST, sub)} not found.\n` +
@@ -189,12 +185,10 @@ for (const sub of ["host", "app", "protocol"]) {
 }
 
 createServer((req, res) => {
-  const { dir, iframeable } = routeFor(req.headers.host ?? "");
-  const url = new URL(req.url ?? "/", "http://placeholder");
-  const acceptEncoding = req.headers["accept-encoding"] ?? "";
-  const accept = Array.isArray(acceptEncoding)
-    ? acceptEncoding.join(",")
-    : acceptEncoding;
+  const { dir, iframeable } = routeFor(req.headers.host ?? '');
+  const url = new URL(req.url ?? '/', 'http://placeholder');
+  const acceptEncoding = req.headers['accept-encoding'] ?? '';
+  const accept = Array.isArray(acceptEncoding) ? acceptEncoding.join(',') : acceptEncoding;
 
   // Runtime network config, same path and same $DOTLI_NETWORK as the container.
   // Ahead of the static branches: the SPA fallback would answer with index.html,
@@ -203,8 +197,8 @@ createServer((req, res) => {
   if (url.pathname === RUNTIME_CONFIG_PATH) {
     const body = runtimeNetworkConfigScriptBody();
     res.writeHead(200, {
-      "Content-Type": "application/javascript",
-      "Cache-Control": "no-store",
+      'Content-Type': 'application/javascript',
+      'Cache-Control': 'no-store',
       ...securityHeaders(iframeable),
     });
     res.end(body);
@@ -215,29 +209,27 @@ createServer((req, res) => {
   const requested = normalize(decodeURIComponent(url.pathname));
   const candidate = join(dir, requested);
   if (!candidate.startsWith(dir)) {
-    res.writeHead(403).end("Forbidden");
+    res.writeHead(403).end('Forbidden');
     return;
   }
 
-  if (requested !== "/" && isFile(candidate)) {
+  if (requested !== '/' && isFile(candidate)) {
     send(res, candidate, url.pathname, iframeable, accept);
     return;
   }
 
-  const index = join(dir, "index.html");
+  const index = join(dir, 'index.html');
   if (isFile(index)) {
-    send(res, index, "/index.html", iframeable, accept);
+    send(res, index, '/index.html', iframeable, accept);
     return;
   }
-  res.writeHead(404).end("Not Found");
+  res.writeHead(404).end('Not Found');
 }).listen(PORT, HOST, () => {
-  const config = process.env.DOTLI_NETWORK?.trim();
-  console.log(
-    `dot.li serving ${DIST} on http://localhost:${String(PORT)} (bound ${HOST})`,
-  );
+  const config = process.env['DOTLI_NETWORK']?.trim();
+  console.log(`dot.li serving ${DIST} on http://localhost:${String(PORT)} (bound ${HOST})`);
   console.log(`  shell     http://browse.localhost:${String(PORT)}`);
   console.log(`  protocol  http://host.localhost:${String(PORT)}`);
   console.log(
-    `  network   ${config === undefined || config === "" ? "built-in (set DOTLI_NETWORK to override)" : config}`,
+    `  network   ${config === undefined || config === '' ? 'built-in (set DOTLI_NETWORK to override)' : config}`,
   );
 });

@@ -1,43 +1,33 @@
-import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
-import { SITE_ID } from "@dotli/config/config";
+import 'fake-indexeddb/auto';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
+import { SITE_ID } from '@dotli/config';
 import {
   createSessionStoreAdapters,
   emitPersistedSessionUiState,
   onStoredSessionChanged,
-} from "@dotli/ui/host-callbacks/SessionStore";
-import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
-import type { CoreStorageKey } from "@parity/truapi-host";
+} from '../src/host-callbacks/SessionStore.js';
+import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
+import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
+import { must } from './support.js';
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
-  listeners: new Set<
-    (change: { siteId: string; key: string; value: string | null }) => void
-  >(),
+  listeners: new Set<(change: { siteId: string; key: string; value: string | null }) => void>(),
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
-  readSharedAuthStorage: async (siteId: string, key: string) => {
-    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
-  },
-  writeSharedAuthStorage: async (
-    siteId: string,
-    key: string,
-    value: string,
-  ) => {
+vi.mock('../../protocol/src/client.js', () => ({
+  readSharedAuthStorage: (siteId: string, key: string) =>
+    Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
+  writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
     sharedAuth.storage.set(`${siteId}:${key}`, value);
+    return Promise.resolve();
   },
-  clearSharedAuthStorage: async (siteId: string, key: string) => {
+  clearSharedAuthStorage: (siteId: string, key: string) => {
     sharedAuth.storage.delete(`${siteId}:${key}`);
+    return Promise.resolve();
   },
-  subscribeSharedAuthStorage: (
-    listener: (change: {
-      siteId: string;
-      key: string;
-      value: string | null;
-    }) => void,
-  ) => {
+  subscribeSharedAuthStorage: (listener: (change: { siteId: string; key: string; value: string | null }) => void) => {
     sharedAuth.listeners.add(listener);
     return () => {
       sharedAuth.listeners.delete(listener);
@@ -47,7 +37,7 @@ vi.mock("@dotli/protocol/client", () => ({
 
 const STORAGE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}`;
 const UI_STATE_CACHE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`;
-const AUTH_SESSION_KEY = { tag: "AuthSession" as const };
+const AUTH_SESSION_KEY = { tag: 'AuthSession' as const };
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -56,16 +46,14 @@ async function flushMicrotasks(): Promise<void> {
 
 // The core reports these as `Bytes32` (hex), so the UI state carries them
 // through unchanged rather than encoding them.
-const SESSION_PUBLIC_KEY =
-  "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
-const SESSION_IDENTITY_ACCOUNT_ID =
-  "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf";
+const SESSION_PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' as const;
+const SESSION_IDENTITY_ACCOUNT_ID = '0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf' as const;
 
-function connectedSessionUiInfo() {
+function connectedSessionUiInfo(): SessionUiInfo {
   return {
     publicKey: SESSION_PUBLIC_KEY,
     identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
-    liteUsername: "pgherveou.04",
+    liteUsername: 'pgherveou.04',
   };
 }
 
@@ -73,11 +61,11 @@ const CONNECTED_DETAIL = {
   connected: true,
   publicKey: SESSION_PUBLIC_KEY,
   identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
-  liteUsername: "pgherveou.04",
-  primaryUsername: "pgherveou.04",
+  liteUsername: 'pgherveou.04',
+  primaryUsername: 'pgherveou.04',
 };
 
-describe("session-store host callbacks", () => {
+describe('session-store host callbacks', () => {
   beforeEach(() => {
     localStorage.clear();
     sharedAuth.storage.clear();
@@ -85,74 +73,70 @@ describe("session-store host callbacks", () => {
     vi.restoreAllMocks();
   });
 
-  it("As a dotli integrator, the host round-trips the host core session blob", async () => {
+  it('As a dotli integrator, the host round-trips the host core session blob', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
 
-    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
+    expect(await storage.readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
 
     // Then
-    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe("0x010203");
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe('0x010203');
     expect(localStorage.length).toBe(0);
-    expect(Array.from((await readCoreStorage(AUTH_SESSION_KEY)) ?? [])).toEqual(
-      [1, 2, 3],
-    );
+    expect(Array.from((await storage.readCoreStorage(AUTH_SESSION_KEY)) ?? [])).toEqual([1, 2, 3]);
 
     // When
-    await clearCoreStorage(AUTH_SESSION_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
-    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
+    expect(await storage.readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host round-trips permission authorization slots from typed core keys", async () => {
+  it('As a dotli integrator, the host round-trips permission authorization slots from typed core keys', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "PermissionAuthorization",
+      tag: 'PermissionAuthorization',
       value: {
-        productId: "My App",
-        request: { tag: "Device", value: "OpenUrl" },
+        productId: 'My App',
+        request: { tag: 'Device', value: 'OpenUrl' },
       },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([4]));
+    await storage.writeCoreStorage(key, new Uint8Array([4]));
 
     // Then
     expect(localStorage.length).toBe(1);
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("open-url");
-    expect(localStorage.getItem(storageKey ?? "")).toBe("0x04");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([4]);
+    expect(storageKey).not.toContain('open-url');
+    expect(localStorage.getItem(storageKey ?? '')).toBe('0x04');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([4]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host keeps remote permission authorization keys opaque", async () => {
+  it('As a dotli integrator, the host keeps remote permission authorization keys opaque', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "PermissionAuthorization",
+      tag: 'PermissionAuthorization',
       value: {
-        productId: "myapp",
+        productId: 'myapp',
         request: {
-          tag: "Remote",
+          tag: 'Remote',
           value: {
             permission: {
-              tag: "Remote",
-              value: { domains: ["B.example", "a.example", "b.example"] },
+              tag: 'Remote',
+              value: { domains: ['B.example', 'a.example', 'b.example'] },
             },
           },
         },
@@ -160,118 +144,108 @@ describe("session-store host callbacks", () => {
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([7]));
+    await storage.writeCoreStorage(key, new Uint8Array([7]));
 
     // Then
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("example");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([7]);
+    expect(storageKey).not.toContain('example');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([7]);
     expect(localStorage.length).toBe(1);
   });
 
-  it("As a dotli integrator, the host encrypts persisted allowance key slots", async () => {
+  it('As a dotli integrator, the host encrypts persisted allowance key slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
 
     // Then
-    const storageKey = "dotli:core:allowance-keys:session-1";
-    expect(localStorage.getItem(storageKey)).not.toBe("0x01020304");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    const storageKey = 'dotli:core:allowance-keys:session-1';
+    expect(localStorage.getItem(storageKey)).not.toBe('0x01020304');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host encrypts product auto-signing keys in opaque slots", async () => {
+  it('As a dotli integrator, the host encrypts product auto-signing keys in opaque slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AutoSigningKey",
-      value: { productId: "truapi-playground.dot" },
+      tag: 'AutoSigningKey',
+      value: { productId: 'truapi-playground.dot' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
+    await storage.writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
 
     // Then
     expect(localStorage.length).toBe(1);
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:auto-signing:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("truapi-playground.dot");
-    expect(localStorage.getItem(storageKey ?? "")).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      5, 6, 7, 8,
-    ]);
+    expect(storageKey).not.toContain('truapi-playground.dot');
+    expect(localStorage.getItem(storageKey ?? '')).toMatch(/^enc1:0x/);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([5, 6, 7, 8]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host encrypts the device encryption secret in a stable install-wide slot", async () => {
+  it('As a dotli integrator, the host encrypts the device encryption secret in a stable install-wide slot', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
-    const key = { tag: "DeviceEncryptionKey" } satisfies CoreStorageKey;
+    const storage = createSessionStoreAdapters();
+    const key = { tag: 'DeviceEncryptionKey' } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([9, 10, 11, 12]));
+    await storage.writeCoreStorage(key, new Uint8Array([9, 10, 11, 12]));
 
     // Then
     // Peers address this device by the public counterpart, so the slot name
     // must not move with the session: a fresh name would orphan them.
-    const storageKey = "dotli:core:device-encryption-key";
+    const storageKey = 'dotli:core:device-encryption-key';
     expect(localStorage.getItem(storageKey)).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      9, 10, 11, 12,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([9, 10, 11, 12]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host stores product subtree keys per session in opaque plaintext slots", async () => {
+  it('As a dotli integrator, the host stores product subtree keys per session in opaque plaintext slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "ProductSubtree",
+      tag: 'ProductSubtree',
       value: {
-        sessionId: "session-1",
-        productId: "truapi-playground.dot",
+        sessionId: 'session-1',
+        productId: 'truapi-playground.dot',
       },
     } satisfies CoreStorageKey;
     const otherSession = {
-      tag: "ProductSubtree",
+      tag: 'ProductSubtree',
       value: {
-        sessionId: "session-2",
-        productId: "truapi-playground.dot",
+        sessionId: 'session-2',
+        productId: 'truapi-playground.dot',
       },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([13]));
-    await writeCoreStorage(otherSession, new Uint8Array([14]));
+    await storage.writeCoreStorage(key, new Uint8Array([13]));
+    await storage.writeCoreStorage(otherSession, new Uint8Array([14]));
 
     // Then
     // The slot holds a public key, so it is stored in the clear, but the
@@ -280,32 +254,27 @@ describe("session-store host callbacks", () => {
     for (const index of [0, 1]) {
       const storageKey = localStorage.key(index);
       expect(storageKey).toMatch(/^dotli:core:product-subtree:[0-9a-f]+$/);
-      expect(storageKey).not.toContain("truapi-playground.dot");
-      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+      expect(storageKey).not.toContain('truapi-playground.dot');
+      expect(localStorage.getItem(storageKey ?? '')).toMatch(/^0x/);
     }
     // Pairing again answers afresh, so one session's answer must not be read
     // back for another.
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([13]);
-    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
-      14,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([13]);
+    expect(Array.from((await storage.readCoreStorage(otherSession)) ?? [])).toEqual([14]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
-    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
-      14,
-    ]);
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await storage.readCoreStorage(otherSession)) ?? [])).toEqual([14]);
   });
 
-  it("As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer", async () => {
+  it('As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "SsoResponderRequestLedger",
+      tag: 'SsoResponderRequestLedger',
       value: {
         rootPublicKey: new Uint8Array(32).fill(1),
         peerStatementAccountId: new Uint8Array(32).fill(2),
@@ -313,7 +282,7 @@ describe("session-store host callbacks", () => {
       },
     } satisfies CoreStorageKey;
     const otherPeer = {
-      tag: "SsoResponderRequestLedger",
+      tag: 'SsoResponderRequestLedger',
       value: {
         rootPublicKey: new Uint8Array(32).fill(1),
         peerStatementAccountId: new Uint8Array(32).fill(2),
@@ -322,8 +291,8 @@ describe("session-store host callbacks", () => {
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([21]));
-    await writeCoreStorage(otherPeer, new Uint8Array([22]));
+    await storage.writeCoreStorage(key, new Uint8Array([21]));
+    await storage.writeCoreStorage(otherPeer, new Uint8Array([22]));
 
     // Then
     // Core-owned replay state, not key material, so it is stored like the
@@ -332,119 +301,116 @@ describe("session-store host callbacks", () => {
     for (const index of [0, 1]) {
       const storageKey = localStorage.key(index);
       expect(storageKey).toMatch(/^dotli:core:sso-responder-ledger:[0-9a-f]+$/);
-      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+      expect(localStorage.getItem(storageKey ?? '')).toMatch(/^0x/);
     }
     // The ledger bounds replays for one peer, so two peers of the same wallet
     // must never share a slot.
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([21]);
-    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([21]);
+    expect(Array.from((await storage.readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
-    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await storage.readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
   });
 
-  it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
+  it('As a dotli integrator, the host never reuses a nonce across allowance key writes', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:session-1";
+    const storageKey = 'dotli:core:allowance-keys:session-1';
 
     // When: the same plaintext is written twice
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const first = localStorage.getItem(storageKey);
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const second = localStorage.getItem(storageKey);
 
     // Then: the ciphertexts differ (fresh nonce per write) and still decrypt
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
     expect(second).not.toBe(first);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
   });
 
-  it("As a dotli integrator, the host encrypts allowance keys under a non-extractable per-install key", async () => {
+  it('As a dotli integrator, the host encrypts allowance keys under a non-extractable per-install key', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
 
     // Then: the encryption key is a random per-install CryptoKey persisted
     // in IndexedDB whose material can never be exported, not something
     // derivable from public bundle data.
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("dotli-core");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const request = indexedDB.open('dotli-core');
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('opening dotli-core failed'));
+      };
     });
-    const stored = await new Promise<CryptoKey | undefined>(
-      (resolve, reject) => {
-        const request = db
-          .transaction("keys")
-          .objectStore("keys")
-          .get("allowance-keys");
-        request.onsuccess = () => resolve(request.result as CryptoKey);
-        request.onerror = () => reject(request.error);
-      },
-    );
+    const stored = await new Promise<CryptoKey | undefined>((resolve, reject) => {
+      const request = db.transaction('keys').objectStore('keys').get('allowance-keys');
+      request.onsuccess = () => {
+        resolve(request.result as CryptoKey);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('reading allowance-keys failed'));
+      };
+    });
     db.close();
-    expect(stored?.type).toBe("secret");
+    expect(stored?.type).toBe('secret');
     expect(stored?.extractable).toBe(false);
-    await expect(
-      crypto.subtle.exportKey("raw", stored as CryptoKey),
-    ).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('raw', must(stored, 'the stored key'))).rejects.toThrow();
   });
 
-  it("As a dotli integrator, the host migrates legacy plaintext allowance keys on read", async () => {
+  it('As a dotli integrator, the host migrates legacy plaintext allowance keys on read', async () => {
     // Given: a plain-hex slot written before at-rest encryption shipped
-    const { readCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "legacy" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'legacy' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:legacy";
-    localStorage.setItem(storageKey, "0x01020304");
+    const storageKey = 'dotli:core:allowance-keys:legacy';
+    localStorage.setItem(storageKey, '0x01020304');
 
     // When
-    const bytes = await readCoreStorage(key);
+    const bytes = await storage.readCoreStorage(key);
 
     // Then: the legacy bytes are readable and re-persisted encrypted
     expect(Array.from(bytes ?? [])).toEqual([1, 2, 3, 4]);
     expect(localStorage.getItem(storageKey)).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
   });
 
-  it("As a dotli integrator, the host drops allowance slots that no longer decrypt instead of returning ciphertext", async () => {
+  it('As a dotli integrator, the host drops allowance slots that no longer decrypt instead of returning ciphertext', async () => {
     // Given: an encrypted slot whose ciphertext no longer authenticates —
     // the same shape as a key lost to an IndexedDB wipe or tampered bytes
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:session-1";
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const stored = localStorage.getItem(storageKey) ?? "";
-    const flipped = stored.slice(0, -2) + (stored.endsWith("00") ? "ff" : "00");
+    const storageKey = 'dotli:core:allowance-keys:session-1';
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    const stored = localStorage.getItem(storageKey) ?? '';
+    const flipped = stored.slice(0, -2) + (stored.endsWith('00') ? 'ff' : '00');
     localStorage.setItem(storageKey, flipped);
 
     // When
-    const bytes = await readCoreStorage(key);
+    const bytes = await storage.readCoreStorage(key);
 
     // Then: a true cache miss — ciphertext is never handed back as key
     // material, and the dead slot is removed rather than re-encrypted
@@ -452,162 +418,157 @@ describe("session-store host callbacks", () => {
     expect(localStorage.getItem(storageKey)).toBeNull();
   });
 
-  it("As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss", async () => {
+  it('As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss', async () => {
     // Given
-    const { readCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "corrupt" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'corrupt' },
     } satisfies CoreStorageKey;
-    localStorage.setItem("dotli:core:allowance-keys:corrupt", "not-hex");
+    localStorage.setItem('dotli:core:allowance-keys:corrupt', 'not-hex');
 
     // When
-    const stored = readCoreStorage(key);
+    const stored = storage.readCoreStorage(key);
 
     // Then
     await expect(stored).resolves.toBeUndefined();
   });
 
-  it("As a dotli integrator, the host treats a corrupt shared auth session as a cache miss", async () => {
+  it('As a dotli integrator, the host treats a corrupt shared auth session as a cache miss', async () => {
     // Given
-    const { readCoreStorage } = createSessionStoreAdapters();
-    sharedAuth.storage.set(STORAGE_KEY, "not-hex");
+    const storage = createSessionStoreAdapters();
+    sharedAuth.storage.set(STORAGE_KEY, 'not-hex');
 
     // When
-    const stored = readCoreStorage(AUTH_SESSION_KEY);
+    const stored = storage.readCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     await expect(stored).resolves.toBeUndefined();
   });
 
-  it("As a dotli integrator, the host emits the typed session identity details from a connected auth state", () => {
+  it('As a dotli integrator, the host emits the typed session identity details from a connected auth state', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
 
     // Then
-    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
-  it("As a dotli integrator, the host dispatches the pairing presentation with its host context", () => {
+  it('As a dotli integrator, the host dispatches the pairing presentation with its host context', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web", {
+    const authStateChanged = createAuthStateChanged('Polkadot Web', {
       dotSuffix: false,
       hostGlobal: true,
     });
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({
-      tag: "Pairing",
-      value: { deeplink: "polkadotapp://pair?handshake=test" },
+    authStateChanged({
+      tag: 'Pairing',
+      value: { deeplink: 'polkadotapp://pair?handshake=test' },
     });
 
     // Then
     expect(events).toEqual([
       {
-        tag: "Pairing",
-        deeplink: "polkadotapp://pair?handshake=test",
-        label: "Polkadot Web",
+        tag: 'Pairing',
+        deeplink: 'polkadotapp://pair?handshake=test',
+        label: 'Polkadot Web',
         dotSuffix: false,
         hostGlobal: true,
       },
     ]);
   });
 
-  it("As a dotli integrator, the host dispatches the authenticating state", () => {
+  it('As a dotli integrator, the host dispatches the authenticating state', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({ tag: "Authenticating" });
+    authStateChanged({ tag: 'Authenticating' });
 
     // Then
-    expect(events).toEqual([{ tag: "Authenticating" }]);
+    expect(events).toEqual([{ tag: 'Authenticating' }]);
   });
 
-  it("As a dotli integrator, the host caches the connected UI state and clears it with the session", async () => {
+  it('As a dotli integrator, the host caches the connected UI state and clears it with the session', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { clearCoreStorage } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    const storage = createSessionStoreAdapters();
 
     // When
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
 
     // Then
-    expect(
-      JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? ""),
-    ).toEqual(CONNECTED_DETAIL);
+    expect(JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? '')).toEqual(CONNECTED_DETAIL);
 
     // When
-    await clearCoreStorage(AUTH_SESSION_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host clears the cached UI state on a disconnected auth state", async () => {
+  it('As a dotli integrator, the host clears the cached UI state on a disconnected auth state', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
 
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeDefined();
 
     // When
-    authStateChanged?.({ tag: "Disconnected" });
+    authStateChanged({ tag: 'Disconnected' });
     await flushMicrotasks();
 
     // Then
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host rehydrates the cached session UI state", async () => {
+  it('As a dotli integrator, the host rehydrates the cached session UI state', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // Nothing persisted: nothing emitted, even with a stale cache entry.
-    sharedAuth.storage.set(
-      UI_STATE_CACHE_KEY,
-      JSON.stringify(CONNECTED_DETAIL),
-    );
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     emitPersistedSessionUiState();
     await flushMicrotasks();
     expect(events).toEqual([]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    authStateChanged?.({
-      tag: "Connected",
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
@@ -617,41 +578,36 @@ describe("session-store host callbacks", () => {
     await flushMicrotasks();
 
     // Then
-    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
-  it("As a dotli integrator, the host rehydrates a bare connected state when no cache exists", async () => {
+  it('As a dotli integrator, the host rehydrates a bare connected state when no cache exists', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     emitPersistedSessionUiState();
     await flushMicrotasks();
 
     // Then
-    expect(events).toEqual([
-      { tag: "Connected", session: { connected: true } },
-    ]);
+    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
   });
 
-  it("As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed", async () => {
+  it('As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed', async () => {
     // Given: a persisted session, but a UI-state cache whose fields no longer
     // match the expected shape (e.g. written by a different code version).
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    sharedAuth.storage.set(
-      UI_STATE_CACHE_KEY,
-      JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }),
-    );
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }));
 
     // When
     emitPersistedSessionUiState();
@@ -659,19 +615,17 @@ describe("session-store host callbacks", () => {
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.
-    expect(events).toEqual([
-      { tag: "Connected", session: { connected: true } },
-    ]);
+    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
   });
 
-  it("As a dotli integrator, the host notifies local and matching storage changes", async () => {
+  it('As a dotli integrator, the host notifies local and matching storage changes', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const listener = vi.fn();
     const unsubscribe = onStoredSessionChanged(listener);
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
 
     // Then
     expect(listener).toHaveBeenCalledTimes(1);
@@ -681,7 +635,7 @@ describe("session-store host callbacks", () => {
       sharedListener({
         siteId: SITE_ID,
         key: SHARED_CORE_SESSION_KEY,
-        value: "0x09",
+        value: '0x09',
       });
     }
 
@@ -690,7 +644,7 @@ describe("session-store host callbacks", () => {
 
     // When
     unsubscribe();
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]));
 
     // Then
     expect(listener).toHaveBeenCalledTimes(2);

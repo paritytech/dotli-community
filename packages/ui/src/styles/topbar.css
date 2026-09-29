@@ -971,7 +971,8 @@
   border-radius: 6px;
 }
 .mode-popover:focus-visible,
-.permissions-popover:focus-visible {
+.permissions-popover:focus-visible,
+.user-popover:focus-visible {
   outline: none;
 }
 .mode-radio-row.disabled {
@@ -1524,11 +1525,13 @@
 }
 .chat-panel-messages {
   flex: 1;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+.chat-panel-thread {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 12px 14px;
-  overflow-y: auto;
 }
 .chat-msg {
   display: flex;
@@ -1559,9 +1562,6 @@
 .chat-msg-meta {
   color: rgba(255, 255, 255, 0.45);
   font-size: 0.72rem;
-}
-.chat-panel-messages[hidden] {
-  display: none;
 }
 .chat-msg-time {
   display: block;

@@ -21,45 +21,37 @@ import {
   type HostRequestLoginResponse as LoginResponse,
   type WireProvider as Provider,
   createMessagePortProvider,
-} from "@parity/truapi";
-import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { BASE_DOMAIN } from "@dotli/config/config";
+} from '@parity/truapi';
+import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
+  BASE_DOMAIN,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
-} from "@dotli/config/host-sandbox-contract";
-import { getBackend, getCacheSettings } from "@dotli/config/mode";
-import { getNetwork, withActiveTld } from "@dotli/config/network";
-import { getResolutionId, m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { chatCapabilityFor } from "@dotli/shared/chat-capability";
-import { log } from "@dotli/shared/log";
-import {
-  emitDotliDebugEvent,
-  hasDotliDebugListeners,
-} from "@dotli/truapi-debug/dotli-debug-bus";
-import type { TrUApiProductProvider } from "@parity/truapi-host";
-import type { PairingHostAdmin } from "@parity/truapi-host";
-import {
-  buildAllowAttribute,
-  registerPermissionAuthorizationProvider,
-} from "./permissions";
-import { createHostCallbacks } from "./host-callbacks/handlers";
-import { dispatchAuthState } from "./host-callbacks/AuthState";
-import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
-import { LoginRequestError } from "./login-request-error";
-import { productIframeBox } from "./product-iframe-box";
-import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
-import { describeWireFrame } from "./debug-wire-describe";
-// TODO(remove-legacy-nova): import used only by the legacy probe tagged below.
-import {
-  createLegacyNovaChainHeadProvider,
-  createWindowMessageProvider,
-} from "./legacy-host-bridge";
-import type { BlockingModalCoordinator } from "./blocking-modal-queue";
-import { registerChatConnection } from "./chat/service";
-import { showNotification } from "./notification";
-import { ERRORS } from "./errors";
+  getBackend,
+  getNetwork,
+  withActiveTld,
+} from '@dotli/config';
+
+import { getResolutionId, m, spans as S } from '@dotli/metrics';
+import { chatCapabilityFor, log } from '@dotli/shared';
+
+import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
+import type { TrUApiProductProvider } from '@parity/truapi-host';
+import type { PairingHostAdmin } from '@parity/truapi-host';
+import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import { createHostCallbacks } from './host-callbacks/handlers.js';
+import { dispatchAuthState } from './host-callbacks/AuthState.js';
+import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
+import { LoginRequestError } from './login-request-error.js';
+import { attachProductFrame } from './product-frame-layout.js';
+import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { setProductLoaded } from './state/product.js';
+import { describeWireFrame } from './debug-wire-describe.js';
+import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { registerChatConnection } from './chat/service.js';
+import { showNotification } from './notification.js';
+import { ERRORS } from './errors.js';
+import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
 
 const noop = (): void => undefined;
 
@@ -69,8 +61,8 @@ const noop = (): void => undefined;
 // main thread (no more `[Violation] 'message' handler took 150ms+`).
 const chunkLoadStart = performance.now();
 const runtimeChunkPromise = Promise.all([
-  import("@parity/truapi-host/web"),
-  import("@parity/truapi-host/worker-runtime?worker"),
+  import('@parity/truapi-host/web'),
+  import('@parity/truapi-host/worker-runtime?worker'),
 ]).then(([web, workerMod]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
   return {
@@ -83,7 +75,7 @@ void runtimeChunkPromise.catch(() => {
   /* fire-and-forget */
 });
 
-const app = document.getElementById("app") ?? document.body;
+const app = document.getElementById('app') ?? document.body;
 
 interface ActiveHost {
   iframe: HTMLIFrameElement;
@@ -103,10 +95,10 @@ interface CoreHost {
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    | "disconnectSession"
-    | "getPermissionAuthorizationStatus"
-    | "getPermissionAuthorizationStatuses"
-    | "setPermissionAuthorizationStatus"
+    | 'disconnectSession'
+    | 'getPermissionAuthorizationStatus'
+    | 'getPermissionAuthorizationStatuses'
+    | 'setPermissionAuthorizationStatus'
   >;
 type CoreProvider = CoreProviderBase & PairingHostAdmin;
 type PairingRuntimeControls = PairingHostAdmin & {
@@ -114,19 +106,19 @@ type PairingRuntimeControls = PairingHostAdmin & {
 };
 type CurrentProduct =
   | {
-      mode: "iframe";
+      mode: 'iframe';
       label: string;
       url: string;
-      productId?: string;
+      productId?: string | undefined;
     }
   | {
-      mode: "subdomain";
+      mode: 'subdomain';
       label: string;
       cid: string;
     };
 
-const LANDING_AUTH_LABEL = "dotli";
-const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
+const LANDING_AUTH_LABEL = 'dotli';
+const LANDING_AUTH_DISPLAY_LABEL = 'Polkadot Web';
 
 let currentHost: ActiveHost | null = null;
 let landingAuthHostPromise: Promise<CoreHost> | null = null;
@@ -228,10 +220,7 @@ function trackCoreProvider(
       }
       disposed = true;
       liveCoreProviders.delete(tracked);
-      if (
-        liveCoreProviders.size === 0 &&
-        unsubscribeSessionStoreChanges !== null
-      ) {
+      if (liveCoreProviders.size === 0 && unsubscribeSessionStoreChanges !== null) {
         unsubscribeSessionStoreChanges();
         unsubscribeSessionStoreChanges = null;
       }
@@ -249,7 +238,7 @@ function notifyLiveCoreProvidersSessionStoreChanged(): void {
 function rerenderProduct(product: CurrentProduct): void {
   const expectedGeneration = renderGeneration + 1;
   const render =
-    product.mode === "iframe"
+    product.mode === 'iframe'
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
         })
@@ -259,14 +248,14 @@ function rerenderProduct(product: CurrentProduct): void {
     if (renderGeneration !== expectedGeneration) {
       return;
     }
-    log.error("[dot.li] Product iframe reload failed:", error);
+    log.error('[dot.li] Product iframe reload failed:', error);
     showNotification({
-      label: "dot.li",
-      text: "The app could not be reloaded.",
+      label: 'dot.li',
+      text: 'The app could not be reloaded.',
       browserNotification: false,
       dismissMs: 0,
       action: {
-        label: "Reload",
+        label: 'Reload',
         onClick: () => {
           window.location.reload();
         },
@@ -278,7 +267,7 @@ function rerenderProduct(product: CurrentProduct): void {
 // Listen for device permission grants. Reload the iframe so the updated
 // `allow` attribute takes effect. Keep the current iframe visible and surface
 // a retry if replacement host startup fails.
-window.addEventListener("dotli:device-permission-changed", () => {
+window.addEventListener('dotli:device-permission-changed', () => {
   const product = currentProduct;
   if (product !== null) {
     rerenderProduct(product);
@@ -296,20 +285,13 @@ window.addEventListener("dotli:device-permission-changed", () => {
 // `TIMEOUTS.SANDBOX_RECOVER` grace expires.
 const RECOVER_MIN_INTERVAL_MS = 5_000;
 let lastRecoverAt = 0;
-window.addEventListener("message", (event: MessageEvent) => {
+window.addEventListener('message', (event: MessageEvent) => {
   const data = event.data as Record<string, unknown> | null;
-  if (
-    data === null ||
-    typeof data !== "object" ||
-    data.type !== "dotli:sandbox-recover"
-  ) {
+  if (data === null || typeof data !== 'object' || data['type'] !== 'dotli:sandbox-recover') {
     return;
   }
   const product = currentProduct;
-  if (
-    product?.mode !== "subdomain" ||
-    event.origin !== getAppOrigin(product.label)
-  ) {
+  if (product?.mode !== 'subdomain' || event.origin !== getAppOrigin(product.label)) {
     return;
   }
   const now = Date.now();
@@ -322,28 +304,24 @@ window.addEventListener("message", (event: MessageEvent) => {
 
 let bridgeEventListenersInitialized = false;
 
-export function initBridgeEventListeners(
-  modalCoordinator: BlockingModalCoordinator,
-): void {
+export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordinator): void {
   if (bridgeEventListenersInitialized) {
     return;
   }
   blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
-  (
-    window as typeof window & { __dotliTruapiBridgeReady?: boolean }
-  ).__dotliTruapiBridgeReady = true;
-  window.addEventListener("dotli:truapi-disconnect-request", () => {
+  (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
+  window.addEventListener('dotli:truapi-disconnect-request', () => {
     void disconnectTruapiHosts();
   });
 
   // User closed the pairing modal: cancel whichever core initiated it. A
   // product can request login directly, while the topbar uses the landing
   // auth host.
-  window.addEventListener("dotli:truapi-cancel-login", () => {
+  window.addEventListener('dotli:truapi-cancel-login', () => {
     currentHost?.cancelLogin();
     void landingAuthHostPromise?.then(
-      (host) => {
+      host => {
         host.cancelLogin();
       },
       () => {
@@ -352,12 +330,12 @@ export function initBridgeEventListeners(
     );
   });
 
-  window.addEventListener("dotli:truapi-login-request", (event: Event) => {
+  window.addEventListener('dotli:truapi-login-request', (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
     void (async () => {
       const host = await getLandingAuthHost();
       const result = await host.requestLogin(detail.reason);
-      if (result === "Success" || result === "AlreadyConnected") {
+      if (result === 'Success' || result === 'AlreadyConnected') {
         notifyLiveCoreProvidersSessionStoreChanged();
       }
     })().catch((error: unknown) => {
@@ -368,8 +346,8 @@ export function initBridgeEventListeners(
       // failures the core never saw: host boot, encode, transport errors.
       if (!(error instanceof LoginRequestError)) {
         dispatchAuthState({
-          tag: "LoginFailed",
-          kind: "Other",
+          tag: 'LoginFailed',
+          kind: 'Other',
           reason: message,
         });
       }
@@ -386,7 +364,7 @@ async function disconnectTruapiHosts(): Promise<void> {
     try {
       hosts.add(await landingAuthHostPromise);
     } catch (err) {
-      log.warn("[dot.li] pending login host cleanup failed:", err);
+      log.warn('[dot.li] pending login host cleanup failed:', err);
     }
   }
 
@@ -396,11 +374,11 @@ async function disconnectTruapiHosts(): Promise<void> {
     } catch {
       // If the auth runtime cannot boot, keep the UI responsive even though
       // persisted core session state could not be cleared.
-      dispatchAuthState({ tag: "Disconnected" });
+      dispatchAuthState({ tag: 'Disconnected' });
       return;
     }
   }
-  await Promise.allSettled([...hosts].map((host) => host.disconnect()));
+  await Promise.allSettled([...hosts].map(host => host.disconnect()));
 }
 
 /**
@@ -411,25 +389,24 @@ function getDeepPath(): string {
   const { pathname, search, hash } = window.location;
   let p = pathname;
   const base = import.meta.env.BASE_URL;
-  if (base !== "/" && p.startsWith(base)) {
-    p = "/" + p.slice(base.length);
+  if (base !== '/' && p.startsWith(base)) {
+    p = '/' + p.slice(base.length);
   }
-  const isRoot = p === "" || p === "/";
+  const isRoot = p === '' || p === '/';
   if (isRoot) {
-    return search || hash ? search + hash : "";
+    return search || hash ? search + hash : '';
   }
   return p + search + hash;
 }
 
-/** Pin the product iframe to the area the host chrome and the insets leave. */
-function applyIframeStyling(
-  iframe: HTMLIFrameElement,
-  opts: { topbarOffset: boolean },
-): void {
-  const box = productIframeBox(opts);
-  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
-  document.body.style.margin = "0";
-  document.body.style.overflow = "hidden";
+/**
+ * Pin the product iframe to the area the host chrome and the insets leave.
+ * product-frame-layout owns its geometry from here on.
+ */
+function applyIframeStyling(iframe: HTMLIFrameElement): void {
+  attachProductFrame(iframe);
+  document.body.style.margin = '0';
+  document.body.style.overflow = 'hidden';
 }
 
 function pipeProviders(
@@ -440,12 +417,12 @@ function pipeProviders(
   let sawInbound = false;
   let sawOutbound = false;
   const unsubs = [
-    product.subscribe((message) => {
+    product.subscribe(message => {
       if (!sawInbound) {
         sawInbound = true;
         emitDotliDebugEvent({
-          layer: "bridge",
-          event: "first_inbound",
+          layer: 'bridge',
+          event: 'first_inbound',
           flowId: args.flowId,
           timestamp: Date.now(),
           payload: { label: args.label, productId: args.productId },
@@ -453,17 +430,17 @@ function pipeProviders(
       }
       core.postMessage(message);
     }),
-    core.subscribe((message) => {
+    core.subscribe(message => {
       if (!sawOutbound) {
         sawOutbound = true;
         emitDotliDebugEvent({
-          layer: "bridge",
-          event: "first_outbound",
+          layer: 'bridge',
+          event: 'first_outbound',
           flowId: args.flowId,
           timestamp: Date.now(),
           payload: { label: args.label, productId: args.productId },
         });
-        window.dispatchEvent(new Event("dotli:debug:bridge-ready"));
+        window.dispatchEvent(new Event('dotli:debug:bridge-ready'));
       }
       product.postMessage(message);
     }),
@@ -473,7 +450,7 @@ function pipeProviders(
     core.subscribeClose?.(() => {
       product.dispose();
     }),
-  ].filter((fn): fn is () => void => typeof fn === "function");
+  ].filter((fn): fn is () => void => typeof fn === 'function');
 
   return () => {
     for (const unsub of unsubs) {
@@ -487,11 +464,7 @@ function pipeProviders(
   };
 }
 
-function emitWireFrameDebug(
-  direction: "incoming" | "outgoing",
-  productId: string,
-  message: Uint8Array,
-): void {
+function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: string, message: Uint8Array): void {
   if (!hasDotliDebugListeners()) {
     return;
   }
@@ -501,14 +474,11 @@ function emitWireFrameDebug(
       return;
     }
     emitDotliDebugEvent({
-      kind: "truapi",
+      kind: 'truapi',
       direction,
       productId,
       requestId: decoded.value.requestId,
-      payload: describeWireFrame(
-        decoded.value.payload,
-        decoded.value.payload.value,
-      ),
+      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value),
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
@@ -516,17 +486,14 @@ function emitWireFrameDebug(
   }
 }
 
-function wrapCoreProviderForDebug(
-  provider: CoreProviderBase,
-  productId: string,
-): CoreProviderBase {
+function wrapCoreProviderForDebug(provider: CoreProviderBase, productId: string): CoreProviderBase {
   const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
-  const unsubscribeCore = provider.subscribe((message) => {
+  const unsubscribeCore = provider.subscribe(message => {
     if (disposed) {
       return;
     }
-    emitWireFrameDebug("outgoing", productId, message);
+    emitWireFrameDebug('outgoing', productId, message);
     for (const listener of [...listeners]) {
       listener(message);
     }
@@ -537,7 +504,7 @@ function wrapCoreProviderForDebug(
       if (disposed) {
         return;
       }
-      emitWireFrameDebug("incoming", productId, message);
+      emitWireFrameDebug('incoming', productId, message);
       provider.postMessage(message);
     },
     subscribe(callback) {
@@ -575,10 +542,7 @@ function wrapCoreProviderForDebug(
 
 let topbarLoginRequestSeq = 0;
 
-export function requestCoreLogin(
-  core: Provider,
-  reason?: string,
-): Promise<LoginResponse> {
+export function requestCoreLogin(core: Provider, reason?: string): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
   // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
@@ -592,8 +556,8 @@ export function requestCoreLogin(
       methodId: ACCOUNT_REQUEST_LOGIN.method,
       messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
-        tag: "V1",
-        value: { reason },
+        tag: 'V1',
+        value: reason === undefined ? {} : { reason },
       }),
     },
   });
@@ -641,7 +605,7 @@ export function requestCoreLogin(
     };
 
     registerCleanup(
-      core.subscribe((message) => {
+      core.subscribe(message => {
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
           rejectRequest(decoded.error);
@@ -666,21 +630,19 @@ export function requestCoreLogin(
             rejectRequest(error);
           }
         } catch (error) {
-          rejectRequest(
-            error instanceof Error ? error : new Error(String(error)),
-          );
+          rejectRequest(error instanceof Error ? error : new Error(String(error)));
         }
       }),
-      (unsubscribe) => {
+      unsubscribe => {
         unsubscribeMessage = unsubscribe;
       },
     );
 
     registerCleanup(
-      core.subscribeClose?.((error) => {
+      core.subscribeClose?.(error => {
         rejectRequest(error);
       }),
-      (unsubscribe) => {
+      unsubscribe => {
         unsubscribeClose = unsubscribe;
       },
     );
@@ -698,25 +660,18 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
-  productId?: string;
+  productId?: string | undefined;
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
   const coreProvider = await createCoreProvider(args.label, {
     productId: args.productId,
   });
-  const unregisterPermissions = registerPermissionAuthorizationProvider(
-    args.label,
-    coreProvider,
-  );
+  const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   const { createIframeHost } = await runtimeChunkPromise;
   const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
-  // TODO(remove-legacy-nova): `legacyProbeCleanup` (including its two `?.()`
-  // call sites in `dispose()` and the catch block below) exists only for the
-  // legacy probe block tagged further down.
-  let legacyProbeCleanup: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
@@ -736,67 +691,11 @@ async function createHost(args: {
       allow,
       sandbox: args.sandbox,
       container: args.container,
-      onPort: (port) => {
+      onPort: port => {
         productProvider = createMessagePortProvider(port);
         disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
       },
     });
-
-    // DEPRECATED legacy host-API support. Modern products announce themselves
-    // with `{type:"truapi-ready"}` and use the MessagePort wired above. Products
-    // still on the Nova host-api SDK instead post raw SCALE frames (Uint8Array)
-    // to `window.parent`. Detect that first frame and re-pipe the core over a
-    // window-postMessage provider.
-    //
-    // TODO(remove-legacy-nova): once the last legacy Nova product migrates to
-    // `@parity/truapi`, delete this probe block (through the
-    // `legacyProbeCleanup` assignment below), the `legacyProbeCleanup`
-    // declaration and call sites tagged above, the `legacy-host-bridge`
-    // import at the top of this file, and the tagged `legacy-host-bridge.ts`
-    // module itself. Modern products need no probe: the MessagePort from
-    // `onPort` is the only wiring.
-    let probeMode: "pending" | "modern" | "legacy" = "pending";
-    const onProbe = (event: MessageEvent): void => {
-      if (probeMode !== "pending") {
-        return;
-      }
-      const targetWindow = host.iframe.contentWindow;
-      if (
-        !targetWindow ||
-        event.source !== targetWindow ||
-        event.origin !== args.allowedOrigin
-      ) {
-        return;
-      }
-      if (event.data instanceof Uint8Array) {
-        probeMode = "legacy";
-        legacyProbeCleanup?.();
-        // Drop the unused modern MessagePort pipe before rewiring.
-        cleanupProductSide();
-        const windowProvider = createWindowMessageProvider(
-          targetWindow,
-          args.allowedOrigin,
-        );
-        const legacyProvider = createLegacyNovaChainHeadProvider(
-          windowProvider,
-          productId,
-        );
-        productProvider = legacyProvider;
-        disposePipe = pipeProviders(legacyProvider, coreProvider, pipeArgs);
-        // Replay the handshake frame the probe just consumed.
-        windowProvider.injectInbound(event.data);
-      } else if (
-        (event.data as { type?: unknown } | null)?.type === "truapi-ready"
-      ) {
-        probeMode = "modern";
-        legacyProbeCleanup?.();
-      }
-    };
-    window.addEventListener("message", onProbe);
-    legacyProbeCleanup = () => {
-      window.removeEventListener("message", onProbe);
-      legacyProbeCleanup = null;
-    };
 
     return {
       iframe: host.iframe,
@@ -811,7 +710,6 @@ async function createHost(args: {
       },
       dispose() {
         unregisterPermissions();
-        legacyProbeCleanup?.();
         cleanupProductSide();
         coreProvider.dispose();
         host.dispose();
@@ -819,7 +717,6 @@ async function createHost(args: {
     };
   } catch (error) {
     unregisterPermissions();
-    legacyProbeCleanup?.();
     cleanupProductSide();
     coreProvider.dispose();
     throw error;
@@ -829,21 +726,18 @@ async function createHost(args: {
 async function createCoreProvider(
   label: string,
   options: {
-    pairingLabel?: string;
-    pairingDotSuffix?: boolean;
-    pairingHostGlobal?: boolean;
-    productId?: string;
+    pairingLabel?: string | undefined;
+    pairingDotSuffix?: boolean | undefined;
+    pairingHostGlobal?: boolean | undefined;
+    productId?: string | undefined;
   } = {},
 ): Promise<CoreProvider> {
   if (blockingModalCoordinator === null) {
-    throw new Error(
-      "TrUAPI bridge initialized without a blocking modal coordinator",
-    );
+    throw new Error('TrUAPI bridge initialized without a blocking modal coordinator');
   }
   const blockingModalScope = blockingModalCoordinator.createScope();
   try {
-    const { createWebWorkerPairingHostRuntime, HostWorker } =
-      await runtimeChunkPromise;
+    const { createWebWorkerPairingHostRuntime, HostWorker } = await runtimeChunkPromise;
     const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
     const { productId, ...hostConfig } = runtimeConfig;
     // Chat-capable products get a Worker-kind execution so the core serves
@@ -866,35 +760,31 @@ async function createCoreProvider(
     );
     const provider = await runtime.createProvider({
       productId,
-      executionKind: chatCapable ? "Worker" : "App",
+      executionKind: chatCapable ? 'Worker' : 'App',
     });
     const unregisterChat = chatCapable
       ? registerChatConnection(productId, {
-          publish: (action) =>
+          publish: action =>
             provider.publishChatAction === undefined
-              ? Promise.reject(new Error("chat publishing unavailable"))
+              ? Promise.reject(new Error('chat publishing unavailable'))
               : provider.publishChatAction(action),
-          publishRendererAction: (item) =>
+          publishRendererAction: item =>
             provider.publishRendererAction === undefined
-              ? Promise.reject(new Error("renderer actions unavailable"))
+              ? Promise.reject(new Error('renderer actions unavailable'))
               : provider.publishRendererAction(item),
           render: (request, sink) => {
             if (provider.render === undefined) {
-              sink.onError?.(new Error("rendering unavailable"));
+              sink.onError?.(new Error('rendering unavailable'));
               return noop;
             }
             return provider.render(request, sink);
           },
         })
       : noop;
-    return trackCoreProvider(
-      wrapCoreProviderForDebug(provider, options.productId ?? label),
-      runtime,
-      () => {
-        unregisterChat();
-        blockingModalScope.dispose();
-      },
-    );
+    return trackCoreProvider(wrapCoreProviderForDebug(provider, options.productId ?? label), runtime, () => {
+      unregisterChat();
+      blockingModalScope.dispose();
+    });
   } catch (error) {
     blockingModalScope.dispose();
     throw error;
@@ -907,15 +797,10 @@ async function getLandingAuthHost(): Promise<CoreHost> {
   }
   const generation = landingAuthGeneration;
   const promise = createLandingAuthHost()
-    .then((host) => {
-      if (
-        generation !== landingAuthGeneration ||
-        landingAuthHostPromise !== promise
-      ) {
+    .then(host => {
+      if (generation !== landingAuthGeneration || landingAuthHostPromise !== promise) {
         host.dispose();
-        throw new Error(
-          "Landing auth host was disposed before it became ready",
-        );
+        throw new Error('Landing auth host was disposed before it became ready');
       }
       return host;
     })
@@ -956,7 +841,7 @@ function disposeLandingAuthHost(): void {
   const pending = landingAuthHostPromise;
   landingAuthHostPromise = null;
   void pending?.then(
-    (host) => {
+    host => {
       host.dispose();
     },
     () => {
@@ -971,18 +856,18 @@ function disposeLandingAuthHost(): void {
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string } = {},
+  options: { productId?: string | undefined } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
-  const renderFlowId = newFlowId("render");
-  const bridgeFlowId = newFlowId("bridge");
+  const renderFlowId = newFlowId('render');
+  const bridgeFlowId = newFlowId('bridge');
   const productId = options.productId ?? label;
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_begin",
+    layer: 'render',
+    event: 'iframe_begin',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, url, mode: "iframe" },
+    payload: { label, url, mode: 'iframe' },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Keep the current product visible while the replacement core initializes.
@@ -990,22 +875,24 @@ export async function renderIframe(
   // permission-triggered reloads look like a permanently blank application.
   const previousHost = currentHost;
   if (previousHost === null) {
-    app.innerHTML = "";
+    // This path has no loading overlay to keep, so the tracked roots go first
+    // and whatever else the page left in `#app` goes with them.
+    disposeAppRoots();
+    app.innerHTML = '';
   }
   disposeLandingAuthHost();
 
   currentProduct = {
-    mode: "iframe",
+    mode: 'iframe',
     label,
     url,
     productId: options.productId,
   };
 
-  const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_begin",
+    layer: 'bridge',
+    event: 'setup_begin',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId },
@@ -1014,7 +901,7 @@ export async function renderIframe(
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
     // Keep parity with the current dotli product sandbox permissions.
-    sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock',
     label,
     productId: options.productId,
     container: app,
@@ -1026,38 +913,35 @@ export async function renderIframe(
     return;
   }
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_ready",
+    layer: 'bridge',
+    event: 'setup_ready',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost);
   host.iframe.addEventListener(
-    "load",
+    'load',
     () => {
       emitDotliDebugEvent({
-        layer: "bridge",
-        event: "iframe_load",
+        layer: 'bridge',
+        event: 'iframe_load',
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId, mode: "iframe" },
+        payload: { label, productId, mode: 'iframe' },
       });
     },
     { once: true },
   );
 
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
-  ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    const { mountViolationPanel } = await import('./components/sandbox-checker/mount.js');
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -1065,20 +949,13 @@ export async function renderIframe(
 
   // Carry the runtime productId so listeners key chat data the same way
   // storage does when the debug path overrides the label-derived id.
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: {
-        label,
-        productId: options.productId ?? labelToProductId(label),
-      },
-    }),
-  );
+  setProductLoaded(label, options.productId ?? labelToProductId(label));
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_ready",
+    layer: 'render',
+    event: 'iframe_ready',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, mode: "iframe" },
+    payload: { label, mode: 'iframe' },
   });
 }
 
@@ -1090,13 +967,10 @@ export async function renderIframe(
  * iframe. Only the app subdomain itself participates in the TrUAPI
  * MessageChannel. Any nested dApp iframe it loads is opaque to the host.
  */
-export async function renderAppSubdomain(
-  cid: string,
-  label: string,
-): Promise<void> {
+export async function renderAppSubdomain(cid: string, label: string): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
-  const renderFlowId = newFlowId("render");
-  const bridgeFlowId = newFlowId("bridge");
+  const renderFlowId = newFlowId('render');
+  const bridgeFlowId = newFlowId('bridge');
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Permission changes rebuild this host so the iframe receives a refreshed
   // `allow` attribute. Keep the current product visible until its replacement
@@ -1105,7 +979,7 @@ export async function renderAppSubdomain(
   disposeLandingAuthHost();
 
   currentProduct = {
-    mode: "subdomain",
+    mode: 'subdomain',
     label,
     cid,
   };
@@ -1115,7 +989,6 @@ export async function renderAppSubdomain(
   // rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
-  const cache = getCacheSettings();
   const appOrigin = getAppOrigin(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
@@ -1124,9 +997,9 @@ export async function renderAppSubdomain(
   // don't keep triggering resets.
   let fullReset = false;
   try {
-    if (sessionStorage.getItem("dotli:pending-reset:sandbox") === "1") {
+    if (sessionStorage.getItem('dotli:pending-reset:sandbox') === '1') {
       fullReset = true;
-      sessionStorage.removeItem("dotli:pending-reset:sandbox");
+      sessionStorage.removeItem('dotli:pending-reset:sandbox');
     }
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag defaults to false which is the safe state.
   } catch {
@@ -1137,63 +1010,44 @@ export async function renderAppSubdomain(
     throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
   }
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
-  parsedUrl.searchParams.set(
-    SANDBOX_CONTRACT_PARAMS.v,
-    String(SANDBOX_SCHEMA_VERSION),
-  );
-  parsedUrl.searchParams.set(
-    SANDBOX_CONTRACT_PARAMS.chainBackend,
-    chainBackend,
-  );
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, chainBackend);
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
-  if (cache.skipArchiveCache) {
-    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
-  }
   if (fullReset) {
-    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
   }
   const resolutionId = getResolutionId();
   if (resolutionId !== null) {
-    parsedUrl.searchParams.set(
-      SANDBOX_CONTRACT_PARAMS.resolutionId,
-      resolutionId,
-    );
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
   }
   const url = parsedUrl.toString();
 
   // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only prepare it on the initial render. During a permission refresh the
-  // current iframe remains visible until the replacement is ready.
-  const loading =
-    previousHost === null ? app.querySelector<HTMLElement>(".loading") : null;
-  if (previousHost === null) {
-    app.innerHTML = "";
-    if (loading) {
-      app.appendChild(loading);
-    }
-  }
+  // Only on the initial render: `activateHost` keeps it as a retained child.
+  // During a permission refresh the current iframe remains visible until the
+  // replacement is ready, and the overlay, if still up, is disposed then.
+  const loading = previousHost === null ? app.querySelector<HTMLElement>('.loading') : null;
 
   const iframeUrl = new URL(url);
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_begin",
+    layer: 'bridge',
+    event: 'setup_begin',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_begin",
+    layer: 'render',
+    event: 'iframe_begin',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, url, mode: "subdomain" },
+    payload: { label, url, mode: 'subdomain' },
   });
   const host = await createHost({
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
-    sandbox:
-      "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
     label,
     container: app,
     debugFlowId: bridgeFlowId,
@@ -1204,61 +1058,54 @@ export async function renderAppSubdomain(
     return;
   }
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_ready",
+    layer: 'bridge',
+    event: 'setup_ready',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: true });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost, loading === null ? [] : [loading]);
   host.iframe.addEventListener(
-    "load",
+    'load',
     () => {
       emitDotliDebugEvent({
-        layer: "bridge",
-        event: "iframe_load",
+        layer: 'bridge',
+        event: 'iframe_load',
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId: label, mode: "subdomain" },
+        payload: { label, productId: label, mode: 'subdomain' },
       });
     },
     { once: true },
   );
 
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
-  ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    const { mountViolationPanel } = await import('./components/sandbox-checker/mount.js');
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
     }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
   document.title = withActiveTld(label);
 
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: { label, productId: labelToProductId(label) },
-    }),
-  );
+  setProductLoaded(label, labelToProductId(label));
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_ready",
+    layer: 'render',
+    event: 'iframe_ready',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, mode: "subdomain" },
+    payload: { label, mode: 'subdomain' },
   });
 }
 
 function getAppOrigin(label: string): string {
   const hostname = window.location.hostname;
-  if (hostname.endsWith(".localhost") || hostname === "localhost") {
-    const port = import.meta.env.DEV ? "5174" : window.location.port;
+  if (hostname.endsWith('.localhost') || hostname === 'localhost') {
+    const port = import.meta.env.DEV ? '5174' : window.location.port;
     return `http://${label}.app.localhost:${port}`;
   }
   return `https://${label}.app.${BASE_DOMAIN}`;
@@ -1273,18 +1120,23 @@ function activateHost(
     currentPanelDispose();
     currentPanelDispose = null;
   }
+  // The previous frame leaves with its host.
   previousHost?.dispose();
-  const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);
-  for (const child of [...app.children]) {
-    if (!retained.has(child as HTMLElement)) {
-      child.remove();
-    }
+  disposeAppRoot('page');
+  if (!retainedChildren.some(child => child.classList.contains('loading'))) {
+    disposeAppRoot('loading');
+  }
+  // The one untracked child: an error page written over a product whose frame
+  // was already up (a failure after `activateHost`), which a later rebuild of
+  // that product has to clear.
+  for (const stray of app.querySelectorAll(':scope > .error-page')) {
+    stray.remove();
   }
   currentHost = host;
 }
 
 function newFlowId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
   return `${prefix}-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;

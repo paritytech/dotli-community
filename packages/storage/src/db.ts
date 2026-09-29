@@ -12,8 +12,8 @@
 // capture the underlying rejection before falling back, so the warm-start
 // failure is visible even though we still return a working DB.
 
-import { log } from "@dotli/shared/log";
-import { captureException } from "@dotli/metrics/sentry";
+import { log } from '@dotli/shared';
+import { captureException } from '@dotli/metrics';
 
 declare global {
   interface Window {
@@ -21,8 +21,8 @@ declare global {
   }
 }
 
-const DB_NAME = "dotli";
-const DB_VERSION = 4;
+const DB_NAME = 'dotli';
+const DB_VERSION = 5;
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -38,45 +38,54 @@ function openFresh(): Promise<IDBDatabase> {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
-      if (!db.objectStoreNames.contains("cids")) {
-        db.createObjectStore("cids", { keyPath: "label" });
+      if (!db.objectStoreNames.contains('cids')) {
+        db.createObjectStore('cids', { keyPath: 'label' });
       }
-      if (!db.objectStoreNames.contains("chains")) {
-        db.createObjectStore("chains", { keyPath: "chain" });
+      if (!db.objectStoreNames.contains('chains')) {
+        db.createObjectStore('chains', { keyPath: 'chain' });
       }
       // v2: scheduled notifications + per-product id counters.
-      if (!db.objectStoreNames.contains("scheduled_notifications")) {
-        const store = db.createObjectStore("scheduled_notifications", {
-          keyPath: "hostId",
+      if (!db.objectStoreNames.contains('scheduled_notifications')) {
+        const store = db.createObjectStore('scheduled_notifications', {
+          keyPath: 'hostId',
           autoIncrement: true,
         });
-        store.createIndex("byProductId", "productId", { unique: false });
-        store.createIndex("byScheduledAt", "scheduledAt", { unique: false });
+        store.createIndex('byProductId', 'productId', { unique: false });
+        store.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
       }
-      if (!db.objectStoreNames.contains("notification_counters")) {
+      if (!db.objectStoreNames.contains('notification_counters')) {
         // keyPath: "productId". Value: { productId, next: number }.
-        db.createObjectStore("notification_counters", { keyPath: "productId" });
+        db.createObjectStore('notification_counters', { keyPath: 'productId' });
       }
       // v3: product chat rooms and messages.
-      if (!db.objectStoreNames.contains("chat_rooms")) {
-        db.createObjectStore("chat_rooms", {
-          keyPath: ["productId", "roomId"],
+      if (!db.objectStoreNames.contains('chat_rooms')) {
+        db.createObjectStore('chat_rooms', {
+          keyPath: ['productId', 'roomId'],
         });
       }
-      if (!db.objectStoreNames.contains("chat_messages")) {
-        const store = db.createObjectStore("chat_messages", {
-          keyPath: "seq",
+      if (!db.objectStoreNames.contains('chat_messages')) {
+        const store = db.createObjectStore('chat_messages', {
+          keyPath: 'seq',
           autoIncrement: true,
         });
-        store.createIndex("byRoom", ["productId", "roomId"], {
+        store.createIndex('byRoom', ['productId', 'roomId'], {
           unique: false,
         });
       }
       // v4: product chat bot identities.
-      if (!db.objectStoreNames.contains("chat_bots")) {
-        db.createObjectStore("chat_bots", {
-          keyPath: ["productId", "botId"],
+      if (!db.objectStoreNames.contains('chat_bots')) {
+        db.createObjectStore('chat_bots', {
+          keyPath: ['productId', 'botId'],
         });
+      }
+      // v5: content blocks the host relays to the sandbox, and their sizes
+      // and last use, kept apart so pruning never loads the bytes.
+      if (!db.objectStoreNames.contains('blocks')) {
+        db.createObjectStore('blocks', { keyPath: 'cid' });
+      }
+      if (!db.objectStoreNames.contains('block_meta')) {
+        const store = db.createObjectStore('block_meta', { keyPath: 'cid' });
+        store.createIndex('byLastUsed', 'lastUsed', { unique: false });
       }
     };
     req.onsuccess = () => {
@@ -87,17 +96,12 @@ function openFresh(): Promise<IDBDatabase> {
       // VersionError / QuotaExceededError / InvalidStateError instead of
       // seeing one opaque message.
       const cause = req.error;
-      reject(
-        new Error(
-          `Failed to open dotli DB: ${cause?.name ?? "unknown"}`,
-          cause ? { cause } : undefined,
-        ),
-      );
+      reject(new Error(`Failed to open dotli DB: ${cause?.name ?? 'unknown'}`, cause ? { cause } : undefined));
     };
     // A still-open tab on an older schema blocks the upgrade. Blocked fires
     // neither onsuccess nor onerror, so reject rather than hang forever.
     req.onblocked = () => {
-      reject(new Error("Failed to open dotli DB: blocked by another tab"));
+      reject(new Error('Failed to open dotli DB: blocked by another tab'));
     };
   });
 }
@@ -117,13 +121,10 @@ export function getDb(): Promise<IDBDatabase> {
   }
 
   // Pick up the pre-opened connection from the inline HTML script
-  if (typeof window !== "undefined" && window.__dotliDb) {
+  if (typeof window !== 'undefined' && window.__dotliDb) {
     dbPromise = window.__dotliDb.catch((err: unknown) => {
-      log.error(
-        "[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:",
-        err,
-      );
-      captureException(err, { kind: "db_pre_opened_rejected" });
+      log.error('[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:', err);
+      captureException(err, { kind: 'db_pre_opened_rejected' });
       return openFresh();
     });
   } else {
@@ -138,7 +139,7 @@ export function getDb(): Promise<IDBDatabase> {
   // the generation (racing refresh), leave it alone. Otherwise we'd null
   // out a newer, valid promise.
   void dbPromise
-    .then((db) => {
+    .then(db => {
       db.onclose = () => {
         if (dbGeneration === thisGeneration) {
           dbPromise = null;
@@ -151,7 +152,7 @@ export function getDb(): Promise<IDBDatabase> {
         if (dbGeneration === thisGeneration) {
           dbPromise = null;
         }
-        if (typeof window !== "undefined") {
+        if (typeof window !== 'undefined') {
           delete window.__dotliDb;
         }
       };

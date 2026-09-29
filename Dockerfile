@@ -16,10 +16,11 @@
 # falls back to port 5173 when window.location.port is empty, which it is on the
 # default HTTP port, so the protocol iframe would be looked for on the wrong port.
 
-FROM oven/bun:1.3.6 AS build
+FROM node:26-slim AS build
 WORKDIR /src
 COPY . .
-RUN bun install --frozen-lockfile
+RUN npm install -g "$(node -p 'require("./package.json").packageManager')" \
+ && npm ci
 
 # All built-in networks are compiled in; the runtime config's `enabled` list
 # narrows the selector per container. Deliberately not a build arg — one image
@@ -37,7 +38,7 @@ RUN bun install --frozen-lockfile
 # both halves are gated, so neither alone turns it on.
 ENV VITE_NETWORKS=paseo-next-v2,previewnet \
     VITE_RUNTIME_NETWORK_CONFIG=true
-RUN bun run build:prod
+RUN npm run build:prod
 
 FROM nginx:alpine
 ENV DOMAIN=localhost WEBROOT=/srv/dotli PORT=5173

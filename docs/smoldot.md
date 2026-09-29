@@ -63,13 +63,13 @@ The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts
 ## Talking to a chain
 
 Sandbox-facing consumers use the cross-origin seam exposed by
-`@dotli/protocol/client`. The host's Rust-core `chain.connect` callback is the
-exception: it imports `@dotli/resolver/chains` and
-`@dotli/resolver/rpc-chain` to honor the selected backend.
+`@dotli/protocol`. The host's Rust-core `chain.connect` callback is the
+exception: it imports the chain providers from `@dotli/resolver` to honor the
+selected backend.
 
 ```ts
-import { createRemoteChainProvider } from "@dotli/protocol/client";
-import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config/config";
+import { createRemoteChainProvider } from "@dotli/protocol";
+import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config";
 
 const provider = createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
 if (provider === null) {
@@ -115,7 +115,7 @@ Steps to make a parachain reachable through the protocol iframe. The sequence be
 3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
 4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
 5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol/client`; Rust-core access uses the host `chain.connect` callback.
+6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
 
 Steps 4 and 5 make a chain reachable from both the protocol broker and the
 host callback. Skip them and the request fails with `"Unsupported chain"`.

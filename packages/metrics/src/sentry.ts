@@ -12,17 +12,17 @@
 //   import { initSentry } from "@dotli/metrics/sentry";
 //   initSentry("host");
 
-import * as Sentry from "@sentry/browser";
-import { bindLogSink, log, type LogLevel } from "@dotli/shared/log";
-import { serializeError, fullErrorChain } from "@dotli/shared/errors";
-import { m } from "./metrics";
+import * as Sentry from '@sentry/browser';
+import { bindLogSink, log, type LogLevel, serializeError, fullErrorChain } from '@dotli/shared';
+
+import { m } from './metrics.js';
 
 /**
  * Logical source of a Sentry event. All surfaces report to a single Sentry
  * project ("dotli"); this value drives the `source` tag so events from host,
  * worker and sandbox stay distinguishable inside that single project.
  */
-export type SentrySource = "host" | "worker" | "sandbox";
+export type SentrySource = 'host' | 'worker' | 'sandbox';
 
 // The smoldot WASM client panics at the Rust layer and surfaces the
 // crash as a `CrashError` with a `panicked at /__w/smoldot/...` message.
@@ -41,10 +41,7 @@ interface SmoldotEventLike {
       };
     }[];
   };
-  tags?: Record<
-    string,
-    string | number | boolean | bigint | symbol | null | undefined
-  >;
+  tags?: Record<string, string | number | boolean | bigint | symbol | null | undefined>;
 }
 
 // Stack frames live under `.../smoldot/dist/...` or the Bun-versioned
@@ -52,10 +49,10 @@ interface SmoldotEventLike {
 const SMOLDOT_PATH_RE = /[/\\]smoldot(?:@[\w.+-]+)?[/\\]/i;
 // Rust panic messages start with `panicked at /__w/smoldot/...`. The JS
 // wrapper raises "Smoldot has panicked" or "Smoldot has crashed".
-const SMOLDOT_VALUE_RE =
-  /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
+const SMOLDOT_VALUE_RE = /panicked at [^\n]*[/\\]smoldot[/\\]|Smoldot has (?:panicked|crashed)/i;
 
-const BROWSER_API_ERRORS_INTEGRATION = "BrowserApiErrors";
+const BROWSER_API_ERRORS_INTEGRATION = 'BrowserApiErrors';
+const CONSOLE_BREADCRUMBS_INTEGRATION = 'Console';
 
 /**
  * Exclude Sentry's callback wrapper while retaining its other defaults.
@@ -71,12 +68,8 @@ const BROWSER_API_ERRORS_INTEGRATION = "BrowserApiErrors";
  * GlobalHandlers plus our explicit global error handlers still capture
  * uncaught errors and unhandled rejections without mutating callbacks.
  */
-export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(
-  defaultIntegrations: T[],
-): T[] {
-  return defaultIntegrations.filter(
-    (integration) => integration.name !== BROWSER_API_ERRORS_INTEGRATION,
-  );
+export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(defaultIntegrations: T[]): T[] {
+  return defaultIntegrations.filter(integration => integration.name !== BROWSER_API_ERRORS_INTEGRATION);
 }
 
 /**
@@ -87,17 +80,17 @@ export function excludeBrowserApiErrorsIntegration<T extends { name: string }>(
 export function isSmoldotEvent(event: SmoldotEventLike): boolean {
   const values = event.exception?.values ?? [];
   for (const v of values) {
-    if (v.type === "CrashError") {
+    if (v.type === 'CrashError') {
       return true;
     }
-    if (typeof v.value === "string" && SMOLDOT_VALUE_RE.test(v.value)) {
+    if (typeof v.value === 'string' && SMOLDOT_VALUE_RE.test(v.value)) {
       return true;
     }
     const frames = v.stacktrace?.frames ?? [];
     for (const f of frames) {
       const paths = [f.filename, f.module, f.abs_path];
       for (const p of paths) {
-        if (typeof p === "string" && SMOLDOT_PATH_RE.test(p)) {
+        if (typeof p === 'string' && SMOLDOT_PATH_RE.test(p)) {
           return true;
         }
       }
@@ -109,7 +102,7 @@ export function isSmoldotEvent(event: SmoldotEventLike): boolean {
 /** `beforeSend` hook: stamps `smoldot: "true"` on any event we detect as smoldot-origin. */
 function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
   if (isSmoldotEvent(event)) {
-    event.tags = { ...(event.tags ?? {}), smoldot: "true" };
+    event.tags = { ...(event.tags ?? {}), smoldot: 'true' };
   }
   return event;
 }
@@ -117,14 +110,14 @@ function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
 /** Sentry `environment` is the deploy domain (e.g. "paseo.li"), derived from
  *  VITE_APP_URL; falls back to "development" when unset or unparseable. */
 function sentryEnvironment(): string {
-  const appUrl = import.meta.env.VITE_APP_URL as string | undefined;
-  if (appUrl === undefined || appUrl === "") {
-    return "development";
+  const appUrl = import.meta.env.VITE_APP_URL;
+  if (appUrl === undefined || appUrl === '') {
+    return 'development';
   }
   try {
     return new URL(appUrl).hostname;
   } catch {
-    return "development";
+    return 'development';
   }
 }
 
@@ -135,10 +128,10 @@ function sentryEnvironment(): string {
  * no-op, but we warn loudly instead of silently disabling reporting.
  */
 export function initSentry(source: SentrySource): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+  const dsn = import.meta.env.VITE_SENTRY_DSN;
   const env = sentryEnvironment();
   const extraIntegrations =
-    source === "worker"
+    source === 'worker'
       ? []
       : [
           // Overriding the default instance: kill all automatic breadcrumb
@@ -148,21 +141,26 @@ export function initSentry(source: SentrySource): void {
             history: false, // URL navigation history
             fetch: false, // request URLs
             xhr: false,
-            console: false, // console output can carry user data
           }),
         ];
+  // Console output can carry user data. Sentry 11 records console
+  // breadcrumbs in their own default integration, not in Breadcrumbs, so it
+  // is dropped wherever the Breadcrumbs override above applies.
+  const excludedDefaults = source === 'worker' ? [] : [CONSOLE_BREADCRUMBS_INTEGRATION];
   Sentry.init({
     dsn,
-    tunnel: "/t",
+    tunnel: '/t',
     environment: env,
-    release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
+    release: import.meta.env.VITE_COMMIT_SHA,
     beforeSend: tagSmoldotEvents,
-    integrations: (defaultIntegrations) => [
-      ...excludeBrowserApiErrorsIntegration(defaultIntegrations),
+    integrations: defaultIntegrations => [
+      ...excludeBrowserApiErrorsIntegration(defaultIntegrations).filter(
+        integration => !excludedDefaults.includes(integration.name),
+      ),
       ...extraIntegrations,
     ],
-    // Never attach user info
-    sendDefaultPii: false,
+    // Never attach user info, and never let Sentry infer the user's IP.
+    dataCollection: { userInfo: false },
     // Needed so your manual Sentry.startSpan() calls are sent.
     // WITHOUT browserTracingIntegration there is NO automatic
     // pageload, navigation, INP/interaction, fetch, or XHR spans
@@ -182,33 +180,26 @@ export function initSentry(source: SentrySource): void {
 
   // If the DSN is missing in any non-development build, warn loudly once so
   // an operator doesn't lose hours wondering why the dashboard is empty.
-  if ((dsn === undefined || dsn === "") && env !== "development") {
-    console.warn(
-      `[dot.li sentry] VITE_SENTRY_DSN missing in env "${env}" — error reporting is DISABLED.`,
-    );
+  if ((dsn === undefined || dsn === '') && env !== 'development') {
+    console.warn(`[dot.li sentry] VITE_SENTRY_DSN missing in env "${env}" — error reporting is DISABLED.`);
   }
 
   // Wire `log.warn` / `log.error` / `log.event` into Sentry breadcrumbs so
   // handled failures leave a trace in production regardless of `DEBUG`.
   // Inline lookups keep the sink resilient to lazy Sentry initialization.
   bindLogSink({
-    emit: (
-      level: LogLevel,
-      message: string,
-      attrs?: Record<string, unknown>,
-      args?: unknown[],
-    ) => {
-      const sentryLevel: "info" | "warning" | "error" =
-        level === "error" ? "error" : level === "warn" ? "warning" : "info";
+    emit: (level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]) => {
+      const sentryLevel: 'info' | 'warning' | 'error' =
+        level === 'error' ? 'error' : level === 'warn' ? 'warning' : 'info';
       const data: Record<string, unknown> = { ...(attrs ?? {}) };
       if (args !== undefined && args.length > 0) {
-        const errArg = args.find((a) => a instanceof Error);
+        const errArg = args.find(a => a instanceof Error);
         if (errArg !== undefined) {
-          data.error = serializeError(errArg);
+          data['error'] = serializeError(errArg);
         }
       }
       Sentry.addBreadcrumb({
-        category: "log",
+        category: 'log',
         level: sentryLevel,
         message,
         data,
@@ -229,26 +220,23 @@ export function initSentry(source: SentrySource): void {
  *     `event.error` is null (resource-load failures, CORS-tainted scripts).
  */
 export function installGlobalErrorHandlers(source: SentrySource): void {
-  if (typeof self === "undefined") {
+  if (typeof self === 'undefined') {
     return;
   }
 
-  self.addEventListener(
-    "unhandledrejection",
-    (event: PromiseRejectionEvent) => {
-      const reason: unknown = event.reason;
-      log.error(`[dot.li ${source}] unhandled rejection:`, reason);
-      captureException(reason, {
-        kind: "unhandledrejection",
-        source,
-      });
-    },
-  );
+  self.addEventListener('unhandledrejection', (event: PromiseRejectionEvent) => {
+    const reason: unknown = event.reason;
+    log.error(`[dot.li ${source}] unhandled rejection:`, reason);
+    captureException(reason, {
+      kind: 'unhandledrejection',
+      source,
+    });
+  });
 
-  self.addEventListener("error", (event: ErrorEvent) => {
+  self.addEventListener('error', (event: ErrorEvent) => {
     log.error(`[dot.li ${source}] window error:`, event.error ?? event.message);
     const tags: Record<string, string> = {
-      kind: "window_error",
+      kind: 'window_error',
       source,
     };
     const extra: Record<string, unknown> = {
@@ -260,10 +248,10 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
     if (event.error instanceof Error) {
       Sentry.captureException(event.error, { tags, extra });
     } else {
-      Sentry.captureException(
-        new Error(event.message || "window error (no Error object)"),
-        { tags, extra: { ...extra, rawError: event.error } },
-      );
+      Sentry.captureException(new Error(event.message || 'window error (no Error object)'), {
+        tags,
+        extra: { ...extra, rawError: event.error },
+      });
     }
   });
 }
@@ -273,19 +261,16 @@ export function installGlobalErrorHandlers(source: SentrySource): void {
  * instance (and its stack) when present; for non-Error throws, captures a
  * synthetic Error tagged with the structured chain plus the raw value.
  */
-export function captureException(
-  err: unknown,
-  tags?: Record<string, string>,
-): void {
+export function captureException(err: unknown, tags?: Record<string, string>): void {
   if (err instanceof Error) {
     Sentry.captureException(err, tags ? { tags } : undefined);
     return;
   }
   const chain = fullErrorChain(err);
   const synthetic = new Error(serializeError(err));
-  synthetic.name = "NonErrorThrow";
+  synthetic.name = 'NonErrorThrow';
   Sentry.captureException(synthetic, {
-    tags,
+    ...(tags !== undefined ? { tags } : {}),
     extra: {
       rawThrown: err,
       errorChain: chain,

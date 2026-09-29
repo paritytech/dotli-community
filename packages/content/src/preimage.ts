@@ -7,10 +7,10 @@
 // the preimage Host API. Used by both submit (hash the data) and
 // lookup (convert hash to CID for P2P/IPFS retrieval).
 
-import { blake2b } from "@noble/hashes/blake2.js";
-import { fromHex, toHex } from "@dotli/shared/hex";
-import { CID } from "multiformats/cid";
-import { create } from "multiformats/hashes/digest";
+import { blake2b } from '@noble/hashes/blake2.js';
+import { fromHex, toHex } from '@dotli/shared';
+import { CID } from 'multiformats/cid';
+import { create } from 'multiformats/hashes/digest';
 
 const BLAKE2B_256_MULTIHASH_CODE = 0xb220;
 const RAW_CID_CODEC = 0x55;

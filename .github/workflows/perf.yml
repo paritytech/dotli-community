@@ -16,24 +16,27 @@ jobs:
   perf:
     name: Continuous Integration
     runs-on: ubuntu-latest
+    # A healthy PR run takes a few minutes. Without a cap, iterations that
+    # never finish loading run into the spec's own timeouts for hours.
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.13"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Install Playwright browsers
-        run: bunx --bun playwright install --with-deps chromium
+      # Installs the Chromium build that matches the workspace-pinned
+      # playwright. Installing from the repo root fetched the latest playwright
+      # instead, so every test failed at launch and `|| true` hid it.
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
 
       - name: Build
-        run: bunx --bun turbo run build
+        env:
+          # Required build-time config (see packages/config/src/network.ts).
+          # Without it the host shell throws on boot and never mounts the
+          # app iframe, so every iteration times out.
+          VITE_NETWORKS: paseo-next-v2,previewnet
+        run: npx turbo run build
 
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
@@ -66,18 +69,18 @@ jobs:
         env:
           PERF_RUNS: "20"
           PERF_SAVE_BASE: "1"
-          PERF_DOMAIN_A: explore
+          PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       - name: Run perf tests (PR)
         if: github.event_name == 'pull_request'
         working-directory: apps/host
         env:
           PERF_RUNS: "10"
-          PERF_DOMAIN_A: explore
+          PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       # ── main: upload baseline artifact ─────────────────────────
       - name: Upload baseline artifact
@@ -93,7 +96,7 @@ jobs:
       - name: Generate comparison
         if: github.event_name == 'pull_request' && env.HAVE_BASE == 'true'
         working-directory: apps/host
-        run: bun tests/performance/compare.ts --markdown > /tmp/perf-comment.md || true
+        run: node tests/performance/compare.ts --markdown > /tmp/perf-comment.md || true
 
       - name: Generate standalone report
         if: github.event_name == 'pull_request' && env.HAVE_BASE != 'true'

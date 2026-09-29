@@ -1,17 +1,15 @@
 # Deployment
 
-One-shot provisioning of a fresh server using `make provision`.
-The target is idempotent and safe to re-run, so the same command
-works for the first boot and for later top-ups.
+One-shot provisioning of a fresh server using `make provision`. The target is idempotent and safe to re-run, so the same
+command works for the first boot and for later top-ups.
 
 ## Requirements
 
 ### Remote server
 
 - Ubuntu 24.04+ (Noble).
-- The SSH user must have **passwordless `sudo`** — the provisioning steps run
-  `sudo` non-interactively over SSH (no TTY), so a password prompt makes them
-  fail. Either grant the user `NOPASSWD` sudo (e.g. a drop-in in
+- The SSH user must have **passwordless `sudo`** — the provisioning steps run `sudo` non-interactively over SSH (no
+  TTY), so a password prompt makes them fail. Either grant the user `NOPASSWD` sudo (e.g. a drop-in in
   `/etc/sudoers.d/`), or connect as `root` directly (`REMOTE=root@<ip>`).
 - Reachable over SSH from your machine without a password (key-based auth).
 - Public IP with ports `22`, `80`, and `443` open (the firewall step opens these via `ufw`).
@@ -22,11 +20,12 @@ works for the first boot and for later top-ups.
 - `A` / `AAAA` records pointing to the box for the apex.
 - A Cloudflare API token scoped to **Zone → DNS → Edit** on that zone.
 
-**Important:** The token needs to exist for all the time this is hosted as it will be required to renew the certificates.
+**Important:** The token needs to exist for all the time this is hosted as it will be required to renew the
+certificates.
 
 ### Local machine
 
-- `make`, `ssh`, `rsync`, and [Bun](https://bun.sh) 1.3+.
+- `make`, `ssh`, `rsync`, and Node 26 with npm 12+.
 - SSH agent loaded with the key the remote accepts (`ssh-add`).
 - This repo checked out and on the branch/commit you want to deploy.
 
@@ -42,40 +41,32 @@ works for the first boot and for later top-ups.
 
 ## Configure deploy targets
 
-The production and staging SSH targets are not committed to the repo. Provide
-them in one of two ways:
+The production and staging SSH targets are not committed to the repo. Provide them in one of two ways:
 
-- **`deploy.env`** (recommended for repeat deploys): copy `deploy.env.example`
-  to `deploy.env` (gitignored) and set `REMOTE_PRD` / `REMOTE_STG`. The
-  `Makefile` includes it automatically.
-- **`REMOTE=user@host`** on the command line: overrides both for a single run,
-  useful for a one-off or a brand-new box.
+- **`deploy.env`** (recommended for repeat deploys): copy `deploy.env.example` to `deploy.env` (gitignored) and set
+  `REMOTE_PRD` / `REMOTE_STG`. The `Makefile` includes it automatically.
+- **`REMOTE=user@host`** on the command line: overrides both for a single run, useful for a one-off or a brand-new box.
 
-If neither is set, `make deploy` / `make provision` fails fast with a message
-telling you to configure a target. CI deploys do not use these: the GitHub
-Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
+If neither is set, `make deploy` / `make provision` fails fast with a message telling you to configure a target. CI
+deploys do not use these: the GitHub Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
 `ci-deploy` target.
 
 ## What `make provision` does
 
 `Makefile:81` chains these targets in order:
 
-1. `provision-prereqs` — apt-installs nginx (with brotli modules), certbot,
-   the Cloudflare DNS plugin, rsync, ufw, curl; removes the default
-   nginx site.
-2. `provision-firewall` — allows `OpenSSH` and `Nginx Full`, then enables
-   `ufw`. SSH is whitelisted before enable so you don't lock yourself out.
-3. `provision-cloudflare-creds` — writes `/etc/letsencrypt/cloudflare.ini`
-   (`0600`, `root:root`) from the token you pass in.
-4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the
-   apex, `*.<base>`, and `*.app.<base>`. `--keep-until-expiring --expand`
-   makes re-runs cheap.
+1. `provision-prereqs` — apt-installs nginx (with brotli modules), certbot, the Cloudflare DNS plugin, rsync, ufw, curl;
+   removes the default nginx site.
+2. `provision-firewall` — allows `OpenSSH` and `Nginx Full`, then enables `ufw`. SSH is whitelisted before enable so you
+   don't lock yourself out.
+3. `provision-cloudflare-creds` — writes `/etc/letsencrypt/cloudflare.ini` (`0600`, `root:root`) from the token you pass
+   in.
+4. `provision-cert` — issues a Let's Encrypt cert via DNS-01 covering the apex, `*.<base>`, and `*.app.<base>`.
+   `--keep-until-expiring --expand` makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
-6. `deploy` — runs `bun run build` on your machine
-   `dist/` outputs into the env's web root.
-7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst)
-   and installs it plus `nginx/snippets/` into `/etc/nginx/`, runs `nginx -t`,
-   and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
+6. `deploy` — runs `npm run build` on your machine `dist/` outputs into the env's web root.
+7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst) and installs it plus `nginx/snippets/`
+   into `/etc/nginx/`, runs `nginx -t`, and reloads nginx. Preview the result with `make render-nginx ENV=<env>`.
 
 ## Run it
 
@@ -87,11 +78,32 @@ make provision \
   CLOUDFLARE_API_TOKEN=cf_xxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-On success the last line is `Provisioning complete for ENV=<env>.` and the
-site is live at `https://<base-domain>`.
+On success the last line is `Provisioning complete for ENV=<env>.` and the site is live at `https://<base-domain>`.
 
 ## Re-runs and follow-ups
 
 - `make provision` is idempotent; re-run it to pick up nginx config or build changes.
 - For code-only redeployments (no infra changes), `make deploy ENV=<env>` is enough.
-- For nginx-only updates, `make deploy-nginx ENV=<env>`.
+- For nginx-only updates, `make deploy-nginx ENV=<env>`, or run the **Deploy nginx** workflow from the Actions tab: pick
+  the environment and it runs the same target against that environment's box, behind that environment's protection
+  rules. It deploys the config from the ref it was dispatched on, so `paseo.li` has to be dispatched from a release tag
+  and `paseoli.dev` from `main`.
+
+## Checking what is deployed
+
+Every origin serves its own build's `host_version.json` at the root:
+
+```sh
+curl -fsS https://paseo.li/host_version.json
+# {"build":"host","version":"0.7.4","hash":"9f2c41e0…"}
+```
+
+`hash` is a SHA-256 of the build's output, so it changes whenever the bundle's contents do. It is written by the build
+(`packages/config/src/build-info-plugin.ts`) and served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three
+builds are rsynced separately, so check each origin to cover all of them:
+
+| URL                                      | Build    |
+| ---------------------------------------- | -------- |
+| `https://<base>/host_version.json`       | host     |
+| `https://host.<base>/host_version.json`  | protocol |
+| `https://x.app.<base>/host_version.json` | app      |

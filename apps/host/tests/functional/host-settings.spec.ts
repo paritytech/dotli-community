@@ -19,30 +19,26 @@
  * Env overrides: DOMAIN, PORT, TIMEOUT_MS.
  */
 
-import { expect } from "@playwright/test";
-import type { Page } from "@playwright/test";
-import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
-import { setupTest } from "./helpers/context";
-import { waitForResolutionOutcome } from "../product-frame";
+import { expect } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import { DOMAIN, PORT, TIMEOUT_MS } from '../env.js';
+import { setupTest } from './helpers/context.js';
+import { waitForResolutionOutcome } from '../product-frame.js';
 import {
+  cachedBlockCount,
   hasCachedCid,
+  hostBlockCacheHits,
+  hostBlockCacheReads,
   hostResolveStarted,
-  sandboxArchiveCacheLookups,
-  trackArchiveCacheLookups,
+  trackBlockCacheReads,
   waitForCachedCid,
-} from "./helpers/cache";
-import {
-  BACKENDS,
-  CACHE_ENABLED,
-  SKIP_ARCHIVE_ONLY,
-  SKIP_CID_ONLY,
-  updateCacheSettings,
-} from "./fixtures/settings";
-import { test } from "./helpers/shared-mode-reset";
+} from './helpers/cache.js';
+import { BACKENDS, CACHE_ENABLED, SKIP_ARCHIVE_ONLY, SKIP_CID_ONLY, updateCacheSettings } from './fixtures/settings.js';
+import { test } from './helpers/shared-mode-reset.js';
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const LANDING_URL = `http://localhost:${PORT}/`;
-const FALLBACK_LABEL = "Light Client Shared unavailable";
+const FALLBACK_LABEL = 'Light Client Shared unavailable';
 
 test.setTimeout(BACKENDS.length * TIMEOUT_MS * 4);
 
@@ -52,18 +48,11 @@ interface ChainBackendState {
   url: string;
 }
 
-async function readChainBackendState(
-  page: Page,
-  expected: string,
-): Promise<ChainBackendState> {
-  await page.waitForFunction(
-    (e) => localStorage.getItem("dotli:chain-backend") === e,
-    expected,
-    { timeout: 10_000 },
-  );
+async function readChainBackendState(page: Page, expected: string): Promise<ChainBackendState> {
+  await page.waitForFunction(e => localStorage.getItem('dotli:chain-backend') === e, expected, { timeout: 10_000 });
   return page.evaluate(() => ({
-    chainBackend: localStorage.getItem("dotli:chain-backend"),
-    cacheSettings: localStorage.getItem("dotli:cache-settings"),
+    chainBackend: localStorage.getItem('dotli:chain-backend'),
+    cacheSettings: localStorage.getItem('dotli:cache-settings'),
     url: window.location.href,
   }));
 }
@@ -74,19 +63,19 @@ async function disableSharedWorker(page: Page): Promise<void> {
   });
 }
 
-test.describe("Settings works", () => {
-  test("As a first-time user, when I open an app it runs on its own smoldot instance for this tab", async ({
+test.describe('Settings works', () => {
+  test('As a first-time user, when I open an app it runs on its own smoldot instance for this tab', async ({
     page,
   }) => {
     // When
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
   });
 
-  test("As a first-time user on a browser without shared worker support, I get the same per-tab session", async ({
+  test('As a first-time user on a browser without shared worker support, I get the same per-tab session', async ({
     page,
   }) => {
     // Given
@@ -96,8 +85,8 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
   });
 
   for (const backend of BACKENDS) {
@@ -113,14 +102,14 @@ test.describe("Settings works", () => {
     });
   }
 
-  test("As a user opening a link that selects a mode other than my saved one, the link wins and my session restarts in it", async ({
+  test('As a user opening a link that selects a mode other than my saved one, the link wins and my session restarts in it', async ({
     page,
   }) => {
     // Given
     await page.addInitScript(() => {
-      if (window.name !== "seeded") {
-        localStorage.setItem("dotli:chain-backend", "rpc-gateway");
-        window.name = "seeded";
+      if (window.name !== 'seeded') {
+        localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
+        window.name = 'seeded';
       }
     });
 
@@ -128,49 +117,48 @@ test.describe("Settings works", () => {
     await page.goto(`${LANDING_URL}?chainBackend=smoldot-direct`);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).toContain("chainBackend=smoldot-direct");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=');
   });
 
-  test("As a user who arrived through such a link, reloading without it keeps me in the mode I landed in", async ({
+  test('As a user who arrived through such a link, reloading without it keeps me in the mode I landed in', async ({
     page,
   }) => {
     // Given
     await page.goto(`${LANDING_URL}?chainBackend=rpc-gateway`);
-    await readChainBackendState(page, "rpc-gateway");
+    await readChainBackendState(page, 'rpc-gateway');
 
     // When
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "rpc-gateway");
-    expect(state.chainBackend).toBe("rpc-gateway");
-    expect(state.url).toContain("chainBackend=rpc-gateway");
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
+    const state = await readChainBackendState(page, 'rpc-gateway');
+    expect(state.chainBackend).toBe('rpc-gateway');
+    expect(state.url).toContain('chainBackend=rpc-gateway');
   });
 
-  test("As a user running the default per-tab light client, my address bar stays clean", async ({
-    page,
-  }) => {
+  test('As a user running the default per-tab light client, my address bar stays clean', async ({ page }) => {
     // Given
     await page.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "smoldot-direct");
+      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
     });
 
     // When
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.url).not.toContain("chainBackend=");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=');
   });
 
-  test("As a user on a browser without shared worker support, my address bar still stays clean", async ({
-    page,
-  }) => {
+  test('As a user on a browser without shared worker support, my address bar still stays clean', async ({ page }) => {
     // Given
     await page.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "smoldot-direct");
+      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
       delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
     });
 
@@ -178,63 +166,62 @@ test.describe("Settings works", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.url).not.toContain("chainBackend=");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=');
   });
 
-  test("As a user who picked the shared light client, my address bar records it so a copied link carries it", async ({
+  test('As a user who picked the shared light client, my address bar records it so a copied link carries it', async ({
     page,
   }) => {
     // Given
     await page.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "smoldot-shared-worker");
+      localStorage.setItem('dotli:chain-backend', 'smoldot-shared-worker');
     });
 
     // When
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-shared-worker");
-    expect(state.url).toContain("chainBackend=smoldot-shared-worker");
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=smoldot-shared-worker(&|$)/);
+    const state = await readChainBackendState(page, 'smoldot-shared-worker');
+    expect(state.url).toContain('chainBackend=smoldot-shared-worker');
   });
 
-  test("As a user who picked trusted providers, my address bar records it on every visit", async ({
-    page,
-  }) => {
+  test('As a user who picked trusted providers, my address bar records it on every visit', async ({ page }) => {
     // Given
     await page.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "rpc-gateway");
+      localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
     });
 
     // When
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "rpc-gateway");
-    expect(state.url).toContain("chainBackend=rpc-gateway");
+    // localStorage already holds the mode, so the read below can pass before
+    // the app writes it into the address bar during startup. Wait for that.
+    await expect(page).toHaveURL(/[?&]chainBackend=rpc-gateway(&|$)/);
+    const state = await readChainBackendState(page, 'rpc-gateway');
+    expect(state.url).toContain('chainBackend=rpc-gateway');
   });
 
-  test("As a user opening a link that turns caches off, those become my saved settings and stay in the link I can share", async ({
+  test('As a user opening a link that turns caches off, those become my saved settings and stay in the link I can share', async ({
     page,
   }) => {
     // When
-    await page.goto(
-      `${LANDING_URL}?chainBackend=rpc-gateway&skipCidCache=1&skipArchiveCache=1&skipWorkerCache=0`,
-    );
+    await page.goto(`${LANDING_URL}?chainBackend=rpc-gateway&skipCidCache=1&skipArchiveCache=1&skipWorkerCache=0`);
 
     // Then
-    const state = await readChainBackendState(page, "rpc-gateway");
+    const state = await readChainBackendState(page, 'rpc-gateway');
     expect(state.cacheSettings).not.toBeNull();
-    const cache = JSON.parse(state.cacheSettings ?? "{}") as Record<
-      string,
-      unknown
-    >;
-    expect(cache.skipCidCache).toBe(true);
-    expect(cache.skipArchiveCache).toBe(true);
-    expect(cache.skipWorkerCache).toBe(false);
-    expect(state.url).toContain("skipCidCache=1");
-    expect(state.url).toContain("skipArchiveCache=1");
-    expect(state.url).toContain("skipWorkerCache=0");
+    const cache = JSON.parse(state.cacheSettings ?? '{}') as Record<string, unknown>;
+    expect(cache['skipCidCache']).toBe(true);
+    expect(cache['skipArchiveCache']).toBe(true);
+    expect(cache['skipWorkerCache']).toBe(false);
+    expect(state.url).toContain('skipCidCache=1');
+    expect(state.url).toContain('skipArchiveCache=1');
+    expect(state.url).not.toContain('skipWorkerCache=');
   });
 
   for (const backend of BACKENDS) {
@@ -246,14 +233,14 @@ test.describe("Settings works", () => {
         backend,
         cacheSeed: CACHE_ENABLED,
       });
-      await page.goto(BASE_URL, { waitUntil: "commit" });
+      await page.goto(BASE_URL, { waitUntil: 'commit' });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
       expect(await hostResolveStarted(page)).toBe(true);
       await waitForCachedCid(page, DOMAIN, 5_000);
 
       try {
         // When
-        await page.reload({ waitUntil: "commit" });
+        await page.reload({ waitUntil: 'commit' });
 
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
@@ -271,14 +258,14 @@ test.describe("Settings works", () => {
         backend,
         cacheSeed: CACHE_ENABLED,
       });
-      await page.goto(BASE_URL, { waitUntil: "commit" });
+      await page.goto(BASE_URL, { waitUntil: 'commit' });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
       await waitForCachedCid(page, DOMAIN, 5_000);
 
       try {
         // When
         await updateCacheSettings(page, SKIP_CID_ONLY);
-        await page.goto(BASE_URL, { waitUntil: "commit" });
+        await page.goto(BASE_URL, { waitUntil: 'commit' });
 
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
@@ -290,32 +277,42 @@ test.describe("Settings works", () => {
     });
   }
 
-  for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the archive cache on, revisiting a site checks my local copy first`, async ({
+  // The gateway backend fetches from an IPFS gateway inside the sandbox, not
+  // through the host's bitswap relay, so it has no block cache to check.
+  const RELAYED_BACKENDS = BACKENDS.filter(b => b !== 'rpc-gateway');
+
+  for (const backend of RELAYED_BACKENDS) {
+    test(`As a user on ${backend} with the archive cache on, revisiting a site loads it from the blocks the host kept`, async ({
       browser,
     }) => {
-      // Given
+      // Given a site loaded once, with its blocks kept by the host
       const { context, page } = await setupTest(browser, {
         backend,
         cacheSeed: CACHE_ENABLED,
       });
-      await trackArchiveCacheLookups(context);
-      await page.goto(BASE_URL, { waitUntil: "commit" });
+      await trackBlockCacheReads(context);
+      await page.goto(BASE_URL, { waitUntil: 'commit' });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
 
       try {
-        // When
-        await page.reload({ waitUntil: "commit" });
+        await expect.poll(() => cachedBlockCount(page), { timeout: 5_000 }).toBeGreaterThan(0);
 
-        // Then
+        // When
+        await page.reload({ waitUntil: 'commit' });
+
+        // Then every read after the reload came from the cache: the host
+        // never had to fall back to the network for a block it already had.
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-        expect(await sandboxArchiveCacheLookups(page)).toBeGreaterThan(0);
+        const reads = await hostBlockCacheReads(page);
+        const hits = await hostBlockCacheHits(page);
+        expect(hits).toBeGreaterThan(0);
+        expect(hits).toBe(reads);
       } finally {
         await context.close();
       }
     });
 
-    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
+    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh and nothing is kept`, async ({
       browser,
     }) => {
       // Given
@@ -323,15 +320,16 @@ test.describe("Settings works", () => {
         backend,
         cacheSeed: SKIP_ARCHIVE_ONLY,
       });
-      await trackArchiveCacheLookups(context);
+      await trackBlockCacheReads(context);
 
       try {
         // When
-        await page.goto(BASE_URL, { waitUntil: "commit" });
+        await page.goto(BASE_URL, { waitUntil: 'commit' });
 
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-        expect(await sandboxArchiveCacheLookups(page)).toBe(0);
+        expect(await hostBlockCacheReads(page)).toBe(0);
+        expect(await cachedBlockCount(page)).toBe(0);
       } finally {
         await context.close();
       }
@@ -339,27 +337,27 @@ test.describe("Settings works", () => {
   }
 });
 
-test.describe("Settings fails", () => {
-  test("As a user opening a link with a garbled mode name, the app ignores it and gives me the default per-tab light client", async ({
+test.describe('Settings fails', () => {
+  test('As a user opening a link with a garbled mode name, the app ignores it and gives me the default per-tab light client', async ({
     page,
   }) => {
     // When
     await page.goto(`${LANDING_URL}?chainBackend=foo`);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).not.toContain("chainBackend=foo");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=foo');
   });
 
-  test("As a user who chose the shared light client, opening the app in a browser without shared worker support moves me to a per-tab light client and tells me so", async ({
+  test('As a user who chose the shared light client, opening the app in a browser without shared worker support moves me to a per-tab light client and tells me so', async ({
     page,
   }) => {
     // Given
     await page.addInitScript(() => {
-      if (window.name !== "seeded") {
-        localStorage.setItem("dotli:chain-backend", "smoldot-shared-worker");
-        window.name = "seeded";
+      if (window.name !== 'seeded') {
+        localStorage.setItem('dotli:chain-backend', 'smoldot-shared-worker');
+        window.name = 'seeded';
       }
       delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
     });
@@ -368,8 +366,8 @@ test.describe("Settings fails", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
     await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
   });
 
@@ -383,18 +381,18 @@ test.describe("Settings fails", () => {
     await page.goto(`${LANDING_URL}?chainBackend=smoldot-shared-worker`);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
-    expect(state.url).not.toContain("chainBackend=smoldot-shared-worker");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
+    expect(state.url).not.toContain('chainBackend=smoldot-shared-worker');
     await expect(page.getByText(FALLBACK_LABEL)).toBeVisible();
   });
 
-  test("As a user already on a per-tab light client, a browser without shared worker support changes nothing and says nothing", async ({
+  test('As a user already on a per-tab light client, a browser without shared worker support changes nothing and says nothing', async ({
     page,
   }) => {
     // Given
     await page.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "smoldot-direct");
+      localStorage.setItem('dotli:chain-backend', 'smoldot-direct');
       delete (window as unknown as { SharedWorker?: unknown }).SharedWorker;
     });
 
@@ -402,8 +400,8 @@ test.describe("Settings fails", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    const state = await readChainBackendState(page, "smoldot-direct");
-    expect(state.chainBackend).toBe("smoldot-direct");
+    const state = await readChainBackendState(page, 'smoldot-direct');
+    expect(state.chainBackend).toBe('smoldot-direct');
     await expect(page.getByText(FALLBACK_LABEL)).not.toBeVisible();
   });
 });

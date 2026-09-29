@@ -4,45 +4,50 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
-    "./*": "./src/*"
+    ".": "./src/index.ts",
+    "./vite": "./src/vite.ts",
+    "./styles.css": "./src/styles.css",
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "workspace:*",
-    "@dotli/typescript-config": "workspace:*",
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*",
+    "@solidjs/testing-library": "1.0.0-beta.3",
+    "@solidjs/vite-plugin": "3.0.0-next.46",
     "@types/qrcode": "^1.5.6",
-    "eslint": "^10.5.0",
-    "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.10.3",
-    "typescript": "~6.0.3",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "fake-indexeddb": "^6.2.5"
   },
   "dependencies": {
-    "@dotli/config": "workspace:*",
-    "@dotli/content": "workspace:*",
-    "@dotli/metrics": "workspace:*",
-    "@dotli/protocol": "workspace:*",
-    "@dotli/sandbox-checker": "workspace:*",
-    "@dotli/shared": "workspace:*",
-    "@dotli/storage": "workspace:*",
-    "@dotli/truapi-debug": "workspace:*",
-    "@noble/hashes": "^2.2.0",
-    "@parity/truapi": "0.19.0",
-    "@parity/truapi-host": "0.19.0",
+    "@dotli/config": "*",
+    "@dotli/content": "*",
+    "@dotli/metrics": "*",
+    "@dotli/protocol": "*",
+    "@dotli/sandbox-checker": "*",
+    "@dotli/shared": "*",
+    "@dotli/storage": "*",
+    "@dotli/truapi-debug": "*",
+    "@noble/hashes": "^2.4.0",
+    "@parity/truapi": "0.23.0",
+    "@parity/truapi-host": "0.23.0",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
-    "@scure/base": "^2.2.0",
+    "@scure/base": "^2.4.0",
+    "@solidjs/web": "2.0.0-rc.11",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^2.1.8",
-    "qrcode": "^1.5.4"
+    "polkadot-api": "^3.2.0",
+    "qrcode": "^1.5.4",
+    "solid-js": "2.0.0-rc.11"
   },
   "peerDependencies": {
-    "@dotli/resolver": "workspace:*"
+    "@dotli/resolver": "*"
   },
   "peerDependenciesMeta": {
     "@dotli/resolver": {

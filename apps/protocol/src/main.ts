@@ -13,11 +13,18 @@ import {
   initSentry,
   installGlobalErrorHandlers,
   captureException,
-} from "@dotli/metrics/sentry";
+  m,
+  setResolutionId,
+  spans as S,
+} from '@dotli/metrics';
 import {
   chainBytesReceived,
   installByteMeter,
-} from "@dotli/resolver/byte-meter";
+  createCoreRpcChainProvider,
+  isCoreRpcChainSupported,
+  loadProvider,
+  loadResolve,
+} from '@dotli/resolver';
 
 // Before anything opens a socket. the smoldot transports are the bulk of
 // cold-load traffic and are invisible to resource timing, so the loading
@@ -28,66 +35,50 @@ installByteMeter();
 // hidden and has no UI of its own, so it surfaces the failure to the parent
 // via the standard error envelope. The parent will render the user-facing
 // error.
-window.addEventListener("vite:preloadError", (event) => {
+window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
-  captureException(evt.payload ?? new Error("vite:preloadError"), {
-    kind: "chunk_preload_error",
-    surface: "protocol_iframe",
+  captureException(evt.payload ?? new Error('vite:preloadError'), {
+    kind: 'chunk_preload_error',
+    surface: 'protocol_iframe',
   });
   if (window.parent !== window) {
-    const msg =
-      evt.payload instanceof Error
-        ? evt.payload.message
-        : "Asset failed to load";
+    const msg = evt.payload instanceof Error ? evt.payload.message : 'Asset failed to load';
     window.parent.postMessage(
       {
-        namespace: "dotli:protocol",
-        kind: "fatal",
+        namespace: 'dotli:protocol',
+        kind: 'fatal',
         message: `Protocol iframe asset failed to load: ${msg}`,
       } as const,
-      "*",
+      '*',
     );
   }
 });
-import type { JsonRpcProvider } from "@polkadot-api/json-rpc-provider";
-import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
-import type {
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-} from "@dotli/resolver/manifest";
-import type { ResolveOptions } from "@dotli/resolver/resolve";
-import { isExecutableKind } from "@dotli/shared/executables";
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { StringJsonRpcConnection } from '@dotli/protocol';
+import type { ExecutableManifest, ManifestResult, RootManifest, ResolveOptions } from '@dotli/resolver';
+
+import { isExecutableKind, log, errorName, serializeError } from '@dotli/shared';
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
   SITE_ID,
   TIMEOUTS,
   type SiteId,
-} from "@dotli/config/config";
-import {
   getActiveServicesConfig,
   isValidNetwork,
   setNetworkOverride,
   type Network,
-} from "@dotli/config/network";
+} from '@dotli/config';
+
 // Smoldot, relay-chain, and dot-name resolver imports live behind
 // `initDirectMode()` (dynamic) so `rpc` mode doesn't drag smoldot into the
 // protocol iframe's initial chunk. The SharedWorker path doesn't import
 // these either. Smoldot for shared-worker mode lives inside
 // `./protocol-shared-worker.ts`, which is already a separate bundle.
-import {
-  createCoreRpcChainProvider,
-  isCoreRpcChainSupported,
-} from "@dotli/resolver/rpc-chain";
-import { log } from "@dotli/shared/log";
-import { errorName, serializeError } from "@dotli/shared/errors";
+
 import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
   type ChainBrokerManager,
-} from "@dotli/protocol/broker";
-import {
-  buildLegacySharedAuthSessionStorageKey,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -96,22 +87,18 @@ import {
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-} from "@dotli/protocol/auth-storage";
-import {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
-} from "@dotli/protocol/messages";
-import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
-import { PROTOCOL_APP_ERRORS } from "./errors";
+} from '@dotli/protocol';
 
-initSentry("host");
-installGlobalErrorHandlers("host");
+import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
+import { PROTOCOL_APP_ERRORS } from './errors.js';
 
-import { m, setResolutionId } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
+initSentry('host');
+installGlobalErrorHandlers('host');
 
 // Adopted at module scope, not inside init(): an auth-only iframe and every
 // invalid-mode path return before init() gets far, and those boots still
@@ -121,21 +108,13 @@ adoptResolutionId();
 /** Take the correlation id the host shell put on the URL of this iframe. */
 function adoptResolutionId(): void {
   try {
-    const id = new URLSearchParams(window.location.search).get("resolutionId");
-    if (id !== null && id !== "") {
+    const id = new URLSearchParams(window.location.search).get('resolutionId');
+    if (id !== null && id !== '') {
       setResolutionId(id);
     }
     // eslint-disable-next-line no-restricted-syntax -- telemetry correlation is never a reason to fail a boot. An untagged iframe is the acceptable outcome.
   } catch {
     /* URL unparseable, carry on untagged */
-  }
-}
-
-function clearLegacySharedAuthSession(): void {
-  try {
-    localStorage.removeItem(buildLegacySharedAuthSessionStorageKey(SITE_ID));
-  } catch (err) {
-    log.warn("[dot.li protocol] Legacy auth session cleanup failed:", err);
   }
 }
 
@@ -148,11 +127,7 @@ function isAllowedOrigin(origin: string): boolean {
   return isSharedAuthOriginAllowed(origin);
 }
 
-function postToSource(
-  source: MessageEventSource | null,
-  origin: string,
-  message: ProtocolEnvelope,
-): void {
+function postToSource(source: MessageEventSource | null, origin: string, message: ProtocolEnvelope): void {
   if (!source) {
     return;
   }
@@ -179,7 +154,7 @@ function postToSource(
 // `createSharedAuthStorageAdapter`'s `.map(() => emit(...))` chain. There is
 // no double-dispatch.
 
-const SHARED_AUTH_BROADCAST_CHANNEL = "dotli:shared-auth";
+const SHARED_AUTH_BROADCAST_CHANNEL = 'dotli:shared-auth';
 
 interface SharedAuthBroadcastMessage {
   siteId: SiteId;
@@ -188,9 +163,7 @@ interface SharedAuthBroadcastMessage {
 }
 
 const sharedAuthChannel: BroadcastChannel | null =
-  typeof BroadcastChannel !== "undefined"
-    ? new BroadcastChannel(SHARED_AUTH_BROADCAST_CHANNEL)
-    : null;
+  typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SHARED_AUTH_BROADCAST_CHANNEL) : null;
 
 // The origin of the parent window embedding this host iframe. Populated from
 // `document.referrer` at module load (best-effort, may be blank under strict
@@ -202,7 +175,7 @@ let parentOrigin: string | null = initialParentOriginFromReferrer();
 function initialParentOriginFromReferrer(): string | null {
   try {
     const ref = document.referrer;
-    if (ref === "") {
+    if (ref === '') {
       return null;
     }
     const origin = new URL(ref).origin;
@@ -212,11 +185,7 @@ function initialParentOriginFromReferrer(): string | null {
   }
 }
 
-function broadcastSharedAuthChange(
-  siteId: SiteId,
-  key: string,
-  value: string | null,
-): void {
+function broadcastSharedAuthChange(siteId: SiteId, key: string, value: string | null): void {
   if (sharedAuthChannel === null) {
     return;
   }
@@ -224,14 +193,12 @@ function broadcastSharedAuthChange(
     const msg: SharedAuthBroadcastMessage = { siteId, key, value };
     sharedAuthChannel.postMessage(msg);
   } catch (error: unknown) {
-    log.warn("[dot.li protocol] Shared auth broadcast failed:", error);
+    log.warn('[dot.li protocol] Shared auth broadcast failed:', error);
   }
 }
 
-function isSharedAuthBroadcastMessage(
-  value: unknown,
-): value is SharedAuthBroadcastMessage {
-  if (typeof value !== "object" || value === null) {
+function isSharedAuthBroadcastMessage(value: unknown): value is SharedAuthBroadcastMessage {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const obj = value as {
@@ -240,9 +207,9 @@ function isSharedAuthBroadcastMessage(
     value?: unknown;
   };
   return (
-    typeof obj.siteId === "string" &&
-    typeof obj.key === "string" &&
-    (obj.value === null || typeof obj.value === "string")
+    typeof obj.siteId === 'string' &&
+    typeof obj.key === 'string' &&
+    (obj.value === null || typeof obj.value === 'string')
   );
 }
 
@@ -250,7 +217,7 @@ function bindSharedAuthBroadcastRelay(): void {
   if (sharedAuthChannel === null) {
     return;
   }
-  sharedAuthChannel.addEventListener("message", (event: MessageEvent) => {
+  sharedAuthChannel.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
     if (!isSharedAuthBroadcastMessage(data)) {
       return;
@@ -268,8 +235,8 @@ function bindSharedAuthBroadcastRelay(): void {
     try {
       window.parent.postMessage(
         {
-          namespace: "dotli:protocol",
-          kind: "auth-storage-changed",
+          namespace: 'dotli:protocol',
+          kind: 'auth-storage-changed',
           siteId: data.siteId,
           key: data.key,
           value: data.value,
@@ -277,32 +244,22 @@ function bindSharedAuthBroadcastRelay(): void {
         parentOrigin,
       );
     } catch (error: unknown) {
-      log.warn(
-        "[dot.li protocol] Failed to forward shared auth change to parent:",
-        error,
-      );
+      log.warn('[dot.li protocol] Failed to forward shared auth change to parent:', error);
     }
   });
 }
 
-type SharedStore = "auth" | "mode";
-type SharedRejectReason = "origin" | "validation";
+type SharedStore = 'auth' | 'mode';
+type SharedRejectReason = 'origin' | 'validation';
 
-function countSharedReject(
-  store: SharedStore,
-  reason: SharedRejectReason,
-): void {
+function countSharedReject(store: SharedStore, reason: SharedRejectReason): void {
   m.count(S.SHARED_STORAGE_REJECTED, { store, reason });
 }
 
 function bindSharedAuthListener(): void {
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
-    if (
-      !isProtocolEnvelope(data) ||
-      data.kind !== "request" ||
-      !isSharedAuthRequestMethod(data.method)
-    ) {
+    if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedAuthRequestMethod(data.method)) {
       return;
     }
     // First gate: the broad protocol origin allowlist (`*.<BASE_DOMAIN>` plus
@@ -310,10 +267,8 @@ function bindSharedAuthListener(): void {
     // rejects `app.<BASE_DOMAIN>` and sandboxed SPA subdomains, runs inside
     // `handleSharedAuthRequest` via `assertSharedAuthOrigin`.
     if (!isAllowedOrigin(event.origin)) {
-      log.warn(
-        `[dot.li protocol] Rejected shared-auth request from disallowed origin: ${event.origin}`,
-      );
-      countSharedReject("auth", "origin");
+      log.warn(`[dot.li protocol] Rejected shared-auth request from disallowed origin: ${event.origin}`);
+      countSharedReject('auth', 'origin');
       return;
     }
     // Remember the parent origin so cross-tab broadcast forwards target a
@@ -323,18 +278,19 @@ function bindSharedAuthListener(): void {
     parentOrigin = event.origin;
 
     try {
-      handleSharedAuthRequest(data, event.origin, (response) => {
+      handleSharedAuthRequest(data, event.origin, response => {
         postToSource(event.source, event.origin, response);
       });
     } catch (error: unknown) {
-      countSharedReject("auth", "validation");
+      countSharedReject('auth', 'validation');
+      const name = errorName(error);
       postToSource(event.source, event.origin, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: data.id,
         ok: false,
         error: serializeError(error),
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     }
   });
@@ -342,14 +298,11 @@ function bindSharedAuthListener(): void {
 
 function signalReady(): void {
   if (window.parent !== window) {
-    window.parent.postMessage(
-      { namespace: "dotli:protocol", kind: "ready" } as const,
-      "*",
-    );
+    window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'ready' } as const, '*');
   }
 }
 
-type RequestedMode = "shared-worker" | "direct" | "rpc" | null;
+type RequestedMode = 'shared-worker' | 'direct' | 'rpc' | null;
 
 /**
  * Distinguish "no mode requested" (auth-only iframe, legitimate) from
@@ -357,35 +310,32 @@ type RequestedMode = "shared-worker" | "direct" | "rpc" | null;
  * surface to the parent so the user sees a real error instead of a silent
  * downgrade to auth-only behavior).
  */
-function getRequestedMode(): RequestedMode | "invalid" {
+function getRequestedMode(): RequestedMode | 'invalid' {
   let raw: string | null;
   try {
-    raw = new URLSearchParams(window.location.search).get("mode");
+    raw = new URLSearchParams(window.location.search).get('mode');
   } catch {
-    return "invalid";
+    return 'invalid';
   }
   if (raw === null) {
     return null;
   }
-  if (raw === "shared-worker" || raw === "direct" || raw === "rpc") {
+  if (raw === 'shared-worker' || raw === 'direct' || raw === 'rpc') {
     return raw;
   }
-  return "invalid";
+  return 'invalid';
 }
 
 function getSkipWorkerCache(): boolean {
   try {
     const params = new URLSearchParams(window.location.search);
-    return params.get("skipWorkerCache") === "1";
+    return params.get('skipWorkerCache') === '1';
   } catch {
     return false;
   }
 }
 
-type RequestedNetwork =
-  | { kind: "ok"; network: Network }
-  | { kind: "missing" }
-  | { kind: "invalid"; raw: string };
+type RequestedNetwork = { kind: 'ok'; network: Network } | { kind: 'missing' } | { kind: 'invalid'; raw: string };
 
 /**
  * The protocol iframe runs on a different origin than the host shell and
@@ -394,17 +344,17 @@ type RequestedNetwork =
 function getRequestedNetwork(): RequestedNetwork {
   let raw: string | null;
   try {
-    raw = new URLSearchParams(window.location.search).get("network");
+    raw = new URLSearchParams(window.location.search).get('network');
   } catch {
-    return { kind: "invalid", raw: "<unparseable>" };
+    return { kind: 'invalid', raw: '<unparseable>' };
   }
   if (raw === null) {
-    return { kind: "missing" };
+    return { kind: 'missing' };
   }
   if (isValidNetwork(raw)) {
-    return { kind: "ok", network: raw };
+    return { kind: 'ok', network: raw };
   }
-  return { kind: "invalid", raw };
+  return { kind: 'invalid', raw };
 }
 
 /**
@@ -421,26 +371,20 @@ function getRequestedNetwork(): RequestedNetwork {
 async function purgeWorkerCaches(): Promise<void> {
   // Throw on enumeration failure and await each delete: a silent log-and-
   // continue would let smoldot boot against the still-present stale DB.
-  const KEEP = new Set(["dotli", "dotli-sw"]);
-  if (
-    typeof indexedDB === "undefined" ||
-    typeof indexedDB.databases !== "function"
-  ) {
+  const KEEP = new Set(['dotli', 'dotli-sw']);
+  if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
-      "Browser does not expose indexedDB.databases() — cannot fully purge worker caches. " +
-        "Please clear site data manually before retrying.",
+      'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +
+        'Please clear site data manually before retrying.',
     );
   }
   const dbs = await indexedDB.databases();
   const targets = dbs
-    .map((db) => db.name)
-    .filter(
-      (name): name is string =>
-        name !== undefined && name !== "" && !KEEP.has(name),
-    );
+    .map(db => db.name)
+    .filter((name): name is string => name !== undefined && name !== '' && !KEEP.has(name));
   await Promise.all(
     targets.map(
-      (name) =>
+      name =>
         new Promise<void>((resolve, reject) => {
           const req = indexedDB.deleteDatabase(name);
           req.onsuccess = () => {
@@ -449,34 +393,32 @@ async function purgeWorkerCaches(): Promise<void> {
           req.onerror = () => {
             reject(
               new Error(
-                `Failed to delete IDB ${name}: ${req.error?.name ?? "unknown"}`,
+                `Failed to delete IDB ${name}: ${req.error?.name ?? 'unknown'}`,
                 req.error ? { cause: req.error } : undefined,
               ),
             );
           };
           req.onblocked = () => {
-            reject(
-              new Error(`Delete of IDB ${name} blocked by another connection`),
-            );
+            reject(new Error(`Delete of IDB ${name} blocked by another connection`));
           };
         }),
     ),
   );
-  log.warn("[dot.li protocol] Purged worker caches (skipWorkerCache)");
+  log.warn('[dot.li protocol] Purged worker caches (skipWorkerCache)');
 }
 
 async function init(): Promise<void> {
   const mode = getRequestedMode();
 
-  if (mode === "invalid") {
+  if (mode === 'invalid') {
     let raw: string | null = null;
     try {
-      raw = new URLSearchParams(window.location.search).get("mode");
+      raw = new URLSearchParams(window.location.search).get('mode');
       // eslint-disable-next-line no-restricted-syntax -- best-effort extraction of the offending mode value for the error message; the error is already signalled below regardless.
     } catch {
       /* URL parse failed, fall through with raw=null */
     }
-    const message = `Unknown protocol mode: ${raw === null ? "<unparseable>" : `"${raw}"`}`;
+    const message = `Unknown protocol mode: ${raw === null ? '<unparseable>' : `"${raw}"`}`;
     log.error(`[dot.li protocol] ${message}`);
     signalError(message);
     return;
@@ -485,31 +427,26 @@ async function init(): Promise<void> {
   // When no mode is requested, the iframe is only serving shared auth
   // storage requests (localStorage). No chain provider needed.
   if (mode === null) {
-    log.warn(
-      "[dot.li protocol] No mode requested — auth-only iframe, skipping chain provider",
-    );
+    log.warn('[dot.li protocol] No mode requested — auth-only iframe, skipping chain provider');
     signalReady();
     return;
   }
   const requestedNetwork = getRequestedNetwork();
-  if (requestedNetwork.kind === "invalid") {
+  if (requestedNetwork.kind === 'invalid') {
     const message = `Unknown protocol network: "${requestedNetwork.raw}"`;
     log.error(`[dot.li protocol] ${message}`);
     signalError(message);
     return;
   }
-  if (requestedNetwork.kind === "missing") {
-    const message =
-      "Missing required `network` URL param — host shell did not propagate the active network.";
+  if (requestedNetwork.kind === 'missing') {
+    const message = 'Missing required `network` URL param — host shell did not propagate the active network.';
     log.error(`[dot.li protocol] ${message}`);
     signalError(message);
     return;
   }
   setNetworkOverride(requestedNetwork.network);
   m.setDefaults({ network: requestedNetwork.network });
-  log.warn(
-    `[dot.li protocol] Active network pinned to ${requestedNetwork.network}`,
-  );
+  log.warn(`[dot.li protocol] Active network pinned to ${requestedNetwork.network}`);
 
   // Worker-cache purge runs *before* any broker/smoldot init so the clean
   // state is what the chain client opens against. A purge failure when the
@@ -520,7 +457,7 @@ async function init(): Promise<void> {
       await purgeWorkerCaches();
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
-      log.error("[dot.li protocol] purgeWorkerCaches failed:", err);
+      log.error('[dot.li protocol] purgeWorkerCaches failed:', err);
       signalError(`Failed to reset chain DB: ${message}`);
       return;
     }
@@ -529,9 +466,9 @@ async function init(): Promise<void> {
   const stopInit = m.timer(S.PROTOCOL_INIT);
   log.warn(`[dot.li protocol] Requested mode: ${mode}`);
 
-  if (mode === "shared-worker") {
-    if (typeof SharedWorker === "undefined") {
-      const msg = "SharedWorker is not available in this browser";
+  if (mode === 'shared-worker') {
+    if (typeof SharedWorker === 'undefined') {
+      const msg = 'SharedWorker is not available in this browser';
       log.error(`[dot.li protocol] ${msg}`);
       signalError(msg);
       stopInit();
@@ -541,17 +478,17 @@ async function init(): Promise<void> {
     // so bootnode errors, chain-connect failures etc. all carry the mode tag.
     // Values are kebab-case to match `DotliMode` and the `?mode=` URL
     // convention, keeping one naming scheme across host and protocol.
-    m.setDefaults({ protocol_mode: "shared-worker" });
+    m.setDefaults({ protocol_mode: 'shared-worker' });
     await initSharedWorkerMode(requestedNetwork.network);
-    m.count(S.PROTOCOL_MODE, { mode: "shared-worker" });
-  } else if (mode === "rpc") {
-    m.setDefaults({ protocol_mode: "rpc" });
+    m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
+  } else if (mode === 'rpc') {
+    m.setDefaults({ protocol_mode: 'rpc' });
     initRpcMode();
-    m.count(S.PROTOCOL_MODE, { mode: "rpc" });
+    m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
   } else {
-    m.setDefaults({ protocol_mode: "direct" });
+    m.setDefaults({ protocol_mode: 'direct' });
     await initDirectMode();
-    m.count(S.PROTOCOL_MODE, { mode: "direct" });
+    m.count(S.PROTOCOL_MODE, { mode: 'direct' });
   }
 
   stopInit();
@@ -566,11 +503,11 @@ function signalError(message: string): void {
   if (window.parent !== window) {
     window.parent.postMessage(
       {
-        namespace: "dotli:protocol",
-        kind: "init-failed",
+        namespace: 'dotli:protocol',
+        kind: 'init-failed',
         message,
       } as const,
-      "*",
+      '*',
     );
   }
 }
@@ -585,26 +522,26 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   // rewrite and the browser ends up fetching the unresolved `.ts` path,
   // which 404s in production. Network is therefore propagated via the
   // worker name and read inside the worker via `self.name`.
-  const worker = new SharedWorker(
-    new URL("./protocol-shared-worker.ts", import.meta.url),
-    { type: "module", name: `dotli-protocol-${network}` },
-  );
+  const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
+    type: 'module',
+    name: `dotli-protocol-${network}`,
+  });
   const port = worker.port;
 
   // Listen for SharedWorker errors (e.g. if the script fails to load)
-  worker.addEventListener("error", (event) => {
-    log.error("[dot.li protocol] SharedWorker error event:", event);
-    m.count(S.BOOTNODE_ERROR, { source: "shared-worker" });
+  worker.addEventListener('error', event => {
+    log.error('[dot.li protocol] SharedWorker error event:', event);
+    m.count(S.BOOTNODE_ERROR, { source: 'shared-worker' });
   });
 
   // Relay SharedWorker responses up to the parent from the first moment the
   // port exists. The worker broadcasts `smoldot-db` during pre-sync, long
   // before `ready`, and MessagePort events are not replayed: registering this
   // after the ready wait would silently drop everything sent in between.
-  port.addEventListener("message", (event: MessageEvent) => {
+  port.addEventListener('message', (event: MessageEvent) => {
     const data = event.data as SWOutbound | null;
-    if (data?.type === "relay-response" && window.parent !== window) {
-      window.parent.postMessage(data.envelope, "*");
+    if (data?.type === 'relay-response' && window.parent !== window) {
+      window.parent.postMessage(data.envelope, '*');
     }
   });
 
@@ -612,64 +549,57 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const timer = setTimeout(() => {
       const waitMs = performance.now() - swStartTime;
-      m.distribution(S.PROTOCOL_SW_READY, waitMs, "millisecond", {
-        outcome: "timeout",
+      m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
+        outcome: 'timeout',
       });
       reject(new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
     }, TIMEOUTS.SHARED_WORKER_READY);
 
     function onMessage(event: MessageEvent): void {
       const data = event.data as SWOutbound | null;
-      if (data?.type === "ready") {
+      if (data?.type === 'ready') {
         clearTimeout(timer);
-        port.removeEventListener("message", onMessage);
+        port.removeEventListener('message', onMessage);
         const readyMs = performance.now() - swStartTime;
         m.measure(S.PROTOCOL_SW_READY, readyMs);
-        m.distribution(S.PROTOCOL_SW_READY, readyMs, "millisecond", {
-          outcome: "ok",
+        m.distribution(S.PROTOCOL_SW_READY, readyMs, 'millisecond', {
+          outcome: 'ok',
         });
         resolve();
-      } else if (data?.type === "error") {
+      } else if (data?.type === 'error') {
         clearTimeout(timer);
-        port.removeEventListener("message", onMessage);
+        port.removeEventListener('message', onMessage);
         const failMs = performance.now() - swStartTime;
-        m.distribution(S.PROTOCOL_SW_READY, failMs, "millisecond", {
-          outcome: "error",
+        m.distribution(S.PROTOCOL_SW_READY, failMs, 'millisecond', {
+          outcome: 'error',
         });
         reject(new Error(`SharedWorker error: ${data.message}`));
       }
     }
 
-    port.addEventListener("message", onMessage);
+    port.addEventListener('message', onMessage);
     port.start();
   });
 
-  log.warn("[dot.li protocol] === SHARED WORKER MODE ACTIVE ===");
-  log.warn(
-    "[dot.li protocol] Smoldot runs in SharedWorker, persists across navigations",
-  );
+  log.warn('[dot.li protocol] === SHARED WORKER MODE ACTIVE ===');
+  log.warn('[dot.li protocol] Smoldot runs in SharedWorker, persists across navigations');
 
   // Relay parent postMessage requests into the SharedWorker.
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
-    if (!isProtocolEnvelope(data) || data.kind !== "request") {
+    if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (
-      isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method)
-    ) {
+    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
-      log.warn(
-        `[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`,
-      );
+      log.warn(`[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`);
       return;
     }
 
     const msg: SWRelayRequest = {
-      type: "relay-request",
+      type: 'relay-request',
       envelope: data,
       origin: event.origin,
     };
@@ -678,12 +608,10 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 
   signalReady();
 
-  window.addEventListener("beforeunload", () => {
-    log.warn(
-      "[dot.li protocol] Iframe unloading, sending disconnect to SharedWorker",
-    );
+  window.addEventListener('beforeunload', () => {
+    log.warn('[dot.li protocol] Iframe unloading, sending disconnect to SharedWorker');
     try {
-      port.postMessage({ type: "disconnect" });
+      port.postMessage({ type: 'disconnect' });
       // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal to the SharedWorker; the port may already be closed (browser tab unloading), which is the expected terminal state.
     } catch {
       /* port already closed on unload, safe */
@@ -693,24 +621,13 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 }
 
 async function initDirectMode(): Promise<void> {
-  log.warn("[dot.li protocol] === DIRECT MODE ===");
-  log.warn(
-    "[dot.li protocol] Smoldot runs in this iframe with no cross-tab coordination",
-  );
+  log.warn('[dot.li protocol] === DIRECT MODE ===');
+  log.warn('[dot.li protocol] Smoldot runs in this iframe with no cross-tab coordination');
 
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
-  const [provider, resolve] = await Promise.all([
-    import("@dotli/resolver/provider"),
-    import("@dotli/resolver/resolve"),
-  ]);
-  const {
-    createChainProvider,
-    isChainSupported,
-    onProviderFatal,
-    onSmoldotDbOutcome,
-    observeChain,
-  } = provider;
+  const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
+  const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome, observeChain } = provider;
   const {
     resolveDotName,
     resolveExecutableManifest,
@@ -721,23 +638,23 @@ async function initDirectMode(): Promise<void> {
     waitForPeopleFinalized,
   } = resolve;
   // Sync reporting is only worth its cost when a loading UI can observe it.
-  // Direct mode is that case and the SharedWorker never enables it. The
-  // host moves the bar on the relay and the Asset Hub, and shows a peer
-  // count for the Asset Hub alone.
+  // Direct mode is that case and the SharedWorker never enables it.
   //
   // Enabled before the first `createChainProvider` call: a connection that
-  // opens without it carries no side channel.
-  resolve.enableSyncReporting({
-    // All three chains the load waits on, in the order it waits on them.
-    // The relay warps, the Asset Hub bootstraps on top of it, and Bulletin
-    // serves the content over bitswap. Bulletin is not even created until
-    // after the content phase begins, and takes roughly another second and
-    // a half to find a peer, which is a gap the loading screen has to cover.
-    milestones: ["relay", "asset-hub", "bulletin"],
-    // People is not on the loading path, but the network panel lists it, so
-    // it is sampled for peers without asking for milestones.
-    peerCounts: ["relay", "asset-hub", "bulletin", "people"],
-  });
+  // opens without it carries no lifecycle watch.
+  resolve.enableSyncReporting([
+    // The chains the load waits on, in the order it waits on them. The relay
+    // warps, the Asset Hub bootstraps on top of it, and Bulletin serves the
+    // content over bitswap. Bulletin is not even created until after the
+    // content phase begins, and takes roughly another second and a half to
+    // find a peer, which is a gap the loading screen has to cover.
+    'relay',
+    'asset-hub',
+    'bulletin',
+    // People is not on the loading path, but the network panel lists its
+    // peer count.
+    'people',
+  ]);
   const { onChainSync } = resolve;
 
   // Two chains nothing else opens in time, for two different reasons.
@@ -754,10 +671,8 @@ async function initDirectMode(): Promise<void> {
   // chain. The cost is one chain connection on loads that turn out to be
   // served from the archive cache and never needed Bulletin at all.
   const services = getActiveServicesConfig();
-  const stopWatching = [services.relay.genesis, services.bulletin.genesis].map(
-    (genesis) => observeChain(genesis),
-  );
-  window.addEventListener("pagehide", () => {
+  const stopWatching = [services.relay.genesis, services.bulletin.genesis].map(genesis => observeChain(genesis));
+  window.addEventListener('pagehide', () => {
     for (const stop of stopWatching) {
       stop();
     }
@@ -765,16 +680,16 @@ async function initDirectMode(): Promise<void> {
 
   // Direct mode has no SharedWorker in the loop, so a dead chain is posted
   // straight up to the host shell.
-  onProviderFatal((message) => {
-    log.error("[dot.li protocol] Chain death detected, signaling fatal");
+  onProviderFatal(message => {
+    log.error('[dot.li protocol] Chain death detected, signaling fatal');
     if (window.parent !== window) {
       window.parent.postMessage(
         {
-          namespace: "dotli:protocol",
-          kind: "fatal",
+          namespace: 'dotli:protocol',
+          kind: 'fatal',
           message,
         },
-        "*",
+        '*',
       );
     }
   });
@@ -782,33 +697,30 @@ async function initDirectMode(): Promise<void> {
   // Forward what the chains report about their sync to the host shell, so
   // the loading screen moves on real signals instead of log-scraped prose.
   // This iframe owns the smoldot instance. The host has no handle on it.
-  onChainSync((event) => {
+  onChainSync(event => {
     if (window.parent === window) {
       return;
     }
     const { chain, kind, ...rest } = event;
     window.parent.postMessage(
       {
-        namespace: "dotli:protocol",
-        kind: "chain-sync",
+        namespace: 'dotli:protocol',
+        kind: 'chain-sync',
         chain,
         syncKind: kind,
         ...rest,
       },
-      "*",
+      '*',
     );
   });
 
   // Telemetry-only facts, forwarded on the same window as the sync stream so
   // the host can hang them off the resolution it is already tracing.
-  resolve.onChainDetail((detail) => {
+  resolve.onChainDetail(detail => {
     if (window.parent === window) {
       return;
     }
-    window.parent.postMessage(
-      { namespace: "dotli:protocol", kind: "chain-detail", ...detail },
-      "*",
-    );
+    window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'chain-detail', ...detail }, '*');
   });
 
   // Feed the host speed readout. Cumulative totals on a fixed tick rather
@@ -818,11 +730,11 @@ async function initDirectMode(): Promise<void> {
     const postBytes = (): void => {
       window.parent.postMessage(
         {
-          namespace: "dotli:protocol",
-          kind: "net-bytes",
+          namespace: 'dotli:protocol',
+          kind: 'net-bytes',
           received: chainBytesReceived(),
         },
-        "*",
+        '*',
       );
     };
     // Send a baseline straight away. A rate needs two readings, so waiting a
@@ -830,7 +742,7 @@ async function initDirectMode(): Promise<void> {
     // of the time this iframe took to boot.
     postBytes();
     const reportBytes = setInterval(postBytes, 500);
-    window.addEventListener("pagehide", () => {
+    window.addEventListener('pagehide', () => {
       clearInterval(reportBytes);
     });
   }
@@ -841,12 +753,12 @@ async function initDirectMode(): Promise<void> {
     if (window.parent !== window) {
       window.parent.postMessage(
         {
-          namespace: "dotli:protocol",
-          kind: "smoldot-db",
+          namespace: 'dotli:protocol',
+          kind: 'smoldot-db',
           chain,
           outcome,
         },
-        "*",
+        '*',
       );
     }
   });
@@ -854,23 +766,15 @@ async function initDirectMode(): Promise<void> {
   const engine = createEngine({
     createChainProvider,
     isChainSupported,
-    onBrokerReady: (broker) => {
+    onBrokerReady: broker => {
       // Route the resolver's Asset Hub reads AND the People warm-keep through
       // the broker's shared follows so they reuse the broker's single follow per
       // chain instead of opening their own (see protocol-shared-worker).
       setResolverAssetHubProvider(() =>
-        requireBrokerLocalProvider(
-          broker,
-          getActiveServicesConfig().assethub.genesis,
-          "Asset Hub",
-        ),
+        requireBrokerLocalProvider(broker, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
       );
       setResolverPeopleProvider(() =>
-        requireBrokerLocalProvider(
-          broker,
-          getActiveServicesConfig().people.genesis,
-          "People",
-        ),
+        requireBrokerLocalProvider(broker, getActiveServicesConfig().people.genesis, 'People'),
       );
     },
     onWarmup: () => {
@@ -878,9 +782,7 @@ async function initDirectMode(): Promise<void> {
       // a cold parachain warp sync. Not needed for resolution, so do not await.
       // The shared worker does the same at its own pre-sync.
       void waitForPeopleFinalized().catch((err: unknown) => {
-        log.warn(
-          `[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`,
-        );
+        log.warn(`[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`);
       });
       return Promise.resolve();
     },
@@ -893,7 +795,7 @@ async function initDirectMode(): Promise<void> {
   bindEngineToMessages(engine);
   signalReady();
 
-  window.addEventListener("beforeunload", () => {
+  window.addEventListener('beforeunload', () => {
     engine.cleanup();
   });
 }
@@ -905,10 +807,8 @@ async function initDirectMode(): Promise<void> {
 // up here. The host never sends them when gateway is active.
 
 function initRpcMode(): void {
-  log.warn("[dot.li protocol] === RPC MODE ===");
-  log.warn(
-    "[dot.li protocol] Chain calls routed via WSS JSON-RPC (no smoldot)",
-  );
+  log.warn('[dot.li protocol] === RPC MODE ===');
+  log.warn('[dot.li protocol] Chain calls routed via WSS JSON-RPC (no smoldot)');
 
   const engine = createEngine({
     // The core set rather than the advertised one, so the network panel can
@@ -922,43 +822,39 @@ function initRpcMode(): void {
   bindEngineToMessages(engine);
   signalReady();
 
-  window.addEventListener("beforeunload", () => {
+  window.addEventListener('beforeunload', () => {
     engine.cleanup();
   });
 }
 
 function bindEngineToMessages(engine: ProtocolEngine): void {
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
-    if (!isProtocolEnvelope(data) || data.kind !== "request") {
+    if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
     }
-    if (
-      isSharedAuthRequestMethod(data.method) ||
-      isSharedModeRequestMethod(data.method)
-    ) {
+    if (isSharedAuthRequestMethod(data.method) || isSharedModeRequestMethod(data.method)) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
-      log.warn(
-        `[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`,
-      );
+      log.warn(`[dot.li protocol] Rejected request from disallowed origin: ${event.origin}`);
       return;
     }
 
     void engine
-      .handleRequest(data, event.origin, (response) => {
+      .handleRequest(data, event.origin, response => {
         postToSource(event.source, event.origin, response);
       })
       .catch((error: unknown) => {
-        log.error("[dot.li protocol] Request failed:", error);
+        log.error('[dot.li protocol] Request failed:', error);
+        const name = errorName(error);
         postToSource(event.source, event.origin, {
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: data.id,
           ok: false,
           error: serializeError(error),
-          errorName: errorName(error),
+          ...(name !== undefined ? { errorName: name } : {}),
         });
       });
   });
@@ -967,13 +863,13 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
 type ResponseCallback = (envelope: ProtocolEnvelope) => void;
 
 function assertSharedAuthSiteId(value: unknown): asserts value is SiteId {
-  if (typeof value !== "string" || !isSharedAuthSiteId(value)) {
+  if (typeof value !== 'string' || !isSharedAuthSiteId(value)) {
     throw new Error(`Invalid siteId: ${String(value)}`);
   }
 }
 
 function assertSharedAuthKey(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !isValidSharedAuthKey(value)) {
+  if (typeof value !== 'string' || !isValidSharedAuthKey(value)) {
     throw new Error(`Invalid shared auth key: ${String(value)}`);
   }
 }
@@ -985,7 +881,7 @@ function assertSharedAuthOrigin(origin: string): void {
 }
 
 function assertSharedModeKey(value: unknown): asserts value is string {
-  if (typeof value !== "string" || !isValidSharedModeKey(value)) {
+  if (typeof value !== 'string' || !isValidSharedModeKey(value)) {
     throw new Error(`Invalid shared mode key: ${String(value)}`);
   }
 }
@@ -996,11 +892,7 @@ function assertSharedModeKey(value: unknown): asserts value is string {
  * subdomains may not, and the siteId must match `SITE_ID`. Re-using the
  * auth checks keeps the gate consistent and avoids drift.
  */
-function handleSharedModeRequest(
-  request: ProtocolRequestEnvelope,
-  origin: string,
-  respond: ResponseCallback,
-): void {
+function handleSharedModeRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
   if (!isSharedModeRequestMethod(request.method)) {
     throw new Error(`Not a shared mode request: ${request.method as string}`);
   }
@@ -1008,36 +900,31 @@ function handleSharedModeRequest(
   assertSharedAuthOrigin(origin);
 
   switch (request.method) {
-    case "modeStorageRead": {
-      const payload = request.payload as ProtocolRequestMap["modeStorageRead"];
+    case 'modeStorageRead': {
+      const payload = request.payload as ProtocolRequestMap['modeStorageRead'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedModeKey(payload.key);
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
-        result: localStorage.getItem(
-          buildSharedModeStorageKey(payload.siteId, payload.key),
-        ),
+        result: localStorage.getItem(buildSharedModeStorageKey(payload.siteId, payload.key)),
       });
       return;
     }
 
-    case "modeStorageWrite": {
-      const payload = request.payload as ProtocolRequestMap["modeStorageWrite"];
+    case 'modeStorageWrite': {
+      const payload = request.payload as ProtocolRequestMap['modeStorageWrite'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedModeKey(payload.key);
-      if (typeof payload.value !== "string") {
+      if (typeof payload.value !== 'string') {
         throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_MODE_VALUE);
       }
-      localStorage.setItem(
-        buildSharedModeStorageKey(payload.siteId, payload.key),
-        payload.value,
-      );
+      localStorage.setItem(buildSharedModeStorageKey(payload.siteId, payload.key), payload.value);
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -1045,16 +932,14 @@ function handleSharedModeRequest(
       return;
     }
 
-    case "modeStorageClear": {
-      const payload = request.payload as ProtocolRequestMap["modeStorageClear"];
+    case 'modeStorageClear': {
+      const payload = request.payload as ProtocolRequestMap['modeStorageClear'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedModeKey(payload.key);
-      localStorage.removeItem(
-        buildSharedModeStorageKey(payload.siteId, payload.key),
-      );
+      localStorage.removeItem(buildSharedModeStorageKey(payload.siteId, payload.key));
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -1065,46 +950,37 @@ function handleSharedModeRequest(
 }
 
 function bindSharedModeListener(): void {
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     const data: unknown = event.data;
-    if (
-      !isProtocolEnvelope(data) ||
-      data.kind !== "request" ||
-      !isSharedModeRequestMethod(data.method)
-    ) {
+    if (!isProtocolEnvelope(data) || data.kind !== 'request' || !isSharedModeRequestMethod(data.method)) {
       return;
     }
     if (!isAllowedOrigin(event.origin)) {
-      log.warn(
-        `[dot.li protocol] Rejected shared-mode request from disallowed origin: ${event.origin}`,
-      );
-      countSharedReject("mode", "origin");
+      log.warn(`[dot.li protocol] Rejected shared-mode request from disallowed origin: ${event.origin}`);
+      countSharedReject('mode', 'origin');
       return;
     }
 
     try {
-      handleSharedModeRequest(data, event.origin, (response) => {
+      handleSharedModeRequest(data, event.origin, response => {
         postToSource(event.source, event.origin, response);
       });
     } catch (error: unknown) {
-      countSharedReject("mode", "validation");
+      countSharedReject('mode', 'validation');
+      const name = errorName(error);
       postToSource(event.source, event.origin, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: data.id,
         ok: false,
         error: serializeError(error),
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     }
   });
 }
 
-function handleSharedAuthRequest(
-  request: ProtocolRequestEnvelope,
-  origin: string,
-  respond: ResponseCallback,
-): void {
+function handleSharedAuthRequest(request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback): void {
   if (!isSharedAuthRequestMethod(request.method)) {
     throw new Error(`Not a shared auth request: ${request.method as string}`);
   }
@@ -1112,37 +988,32 @@ function handleSharedAuthRequest(
   assertSharedAuthOrigin(origin);
 
   switch (request.method) {
-    case "authStorageRead": {
-      const payload = request.payload as ProtocolRequestMap["authStorageRead"];
+    case 'authStorageRead': {
+      const payload = request.payload as ProtocolRequestMap['authStorageRead'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
-        result: localStorage.getItem(
-          buildSharedAuthStorageKey(payload.siteId, payload.key),
-        ),
+        result: localStorage.getItem(buildSharedAuthStorageKey(payload.siteId, payload.key)),
       });
       return;
     }
 
-    case "authStorageWrite": {
-      const payload = request.payload as ProtocolRequestMap["authStorageWrite"];
+    case 'authStorageWrite': {
+      const payload = request.payload as ProtocolRequestMap['authStorageWrite'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
-      if (typeof payload.value !== "string") {
+      if (typeof payload.value !== 'string') {
         throw new Error(PROTOCOL_APP_ERRORS.INVALID_SHARED_AUTH_VALUE);
       }
-      localStorage.setItem(
-        buildSharedAuthStorageKey(payload.siteId, payload.key),
-        payload.value,
-      );
+      localStorage.setItem(buildSharedAuthStorageKey(payload.siteId, payload.key), payload.value);
       broadcastSharedAuthChange(payload.siteId, payload.key, payload.value);
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -1150,17 +1021,15 @@ function handleSharedAuthRequest(
       return;
     }
 
-    case "authStorageClear": {
-      const payload = request.payload as ProtocolRequestMap["authStorageClear"];
+    case 'authStorageClear': {
+      const payload = request.payload as ProtocolRequestMap['authStorageClear'];
       assertSharedAuthSiteId(payload.siteId);
       assertSharedAuthKey(payload.key);
-      localStorage.removeItem(
-        buildSharedAuthStorageKey(payload.siteId, payload.key),
-      );
+      localStorage.removeItem(buildSharedAuthStorageKey(payload.siteId, payload.key));
       broadcastSharedAuthChange(payload.siteId, payload.key, null);
       respond({
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -1171,11 +1040,7 @@ function handleSharedAuthRequest(
 }
 
 interface ProtocolEngine {
-  handleRequest: (
-    request: ProtocolRequestEnvelope,
-    origin: string,
-    respond: ResponseCallback,
-  ) => Promise<void>;
+  handleRequest: (request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback) => Promise<void>;
   cleanup: () => void;
 }
 
@@ -1194,14 +1059,8 @@ interface EngineOptions {
   /** Resolver implementations. If omitted, resolution methods reject with a
    *  clear error so hanging callers surface fast. Signatures mirror the
    *  `@dotli/resolver` entry points so they can be wired by reference. */
-  resolveDotName?: (
-    label: string,
-    opts?: ResolveOptions,
-  ) => Promise<string | null>;
-  resolveOwner?: (
-    label: string,
-    opts?: ResolveOptions,
-  ) => Promise<string | null>;
+  resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
+  resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   /**
    * Product-manifest readers.
    *
@@ -1210,13 +1069,10 @@ interface EngineOptions {
    */
   resolveExecutableManifest?: (
     label: string,
-    kind: "app" | "widget" | "worker",
+    kind: 'app' | 'widget' | 'worker',
     opts?: ResolveOptions,
   ) => Promise<ManifestResult<ExecutableManifest>>;
-  resolveRootManifest?: (
-    label: string,
-    opts?: ResolveOptions,
-  ) => Promise<ManifestResult<RootManifest>>;
+  resolveRootManifest?: (label: string, opts?: ResolveOptions) => Promise<ManifestResult<RootManifest>>;
 }
 
 function createEngine(options: EngineOptions): ProtocolEngine {
@@ -1227,7 +1083,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   options.onBrokerReady?.(broker);
 
   function assertStr(value: unknown, name: string): asserts value is string {
-    if (typeof value !== "string" || value.length === 0) {
+    if (typeof value !== 'string' || value.length === 0) {
       throw new Error(`Invalid ${name}: expected non-empty string`);
     }
   }
@@ -1239,25 +1095,21 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   ): Promise<void> {
     // Both engine-facing listeners filter shared-auth/shared-mode out;
     // reaching the engine means one of those filters is broken.
-    if (
-      isSharedAuthRequestMethod(request.method) ||
-      isSharedModeRequestMethod(request.method)
-    ) {
-      throw new Error(
-        `Shared storage request reached the chain engine: ${request.method}`,
-      );
+    if (isSharedAuthRequestMethod(request.method) || isSharedModeRequestMethod(request.method)) {
+      throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
     }
 
     const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+    const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
 
     switch (request.method) {
-      case "warmup": {
+      case 'warmup': {
         if (options.onWarmup) {
           await options.onWarmup();
         }
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result: true,
@@ -1265,26 +1117,26 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "resolveDotName": {
+      case 'resolveDotName': {
         if (!options.resolveDotName) {
           throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
         }
-        const payload = request.payload as ProtocolRequestMap["resolveDotName"];
-        assertStr(payload.label, "label");
+        const payload = request.payload as ProtocolRequestMap['resolveDotName'];
+        assertStr(payload.label, 'label');
         const result = await options.resolveDotName(payload.label, {
-          onStatus: (message) => {
+          onStatus: message => {
             respond({
-              namespace: "dotli:protocol",
-              kind: "progress",
+              namespace: 'dotli:protocol',
+              kind: 'progress',
               id: request.id,
               message,
             });
           },
-          syncTimeoutMs,
+          ...syncOptions,
         });
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result,
@@ -1292,18 +1144,16 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "resolveOwner": {
+      case 'resolveOwner': {
         if (!options.resolveOwner) {
           throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
         }
-        const payload = request.payload as ProtocolRequestMap["resolveOwner"];
-        assertStr(payload.label, "label");
-        const result = await options.resolveOwner(payload.label, {
-          syncTimeoutMs,
-        });
+        const payload = request.payload as ProtocolRequestMap['resolveOwner'];
+        assertStr(payload.label, 'label');
+        const result = await options.resolveOwner(payload.label, syncOptions);
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result,
@@ -1311,27 +1161,20 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "resolveExecutableManifest": {
+      case 'resolveExecutableManifest': {
         if (!options.resolveExecutableManifest) {
-          throw new Error(
-            PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED,
-          );
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
         }
-        const payload =
-          request.payload as ProtocolRequestMap["resolveExecutableManifest"];
-        assertStr(payload.label, "label");
+        const payload = request.payload as ProtocolRequestMap['resolveExecutableManifest'];
+        assertStr(payload.label, 'label');
         const kind: string = payload.kind;
         if (!isExecutableKind(kind)) {
           throw new Error(`Unsupported executable kind: ${kind}`);
         }
-        const result = await options.resolveExecutableManifest(
-          payload.label,
-          payload.kind,
-          { syncTimeoutMs },
-        );
+        const result = await options.resolveExecutableManifest(payload.label, payload.kind, syncOptions);
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result,
@@ -1339,21 +1182,16 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "resolveRootManifest": {
+      case 'resolveRootManifest': {
         if (!options.resolveRootManifest) {
-          throw new Error(
-            PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED,
-          );
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
         }
-        const payload =
-          request.payload as ProtocolRequestMap["resolveRootManifest"];
-        assertStr(payload.label, "label");
-        const result = await options.resolveRootManifest(payload.label, {
-          syncTimeoutMs,
-        });
+        const payload = request.payload as ProtocolRequestMap['resolveRootManifest'];
+        assertStr(payload.label, 'label');
+        const result = await options.resolveRootManifest(payload.label, syncOptions);
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result,
@@ -1361,36 +1199,28 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "chainConnect": {
-        const payload = request.payload as ProtocolRequestMap["chainConnect"];
-        assertStr(payload.genesisHash, "genesisHash");
-        assertStr(payload.connectionId, "connectionId");
+      case 'chainConnect': {
+        const payload = request.payload as ProtocolRequestMap['chainConnect'];
+        assertStr(payload.genesisHash, 'genesisHash');
+        assertStr(payload.connectionId, 'connectionId');
         if (connections.size >= MAX_CONNS) {
-          throw new Error(
-            `Connection limit reached (max ${String(MAX_CONNS)})`,
-          );
+          throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
         }
         const oc = originConns.get(origin) ?? new Set<string>();
         if (oc.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-          throw new Error(
-            `Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`,
-          );
+          throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
         }
         if (!options.isChainSupported(payload.genesisHash)) {
           throw new Error(`Unsupported chain: ${payload.genesisHash}`);
         }
-        const connection = broker.connectRemote(
-          payload.genesisHash,
-          payload.connectionId,
-          (message) => {
-            respond({
-              namespace: "dotli:protocol",
-              kind: "chain-message",
-              connectionId: payload.connectionId,
-              message,
-            });
-          },
-        );
+        const connection = broker.connectRemote(payload.genesisHash, payload.connectionId, message => {
+          respond({
+            namespace: 'dotli:protocol',
+            kind: 'chain-message',
+            connectionId: payload.connectionId,
+            message,
+          });
+        });
         if (connection === null) {
           throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
@@ -1398,8 +1228,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         oc.add(payload.connectionId);
         originConns.set(origin, oc);
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result: true,
@@ -1407,18 +1237,18 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "chainSend": {
-        const payload = request.payload as ProtocolRequestMap["chainSend"];
-        assertStr(payload.connectionId, "connectionId");
-        assertStr(payload.message, "message");
+      case 'chainSend': {
+        const payload = request.payload as ProtocolRequestMap['chainSend'];
+        assertStr(payload.connectionId, 'connectionId');
+        assertStr(payload.message, 'message');
         const conn = connections.get(payload.connectionId);
         if (conn === undefined) {
           throw new Error(`Unknown chain connection: ${payload.connectionId}`);
         }
         conn.send(payload.message);
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result: true,
@@ -1426,10 +1256,9 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         return;
       }
 
-      case "chainDisconnect": {
-        const payload =
-          request.payload as ProtocolRequestMap["chainDisconnect"];
-        assertStr(payload.connectionId, "connectionId");
+      case 'chainDisconnect': {
+        const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
+        assertStr(payload.connectionId, 'connectionId');
         const conn = connections.get(payload.connectionId);
         conn?.disconnect();
         connections.delete(payload.connectionId);
@@ -1440,8 +1269,8 @@ function createEngine(options: EngineOptions): ProtocolEngine {
           }
         }
         respond({
-          namespace: "dotli:protocol",
-          kind: "response",
+          namespace: 'dotli:protocol',
+          kind: 'response',
           id: request.id,
           ok: true,
           result: true,
@@ -1468,12 +1297,11 @@ function createEngine(options: EngineOptions): ProtocolEngine {
   return { handleRequest, cleanup };
 }
 
-clearLegacySharedAuthSession();
 bindSharedAuthListener();
 bindSharedAuthBroadcastRelay();
 bindSharedModeListener();
 
 void init().catch((err: unknown) => {
-  log.error("[dot.li protocol] Init failed:", err);
+  log.error('[dot.li protocol] Init failed:', err);
   signalError(err instanceof Error ? err.message : String(err));
 });
