@@ -583,7 +583,7 @@ var init_host_callbacks = __esm({
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
-    PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64 }));
+    PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64, username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
     ProductSubtreeReview = S.lazy(() => S.Struct({ productId: S.str }));

@@ -905,6 +905,14 @@ export interface PresentedContactProfile {
      * `PlacedAvatar::shared_at`.
      */
     sharedAt: bigint;
+    /**
+     * The contact's username, when the core knows one: the name its Chat
+     * roster holds for `peer_identity`, verified when the contact was bound
+     * or first authenticated, else the peer's verified dotNS name. Never a
+     * name from the product. ``undefined`` when neither is known in time; show the
+     * contact without a name then, never by address.
+     */
+    username?: string;
 }
 /**
  * Product identity attached to one product-facing TrUAPI connection.
