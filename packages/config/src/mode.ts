@@ -30,7 +30,7 @@ export const BACKEND_LABELS: Record<Backend, string> = {
 export interface CacheSettings {
   /** When true, skip CID cache reads. Always resolve from chain/RPC. */
   skipCidCache: boolean;
-  /** When true, skip SW archive cache reads. Always fetch content. */
+  /** When true, the host block cache is neither read nor written. Always fetch content. */
   skipArchiveCache: boolean;
   /**
    * When true, the protocol iframe purges its persistent worker caches

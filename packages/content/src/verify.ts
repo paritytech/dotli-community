@@ -16,7 +16,7 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { equals as bytesEqual } from "multiformats/bytes";
-import type { CID } from "multiformats/cid";
+import { CID } from "multiformats/cid";
 import type { BlockSource } from "./archive";
 
 // Multihash codes we can recompute. sha2-256 is IPFS's default; blake2b-256
@@ -51,6 +51,19 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
     throw new Error(
       `Content hash mismatch for ${cid.toString()} — refusing tampered content`,
     );
+  }
+}
+
+/**
+ * Whether `bytes` is the block `cid` names. `false` for a CID string that does
+ * not parse or a hash we cannot recompute, as well as for a mismatch.
+ */
+export function blockMatchesCid(cid: string, bytes: Uint8Array): boolean {
+  try {
+    assertBlockMatchesCid(CID.parse(cid), bytes);
+    return true;
+  } catch {
+    return false;
   }
 }
 

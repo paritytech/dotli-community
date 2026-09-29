@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import {
-  TIMEOUTS,
-  SW_ARCHIVE_CACHE_MAX,
-  BASE_DOMAIN,
-  isSandboxOrigin,
-} from "@dotli/config/config";
+import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
@@ -74,12 +69,6 @@ describe("config constants", () => {
       for (const [key, value] of Object.entries(TIMEOUTS)) {
         expect(value, `TIMEOUTS.${key}`).toBeGreaterThan(0);
       }
-    });
-  });
-
-  describe("SW_ARCHIVE_CACHE_MAX", () => {
-    it("is a positive number", () => {
-      expect(SW_ARCHIVE_CACHE_MAX).toBeGreaterThan(0);
     });
   });
 

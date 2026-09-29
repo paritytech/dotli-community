@@ -527,13 +527,14 @@ function buildSummary(
           summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
         }
         break;
+      case "boot:block_cache":
+        summary.archiveCache =
+          num(p.misses) === 0 && (num(p.hits) ?? 0) > 0 ? "hit" : "miss";
+        break;
       case "sandbox:document_written":
         summary.appBytes = num(p.bytes);
         summary.appFileCount = num(p.fileCount);
         paintedMs = Math.max(0, ev.timestamp - startedAt);
-        break;
-      case "sandbox:cache_checked":
-        summary.archiveCache = p.hit === true ? "hit" : "miss";
         break;
       case "failover:chain_backend": {
         const to = str(p.to);
@@ -672,7 +673,7 @@ function summaryFacts(model: ResolutionModel): Fact[] {
     {
       key: "app size",
       value: appSizeText(s),
-      hint: "How big the app is once unpacked, and how many files it came in. Fetched over the connections the light client already holds, or read straight from the archive cache.",
+      hint: "How big the app is once unpacked, and how many files it came in. Its blocks came over the connections the light client already holds, or straight from blocks the host's block cache already had.",
     },
     {
       key: "average speed",
@@ -694,7 +695,7 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       key: "archive cache",
       value: "",
       valueHtml: cacheText(s.archiveCache),
-      hint: "Whether the app files were already in the service worker cache, so nothing had to be fetched. \u201cSkipped\u201d means the cache is turned off in settings.",
+      hint: "Whether the blocks the app needed were already in the host's block cache, so nothing had to be fetched from the network. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
   ];
 }

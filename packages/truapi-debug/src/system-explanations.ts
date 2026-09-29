@@ -62,6 +62,13 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
 The cache is populated at the end of each successful slow-path resolution (\`resolve:completed\`) unless the user has explicitly disabled caching in settings.`,
   },
 
+  "boot:block_cache": {
+    title: "Host block cache",
+    body: `How the host answered the sandbox's bitswap requests for this load. The host relays every block the sandbox asks for and keeps it in its own IndexedDB (\`@dotli/storage/block-cache\`), hash-checked against its CID. \`hits\` came from there, \`misses\` went to the protocol iframe's light client. A load with no misses reads as an archive cache hit.
+
+The sandbox cannot keep content itself: its iframe is credentialless, so its storage is dropped on every reload. In \`rpc-gateway\` mode the sandbox fetches from a gateway directly and this event does not appear.`,
+  },
+
   "boot:landing_page_shown": {
     title: "Landing page rendered",
     body: `The host URL had no product subdomain to resolve, so \`showLanding()\` rendered the marketing landing page and \`main()\` returned. Boot ends here; no product iframe, no bridge, no TrUAPI traffic.`,
@@ -238,16 +245,9 @@ Everything that happens from here until \`sandbox:document_written\` runs in the
     body: `The sandbox SW is active and controlling the page. \`durationMs\` is wall-clock from \`sw_register_begin\`; large values (multiple seconds) usually mean the browser had to install a brand-new worker on a cold cache, or the \`waitForFreshController\` branch was in play.`,
   },
 
-  "sandbox:cache_checked": {
-    title: "Service worker archive cache lookup",
-    body: `The sandbox asked its SW whether it already has the packed archive for this \`(cid, contentBackend)\` pair in IndexedDB. Cache hits are nearly instant and skip the rest of the fetch pipeline — straight to \`document_written\`.
-
-Cache misses are what drive the long window. The next event is \`sandbox:fetch_begin\` and then either \`helia_ready\` + a slow P2P download (often tens of seconds, peers permitting) or a gateway fetch.`,
-  },
-
   "sandbox:fetch_begin": {
     title: "Archive fetch started",
-    body: `Cache miss — the sandbox now has to pull the archive from the bulletin chain. The chosen \`contentBackend\` picks the transport:
+    body: `The sandbox pulls the archive. Blocks the host already holds come from its block cache, the rest from the bulletin chain. The chosen \`contentBackend\` picks the transport:
 
 • \`p2p-helia\` — load Helia/libp2p, open bitswap sessions to peers, request the CID, assemble chunks. Bandwidth-limited, peer-discovery-limited, and the single biggest source of "the host is silent for 15 seconds" symptoms — Helia can take many seconds to connect to its first useful peer.
 • \`ipfs-gateway\` — plain HTTPS fetch from the configured IPFS gateway. Much faster but requires a trusted centralised endpoint.
@@ -282,7 +282,7 @@ Cache misses are what drive the long window. The next event is \`sandbox:fetch_b
 
   "sandbox:archive_stored": {
     title: "Archive staged in service worker",
-    body: `The sandbox has packed the archive into a single \`Uint8Array\` + an index map, and posted it to the SW via \`postMessage({ type: "SET_ARCHIVE", ... })\`. The SW writes it into IndexedDB and acknowledges with \`ARCHIVE_READY\`. From now on, **all** sub-resource requests the dApp makes (CSS, JS, fonts) are served by this SW out of IDB instead of hitting the network.
+    body: `The sandbox has packed the archive into a single \`Uint8Array\` + an index map, and posted it to the SW via \`postMessage({ type: "SET_ARCHIVE", ... })\`. The SW keeps it in memory and acknowledges with \`ARCHIVE_READY\`. From now on, **all** sub-resource requests the dApp makes (CSS, JS, fonts) are served by this SW out of that in-memory archive instead of hitting the network.
 
 This **must** complete before \`document.write\` for multi-file archives — otherwise the first CSS/JS request would race the SW install and miss.`,
   },

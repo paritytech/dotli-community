@@ -28,7 +28,7 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
-import { getBackend, getCacheSettings } from "@dotli/config/mode";
+import { getBackend } from "@dotli/config/mode";
 import { getNetwork, withActiveTld } from "@dotli/config/network";
 import { getResolutionId, m } from "@dotli/metrics/metrics";
 import * as S from "@dotli/metrics/spans";
@@ -1044,7 +1044,6 @@ export async function renderAppSubdomain(
   // rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
-  const cache = getCacheSettings();
   const appOrigin = getAppOrigin(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
@@ -1075,9 +1074,6 @@ export async function renderAppSubdomain(
     chainBackend,
   );
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
-  if (cache.skipArchiveCache) {
-    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
-  }
   if (fullReset) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
   }

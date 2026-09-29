@@ -189,62 +189,6 @@ function parseSubdomainLabel(): string | null {
 }
 
 /**
- * Check if the Service Worker has a cached archive for this CID.
- */
-async function getCachedArchive(
-  domain: string,
-  cid: string,
-  contentBackend: string,
-): Promise<ArchiveFiles | null> {
-  const controller = navigator.serviceWorker.controller;
-  if (!controller) {
-    return null;
-  }
-
-  return new Promise<ArchiveFiles | null>((resolve) => {
-    const timeout = setTimeout(() => {
-      resolve(null);
-    }, TIMEOUTS.SW_CACHE_LOOKUP);
-    const channel = new MessageChannel();
-
-    channel.port1.onmessage = (event: MessageEvent) => {
-      clearTimeout(timeout);
-      const msg = event.data as {
-        found?: boolean;
-        cid?: string;
-        contentBackend?: string;
-        files?: Record<string, ArrayBuffer | Uint8Array> | null;
-      };
-      // Only return a cache hit if the entry was populated under the same
-      // content backend the user has selected now. A gateway-fetched archive
-      // must not satisfy a P2P-mode request and vice versa.
-      if (
-        msg.found === true &&
-        msg.cid === cid &&
-        msg.contentBackend === contentBackend &&
-        msg.files !== undefined &&
-        msg.files !== null
-      ) {
-        const raw = msg.files;
-        const files: ArchiveFiles = {};
-        for (const [path, data] of Object.entries(raw)) {
-          files[path] =
-            data instanceof Uint8Array ? data : new Uint8Array(data);
-        }
-        resolve(files);
-      } else {
-        resolve(null);
-      }
-    };
-
-    controller.postMessage(
-      { type: "SW_CACHE_LOOKUP_EVENT", domain, contentBackend },
-      [channel.port2],
-    );
-  });
-}
-
-/**
  * Ask an active Service Worker for its baked-in version tag.
  * Resolves `null` if the SW doesn't answer (older build, comms error, timeout).
  */
@@ -386,12 +330,7 @@ async function registerAppServiceWorker({
  * Must be called before document.write() for multi-file archives in relay mode,
  * otherwise CSS/JS requests fall through to nginx which returns the HTML fallback.
  */
-async function storeArchiveInSW(
-  files: ArchiveFiles,
-  domain: string,
-  cid: string,
-  contentBackend: string,
-): Promise<void> {
+async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
   const sw = navigator.serviceWorker.controller;
   if (!sw) {
     return;
@@ -427,46 +366,9 @@ async function storeArchiveInSW(
     navigator.serviceWorker.addEventListener("message", handler);
   });
 
-  // Tag the stored archive with the backend it was fetched under so future
-  // cache lookups can verify the backend matches the user's current setting.
-  sw.postMessage(
-    { type: "SET_ARCHIVE", packed, index, domain, cid, contentBackend },
-    [packed],
-  );
+  sw.postMessage({ type: "SET_ARCHIVE", packed, index }, [packed]);
 
   await archiveReady;
-}
-
-/**
- * Make the SW serve the archive it returned from `getCachedArchive`, without
- * sending the files back. Resolves `false` when the SW no longer holds a
- * matching entry, so the caller can hand it the files instead.
- */
-async function activateArchiveInSW(
-  domain: string,
-  cid: string,
-  contentBackend: string,
-): Promise<boolean> {
-  const sw = navigator.serviceWorker.controller;
-  if (!sw) {
-    return false;
-  }
-  return new Promise<boolean>((resolve, reject) => {
-    const channel = new MessageChannel();
-    const timer = setTimeout(() => {
-      channel.port1.close();
-      reject(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED));
-    }, 10_000);
-    channel.port1.onmessage = (event: MessageEvent) => {
-      clearTimeout(timer);
-      channel.port1.close();
-      const msg = event.data as { activated?: boolean } | null;
-      resolve(msg?.activated === true);
-    };
-    sw.postMessage({ type: "ACTIVATE_ARCHIVE", domain, cid, contentBackend }, [
-      channel.port2,
-    ]);
-  });
 }
 
 /**
@@ -486,7 +388,8 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
 }
 
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
-// we store the password so SW-cache hits don't re-prompt.
+// we store the password so a re-fetch of the same CID in the same session
+// doesn't re-prompt.
 const decryptedPasswords = new Map<string, string>();
 
 /**
@@ -589,7 +492,8 @@ async function purgeSandboxOriginState(): Promise<void> {
   } catch (err) {
     log.warn("[dot.li app] IDB purge failed:", err);
   }
-  // CacheStorage (the Cache API, not the SW archive which lives in IDB)
+  // CacheStorage (the Cache API). The archive itself lives only in the SW's
+  // memory now, so there's nothing archive-related here to clear.
   try {
     if (typeof caches !== "undefined") {
       const keys = await caches.keys();
@@ -695,8 +599,7 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, skipArchiveCache, resolutionId } =
-    parsed.params;
+  const { cid, chainBackend, network, resolutionId } = parsed.params;
   // Before the setDefaults below, so a failure between here and there is still
   // attributable to the page load that caused it.
   if (resolutionId !== null) {
@@ -719,7 +622,6 @@ async function main(): Promise<void> {
   // Propagate the chainBackend and network choices into every metric emitted
   // from the sandbox so dashboards can slice on them.
   m.setDefaults({
-    skip_archive_cache: String(skipArchiveCache),
     chain_backend: chainBackend,
     network,
   });
@@ -735,86 +637,21 @@ async function main(): Promise<void> {
     stopSw();
     return v;
   });
-  // Pre-load the fetch chunk for the cache-miss path. Gateway mode only
+  // Pre-load the fetch chunk. Gateway mode only
   // needs `fetchViaGateway` (small). The smoldot backends additionally
   // need the bitswap-bridge module to call into the protocol iframe.
   const fetchChunkPromise = import("@dotli/content/fetch");
   const bitswapBridgePromise = isGateway ? null : import("./bitswap-bridge");
 
-  // Wait for SW before cache check
+  // The SW must control the page before the archive is handed to it.
   await swReady;
   log.warn(`[dot.li app] SW ready (${elapsed(T0)})`);
 
-  // Check SW cache first (skip if user disabled content cache). The cache
-  // lookup is keyed by (cid, chainBackend) so a stale gateway-fetched archive
-  // cannot satisfy a smoldot-mode request and vice versa.
-  const cachedFiles = skipArchiveCache
-    ? null
-    : await getCachedArchive(cid, cid, chainBackend);
-  // Only when the cache was actually consulted. A skipped lookup is not a
-  // miss, and the panel reads the absence of this event as "not checked".
-  if (!skipArchiveCache) {
-    reportSandboxDebug("cache_checked", resolutionId ?? cid, {
-      cid,
-      hit: cachedFiles !== null,
-      ...(cachedFiles ? { fileCount: Object.keys(cachedFiles).length } : {}),
-    });
-  }
-  if (cachedFiles) {
-    m.count(S.CACHE_HIT, { surface: "sw_archive" });
-    log.warn(`[dot.li app] SW archive cache HIT (${elapsed(T0)})`);
-
-    // Extract index.html and write it directly into this window so it
-    // occupies the APP iframe. An archive without index.html is invalid,
-    // so surface it instead of silently falling through to a no-op render.
-    const indexHtml = cachedFiles["index.html"] as Uint8Array | undefined;
-    if (indexHtml === undefined) {
-      throw new Error(
-        "Archive cache hit missing index.html — cannot render a sandbox without a root document.",
-      );
-    }
-    // For multi-file archives, the SW must serve sub-resources (CSS, JS,
-    // fonts) when the browser loads them. It already holds this archive.
-    if (Object.keys(cachedFiles).length > 1) {
-      if (await activateArchiveInSW(cid, cid, chainBackend)) {
-        log.warn(
-          `[dot.li app] cached archive activated in SW (${elapsed(T0)})`,
-        );
-      } else {
-        await storeArchiveInSW(cachedFiles, cid, cid, chainBackend);
-        log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-      }
-    }
-    let html = new TextDecoder().decode(indexHtml);
-    html = await maybeInjectSandboxChecker(html);
-    log.warn(
-      `[dot.li app] writing cached content into window (${elapsed(T0)})`,
-    );
-    reportSandboxDebug("document_written", resolutionId ?? cid, {
-      cid,
-      totalMs: Math.round(performance.now() - T0),
-      bytes: archiveBytes(cachedFiles),
-      fileCount: Object.keys(cachedFiles).length,
-    });
-    notifyLoadingDone();
-    performance.mark("dotli:app:end");
-    stopApp();
-    stripContractParamsFromUrl();
-    document.open();
-    // eslint-disable-next-line @typescript-eslint/no-deprecated -- intentional: document.write replaces the page with dApp content to eliminate triple iframe nesting
-    document.write(html);
-    document.close();
-    return;
-  }
-
   let result: FetchResult;
 
-  m.count(S.CACHE_MISS, { surface: "sw_archive" });
   if (isGateway) {
     // rpc-gateway mode: HTTPS fetch from a trusted IPFS gateway.
-    log.warn(
-      `[dot.li app] SW archive cache MISS — rpc-gateway mode, using IPFS gateway (${elapsed(T0)})`,
-    );
+    log.warn(`[dot.li app] Fetching via IPFS gateway (${elapsed(T0)})`);
     showStatus("Fetching via IPFS gateway...");
     const { fetchArchive } = await fetchChunkPromise;
     result = await fetchArchive(cid, showStatus, { useGateway: true });
@@ -822,7 +659,7 @@ async function main(): Promise<void> {
     // smoldot-direct / smoldot-shared-worker: fetch via smoldot's `bitswap_v1_get`
     // through the host-relayed protocol bridge. No libp2p in the sandbox.
     log.warn(
-      `[dot.li app] SW archive cache MISS — ${chainBackend} (bitswap) (${elapsed(T0)})`,
+      `[dot.li app] Fetching via bitswap, ${chainBackend} (${elapsed(T0)})`,
     );
     showStatus("Fetching via bitswap...");
     if (bitswapBridgePromise === null) {
@@ -858,7 +695,7 @@ async function main(): Promise<void> {
   } else {
     // For multi-file archives, store files in the SW so it can serve
     // sub-resources (CSS, JS, fonts) when the browser loads them.
-    await storeArchiveInSW(result.files, cid, cid, chainBackend);
+    await storeArchiveInSW(result.files);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
     const indexHtml = result.files["index.html"] as Uint8Array | undefined;
     if (indexHtml === undefined) {

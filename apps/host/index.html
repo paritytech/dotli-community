@@ -14,7 +14,7 @@
             // before main.ts executes. Overlaps IDB open (~10-50ms) with
             // module loading. Picked up by src/db.ts via window.__dotliDb.
             window.__dotliDb = new Promise(function(resolve, reject) {
-                var req = indexedDB.open("dotli", 4);
+                var req = indexedDB.open("dotli", 5);
                 req.onupgradeneeded = function() {
                     var db = req.result;
                     if (!db.objectStoreNames.contains("cids"))
@@ -39,6 +39,13 @@
                     // v4: product chat bot identities.
                     if (!db.objectStoreNames.contains("chat_bots"))
                         db.createObjectStore("chat_bots", { keyPath: ["productId", "botId"] });
+                    // v5: content block cache.
+                    if (!db.objectStoreNames.contains("blocks"))
+                        db.createObjectStore("blocks", { keyPath: "cid" });
+                    if (!db.objectStoreNames.contains("block_meta")) {
+                        var b = db.createObjectStore("block_meta", { keyPath: "cid" });
+                        b.createIndex("byLastUsed", "lastUsed", { unique: false });
+                    }
                 };
                 req.onsuccess = function() { resolve(req.result); };
                 req.onerror = function() { reject(new Error("IDB open failed")); };

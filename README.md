@@ -105,7 +105,7 @@ When a CID points to an IPFS directory (not a single file):
 dotli uses a two-layer cache for fast repeat visits:
 
 1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
-2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain; a cache hit additionally requires the stored CID (and content backend) to match
+2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against their CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is credentialless, so its storage is dropped on reload
 
 On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield shows how the current page was loaded:
 

@@ -4,8 +4,10 @@
 // dot.li app Service Worker.
 //
 // Archive serving only, no smoldot and no chain sync.
-// Runs on <label>.app.dot.li to serve multi-file SPA archives from the
-// in-memory and IndexedDB cache.
+// Runs on <label>.app.dot.li and serves the multi-file SPA archive the page
+// hands it, from memory. It keeps nothing across reloads: the iframe is
+// credentialless, so this origin's storage lasts only as long as the host
+// page. The host keeps the content blocks instead (`@dotli/storage/block-cache`).
 
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
@@ -15,8 +17,6 @@ declare const self: ServiceWorkerGlobalScope;
 declare const __SW_VERSION__: string;
 
 import { getMimeType } from "@dotli/shared/mime";
-import { computeArchiveDigest } from "@dotli/shared/archive-digest";
-import { SW_ARCHIVE_CACHE_MAX } from "@dotli/config/config";
 
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
@@ -28,147 +28,10 @@ function hasExtension(path: string): boolean {
   return lastDot > lastSlash;
 }
 
-// IndexedDB archive persistence (pooled connection).
-
-const ARCHIVE_DB_NAME = "dotli-sw";
-const ARCHIVE_DB_VERSION = 1;
-const ARCHIVE_STORE = "archives";
-
-interface ArchiveEntry {
-  domain?: string;
-  cid?: string;
-  files?: Record<string, ArrayBuffer>;
-  /**
-   * Backend the archive was originally fetched under. Cache lookups only
-   * return the entry if the user's current backend matches. Older entries
-   * that lack this field are treated as misses.
-   */
-  contentBackend?: string;
-  /**
-   * Integrity tag over `files`, recomputed on cache read so a corrupted or
-   * tampered IndexedDB entry is discarded instead of served. Defends against
-   * storage corruption and passive tampering (an active same-origin attacker
-   * who can rewrite the store can also rewrite this tag). Entries persisted
-   * before this field existed lack it and are treated as misses.
-   */
-  digest?: string;
-}
-
-let archiveDbPromise: Promise<IDBDatabase> | null = null;
-
-function getArchiveDB(): Promise<IDBDatabase> {
-  if (archiveDbPromise !== null) {
-    return archiveDbPromise;
-  }
-  archiveDbPromise = new Promise((resolve, reject) => {
-    const request = indexedDB.open(ARCHIVE_DB_NAME, ARCHIVE_DB_VERSION);
-    request.onerror = () => {
-      archiveDbPromise = null;
-      reject(new Error("Failed to open archive DB"));
-    };
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onclose = () => {
-        archiveDbPromise = null;
-      };
-      resolve(db);
-    };
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(ARCHIVE_STORE)) {
-        db.createObjectStore(ARCHIVE_STORE, { keyPath: "domain" });
-      }
-    };
-  });
-  return archiveDbPromise;
-}
-
-async function saveArchiveToDB(entry: {
-  domain: string;
-  cid: string;
-  files: Record<string, ArrayBuffer>;
-  contentBackend?: string;
-}): Promise<void> {
-  try {
-    const digest = await computeArchiveDigest(entry.files);
-    const db = await getArchiveDB();
-    const tx = db.transaction(ARCHIVE_STORE, "readwrite");
-    tx.objectStore(ARCHIVE_STORE).put({ ...entry, digest });
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(new Error("Failed to save archive"));
-      };
-    });
-  } catch (error) {
-    console.error("Failed to save archive to IndexedDB:", error);
-  }
-}
-
-async function loadArchiveFromDBByDomain(
-  domain: string,
-): Promise<ArchiveEntry | null> {
-  try {
-    const db = await getArchiveDB();
-    const tx = db.transaction(ARCHIVE_STORE, "readonly");
-    const request = tx.objectStore(ARCHIVE_STORE).get(domain);
-    const entry = await new Promise<ArchiveEntry | null>((resolve, reject) => {
-      request.onsuccess = () => {
-        resolve((request.result as ArchiveEntry | undefined) ?? null);
-      };
-      request.onerror = () => {
-        reject(new Error("Failed to load archive"));
-      };
-    });
-
-    if (entry?.files === undefined) {
-      return entry;
-    }
-
-    // Discard entries whose persisted bytes don't match their integrity tag
-    // (corruption / tampering), and legacy entries that predate the tag. A
-    // miss makes the page re-fetch (and re-persist with a digest), which is
-    // the safe outcome — never serve unverifiable persisted content.
-    const actual = await computeArchiveDigest(entry.files);
-    if (entry.digest === undefined || entry.digest !== actual) {
-      return null;
-    }
-    return entry;
-  } catch (error) {
-    console.error("Failed to load archive from IndexedDB:", error);
-    return null;
-  }
-}
-
 // Archive storage.
 
 /** Files of the archive the fetch handler serves, keyed by path. */
 let servedFiles: Record<string, ArrayBuffer> | null = null;
-
-const archiveCache = new Map<string, ArchiveEntry>();
-
-function archiveCacheSet(key: string, value: ArchiveEntry): void {
-  archiveCache.delete(key);
-  archiveCache.set(key, value);
-  if (archiveCache.size > SW_ARCHIVE_CACHE_MAX) {
-    const oldest = archiveCache.keys().next().value;
-    if (oldest !== undefined) {
-      archiveCache.delete(oldest);
-    }
-  }
-}
-
-function archiveCacheGet(key: string): ArchiveEntry | undefined {
-  const entry = archiveCache.get(key);
-  if (entry === undefined) {
-    return undefined;
-  }
-  archiveCache.delete(key);
-  archiveCache.set(key, entry);
-  return entry;
-}
 
 function hasArchive(): boolean {
   return servedFiles !== null;
@@ -238,138 +101,9 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
       files[entry.p] = packed.slice(entry.o, entry.o + entry.l);
     }
     servedFiles = files;
-
-    const domain = data.domain as string | undefined;
-    const cid = data.cid as string | undefined;
-    const contentBackend = data.contentBackend as string | undefined;
-    const source = event.source;
-
-    // In-memory tables are live immediately (set above) so fetches can
-    // be served. The ACK waits until the IDB persist completes: a reload
-    // before IDB flush would otherwise find an empty archive store and
-    // fall through to the network for every sub-resource. Splitting this
-    // into two signals (ARCHIVE_INDEXED vs ARCHIVE_PERSISTED) would be
-    // cleaner, but the page today only waits on ARCHIVE_READY, so we
-    // gate ARCHIVE_READY on the slower, authoritative step.
-    if (
-      domain !== undefined &&
-      domain !== "" &&
-      cid !== undefined &&
-      cid !== ""
-    ) {
-      const d = domain;
-      const c = cid;
-      const cb = contentBackend;
-      const archiveEntry: ArchiveEntry = {
-        domain: d,
-        cid: c,
-        files,
-        contentBackend: cb,
-      };
-      archiveCacheSet(d, archiveEntry);
-      void saveArchiveToDB({
-        domain: d,
-        cid: c,
-        files,
-        contentBackend: cb,
-      })
-        .then(() => {
-          if (source) {
-            (source as Client).postMessage({ type: "ARCHIVE_READY" });
-          }
-        })
-        .catch((err: unknown) => {
-          const reason = err instanceof Error ? err.message : String(err);
-          if (source) {
-            (source as Client).postMessage({
-              type: "ARCHIVE_ERROR",
-              reason: `Failed to persist archive: ${reason}`,
-            });
-          }
-        });
-      return;
+    if (event.source) {
+      (event.source as Client).postMessage({ type: "ARCHIVE_READY" });
     }
-
-    // No domain/cid supplied: index is live but there's nothing to
-    // persist. ACK immediately. IDB-lookup consumers will miss, which
-    // is the correct behavior when the caller supplied no key.
-    if (source) {
-      (source as Client).postMessage({ type: "ARCHIVE_READY" });
-    }
-    return;
-  }
-
-  if (data.type === "ACTIVATE_ARCHIVE") {
-    // Serve an archive this SW already holds, after the page accepted it from
-    // `SW_CACHE_LOOKUP_EVENT`. It was verified and persisted when it was
-    // stored, so activating it neither re-hashes nor re-writes it.
-    const domain = data.domain as string;
-    const cid = data.cid as string;
-    const contentBackend = data.contentBackend as string;
-    const port = event.ports.at(0);
-    const cached = archiveCacheGet(domain);
-    const found =
-      cached !== undefined
-        ? Promise.resolve(cached)
-        : loadArchiveFromDBByDomain(domain);
-    void found.then((entry) => {
-      const files =
-        entry?.cid === cid && entry.contentBackend === contentBackend
-          ? entry.files
-          : undefined;
-      if (entry !== null && files !== undefined) {
-        servedFiles = files;
-        archiveCacheSet(domain, entry);
-      }
-      port?.postMessage({ activated: files !== undefined });
-    });
-    return;
-  }
-
-  if (data.type === "SW_CACHE_LOOKUP_EVENT") {
-    const domain = data.domain as string;
-    // The SW returns `contentBackend` from the stored entry so the page-side
-    // `getCachedArchive` can verify it matches the user's current backend.
-    // (We don't filter here because the page-side check is authoritative
-    // and the SW must remain backend-agnostic for older callers.)
-    const cached = archiveCacheGet(domain);
-    if (cached !== undefined) {
-      for (const port of event.ports) {
-        port.postMessage({
-          found: true,
-          cid: cached.cid,
-          contentBackend: cached.contentBackend,
-          files: cached.files,
-        });
-      }
-      return;
-    }
-    void loadArchiveFromDBByDomain(domain)
-      .then((entry) => {
-        if (entry !== null && entry.cid !== "" && entry.files !== undefined) {
-          archiveCacheSet(domain, entry);
-        }
-        for (const port of event.ports) {
-          port.postMessage({
-            found: entry !== null,
-            cid: entry?.cid ?? null,
-            contentBackend: entry?.contentBackend,
-            files: entry?.files ?? null,
-          });
-        }
-      })
-      .catch((err: unknown) => {
-        // Expose the IDB error to the page instead of pretending it was a
-        // cache miss. Page-side code can decide whether to surface it.
-        for (const port of event.ports) {
-          port.postMessage({
-            found: false,
-            cid: null,
-            files: null,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      });
     return;
   }
 });

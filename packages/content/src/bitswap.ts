@@ -422,6 +422,102 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
   );
 }
 
+/** Where the relay keeps blocks between page loads. */
+export interface BlockCache {
+  /**
+   * The cached bytes for `cid`, or `null` on a miss.
+   *
+   * Must return a fresh copy the caller owns: the relay transfers the
+   * returned buffer to the sandbox, which detaches it, so a shared backing
+   * buffer would corrupt the cache's own copy.
+   */
+  get: (cid: string) => Promise<Uint8Array | null>;
+  put: (cid: string, bytes: Uint8Array) => Promise<void>;
+  delete: (cid: string) => Promise<void>;
+}
+
+export interface SandboxBitswapOptions {
+  /** Answer repeat requests from here. Leave it out to always use the network. */
+  blockCache?: BlockCache;
+  /** Called once for every block sent to a sandbox, with where it came from. */
+  onBlockServed?: (from: "cache" | "network") => void;
+}
+
+interface ServedBlock {
+  bytes: Uint8Array;
+  from: "cache" | "network";
+}
+
+async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
+  let blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean;
+  try {
+    ({ blockMatchesCid } = await import("./verify"));
+  } catch (err) {
+    // Fail closed: a verifier we couldn't even load can't vouch for this
+    // block. The caller treats `false` as "not verified" either way, so a
+    // cached block falls back to the network and a freshly fetched one is
+    // served but never cached.
+    log.warn(
+      `[dot.li bitswap-relay] verifier import failed for ${cid}: ${serializeError(err)}`,
+    );
+    return false;
+  }
+  return blockMatchesCid(cid, bytes);
+}
+
+/** The cached block for `cid` if it is still the block that CID names. */
+async function readCachedBlock(
+  cache: BlockCache,
+  cid: string,
+): Promise<Uint8Array | null> {
+  let bytes: Uint8Array | null;
+  try {
+    bytes = await cache.get(cid);
+  } catch (err) {
+    log.warn(
+      `[dot.li bitswap-relay] block cache read failed for ${cid}: ${serializeError(err)}`,
+    );
+    return null;
+  }
+  if (bytes === null) {
+    return null;
+  }
+  if (await blockMatches(cid, bytes)) {
+    return bytes;
+  }
+  // Corrupted on disk. Drop it so the network copy takes its place.
+  void cache.delete(cid).catch((err: unknown) => {
+    log.warn(
+      `[dot.li bitswap-relay] block cache delete failed: ${serializeError(err)}`,
+    );
+  });
+  return null;
+}
+
+async function serveBlock(
+  cid: string,
+  signal: AbortSignal,
+  cache: BlockCache | undefined,
+): Promise<ServedBlock> {
+  if (cache !== undefined) {
+    const cached = await readCachedBlock(cache, cid);
+    if (cached !== null) {
+      return { bytes: cached, from: "cache" };
+    }
+  }
+  const bytes = await bitswapGet(cid, signal);
+  if (cache !== undefined && (await blockMatches(cid, bytes))) {
+    // The reply transfers `bytes.buffer` to the sandbox, which detaches it
+    // before the IndexedDB write gets to clone it, so keep a copy.
+    void cache.put(cid, bytes.slice()).catch((err: unknown) => {
+      log.warn(
+        `[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`,
+      );
+    });
+  }
+  return { bytes, from: "network" };
+}
+
 /**
  * Live relayed fetches, per requesting frame and then per request id.
  *
@@ -441,10 +537,17 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
 const inFlight = new Map<MessageEventSource, Map<string, AbortController>>();
 let relayInstalled = false;
 
-/** Idempotent. Call once at host startup. */
-export function listenForSandboxBitswap(): void {
+/**
+ * Idempotent. Call once at host startup. Returns a function that removes the
+ * relay again.
+ */
+export function listenForSandboxBitswap(
+  options: SandboxBitswapOptions = {},
+): () => void {
   if (relayInstalled) {
-    return;
+    return () => {
+      /* the first caller owns the relay */
+    };
   }
   relayInstalled = true;
   if (getBackend() === "rpc-gateway") {
@@ -458,7 +561,7 @@ export function listenForSandboxBitswap(): void {
       "[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.",
     );
   }
-  window.addEventListener("message", (event: MessageEvent) => {
+  const onMessage = (event: MessageEvent): void => {
     const data: unknown = event.data;
     if (isBitswapAbortMessage(data)) {
       if (!isSandboxOrigin(event.origin) || event.source === null) {
@@ -499,7 +602,7 @@ export function listenForSandboxBitswap(): void {
       inFlight.set(source, own);
     }
     own.set(data.id, aborter);
-    void bitswapGet(data.cid, aborter.signal)
+    void serveBlock(data.cid, aborter.signal, options.blockCache)
       .finally(() => {
         // A frame reusing an id while its earlier fetch is still open would
         // otherwise have that earlier fetch's cleanup drop the newer entry.
@@ -510,8 +613,9 @@ export function listenForSandboxBitswap(): void {
           inFlight.delete(source);
         }
       })
-      .then((bytes) => {
+      .then(({ bytes, from }) => {
         noteBlock(bytes);
+        options.onBlockServed?.(from);
         const reply: BitswapResultOk = {
           type: "dotli:bitswap-result",
           id: data.id,
@@ -535,7 +639,12 @@ export function listenForSandboxBitswap(): void {
         };
         source.postMessage(reply, { targetOrigin: event.origin });
       });
-  });
+  };
+  window.addEventListener("message", onMessage);
+  return () => {
+    window.removeEventListener("message", onMessage);
+    relayInstalled = false;
+  };
 }
 
 /** Internal seams for unit tests. Not part of the module API. */

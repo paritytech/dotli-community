@@ -36,6 +36,8 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return p.hit === true
         ? `CID cache hit for ${str(p.label)} → ${str(p.cid)}.`
         : `CID cache miss for ${str(p.label)}.`;
+    case "boot:block_cache":
+      return `Host block cache: ${str(p.hits)} blocks from cache, ${str(p.misses)} from the network.`;
     case "boot:landing_page_shown":
       return "Landing page rendered (no subdomain to resolve).";
     case "boot:ready":
@@ -109,10 +111,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return `Registering service worker${p.waitForFreshController === true ? " (waiting for fresh controller)" : ""}.`;
     case "sandbox:sw_ready":
       return `Service worker ready in ${numMs(p.durationMs)}.`;
-    case "sandbox:cache_checked":
-      return p.hit === true
-        ? `SW archive cache HIT (${str(p.fileCount)} files).`
-        : "SW archive cache MISS.";
     case "sandbox:fetch_begin":
       return `Fetching archive via ${str(p.contentBackend)}.`;
     case "sandbox:helia_ready":

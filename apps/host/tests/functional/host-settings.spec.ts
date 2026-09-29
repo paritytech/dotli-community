@@ -25,10 +25,12 @@ import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
 import { setupTest } from "./helpers/context";
 import { waitForResolutionOutcome } from "../product-frame";
 import {
+  cachedBlockCount,
   hasCachedCid,
+  hostBlockCacheHits,
+  hostBlockCacheReads,
   hostResolveStarted,
-  sandboxArchiveCacheLookups,
-  trackArchiveCacheLookups,
+  trackBlockCacheReads,
   waitForCachedCid,
 } from "./helpers/cache";
 import {
@@ -299,32 +301,44 @@ test.describe("Settings works", () => {
     });
   }
 
-  for (const backend of BACKENDS) {
-    test(`As a user on ${backend} with the archive cache on, revisiting a site checks my local copy first`, async ({
+  // The gateway backend fetches from an IPFS gateway inside the sandbox, not
+  // through the host's bitswap relay, so it has no block cache to check.
+  const RELAYED_BACKENDS = BACKENDS.filter((b) => b !== "rpc-gateway");
+
+  for (const backend of RELAYED_BACKENDS) {
+    test(`As a user on ${backend} with the archive cache on, revisiting a site loads it from the blocks the host kept`, async ({
       browser,
     }) => {
-      // Given
+      // Given a site loaded once, with its blocks kept by the host
       const { context, page } = await setupTest(browser, {
         backend,
         cacheSeed: CACHE_ENABLED,
       });
-      await trackArchiveCacheLookups(context);
+      await trackBlockCacheReads(context);
       await page.goto(BASE_URL, { waitUntil: "commit" });
       await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
 
       try {
+        await expect
+          .poll(() => cachedBlockCount(page), { timeout: 5_000 })
+          .toBeGreaterThan(0);
+
         // When
         await page.reload({ waitUntil: "commit" });
 
-        // Then
+        // Then every read after the reload came from the cache: the host
+        // never had to fall back to the network for a block it already had.
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-        expect(await sandboxArchiveCacheLookups(page)).toBeGreaterThan(0);
+        const reads = await hostBlockCacheReads(page);
+        const hits = await hostBlockCacheHits(page);
+        expect(hits).toBeGreaterThan(0);
+        expect(hits).toBe(reads);
       } finally {
         await context.close();
       }
     });
 
-    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh instead of from my local copy`, async ({
+    test(`As a user on ${backend} who turns the archive cache off, the site is fetched fresh and nothing is kept`, async ({
       browser,
     }) => {
       // Given
@@ -332,7 +346,7 @@ test.describe("Settings works", () => {
         backend,
         cacheSeed: SKIP_ARCHIVE_ONLY,
       });
-      await trackArchiveCacheLookups(context);
+      await trackBlockCacheReads(context);
 
       try {
         // When
@@ -340,7 +354,8 @@ test.describe("Settings works", () => {
 
         // Then
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-        expect(await sandboxArchiveCacheLookups(page)).toBe(0);
+        expect(await hostBlockCacheReads(page)).toBe(0);
+        expect(await cachedBlockCount(page)).toBe(0);
       } finally {
         await context.close();
       }
