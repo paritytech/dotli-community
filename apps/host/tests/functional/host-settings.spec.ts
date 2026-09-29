@@ -27,6 +27,7 @@ import { waitForResolutionOutcome } from "../product-frame";
 import {
   cachedBlockCount,
   hasCachedCid,
+  hostBlockCacheHits,
   hostBlockCacheReads,
   hostResolveStarted,
   trackBlockCacheReads,
@@ -325,9 +326,13 @@ test.describe("Settings works", () => {
         // When
         await page.reload({ waitUntil: "commit" });
 
-        // Then
+        // Then every read after the reload came from the cache: the host
+        // never had to fall back to the network for a block it already had.
         await waitForResolutionOutcome(page, TIMEOUT_MS, backend);
-        expect(await hostBlockCacheReads(page)).toBeGreaterThan(0);
+        const reads = await hostBlockCacheReads(page);
+        const hits = await hostBlockCacheHits(page);
+        expect(hits).toBeGreaterThan(0);
+        expect(hits).toBe(reads);
       } finally {
         await context.close();
       }

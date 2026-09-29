@@ -73,19 +73,23 @@ export async function waitForCachedCid(
 }
 
 /**
- * Count reads of the host's block cache.
+ * Count reads of the host's block cache, and how many of those reads found
+ * a record.
  *
  * Wraps `IDBObjectStore.prototype.get` so every read of the `blocks` store
- * bumps `window.__dotliBlockCacheReads` in the frame that made it. The relay
- * runs in the host's main frame, so that is where the count is read. Must be
- * called on the context before the first navigation. The counter resets on
+ * bumps `window.__dotliBlockCacheReads` in the frame that made it, and hooks
+ * the returned request's `success` event to bump
+ * `window.__dotliBlockCacheHits` when `result !== undefined`. The relay runs
+ * in the host's main frame, so that is where the counts are read. Must be
+ * called on the context before the first navigation. Both counters reset on
  * every fresh document.
  */
 export async function trackBlockCacheReads(
   context: BrowserContext,
 ): Promise<void> {
   await context.addInitScript(() => {
-    let count = 0;
+    let reads = 0;
+    let hits = 0;
     // get as a function-typed property, not a method: the patch calls
     // the original with the store it was invoked on.
     type Get = (
@@ -99,14 +103,27 @@ export async function trackBlockCacheReads(
       const orig = proto.get;
       proto.get = function (query) {
         if (this.name === "blocks") {
-          count++;
+          reads++;
+          const request = orig.call(this, query);
+          request.addEventListener("success", () => {
+            if (request.result !== undefined) {
+              hits++;
+            }
+          });
+          return request;
         }
         return orig.call(this, query);
       };
     }
     Object.defineProperty(globalThis, "__dotliBlockCacheReads", {
       get() {
-        return count;
+        return reads;
+      },
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, "__dotliBlockCacheHits", {
+      get() {
+        return hits;
       },
       configurable: true,
     });
@@ -122,6 +139,15 @@ export function hostBlockCacheReads(page: Page): Promise<number> {
   );
 }
 
+/** Block cache reads that found a record, on the current navigation. */
+export function hostBlockCacheHits(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      (globalThis as { __dotliBlockCacheHits?: number })
+        .__dotliBlockCacheHits ?? 0,
+  );
+}
+
 /** How many blocks the host holds in its block cache. */
 export function cachedBlockCount(page: Page): Promise<number> {
   return page.evaluate(
@@ -129,19 +155,24 @@ export function cachedBlockCount(page: Page): Promise<number> {
       new Promise<number>((resolve) => {
         const open = indexedDB.open("dotli");
         open.onsuccess = () => {
+          const db = open.result;
+          const finish = (count: number): void => {
+            db.close();
+            resolve(count);
+          };
           try {
-            const req = open.result
+            const req = db
               .transaction("blocks", "readonly")
               .objectStore("blocks")
               .count();
             req.onsuccess = () => {
-              resolve(req.result);
+              finish(req.result);
             };
             req.onerror = () => {
-              resolve(0);
+              finish(0);
             };
           } catch {
-            resolve(0);
+            finish(0);
           }
         };
         open.onerror = () => {
