@@ -47,7 +47,10 @@ export async function findAppFrame(
 
 /**
  * Wait for the sandbox iframe to attach AND finish `document.write` so the
- * product's URL is the one the test should observe. Throws on timeout.
+ * product's URL is the one the test should observe. Throws on timeout, and
+ * right away when the sandbox shows its error page instead (a failed content
+ * fetch never sets `dotli:app:end`, so waiting on the mark alone only ends at
+ * the test timeout).
  */
 export async function getProductFrame(
   page: Page,
@@ -61,14 +64,48 @@ export async function getProductFrame(
     );
   }
   const remaining = Math.max(1000, timeoutMs - (Date.now() - start));
-  await frame.waitForFunction(
-    () =>
-      performance
-        .getEntriesByType("mark")
-        .some((m) => m.name === "dotli:app:end"),
-    { timeout: remaining, polling: 500 },
-  );
-  return frame;
+  const rendered = frame
+    .waitForFunction(
+      () =>
+        performance
+          .getEntriesByType("mark")
+          .some((m) => m.name === "dotli:app:end"),
+      { timeout: remaining, polling: 500 },
+    )
+    .then(() => ({ kind: "ok" as const }));
+  // Never settles when no error page shows up, so its own timeout cannot win
+  // the race with a misleading locator error.
+  const failed = frame
+    .locator(".error-page-title")
+    .first()
+    .waitFor({ timeout: remaining })
+    .then(async () => ({
+      kind: "error" as const,
+      reason: await readErrorText(frame),
+    }))
+    .catch(() => new Promise<never>(() => undefined));
+  // Also enforced here: a sandbox frame that stopped answering has held
+  // `waitForFunction` past its own timeout until the 900s test timeout.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<{ kind: "timeout" }>((resolve) => {
+    timer = setTimeout(() => {
+      resolve({ kind: "timeout" });
+    }, remaining + 1000);
+  });
+  try {
+    const result = await Promise.race([rendered, failed, deadline]);
+    if (result.kind === "error") {
+      throw new Error(`Sandbox rendered error page: ${result.reason}`);
+    }
+    if (result.kind === "timeout") {
+      throw new Error(
+        `Product never rendered within ${String(timeoutMs)}ms (no dotli:app:end mark)`,
+      );
+    }
+    return frame;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Read `window.location` from inside the product Frame in one round-trip. */
@@ -98,6 +135,26 @@ export function assertNoContractKeys(search: string): void {
   }
 }
 
+/** "title: detail" of the error page in `scope`, or "" when it has no title. */
+async function readErrorText(scope: Page | Frame): Promise<string> {
+  const title =
+    (await scope
+      .locator(".error-page-title")
+      .first()
+      .textContent()
+      .catch(() => "")) ?? "";
+  if (title.length === 0) {
+    return "";
+  }
+  const detail =
+    (await scope
+      .locator(".error-page-detail")
+      .first()
+      .textContent()
+      .catch(() => "")) ?? "";
+  return `${title}: ${detail}`;
+}
+
 /** Wait for the host's error page; returns "title: detail" or "" on timeout. */
 export async function waitForErrorPage(
   page: Page,
@@ -111,22 +168,7 @@ export async function waitForErrorPage(
   } catch {
     return "";
   }
-  const title =
-    (await page
-      .locator(".error-page-title")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  if (title.length === 0) {
-    return "";
-  }
-  const detail =
-    (await page
-      .locator(".error-page-detail")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  return `${title}: ${detail}`;
+  return readErrorText(page);
 }
 
 /**
@@ -154,22 +196,7 @@ export async function waitForSandboxErrorPage(
   } catch {
     return "";
   }
-  const title =
-    (await frame
-      .locator(".error-page-title")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  if (title.length === 0) {
-    return "";
-  }
-  const detail =
-    (await frame
-      .locator(".error-page-detail")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  return `${title}: ${detail}`;
+  return readErrorText(frame);
 }
 
 /**

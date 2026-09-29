@@ -9,7 +9,7 @@
  *
  * Apps are reached by subdomain only: http://acme.dot.li/foo?a=b#h
  *
- * Env overrides: COMBO_PORT, COMBO_TIMEOUT_MS.
+ * Env overrides: PORT, COMBO_TIMEOUT_MS.
  */
 
 import { expect, type Page } from "@playwright/test";
@@ -21,9 +21,9 @@ import {
 } from "../product-frame";
 import { test } from "./helpers/shared-mode-reset";
 import { seedBackend as seedChainBackend } from "./fixtures/settings";
+import { PORT } from "../env";
 
 const LABEL = "host-playground";
-const PORT = process.env.COMBO_PORT ?? "5173";
 const TIMEOUT_MS = parseInt(process.env.COMBO_TIMEOUT_MS ?? "45000", 10);
 
 const HOST_BY_LABEL = `http://${LABEL}.localhost:${PORT}`;

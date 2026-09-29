@@ -18,10 +18,9 @@ import { seedBackend, type Backend } from "./fixtures/settings";
 import { TIMEOUTS } from "@dotli/config/timeouts";
 import { METHOD_TIMEOUTS } from "@dotli/protocol/method-timeouts";
 
-import { TLD_SUFFIX } from "../env";
+import { PORT, TLD_SUFFIX } from "../env";
 
 const DOMAIN = process.env.COMBO_DOMAIN ?? "host-playground";
-const PORT = process.env.COMBO_PORT ?? "5173";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 // The drop to a trusted provider is gated: the first sighting of a failure
