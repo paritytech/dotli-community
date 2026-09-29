@@ -44,7 +44,7 @@
     "packages/*"
   ],
   "dependencies": {
-    "@parity/truapi": "0.22.0"
+    "@parity/truapi": "0.23.0"
   },
   "overrides": {
     "deepmerge-ts": "^8.0.2"

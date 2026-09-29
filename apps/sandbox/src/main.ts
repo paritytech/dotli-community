@@ -438,6 +438,38 @@ async function storeArchiveInSW(
 }
 
 /**
+ * Make the SW serve the archive it returned from `getCachedArchive`, without
+ * sending the files back. Resolves `false` when the SW no longer holds a
+ * matching entry, so the caller can hand it the files instead.
+ */
+async function activateArchiveInSW(
+  domain: string,
+  cid: string,
+  contentBackend: string,
+): Promise<boolean> {
+  const sw = navigator.serviceWorker.controller;
+  if (!sw) {
+    return false;
+  }
+  return new Promise<boolean>((resolve, reject) => {
+    const channel = new MessageChannel();
+    const timer = setTimeout(() => {
+      channel.port1.close();
+      reject(new Error(SANDBOX_ERRORS.SW_ARCHIVE_NOT_ACKNOWLEDGED));
+    }, 10_000);
+    channel.port1.onmessage = (event: MessageEvent) => {
+      clearTimeout(timer);
+      channel.port1.close();
+      const msg = event.data as { activated?: boolean } | null;
+      resolve(msg?.activated === true);
+    };
+    sw.postMessage({ type: "ACTIVATE_ARCHIVE", domain, cid, contentBackend }, [
+      channel.port2,
+    ]);
+  });
+}
+
+/**
  * Optionally inject the sandbox checker script into HTML for relay mode.
  * In relay mode, document.write() replaces the page, so we must inject
  * the checker inline.
@@ -741,11 +773,17 @@ async function main(): Promise<void> {
         "Archive cache hit missing index.html — cannot render a sandbox without a root document.",
       );
     }
-    // For multi-file archives, store files in the SW so it can serve
-    // sub-resources (CSS, JS, fonts) when the browser loads them.
+    // For multi-file archives, the SW must serve sub-resources (CSS, JS,
+    // fonts) when the browser loads them. It already holds this archive.
     if (Object.keys(cachedFiles).length > 1) {
-      await storeArchiveInSW(cachedFiles, cid, cid, chainBackend);
-      log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+      if (await activateArchiveInSW(cid, cid, chainBackend)) {
+        log.warn(
+          `[dot.li app] cached archive activated in SW (${elapsed(T0)})`,
+        );
+      } else {
+        await storeArchiveInSW(cachedFiles, cid, cid, chainBackend);
+        log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
+      }
     }
     let html = new TextDecoder().decode(indexHtml);
     html = await maybeInjectSandboxChecker(html);
