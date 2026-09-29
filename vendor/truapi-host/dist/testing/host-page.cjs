@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -80,6 +80,7 @@ var init_host_callbacks = __esm({
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
+    PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64 }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
     ProductSubtreeReview = S.lazy(() => S.Struct({ productId: S.str }));
@@ -196,6 +197,15 @@ function coinageWalletHostAdapter(host) {
     }
   };
 }
+function profileHostAdapter(host) {
+  if (host === void 0 || typeof host.presentContactProfile === "function")
+    return host;
+  return {
+    presentProfile: (product, request) => host.presentProfile(product, request),
+    presentContactProfile: (product, presented) => host.presentProfile(product, { reference: presented.reference }),
+    placeContactAvatars: (product, placed) => host.placeContactAvatars(product, placed)
+  };
+}
 function hopConnectAdapter(host) {
   return async (genesisHash, endpoint, onResponse, onClosed) => {
     const genesis = (0, import_scale.hexToBytes)(genesisHash);
@@ -304,7 +314,7 @@ function createWasmRawCallbacks(callbacks) {
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
-  const profile = callbacks.profile;
+  const profile = profileHostAdapter(callbacks.profile);
   const hop = callbacks.hop ?? unavailableHopProvider;
   const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
@@ -358,6 +368,7 @@ function createWasmRawCallbacks(callbacks) {
     subscribeStorage: (key, sendItem, sendError) => driveResultStream(callbacks.productStorage.subscribeStorage(key), (item) => sendItem(import_truapi2.HostLocalStorageChangeItem.enc(item)), sendError),
     ...profile ? {
       presentProfile: async (product, request) => await profile.presentProfile(ProductContext.dec(product), import_truapi2.HostProfilePresentRequest.dec(request)),
+      presentContactProfile: async (product, presented) => await profile.presentContactProfile(ProductContext.dec(product), PresentedContactProfile.dec(presented)),
       placeContactAvatars: async (product, placed) => await profile.placeContactAvatars(ProductContext.dec(product), PlacedAvatars.dec(placed))
     } : {},
     subscribeTheme: (sendItem, sendError) => driveResultStream(callbacks.theme.subscribeTheme(), (item) => sendItem(import_truapi2.HostThemeSubscribeItem.enc(item)), sendError),

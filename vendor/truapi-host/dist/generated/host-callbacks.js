@@ -149,6 +149,11 @@ export const PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfac
  */
 export const PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
 /**
+ * A profile a Chat contact shared with the user, with the contact who sent
+ * it.
+ */
+export const PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64 }));
+/**
  * Product identity attached to one product-facing TrUAPI connection.
  *
  * A host may create multiple product runtimes from the same long-lived host
