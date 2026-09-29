@@ -11,6 +11,10 @@ import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import {
+  buildInfo,
+  readPackageVersion,
+} from "../../packages/config/src/build-info-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
@@ -124,17 +128,6 @@ function readLightClientVersion(): string {
 function readPolkadotApiVersion(): string {
   const direct = collectDirectScopedDeps("polkadot-api");
   return direct.find((p) => p.name === "polkadot-api")?.version ?? "unknown";
-}
-
-function readHostVersion(): string {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
-    ) as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
 }
 
 /**
@@ -264,6 +257,7 @@ export default defineConfig({
     solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
+    buildInfo("host"),
     socialMetaTags({
       title: "Polkadot - The decentralized web, in your browser",
       description:
@@ -324,8 +318,12 @@ export default defineConfig({
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
         // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
-        // reach the browser.
-        navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/],
+        // reach the browser, and for host_version.json so opening it shows
+        // the file rather than the cached shell.
+        navigateFallbackDenylist: [
+          /^\/__preview(\?|$|\/)/,
+          /^\/host_version\.json$/,
+        ],
       },
     }),
   ],
@@ -348,7 +346,7 @@ export default defineConfig({
     // Baked once at build time, read lazily at the declaration site so a
     // missing package (shouldn't happen given the monorepo overrides)
     // falls back to empty/"unknown" rather than failing the build.
-    __DOTLI_VERSION__: JSON.stringify(readHostVersion()),
+    __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
     __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
     __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
     __POLKADOT_API_VERSIONS__: JSON.stringify(

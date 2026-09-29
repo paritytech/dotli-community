@@ -9,6 +9,7 @@ import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import { buildInfo } from "../../packages/config/src/build-info-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
@@ -149,6 +150,7 @@ export default defineConfig({
     solid(),
     wasm(),
     runtimeNetworkConfigScript(),
+    buildInfo("app"),
     socialMetaTags({
       title: "Polkadot Web",
       description:
