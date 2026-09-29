@@ -364,6 +364,12 @@ The deployment smoke suites load published products through the deployed host,
 not the localhost fixture. The TrUAPI suite exercises 19 wallet-free capabilities
 without pairing a signer or writing to the chain; it does not replace paired E2E.
 
+The `egui-chat` smoke stays signed out: it cancels the initial sign-in request,
+uses the guest's Retry button to open a fresh host prompt, cancels again, and
+checks redraw and resize. An idle, demand-driven UI need not publish continuous
+update telemetry. The game scenarios retain their continuous rendering, audio,
+and input checks.
+
 ```bash
 cd apps/host
 DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 bun run test:smoke:products --output=test-results/products
@@ -393,6 +399,8 @@ The published tag on the [Releases page](https://github.com/paritytech/dotli/rel
 dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
+
+During startup, debug events are buffered immediately, but the panel and its wallet-state reads wait until shared preferences and URL settings have selected the protocol backend. Shared preference writes finish before that bootstrap iframe is replaced or the page reloads, so a backend override cannot strand wallet initialization or lose the saved settings.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 
