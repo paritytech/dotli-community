@@ -3,18 +3,19 @@
 
 import type { JSX } from '@solidjs/web';
 import { chatButtonVisible, chatPanelStore } from '../../state/chat-panel.js';
+import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { createPopover } from './popover.js';
 
 /**
- * The mobile "More" button and its flyout, which collapses Chat,
+ * The mobile "More" button and its flyout, which collapses Network, Chat,
  * Permissions, Theme and Settings into one menu. Each row forwards its tap as
  * a click on the real button named by its `data-target` (keeping the tap's
  * `detail`, 0 for a keyboard choice), looked up by id at click time, so it
  * reaches whichever element holds that id then: the live island, or the
  * static button before it is swapped in (whose click the islands loader
- * holds back and replays). The Chat row shows whenever the chat button
- * does.
+ * holds back and replays). The Network and Chat rows show whenever their
+ * buttons do.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
@@ -35,6 +36,7 @@ export function MoreMenu(): JSX.Element {
   // Only the flag: the store is written on every chat message and every
   // move of a panel-width drag.
   const chatVisible = useStore(chatPanelStore, chatButtonVisible);
+  const chainsVisible = useStore(topbarStore, s => s.chainsButtonVisible);
 
   const onClick = (e: MouseEvent): void => {
     const row = (e.target as Element).closest<HTMLElement>('.more-row');
@@ -92,6 +94,30 @@ export function MoreMenu(): JSX.Element {
         aria-labelledby="more-button"
         tabindex="-1"
       >
+        <button
+          class="more-row"
+          id="more-row-network"
+          role="menuitem"
+          tabindex="-1"
+          data-target="chains-button"
+          hidden={!chainsVisible()}
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20" />
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+          </svg>
+          <span>Network</span>
+        </button>
         <button
           class="more-row"
           id="more-row-chat"

@@ -13,7 +13,7 @@
 //
 // The rendered side is the real SSR output (see helpers/shell-ssr.ts).
 //
-// Two deliberate changes to the fixture since it was frozen. First, the QR
+// Three deliberate changes to the fixture since it was frozen. First, the QR
 // modal's `#auth-modal-backdrop` carries the dialog semantics the auth-modal
 // island renders (`role="dialog"`, `aria-modal`, `aria-labelledby`,
 // `tabindex="-1"`, issue #90), so the prerendered node says what it is before
@@ -23,7 +23,9 @@
 // now prerendered, hidden (`display: none`) with offline.ts's role, live
 // region, text and inline style (written the way Solid's compiler emits a
 // static style string, without spaces), and the offline-banner island shows
-// it. Every other node is still the original block.
+// it. Third: `#more-row-network`, the first row of `#more-popover`, hidden
+// until a product is on screen, which moves the network button into the
+// mobile More menu. Every other node is still the original block.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

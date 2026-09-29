@@ -1058,4 +1058,28 @@ describe('shell islands', () => {
     expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(byId('mode-popover').classList.contains('open')).toBe(true);
   });
+
+  it("As a mobile user, once a product is on screen the swapped-in More menu's Network row opens the swapped-in network panel", async () => {
+    // Given
+    mountIslands();
+    await flushAll();
+    expect(byId('more-row-network').hidden).toBe(true);
+
+    // When
+    setChainsButtonVisible(true);
+    await flushAll();
+
+    // Then
+    expect(byId('more-row-network').hidden).toBe(false);
+
+    // When
+    await tapMoreRow('chains-button');
+    await flushAll();
+
+    // Then
+    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-button').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('chains-popover').classList.contains('open')).toBe(true);
+    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('true');
+  });
 });

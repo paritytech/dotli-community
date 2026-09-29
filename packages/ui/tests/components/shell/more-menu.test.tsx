@@ -12,7 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { setChatCapability } from '@dotli/shared';
 import { setLoggedIn } from '../../../src/state/auth.js';
 import { initChatPanelState } from '../../../src/state/chat-panel.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
+import { recordChainsButtonVisible, setBlockingModalActive } from '../../../src/state/topbar.js';
 import { mouseClick, pointerPress, resetStores, settle } from '../../helpers/solid.js';
 import { normalized } from './old-auth-markup.js';
 import { mountMoreMenu } from './more-menu-harness.js';
@@ -120,7 +120,7 @@ afterEach(() => {
 });
 
 describe('MoreMenu', () => {
-  it("As a mobile user, the More button and flyout render the shell's static markup plus the menu ARIA, closed and without the Chat row, with no warning", async () => {
+  it("As a mobile user, the More button and flyout render the shell's static markup plus the menu ARIA, closed and without the Network and Chat rows, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
@@ -133,6 +133,7 @@ describe('MoreMenu', () => {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
       expect(normalized(byId(id)).isEqualNode(normalized(expected(id)))).toBe(true);
     }
+    expect(byId('more-row-network').hidden).toBe(true);
     expect(byId('more-row-chat').hidden).toBe(true);
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
@@ -161,6 +162,7 @@ describe('MoreMenu', () => {
   });
 
   it.each([
+    ['Network', 'chains-button'],
     ['Chat', 'chat-button'],
     ['Permissions', 'permissions-button'],
     ['Theme', 'theme-toggle'],
@@ -216,6 +218,26 @@ describe('MoreMenu', () => {
 
     // Then
     expect(byId('more-row-chat').hidden).toBe(true);
+  });
+
+  it('As a mobile user, the Network row shows only once a product is on screen, as the network button does', async () => {
+    // Given
+    await renderMenu();
+    expect(byId('more-row-network').hidden).toBe(true);
+
+    // When
+    recordChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    expect(byId('more-row-network').hidden).toBe(false);
+
+    // When
+    recordChainsButtonVisible(false);
+    await settle();
+
+    // Then
+    expect(byId('more-row-network').hidden).toBe(true);
   });
 
   it('As a keyboard user, Escape closes the flyout and focus goes back to the More button', async () => {
@@ -297,7 +319,7 @@ describe('MoreMenu', () => {
     // When
     await pressKey('Enter');
 
-    // Then: the hidden Chat row is skipped.
+    // Then: the hidden Network and Chat rows are skipped.
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(row('permissions-button'));
 
