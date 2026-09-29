@@ -16,13 +16,14 @@
 // re-resolve. Archive caching still keys on the CID so a new CID under
 // the same name is never served a stale archive.
 //
-// Schema v4 (current):
+// Schema v5 (current):
 //
 //   Required:
 //     ?v=<schema version integer>
 //     ?cid=<IPFS content id the host resolved from the dotns label>
 //     ?chainBackend=<"smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway">
 //     ?network=<"paseo-next-v2" | "previewnet">
+//     ?polkaVmEnabled=<"0" | "1">
 //
 //   Optional:
 //     ?skipArchiveCache=<"0" | "1">
@@ -36,7 +37,7 @@
 
 import { NetworkName, isValidNetwork, type Network } from "./network";
 
-export const SANDBOX_SCHEMA_VERSION = 4;
+export const SANDBOX_SCHEMA_VERSION = 5;
 
 // Cheap CID charset gate (base32 cidv1 / base58btc cidv0 are alphanumeric).
 // The sandbox does the authoritative CID.parse, then hash-verifies fetched
@@ -64,6 +65,7 @@ export const SANDBOX_CONTRACT_PARAMS = {
   cid: "cid",
   chainBackend: "chainBackend",
   network: "network",
+  polkaVmEnabled: "polkaVmEnabled",
   skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
   executableManifest: "executableManifest",
@@ -78,6 +80,7 @@ export interface SandboxParams {
   cid: string;
   chainBackend: "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
   network: Network;
+  polkaVmEnabled: boolean;
   skipArchiveCache: boolean;
   fullReset: boolean;
   executableManifest: string | null;
@@ -185,6 +188,17 @@ export function validateSandboxParams(
     };
   }
 
+  const polkaVmRaw = search.get(SANDBOX_CONTRACT_PARAMS.polkaVmEnabled);
+  if (polkaVmRaw === null || !VALID_BOOLEAN_FLAGS.has(polkaVmRaw)) {
+    return {
+      ok: false,
+      reason:
+        polkaVmRaw === null
+          ? "Missing required URL param `polkaVmEnabled`. The host did not specify whether the experimental runtime is enabled."
+          : `Invalid polkaVmEnabled "${polkaVmRaw}" — expected "0" or "1".`,
+    };
+  }
+
   const skipRaw = search.get(SANDBOX_CONTRACT_PARAMS.skipArchiveCache);
   if (skipRaw !== null && !VALID_BOOLEAN_FLAGS.has(skipRaw)) {
     return {
@@ -235,6 +249,7 @@ export function validateSandboxParams(
       chainBackend: chainBackend as
         "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway",
       network,
+      polkaVmEnabled: polkaVmRaw === "1",
       skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
       executableManifest,

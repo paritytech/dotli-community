@@ -138,7 +138,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
       iframe.style.width = "400px";
       iframe.style.height = "400px";
       iframe.style.border = "0";
-      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
       document.body.replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
@@ -274,6 +274,39 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   expect(teardown).toEqual({ captured: "false", releases: 1 });
 });
 
+test("a PolkaVM package stays stopped until the user enables the experimental runtime", async ({
+  page,
+}) => {
+  const fixture = await polkavmCar();
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/vnd.ipld.car",
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+  await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
+  await waitForHostInitialization(page);
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const iframe = document.createElement("iframe");
+      iframe.id = "polkavm-disabled-product";
+      iframe.src = `http://polkavm-disabled.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=0`;
+      document.body.replaceChildren(iframe);
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
+
+  const product = page.frameLocator("#polkavm-disabled-product");
+  await expect(product.locator(".error-page-title")).toHaveText(
+    "Experimental PolkaVM apps are disabled",
+  );
+  await expect(product.locator(".error-page-detail")).toContainText(
+    "Enable PolkaVM apps in dot.li Settings",
+  );
+  await expect(product.locator("#dotli-polkavm-canvas")).toHaveCount(0);
+});
+
 test("a WebGPU PolkaVM package selects its web fallback without an adapter", async ({
   page,
 }) => {
@@ -305,6 +338,7 @@ test("a WebGPU PolkaVM package selects its web fallback without an adapter", asy
       url.searchParams.set("v", String(schemaVersion));
       url.searchParams.set("chainBackend", "rpc-gateway");
       url.searchParams.set("network", "paseo-next-v2");
+      url.searchParams.set("polkaVmEnabled", "1");
       url.searchParams.set("executableManifest", manifest);
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-fallback-product";
@@ -343,7 +377,7 @@ test("a PolkaVM package can bypass translation and use the interpreter", async (
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-interpreter-product";
-      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkavmMode=interpreter`;
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&polkavmMode=interpreter`;
       document.body.replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
@@ -396,7 +430,7 @@ test("shows PolkaVM diagnostics inside the docked debug panel", async ({
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-debug-product";
       iframe.style.cssText = "width:100%;height:100%;border:0";
-      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1`;
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
       app.replaceChildren(iframe);
       window.dispatchEvent(
         new CustomEvent("dotli:product-loaded", {
@@ -531,7 +565,7 @@ test("the canonical Doom App v2 artifact renders with exact manifest bytes", asy
   await page.evaluate(
     ({ artifactCid, executableManifest, schemaVersion }) => {
       const url = new URL(
-        `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2`,
+        `http://doom-v2.app.localhost:5173/?cid=${artifactCid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1`,
       );
       url.searchParams.set("executableManifest", executableManifest);
       const iframe = document.createElement("iframe");
@@ -784,7 +818,7 @@ test("touch and wheel gestures reach the guest without scrolling the host page",
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-product";
       iframe.style.cssText = "width:100%;height:100%;border:0";
-      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&fullReset=1&polkavmMode=interpreter`;
+      iframe.src = `http://polkavm-fixture.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1&polkavmMode=interpreter`;
       (document.getElementById("app") ?? document.body).replaceChildren(iframe);
     },
     { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
@@ -916,6 +950,7 @@ test("a consented file restarts the same PolkaVM iframe", async ({ page }) => {
       url.searchParams.set("v", String(schemaVersion));
       url.searchParams.set("chainBackend", "rpc-gateway");
       url.searchParams.set("network", "paseo-next-v2");
+      url.searchParams.set("polkaVmEnabled", "1");
       url.searchParams.set("executableManifest", manifest);
       const iframe = document.createElement("iframe");
       iframe.id = "polkavm-file-product";

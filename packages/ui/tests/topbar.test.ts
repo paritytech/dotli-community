@@ -1031,6 +1031,29 @@ describe("topbar permissions", () => {
   });
 });
 
+describe("topbar experimental runtimes", () => {
+  it("lets the user enable PolkaVM apps and marks the setting ready to apply", async () => {
+    installTopbarDom();
+    // Import after beforeEach resets the module-owned settings storage adapter.
+    const { initTopBar } = await import("@dotli/ui/topbar");
+    initTopBar();
+    document.getElementById("mode-button")?.click();
+
+    const toggle = document.querySelector<HTMLButtonElement>(
+      '[role="switch"][aria-label="PolkaVM apps"]',
+    );
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+
+    toggle?.click();
+
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    const apply = Array.from(
+      document.querySelectorAll<HTMLButtonElement>(".mode-clear-btn"),
+    ).find((button) => button.textContent === "Save & Apply");
+    expect(apply?.disabled).toBe(false);
+  });
+});
+
 describe("topbar popover keyboard access", () => {
   it("As a dotli integrator, the host closes the settings popover on Escape and restores trigger focus", async () => {
     // Given
