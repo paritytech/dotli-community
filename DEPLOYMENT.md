@@ -26,7 +26,7 @@ works for the first boot and for later top-ups.
 
 ### Local machine
 
-- `make`, `ssh`, `rsync`, and [Bun](https://bun.sh) 1.3+.
+- `make`, `ssh`, `rsync`, and Node 26 with npm 12+.
 - SSH agent loaded with the key the remote accepts (`ssh-add`).
 - This repo checked out and on the branch/commit you want to deploy.
 
@@ -71,7 +71,7 @@ Actions path reads `DEPLOY_HOST` / `DEPLOY_USER` from repository secrets via the
    apex, `*.<base>`, and `*.app.<base>`. `--keep-until-expiring --expand`
    makes re-runs cheap.
 5. `provision-renewal` — enables `certbot.timer` for auto-renewal.
-6. `deploy` — runs `bun run build` on your machine
+6. `deploy` — runs `npm run build` on your machine
    `dist/` outputs into the env's web root.
 7. `deploy-nginx` — renders `nginx/nginx.conf.template` for the env (envsubst)
    and installs it plus `nginx/snippets/` into `/etc/nginx/`, runs `nginx -t`,

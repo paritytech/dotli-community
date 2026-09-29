@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from "bun:test";
-import { eagerChunkPaths } from "./eager-path-size";
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import { eagerChunkPaths } from "./eager-path-size.ts";
 
 describe("eagerChunkPaths", () => {
   it("returns the module entry and every modulepreload, in document order", () => {
@@ -12,7 +13,7 @@ describe("eagerChunkPaths", () => {
       <link rel="stylesheet" href="/assets/index-CCCCCCCC.css">
       <link rel="modulepreload" crossorigin href="/assets/client-DDDDDDDD.js">
     </head>`;
-    expect(eagerChunkPaths(html)).toEqual([
+    assert.deepEqual(eagerChunkPaths(html), [
       "/assets/index-AAAAAAAA.js",
       "/assets/spans-BBBBBBBB.js",
       "/assets/client-DDDDDDDD.js",
@@ -22,7 +23,7 @@ describe("eagerChunkPaths", () => {
   it("accepts attributes in any order and relative paths", () => {
     const html = `<script src="./assets/index-AAAAAAAA.js" type="module"></script>
       <link href="./assets/fetch-BBBBBBBB.js" rel="modulepreload">`;
-    expect(eagerChunkPaths(html)).toEqual([
+    assert.deepEqual(eagerChunkPaths(html), [
       "./assets/index-AAAAAAAA.js",
       "./assets/fetch-BBBBBBBB.js",
     ]);
@@ -33,7 +34,7 @@ describe("eagerChunkPaths", () => {
       <link rel="modulepreload" href="/assets/index-AAAAAAAA.js">
       <link rel="modulepreload" href="/assets/utils-BBBBBBBB.js">
       <link rel="modulepreload" href="/assets/utils-BBBBBBBB.js">`;
-    expect(eagerChunkPaths(html)).toEqual([
+    assert.deepEqual(eagerChunkPaths(html), [
       "/assets/index-AAAAAAAA.js",
       "/assets/utils-BBBBBBBB.js",
     ]);
@@ -43,11 +44,12 @@ describe("eagerChunkPaths", () => {
     const html = `<script type="module" src="/assets/index-AAAAAAAA.js"></script>
       <script src="/legacy.js"></script>
       <link rel="preload" href="/assets/font.woff2">`;
-    expect(eagerChunkPaths(html)).toEqual(["/assets/index-AAAAAAAA.js"]);
+    assert.deepEqual(eagerChunkPaths(html), ["/assets/index-AAAAAAAA.js"]);
   });
 
   it("throws when the page has no module entry, instead of reporting 0 bytes", () => {
-    expect(() => eagerChunkPaths("<html><body></body></html>")).toThrow(
+    assert.throws(
+      () => eagerChunkPaths("<html><body></body></html>"),
       /no <script type="module" src>/,
     );
   });

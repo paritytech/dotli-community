@@ -8,10 +8,10 @@
  * stddev, and coefficient of variation via simple-statistics.
  *
  * Usage:
- *   bun run test:perf               run N iterations, save to last.json
- *   bun run test:perf:base          save as base.json (immutable)
- *   bun run test:perf:compare       diff base vs last
- *   PERF_RUNS=5 bun run test:perf   override iteration count
+ *   npm run test:perf               run N iterations, save to last.json
+ *   npm run test:perf:base          save as base.json (immutable)
+ *   npm run test:perf:compare       diff base vs last
+ *   PERF_RUNS=5 npm run test:perf   override iteration count
  */
 
 import { test, expect, type Page, type Browser } from "@playwright/test";

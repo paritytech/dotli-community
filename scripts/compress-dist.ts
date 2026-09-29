@@ -3,7 +3,7 @@
 
 // Post-build script: generate .br and .gz pre-compressed files for dist/assets.
 // Uses Node's built-in zlib, so no extra dependencies are needed.
-// Run with: bun scripts/compress-dist.ts
+// Run with: node scripts/compress-dist.ts
 
 import { readdir, readFile, stat } from "node:fs/promises";
 import { createBrotliCompress, createGzip, constants } from "node:zlib";

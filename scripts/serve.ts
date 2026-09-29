@@ -7,8 +7,8 @@
 //   node serve.mjs          # or: bun serve.mjs
 //
 // Written against node builtins only, so one implementation runs under both
-// node and bun. Bundled to serve.mjs at release time because node cannot
-// execute TypeScript directly.
+// node and bun. Bundled to serve.mjs at release time so the tarball carries no
+// TypeScript and none of the packages/ tree it imports from.
 //
 // Mirrors nginx/nginx.docker.conf.template: same hostname routing, the same
 // headers, precompressed siblings, immutable asset caching and SPA fallback.
@@ -42,7 +42,7 @@
 import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
-import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin.ts";
 
 const PORT = Number(process.env.PORT ?? "5173");
 const HOST = process.env.HOST ?? "127.0.0.1";

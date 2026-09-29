@@ -9,22 +9,17 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/",
+    "lint": "eslint src/",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "workspace:*",
-    "@dotli/typescript-config": "workspace:*",
-    "eslint": "^10.11.0",
-    "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.14.5",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.1",
-    "vitest": "^5.0.1"
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*",
+    "fake-indexeddb": "^6.2.5"
   },
   "dependencies": {
-    "@dotli/config": "workspace:*",
-    "@dotli/metrics": "workspace:*",
-    "@dotli/shared": "workspace:*"
+    "@dotli/config": "*",
+    "@dotli/metrics": "*",
+    "@dotli/shared": "*"
   }
 }

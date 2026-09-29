@@ -20,10 +20,11 @@ coverage
 /*.jpg
 /*.jpeg
 
-# Lock files (keep bun.lock committed for reproducible CI builds)
-package-lock.json
+# Lock files (keep package-lock.json committed for reproducible CI builds)
 yarn.lock
 pnpm-lock.yaml
+bun.lock
+bun.lockb
 
 # Editor directories and files
 .vscode/*

@@ -5,35 +5,28 @@
   "version": "0.6.0",
   "type": "module",
   "scripts": {
-    "build": "tsc && bunx --bun vite build",
-    "build:prod": "tsc && bunx --bun vite build && bun ../../scripts/compress-dist.ts",
-    "lint": "bunx eslint src/",
+    "build": "tsc && vite build",
+    "build:prod": "tsc && vite build && node ../../scripts/compress-dist.ts",
+    "lint": "eslint src/",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "workspace:*",
-    "@dotli/typescript-config": "workspace:*",
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",
-    "@solidjs/vite-plugin": "3.0.0-next.44",
-    "@types/node": "^26.6.2",
-    "eslint": "^10.11.0",
-    "happy-dom": "^20.14.5",
-    "prettier": "^3.9.9",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.1",
-    "vite-plugin-wasm": "^3.6.0",
-    "vitest": "^5.0.1"
+    "@solidjs/vite-plugin": "3.0.0-next.46",
+    "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@dotli/config": "workspace:*",
-    "@dotli/metrics": "workspace:*",
-    "@dotli/shared": "workspace:*",
-    "@dotli/storage": "workspace:*",
-    "@dotli/content": "workspace:*",
-    "@dotli/ui": "workspace:*",
-    "@dotli/sandbox-checker": "workspace:*",
-    "@sentry/browser": "^11.0.0",
+    "@dotli/config": "*",
+    "@dotli/content": "*",
+    "@dotli/metrics": "*",
+    "@dotli/sandbox-checker": "*",
+    "@dotli/shared": "*",
+    "@dotli/storage": "*",
+    "@dotli/ui": "*",
+    "@sentry/browser": "^11.1.0",
     "@sentry/vite-plugin": "^5.4.0"
   }
 }

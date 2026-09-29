@@ -175,7 +175,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         throw new Error(
           `pairedPage: ${STATE_FILE} missing — globalSetup must run first. ` +
             `If you ran the test directly, ensure SIGNING_HOST_NETWORK is set ` +
-            `and re-run via \`bun run test:e2e\`.`,
+            `and re-run via \`npm run test:e2e\`.`,
         );
       }
 

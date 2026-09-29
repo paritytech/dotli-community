@@ -5,7 +5,7 @@
 // entry plus every chunk `dist/index.html` modulepreloads. Watching only
 // `index-*.js` misses growth the bundler moves into a preloaded chunk.
 //
-//   bun scripts/eager-path-size.ts apps/host/dist
+//   node scripts/eager-path-size.ts apps/host/dist
 //   → {"files":["assets/index-….js",…],"raw":…,"gz":…,"br":…}
 
 import { readFileSync } from "node:fs";
@@ -15,7 +15,7 @@ import { brotliCompressSync } from "node:zlib";
 
 // gzip goes through the `gzip` CLI, not zlib.gzipSync: the CI budgets and
 // docs/perf/solid-migration-baseline.md were both measured with the CLI,
-// and Node's/Bun's zlib bindings produce output that was up to ~2% larger
+// and Node's zlib bindings produce output that was up to ~2% larger
 // in total on the measured builds, which would make this script's numbers
 // incomparable to them. The file path (not piped stdin bytes) is passed to
 // `gzip -c`, matching the baseline's method exactly: `gzip -c <file>` stores
@@ -91,7 +91,7 @@ export function measureEagerPath(distDir: string): {
 if (import.meta.main) {
   const distDir = process.argv[2];
   if (distDir === undefined) {
-    console.error("usage: bun scripts/eager-path-size.ts <distDir>");
+    console.error("usage: node scripts/eager-path-size.ts <distDir>");
     process.exit(1);
   }
   try {

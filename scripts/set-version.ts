@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -10,20 +9,20 @@
 // versions never drift apart from each other.
 //
 // Usage:
-//   bun scripts/set-version.ts <version>      # e.g. 0.6.1 or v0.6.1
-//   bun scripts/set-version.ts                # derive from $RELEASE_TAG / $GITHUB_REF_NAME / $GITHUB_REF
-//   bun scripts/set-version.ts --check        # assert every package shares one version (CI guard)
-//   bun scripts/set-version.ts --check <ver>  # assert every package is already at <ver>
+//   node scripts/set-version.ts <version>      # e.g. 0.6.1 or v0.6.1
+//   node scripts/set-version.ts                # derive from $RELEASE_TAG / $GITHUB_REF_NAME / $GITHUB_REF
+//   node scripts/set-version.ts --check        # assert every package shares one version (CI guard)
+//   node scripts/set-version.ts --check <ver>  # assert every package is already at <ver>
 //
 // Packages are discovered from the root `workspaces` globs, so new packages
 // are covered automatically. The root package.json is left untouched when it
 // has no `version` field (it is private and intentionally version-less).
 //
-// Internal dependencies use the `workspace:*` protocol, so bumping a version
-// never changes dependency resolution. The committed `bun.lock` does embed
-// each workspace version, so after a local bump run `bun install` to refresh
-// it; in CI this script runs *after* `bun install --frozen-lockfile`, so the
-// frozen check has already passed and the ephemeral bump does not re-trigger
+// Internal dependencies use the `*` range, so bumping a version
+// never changes dependency resolution. The committed `package-lock.json` does
+// embed each workspace version, so after a local bump run `npm install` to
+// refresh it; in CI this script runs *after* `npm ci`, so the lockfile
+// check has already passed and the ephemeral bump does not re-trigger
 // install.
 //
 // Exit codes: 0 on success, 1 on a --check mismatch or any error.
@@ -136,7 +135,7 @@ function runCheck(packages: PkgVersion[], target: string | null): void {
   if (mismatches.length > 0) {
     console.error(
       `\n${mismatches.length} package(s) not at ${reference}. ` +
-        `Run \`bun scripts/set-version.ts ${reference}\` to sync.`,
+        `Run \`node scripts/set-version.ts ${reference}\` to sync.`,
     );
     process.exit(1);
   }
@@ -173,7 +172,7 @@ function main(): void {
   }
   if (target === null) {
     throw new Error(
-      "No version given. Pass one (e.g. `bun scripts/set-version.ts 0.6.1`) " +
+      "No version given. Pass one (e.g. `node scripts/set-version.ts 0.6.1`) " +
         "or set RELEASE_TAG / GITHUB_REF_NAME.",
     );
   }

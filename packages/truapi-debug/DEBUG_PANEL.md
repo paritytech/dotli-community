@@ -53,7 +53,7 @@ detail pane.
 The panel ships in every build. Default behavior depends on the build
 flag `VITE_APP_DEBUG`:
 
-- **Dev environments** (`VITE_APP_DEBUG=true`: `bun run preview:debug`
+- **Dev environments** (`VITE_APP_DEBUG=true`: `npm run preview:debug`
   locally, `paseoli.dev` in CI via the `APP_DEBUG`
   GitHub Environment secret): the panel auto-mounts **collapsed**
   (header-only) so it's a one-click expand away without covering
