@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type PluginOption } from "vite";
 import { resolve } from "node:path";
 import wasm from "vite-plugin-wasm";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
@@ -11,7 +11,7 @@ import { buildInfo } from "../../packages/config/src/build-info-plugin.ts";
 
 const OUT_DIR = "dist";
 
-function sentry(): Plugin | false {
+function sentry(): PluginOption {
   if (process.env.VITE_METRICS !== "true") return false;
   if (!process.env.SENTRY_AUTH_TOKEN) return false;
   return sentryVitePlugin({

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type PluginOption } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
@@ -223,7 +223,7 @@ function previewCoepHeaders(): Plugin {
  * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
  * (preserves source maps for debugging).
  */
-function sentry(): Plugin | false {
+function sentry(): PluginOption {
   if (process.env.VITE_METRICS !== "true") return false;
   if (!process.env.SENTRY_AUTH_TOKEN) return false;
   return sentryVitePlugin({

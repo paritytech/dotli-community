@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, build as viteBuild, type Plugin } from "vite";
+import {
+  defineConfig,
+  build as viteBuild,
+  type Plugin,
+  type PluginOption,
+} from "vite";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
@@ -35,7 +40,7 @@ const OUT_DIR = "dist";
  * no-op, nothing to attribute) and locally without SENTRY_AUTH_TOKEN
  * (preserves source maps for debugging).
  */
-function sentry(): Plugin | false {
+function sentry(): PluginOption {
   if (process.env.VITE_METRICS !== "true") return false;
   if (!process.env.SENTRY_AUTH_TOKEN) return false;
   return sentryVitePlugin({
@@ -90,7 +95,7 @@ function buildServiceWorker(): Plugin {
             formats: ["es"],
             fileName: () => "app-sw.js",
           },
-          codeSplitting: false,
+          rolldownOptions: { output: { codeSplitting: false } },
           sourcemap: false,
           minify: true,
         },
