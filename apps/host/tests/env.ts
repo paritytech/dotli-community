@@ -8,12 +8,14 @@
  * import these instead of re-reading `process.env`.
  */
 
+// From its source file, not the `@dotli/config` barrel, which cannot load in
+// Node (it reads `self.location` and `import.meta.env` at load).
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   isValidNetwork,
   type Network,
-} from "@dotli/config";
+} from "../../../packages/config/src/network.js";
 
 export const DOMAIN = process.env["DOMAIN"] ?? "host-playground";
 /**

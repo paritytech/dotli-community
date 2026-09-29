@@ -11,12 +11,15 @@ import {
   RELOAD_BTN_LABEL,
   ERROR_TITLES,
   TRY_ANYWAY_BTN_LABEL,
-} from "../../src/errors.js";
+} from "../../src/error-copy.js";
 import { test } from "./helpers/shared-mode-reset.js";
 import { findAppFrame } from "../product-frame.js";
 import { seedBackend, type Backend } from "./fixtures/settings.js";
-import { TIMEOUTS } from "@dotli/config";
-import { METHOD_TIMEOUTS } from "@dotli/protocol";
+// Playwright loads specs in Node, where the package barrels cannot load (they
+// read `self.location` and `import.meta.env` at load), so these constants come
+// from their side-effect-free source files.
+import { TIMEOUTS } from "../../../../packages/config/src/timeouts.js";
+import { METHOD_TIMEOUTS } from "../../../../packages/protocol/src/method-timeouts.js";
 
 import { PORT, TLD_SUFFIX } from "../env.js";
 

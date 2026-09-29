@@ -11,7 +11,9 @@
  */
 
 import { expect, type Frame, type Page } from "@playwright/test";
-import { SANDBOX_CONTRACT_PARAMS } from "@dotli/config";
+// From its source file, not the `@dotli/config` barrel, which cannot load in
+// Node (it reads `self.location` and `import.meta.env` at load).
+import { SANDBOX_CONTRACT_PARAMS } from "../../../packages/config/src/host-sandbox-contract.js";
 
 export interface ProductLocation {
   pathname: string;
