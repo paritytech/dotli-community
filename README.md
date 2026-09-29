@@ -287,6 +287,10 @@ codec. The product still calls the real host; no SDK responses are mocked.
 The pinned fixture requests bare host patterns for `Remote` permissions;
 scheme-bearing URLs are intentionally rejected by the core before prompting.
 
+CI invokes the same `test:e2e` package script used locally. Playwright runs
+under Node; Bun installs dependencies and launches the script, without being
+forced as the Playwright worker runtime.
+
 Local runs expect the product at `../../../host-playground` relative to this
 repository by default. The signing host must match `upstreamRevision` in
 `vendor/truapi-host.lock.json`, not the latest released CLI. CI checks out that
