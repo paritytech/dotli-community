@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type * as ConfigModule from "../../config/src/config.js";
+
 const mocks = vi.hoisted(() => ({
   createRemoteChainProvider: vi.fn(),
   isRemoteChainSupported: vi.fn(() => true),
@@ -17,7 +19,7 @@ vi.mock("../../config/src/network.js", () => ({
   getActiveServicesConfig: mocks.getActiveServicesConfig,
 }));
 vi.mock("../../config/src/config.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../config/src/config.js")>()),
+  ...(await importOriginal<typeof ConfigModule>()),
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
@@ -262,7 +264,7 @@ describe("listenForSandboxBitswap", () => {
     source: unknown,
     data: unknown,
     origin = "https://a.app.dot.li",
-  ) {
+  ): void {
     window.dispatchEvent(
       Object.assign(new MessageEvent("message", { data }), {
         source,
@@ -373,15 +375,19 @@ describe("listenForSandboxBitswap", () => {
     const add = aborter.signal.addEventListener.bind(aborter.signal);
     const remove = aborter.signal.removeEventListener.bind(aborter.signal);
     aborter.signal.addEventListener = ((type: string, ...rest: unknown[]) => {
-      if (type === "abort") added += 1;
-      return add(type, ...(rest as [EventListener]));
+      if (type === "abort") {
+        added += 1;
+      }
+      add(type, ...(rest as [EventListener]));
     }) as typeof add;
     aborter.signal.removeEventListener = ((
       type: string,
       ...rest: unknown[]
     ) => {
-      if (type === "abort") removed += 1;
-      return remove(type, ...(rest as [EventListener]));
+      if (type === "abort") {
+        removed += 1;
+      }
+      remove(type, ...(rest as [EventListener]));
     }) as typeof remove;
 
     // When the call spends its whole budget on per-call timeouts

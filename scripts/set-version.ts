@@ -43,23 +43,27 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SEMVER = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
 
 function normalizeVersion(raw: string): string {
-  const match = SEMVER.exec(raw.trim());
-  if (match === null) {
+  const version = SEMVER.exec(raw.trim())?.[1]; // strip any leading "v"
+  if (version === undefined) {
     throw new Error(`Not a valid semver version: "${raw}"`);
   }
-  return match[1]; // strip any leading "v"
+  return version;
 }
 
 /** Resolve the target version from a CLI arg or CI env, or null if absent. */
 function resolveTargetVersion(positional: string | undefined): string | null {
+  // An empty variable counts as unset, as CI can export one without a value.
+  const set = (value: string | undefined): string | undefined =>
+    value === "" ? undefined : value;
+  const ref = process.env["GITHUB_REF"];
   const fromEnv =
-    process.env.RELEASE_TAG ||
-    process.env.GITHUB_REF_NAME ||
-    (process.env.GITHUB_REF?.startsWith("refs/tags/")
-      ? process.env.GITHUB_REF.slice("refs/tags/".length)
+    set(process.env["RELEASE_TAG"]) ??
+    set(process.env["GITHUB_REF_NAME"]) ??
+    (ref?.startsWith("refs/tags/") === true
+      ? ref.slice("refs/tags/".length)
       : undefined);
   const raw = positional ?? fromEnv;
-  return raw ? normalizeVersion(raw) : null;
+  return raw === undefined || raw === "" ? null : normalizeVersion(raw);
 }
 
 /** Every workspace package.json (from the root `workspaces` globs) plus the root. */
@@ -134,12 +138,14 @@ function runCheck(packages: PkgVersion[], target: string | null): void {
   }
   if (mismatches.length > 0) {
     console.error(
-      `\n${mismatches.length} package(s) not at ${reference}. ` +
+      `\n${String(mismatches.length)} package(s) not at ${reference}. ` +
         `Run \`node scripts/set-version.ts ${reference}\` to sync.`,
     );
     process.exit(1);
   }
-  console.log(`All ${packages.length} package versions are ${reference}.`);
+  console.log(
+    `All ${String(packages.length)} package versions are ${reference}.`,
+  );
 }
 
 function runSet(packages: PkgVersion[], target: string): void {
@@ -154,8 +160,8 @@ function runSet(packages: PkgVersion[], target: string): void {
   }
   console.log(
     changed === 0
-      ? `All ${packages.length} package(s) already at ${target}.`
-      : `Set ${changed} of ${packages.length} package(s) to ${target}.`,
+      ? `All ${String(packages.length)} package(s) already at ${target}.`
+      : `Set ${String(changed)} of ${String(packages.length)} package(s) to ${target}.`,
   );
 }
 

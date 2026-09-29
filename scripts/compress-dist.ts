@@ -12,7 +12,7 @@ import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { createWriteStream } from "node:fs";
 
-const DIST = process.env.DIST ?? "dist";
+const DIST = process.env["DIST"] ?? "dist";
 const COMPRESS_EXTENSIONS = new Set([
   ".js",
   ".wasm",
@@ -82,7 +82,7 @@ async function main(): Promise<void> {
   let totalBr = 0;
   let totalGz = 0;
 
-  console.log(`Compressing ${files.length} files...\n`);
+  console.log(`Compressing ${String(files.length)} files...\n`);
 
   for (const { path: filePath, size } of files) {
     const data = await readFile(filePath);

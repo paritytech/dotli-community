@@ -32,7 +32,9 @@ const globalAny = globalThis as { SharedWorker?: unknown };
 function installSharedWorker(): () => void {
   const hadPrior = "SharedWorker" in globalAny;
   const prior = globalAny.SharedWorker;
-  globalAny.SharedWorker = class {};
+  globalAny.SharedWorker = class {
+    readonly port: unknown = null;
+  };
   return () => {
     if (hadPrior) {
       globalAny.SharedWorker = prior;

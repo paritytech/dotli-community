@@ -26,7 +26,7 @@ if (result.status !== 0) {
 }
 
 const productRoot = resolve(
-  process.env.E2E_PRODUCT_REPO ??
+  process.env["E2E_PRODUCT_REPO"] ??
     resolve(dotliRoot, "../../../host-playground"),
 );
 const nestedTruapi = resolve(

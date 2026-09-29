@@ -44,9 +44,9 @@ import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
 import { runtimeNetworkConfigScriptBody } from "@dotli/config/vite";
 
-const PORT = Number(process.env.PORT ?? "5173");
-const HOST = process.env.HOST ?? "127.0.0.1";
-const DIST = resolve(process.env.DIST ?? "dist");
+const PORT = Number(process.env["PORT"] ?? "5173");
+const HOST = process.env["HOST"] ?? "127.0.0.1";
+const DIST = resolve(process.env["DIST"] ?? "dist");
 const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 
 const MIME: Record<string, string> = {
@@ -159,7 +159,7 @@ function send(
   };
   if (chosen.encoding !== undefined) {
     headers["Content-Encoding"] = chosen.encoding;
-    headers.Vary = "Accept-Encoding";
+    headers["Vary"] = "Accept-Encoding";
   }
   if (pathname === "/host-sw.js" || pathname === "/app-sw.js") {
     headers["Service-Worker-Allowed"] = "/";
@@ -231,7 +231,7 @@ createServer((req, res) => {
   }
   res.writeHead(404).end("Not Found");
 }).listen(PORT, HOST, () => {
-  const config = process.env.DOTLI_NETWORK?.trim();
+  const config = process.env["DOTLI_NETWORK"]?.trim();
   console.log(
     `dot.li serving ${DIST} on http://localhost:${String(PORT)} (bound ${HOST})`,
   );

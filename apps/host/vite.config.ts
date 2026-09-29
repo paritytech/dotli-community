@@ -22,13 +22,13 @@ import { prerenderPlugin, SHELL_SERVER_ENTRY } from "@dotli/ui/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
-const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
+const wasm = wasmPlugin as unknown as () => Plugin;
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
 // literal "dev" is only used when we're not in a git checkout at all (e.g. a
 // tarball).
-if (!process.env["VITE_COMMIT_SHA"]) {
+if ((process.env["VITE_COMMIT_SHA"] ?? "") === "") {
   try {
     process.env["VITE_COMMIT_SHA"] = execSync("git rev-parse HEAD", {
       cwd: import.meta.dirname,
@@ -36,12 +36,14 @@ if (!process.env["VITE_COMMIT_SHA"]) {
     })
       .toString()
       .trim();
+    // eslint-disable-next-line no-restricted-syntax -- no git checkout is a normal build, not an error.
   } catch {
     // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
   }
 }
 
 const OUT_DIR = "dist";
+const APP_URL = process.env["VITE_APP_URL"] ?? "";
 
 /**
  * Walk every workspace member's `package.json` and collect its direct
@@ -109,10 +111,11 @@ function collectDirectScopedDeps(
             "utf8",
           ),
         ) as { version?: string };
-        if (depPkg.version) {
+        if (depPkg.version !== undefined && depPkg.version !== "") {
           result.set(name, depPkg.version);
           break;
         }
+        // eslint-disable-next-line no-restricted-syntax -- a missing copy just means the next workspace holds it.
       } catch {
         // Not hoisted into this workspace's node_modules, so try the next one.
       }
@@ -150,10 +153,12 @@ function preloadCriticalAssets(): Plugin {
     transformIndexHtml: {
       order: "post",
       handler(_html, ctx) {
-        if (!ctx.bundle) return [];
+        if (!ctx.bundle) {
+          return [];
+        }
 
         const bundleKeys = Object.keys(ctx.bundle);
-        const findChunk = (pattern: RegExp) =>
+        const findChunk = (pattern: RegExp): string | undefined =>
           bundleKeys.find((name) => pattern.test(name));
 
         const resolveChunk = findChunk(/^assets\/resolve-.*\.js$/);
@@ -161,13 +166,17 @@ function preloadCriticalAssets(): Plugin {
         const renderChunk = findChunk(/^assets\/render-.*\.js$/);
         const metadataAsset = findChunk(/^assets\/ah-.*\.scale$/);
 
-        const chunks = [resolveChunk, fetchChunk, renderChunk].filter(Boolean);
-        if (chunks.length === 0) return [];
+        const chunks = [resolveChunk, fetchChunk, renderChunk].filter(
+          (c): c is string => c !== undefined,
+        );
+        if (chunks.length === 0) {
+          return [];
+        }
 
         const b = resolvedBase;
 
         const fetchPreloads = [metadataAsset]
-          .filter(Boolean)
+          .filter((a): a is string => a !== undefined)
           .map(
             (a) =>
               `l=document.createElement("link");l.rel="preload";l.as="fetch";l.crossOrigin="anonymous";l.href="${b}${a}";document.head.appendChild(l);`,
@@ -213,7 +222,7 @@ function previewCoepHeaders(): Plugin {
     name: "preview-coep-headers",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url?.startsWith("/__preview")) {
+        if (req.url?.startsWith("/__preview") === true) {
           res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
           res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
           res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
@@ -230,8 +239,12 @@ function previewCoepHeaders(): Plugin {
  * (preserves source maps for debugging).
  */
 function sentry(): PluginOption {
-  if (process.env["VITE_METRICS"] !== "true") return false;
-  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
+  if (process.env["VITE_METRICS"] !== "true") {
+    return false;
+  }
+  if ((process.env["SENTRY_AUTH_TOKEN"] ?? "") === "") {
+    return false;
+  }
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
@@ -247,9 +260,7 @@ function sentry(): PluginOption {
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env["VITE_APP_URL"]
-    ? new URL(process.env["VITE_APP_URL"]).pathname
-    : "/",
+  base: APP_URL === "" ? "/" : new URL(APP_URL).pathname,
   plugins: [
     // `ssr: true` gives the ssr environment Solid's server codegen, which
     // prerenderPlugin (below) needs to render the shell into index.html; a

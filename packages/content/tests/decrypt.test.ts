@@ -32,7 +32,7 @@ async function encrypt(
   const keyBits = await crypto.subtle.deriveBits(
     {
       name: "PBKDF2",
-      salt: salt.buffer as ArrayBuffer,
+      salt: salt.buffer,
       iterations: PBKDF2_ITERATIONS,
       hash: "SHA-256",
     },

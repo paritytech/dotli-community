@@ -14,7 +14,9 @@ function withSharedWorker<T>(present: boolean, fn: () => T): T {
   const hadPrior = "SharedWorker" in globalAny;
   const prior = globalAny.SharedWorker;
   if (present) {
-    globalAny.SharedWorker = class {};
+    globalAny.SharedWorker = class {
+      readonly port: unknown = null;
+    };
   } else if (hadPrior) {
     delete globalAny.SharedWorker;
   }

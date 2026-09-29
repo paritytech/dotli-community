@@ -350,16 +350,13 @@ describe("createChainBrokerManager", () => {
     connectionA?.disconnect();
     expect(
       harness.sent.filter(
-        (message) =>
-          (message as JsonRpcRequest).method ===
-          "statement_unsubscribeStatement",
+        (message) => message.method === "statement_unsubscribeStatement",
       ),
     ).toHaveLength(0);
 
     connectionB?.disconnect();
     const releases = harness.sent.filter(
-      (message) =>
-        (message as JsonRpcRequest).method === "statement_unsubscribeStatement",
+      (message) => message.method === "statement_unsubscribeStatement",
     );
     expect(releases).toHaveLength(1);
     expect((releases[0]?.params as unknown[])[0]).toBe("up-stmt");
@@ -423,9 +420,7 @@ describe("createChainBrokerManager", () => {
     });
     expect(
       harness.sent.filter(
-        (message) =>
-          (message as JsonRpcRequest).method ===
-          "statement_unsubscribeStatement",
+        (message) => message.method === "statement_unsubscribeStatement",
       ),
     ).toHaveLength(0);
 
@@ -844,10 +839,7 @@ describe("createChainBrokerManager", () => {
       }),
     );
     expect(
-      harness.sent.filter(
-        (message) =>
-          (message as JsonRpcRequest).method === "chainHead_v1_unpin",
-      ),
+      harness.sent.filter((message) => message.method === "chainHead_v1_unpin"),
     ).toHaveLength(0);
     // ...but the tab still gets a success response immediately.
     expect(JSON.parse(messagesA.at(-1) ?? "{}")).toEqual({
@@ -867,7 +859,7 @@ describe("createChainBrokerManager", () => {
     );
 
     const unpins = harness.sent.filter(
-      (message) => (message as JsonRpcRequest).method === "chainHead_v1_unpin",
+      (message) => message.method === "chainHead_v1_unpin",
     );
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");
@@ -935,9 +927,7 @@ describe("createChainBrokerManager", () => {
       }),
     );
     expect(
-      harness.sent.filter(
-        (m) => (m as JsonRpcRequest).method === "chainHead_v1_unpin",
-      ),
+      harness.sent.filter((m) => m.method === "chainHead_v1_unpin"),
     ).toHaveLength(0);
 
     // A is now the sole holder. A disconnects while B is still following, so
@@ -945,7 +935,7 @@ describe("createChainBrokerManager", () => {
     connectionA?.disconnect();
 
     const unpins = harness.sent.filter(
-      (m) => (m as JsonRpcRequest).method === "chainHead_v1_unpin",
+      (m) => m.method === "chainHead_v1_unpin",
     );
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe("up-a");

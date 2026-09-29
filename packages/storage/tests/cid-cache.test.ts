@@ -37,7 +37,7 @@ describe("getRecentLabels", () => {
   });
 
   it("limits to MAX_RECENT (8) entries", () => {
-    const labels = Array.from({ length: 20 }, (_, i) => `label${i}`);
+    const labels = Array.from({ length: 20 }, (_, i) => `label${String(i)}`);
     localStorage.setItem("dotli_recent", JSON.stringify(labels));
     expect(getRecentLabels()).toHaveLength(8);
   });
@@ -76,7 +76,7 @@ describe("addRecentLabel", () => {
   });
 
   it("limits to MAX_RECENT entries", () => {
-    const initial = Array.from({ length: 8 }, (_, i) => `label${i}`);
+    const initial = Array.from({ length: 8 }, (_, i) => `label${String(i)}`);
     localStorage.setItem("dotli_recent", JSON.stringify(initial));
     addRecentLabel("new");
     const result = getRecentLabels();

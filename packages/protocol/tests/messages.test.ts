@@ -32,7 +32,7 @@ describe("isProtocolEnvelope", () => {
       kind: "request",
       id: "test-1",
       method: "warmup",
-      payload: {} as Record<string, never>,
+      payload: {},
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });

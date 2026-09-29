@@ -6,13 +6,18 @@ import eslintConfigPrettier from "eslint-config-prettier";
 import solid from "eslint-plugin-solid";
 import turboPlugin from "eslint-plugin-turbo";
 import tseslint from "typescript-eslint";
+import { defineConfig } from "eslint/config";
+
+// eslint-plugin-solid types its rules against the ESLint 8 rule API, which
+// ESLint 10's `Plugin` type rejects. The rules themselves run under ESLint 10.
+const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (
+  /** @type {unknown} */ (solid)
+);
 /**
  * ESLint configuration for Vite + TypeScript apps.
  * Extends the base config with strict type-checked rules.
- *
- * @type {import("eslint").Linter.Config[]}
  */
-export const config = [
+export const config = defineConfig([
   js.configs.recommended,
   eslintConfigPrettier,
   ...tseslint.configs.strictTypeChecked,
@@ -167,11 +172,11 @@ export const config = [
     },
   },
   {
-    ignores: ["dist/**", "node_modules/**", "*.js", "*.cjs"],
+    ignores: ["dist/**", "node_modules/**"],
   },
   {
     files: ["**/*.tsx"],
-    plugins: { solid },
+    plugins: { solid: solidPlugin },
     rules: {
       ...solid.configs["flat/typescript"].rules,
       // Components return JSX.Element by inference; annotating every one adds
@@ -179,4 +184,4 @@ export const config = [
       "@typescript-eslint/explicit-function-return-type": "off",
     },
   },
-];
+]);

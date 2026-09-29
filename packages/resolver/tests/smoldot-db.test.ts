@@ -38,9 +38,12 @@ describe("Light-client database", () => {
     expect(db).not.toBeNull();
 
     try {
+      if (db === null) {
+        throw new Error("expected a database");
+      }
       // When
       const started = Date.now();
-      const outcome = await db!
+      const outcome = await db
         .save(GENESIS, BLOB)
         .then(() => "resolved")
         .catch((err: unknown) => String(err));

@@ -12,7 +12,7 @@ const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 // dotli lives either as the `hosts/dotli` submodule of the truapi checkout or
 // as a standalone clone next to it.
 const truapiRoot = resolve(
-  process.env.TRUAPI_REPO ??
+  process.env["TRUAPI_REPO"] ??
     [resolve(dotliRoot, "../.."), resolve(dotliRoot, "../host-rust-core")].find(
       (root) => existsSync(resolve(root, "js/packages/truapi/package.json")),
     ) ??
@@ -32,7 +32,7 @@ const packages = [
     name: "@parity/truapi-provider",
     path: resolve(truapiRoot, "js/packages/truapi-provider"),
   },
-];
+] as const;
 
 function assertPackage(expectedName: string, path: string): void {
   const packageJsonPath = resolve(path, "package.json");
@@ -67,7 +67,7 @@ for (const [workspace, name] of [
   ["packages/ui", "truapi"],
   ["packages/ui", "truapi-host"],
   ["packages/resolver", "truapi-provider"],
-]) {
+] as const) {
   rmSync(resolve(dotliRoot, workspace, "node_modules/@parity", name), {
     force: true,
     recursive: true,
@@ -80,10 +80,10 @@ for (const [workspace, name] of [
 // reproduces the alias card's stuck-pending symptom. Point that nested runtime
 // at this checkout when the local product checkout is available.
 const shouldLinkProduct =
-  process.env.E2E_PRODUCT_REPO !== undefined ||
-  process.env.E2E_PRODUCT_URL !== undefined;
+  process.env["E2E_PRODUCT_REPO"] !== undefined ||
+  process.env["E2E_PRODUCT_URL"] !== undefined;
 const productRoot = resolve(
-  process.env.E2E_PRODUCT_REPO ??
+  process.env["E2E_PRODUCT_REPO"] ??
     resolve(dotliRoot, "../../../host-playground"),
 );
 if (shouldLinkProduct && existsSync(resolve(productRoot, "package.json"))) {

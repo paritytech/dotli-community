@@ -18,9 +18,12 @@ import { Readable } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
 import { runtimeNetworkConfigScriptBody } from "@dotli/config/vite";
 
+// Node's types have no global `BodyInit`, so take it from `Response` itself.
+type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;
+
 const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 
-const PORT = parseInt(process.env.PORT ?? "5173", 10);
+const PORT = parseInt(process.env["PORT"] ?? "5173", 10);
 const ROOT = join(import.meta.dirname, "..");
 // Monorepo layout: apps/host/dist/, apps/sandbox/dist/, apps/protocol/dist/
 const HOST_DIR = join(ROOT, "apps/host/dist");
@@ -67,7 +70,9 @@ const MIME: Record<string, string> = {
 
 function serveFile(filePath: string, coep: boolean): Response | null {
   try {
-    if (!existsSync(filePath) || statSync(filePath).isDirectory()) return null;
+    if (!existsSync(filePath) || statSync(filePath).isDirectory()) {
+      return null;
+    }
   } catch {
     return null;
   }
@@ -128,17 +133,24 @@ const MODE_SYNC_CORS: Record<string, string> = {
 async function handleModeSync(req: Request, key: string): Promise<Response> {
   const ok = (body: BodyInit | null, contentType?: string): Response => {
     const headers: Record<string, string> = { ...MODE_SYNC_CORS };
-    if (contentType !== undefined) headers["Content-Type"] = contentType;
+    if (contentType !== undefined) {
+      headers["Content-Type"] = contentType;
+    }
     return new Response(body, { status: body === null ? 204 : 200, headers });
   };
   const empty = (status: number): Response =>
     new Response(null, { status, headers: MODE_SYNC_CORS });
 
-  if (req.method === "OPTIONS") return empty(204);
+  if (req.method === "OPTIONS") {
+    return empty(204);
+  }
 
   if (req.method === "DELETE") {
-    if (key === "") modeStore.clear();
-    else modeStore.delete(key);
+    if (key === "") {
+      modeStore.clear();
+    } else {
+      modeStore.delete(key);
+    }
     return empty(204);
   }
 
@@ -192,7 +204,9 @@ function readAttr(
 
 function collectEnvelope(body: string): void {
   for (const line of body.split("\n")) {
-    if (line === "") continue;
+    if (line === "") {
+      continue;
+    }
     let parsed: unknown;
     try {
       parsed = JSON.parse(line);
@@ -200,14 +214,18 @@ function collectEnvelope(body: string): void {
       continue;
     }
     const items = (parsed as { items?: unknown }).items;
-    if (!Array.isArray(items)) continue;
+    if (!Array.isArray(items)) {
+      continue;
+    }
     for (const item of items as Record<string, unknown>[]) {
-      const name = item.name;
-      if (typeof name !== "string" || !name.startsWith("dotli.")) continue;
-      const attrs = (item.attributes ?? {}) as Record<string, unknown>;
+      const name = item["name"];
+      if (typeof name !== "string" || !name.startsWith("dotli.")) {
+        continue;
+      }
+      const attrs = (item["attributes"] ?? {}) as Record<string, unknown>;
       gaugePoints.push({
         name,
-        value: typeof item.value === "number" ? item.value : 0,
+        value: typeof item["value"] === "number" ? item["value"] : 0,
         mode: readAttr(attrs, "protocol_mode") ?? "",
       });
     }
@@ -259,7 +277,9 @@ async function handle(req: Request): Promise<Response> {
   const fallback = "index.html";
 
   let pathname = decodeURIComponent(url.pathname);
-  if (pathname === "/") pathname = `/${fallback}`;
+  if (pathname === "/") {
+    pathname = `/${fallback}`;
+  }
 
   // Mirror nginx: COEP applies to the app and protocol builds (iframeable
   // origins) and to the /__preview location on the host build, but not
@@ -270,11 +290,15 @@ async function handle(req: Request): Promise<Response> {
   // Try exact file
   const exact = join(baseDir, pathname);
   const res = serveFile(exact, coep);
-  if (res) return res;
+  if (res) {
+    return res;
+  }
 
   // Try directory index
   const res2 = serveFile(join(exact, "index.html"), coep);
-  if (res2) return res2;
+  if (res2) {
+    return res2;
+  }
 
   // SPA fallback
   return (
@@ -290,7 +314,9 @@ createServer((incoming, outgoing) => {
   void (async () => {
     const headers = new Headers();
     for (const [name, value] of Object.entries(incoming.headers)) {
-      if (value === undefined) continue;
+      if (value === undefined) {
+        continue;
+      }
       for (const v of Array.isArray(value) ? value : [value]) {
         headers.append(name, v);
       }
@@ -315,12 +341,14 @@ createServer((incoming, outgoing) => {
     Readable.fromWeb(res.body as ReadableStream<Uint8Array>).pipe(outgoing);
   })().catch((err: unknown) => {
     console.error(err);
-    if (!outgoing.headersSent) outgoing.writeHead(500);
+    if (!outgoing.headersSent) {
+      outgoing.writeHead(500);
+    }
     outgoing.end();
   });
 }).listen(PORT, "0.0.0.0");
 
-console.log(`Preview server on http://localhost:${PORT}`);
+console.log(`Preview server on http://localhost:${String(PORT)}`);
 console.log(`  Host: ${HOST_DIR}`);
 console.log(`  App:  ${APP_DIR}`);
 console.log(`  Protocol: ${PROTOCOL_DIR}`);

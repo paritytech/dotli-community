@@ -26,7 +26,9 @@
     "noPropertyAccessFromIndexSignature": true,
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "allowJs": true,
+    "checkJs": true
   },
   "files": ["./vite-env.d.ts"]
 }
