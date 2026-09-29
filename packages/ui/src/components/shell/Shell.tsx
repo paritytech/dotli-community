@@ -13,7 +13,9 @@
 // (the theme toggle, the URL bar, the offline banner, ...) stay static here
 // too: after boot, the lazily loaded islands chunk
 // (components/shell/islands.tsx) client-renders each one and swaps it in
-// for its static nodes by id. This file therefore stays free of components,
+// for its static nodes by id. The topbar's popovers have no static markup:
+// nothing can open them before the topbar island renders them into the body.
+// This file therefore stays free of components,
 // control flow and anything else reactive, which would be frozen at its
 // build-time state (tests/components/shell/fidelity.test.ts checks it).
 //
@@ -52,7 +54,7 @@ export function Shell(): JSX.Element {
           <span class="topbar-beta">Beta</span>
         </a>
         <div class="topbar-url" id="topbar-url" />
-        <div class="topbar-right">
+        <div class="topbar-right" id="topbar-actions">
           <button
             id="auth-button"
             class="topbar-btn"
@@ -98,7 +100,6 @@ export function Shell(): JSX.Element {
               <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
             </svg>
           </button>
-          <div class="more-popover chains-popover" id="chains-popover" />
           <button
             id="chat-button"
             class="topbar-btn"
@@ -196,126 +197,6 @@ export function Shell(): JSX.Element {
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
           </button>
-          <div class="more-popover theme-popover" id="theme-popover" role="menu" aria-label="Theme">
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="light"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              <span>Light</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="dark"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-              <span>Dark</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-            <button
-              class="more-row theme-popover-option"
-              role="menuitemradio"
-              aria-checked="false"
-              data-theme-option="system"
-              tabindex="-1"
-            >
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-              <span>System</span>
-              <svg
-                class="theme-popover-check"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                aria-hidden="true"
-              >
-                <polyline points="20 6 9 17 4 12" />
-              </svg>
-            </button>
-          </div>
           <button
             id="more-button"
             class="topbar-btn topbar-more-btn"
@@ -330,107 +211,6 @@ export function Shell(): JSX.Element {
               <span class="hamburger-bar" />
             </span>
           </button>
-          <div class="more-popover" id="more-popover">
-            <button class="more-row" id="more-row-chat" data-target="chat-button" hidden>
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
-              </svg>
-              <span>Chat</span>
-            </button>
-            <button class="more-row" data-target="permissions-button">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-                <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-              </svg>
-              <span>Permissions</span>
-            </button>
-            <button class="more-row" data-target="theme-toggle">
-              <svg
-                class="more-row-icon-sun"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="12" cy="12" r="5" />
-                <line x1="12" y1="1" x2="12" y2="3" />
-                <line x1="12" y1="21" x2="12" y2="23" />
-                <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-                <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-                <line x1="1" y1="12" x2="3" y2="12" />
-                <line x1="21" y1="12" x2="23" y2="12" />
-                <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-                <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-              </svg>
-              <svg
-                class="more-row-icon-moon"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-              </svg>
-              <svg
-                class="more-row-icon-system"
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-                <line x1="8" y1="21" x2="16" y2="21" />
-                <line x1="12" y1="17" x2="12" y2="21" />
-              </svg>
-              <span>Theme</span>
-            </button>
-            <button class="more-row" data-target="mode-button">
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="12" cy="12" r="3" />
-                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-              </svg>
-              <span>Settings</span>
-            </button>
-          </div>
           <button id="mode-button" class="topbar-btn" title="Settings" aria-label="Settings">
             <svg
               width="12"
@@ -494,45 +274,6 @@ export function Shell(): JSX.Element {
             Cancel
           </button>
         </div>
-      </div>
-
-      {/* User Popover */}
-      <div class="user-popover" id="user-popover">
-        <div class="user-popover-name">
-          <div class="label">Welcome back</div>
-          <div class="name" id="user-popover-username" />
-        </div>
-        <div class="user-popover-divider" />
-        <button class="user-popover-disconnect" id="user-popover-disconnect">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Log out
-        </button>
-      </div>
-
-      {/* Mode Popover + backdrop (backdrop blocks clicks under the popover
-          and dismisses the popover when clicked) */}
-      <div class="mode-popover-backdrop" id="mode-popover-backdrop" />
-      <div class="mode-popover" id="mode-popover">
-        <div class="mode-popover-content" id="mode-popover-content" />
-      </div>
-
-      {/* Permissions Popover + backdrop (same pattern as settings menu:
-          blocks clicks under the popover + dismisses it when clicked) */}
-      <div class="permissions-popover-backdrop" id="permissions-popover-backdrop" />
-      <div class="permissions-popover" id="permissions-popover">
-        <div class="permissions-popover-header">Permissions</div>
-        <div class="permissions-popover-list" id="permissions-popover-list" />
       </div>
     </>
   );

@@ -1,60 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { AuthButton } from '../shell/AuthButton.js';
+import { ThemeToggle } from '../shell/ThemeToggle.js';
 import { NavForm } from './NavForm.js';
 import { RecentPills } from './RecentPills.js';
 
 /**
- * Move the shell's auth button, then its theme button and menu, into the
- * page's top-right corner (`#landing-auth`), since the landing page hides
- * the topbar. Found by id wherever they are, static or already swapped for
- * the live islands (components/shell/islands.tsx): the islands swap by id
- * too, so either can come first.
- */
-function moveShellControls(corner: HTMLElement): void {
-  const authButton = document.getElementById('auth-button');
-  const themeToggle = document.getElementById('theme-toggle');
-  const themePopover = document.getElementById('theme-popover');
-  if (authButton === null) {
-    return;
-  }
-  corner.appendChild(authButton);
-  if (themeToggle === null) {
-    return;
-  }
-  corner.appendChild(themeToggle);
-  if (themePopover !== null) {
-    corner.appendChild(themePopover);
-  }
-}
-
-/**
  * The landing page, shown on the bare host with no name to resolve: the
- * name form, the recently visited names, and the shell's auth and theme
- * controls in the corner. Mounted by landing/load.ts as the `"page"` app
- * root. Events use native listeners, as in the shell's islands.
+ * name form, the recently visited names, and the auth and theme buttons in
+ * the corner, the shell's own components outside the topbar (which the
+ * landing page hides, its action group gone). Mounted by landing/load.ts as
+ * the `"page"` app root. Events use native listeners, as in the shell's
+ * islands.
  */
 export function Landing(): JSX.Element {
-  let corner: HTMLDivElement | undefined;
-  // Once the page is in the document, so the controls never sit in a
-  // detached tree.
-  onSettled(() => {
-    if (corner !== undefined) {
-      moveShellControls(corner);
-    }
-  });
-
   return (
     <div class="landing">
-      <div
-        ref={el => {
-          corner = el;
-        }}
-        class="landing-auth"
-        id="landing-auth"
-      />
+      <div class="landing-auth" id="landing-auth">
+        <AuthButton />
+        <ThemeToggle />
+      </div>
       <div class="landing-center">
         <div class="landing-content">
           <div class="landing-logo">

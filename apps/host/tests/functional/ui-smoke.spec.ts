@@ -62,12 +62,12 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the islands chunk replaced the static markup. The static theme
-    // button is titled "Theme"; only the live island names the preference,
-    // and only the live More button announces its menu.
+    // Then: the landing page renders its own theme button, titled with the
+    // preference (the static one is titled "Theme"), and the topbar's action
+    // group, More button included, is gone.
     await expect(page.locator('#theme-toggle')).toHaveAttribute('title', /^Theme: /);
-    await expect(page.locator('#more-button')).toHaveAttribute('aria-haspopup', 'menu');
     await expect(page.locator('#theme-toggle')).toHaveCount(1);
+    await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
 
     // When
@@ -76,6 +76,45 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
     await expect(page.locator('#auth-modal-title')).toBeVisible();
+  });
+
+  test('As a phone user, the topbar keeps the account button and folds the rest into the More menu', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 375, height: 740 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    await expect(page.locator('#auth-button')).toBeVisible();
+    await expect(page.locator('#more-button')).toBeVisible();
+    await expect(page.locator('#mode-button')).toBeHidden();
+
+    // When
+    await page.locator('#more-button').click();
+    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+
+    // Then
+    await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
+    await expect(page.locator('#mode-popover')).toHaveClass(/\bopen\b/);
+  });
+
+  test('As a desktop user, every topbar button fits and there is no More button', async ({ page }) => {
+    // Given
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    await expect(page.locator('#mode-button')).toBeVisible();
+    await expect(page.locator('#theme-toggle')).toBeVisible();
+    await expect(page.locator('#permissions-button')).toBeVisible();
+    await expect(page.locator('#more-button')).toBeHidden();
   });
 
   test('As a user, I can open the login QR modal and close it again', async ({ page }) => {

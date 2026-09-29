@@ -4,8 +4,12 @@
 // The shell islands chunk (components/shell/islands.tsx) swapping its live
 // components in for the static markup of the real prerendered shell
 // (helpers/shell-ssr.ts), which the page shows as static HTML until then, as
-// the host boots.
+// the host boots. The topbar's action group is one island (`topbar`): it
+// swaps `#topbar-actions` in place, and its items' surfaces render through
+// portals into the body, taking the static ones out of the page.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { disposeAppRoot } from '../../../src/mount/app-roots.js';
 import { flush } from 'solid-js';
@@ -22,15 +26,17 @@ import { oldPermissionsBackdrop, oldPermissionsButton, oldPermissionsPopover } f
 import { oldChainsButton, oldChainsPopover } from './old-chains-markup.js';
 import { oldModeBackdrop, oldModeButton, oldModePopover } from './old-settings-markup.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
-import { tapMoreRow } from './more-menu-harness.js';
+import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 import { mouseClick, pointerPress } from '../../helpers/solid.js';
 import { mountLandingPage } from '../../helpers/landing.js';
+import { showLanding } from '../../../src/landing/load.js';
+import { TOPBAR_ACTIONS_ID } from '../../../src/mount/topbar-ids.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
 import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { setVerificationShieldState, showLocalhostPill, showProductPill } from '../../../src/state/url-pill.js';
 import type * as ThemeToggleModule from '../../../src/components/shell/ThemeToggle.js';
-import { byId, must } from '../../support.js';
+import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -76,11 +82,6 @@ vi.mock('../../../src/components/shell/ThemeToggle.js', async importOriginal => 
 });
 
 const THEME_IDS = ['theme-toggle', 'theme-popover'];
-const AUTH_IDS = ['auth-button', 'user-popover', 'auth-modal-backdrop'];
-const PERMISSIONS_IDS = ['permissions-button', 'permissions-popover-backdrop', 'permissions-popover'];
-const CHAINS_IDS = ['chains-button', 'chains-popover'];
-const SETTINGS_IDS = ['mode-button', 'mode-popover-backdrop', 'mode-popover'];
-const MORE_IDS = ['more-button', 'more-popover'];
 
 let serverHtml = '';
 let landing: ReturnType<typeof mountLandingPage> | null = null;
@@ -150,6 +151,52 @@ function withMenuAria(el: Element): Element {
   return copy;
 }
 
+/**
+ * Each of `ids`, buttons of the static action group, is on the page once, on
+ * a new element inside the live group, the static one gone.
+ */
+function expectSwapped(ids: string[], before: Element[]): void {
+  for (const [i, id] of ids.entries()) {
+    const fresh = byId(id);
+    expect(countById(id)).toBe(1);
+    expect(fresh).not.toBe(before[i]);
+    expect(before[i]?.isConnected).toBe(false);
+    expect(byId(TOPBAR_ACTIONS_ID).contains(fresh)).toBe(true);
+  }
+}
+
+/**
+ * Each of `ids`, surfaces the topbar island renders through portals (the
+ * static shell has none), is on the page once, in the body.
+ */
+function expectPortaled(ids: string[]): void {
+  for (const id of ids) {
+    expect(countById(id)).toBe(1);
+    expect(byId(id).parentElement).toBe(document.body);
+  }
+}
+
+const FIXTURE = readFileSync(resolve(import.meta.dirname, 'original-shell.html'), 'utf8');
+
+/**
+ * The element with `id` in the shell markup the fixture froze: for a popover,
+ * the markup the live one matches, now that the prerender has none.
+ */
+function fixture(id: string): Element {
+  const template = document.createElement('template');
+  template.innerHTML = FIXTURE;
+  const el = template.content.querySelector(`[id="${id}"]`);
+  if (el === null) {
+    throw new Error(`the fixture has no #${id}`);
+  }
+  return normalized(el);
+}
+
+/** Retire the topbar's action group as the landing loader does. */
+function retireActionGroup(): void {
+  document.getElementById(TOPBAR_ACTIONS_ID)?.remove();
+}
+
 async function flushAll(): Promise<void> {
   flush();
   await Promise.resolve();
@@ -176,34 +223,30 @@ describe('shell islands', () => {
   afterEach(() => {
     landing?.dispose();
     landing = null;
-    disposeAppRoot('island:theme');
+    disposeAppRoot('page');
+    disposeAppRoot('island:topbar');
     disposeAppRoot('island:url-pill');
     disposeAppRoot('island:offline-banner');
-    disposeAppRoot('island:auth-button');
     disposeAppRoot('island:auth-modal');
-    disposeAppRoot('island:permissions');
-    disposeAppRoot('island:chains');
-    disposeAppRoot('island:settings');
-    disposeAppRoot('island:more');
     resetAllStoresForTests();
     document.body.innerHTML = '';
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
   });
 
-  it("As a dotli user, the theme toggle's static markup is swapped in place for the live island, one element per id, with no warning", async () => {
-    // Given: the prerendered static toggle, as the page shows it before
-    // the islands load.
+  it('As a dotli user, the static action group is swapped in place for the live one, the theme toggle matching its static markup and its menu the frozen shell markup, one element per id, with no warning', async () => {
+    // Given: the prerendered static group, as the page shows it before the
+    // islands load.
     expect(byId('shell').contains(byId('theme-toggle'))).toBe(true);
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
-    const before = THEME_IDS.map(id => {
-      const el = byId(id);
-      return {
-        el,
-        place: placeOf(el),
-        markup: withMenuAria(withoutStoreState(el)),
-      };
-    });
+    const staticGroup = byId(TOPBAR_ACTIONS_ID);
+    const place = placeOf(staticGroup);
+    const staticToggle = byId('theme-toggle');
+    const markup = THEME_IDS.map(id =>
+      withMenuAria(withoutStoreState(id === 'theme-toggle' ? staticToggle : fixture(id))),
+    );
+    expect(countById('theme-popover')).toBe(0);
 
     // When
     const failed = mountIslands();
@@ -211,14 +254,16 @@ describe('shell islands', () => {
 
     // Then
     expect(failed).toEqual([]);
+    const liveGroup = byId(TOPBAR_ACTIONS_ID);
+    expect(countById(TOPBAR_ACTIONS_ID)).toBe(1);
+    expect(liveGroup).not.toBe(staticGroup);
+    expect(staticGroup.isConnected).toBe(false);
+    expect(placeOf(liveGroup)).toEqual(place);
+    expect(liveGroup.hasAttribute('data-collapsible')).toBe(true);
+    expectSwapped(['theme-toggle'], [staticToggle]);
+    expectPortaled(['theme-popover']);
     for (const [i, id] of THEME_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-      expect(withoutStoreState(fresh).isEqualNode(prior.markup)).toBe(true);
+      expect(normalized(withoutStoreState(byId(id))).isEqualNode(nth(markup, i))).toBe(true);
     }
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
@@ -260,22 +305,27 @@ describe('shell islands', () => {
     expect(byId('theme-popover').classList.contains('open')).toBe(false);
   });
 
-  it('As a visitor on the landing page, the theme toggle is swapped in where the page moved it, outside the shell, and works there', async () => {
-    // Given: the landing page mounts first and moves both into its top-right
-    // corner, after the auth button.
+  it("As a visitor on the landing page, the islands leave out the action group the landing loader took away, and the page's own theme toggle works", async () => {
+    // Given: the landing loader took the action group out of the page, and
+    // the landing page renders its own auth and theme buttons.
+    retireActionGroup();
     landing = mountLandingPage();
     await flushAll();
     const landingAuth = byId('landing-auth');
+    const pageToggle = byId('theme-toggle');
 
     // When
-    mountIslands();
+    const failed = mountIslands();
     await flushAll();
 
     // Then
-    for (const [i, id] of THEME_IDS.entries()) {
-      expect(countById(id)).toBe(1);
-      expect(placeOf(byId(id))).toEqual({ parent: landingAuth, index: i + 1 });
+    expect(failed).toEqual([]);
+    expect(countById(TOPBAR_ACTIONS_ID)).toBe(0);
+    for (const id of ['auth-button', ...THEME_IDS, 'user-popover', 'mode-popover', 'more-button']) {
+      expect(countById(id)).toBe(id === 'mode-popover' || id === 'more-button' ? 0 : 1);
     }
+    expect(byId('theme-toggle')).toBe(pageToggle);
+    expect(landingAuth.contains(pageToggle)).toBe(true);
 
     // When
     mouseClick(byId('theme-toggle'));
@@ -323,22 +373,6 @@ describe('shell islands', () => {
     expect(document.activeElement).toBe(byId('verification-shield'));
   });
 
-  it('As a keyboard user focused on a static element without an id, focus moves to the live element at the same place', async () => {
-    // Given: the options are buttons with tabindex="-1".
-    const staticOption = must(themeOption('dark'), 'the dark theme option');
-    staticOption.focus();
-    expect(document.activeElement).toBe(staticOption);
-
-    // When
-    mountIslands();
-    await flushAll();
-
-    // Then
-    expect(staticOption.isConnected).toBe(false);
-    expect(document.activeElement).toBe(themeOption('dark'));
-    expect(document.activeElement?.tagName).toBe('BUTTON');
-  });
-
   it('As a keyboard user focused on a static node whose live counterpart is not focusable, focus moves to the first focusable element in it', async () => {
     // Given: the live `#topbar-url` is a plain div, not focusable, holding
     // the shield button.
@@ -377,41 +411,49 @@ describe('shell islands', () => {
     expect(liveBanner.contains(document.activeElement)).toBe(false);
   });
 
-  it('As a dotli user, a theme island that throws while rendering leaves the static markup in place and is reported once', async () => {
+  it('As a dotli user, a topbar item that throws while rendering leaves the whole static action group in place and renders no popover, reported once', async () => {
     // Given
     themeIsland.broken = true;
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const before = THEME_IDS.map(id => byId(id));
+    const ids = [TOPBAR_ACTIONS_ID, 'theme-toggle', 'more-button'];
+    const before = ids.map(id => byId(id));
 
     // When
     const failed = mountIslands();
     await flushAll();
 
     // Then
-    expect(failed).toEqual(['theme']);
-    for (const [i, id] of THEME_IDS.entries()) {
+    expect(failed).toEqual(['topbar']);
+    for (const [i, id] of ids.entries()) {
       expect(byId(id)).toBe(before[i]);
       expect(countById(id)).toBe(1);
+    }
+    // Nothing of the island stays: no popover.
+    for (const id of ['theme-popover', 'more-popover', 'user-popover', 'mode-popover']) {
+      expect(countById(id)).toBe(0);
     }
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'the theme island broke' }),
-      { root: 'island:theme' },
+      { root: 'island:topbar' },
     );
   });
 
-  it('As a dotli user, a theme island that throws after it swapped in is disposed once, its static markup comes back with focus, and the loader hears of it', async () => {
+  it('As a dotli user, a topbar item that throws after the swap disposes the island once, the static group comes back where it was with focus, its live popovers gone, and the loader hears of it', async () => {
     // Given
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const before = THEME_IDS.map(id => byId(id));
+    const ids = [TOPBAR_ACTIONS_ID, 'theme-toggle'];
+    const before = ids.map(id => byId(id));
+    const places = ids.map(id => placeOf(byId(id)));
     const failures: string[] = [];
     expect(mountIslands(name => failures.push(name))).toEqual([]);
     await flushAll();
-    const live = THEME_IDS.map(id => byId(id));
+    const live = ids.map(id => byId(id));
     expect(live[0]).not.toBe(before[0]);
-    nth(live, 0).focus();
+    const livePopovers = ['theme-popover', 'user-popover', 'mode-popover'].map(id => byId(id));
+    byId('theme-toggle').focus();
 
     // When
     themeIsland.breakLater?.();
@@ -419,18 +461,24 @@ describe('shell islands', () => {
     await Promise.resolve();
 
     // Then
-    for (const [i, id] of THEME_IDS.entries()) {
+    for (const [i, id] of ids.entries()) {
       expect(byId(id)).toBe(before[i]);
       expect(countById(id)).toBe(1);
       expect(live[i]?.isConnected).toBe(false);
+      expect(placeOf(byId(id))).toEqual(places[i]);
     }
-    expect(document.activeElement).toBe(before[0]);
+    // The live popovers went with the island; the static shell has none.
+    for (const popover of livePopovers) {
+      expect(popover.isConnected).toBe(false);
+      expect(countById(popover.id)).toBe(0);
+    }
+    expect(document.activeElement).toBe(before[ids.indexOf('theme-toggle')]);
     expect(themeIsland.disposed).toBe(1);
-    expect(failures).toEqual(['theme']);
+    expect(failures).toEqual(['topbar']);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(
       expect.objectContaining({ message: 'the theme island broke later' }),
-      { root: 'island:theme' },
+      { root: 'island:topbar' },
     );
   });
 
@@ -644,7 +692,7 @@ describe('shell islands', () => {
     expect(byId('offline-banner').style.display).toBe('block');
   });
 
-  it('As a dotli user, the auth button, user popover and pairing modal are swapped in place for live islands matching what the topbar rendered, one element per id, with no warning', async () => {
+  it('As a dotli user, the auth button, user popover and pairing modal are swapped for live islands their popovers rendered in the body, matching what the topbar rendered, one element per id, with no warning', async () => {
     // Given: the static button says it is connecting, disabled.
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
@@ -652,24 +700,20 @@ describe('shell islands', () => {
     expect(staticButton.hasAttribute('disabled')).toBe(true);
     expect(staticButton.getAttribute('aria-busy')).toBe('true');
     expect(staticButton.title).toBe('Connecting...');
-    const before = AUTH_IDS.map(id => {
-      const el = byId(id);
-      return { el, place: placeOf(el) };
-    });
+    const staticModal = byId('auth-modal-backdrop');
+    const modalPlace = placeOf(staticModal);
+    expect(countById('user-popover')).toBe(0);
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    for (const [i, id] of AUTH_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-    }
+    expectSwapped(['auth-button'], [staticButton]);
+    expectPortaled(['user-popover']);
+    expect(countById('auth-modal-backdrop')).toBe(1);
+    expect(byId('auth-modal-backdrop')).not.toBe(staticModal);
+    expect(placeOf(byId('auth-modal-backdrop'))).toEqual(modalPlace);
     const liveButton = byId('auth-button');
     expect(liveButton.hasAttribute('disabled')).toBe(false);
     expect(liveButton.hasAttribute('aria-busy')).toBe(false);
@@ -734,58 +778,37 @@ describe('shell islands', () => {
     expect(document.activeElement).toBe(byId('auth-modal-close'));
   });
 
-  it('As a visitor on the landing page, the auth button is swapped in where the page moved it, and opens the user popover there', async () => {
-    // Given: the landing page mounts first and moves the button into its
-    // corner.
-    landing = mountLandingPage();
-    await flushAll();
-    const landingAuth = byId('landing-auth');
+  it("As a visitor on the landing page, when the islands swap in before the page shows, the landing loader takes the live action group away, and the page's own auth and theme buttons work", async () => {
+    // Given: the islands are live, then the landing loader runs.
     setAuthState({
       tag: 'Connected',
       session: { connected: true, liteUsername: 'pgherveou.04' },
     });
     setLoggedIn(true);
-
-    // When
+    const app = document.createElement('div');
+    app.id = 'app';
+    document.body.append(app);
     mountIslands();
     await flushAll();
-
-    // Then
-    expect(countById('auth-button')).toBe(1);
-    expect(placeOf(byId('auth-button'))).toEqual({
-      parent: landingAuth,
-      index: 0,
-    });
+    const liveGroup = byId(TOPBAR_ACTIONS_ID);
 
     // When
-    byId('auth-button').click();
+    await showLanding();
     await flushAll();
 
-    // Then
-    expect(byId('user-popover').classList.contains('open')).toBe(true);
-    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
-  });
-
-  it('As a visitor on the landing page, when the islands swap in before the page mounts, the page moves the live auth and theme controls into its corner, and they work there', async () => {
-    // Given
-    setAuthState({
-      tag: 'Connected',
-      session: { connected: true, liteUsername: 'pgherveou.04' },
-    });
-    setLoggedIn(true);
-    mountIslands();
-    await flushAll();
-    const live = ['auth-button', ...THEME_IDS].map(id => byId(id));
-
-    // When
-    landing = mountLandingPage();
-    await flushAll();
-
-    // Then
+    // Then: one element per id, all the page's.
+    expect(liveGroup.isConnected).toBe(false);
+    expect(countById(TOPBAR_ACTIONS_ID)).toBe(0);
     const landingAuth = byId('landing-auth');
-    expect([...landingAuth.children]).toEqual(live);
-    for (const id of ['auth-button', ...THEME_IDS]) {
+    for (const id of ['auth-button', 'theme-toggle']) {
       expect(countById(id)).toBe(1);
+      expect(landingAuth.contains(byId(id))).toBe(true);
+    }
+    for (const id of ['theme-popover', 'user-popover']) {
+      expect(countById(id)).toBe(1);
+    }
+    for (const id of ['more-button', 'chains-button', 'mode-popover', 'permissions-popover']) {
+      expect(countById(id)).toBe(0);
     }
 
     // When
@@ -802,30 +825,22 @@ describe('shell islands', () => {
 
     // Then
     expect(byId('user-popover').classList.contains('open')).toBe(true);
+    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
   });
 
-  it('As a dotli user, the permissions button, backdrop and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning', async () => {
+  it("As a dotli user, the permissions button, backdrop and popover are swapped for the topbar island's live ones, their popovers rendered in the body, matching what the topbar rendered, one element per id, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
-    const before = PERMISSIONS_IDS.map(id => {
-      const el = byId(id);
-      return { el, place: placeOf(el) };
-    });
+    const staticButton = byId('permissions-button');
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    for (const [i, id] of PERMISSIONS_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-    }
+    expectSwapped(['permissions-button'], [staticButton]);
+    expectPortaled(['permissions-popover-backdrop', 'permissions-popover']);
     expect(
       normalized(byId('permissions-button')).isEqualNode(
         normalized(oldPermissionsButton({ open: false, hasGrants: false })),
@@ -845,9 +860,9 @@ describe('shell islands', () => {
   });
 
   it("As a mobile user, the More menu's Permissions row opens the swapped-in popover, and an app loaded before the islands shows its grants", async () => {
-    // Given: an app with a grant, loaded before the islands. The More menu
-    // is an island too, whose rows forward a tap as a click on the button
-    // they look up by id at click time.
+    // Given: an app with a grant, loaded before the islands, on a screen
+    // with room for the account button and More only.
+    const layout = stubTopbarLayout(2 * ITEM_WIDTH);
     const unregister = registerPermissionAuthorizationProvider('app.dot', {
       getPermissionAuthorizationStatuses: requests =>
         Promise.resolve(
@@ -863,13 +878,15 @@ describe('shell islands', () => {
       // When
       mountIslands();
       await flushAll();
+      // A real ResizeObserver reports the swapped-in group's size.
+      layout.setRoom(2 * ITEM_WIDTH);
       await flushAll();
 
       // Then
       expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
 
       // When
-      await tapMoreRow('permissions-button');
+      await tapMoreRow('permissions');
       await flushAll();
       await flushAll();
 
@@ -884,28 +901,19 @@ describe('shell islands', () => {
     }
   });
 
-  it('As a dotli user, the network button and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning', async () => {
+  it("As a dotli user, the network button and popover are swapped for the topbar island's live ones, their popovers rendered in the body, matching what the topbar rendered, one element per id, with no warning", async () => {
     // Given
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
-    const before = CHAINS_IDS.map(id => {
-      const el = byId(id);
-      return { el, place: placeOf(el) };
-    });
+    const staticButton = byId('chains-button');
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    for (const [i, id] of CHAINS_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-    }
+    expectSwapped(['chains-button'], [staticButton]);
+    expectPortaled(['chains-popover']);
     expect(
       normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: false }))),
     ).toBe(true);
@@ -946,29 +954,20 @@ describe('shell islands', () => {
     expect(byId('chains-button').classList.contains('visible')).toBe(false);
   });
 
-  it('As a dotli user, the settings button, backdrop and popover are swapped in place for a live island matching what the topbar rendered, one element per id, with no warning', async () => {
+  it("As a dotli user, the settings button, backdrop and popover are swapped for the topbar island's live ones, their popovers rendered in the body, matching what the topbar rendered, one element per id, with no warning", async () => {
     // Given: the host seeds the settings store at boot, before the islands.
     initSettingsStore();
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
-    const before = SETTINGS_IDS.map(id => {
-      const el = byId(id);
-      return { el, place: placeOf(el) };
-    });
+    const staticButton = byId('mode-button');
 
     // When
     mountIslands();
     await flushAll();
 
     // Then
-    for (const [i, id] of SETTINGS_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-    }
+    expectSwapped(['mode-button'], [staticButton]);
+    expectPortaled(['mode-popover-backdrop', 'mode-popover']);
     expect(
       normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: true }))),
     ).toBe(true);
@@ -991,18 +990,13 @@ describe('shell islands', () => {
     expect(byId('mode-popover').querySelector('.mode-popover-sheet-title')?.textContent).toBe('Settings');
   });
 
-  it('As a mobile user, the More button and flyout are swapped in place for a live island matching the static markup, one element per id, with no warning', async () => {
+  it('As a dotli user, the More button is swapped for a live one matching its static markup, with a flyout matching the frozen shell markup, both at the end of the live group, with no rows while everything fits', async () => {
     // Given
     const warn = vi.spyOn(console, 'warn');
     const error = vi.spyOn(console, 'error');
-    const before = MORE_IDS.map(id => {
-      const el = byId(id);
-      return {
-        el,
-        place: placeOf(el),
-        markup: withMenuAria(withoutStoreState(el)),
-      };
-    });
+    const staticButton = byId('more-button');
+    const markup = [withMenuAria(withoutStoreState(staticButton)), withMenuAria(fixture('more-popover'))];
+    expect(countById('more-popover')).toBe(0);
 
     // When
     const failed = mountIslands();
@@ -1010,30 +1004,34 @@ describe('shell islands', () => {
 
     // Then
     expect(failed).toEqual([]);
-    for (const [i, id] of MORE_IDS.entries()) {
-      const fresh = byId(id);
-      const prior = nth(before, i);
-      expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(prior.el);
-      expect(prior.el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(prior.place);
-      expect(withoutStoreState(fresh).isEqualNode(prior.markup)).toBe(true);
+    expectSwapped(['more-button'], [staticButton]);
+    expect(countById('more-popover')).toBe(1);
+    for (const [i, id] of ['more-button', 'more-popover'].entries()) {
+      const fresh = withoutStoreState(byId(id));
+      // Only the live bar knows whether anything is collapsed.
+      fresh.classList.remove('topbar-more-idle');
+      expect(fresh.isEqualNode(nth(markup, i))).toBe(true);
     }
-    expect(countById('more-row-chat')).toBe(1);
-    expect(byId('more-row-chat').hidden).toBe(true);
+    const group = byId(TOPBAR_ACTIONS_ID);
+    expect([...group.children].slice(-2)).toEqual([byId('more-button'), byId('more-popover')]);
+    expect(document.querySelectorAll('#more-popover .more-row')).toHaveLength(0);
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
   it("As a mobile user, the swapped-in More menu's Theme and Settings rows open the swapped-in theme menu and settings popover", async () => {
-    // Given
+    // Given: room for the account button and More only.
     initSettingsStore();
+    const layout = stubTopbarLayout(2 * ITEM_WIDTH);
     mountIslands();
+    await flushAll();
+    // A real ResizeObserver reports the swapped-in group's size.
+    layout.setRoom(2 * ITEM_WIDTH);
     await flushAll();
 
     // When
-    await tapMoreRow('theme-toggle');
+    await tapMoreRow('theme');
     await flushAll();
 
     // Then
@@ -1050,12 +1048,37 @@ describe('shell islands', () => {
     expect(byId('more-popover').classList.contains('open')).toBe(false);
 
     // When
-    await tapMoreRow('mode-button');
+    await tapMoreRow('settings');
     await flushAll();
 
     // Then
     expect(byId('theme-popover').classList.contains('open')).toBe(false);
     expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(byId('mode-popover').classList.contains('open')).toBe(true);
+  });
+
+  it("As a mobile user, once a product is on screen the swapped-in More menu's Network row opens the swapped-in network panel", async () => {
+    // Given
+    stubTopbarLayout(2 * ITEM_WIDTH);
+    mountIslands();
+    await flushAll();
+    expect(document.querySelector('#more-popover .more-row[data-item="network"]')).toBeNull();
+
+    // When
+    setChainsButtonVisible(true);
+    await flushAll();
+
+    // Then
+    expect(moreRow('network').textContent).toBe('Network');
+
+    // When
+    await tapMoreRow('network');
+    await flushAll();
+
+    // Then
+    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-button').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('chains-popover').classList.contains('open')).toBe(true);
+    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('true');
   });
 });

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, createMemo, createSignal, Errored, For, onSettled, Show, untrack } from 'solid-js';
-import type { JSX } from '@solidjs/web';
+import { Portal, type JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 import type { ChainStatus } from '../../network-monitor.js';
 import { shallowEqual } from '../../state/create-store.js';
@@ -12,6 +12,8 @@ import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
 import { createPopover } from './popover.js';
+import { TOPBAR_PRIORITY } from './topbar/fit.js';
+import { TopbarItem } from './topbar/TopbarItem.js';
 
 /**
  * How often the pending cells' countdown is recomputed while open and a
@@ -328,10 +330,30 @@ function ChainsPanel(): JSX.Element {
   );
 }
 
+/** The network globe, on the button and the More menu row. */
+function GlobeIcon(props: { size: number }): JSX.Element {
+  return (
+    <svg
+      width={props.size}
+      height={props.size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M2 12h20" />
+      <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+    </svg>
+  );
+}
+
 /**
- * The network button (`#chains-button`) and its popover (`#chains-popover`),
- * a shell island (see islands.tsx) swapped in for Shell.tsx's static markup
- * after boot.
+ * The network button (`#chains-button`) and its popover (`#chains-popover`,
+ * rendered into the body), an item of the topbar island (see islands.tsx)
+ * swapped in for Shell.tsx's static markup after boot.
  *
  * The button shows once the host has a product on screen (topbarStore's
  * `chainsButtonVisible`, which setChainsButtonVisible in topbar.ts writes).
@@ -364,64 +386,62 @@ export function ChainsPopover(): JSX.Element {
 
   return (
     <>
-      <button
-        ref={el => {
-          button = el;
-          // No stopPropagation: the settings island's outside-click closer
-          // has to see this click to shut Settings, which sits at the same
-          // fixed position and would otherwise render on top of this panel.
-          el.addEventListener('click', surface.toggle);
-        }}
-        id="chains-button"
-        class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? ' visible' : ''}`}
-        title="Network"
-        aria-label="Network"
-        aria-haspopup="dialog"
-        aria-expanded={surface.open() ? 'true' : 'false'}
-        aria-controls="chains-popover"
+      <TopbarItem
+        name="network"
+        label="Network"
+        icon={() => <GlobeIcon size={14} />}
+        priority={TOPBAR_PRIORITY.network}
+        visible={topbar().chainsButtonVisible}
+        activate={surface.toggle}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <button
+          ref={el => {
+            button = el;
+            // No stopPropagation: the settings island's outside-click closer
+            // has to see this click to shut Settings, which sits at the same
+            // fixed position and would otherwise render on top of this panel.
+            el.addEventListener('click', surface.toggle);
+          }}
+          id="chains-button"
+          class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? ' visible' : ''}`}
+          title="Network"
+          aria-label="Network"
+          aria-haspopup="dialog"
+          aria-expanded={surface.open() ? 'true' : 'false'}
+          aria-controls="chains-popover"
         >
-          <circle cx="12" cy="12" r="10" />
-          <path d="M2 12h20" />
-          <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-        </svg>
-      </button>
-      <div
-        ref={el => {
-          popover = el;
-        }}
-        class={`more-popover chains-popover${surface.open() ? ' open' : ''}`}
-        id="chains-popover"
-        role="dialog"
-        aria-label="Network"
-        tabindex="-1"
-      >
-        <Show when={surface.open()}>
-          {/* A Solid error boundary keeps the failed content's owners alive
-              (to recover on reset), so the island's root boundary alone would
-              leave the ticker and the watch running. This one closes the
-              popover instead, which stops both; the next open renders
-              afresh. */}
-          <Errored
-            fallback={(err: () => unknown) => {
-              captureException(err(), { root: 'island:chains' });
-              surface.setOpen(false);
-              return null;
-            }}
-          >
-            <ChainsPanel />
-          </Errored>
-        </Show>
-      </div>
+          <GlobeIcon size={12} />
+        </button>
+      </TopbarItem>
+      <Portal>
+        <div
+          ref={el => {
+            popover = el;
+          }}
+          class={`more-popover chains-popover${surface.open() ? ' open' : ''}`}
+          id="chains-popover"
+          role="dialog"
+          aria-label="Network"
+          tabindex="-1"
+        >
+          <Show when={surface.open()}>
+            {/* A Solid error boundary keeps the failed content's owners alive
+                (to recover on reset), so the island's root boundary alone would
+                leave the ticker and the watch running. This one closes the
+                popover instead, which stops both; the next open renders
+                afresh. */}
+            <Errored
+              fallback={(err: () => unknown) => {
+                captureException(err(), { root: 'island:chains' });
+                surface.setOpen(false);
+                return null;
+              }}
+            >
+              <ChainsPanel />
+            </Errored>
+          </Show>
+        </div>
+      </Portal>
     </>
   );
 }

@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
+import { cleanup as unmountAll } from '@solidjs/testing-library';
 import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
@@ -10,7 +11,7 @@ import { initSettingsStore } from '../../../src/state/settings.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { pointerPress, pointerPressUnfocusable, renderComponent, resetStores, tabTo } from '../../helpers/solid.js';
 import { normalized } from './old-auth-markup.js';
-import { mountMoreMenu, tapMoreRow } from './more-menu-harness.js';
+import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { oldModeBackdrop, oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
@@ -699,14 +700,15 @@ describe('The settings popover island', () => {
   });
 
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
-    // Given: on narrow screens CSS hides the settings button, so it cannot
-    // take focus; the sheet is reached through the More button.
-    const more = document.createElement('button');
-    more.id = 'more-button';
-    document.body.append(more);
-    await renderPopover();
+    // Given: the bar has collapsed the settings button, which CSS hides, so
+    // it cannot take focus; the sheet is reached through the More menu.
+    initSettingsStore();
+    await renderTopbar(() => <SettingsPopover />, 1);
+    // Unmounted before the body is cleared, which its portals would not survive.
+    cleanups.push(unmountAll);
     byId('mode-button').focus = () => undefined;
-    await openPopover();
+    await tapMoreRow('settings');
+    expect(isOpen()).toBe(true);
 
     // When
     query(document, '.mode-popover-sheet-close').click();
@@ -714,7 +716,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(more);
+    expect(document.activeElement).toBe(byId('more-button'));
   });
 
   it('As a dotli user, a click on the backdrop or outside closes it, and a click inside does not', async () => {
@@ -850,16 +852,17 @@ describe('The settings popover island', () => {
   });
 
   it('As a mobile user, the settings sheet I opened from the More menu takes focus, and closing it hands focus back to the More button', async () => {
-    // Given: on narrow screens CSS hides the settings button, so it cannot
-    // take focus; the sheet is reached through the More menu.
+    // Given: the bar has collapsed the settings button, which CSS hides, so
+    // it cannot take focus; the sheet is reached through the More menu.
     stubViewport(true);
-    await renderPopover();
-    cleanups.push(mountMoreMenu());
-    await settle();
+    initSettingsStore();
+    await renderTopbar(() => <SettingsPopover />, 1);
+    // Unmounted before the body is cleared, which its portals would not survive.
+    cleanups.push(unmountAll);
     byId('mode-button').focus = () => undefined;
 
     // When
-    await tapMoreRow('mode-button');
+    await tapMoreRow('settings');
     await settle();
 
     // Then

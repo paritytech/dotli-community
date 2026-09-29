@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onCleanup, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
+import { TopbarContext } from './topbar/context.js';
 
 /**
  * How a shell surface behaves, after the Radix UI v1 primitive it
@@ -74,25 +75,25 @@ export interface Popover {
   toggle: (ev?: Event) => void;
   /**
    * A menu item was chosen: close and hand focus back to the trigger (or
-   * the "more" button, when the trigger is hidden).
+   * the More button, when the topbar has collapsed the trigger).
    */
   onItemChosen: () => void;
 }
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
-function focusLostOrInside(surface: HTMLElement | undefined): boolean {
+export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
   return active === null || active === document.body || surface?.contains(active) === true;
 }
 
 /**
- * Focus the trigger. A trigger hidden on narrow screens (reached through the
- * "more" menu) cannot take focus, so the "more" button gets it instead.
+ * Focus the trigger. A trigger the topbar has collapsed (reached through the
+ * More menu) cannot take focus, so `fallback`, the More button, gets it.
  */
-function focusTrigger(trigger: HTMLElement | undefined): void {
+export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {
-    document.getElementById('more-button')?.focus();
+    fallback?.focus();
   }
 }
 
@@ -186,6 +187,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * disposed, and those for the open state when it closes.
  */
 export function createPopover(options: PopoverOptions): Popover {
+  // Inside the topbar, a collapsed trigger hands focus to the More button.
+  const bar = useContext(TopbarContext);
+  const focusBack = (): void => {
+    focusTrigger(options.trigger(), bar?.moreButton());
+  };
   const [open, setOpenSignal] = createSignal(false, {
     // Also written from topbarStore's listener, which runs in whatever owner
     // the store's producer is in (see useStore).
@@ -221,7 +227,7 @@ export function createPopover(options: PopoverOptions): Popover {
     const returnFocus = focusLostOrInside(options.surface());
     setOpen(false);
     if (returnFocus) {
-      focusTrigger(options.trigger());
+      focusBack();
     }
   };
 
@@ -408,7 +414,7 @@ export function createPopover(options: PopoverOptions): Popover {
       // Closed, not disposed while open: hand focus back unless the user
       // moved it elsewhere.
       if (!current && !keepFocus && focusLostOrInside(options.surface())) {
-        focusTrigger(options.trigger());
+        focusBack();
       }
     };
   });
@@ -424,7 +430,7 @@ export function createPopover(options: PopoverOptions): Popover {
     },
     onItemChosen: () => {
       setOpen(false);
-      focusTrigger(options.trigger());
+      focusBack();
     },
   };
 }

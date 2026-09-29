@@ -24,18 +24,20 @@ export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 
 // Popovers and the pairing modal belong to the bar but render outside
-// #topbar, so focus or an open state in one of them counts as "in the bar".
-const TOPBAR_SURFACE_IDS = [
+// #topbar (the topbar island portals its popovers into the body), so focus
+// or an open state in one of them counts as "in the bar".
+const SURFACES_OUTSIDE_BAR = [
   'user-popover',
   'mode-popover',
   'permissions-popover',
   'auth-modal-backdrop',
   'chains-popover',
+  'theme-popover',
 ];
 
-// The mobile "more" flyout and the shield explainer live inside #topbar, so
-// they only matter here.
-const OPEN_SURFACE_IDS = [...TOPBAR_SURFACE_IDS, 'more-popover', 'verification-tooltip'];
+// The More flyout and the shield explainer live inside #topbar, so they
+// only matter here.
+const OPEN_SURFACE_IDS = [...SURFACES_OUTSIDE_BAR, 'more-popover', 'verification-tooltip'];
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -133,7 +135,7 @@ function topbarHoldsFocus(): boolean {
   if (getTopbar()?.contains(active) === true || active === revealButton) {
     return true;
   }
-  return TOPBAR_SURFACE_IDS.some(id => document.getElementById(id)?.contains(active) === true);
+  return SURFACES_OUTSIDE_BAR.some(id => document.getElementById(id)?.contains(active) === true);
 }
 
 function hasOpenSurface(): boolean {

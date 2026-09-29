@@ -42,7 +42,7 @@ async function flushAll(): Promise<void> {
 }
 
 /** Shell nodes that are not islands: imperative code keeps references to them. */
-const STATIC_IDS = ['topbar', 'topbar-home', 'chat-button', 'chat-unread-badge'];
+const STATIC_IDS = ['topbar', 'topbar-home'];
 
 let serverHtml = '';
 
@@ -59,15 +59,10 @@ describe('host boot over the prerendered shell', () => {
   });
 
   afterEach(() => {
-    disposeAppRoot('island:theme');
     disposeAppRoot('island:url-pill');
     disposeAppRoot('island:offline-banner');
-    disposeAppRoot('island:auth-button');
+    disposeAppRoot('island:topbar');
     disposeAppRoot('island:auth-modal');
-    disposeAppRoot('island:permissions');
-    disposeAppRoot('island:chains');
-    disposeAppRoot('island:settings');
-    disposeAppRoot('island:more');
     resetAllStoresForTests();
     document.body.innerHTML = '';
     vi.restoreAllMocks();
@@ -85,9 +80,12 @@ describe('host boot over the prerendered shell', () => {
     // failsafe in particular reproduces the same offline/online behaviour
     // from the static node when the banner island fails to swap, so
     // behaviour alone can't tell the two apart.
+    // The topbar island takes the action group; its popovers are not
+    // prerendered at all, and render through portals once it is live.
     const staticIslandNodes = {
+      'topbar-actions': byId('topbar-actions'),
       'theme-toggle': byId('theme-toggle'),
-      'theme-popover': byId('theme-popover'),
+      'chat-button': byId('chat-button'),
       'topbar-url': byId('topbar-url'),
       'offline-banner': byId('offline-banner'),
     };
@@ -112,6 +110,10 @@ describe('host boot over the prerendered shell', () => {
       expect(countById(id)).toBe(1);
       expect(byId(id)).not.toBe(stale);
       expect(stale.isConnected).toBe(false);
+    }
+
+    for (const id of ['theme-popover', 'user-popover', 'mode-popover', 'more-popover']) {
+      expect(countById(id)).toBe(1);
     }
 
     // The early click was replayed on the live theme toggle: its menu is
