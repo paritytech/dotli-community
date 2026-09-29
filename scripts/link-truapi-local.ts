@@ -1,4 +1,3 @@
-import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -35,13 +34,6 @@ const packages = [
   },
 ];
 
-function run(args: string[], cwd: string): void {
-  const result = spawnSync("bun", args, { cwd, stdio: "inherit" });
-  if (result.status !== 0) {
-    process.exit(result.status ?? 1);
-  }
-}
-
 function assertPackage(expectedName: string, path: string): void {
   const packageJsonPath = resolve(path, "package.json");
   if (!existsSync(packageJsonPath)) {
@@ -60,13 +52,15 @@ function assertPackage(expectedName: string, path: string): void {
   }
 }
 
+// Symlink each checkout into the root node_modules, which is all `npm link`
+// would do, minus the global registry detour and the reinstall it triggers.
 for (const pkg of packages) {
   assertPackage(pkg.name, pkg.path);
-  run(["link"], pkg.path);
+  const target = resolve(dotliRoot, "node_modules", pkg.name);
+  rmSync(target, { force: true, recursive: true });
+  mkdirSync(dirname(target), { recursive: true });
+  symlinkSync(pkg.path, target, "junction");
 }
-
-const packageNames = packages.map((pkg) => pkg.name);
-run(["link", ...packageNames], dotliRoot);
 
 // Workspace-local installs shadow the root link, so drop them.
 for (const [workspace, name] of [

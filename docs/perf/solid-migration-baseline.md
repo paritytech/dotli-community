@@ -14,7 +14,7 @@ Build command: `VITE_NETWORKS=paseo-next-v2,previewnet bun run build` (bun 1.4.2
 | @solidjs/vite-plugin | 3.0.0-next.44 |
 | @solidjs/testing-library | 1.0.0-beta.3 |
 
-On a bump: update all rows together, run `bunx solid-migration-assistant`, read the
+On a bump: update all rows together, run `npx solid-migration-assistant`, read the
 RC changelog, re-run the measurements below.
 
 ## Before sub-project 0

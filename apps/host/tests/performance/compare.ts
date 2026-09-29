@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -16,7 +15,7 @@
  *   4. Only trust mean if cv is low on BOTH runs.
  *   5. Delta < 5% with < 30 samples is likely noise unless Mann-Whitney confirms.
  *
- * Run: bun run test:perf:compare
+ * Run: npm run test:perf:compare
  */
 
 import * as fs from "node:fs";

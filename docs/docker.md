@@ -32,8 +32,8 @@ Then open `http://browse.localhost:5173`. `PORT`, `HOST` and `DIST` are
 configurable — see the README inside the tarball
 (`scripts/tarball-readme.md` in this repo).
 
-`serve.mjs` is bundled from `scripts/serve.ts` at release time, because node
-cannot execute TypeScript. It reproduces the nginx serving rules: hostname
+`serve.mjs` is bundled from `scripts/serve.ts` at release time, so it runs on
+node >= 22 without TypeScript support or the rest of this repo. It reproduces the nginx serving rules: hostname
 routing, the same security headers, precompressed siblings, immutable asset
 caching and SPA fallback. **Changing the rules in one means changing the other** —
 nothing enforces it, and a mismatch means the tarball behaves differently from a
@@ -186,7 +186,7 @@ dev servers (via the plugin) and by `scripts/preview-server.ts`, so runtime conf
 is testable without building an image:
 
 ```sh
-DOTLI_NETWORK='{"enabled":["previewnet"]}' bun run preview
+DOTLI_NETWORK='{"enabled":["previewnet"]}' npm run preview
 ```
 
 ## Why runtime config is off in the hosted deployments

@@ -17,7 +17,7 @@ for (const root of installRoots) {
   }
 }
 
-const result = spawnSync("bun", ["install", "--force"], {
+const result = spawnSync("npm", ["install"], {
   cwd: dotliRoot,
   stdio: "inherit",
 });

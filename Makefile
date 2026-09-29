@@ -75,11 +75,11 @@ APT_PACKAGES := nginx libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-s
 .PHONY: build link-truapi-local provision provision-prereqs provision-firewall provision-cloudflare-creds provision-cert provision-renewal deploy ci-deploy deploy-nginx render-nginx _require-env _require-env-name
 
 build: link-truapi-local
-	bun run build
+	npm run build
 
 link-truapi-local:
 	@if [ -f "$(TRUAPI_LOCAL_PACKAGE)" ] && [ -f "$(TRUAPI_HOST_LOCAL_PACKAGE)" ]; then \
-		TRUAPI_REPO="$(TRUAPI_REPO)" bun run link:truapi; \
+		TRUAPI_REPO="$(TRUAPI_REPO)" npm run link:truapi; \
 	else \
 		echo "No local TrUAPI checkout found at $(TRUAPI_REPO); using package manager dependencies."; \
 	fi

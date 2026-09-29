@@ -3,8 +3,7 @@
 
 import { test as base } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
-
-const PORT = process.env.COMBO_PORT ?? "5173";
+import { PORT } from "../../env";
 
 /**
  * Wipe the preview-server's process-wide mode-sync `Map` (see

@@ -61,7 +61,7 @@ routing that belongs inside the Rust core.
 ```
 
 Standalone dotli installs and CI exercise these npm artifacts. TrUAPI's
-development and E2E Make targets run `bun run link:truapi` after building the
+development and E2E Make targets run `npm run link:truapi` after building the
 local packages, so parent-repo work always exercises the current checkout
 instead of the npm artifacts.
 

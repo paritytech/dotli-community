@@ -9,13 +9,10 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/"
+    "lint": "eslint src/"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "workspace:*",
-    "@dotli/typescript-config": "workspace:*",
-    "eslint": "^10.11.0",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.1"
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*"
   }
 }

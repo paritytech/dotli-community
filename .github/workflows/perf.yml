@@ -29,8 +29,6 @@ jobs:
       # instead, so every test failed at launch and `|| true` hid it.
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
-        with:
-          bun-version: "1.3.13"
 
       - name: Build
         env:
@@ -38,7 +36,7 @@ jobs:
           # Without it the host shell throws on boot and never mounts the
           # app iframe, so every iteration times out.
           VITE_NETWORKS: paseo-next-v2,previewnet
-        run: bunx --bun turbo run build
+        run: npx turbo run build
 
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
@@ -73,7 +71,7 @@ jobs:
           PERF_SAVE_BASE: "1"
           PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       - name: Run perf tests (PR)
         if: github.event_name == 'pull_request'
@@ -82,7 +80,7 @@ jobs:
           PERF_RUNS: "10"
           PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: bunx --bun playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
 
       # ── main: upload baseline artifact ─────────────────────────
       - name: Upload baseline artifact
@@ -98,7 +96,7 @@ jobs:
       - name: Generate comparison
         if: github.event_name == 'pull_request' && env.HAVE_BASE == 'true'
         working-directory: apps/host
-        run: bun tests/performance/compare.ts --markdown > /tmp/perf-comment.md || true
+        run: node tests/performance/compare.ts --markdown > /tmp/perf-comment.md || true
 
       - name: Generate standalone report
         if: github.event_name == 'pull_request' && env.HAVE_BASE != 'true'

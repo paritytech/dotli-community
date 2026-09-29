@@ -1,29 +1,17 @@
 name: Setup Playwright
-description: "Install Bun dependencies and Playwright Chromium browser. Requires checkout first."
-
-inputs:
-  bun-version:
-    required: false
-    default: "latest"
-    description: "Bun version to install"
+description: "Install Node dependencies and Playwright Chromium browser. Requires checkout first."
 
 runs:
   using: "composite"
   steps:
-    - name: Setup Bun
-      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-      with:
-        bun-version: ${{ inputs.bun-version }}
+    - name: Setup Node
+      uses: ./.github/actions/setup-node
 
-    - name: Install dependencies
-      run: bun install --frozen-lockfile
-      shell: bash
-
-    # Run from apps/host so bunx resolves the workspace-pinned playwright
+    # Run from apps/host so npx resolves the workspace-pinned playwright
     # (@playwright/test in apps/host) instead of fetching the latest from the
     # registry. A version mismatch installs the wrong browser build and the
     # tests fail at launch with "Executable doesn't exist".
     - name: Install Playwright browsers
       working-directory: apps/host
-      run: bunx --bun playwright install --with-deps chromium
+      run: npx playwright install --with-deps chromium
       shell: bash

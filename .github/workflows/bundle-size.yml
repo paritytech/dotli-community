@@ -23,16 +23,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.13"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
 
       - name: Build
-        run: bunx --bun turbo run build:prod
+        run: npx turbo run build:prod
 
       - name: Remove source maps
         run: find apps/*/dist -name '*.map' -delete
@@ -89,7 +84,7 @@ jobs:
           check_eager() {
             local label=$1 dist=$2 max=$3
             local json gz
-            if ! json=$(bun scripts/eager-path-size.ts "$dist"); then
+            if ! json=$(node scripts/eager-path-size.ts "$dist"); then
               echo "::warning::${label}: could not measure the eager path in ${dist}"
               echo "- \`${label}\`: could not measure the eager path in \`${dist}\`" >> /tmp/budget-warnings.md
               return
@@ -261,7 +256,7 @@ jobs:
 
           eager_rows=""
           for app in host sandbox; do
-            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist") || continue
+            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || continue
             read -r e_raw e_br e_gz < <(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['raw'], d['br'], d['gz'])")
             name="${app}/(eager path)"
             e_row="| \`${name}\` | $(fmt $e_raw)$(fmt_diff $e_raw "$(baseline_val "$name" raw)") | $(fmt $e_br)$(fmt_diff $e_br "$(baseline_val "$name" br)") | $(fmt $e_gz)$(fmt_diff $e_gz "$(baseline_val "$name" gz)") |"
@@ -386,7 +381,7 @@ jobs:
             done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
           done
           for app in host sandbox; do
-            json=$(bun scripts/eager-path-size.ts "apps/${app}/dist") || { echo "::warning::${app}: could not measure the eager path for the baseline"; continue; }
+            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || { echo "::warning::${app}: could not measure the eager path for the baseline"; continue; }
             printf ',\n  "%s/(eager path)": %s' "$app" \
               "$(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'raw': d['raw'], 'br': d['br'], 'gz': d['gz']}))")" \
               >> /tmp/bundle-baseline.json

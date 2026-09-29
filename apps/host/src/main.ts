@@ -269,7 +269,7 @@ function parseLocalProductIdOverride(): string | undefined {
  * trusted host origin is dangerous on a production deploy, so it is gated behind
  * the build-time `VITE_APP_DEBUG` flag (`DEBUG`). Production builds (flag unset)
  * always return null. Only debug builds honour a `/localhost:<port>` path,
- * meaning local `bun run preview:debug` and the `*.dev` staging deploys. The
+ * meaning local `npm run preview:debug` and the `*.dev` staging deploys. The
  * flag is a compile-time constant, so production never ships this code path.
  *
  * Examples (only in debug builds):
@@ -469,7 +469,7 @@ type RenderChunk = typeof RenderModule;
  *   2. Existing `sessionStorage["dotli:truapi-debug"]`. `"1"` enables,
  *      `"0"` disables.
  *   3. Build-time `DEBUG` (from `VITE_APP_DEBUG`). On in `dev-paseo` /
- *      `bun run preview:debug`, off in staging / prod.
+ *      `npm run preview:debug`, off in staging / prod.
  */
 function resolveTruapiDebugMode(): { enabled: boolean; explicit: boolean } {
   try {

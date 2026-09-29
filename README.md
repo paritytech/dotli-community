@@ -166,37 +166,38 @@ The app context uses `document.write()` to eliminate extra iframe nesting: when 
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3+ and Node 22+ to build locally.
+- Node 26 (see `.nvmrc`) and npm 12+ to build locally.
 - **No funded account is required** to browse and resolve `.dot` names - resolution is trustless, client-side, and read-only.
 - The Polkadot App is only needed to log in and sign transactions inside a loaded dApp.
 - The app targets **Paseo testnet** out of the box (see [Network configuration](#network-configuration)); point it at another chain by editing `packages/config`.
 
-The project uses [Bun](https://bun.sh) and [Turborepo](https://turbo.build).
+The project uses npm workspaces and [Turborepo](https://turbo.build).
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-bun install
-bun run preview          # Build + serve both apps on localhost:5173
+nvm use                  # or any Node 26 install
+npm install -g npm@latest
+npm install
+npm run preview          # Build + serve both apps on localhost:5173
 ```
 
 The TrUAPI packages are installed from their published `@parity` packages. To
 iterate against a local truapi checkout instead, run:
 
 ```bash
-bun run link:truapi
+npm run link:truapi
 ```
 
 When dotli is not checked out under `truapi/hosts/dotli`, point the script at
 the truapi repo:
 
 ```bash
-TRUAPI_REPO=/path/to/truapi bun run link:truapi
+TRUAPI_REPO=/path/to/truapi npm run link:truapi
 ```
 
-Return to the package versions recorded in `bun.lock` with:
+Return to the package versions recorded in `package-lock.json` with:
 
 ```bash
-bun run unlink:truapi
+npm run unlink:truapi
 ```
 
 Local development uses wildcard subdomains:
@@ -216,7 +217,7 @@ curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scri
 ```
 
 ```bash
-bun run test:e2e:local
+npm run test:e2e:local
 ```
 
 Override either checkout or server when needed:
@@ -224,14 +225,14 @@ Override either checkout or server when needed:
 ```bash
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
-bun run test:e2e:local
+npm run test:e2e:local
 ```
 
 The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
 flow through either light-client backend:
 
 ```bash
-E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
+E2E_CHAIN_BACKEND=smoldot-shared-worker npm run test:e2e:local
 ```
 
 Set `SIGNING_HOST_BIN` to a locally built binary (e.g.
@@ -252,8 +253,8 @@ Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published 
 
 ```bash
 git checkout v0.5.0       # any published release tag
-bun install
-bun run build:prod        # production build of both apps
+npm ci
+npm run build:prod        # production build of both apps
 ```
 
 The published tag on the [Releases page](https://github.com/paritytech/dotli/releases) is the source of truth for what is deployed; rebuild from that tag to verify a deployment.
@@ -262,7 +263,7 @@ The published tag on the [Releases page](https://github.com/paritytech/dotli/rel
 
 dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
 
-In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
+In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
 
 See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
 

@@ -1,4 +1,3 @@
-#!/usr/bin/env bun
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
@@ -12,14 +11,17 @@
 // This mirrors production nginx routing where host.dot.li, *.app.dot.li,
 // and *.dot.li are served from separate builds.
 
-import { existsSync, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { createServer } from "node:http";
 import { join, extname } from "node:path";
-import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin";
+import { Readable } from "node:stream";
+import type { ReadableStream } from "node:stream/web";
+import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin.ts";
 
 const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 
 const PORT = parseInt(process.env.PORT ?? "5173", 10);
-const ROOT = join(import.meta.dir, "..");
+const ROOT = join(import.meta.dirname, "..");
 // Monorepo layout: apps/host/dist/, apps/sandbox/dist/, apps/protocol/dist/
 const HOST_DIR = join(ROOT, "apps/host/dist");
 const APP_DIR = join(ROOT, "apps/sandbox/dist");
@@ -36,7 +38,7 @@ for (const [label, dir] of [
     const isRequired = (REQUIRED_BUILDS as readonly string[]).includes(label);
     if (isRequired) {
       console.error(
-        `${label} build not found at ${dir}\nRun: bun run build (from monorepo root)`,
+        `${label} build not found at ${dir}\nRun: npm run build (from monorepo root)`,
       );
       process.exit(1);
     }
@@ -87,7 +89,10 @@ function serveFile(filePath: string, coep: boolean): Response | null {
     headers["Cross-Origin-Embedder-Policy"] = "credentialless";
     headers["Cross-Origin-Opener-Policy"] = "same-origin";
   }
-  return new Response(Bun.file(filePath), { headers });
+  const body = Readable.toWeb(
+    createReadStream(filePath),
+  ) as ReadableStream<Uint8Array>;
+  return new Response(body as BodyInit, { headers });
 }
 
 // Dev-only mode-sync store. Production puts mode preferences on the
@@ -218,71 +223,102 @@ function handleMetrics(req: Request): Response {
   return new Response(JSON.stringify(gaugePoints), { headers });
 }
 
-Bun.serve({
-  port: PORT,
-  hostname: "0.0.0.0",
-  async fetch(req) {
-    const url = new URL(req.url);
+async function handle(req: Request): Promise<Response> {
+  const url = new URL(req.url);
 
-    if (url.pathname === TUNNEL_PATH) {
-      collectEnvelope(await req.text());
-      return new Response(null, { status: 200, headers: MODE_SYNC_CORS });
+  if (url.pathname === TUNNEL_PATH) {
+    collectEnvelope(await req.text());
+    return new Response(null, { status: 200, headers: MODE_SYNC_CORS });
+  }
+
+  if (url.pathname === METRICS_PATH) {
+    return handleMetrics(req);
+  }
+
+  if (url.pathname.startsWith(MODE_SYNC_PREFIX)) {
+    const key = decodeURIComponent(url.pathname.slice(MODE_SYNC_PREFIX.length));
+    return handleModeSync(req, key);
+  }
+
+  // Runtime network config, same path and same $DOTLI_NETWORK variable as the
+  // container. Must come before the static/SPA branches below: the fallback
+  // would answer with index.html, and a 200 of HTML where the injected
+  // <script> expects JavaScript fails as a syntax error, not a missing file.
+  if (url.pathname === RUNTIME_CONFIG_PATH) {
+    return new Response(runtimeNetworkConfigScriptBody(), {
+      headers: {
+        "Content-Type": "application/javascript",
+        "Cache-Control": "no-store",
+      },
+    });
+  }
+
+  const isProtocol = url.hostname === "host.localhost";
+  const isApp = url.hostname.includes(".app.");
+  const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
+  const fallback = "index.html";
+
+  let pathname = decodeURIComponent(url.pathname);
+  if (pathname === "/") pathname = `/${fallback}`;
+
+  // Mirror nginx: COEP applies to the app and protocol builds (iframeable
+  // origins) and to the /__preview location on the host build, but not
+  // to the rest of the host build. Otherwise the /localhost:<port>
+  // proxy iframe gets blocked.
+  const coep = isApp || isProtocol || pathname.startsWith("/__preview");
+
+  // Try exact file
+  const exact = join(baseDir, pathname);
+  const res = serveFile(exact, coep);
+  if (res) return res;
+
+  // Try directory index
+  const res2 = serveFile(join(exact, "index.html"), coep);
+  if (res2) return res2;
+
+  // SPA fallback
+  return (
+    serveFile(join(baseDir, fallback), coep) ??
+    new Response("Not Found", { status: 404 })
+  );
+}
+
+// node:http speaks IncomingMessage/ServerResponse; bridge them to the
+// fetch-style handler above. The URL takes its hostname from the Host header,
+// which is what the routing keys on.
+createServer((incoming, outgoing) => {
+  void (async () => {
+    const headers = new Headers();
+    for (const [name, value] of Object.entries(incoming.headers)) {
+      if (value === undefined) continue;
+      for (const v of Array.isArray(value) ? value : [value]) {
+        headers.append(name, v);
+      }
     }
-
-    if (url.pathname === METRICS_PATH) {
-      return handleMetrics(req);
-    }
-
-    if (url.pathname.startsWith(MODE_SYNC_PREFIX)) {
-      const key = decodeURIComponent(
-        url.pathname.slice(MODE_SYNC_PREFIX.length),
-      );
-      return handleModeSync(req, key);
-    }
-
-    // Runtime network config, same path and same $DOTLI_NETWORK variable as the
-    // container. Must come before the static/SPA branches below: the fallback
-    // would answer with index.html, and a 200 of HTML where the injected
-    // <script> expects JavaScript fails as a syntax error, not a missing file.
-    if (url.pathname === RUNTIME_CONFIG_PATH) {
-      return new Response(runtimeNetworkConfigScriptBody(), {
-        headers: {
-          "Content-Type": "application/javascript",
-          "Cache-Control": "no-store",
-        },
-      });
-    }
-
-    const isProtocol = url.hostname === "host.localhost";
-    const isApp = url.hostname.includes(".app.");
-    const baseDir = isProtocol ? PROTOCOL_DIR : isApp ? APP_DIR : HOST_DIR;
-    const fallback = "index.html";
-
-    let pathname = decodeURIComponent(url.pathname);
-    if (pathname === "/") pathname = `/${fallback}`;
-
-    // Mirror nginx: COEP applies to the app and protocol builds (iframeable
-    // origins) and to the /__preview location on the host build, but not
-    // to the rest of the host build. Otherwise the /localhost:<port>
-    // proxy iframe gets blocked.
-    const coep = isApp || isProtocol || pathname.startsWith("/__preview");
-
-    // Try exact file
-    const exact = join(baseDir, pathname);
-    const res = serveFile(exact, coep);
-    if (res) return res;
-
-    // Try directory index
-    const res2 = serveFile(join(exact, "index.html"), coep);
-    if (res2) return res2;
-
-    // SPA fallback
-    return (
-      serveFile(join(baseDir, fallback), coep) ??
-      new Response("Not Found", { status: 404 })
+    const method = incoming.method ?? "GET";
+    const hasBody = method !== "GET" && method !== "HEAD";
+    const req = new Request(
+      `http://${incoming.headers.host ?? "localhost"}${incoming.url ?? "/"}`,
+      {
+        method,
+        headers,
+        body: hasBody ? (Readable.toWeb(incoming) as BodyInit) : undefined,
+        duplex: hasBody ? "half" : undefined,
+      } as RequestInit,
     );
-  },
-});
+    const res = await handle(req);
+    outgoing.writeHead(res.status, Object.fromEntries(res.headers));
+    if (res.body === null || method === "HEAD") {
+      outgoing.end();
+      return;
+    }
+    Readable.fromWeb(res.body as ReadableStream<Uint8Array>).pipe(outgoing);
+  })().catch((err: unknown) => {
+    console.error(err);
+    if (!outgoing.headersSent) outgoing.writeHead(500);
+    outgoing.end();
+  });
+}).listen(PORT, "0.0.0.0");
 
 console.log(`Preview server on http://localhost:${PORT}`);
 console.log(`  Host: ${HOST_DIR}`);
