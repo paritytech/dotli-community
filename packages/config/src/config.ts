@@ -138,6 +138,12 @@ export const DEBUG =
 /** Max number of domain archives kept in the SW in-memory LRU cache. */
 export const SW_ARCHIVE_CACHE_MAX = 8;
 
+/**
+ * Most bytes of content blocks the host keeps between page loads. After each
+ * load, the blocks used longest ago are dropped until the cache fits.
+ */
+export const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
+
 /** Max chain connections per origin on the protocol host. */
 export const MAX_CONNECTIONS_PER_ORIGIN = 10;
 
