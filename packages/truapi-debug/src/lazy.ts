@@ -5,6 +5,9 @@
 // is its own chunk, fetched on first call. They live apart from the barrel
 // so index.ts stays pure re-exports, which rolldown's lazy barrel
 // optimization needs to leave unused re-exports out of an importer's chunk.
-export type DotliDebugBusModule = typeof import("./dotli-debug-bus.js");
+
+import type * as DotliDebugBusNamespace from "./dotli-debug-bus.js";
+
+export type DotliDebugBusModule = typeof DotliDebugBusNamespace;
 export const loadDotliDebugBus = (): Promise<DotliDebugBusModule> =>
   import("./dotli-debug-bus.js");

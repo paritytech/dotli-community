@@ -5,6 +5,9 @@
 // is its own chunk, fetched on first call. They live apart from the barrel
 // so index.ts stays pure re-exports, which rolldown's lazy barrel
 // optimization needs to leave unused re-exports out of an importer's chunk.
-export type SandboxCheckerModule = typeof import("./sandbox-checker.js");
+
+import type * as SandboxCheckerNamespace from "./sandbox-checker.js";
+
+export type SandboxCheckerModule = typeof SandboxCheckerNamespace;
 export const loadSandboxChecker = (): Promise<SandboxCheckerModule> =>
   import("./sandbox-checker.js");
