@@ -4,5 +4,5 @@
     "@dotli/typescript-config/paths.json",
     "@dotli/typescript-config/solid.json"
   ],
-  "include": ["src"]
+  "include": ["src", "vite.config.ts"]
 }
