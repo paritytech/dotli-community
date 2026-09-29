@@ -245,7 +245,7 @@ jobs:
         working-directory: apps/host
         run: |
           set +e
-          bunx --bun playwright test --config=tests/e2e/playwright.config.ts
+          bun run test:e2e
           code=$?
           if [ "$code" -eq 99 ]; then
             echo "::warning::Signing infrastructure unavailable — E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."
