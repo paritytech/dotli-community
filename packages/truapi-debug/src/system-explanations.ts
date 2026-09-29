@@ -62,6 +62,13 @@ Warmup happens in the background and is non-blocking. If a product calls chain s
 The cache is populated at the end of each successful slow-path resolution (\`resolve:completed\`) unless the user has explicitly disabled caching in settings.`,
   },
 
+  "boot:block_cache": {
+    title: "Host block cache",
+    body: `How the host answered the sandbox's bitswap requests for this load. The host relays every block the sandbox asks for and keeps it in its own IndexedDB (\`@dotli/storage/block-cache\`), hash-checked against its CID. \`hits\` came from there, \`misses\` went to the protocol iframe's light client. A load with no misses reads as an archive cache hit.
+
+The sandbox cannot keep content itself: its iframe is credentialless, so its storage is dropped on every reload. In \`rpc-gateway\` mode the sandbox fetches from a gateway directly and this event does not appear.`,
+  },
+
   "boot:landing_page_shown": {
     title: "Landing page rendered",
     body: `The host URL had no product subdomain to resolve, so \`showLanding()\` rendered the marketing landing page and \`main()\` returned. Boot ends here; no product iframe, no bridge, no TrUAPI traffic.`,

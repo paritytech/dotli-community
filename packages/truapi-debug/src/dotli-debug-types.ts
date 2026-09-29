@@ -258,6 +258,18 @@ export type BootEvent =
     }
   | {
       layer: "boot";
+      event: "block_cache";
+      flowId: string;
+      timestamp: number;
+      payload: {
+        /** Blocks the relay answered from the host's block cache. */
+        hits: number;
+        /** Blocks it had to fetch over the network. */
+        misses: number;
+      };
+    }
+  | {
+      layer: "boot";
       event: "landing_page_shown";
       flowId: string;
       timestamp: number;

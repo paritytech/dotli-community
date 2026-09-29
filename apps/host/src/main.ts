@@ -95,6 +95,12 @@ import {
   setCachedCid,
   recordRevalidateOutcome,
 } from "@dotli/storage/cid-cache";
+import {
+  deleteCachedBlock,
+  getCachedBlock,
+  pruneBlockCache,
+  putCachedBlock,
+} from "@dotli/storage/block-cache";
 import { recordRecentLabel } from "@dotli/ui/recent-labels";
 import { dur, elapsed } from "@dotli/shared/perf";
 import {
@@ -111,7 +117,13 @@ import type {
   RootManifest,
 } from "@dotli/resolver/manifest";
 import type { ResolvePhase } from "@dotli/resolver/access-raw-storage";
-import { BASE_DOMAIN, DEBUG, SITE_ID, isLocalhost } from "@dotli/config/config";
+import {
+  BASE_DOMAIN,
+  BLOCK_CACHE_MAX_BYTES,
+  DEBUG,
+  SITE_ID,
+  isLocalhost,
+} from "@dotli/config/config";
 import { log } from "@dotli/shared/log";
 import { serializeError } from "@dotli/shared/errors";
 import { dotNsUrl } from "@dotli/shared/dotns-url";
@@ -1199,7 +1211,42 @@ async function main(): Promise<void> {
   // iframe directly. The host bridges the two so a single warm Bulletin
   // chain serves every sandbox load instead of cold-starting a second
   // smoldot per page.
-  listenForSandboxBitswap();
+  // The relay keeps every block it hands out in this origin's IndexedDB, so
+  // the next load of the same app skips the network. The sandbox can't keep
+  // them: its credentialless iframe loses its storage on every reload.
+  const blockCache = cacheSettings.skipArchiveCache
+    ? undefined
+    : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
+  const blocksServed = { cache: 0, network: 0 };
+  listenForSandboxBitswap({
+    blockCache,
+    onBlockServed: (from) => {
+      blocksServed[from] += 1;
+    },
+  });
+  if (blockCache !== undefined) {
+    onSandboxDone(() => {
+      const { cache: hits, network: misses } = blocksServed;
+      blocksServed.cache = 0;
+      blocksServed.network = 0;
+      if (hits + misses === 0) {
+        return;
+      }
+      emitDotliDebugEvent({
+        layer: "boot",
+        event: "block_cache",
+        flowId: bootFlowId,
+        timestamp: Date.now(),
+        payload: { hits, misses },
+      });
+      m.count(misses === 0 ? S.CACHE_HIT : S.CACHE_MISS, {
+        surface: "block_cache",
+      });
+      requestIdleCallback(() => {
+        void pruneBlockCache(BLOCK_CACHE_MAX_BYTES);
+      });
+    });
+  }
 
   const shieldState: ShieldState = isVerifiedSession(chainBackend)
     ? "verified"

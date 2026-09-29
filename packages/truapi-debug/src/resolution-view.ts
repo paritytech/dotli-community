@@ -527,6 +527,10 @@ function buildSummary(
           summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
         }
         break;
+      case "boot:block_cache":
+        summary.archiveCache =
+          num(p.misses) === 0 && (num(p.hits) ?? 0) > 0 ? "hit" : "miss";
+        break;
       case "sandbox:document_written":
         summary.appBytes = num(p.bytes);
         summary.appFileCount = num(p.fileCount);

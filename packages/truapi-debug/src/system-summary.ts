@@ -36,6 +36,8 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return p.hit === true
         ? `CID cache hit for ${str(p.label)} → ${str(p.cid)}.`
         : `CID cache miss for ${str(p.label)}.`;
+    case "boot:block_cache":
+      return `Host block cache: ${str(p.hits)} blocks from cache, ${str(p.misses)} from the network.`;
     case "boot:landing_page_shown":
       return "Landing page rendered (no subdomain to resolve).";
     case "boot:ready":
