@@ -10,11 +10,13 @@ import {
   it,
   vi,
 } from "vitest";
+import type { Mock } from "vitest";
 import { CID } from "multiformats/cid";
 import * as raw from "multiformats/codecs/raw";
 import { sha256 } from "multiformats/hashes/sha2";
 import { create as createDigest } from "multiformats/hashes/digest";
 import type { SandboxBitswapOptions } from "../src/bitswap.js";
+import type * as ConfigModule from "../../config/src/config.js";
 
 const mocks = vi.hoisted(() => ({
   createRemoteChainProvider: vi.fn(),
@@ -33,7 +35,7 @@ vi.mock("../../config/src/network.js", () => ({
   getActiveServicesConfig: mocks.getActiveServicesConfig,
 }));
 vi.mock("../../config/src/config.js", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../config/src/config.js")>()),
+  ...(await importOriginal<typeof ConfigModule>()),
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
@@ -82,7 +84,15 @@ function fakeFrame(): {
   };
 }
 
-function memoryCache(initial: [string, Uint8Array][] = []) {
+/** An in-memory block cache whose methods are spies. */
+interface MemoryCache {
+  blocks: Map<string, Uint8Array>;
+  get: Mock<(cid: string) => Promise<Uint8Array | null>>;
+  put: Mock<(cid: string, bytes: Uint8Array) => Promise<void>>;
+  delete: Mock<(cid: string) => Promise<void>>;
+}
+
+function memoryCache(initial: [string, Uint8Array][] = []): MemoryCache {
   const blocks = new Map(initial);
   return {
     blocks,

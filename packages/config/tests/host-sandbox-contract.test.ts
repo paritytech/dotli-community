@@ -22,8 +22,11 @@ function search(
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
-    if (value === null) params.delete(key);
-    else params.set(key, value);
+    if (value === null) {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
   }
   return params;
 }
@@ -74,7 +77,9 @@ describe("validateSandboxParams: v3 cid contract", () => {
     // from the post-boot param strip, so re-rendering from the same host
     // would produce the same empty cid again.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.recoverable).not.toBe(true);
+    if (!result.ok) {
+      expect(result.recoverable).not.toBe(true);
+    }
   });
 
   it("As the sandbox, I reject a contract whose cid contains non-alphanumeric characters", () => {
@@ -88,7 +93,9 @@ describe("validateSandboxParams: v3 cid contract", () => {
 
     // Then the charset gate trips before the value reaches any downstream parser.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/invalid cid/i);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/invalid cid/i);
+    }
   });
 
   it("As the sandbox, I accept a contract whose schema version matches my build", () => {
@@ -164,7 +171,9 @@ describe("validateSandboxParams: v3 cid contract", () => {
     // label and CID, so it can rebuild the iframe instead of stranding the
     // user on a full-viewport "Invalid sandbox URL" error.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.recoverable).toBe(true);
+    if (!result.ok) {
+      expect(result.recoverable).toBe(true);
+    }
   });
 });
 

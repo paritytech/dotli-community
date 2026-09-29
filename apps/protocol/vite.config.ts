@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type PluginOption } from "vite";
+import { defineConfig, type Plugin, type PluginOption } from "vite";
 import { resolve } from "node:path";
 import wasmPlugin from "vite-plugin-wasm";
 import {
@@ -15,13 +15,18 @@ import { stripAnalytics } from "@dotli/metrics/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
-const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
+const wasm = wasmPlugin as unknown as () => Plugin;
 
 const OUT_DIR = "dist";
+const APP_URL = process.env["VITE_APP_URL"] ?? "";
 
 function sentry(): PluginOption {
-  if (process.env["VITE_METRICS"] !== "true") return false;
-  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
+  if (process.env["VITE_METRICS"] !== "true") {
+    return false;
+  }
+  if ((process.env["SENTRY_AUTH_TOKEN"] ?? "") === "") {
+    return false;
+  }
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
@@ -37,9 +42,7 @@ function sentry(): PluginOption {
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env["VITE_APP_URL"]
-    ? new URL(process.env["VITE_APP_URL"]).pathname
-    : "/",
+  base: APP_URL === "" ? "/" : new URL(APP_URL).pathname,
   plugins: [
     stripAnalytics(process.env["VITE_METRICS"] !== "true"),
     wasm(),

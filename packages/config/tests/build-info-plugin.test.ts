@@ -65,7 +65,7 @@ describe("buildInfo", () => {
   });
 
   it("hashes contents, independent of bundle order", () => {
-    const hashOf = (bundle: Record<string, Output>) =>
+    const hashOf = (bundle: Record<string, Output>): string =>
       (emit(dir, bundle) as { hash: string }).hash;
     const reordered = Object.fromEntries(Object.entries(BUNDLE).reverse());
     expect(hashOf(reordered)).toBe(hashOf(BUNDLE));

@@ -186,10 +186,12 @@ describe("decodeBytesSlot", () => {
     data[2] = 0xcc;
     data[31] = 6; // length * 2
     const result = decodeBytesSlot(data, dummySlot);
-    expect(result).not.toBeNull();
-    expect(result!.inline).toBe(true);
-    if (result!.inline) {
-      expect(toHex(result!.data)).toBe("0xaabbcc");
+    if (result === null) {
+      throw new Error("expected a decoded slot");
+    }
+    expect(result.inline).toBe(true);
+    if (result.inline) {
+      expect(toHex(result.data)).toBe("0xaabbcc");
     }
   });
 
@@ -199,11 +201,13 @@ describe("decodeBytesSlot", () => {
     const data = new Uint8Array(32);
     data[31] = 73; // 0x49
     const result = decodeBytesSlot(data, dummySlot);
-    expect(result).not.toBeNull();
-    expect(result!.inline).toBe(false);
-    if (!result!.inline) {
-      expect(result!.length).toBe(36);
-      expect(result!.dataSlot).toMatch(/^0x[0-9a-f]{64}$/);
+    if (result === null) {
+      throw new Error("expected a decoded slot");
+    }
+    expect(result.inline).toBe(false);
+    if (!result.inline) {
+      expect(result.length).toBe(36);
+      expect(result.dataSlot).toMatch(/^0x[0-9a-f]{64}$/);
     }
   });
 

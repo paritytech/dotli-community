@@ -23,12 +23,12 @@ import { stripAnalytics } from "@dotli/metrics/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
-const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
+const wasm = wasmPlugin as unknown as () => Plugin;
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
 // dev builds too.
-if (!process.env["VITE_COMMIT_SHA"]) {
+if ((process.env["VITE_COMMIT_SHA"] ?? "") === "") {
   try {
     process.env["VITE_COMMIT_SHA"] = execSync("git rev-parse HEAD", {
       cwd: import.meta.dirname,
@@ -36,12 +36,14 @@ if (!process.env["VITE_COMMIT_SHA"]) {
     })
       .toString()
       .trim();
+    // eslint-disable-next-line no-restricted-syntax -- no git checkout is a normal build, not an error.
   } catch {
     // Not a git checkout, leave unset.
   }
 }
 
 const OUT_DIR = "dist";
+const APP_URL = process.env["VITE_APP_URL"] ?? "";
 
 /**
  * Sentry sourcemap upload, skipped when metrics are off (runtime SDK is aliased to a
@@ -49,8 +51,12 @@ const OUT_DIR = "dist";
  * (preserves source maps for debugging).
  */
 function sentry(): PluginOption {
-  if (process.env["VITE_METRICS"] !== "true") return false;
-  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
+  if (process.env["VITE_METRICS"] !== "true") {
+    return false;
+  }
+  if ((process.env["SENTRY_AUTH_TOKEN"] ?? "") === "") {
+    return false;
+  }
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
@@ -79,6 +85,7 @@ function buildServiceWorker(): Plugin {
       // bytes actually change between releases (otherwise the browser might
       // skip updating a byte-identical script).
       const swVersion = process.env["VITE_COMMIT_SHA"] ?? "dev";
+      // eslint-disable-next-line no-console -- build progress for the terminal.
       console.log(`\nBuilding Service Worker (app-sw) @ ${swVersion}...`);
       await viteBuild({
         configFile: false,
@@ -99,6 +106,7 @@ function buildServiceWorker(): Plugin {
         },
         logLevel: "warn",
       });
+      // eslint-disable-next-line no-console -- build progress for the terminal.
       console.log(`Service Worker built -> ${OUT_DIR}/app-sw.js\n`);
     },
   };
@@ -119,17 +127,23 @@ function preloadCriticalAssets(): Plugin {
     transformIndexHtml: {
       order: "post",
       handler(_html, ctx) {
-        if (!ctx.bundle) return [];
+        if (!ctx.bundle) {
+          return [];
+        }
 
         const bundleKeys = Object.keys(ctx.bundle);
-        const findChunk = (pattern: RegExp) =>
+        const findChunk = (pattern: RegExp): string | undefined =>
           bundleKeys.find((name) => pattern.test(name));
 
         const fetchChunk = findChunk(/^assets\/fetch-.*\.js$/);
         const renderChunk = findChunk(/^assets\/render-.*\.js$/);
 
-        const chunks = [fetchChunk, renderChunk].filter(Boolean);
-        if (chunks.length === 0) return [];
+        const chunks = [fetchChunk, renderChunk].filter(
+          (c): c is string => c !== undefined,
+        );
+        if (chunks.length === 0) {
+          return [];
+        }
 
         return chunks.map((c) => ({
           tag: "link",
@@ -143,9 +157,7 @@ function preloadCriticalAssets(): Plugin {
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env["VITE_APP_URL"]
-    ? new URL(process.env["VITE_APP_URL"]).pathname
-    : "/",
+  base: APP_URL === "" ? "/" : new URL(APP_URL).pathname,
   plugins: [
     stripAnalytics(process.env["VITE_METRICS"] !== "true"),
     solid(),

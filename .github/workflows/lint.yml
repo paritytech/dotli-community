@@ -24,10 +24,10 @@ jobs:
         uses: ./.github/actions/setup-node
 
       - name: Check formatting
-        run: npx prettier --check "**/*.{ts,tsx,md}"
+        run: npx prettier --check "**/*.{ts,tsx,js,mjs,json,md}"
 
       - name: Run linter
-        run: npx turbo run lint
+        run: npx turbo run lint lint:root
 
       - name: Type check
-        run: npx turbo run typecheck
+        run: npx turbo run typecheck typecheck:root

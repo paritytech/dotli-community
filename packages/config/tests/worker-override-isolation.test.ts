@@ -50,7 +50,7 @@ describe("worker / document override isolation", () => {
       for (const field of reads) {
         expect(
           OVERRIDABLE_FIELDS as readonly string[],
-          `${file} reads .${field} off the network table. That field is ` +
+          `${file} reads .${String(field)} off the network table. That field is ` +
             `overridable, so the worker would see a different value than the ` +
             `documents. Either stop reading it in the worker, or plumb runtime ` +
             `config into the worker so both agree.`,

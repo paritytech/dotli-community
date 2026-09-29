@@ -3,6 +3,9 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+import type { ChainLifecycle } from "@parity/truapi-provider";
+
+import type * as ChainSyncModule from "../src/chain-sync.js";
 import type { ChainSyncTap, ParsedRpcMessage } from "../src/chain-sync.js";
 
 // A getter rather than a literal, so a test can flip it to reach the
@@ -17,9 +20,9 @@ vi.mock("../../metrics/src/metrics.js", () => ({
   },
 }));
 
-let onChainSync: typeof import("../src/chain-sync.js").onChainSync;
-let enableSyncReporting: typeof import("../src/chain-sync.js").enableSyncReporting;
-let attachChainSync: typeof import("../src/chain-sync.js").attachChainSync;
+let onChainSync: typeof ChainSyncModule.onChainSync;
+let enableSyncReporting: typeof ChainSyncModule.enableSyncReporting;
+let attachChainSync: typeof ChainSyncModule.attachChainSync;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -33,7 +36,7 @@ beforeEach(async () => {
   attachChainSync = mod.attachChainSync;
 });
 
-type Lifecycle = import("@parity/truapi-provider").ChainLifecycle;
+type Lifecycle = ChainLifecycle;
 
 /**
  * One chain connection, standing in for truapi-provider's.

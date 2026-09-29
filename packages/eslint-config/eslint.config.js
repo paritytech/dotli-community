@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from "eslint/config";
-import { config } from "@dotli/eslint-config/vite";
+import { config } from "./vite.js";
 
 export default defineConfig([
   ...config,

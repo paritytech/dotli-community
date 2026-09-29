@@ -23,8 +23,12 @@ async function clearAll(): Promise<void> {
     const tx = db.transaction([RECORD_STORE, COUNTER_STORE], "readwrite");
     tx.objectStore(RECORD_STORE).clear();
     tx.objectStore(COUNTER_STORE).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error("clear failed"));
+    tx.oncomplete = () => {
+      resolve();
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error("clear failed"));
+    };
   });
 }
 
@@ -95,7 +99,7 @@ describe("schedule", () => {
       const r = await schedule({
         productId: "acme.dot",
         title: "Acme",
-        text: `n=${i}`,
+        text: `n=${String(i)}`,
         deeplink: null,
         scheduledAt: future(60_000 + i),
       });
@@ -121,7 +125,7 @@ describe("schedule", () => {
       await schedule({
         productId: "acme.dot",
         title: "Acme",
-        text: `n=${i}`,
+        text: `n=${String(i)}`,
         deeplink: null,
         scheduledAt: future(60_000 + i),
       });

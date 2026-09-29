@@ -1,18 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/// <reference types="node" />
+
+import { defineConfig } from "eslint/config";
 import { config } from "@dotli/eslint-config/vite";
 
 // The shared config's `no-restricted-syntax` entries. A file override
 // replaces a rule's options rather than merging them, so the shell override
 // below repeats these.
-const sharedRestrictedSyntax = config
+const sharedRule = config
   .map((entry) => entry.rules?.["no-restricted-syntax"])
   .filter((rule) => rule !== undefined)
-  .at(-1)
-  .slice(1);
+  .at(-1);
+const sharedRestrictedSyntax = Array.isArray(sharedRule)
+  ? sharedRule.slice(1)
+  : [];
 
-export default [
+export default defineConfig([
   ...config,
   {
     languageOptions: {
@@ -61,4 +66,4 @@ export default [
       ],
     },
   },
-];
+]);

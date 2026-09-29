@@ -17,7 +17,7 @@ describe("metrics (disabled)", () => {
   });
 
   it("span runs async functions without instrumentation", async () => {
-    const fn = vi.fn(async () => "ok");
+    const fn = vi.fn(() => Promise.resolve("ok"));
     const result = await m.span("test.async", fn);
     expect(result).toBe("ok");
     expect(fn).toHaveBeenCalledOnce();

@@ -46,7 +46,9 @@ describe("validateRootManifest", () => {
   it("rejects wrong $v", () => {
     const r = validateRootManifest({ ...VALID_ROOT, $v: 2 });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors[0]).toMatch(/\$v must be 1/);
+    if (!r.ok) {
+      expect(r.errors[0]).toMatch(/\$v must be 1/);
+    }
   });
 
   it("rejects empty displayName", () => {
@@ -60,7 +62,9 @@ describe("validateRootManifest", () => {
       icon: { cid: "bafy", format: "gif" },
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.some((e) => /icon\.format/.test(e))).toBe(true);
+    if (!r.ok) {
+      expect(r.errors.some((e) => e.includes("icon.format"))).toBe(true);
+    }
   });
 
   it("rejects non-object input", () => {
@@ -142,7 +146,9 @@ describe("parse* helpers", () => {
   it("parseRootManifest rejects malformed JSON", () => {
     const r = parseRootManifest("{ not valid");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors[0]).toMatch(/not valid JSON/);
+    if (!r.ok) {
+      expect(r.errors[0]).toMatch(/not valid JSON/);
+    }
   });
 
   it("parseExecutableManifest accepts a stringified valid app", () => {

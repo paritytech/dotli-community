@@ -31,7 +31,7 @@ function gzipCliSize(filePath: string): number {
     throw new Error(`gzip CLI failed: ${result.error.message}`);
   }
   if (result.status !== 0) {
-    throw new Error(`gzip CLI exited with status ${result.status}`);
+    throw new Error(`gzip CLI exited with status ${String(result.status)}`);
   }
   return result.stdout.length;
 }
@@ -40,13 +40,13 @@ const TAG = /<(script|link)\b([^>]*)>/gi;
 
 function attr(attrs: string, name: string): string | null {
   const match = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i").exec(attrs);
-  return match === null ? null : match[1];
+  return match?.[1] ?? null;
 }
 
 export function eagerChunkPaths(html: string): string[] {
   const paths: string[] = [];
   let hasEntry = false;
-  for (const [, tag, attrs] of html.matchAll(TAG)) {
+  for (const [, tag = "", attrs = ""] of html.matchAll(TAG)) {
     let path: string | null = null;
     if (tag.toLowerCase() === "script" && attr(attrs, "type") === "module") {
       path = attr(attrs, "src");
