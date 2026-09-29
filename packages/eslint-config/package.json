@@ -2,6 +2,7 @@
   "name": "@dotli/eslint-config",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": false,
   "private": true,
   "license": "AGPL-3.0-only",
   "exports": {

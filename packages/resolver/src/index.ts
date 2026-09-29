@@ -39,14 +39,11 @@ export {
   isCoreRpcChainSupported,
   isRpcChainSupported,
 } from "./rpc-chain.js";
-
-// Lazy entry points. Each module is its own chunk, fetched on first call;
-// a static re-export here would pull it into every importer's bundle.
-export type ProviderModule = typeof import("./provider.js");
-export const loadProvider = (): Promise<ProviderModule> =>
-  import("./provider.js");
-export type ResolveModule = typeof import("./resolve.js");
-export const loadResolve = (): Promise<ResolveModule> => import("./resolve.js");
-export type RpcResolveModule = typeof import("./rpc-resolve.js");
-export const loadRpcResolve = (): Promise<RpcResolveModule> =>
-  import("./rpc-resolve.js");
+export {
+  loadProvider,
+  loadResolve,
+  loadRpcResolve,
+  type ProviderModule,
+  type ResolveModule,
+  type RpcResolveModule,
+} from "./lazy.js";

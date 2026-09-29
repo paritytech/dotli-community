@@ -62,9 +62,4 @@ export {
   renderSwimlanes,
   resolveTimelineClick,
 } from "./timeline.js";
-
-// Lazy entry points. Each module is its own chunk, fetched on first call;
-// a static re-export here would pull it into every importer's bundle.
-export type DotliDebugBusModule = typeof import("./dotli-debug-bus.js");
-export const loadDotliDebugBus = (): Promise<DotliDebugBusModule> =>
-  import("./dotli-debug-bus.js");
+export { loadDotliDebugBus, type DotliDebugBusModule } from "./lazy.js";

@@ -41,6 +41,12 @@ if (!process.env.VITE_COMMIT_SHA) {
 
 const OUT_DIR = "dist";
 
+// The workspace packages are side-effect-free barrels. Lazy barrel mode keeps
+// a barrel's unused re-exports out of the graph: without it, a static
+// re-export of a module that another importer loads lazily pins that module
+// into the barrel importer's chunk. Workers take their own copy.
+const ROLLDOWN_OPTIONS = { experimental: { lazyBarrel: true } };
+
 /**
  * Walk every workspace member's `package.json` and collect its direct
  * `dependencies` entries. devDependencies and peerDependencies are ignored, so
@@ -329,6 +335,10 @@ export default defineConfig({
       },
     }),
   ],
+  worker: {
+    plugins: () => [stripAnalytics(process.env.VITE_METRICS !== "true")],
+    rolldownOptions: ROLLDOWN_OPTIONS,
+  },
   define: {
     __BUILD_TARGET__: JSON.stringify("host"),
     // Baked once at build time, read lazily at the declaration site so a
@@ -349,6 +359,7 @@ export default defineConfig({
   },
   build: {
     target: "esnext",
+    rolldownOptions: ROLLDOWN_OPTIONS,
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",

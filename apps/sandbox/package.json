@@ -4,6 +4,7 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": false,
   "scripts": {
     "build": "tsc && vite build",
     "build:prod": "tsc && vite build && node ../../scripts/compress-dist.ts",

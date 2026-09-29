@@ -50,15 +50,11 @@ export {
   showNoContentError,
 } from "./ui.js";
 export { type ShieldState } from "./verification-shield.js";
-
-// Lazy entry points. Each module is its own chunk, fetched on first call;
-// a static re-export here would pull it into every importer's bundle.
-export type BridgeModule = typeof import("./bridge.js");
-export const loadBridge = (): Promise<BridgeModule> => import("./bridge.js");
-export type TruapiDebugMountModule =
-  typeof import("./components/truapi-debug/mount.js");
-export const loadTruapiDebugMount = (): Promise<TruapiDebugMountModule> =>
-  import("./components/truapi-debug/mount.js");
-export type SharedModeModule = typeof import("./shared-mode.js");
-export const loadSharedMode = (): Promise<SharedModeModule> =>
-  import("./shared-mode.js");
+export {
+  loadBridge,
+  loadTruapiDebugMount,
+  loadSharedMode,
+  type BridgeModule,
+  type TruapiDebugMountModule,
+  type SharedModeModule,
+} from "./lazy.js";

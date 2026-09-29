@@ -19,8 +19,4 @@ export { type FetchResult } from "./fetch.js";
 export { fetchFromIpfs } from "./ipfs.js";
 export { computePreimageKey, hashToCid } from "./preimage.js";
 export { assertBlockMatchesCid } from "./verify.js";
-
-// Lazy entry points. Each module is its own chunk, fetched on first call;
-// a static re-export here would pull it into every importer's bundle.
-export type FetchModule = typeof import("./fetch.js");
-export const loadFetch = (): Promise<FetchModule> => import("./fetch.js");
+export { loadFetch, type FetchModule } from "./lazy.js";
