@@ -21,7 +21,7 @@ import { stripAnalytics } from "@dotli/metrics/vite";
 import { prerenderPlugin, SHELL_SERVER_ENTRY } from "@dotli/ui/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
-// NodeNext sees the module object; at runtime the default export is the plugin.
+// NodeNext sees the module object. At runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the

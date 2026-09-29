@@ -22,7 +22,7 @@ import {
 import { stripAnalytics } from "@dotli/metrics/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
-// NodeNext sees the module object; at runtime the default export is the plugin.
+// NodeNext sees the module object. At runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject

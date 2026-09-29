@@ -8,8 +8,8 @@
 // module-scope mangling) runs first as Vite's minifier, then rolldown's own
 // oxc minifier runs over its output. Measured against oxc alone, the chain
 // cut the brotli'd eager path by 2-4% per app, and the total by 1-3%. Worker
-// bundles take the same `rolldownOptions`; Vite leaves whitespace in a terser'd
-// worker, so there the oxc pass is what strips it.
+// bundles take the same `rolldownOptions`. Vite leaves whitespace in a
+// terser'd worker, so there the oxc pass is what strips it.
 //
 // The tree-shaking assumptions below (property and global reads are free of
 // side effects) are safe for this codebase: nothing reads a layout property

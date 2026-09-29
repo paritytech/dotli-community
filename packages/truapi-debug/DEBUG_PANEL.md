@@ -129,7 +129,7 @@ Adding payload decode for a new family is one linkage row in
 ### 2. dotli — boot / resolve / render / bridge / failover
 
 Dotli-internal host-side orchestration, captured by
-`onDotliDebugEvent` from `@dotli/truapi-debug/dotli-debug-bus`.
+`onDotliDebugEvent` from `@dotli/truapi-debug` (`src/dotli-debug-bus.ts`).
 
 - `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`,
   `url_parsed`, `cid_cache_checked`, `landing_page_shown`, `ready`,

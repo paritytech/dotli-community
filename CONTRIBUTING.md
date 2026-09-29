@@ -33,6 +33,15 @@ test("As a user using per-product smoldot, the host must only spawn one instance
 });
 ```
 
+### Package boundaries
+
+Each workspace package exposes one entry, `src/index.ts`, listed as `"."` in its `exports`. Other packages import only from there (`import { log } from "@dotli/shared"`). Every other module under `src/` is private to its package.
+
+- Inside a package, import relative paths with the `.js` extension (`./state/topbar.js`), as NodeNext resolution requires. ESLint rejects a `.ts` extension.
+- A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`, typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
+- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. CSS is exported as `./styles.css`.
+- Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
+
 ### How to Document
 
 Good documentation starts with a single, clear sentence. Everything else comes after a newline.
