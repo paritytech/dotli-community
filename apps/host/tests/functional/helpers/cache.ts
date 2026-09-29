@@ -73,43 +73,38 @@ export async function waitForCachedCid(
 }
 
 /**
- * Install a per-frame counter for SW archive-cache lookups.
+ * Count reads of the host's block cache.
  *
- * Wraps `ServiceWorker.prototype.postMessage` so every call that carries
- * `{type:"SW_CACHE_LOOKUP_EVENT"}` (the message `getCachedArchive` sends
- * to the sandbox SW) bumps `window.__dotliArchiveCacheLookups`. The
- * patch lives on the prototype, so it covers any controller the page
- * later acquires. Must be called on the context before the first
- * navigation. The counter resets on every fresh document.
+ * Wraps `IDBObjectStore.prototype.get` so every read of the `blocks` store
+ * bumps `window.__dotliBlockCacheReads` in the frame that made it. The relay
+ * runs in the host's main frame, so that is where the count is read. Must be
+ * called on the context before the first navigation. The counter resets on
+ * every fresh document.
  */
-export async function trackArchiveCacheLookups(
+export async function trackBlockCacheReads(
   context: BrowserContext,
 ): Promise<void> {
   await context.addInitScript(() => {
     let count = 0;
-    // postMessage as a function-typed property, not a method: the patch
-    // calls the original with the worker it was invoked on.
-    type PostMessage = (
-      this: ServiceWorker,
-      message: unknown,
-      transfer?: unknown,
-    ) => void;
+    // get as a function-typed property, not a method: the patch calls
+    // the original with the store it was invoked on.
+    type Get = (
+      this: IDBObjectStore,
+      query: IDBValidKey | IDBKeyRange,
+    ) => IDBRequest<unknown>;
     const proto = (
-      globalThis as {
-        ServiceWorker?: { prototype: { postMessage: PostMessage } };
-      }
-    ).ServiceWorker?.prototype;
+      globalThis as { IDBObjectStore?: { prototype: { get: Get } } }
+    ).IDBObjectStore?.prototype;
     if (proto !== undefined) {
-      const orig = proto.postMessage;
-      proto.postMessage = function (message, transfer) {
-        const m = message as { type?: string } | null;
-        if (m?.type === "SW_CACHE_LOOKUP_EVENT") {
+      const orig = proto.get;
+      proto.get = function (query) {
+        if (this.name === "blocks") {
           count++;
         }
-        orig.call(this, message, transfer);
+        return orig.call(this, query);
       };
     }
-    Object.defineProperty(globalThis, "__dotliArchiveCacheLookups", {
+    Object.defineProperty(globalThis, "__dotliBlockCacheReads", {
       get() {
         return count;
       },
@@ -118,15 +113,40 @@ export async function trackArchiveCacheLookups(
   });
 }
 
-/** Lookup count observed in the sandbox frame on the current navigation. */
-export async function sandboxArchiveCacheLookups(page: Page): Promise<number> {
-  const frame = page.frames().find((f) => f.url().includes(".app.localhost"));
-  if (frame === undefined) {
-    return 0;
-  }
-  return frame.evaluate(
+/** Block cache reads the host made on the current navigation. */
+export function hostBlockCacheReads(page: Page): Promise<number> {
+  return page.evaluate(
     () =>
-      (globalThis as { __dotliArchiveCacheLookups?: number })
-        .__dotliArchiveCacheLookups ?? 0,
+      (globalThis as { __dotliBlockCacheReads?: number })
+        .__dotliBlockCacheReads ?? 0,
+  );
+}
+
+/** How many blocks the host holds in its block cache. */
+export function cachedBlockCount(page: Page): Promise<number> {
+  return page.evaluate(
+    () =>
+      new Promise<number>((resolve) => {
+        const open = indexedDB.open("dotli");
+        open.onsuccess = () => {
+          try {
+            const req = open.result
+              .transaction("blocks", "readonly")
+              .objectStore("blocks")
+              .count();
+            req.onsuccess = () => {
+              resolve(req.result);
+            };
+            req.onerror = () => {
+              resolve(0);
+            };
+          } catch {
+            resolve(0);
+          }
+        };
+        open.onerror = () => {
+          resolve(0);
+        };
+      }),
   );
 }
