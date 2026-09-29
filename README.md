@@ -282,8 +282,8 @@ to `66e0458891fa2999929e7f3e5363cacbe2eaa478`, installs its frozen dependency
 lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
 `bun scripts/link-truapi-local.ts --product-vendor`. This runs the existing
 product behavior checks against the pinned SDK rather than the independently
-deployed `host-playground.dot`, whose older client uses an incompatible wire
-codec. The product still calls the real host; no SDK responses are mocked.
+deployed `host-playground.dot`. The deployed smoke suite below checks that
+separate boundary. The product still calls the real host; no SDK responses are mocked.
 The pinned fixture requests bare host patterns for `Remote` permissions;
 scheme-bearing URLs are intentionally rejected by the core before prompting.
 
@@ -357,6 +357,24 @@ The command builds dotli with its debug-only localhost proxy enabled, starts
 both preview servers through Playwright, extracts the login QR deeplink, pairs
 a headless `truapi-host signing-host` process that auto-signs for the rest of
 the run, and runs the same host-product suite used in CI.
+
+### Checking a deployed host
+
+The deployment smoke suites load published products through the deployed host,
+not the localhost fixture. The TrUAPI suite exercises 19 wallet-free capabilities
+without pairing a signer or writing to the chain; it does not replace paired E2E.
+
+```bash
+cd apps/host
+DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 bun run test:smoke:products --output=test-results/products
+DOTLI_SMOKE_ROOT=paseo.fyi bun run test:smoke:truapi --output=test-results/truapi
+```
+
+The deployment workflow keeps the two suites' output directories separate and
+uploads failure screenshots, error contexts, and Playwright traces as
+`deployed-product-smoke-<environment>-<attempt>`, retained for three days.
+Inspect that artifact when a published product fails to load or a capability
+fails; a green localhost E2E run does not qualify the deployed bundle.
 
 ### Running an approved build
 
