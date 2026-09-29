@@ -33,7 +33,11 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
-import { getBackend, getCacheSettings } from "@dotli/config/mode";
+import {
+  getBackend,
+  getCacheSettings,
+  getPolkaVmAppsEnabled,
+} from "@dotli/config/mode";
 import {
   getActiveServicesConfig,
   getNetwork,
@@ -2658,6 +2662,10 @@ export async function renderAppSubdomain(
     chainBackend,
   );
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
+  parsedUrl.searchParams.set(
+    SANDBOX_CONTRACT_PARAMS.polkaVmEnabled,
+    getPolkaVmAppsEnabled() ? "1" : "0",
+  );
   if (executableManifest !== null) {
     parsedUrl.searchParams.set(
       SANDBOX_CONTRACT_PARAMS.executableManifest,

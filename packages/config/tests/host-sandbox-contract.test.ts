@@ -11,7 +11,7 @@ import { NetworkName } from "@dotli/config/network";
 
 const VALID_CID = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
 
-/** Build a search string with the required v4 params, allowing overrides. */
+/** Build a search string with the required v5 params, allowing overrides. */
 function search(
   overrides: Record<string, string | null> = {},
 ): URLSearchParams {
@@ -20,6 +20,7 @@ function search(
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
     [SANDBOX_CONTRACT_PARAMS.chainBackend]: "smoldot-direct",
     [SANDBOX_CONTRACT_PARAMS.network]: NetworkName.PASEO,
+    [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: "0",
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
@@ -29,9 +30,9 @@ function search(
   return params;
 }
 
-describe("validateSandboxParams: v4 cid contract", () => {
-  it("As the sandbox, when I receive a valid contract, I read cid, chainBackend, and network from the params", () => {
-    // Given a contract that carries every required v4 param.
+describe("validateSandboxParams: v5 cid contract", () => {
+  it("As the sandbox, when I receive a valid contract, I read its content and runtime policy", () => {
+    // Given a contract that carries every required v5 param.
     const params = search();
 
     // When the sandbox validates it.
@@ -43,6 +44,30 @@ describe("validateSandboxParams: v4 cid contract", () => {
       expect(result.params.cid).toBe(VALID_CID);
       expect(result.params.chainBackend).toBe("smoldot-direct");
       expect(result.params.network).toBe(NetworkName.PASEO);
+      expect(result.params.polkaVmEnabled).toBe(false);
+    }
+  });
+
+  it("accepts an explicit PolkaVM runtime opt-in", () => {
+    const result = validateSandboxParams(
+      search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: "1" }),
+    );
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.params.polkaVmEnabled).toBe(true);
+    }
+  });
+
+  it("rejects a missing or malformed PolkaVM runtime policy", () => {
+    for (const value of [null, "true", "2"]) {
+      const result = validateSandboxParams(
+        search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: value }),
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.reason).toMatch(/polkavmenabled/i);
+      }
     }
   });
 

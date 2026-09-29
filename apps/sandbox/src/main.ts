@@ -489,9 +489,17 @@ async function runPolkaVmIfPresent(
   files: ArchiveFiles,
   cid: string,
   executableManifest: string | null,
+  polkaVmEnabled: boolean,
 ): Promise<false | null | string> {
   if (!isPolkaVmPackage(files)) {
     return false;
+  }
+  if (!polkaVmEnabled) {
+    failLoading(
+      "Experimental PolkaVM apps are disabled",
+      "Enable PolkaVM apps in dot.li Settings, then reload this app.",
+    );
+    return null;
   }
   const fallback = await polkavmWebFallbackEntrypoint(
     files,
@@ -727,6 +735,7 @@ async function main(): Promise<void> {
     chainBackend,
     network,
     skipArchiveCache,
+    polkaVmEnabled,
     executableManifest,
     resolutionId,
   } = parsed.params;
@@ -801,6 +810,7 @@ async function main(): Promise<void> {
       cachedFiles,
       cid,
       executableManifest,
+      polkaVmEnabled,
     );
     if (polkavmRuntime === null) {
       stopApp();
@@ -901,6 +911,7 @@ async function main(): Promise<void> {
       result.files,
       cid,
       executableManifest,
+      polkaVmEnabled,
     );
     if (polkavmRuntime === null) {
       stopApp();

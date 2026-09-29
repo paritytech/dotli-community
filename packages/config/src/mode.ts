@@ -43,6 +43,7 @@ export interface CacheSettings {
 
 export const BACKEND_KEY = "dotli:chain-backend";
 export const CACHE_KEY = "dotli:cache-settings";
+export const POLKAVM_APPS_KEY = "dotli:experimental-polkavm-apps";
 
 export function isSharedWorkerAvailable(): boolean {
   return typeof SharedWorker !== "undefined";
@@ -244,4 +245,14 @@ export function getCacheSettings(): CacheSettings {
 
 export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
+}
+
+/** Whether the user has opted into the experimental PolkaVM App runtime. */
+export function getPolkaVmAppsEnabled(): boolean {
+  return storage.getItem(POLKAVM_APPS_KEY) === "1";
+}
+
+/** Persist the user's experimental PolkaVM App runtime preference. */
+export function setPolkaVmAppsEnabled(enabled: boolean): void {
+  storage.setItem(POLKAVM_APPS_KEY, enabled ? "1" : "0");
 }

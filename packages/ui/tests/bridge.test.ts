@@ -10,6 +10,7 @@ import {
   scale,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
+import { POLKAVM_APPS_KEY } from "@dotli/config/mode";
 
 type Deferred<T> = {
   promise: Promise<T>;
@@ -420,8 +421,22 @@ describe("bridge render lifecycle", () => {
     expect(iframeUrl.searchParams.get("executableManifest")).toBe(
       executableManifest,
     );
+    expect(iframeUrl.searchParams.get("polkaVmEnabled")).toBe("0");
     expect(mocks.iframeHosts[0].allow).not.toContain("accelerometer");
     expect(mocks.iframeHosts[0].allow).not.toContain("gyroscope");
+  });
+
+  it("threads the user's PolkaVM opt-in into the sandbox contract", async () => {
+    localStorage.setItem(POLKAVM_APPS_KEY, "1");
+    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+
+    const render = renderAppSubdomain("polkavm-cid", "polkavm-app");
+    await waitForProviderRequests(1);
+    mocks.coreProviderDefers[0].resolve(makeProvider());
+    await render;
+
+    const iframeUrl = new URL(mocks.iframeHosts[0].iframeUrl);
+    expect(iframeUrl.searchParams.get("polkaVmEnabled")).toBe("1");
   });
 
   it("delegates motion sensors to PolkaVM product frames with web fallbacks", async () => {

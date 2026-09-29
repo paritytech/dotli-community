@@ -36,6 +36,8 @@ import {
   setCacheSettings,
   getBackend,
   setBackend,
+  getPolkaVmAppsEnabled,
+  setPolkaVmAppsEnabled,
   isSharedWorkerAvailable,
   isVerifiedSession,
   BACKEND_LABELS,
@@ -2060,6 +2062,7 @@ interface ModeDraft {
   chain: Backend;
   network: Network;
   cache: CacheSettings;
+  polkaVmAppsEnabled: boolean;
 }
 
 function renderModePopover(): void {
@@ -2093,6 +2096,7 @@ function renderModePopover(): void {
     chain: getBackend(),
     network: getNetwork(),
     cache: getCacheSettings(),
+    polkaVmAppsEnabled: getPolkaVmAppsEnabled(),
   };
   const draft: ModeDraft = { ...persisted, cache: { ...persisted.cache } };
 
@@ -2268,7 +2272,18 @@ function renderModePopover(): void {
   clearRow.appendChild(clearBtn);
   leftCol.appendChild(clearRow);
 
-  appendSectionHeader(rightCol, "Diagnostics");
+  appendSectionHeader(rightCol, "Experimental");
+  renderCacheToggle(
+    rightCol,
+    "PolkaVM apps",
+    draft.polkaVmAppsEnabled,
+    (enabled) => {
+      draft.polkaVmAppsEnabled = enabled;
+      syncApply();
+    },
+  );
+
+  appendSectionHeader(rightCol, "Diagnostics", "mode-popover-section--bottom");
   renderDiagnostics(rightCol);
 
   // Footer wraps the divider, Save & Apply, and the warning as one unit so it
@@ -2301,7 +2316,8 @@ function renderModePopover(): void {
       draft.network !== persisted.network ||
       draft.cache.skipCidCache !== persisted.cache.skipCidCache ||
       draft.cache.skipArchiveCache !== persisted.cache.skipArchiveCache ||
-      draft.cache.skipWorkerCache !== persisted.cache.skipWorkerCache;
+      draft.cache.skipWorkerCache !== persisted.cache.skipWorkerCache ||
+      draft.polkaVmAppsEnabled !== persisted.polkaVmAppsEnabled;
     applyBtn.disabled = !dirty;
     applyBtn.textContent = "Save & Apply";
     applyBtn.classList.toggle("mode-apply-dirty", dirty);
@@ -2352,6 +2368,7 @@ async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
       // Force every origin to purge regardless of persisted prefs.
       try {
         sessionStorage.setItem("dotli:pending-reset:protocol", "1");
@@ -2366,6 +2383,7 @@ async function applyAndReset(
       setBackend(draft.chain);
       setNetwork(draft.network);
       setCacheSettings(draft.cache);
+      setPolkaVmAppsEnabled(draft.polkaVmAppsEnabled);
 
       const cidTurnedOff =
         draft.cache.skipCidCache && !prior.cache.skipCidCache;

@@ -66,6 +66,7 @@ async function mountProduct(
       url.searchParams.set("v", String(schemaVersion));
       url.searchParams.set("chainBackend", "rpc-gateway");
       url.searchParams.set("network", "paseo-next-v2");
+      url.searchParams.set("polkaVmEnabled", "1");
       url.searchParams.set("executableManifest", executableManifest);
       const iframe = document.createElement("iframe");
       iframe.id = id;

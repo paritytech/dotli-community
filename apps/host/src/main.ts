@@ -339,6 +339,7 @@ const RESERVED_HOST_PARAMS = [
   "skipArchiveCache",
   "skipCidCache",
   "skipWorkerCache",
+  "polkaVmEnabled",
   "fullReset",
   "v",
   DOTLI_PRODUCT_ID_PARAM,
