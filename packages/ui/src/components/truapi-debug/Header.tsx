@@ -6,8 +6,8 @@
 
 import { createSignal, flush, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { DockPosition } from "@dotli/truapi-debug/dock-storage";
-import { exportFilename } from "@dotli/truapi-debug/export";
+import type { DockPosition } from "@dotli/truapi-debug";
+import { exportFilename } from "@dotli/truapi-debug";
 
 const DEBUG_SESSION_KEY = "dotli:truapi-debug";
 const COPY_FLASH_MS = 1200;

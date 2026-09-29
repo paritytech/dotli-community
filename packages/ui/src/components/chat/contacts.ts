@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChatBotRecord, ChatRoomRecord } from "../../chat/service";
+import type { ChatBotRecord, ChatRoomRecord } from "../../chat/service.js";
 
 /** One list entry: a room, or a registered bot. Both open a conversation;
  *  a bot's is keyed by its botId, which the product uses as the roomId when

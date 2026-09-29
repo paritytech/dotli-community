@@ -10,49 +10,48 @@ import {
   type SubstrateClient,
 } from "@polkadot-api/substrate-client";
 import type { JsonRpcProvider } from "polkadot-api";
-import { TIMEOUTS } from "@dotli/config/config";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { namehash, toHex, decodeIpfsContenthashResult } from "./abi";
+import { TIMEOUTS, getActiveServicesConfig } from "@dotli/config";
+
+import { namehash, toHex, decodeIpfsContenthashResult } from "./abi.js";
 import {
   ContenthashDecodeError,
   UnsupportedContenthashCodecError,
-} from "./errors";
-import { raceSyncTimeout, withSyncBudget } from "./sync-deadline";
-import { dur } from "@dotli/shared/perf";
-import { log } from "@dotli/shared/log";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
-import type { PhaseCallback, StatusCallback } from "./access-raw-storage";
-import { createRawApi, type Api } from "./api";
-import { readExecutableManifest, readRootManifest } from "./manifest";
+} from "./errors.js";
+import { raceSyncTimeout, withSyncBudget } from "./sync-deadline.js";
+import { dur, log } from "@dotli/shared";
+
+import { m, spans as S } from "@dotli/metrics";
+import { readMappingBytes, readMappingAddress } from "./access-raw-storage.js";
+import type { PhaseCallback, StatusCallback } from "./access-raw-storage.js";
+import { createRawApi, type Api } from "./api.js";
+import { readExecutableManifest, readRootManifest } from "./manifest.js";
 import type {
   ExecutableKind,
   ExecutableManifest,
   ManifestResult,
   RootManifest,
-} from "./manifest";
+} from "./manifest.js";
 
 export type {
   StatusCallback,
   PhaseCallback,
   ResolvePhase,
-} from "./access-raw-storage";
-export { statusToPhase } from "./access-raw-storage";
+} from "./access-raw-storage.js";
+export { statusToPhase } from "./access-raw-storage.js";
 export {
   onChainSync,
   enableSyncReporting,
   CHAIN_KEYS,
   CHAIN_SYNC_KINDS,
-} from "./chain-sync";
-export { onChainDetail } from "./chain-sync";
+} from "./chain-sync.js";
+export { onChainDetail } from "./chain-sync.js";
 export type {
   ChainSyncEvent,
   ChainSyncKind,
   ChainKey,
   ChainDetail,
   ChainPeer,
-} from "./chain-sync";
+} from "./chain-sync.js";
 
 const HUB_CHAIN = "Asset Hub Paseo";
 

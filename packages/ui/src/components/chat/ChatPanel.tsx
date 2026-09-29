@@ -17,8 +17,8 @@ import {
   untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { getActiveRootManifest } from "@dotli/shared/active-manifest";
+import { captureException } from "@dotli/metrics";
+import { getActiveRootManifest } from "@dotli/shared";
 import {
   chatBots,
   chatLatestMessageTimes,
@@ -26,7 +26,7 @@ import {
   chatRooms,
   userPostMessage,
   type ChatMessageRecord,
-} from "../../chat/service";
+} from "../../chat/service.js";
 import {
   backToChatRooms,
   chatPanelStore,
@@ -38,12 +38,12 @@ import {
   openChatRoom,
   setChatComposerError,
   setChatPanelOpen,
-} from "../../state/chat-panel";
-import { useStore } from "../use-store";
-import { ContactIcon } from "./ContactIcon";
-import { contactEntries, type ContactEntry } from "./contacts";
-import { MessageBubble } from "./MessageBubble";
-import { ResizeHandle } from "./ResizeHandle";
+} from "../../state/chat-panel.js";
+import { useStore } from "../use-store.js";
+import { ContactIcon } from "./ContactIcon.js";
+import { contactEntries, type ContactEntry } from "./contacts.js";
+import { MessageBubble } from "./MessageBubble.js";
+import { ResizeHandle } from "./ResizeHandle.js";
 
 // Relative bubble timestamps go stale while the panel sits open.
 const TIME_REFRESH_MS = 60_000;

@@ -9,7 +9,7 @@
  * module load.
  */
 
-import type { ProtocolRequestMethod } from "./messages";
+import type { ProtocolRequestMethod } from "./messages.js";
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 

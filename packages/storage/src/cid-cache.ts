@@ -11,12 +11,9 @@
 // (storage broken, surface to user). The legacy `getCachedCid` remains
 // for incremental migration but collapses both into `null`.
 
-import { getDb } from "./db";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { isValidDotLabel } from "@dotli/shared/html";
-import { log } from "@dotli/shared/log";
-import { captureException } from "@dotli/metrics/sentry";
+import { getDb } from "./db.js";
+import { m, captureException, spans as S } from "@dotli/metrics";
+import { isValidDotLabel, log } from "@dotli/shared";
 
 const STORE = "cids";
 

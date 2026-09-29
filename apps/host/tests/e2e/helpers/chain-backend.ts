@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Backend } from "@dotli/config/mode";
+import type { Backend } from "@dotli/config";
 
 const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
   "smoldot-direct",

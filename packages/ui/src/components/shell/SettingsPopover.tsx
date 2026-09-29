@@ -3,17 +3,19 @@
 
 import { createMemo, createSignal, For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { BACKEND_LABELS, type Backend } from "@dotli/config/mode";
 import {
+  BACKEND_LABELS,
+  type Backend,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Network,
-} from "@dotli/config/network";
-import { applyAndReset, type ModeDraft } from "../../settings-actions";
-import { settingsStore, type SettingsState } from "../../state/settings";
-import { useStore } from "../use-store";
-import { Diagnostics } from "./Diagnostics";
-import { createPopover } from "./popover";
-import { CacheToggle, RadioRow, SectionHeader } from "./SettingsRows";
+} from "@dotli/config";
+
+import { applyAndReset, type ModeDraft } from "../../settings-actions.js";
+import { settingsStore, type SettingsState } from "../../state/settings.js";
+import { useStore } from "../use-store.js";
+import { Diagnostics } from "./Diagnostics.js";
+import { createPopover } from "./popover.js";
+import { CacheToggle, RadioRow, SectionHeader } from "./SettingsRows.js";
 
 const SETTINGS_ICON_PATH =
   "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z";

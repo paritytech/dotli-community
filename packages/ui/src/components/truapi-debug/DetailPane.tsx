@@ -11,12 +11,9 @@
 
 import { createEffect, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import {
-  renderGroupDetail,
-  renderSingleDetail,
-} from "@dotli/truapi-debug/detail-html";
-import type { EventSeq, EventStore } from "@dotli/truapi-debug/event-store";
-import type { PanelView } from "./Tabs";
+import { renderGroupDetail, renderSingleDetail } from "@dotli/truapi-debug";
+import type { EventSeq, EventStore } from "@dotli/truapi-debug";
+import type { PanelView } from "./Tabs.js";
 
 function detailHtml(
   store: EventStore,

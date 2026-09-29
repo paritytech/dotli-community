@@ -2,16 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@dotli/protocol": resolve(import.meta.dirname, "src"),
-      "@dotli/config": resolve(import.meta.dirname, "../config/src"),
-      "@dotli/shared": resolve(import.meta.dirname, "../shared/src"),
-    },
-  },
   test: {
     include: ["tests/**/*.test.ts"],
     environment: "happy-dom",

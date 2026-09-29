@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { withActiveTld } from "@dotli/config/network";
+import { withActiveTld } from "@dotli/config";
 import {
   isDevicePermission,
   type EnforceablePermissionName,
-} from "./permissions";
-import { presentModal } from "./overlays/load";
-import type { ModalButton } from "./state/modals";
+} from "./permissions.js";
+import { presentModal } from "./overlays/load.js";
+import type { ModalButton } from "./state/modals.js";
 
 // dot.li Permission request modal
 //

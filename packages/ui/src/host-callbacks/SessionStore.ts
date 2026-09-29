@@ -1,4 +1,4 @@
-import { SITE_ID } from "@dotli/config/config";
+import { SITE_ID } from "@dotli/config";
 import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
 import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
@@ -6,15 +6,16 @@ import type {
   CoreStorageKey,
   SessionUiInfo,
 } from "@parity/truapi-host";
-import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
 import {
+  SHARED_CORE_SESSION_KEY,
   clearSharedAuthStorage,
   readSharedAuthStorage,
   subscribeSharedAuthStorage,
   writeSharedAuthStorage,
-} from "@dotli/protocol/client";
-import { log } from "@dotli/shared/log";
-import { dispatchAuthState } from "./AuthState";
+} from "@dotli/protocol";
+
+import { log } from "@dotli/shared";
+import { dispatchAuthState } from "./AuthState.js";
 
 const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
 const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";

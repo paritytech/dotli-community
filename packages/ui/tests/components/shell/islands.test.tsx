@@ -15,53 +15,53 @@ import {
   it,
   vi,
 } from "vitest";
-import { disposeAppRoot } from "@dotli/ui/mount/app-roots";
+import { disposeAppRoot } from "../../../src/mount/app-roots.js";
 import { flush } from "solid-js";
-import { renderShellOnServer } from "../../helpers/shell-ssr";
-import { stubColorScheme } from "../../helpers/color-scheme";
-import { mountIslands } from "@dotli/ui/components/shell/islands";
-import { initTheme } from "@dotli/ui/theme-controller";
-import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
-import { setTopbarVisible } from "@dotli/ui/state/topbar";
-import { setAuthState, setLoggedIn } from "@dotli/ui/state/auth";
-import { updateAuthModal } from "@dotli/ui/state/auth-modal";
+import { renderShellOnServer } from "../../helpers/shell-ssr.js";
+import { stubColorScheme } from "../../helpers/color-scheme.js";
+import { mountIslands } from "../../../src/components/shell/islands.js";
+import { initTheme } from "../../../src/theme-controller.js";
+import { resetAllStoresForTests } from "../../../src/state/create-store.js";
+import { setTopbarVisible } from "../../../src/state/topbar.js";
+import { setAuthState, setLoggedIn } from "../../../src/state/auth.js";
+import { updateAuthModal } from "../../../src/state/auth-modal.js";
 import {
   normalized,
   oldAuthButton,
   oldModal,
   oldUserPopover,
-} from "./old-auth-markup";
+} from "./old-auth-markup.js";
 import {
   oldPermissionsBackdrop,
   oldPermissionsButton,
   oldPermissionsPopover,
-} from "./old-permissions-markup";
-import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
+} from "./old-permissions-markup.js";
+import { oldChainsButton, oldChainsPopover } from "./old-chains-markup.js";
 import {
   oldModeBackdrop,
   oldModeButton,
   oldModePopover,
-} from "./old-settings-markup";
-import { initSettingsStore } from "@dotli/ui/state/settings";
-import { tapMoreRow } from "./more-menu-harness";
-import { mouseClick, pointerPress } from "../../helpers/solid";
-import { mountLandingPage } from "../../helpers/landing";
-import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
-import { setChainsButtonVisible } from "@dotli/ui/topbar";
-import { setProductLoaded } from "@dotli/ui/state/product";
+} from "./old-settings-markup.js";
+import { initSettingsStore } from "../../../src/state/settings.js";
+import { tapMoreRow } from "./more-menu-harness.js";
+import { mouseClick, pointerPress } from "../../helpers/solid.js";
+import { mountLandingPage } from "../../helpers/landing.js";
+import { registerPermissionAuthorizationProvider } from "../../../src/permissions.js";
+import { setChainsButtonVisible } from "../../../src/topbar.js";
+import { setProductLoaded } from "../../../src/state/product.js";
 import {
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
-} from "@dotli/ui/state/url-pill";
-import type * as ThemeToggleModule from "@dotli/ui/components/shell/ThemeToggle";
-import { byId, must } from "../../support";
+} from "../../../src/state/url-pill.js";
+import type * as ThemeToggleModule from "../../../src/components/shell/ThemeToggle.js";
+import { byId, must } from "../../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../../metrics/src/sentry.js", () => sentry);
 // The landing page loads the recent names from the shared storage frame,
 // which happy-dom would try to fetch.
-vi.mock("@dotli/ui/recent-labels", () => ({
+vi.mock("../../../src/recent-labels.js", () => ({
   loadRecentLabels: () => Promise.resolve([]),
   forgetRecentLabel: () => Promise.resolve(),
 }));
@@ -73,31 +73,34 @@ const themeIsland = vi.hoisted(() => ({
   breakLater: null as (() => void) | null,
   disposed: 0,
 }));
-vi.mock("@dotli/ui/components/shell/ThemeToggle", async (importOriginal) => {
-  const actual = await importOriginal<typeof ThemeToggleModule>();
-  const { createSignal, onCleanup } = await import("solid-js");
-  return {
-    ThemeToggle: () => {
-      if (themeIsland.broken) {
-        throw new Error("the theme island broke");
-      }
-      const [late, setLate] = createSignal(false, { ownedWrite: true });
-      themeIsland.breakLater = () => setLate(true);
-      onCleanup(() => {
-        themeIsland.disposed += 1;
-      });
-      return [
-        actual.ThemeToggle(),
-        () => {
-          if (late()) {
-            throw new Error("the theme island broke later");
-          }
-          return null;
-        },
-      ];
-    },
-  };
-});
+vi.mock(
+  "../../../src/components/shell/ThemeToggle.js",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ThemeToggleModule>();
+    const { createSignal, onCleanup } = await import("solid-js");
+    return {
+      ThemeToggle: () => {
+        if (themeIsland.broken) {
+          throw new Error("the theme island broke");
+        }
+        const [late, setLate] = createSignal(false, { ownedWrite: true });
+        themeIsland.breakLater = () => setLate(true);
+        onCleanup(() => {
+          themeIsland.disposed += 1;
+        });
+        return [
+          actual.ThemeToggle(),
+          () => {
+            if (late()) {
+              throw new Error("the theme island broke later");
+            }
+            return null;
+          },
+        ];
+      },
+    };
+  },
+);
 
 const THEME_IDS = ["theme-toggle", "theme-popover"];
 const AUTH_IDS = ["auth-button", "user-popover", "auth-modal-backdrop"];
@@ -519,7 +522,8 @@ describe("shell islands", () => {
   // load a second Solid, so this is the file's only ensureIslands test.
   it("As a dotli user, a click on the theme button while the islands are still loading opens the menu once they mount, even when another island throws while mounting", async () => {
     // Given
-    const { ensureIslands } = await import("@dotli/ui/mount/load-islands");
+    const { ensureIslands } =
+      await import("../../../src/mount/load-islands.js");
     const staticBar = byId("topbar-url");
     vi.spyOn(staticBar, "replaceWith").mockImplementation(() => {
       throw new Error("the swap broke");

@@ -12,4 +12,4 @@ export type ShieldState = "verified" | "trusted";
 export const VERIFICATION_SHIELD_ID = "verification-shield";
 export const VERIFICATION_TOOLTIP_ID = "verification-tooltip";
 
-export { setVerificationShieldState } from "./state/url-pill";
+export { setVerificationShieldState } from "./state/url-pill.js";

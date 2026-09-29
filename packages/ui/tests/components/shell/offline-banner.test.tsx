@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { OfflineBanner } from "@dotli/ui/components/shell/OfflineBanner";
-import { setTopbarVisible } from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
-import { byId } from "../../support";
+import { OfflineBanner } from "../../../src/components/shell/OfflineBanner.js";
+import { setTopbarVisible } from "../../../src/state/topbar.js";
+import { renderComponent, resetStores, settle } from "../../helpers/solid.js";
+import { byId } from "../../support.js";
 
 // The inline style apps/host/src/offline.ts gave the banner it appended to
 // `#topbar`, before the banner became a component (less `display`).

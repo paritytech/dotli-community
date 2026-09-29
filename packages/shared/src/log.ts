@@ -19,7 +19,7 @@
 // `metrics.setDefaults` so logs and metrics agree on which mode/provider
 // was active.
 
-import { DEBUG } from "@dotli/config/config";
+import { DEBUG } from "@dotli/config";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 

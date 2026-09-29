@@ -28,6 +28,7 @@
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
+    "@dotli/config": "*",
     "@types/node": "^26.6.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",

@@ -23,40 +23,44 @@ import {
   createMessagePortProvider,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import { BASE_DOMAIN } from "@dotli/config/config";
 import {
+  BASE_DOMAIN,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
-} from "@dotli/config/host-sandbox-contract";
-import { getBackend } from "@dotli/config/mode";
-import { getNetwork, withActiveTld } from "@dotli/config/network";
-import { getResolutionId, m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { chatCapabilityFor } from "@dotli/shared/chat-capability";
-import { log } from "@dotli/shared/log";
+  getBackend,
+  getNetwork,
+  withActiveTld,
+} from "@dotli/config";
+
+import { getResolutionId, m, spans as S } from "@dotli/metrics";
+import { chatCapabilityFor, log } from "@dotli/shared";
+
 import {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
-} from "@dotli/truapi-debug/dotli-debug-bus";
+} from "@dotli/truapi-debug";
 import type { TrUApiProductProvider } from "@parity/truapi-host";
 import type { PairingHostAdmin } from "@parity/truapi-host";
 import {
   buildAllowAttribute,
   registerPermissionAuthorizationProvider,
-} from "./permissions";
-import { createHostCallbacks } from "./host-callbacks/handlers";
-import { dispatchAuthState } from "./host-callbacks/AuthState";
-import { onStoredSessionChanged } from "./host-callbacks/SessionStore";
-import { LoginRequestError } from "./login-request-error";
-import { attachProductFrame } from "./product-frame-layout";
-import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
-import { setProductLoaded } from "./state/product";
-import { describeWireFrame } from "./debug-wire-describe";
-import type { BlockingModalCoordinator } from "./blocking-modal-queue";
-import { registerChatConnection } from "./chat/service";
-import { showNotification } from "./notification";
-import { ERRORS } from "./errors";
-import { disposeAppRoot, disposeAppRoots } from "./mount/app-roots";
+} from "./permissions.js";
+import { createHostCallbacks } from "./host-callbacks/handlers.js";
+import { dispatchAuthState } from "./host-callbacks/AuthState.js";
+import { onStoredSessionChanged } from "./host-callbacks/SessionStore.js";
+import { LoginRequestError } from "./login-request-error.js";
+import { attachProductFrame } from "./product-frame-layout.js";
+import {
+  createTruapiRuntimeConfig,
+  labelToProductId,
+} from "./runtime-config.js";
+import { setProductLoaded } from "./state/product.js";
+import { describeWireFrame } from "./debug-wire-describe.js";
+import type { BlockingModalCoordinator } from "./blocking-modal-queue.js";
+import { registerChatConnection } from "./chat/service.js";
+import { showNotification } from "./notification.js";
+import { ERRORS } from "./errors.js";
+import { disposeAppRoot, disposeAppRoots } from "./mount/app-roots.js";
 
 const noop = (): void => undefined;
 
@@ -988,7 +992,7 @@ export async function renderIframe(
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
     const { mountViolationPanel } =
-      await import("./components/sandbox-checker/mount");
+      await import("./components/sandbox-checker/mount.js");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;
@@ -1150,7 +1154,7 @@ export async function renderAppSubdomain(
     (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
   ) {
     const { mountViolationPanel } =
-      await import("./components/sandbox-checker/mount");
+      await import("./components/sandbox-checker/mount.js");
     if (myRenderGeneration !== renderGeneration) {
       stopSetup();
       return;

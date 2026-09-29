@@ -1,4 +1,4 @@
-import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
+import { getActiveServicesConfig, withActiveTld } from "@dotli/config";
 import type { ProductRuntimeConfig } from "@parity/truapi-host";
 
 declare const __DOTLI_VERSION__: string | undefined;

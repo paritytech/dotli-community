@@ -17,13 +17,13 @@ import {
   registerPermissionAuthorizationProvider,
   resetPermission,
   setPermissionStatus,
-} from "@dotli/ui/permissions";
+} from "../src/permissions.js";
 import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
-import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { createPromptPermission } from "../src/host-callbacks/PromptPermission.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",

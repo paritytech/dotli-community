@@ -14,10 +14,10 @@
 // resolution tick.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPanel, type PanelModule } from "./panel-entry";
-import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
-import type * as ProductFrameLayoutModule from "@dotli/ui/product-frame-layout";
-import { query, must } from "../support";
+import { loadPanel, type PanelModule } from "./panel-entry.js";
+import type * as DotliDebugBusModule from "../../../truapi-debug/src/dotli-debug-bus.js";
+import type * as ProductFrameLayoutModule from "../../src/product-frame-layout.js";
+import { query, must } from "../support.js";
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
@@ -52,9 +52,9 @@ beforeEach(async () => {
   document.body.replaceChildren();
   localStorage.clear();
   sessionStorage.clear();
-  bus = await import("@dotli/truapi-debug/dotli-debug-bus");
+  bus = await import("../../../truapi-debug/src/dotli-debug-bus.js");
   // Imported after the reset so the panel reports to this same instance.
-  layout = await import("@dotli/ui/product-frame-layout");
+  layout = await import("../../src/product-frame-layout.js");
   panelModule = await loadPanel();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableDotliDebugBuffering();

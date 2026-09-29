@@ -8,14 +8,14 @@ import {
   createPopover,
   type PopoverMode,
   type PopoverOptions,
-} from "@dotli/ui/components/shell/popover";
+} from "../../../src/components/shell/popover.js";
 import {
   recordChainsButtonVisible,
   setBlockingModalActive,
   setTopbarVisible,
-} from "@dotli/ui/state/topbar";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
-import { byId, must } from "../../support";
+} from "../../../src/state/topbar.js";
+import { renderComponent, resetStores, settle } from "../../helpers/solid.js";
+import { byId, must } from "../../support.js";
 
 type Popover = ReturnType<typeof createPopover>;
 

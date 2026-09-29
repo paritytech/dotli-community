@@ -5,7 +5,7 @@ import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 /**
  * What the modal body shows. `error` carries the raw failure `message` plus

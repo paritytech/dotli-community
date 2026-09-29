@@ -3,9 +3,9 @@
 
 import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { modalsStore, type ModalEntry } from "../../state/modals";
-import { useStore } from "../use-store";
-import { SigningDialog } from "./SigningDialog";
+import { modalsStore, type ModalEntry } from "../../state/modals.js";
+import { useStore } from "../use-store.js";
+import { SigningDialog } from "./SigningDialog.js";
 
 /** Shows the first queued dialog; the rest wait their turn. */
 export function ModalOutlet(): JSX.Element {

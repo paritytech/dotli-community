@@ -21,8 +21,8 @@
 
 import { createNanoEvents } from "nanoevents";
 
-import type { DotliDebugEvent } from "./dotli-debug-types.ts";
-import type { TruapiDebugMessageEvent } from "./event-store.ts";
+import type { DotliDebugEvent } from "./dotli-debug-types.js";
+import type { TruapiDebugMessageEvent } from "./event-store.js";
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 

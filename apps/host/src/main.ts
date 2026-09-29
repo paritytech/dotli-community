@@ -17,19 +17,22 @@ if (typeof globalThis.requestIdleCallback !== "function") {
 
 // Must stay the first import: it starts Sentry before any other module
 // evaluates, then starts loading the shell's islands (see boot.ts).
-import "./boot";
-import "./pwa";
+import "./boot.js";
+import "./pwa.js";
 import "@dotli/ui/styles.css";
 import * as Sentry from "@sentry/browser";
-import { captureException } from "@dotli/metrics/sentry";
+import {
+  captureException,
+  m,
+  setResolutionId,
+  spans as S,
+} from "@dotli/metrics";
 import {
   SETTINGS_GLYPH,
   showError,
   showErrorPage,
   showNoContentError,
-} from "@dotli/ui/ui";
-import { showLanding } from "@dotli/ui/landing/load";
-import {
+  showLanding,
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -41,18 +44,49 @@ import {
   stopStatusTick,
   listenForSandboxStatus,
   onSandboxDone,
-} from "@dotli/ui/loading-controller";
-import type { LoadingPhase } from "@dotli/ui/loading-controller";
-import type { ChainSyncKind } from "@dotli/resolver/chain-sync";
-import { chainRoleForKey } from "@dotli/ui/chain-roles";
-import type { ChainRole } from "@dotli/config/network";
-import { PHASE_BY_MILESTONE, startResolutionTrace } from "./resolution-trace";
-import {
+  chainRoleForKey,
   recordChainPhase,
   recordPeerCount,
   recordTransfer,
   type ChainPhase,
-} from "@dotli/ui/network-monitor";
+  initTopBar,
+  setChainsButtonVisible,
+  wipeOriginState,
+  armTopbarAutoHide,
+  pinTopbarVisible,
+  setVerificationShieldState,
+  showLocalhostPill,
+  showProductPill,
+  createBlockingModalCoordinator,
+  initSettingsStore,
+  recordRecentLabel,
+  showNotification,
+  prefetchOverlays,
+  initScheduledNotifications,
+  loadSharedMode,
+  loadTruapiDebugMount,
+  loadBridge,
+} from "@dotli/ui";
+
+import type {
+  LoadingPhase,
+  ShieldState,
+  BridgeModule as RenderModule,
+} from "@dotli/ui";
+import type {
+  ChainSyncKind,
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+  ResolvePhase,
+} from "@dotli/resolver";
+
+import type { ChainRole } from "@dotli/config";
+import {
+  PHASE_BY_MILESTONE,
+  startResolutionTrace,
+} from "./resolution-trace.js";
+
 import {
   describeProgressStall,
   describeStall,
@@ -60,23 +94,13 @@ import {
   STALL_WARNING_MS,
   WARNING_MIN_LOAD_MS,
   type CriticalChain,
-} from "./warnings";
-import { initTopBar, setChainsButtonVisible } from "@dotli/ui/topbar";
-import { wipeOriginState } from "@dotli/ui/settings-actions";
-import { armTopbarAutoHide, pinTopbarVisible } from "@dotli/ui/topbar-autohide";
-import type { ShieldState } from "@dotli/ui/verification-shield";
-import {
-  setVerificationShieldState,
-  showLocalhostPill,
-  showProductPill,
-} from "@dotli/ui/state/url-pill";
-import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
-import { initSettingsStore } from "@dotli/ui/state/settings";
+} from "./warnings.js";
+
 import {
   bitswapGet,
   listenForSandboxBitswap,
   onContentProgress,
-} from "@dotli/content/bitswap";
+} from "@dotli/content";
 import {
   ensureProtocolFrame,
   getSmoldotDbOutcome,
@@ -89,50 +113,37 @@ import {
   resolveRootManifestRemote,
   setProtocolSubMode,
   warmupProtocol,
-} from "@dotli/protocol/client";
+} from "@dotli/protocol";
 import {
   getCachedCid,
   setCachedCid,
   recordRevalidateOutcome,
-} from "@dotli/storage/cid-cache";
-import {
   deleteCachedBlock,
   getCachedBlock,
   pruneBlockCache,
   putCachedBlock,
-} from "@dotli/storage/block-cache";
-import { recordRecentLabel } from "@dotli/ui/recent-labels";
-import { dur, elapsed } from "@dotli/shared/perf";
+} from "@dotli/storage";
+
 import {
+  dur,
+  elapsed,
   setActiveAppManifest,
   setActiveRootManifest,
-} from "@dotli/shared/active-manifest";
-import {
   primeChatCapability,
   setChatCapability,
-} from "@dotli/shared/chat-capability";
-import type {
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-} from "@dotli/resolver/manifest";
-import type { ResolvePhase } from "@dotli/resolver/access-raw-storage";
+  log,
+  serializeError,
+  dotNsUrl,
+  isValidDotLabel,
+  isMobileDevice,
+} from "@dotli/shared";
+
 import {
   BASE_DOMAIN,
   BLOCK_CACHE_MAX_BYTES,
   DEBUG,
   SITE_ID,
   isLocalhost,
-} from "@dotli/config/config";
-import { log } from "@dotli/shared/log";
-import { serializeError } from "@dotli/shared/errors";
-import { dotNsUrl } from "@dotli/shared/dotns-url";
-import { isValidDotLabel } from "@dotli/shared/html";
-import { isMobileDevice } from "@dotli/shared/device";
-import { showNotification } from "@dotli/ui/notification";
-import { prefetchOverlays } from "@dotli/ui/overlays/load";
-import { initScheduledNotifications } from "@dotli/ui/scheduled-notifications";
-import {
   BACKEND_KEY,
   CACHE_KEY,
   getBackend,
@@ -142,19 +153,16 @@ import {
   getCacheSettings,
   setCacheSettings,
   type Backend,
-} from "@dotli/config/mode";
-import {
   NETWORK_KEY,
   getActiveTldSuffix,
   getNetwork,
   setNetwork,
   withActiveTld,
-} from "@dotli/config/network";
-import {
   parseSettingsFromSearch,
   writeSettingsToSearch,
-} from "@dotli/config/url-settings";
-import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
+} from "@dotli/config";
+
+import type { DotliDebugEvent } from "@dotli/truapi-debug";
 import {
   describeError,
   ERROR_TITLES,
@@ -167,8 +175,8 @@ import {
   trustedProviderHosts,
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
-} from "./errors";
-import { parsePreviewTargetUrl } from "./preview-route";
+} from "./errors.js";
+import { parsePreviewTargetUrl } from "./preview-route.js";
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -226,9 +234,6 @@ if (!isMobileDevice()) {
     });
   }
 }
-
-import { m, setResolutionId } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
 
 // Track WASM module load times via resource timing
 if (m.enabled && typeof PerformanceObserver !== "undefined") {
@@ -399,7 +404,7 @@ async function applyProductBranding(
   let rootResult: ManifestResult<RootManifest>;
   let appResult: ManifestResult<ExecutableManifest>;
   if (chainBackend === "rpc-gateway") {
-    const mod = await import("@dotli/resolver/rpc-resolve");
+    const mod = await loadRpcResolve();
     [rootResult, appResult] = await Promise.all([
       mod.resolveRootManifestViaRpc(label),
       mod.resolveExecutableManifestViaRpc(label, "app"),
@@ -461,9 +466,9 @@ function setFavicon(href: string, format: "jpeg" | "png"): void {
     document.head.appendChild(link);
   }
 }
-
-import type * as RenderModule from "@dotli/ui/bridge";
-type RenderChunk = typeof RenderModule;
+import { loadDotliDebugBus } from "@dotli/truapi-debug";
+import { loadRpcResolve, loadResolve } from "@dotli/resolver";
+type RenderChunk = RenderModule;
 
 /**
  * Resolve the TrUAPI debug panel mode for this page load.
@@ -659,8 +664,7 @@ async function runBackgroundRevalidate(
     if (chainBackend !== "rpc-gateway") {
       freshCid = await resolveDotNameRemote(label);
     } else {
-      const { resolveDotNameViaRpc } =
-        await import("@dotli/resolver/rpc-resolve");
+      const { resolveDotNameViaRpc } = await loadRpcResolve();
       freshCid = await resolveDotNameViaRpc(label);
     }
     stopTimer();
@@ -736,7 +740,7 @@ async function applyUrlSettings(): Promise<void> {
   // any subsequent `setBackend` / `setCacheSettings` calls below to the
   // shared store, so URL-driven changes propagate across subdomains.
   try {
-    const { bootstrapSharedMode } = await import("@dotli/ui/shared-mode");
+    const { bootstrapSharedMode } = await loadSharedMode();
     await bootstrapSharedMode();
   } catch (err: unknown) {
     log.warn(
@@ -802,7 +806,7 @@ async function applyUrlSettings(): Promise<void> {
   // Same logic for the trusted-RPC path's cached `chainHead_v1_follow`.
   if (prior.chain !== next.chain || prior.network !== next.network) {
     try {
-      const r = await import("@dotli/resolver/rpc-resolve");
+      const r = await loadRpcResolve();
       r.destroyRpcClient();
       // eslint-disable-next-line no-restricted-syntax -- defensive teardown: the rpc-resolve module may not have been imported yet on this boot, in which case there is nothing to destroy.
     } catch {
@@ -927,16 +931,14 @@ async function main(): Promise<void> {
   // `?debug=off` and sessionStorage still let users silence the panel
   // on a per-tab basis after enabling it.
   const { emitDotliDebugEvent, enableDotliDebugBuffering } =
-    await import("@dotli/truapi-debug/dotli-debug-bus");
+    await loadDotliDebugBus();
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
-    void import("@dotli/ui/components/truapi-debug/mount").then(
-      ({ setupTruapiDebugPanel }) => {
-        setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
-        log.warn(`[dot.li] TrUAPI debug panel enabled`);
-      },
-    );
+    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
+      setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+      log.warn(`[dot.li] TrUAPI debug panel enabled`);
+    });
   }
 
   // Per-tab boot flow id. Every boot/resolve/render/bridge event from
@@ -1040,7 +1042,7 @@ async function main(): Promise<void> {
     });
   }
 
-  const bridgeModulePromise = import("@dotli/ui/bridge");
+  const bridgeModulePromise = loadBridge();
   const bridgeModule = await bridgeModulePromise;
   bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
 
@@ -1166,7 +1168,7 @@ async function main(): Promise<void> {
     const result =
       chainBackend === "rpc-gateway"
         ? await (
-            await import("@dotli/resolver/rpc-resolve")
+            await loadRpcResolve()
           ).resolveExecutableManifestViaRpc(label, "worker")
         : await resolveExecutableManifestRemote(label, "worker");
     return (
@@ -1177,7 +1179,7 @@ async function main(): Promise<void> {
   });
 
   // Pre-load render chunk in parallel (overlap with CID resolution)
-  const renderChunkPromise: Promise<RenderChunk> = import("@dotli/ui/bridge");
+  const renderChunkPromise: Promise<RenderChunk> = loadBridge();
   void renderChunkPromise.catch(() => {
     /* fire-and-forget */
   });
@@ -1907,7 +1909,7 @@ async function main(): Promise<void> {
       log.warn(
         `[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`,
       );
-      const { statusToPhase } = await import("@dotli/resolver/resolve");
+      const { statusToPhase } = await loadResolve();
       const onResolveProgress = (msg: string): void => {
         // Progress events arrive as opaque strings across the iframe
         // boundary. The resolver package owns the authoritative mapping from
@@ -1935,8 +1937,7 @@ async function main(): Promise<void> {
       log.warn(
         `[dot.li resolve] path=json-rpc (gateway mode) (${elapsed(T0)})`,
       );
-      const { resolveDotNameViaRpc } =
-        await import("@dotli/resolver/rpc-resolve");
+      const { resolveDotNameViaRpc } = await loadRpcResolve();
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, "progress");
       };

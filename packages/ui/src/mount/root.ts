@@ -3,8 +3,8 @@
 
 import { createComponent, Errored } from "solid-js";
 import { render, type JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot, registerAppRoot } from "./app-roots";
+import { captureException } from "@dotli/metrics";
+import { disposeAppRoot, registerAppRoot } from "./app-roots.js";
 
 export interface MountRootOptions {
   /**

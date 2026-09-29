@@ -4,9 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
-import { createLazyRoot } from "@dotli/ui/mount/lazy-root";
+import { createLazyRoot } from "../../src/mount/lazy-root.js";
 
 beforeEach(() => {
   sentry.captureException.mockClear();

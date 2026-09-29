@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveServicesConfig } from "@dotli/config";
 import {
   createCoreRpcChainProvider,
   createRpcChainProvider,
   isCoreRpcChainSupported,
   isRpcChainSupported,
-} from "@dotli/resolver/rpc-chain";
+} from "../src/rpc-chain.js";
 
 const mocks = vi.hoisted(() => ({
   getWsProvider: vi.fn(),

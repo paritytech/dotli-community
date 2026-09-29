@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { SITE_ID } from "@dotli/config/config";
+import { SITE_ID } from "@dotli/config";
 import {
   buildSharedAuthStorageKey,
   isSharedAuthOriginAllowed,
@@ -10,7 +10,7 @@ import {
   isSharedAuthSiteId,
   isValidSharedAuthKey,
   SHARED_CORE_SESSION_KEY,
-} from "@dotli/protocol/auth-storage";
+} from "../src/auth-storage.js";
 
 describe("shared auth storage helpers", () => {
   it("accepts host shell origins and rejects app origins", () => {

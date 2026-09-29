@@ -1,22 +1,22 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { labelToProductId } from "@dotli/ui/runtime-config";
-import { setChatCapability } from "@dotli/shared/chat-capability";
+import { labelToProductId } from "../src/runtime-config.js";
+import { setChatCapability } from "@dotli/shared";
 import type {
   HostChatActionSubscribeItem,
   HostRendererActionSubscribeItem,
   ProductRendererRenderRequest,
 } from "@parity/truapi";
 import type { RenderSink } from "@parity/truapi-host";
-import type * as AuthModule from "@dotli/ui/state/auth";
-import type * as TopbarModule from "@dotli/ui/state/topbar";
-import type * as PanelModule from "@dotli/ui/chat/panel";
-import type * as ServiceModule from "@dotli/ui/chat/service";
-import { byId, query } from "./support";
+import type * as AuthModule from "../src/state/auth.js";
+import type * as TopbarModule from "../src/state/topbar.js";
+import type * as PanelModule from "../src/chat/panel.js";
+import type * as ServiceModule from "../src/chat/service.js";
+import { byId, query } from "./support.js";
 
 // happy-dom drops a calc() that holds a var(), so the box helper returns plain
 // stand-in values here. product-frame-layout tests cover the inset terms.
-vi.mock("@dotli/ui/product-iframe-box", () => ({
+vi.mock("../src/product-iframe-box.js", () => ({
   productIframeBox: () => ({
     top: "56px",
     left: "0px",
@@ -38,12 +38,12 @@ async function loadChatModules(): Promise<{
 }> {
   vi.resetModules();
   stores = {
-    auth: await import("@dotli/ui/state/auth"),
-    topbar: await import("@dotli/ui/state/topbar"),
+    auth: await import("../src/state/auth.js"),
+    topbar: await import("../src/state/topbar.js"),
   };
   return {
-    panel: await import("@dotli/ui/chat/panel"),
-    service: await import("@dotli/ui/chat/service"),
+    panel: await import("../src/chat/panel.js"),
+    service: await import("../src/chat/service.js"),
   };
 }
 
@@ -600,7 +600,7 @@ describe("chat panel", () => {
 
   it("As a user, opening the panel narrows the app and closing restores it", async () => {
     const { panel } = await loadChatModules();
-    const layout = await import("@dotli/ui/product-frame-layout");
+    const layout = await import("../src/product-frame-layout.js");
     const iframe = query(document, "#app iframe", HTMLIFrameElement);
     layout.attachProductFrame(iframe);
     panel.initChatPanel();
@@ -614,7 +614,7 @@ describe("chat panel", () => {
     expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 360px)");
 
     // Dragging the resize handle follows the panel's width.
-    const state = await import("@dotli/ui/state/chat-panel");
+    const state = await import("../src/state/chat-panel.js");
     state.setChatPanelWidth(420);
     expect(iframe.style.width).toBe("calc(calc(100% - 10px) - 420px)");
 
@@ -628,7 +628,7 @@ describe("chat panel", () => {
 
   it("As a user, reloading the product with the panel open keeps the app narrowed", async () => {
     const { panel } = await loadChatModules();
-    const layout = await import("@dotli/ui/product-frame-layout");
+    const layout = await import("../src/product-frame-layout.js");
     layout.attachProductFrame(
       query(document, "#app iframe", HTMLIFrameElement),
     );
@@ -816,7 +816,7 @@ describe("chat panel", () => {
 
   it("As a user, a messages read that finishes after I closed the panel leaves the room unread", async () => {
     const { panel, service } = await loadChatModules();
-    const state = await import("@dotli/ui/state/chat-panel");
+    const state = await import("../src/state/chat-panel.js");
     panel.initChatPanel();
     loadProduct("chatty-late-read");
     const productId = labelToProductId("chatty-late-read");
@@ -866,7 +866,7 @@ describe("chat panel", () => {
 
   it("As a user, a render error closes the panel and the next open recovers it", async () => {
     const { panel } = await loadChatModules();
-    const manifest = await import("@dotli/shared/active-manifest");
+    const manifest = await import("../../shared/src/active-manifest.js");
     panel.initChatPanel();
     loadProduct("chatty-broken-render");
 
@@ -896,13 +896,13 @@ describe("chat panel", () => {
   it("As a user, if the chat code cannot load, the panel closes and the next open retries", async () => {
     vi.resetModules();
     let calls = 0;
-    vi.doMock("@dotli/ui/components/chat/mount", () => {
+    vi.doMock("../src/components/chat/mount.js", () => {
       calls += 1;
       throw new Error("chunk failed");
     });
     try {
-      const panel = await import("@dotli/ui/chat/panel");
-      const load = await import("@dotli/ui/chat/load");
+      const panel = await import("../src/chat/panel.js");
+      const load = await import("../src/chat/load.js");
       panel.initChatPanel();
       loadProduct("chatty-broken");
 
@@ -916,7 +916,7 @@ describe("chat panel", () => {
       expect(calls).toBe(2);
       expect(byId("chat-panel").hidden).toBe(true);
     } finally {
-      vi.doUnmock("@dotli/ui/components/chat/mount");
+      vi.doUnmock("../src/components/chat/mount.js");
       vi.resetModules();
     }
   });

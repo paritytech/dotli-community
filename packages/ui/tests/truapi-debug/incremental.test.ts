@@ -8,15 +8,17 @@
 
 import { describe, expect, it } from "vitest";
 import { createRenderEffect, createRoot, flush } from "solid-js";
-import { createKeyedSignals } from "@dotli/ui/components/truapi-debug/keyed-signals";
+import { createKeyedSignals } from "../../src/components/truapi-debug/keyed-signals.js";
 import {
   EventStore,
   firstNewIndex,
   type StoredEvent,
-} from "@dotli/truapi-debug/event-store";
-import { OpenCallTracker, openCalls } from "@dotli/truapi-debug/pending";
-import { createResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
-import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
+  OpenCallTracker,
+  openCalls,
+  createResolutionRecorder,
+} from "@dotli/truapi-debug";
+
+import type { DotliDebugEvent } from "@dotli/truapi-debug";
 
 function insert(
   store: EventStore,

@@ -20,28 +20,28 @@ import {
   type SubstrateClient,
 } from "@polkadot-api/substrate-client";
 import { getWsProvider } from "polkadot-api/ws";
-import { TIMEOUTS } from "@dotli/config/config";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { log } from "@dotli/shared/log";
-import { dur } from "@dotli/shared/perf";
-import { namehash, toHex, decodeIpfsContenthashResult } from "./abi";
+import { TIMEOUTS, getActiveServicesConfig } from "@dotli/config";
+
+import { log, dur } from "@dotli/shared";
+
+import { namehash, toHex, decodeIpfsContenthashResult } from "./abi.js";
 import {
   ContenthashDecodeError,
   UnsupportedContenthashCodecError,
-} from "./errors";
-import { raceSyncTimeout } from "./sync-deadline";
-import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
-import type { StatusCallback } from "./access-raw-storage";
-import { createRawApi, type Api } from "./api";
-import { readExecutableManifest, readRootManifest } from "./manifest";
+} from "./errors.js";
+import { raceSyncTimeout } from "./sync-deadline.js";
+import { readMappingBytes, readMappingAddress } from "./access-raw-storage.js";
+import type { StatusCallback } from "./access-raw-storage.js";
+import { createRawApi, type Api } from "./api.js";
+import { readExecutableManifest, readRootManifest } from "./manifest.js";
 import type {
   ExecutableKind,
   ExecutableManifest,
   ManifestResult,
   RootManifest,
-} from "./manifest";
+} from "./manifest.js";
 
-export type { StatusCallback } from "./access-raw-storage";
+export type { StatusCallback } from "./access-raw-storage.js";
 
 /**
  * `WsJsonRpcProvider` from `polkadot-api/ws-provider`. Its type is not

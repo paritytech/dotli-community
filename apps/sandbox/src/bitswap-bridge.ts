@@ -4,7 +4,7 @@
 // Sandbox-side bitswap bridge: postMessages the host parent which proxies
 // the request to the protocol iframe's smoldot.
 
-import { log } from "@dotli/shared/log";
+import { log } from "@dotli/shared";
 
 interface BitswapResultMessage {
   type: "dotli:bitswap-result";

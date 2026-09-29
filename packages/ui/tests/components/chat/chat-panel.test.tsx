@@ -8,7 +8,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flush } from "solid-js";
 import type { RendererNode } from "@parity/truapi";
-import type { ChatMessageRecord, ChatRoomRecord } from "@dotli/ui/chat/service";
+import type {
+  ChatMessageRecord,
+  ChatRoomRecord,
+} from "../../../src/chat/service.js";
 
 interface Sink {
   onUpdate: (node: RendererNode) => void;
@@ -30,7 +33,7 @@ const h = vi.hoisted(() => ({
   captured: [] as unknown[],
 }));
 
-vi.mock("@dotli/ui/chat/service", async (original) => {
+vi.mock("../../../src/chat/service.js", async (original) => {
   const actual = await original<typeof ServiceModule>();
   return {
     ...actual,
@@ -70,7 +73,7 @@ vi.mock("@dotli/ui/chat/service", async (original) => {
   };
 });
 
-vi.mock("@dotli/ui/state/chat-panel", async (original) => {
+vi.mock("../../../src/state/chat-panel.js", async (original) => {
   const actual = await original<typeof ChatPanelModule>();
   return {
     ...actual,
@@ -81,13 +84,13 @@ vi.mock("@dotli/ui/state/chat-panel", async (original) => {
   };
 });
 
-vi.mock("@dotli/metrics/sentry", () => ({
+vi.mock("../../../../metrics/src/sentry.js", () => ({
   captureException: (error: unknown) => {
     h.captured.push(error);
   },
 }));
 
-import { ChatPanel } from "@dotli/ui/components/chat/ChatPanel";
+import { ChatPanel } from "../../../src/components/chat/ChatPanel.js";
 import {
   backToChatRooms,
   chatPanelStore,
@@ -95,12 +98,12 @@ import {
   openChatRoom,
   setChatPanelOpen,
   setChatPanelWidth,
-} from "@dotli/ui/state/chat-panel";
-import { setLoggedIn } from "@dotli/ui/state/auth";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
-import type * as ServiceModule from "@dotli/ui/chat/service";
-import type * as ChatPanelModule from "@dotli/ui/state/chat-panel";
-import { byId } from "../../support";
+} from "../../../src/state/chat-panel.js";
+import { setLoggedIn } from "../../../src/state/auth.js";
+import { renderComponent, resetStores, settle } from "../../helpers/solid.js";
+import type * as ServiceModule from "../../../src/chat/service.js";
+import type * as ChatPanelModule from "../../../src/state/chat-panel.js";
+import { byId } from "../../support.js";
 
 const PRODUCT = "chatty.dot";
 

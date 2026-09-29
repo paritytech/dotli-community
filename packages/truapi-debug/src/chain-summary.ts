@@ -10,9 +10,9 @@
 // Returns `null` for non-chain messages or unknown shapes. The caller
 // omits the summary section when null.
 
-import type { ChainAnnotations } from "./chain-decode.ts";
-import { formatChainDisplay } from "./chain-registry.ts";
-import { asEnum, asObj, asString, peelVersion } from "./shape.ts";
+import type { ChainAnnotations } from "./chain-decode.js";
+import { formatChainDisplay } from "./chain-registry.js";
+import { asEnum, asObj, asString, peelVersion } from "./shape.js";
 
 /** Length at which we abbreviate hex strings in the human summary. */
 const HEX_SHORT_LEN = 8;

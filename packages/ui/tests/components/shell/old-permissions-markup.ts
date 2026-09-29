@@ -8,9 +8,12 @@
 // createPermissionDropdown made. The island tests compare against it node
 // for node.
 
-import { PERM_ICONS } from "@dotli/ui/components/shell/PermissionRow";
-import { ALL_PERMISSIONS, type PermissionStatus } from "@dotli/ui/permissions";
-import { query } from "../../support";
+import { PERM_ICONS } from "../../../src/components/shell/PermissionRow.js";
+import {
+  ALL_PERMISSIONS,
+  type PermissionStatus,
+} from "../../../src/permissions.js";
+import { query } from "../../support.js";
 
 const STATIC_BUTTON = `<button id="permissions-button" class="topbar-btn" title="Permissions" aria-label="Permissions"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></button>`;
 

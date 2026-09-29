@@ -14,10 +14,10 @@ import {
   decodeChainAnnotations,
   formatChainLabel,
   type ChainAnnotations,
-} from "./chain-decode.ts";
-import type { StoredSystemEvent, StoredTruapiEvent } from "./event-store.ts";
-import { formatPayloadSummary } from "./format.ts";
-import { summariseSystemEvent } from "./system-summary.ts";
+} from "./chain-decode.js";
+import type { StoredSystemEvent, StoredTruapiEvent } from "./event-store.js";
+import { formatPayloadSummary } from "./format.js";
+import { summariseSystemEvent } from "./system-summary.js";
 
 /**
  * Compact summary rendered in the list row for a decoded chain message.

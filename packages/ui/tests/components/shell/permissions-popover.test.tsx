@@ -7,30 +7,33 @@ import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
 } from "@parity/truapi-host";
-import { PermissionsPopover } from "@dotli/ui/components/shell/PermissionsPopover";
+import { PermissionsPopover } from "../../../src/components/shell/PermissionsPopover.js";
 import {
   ALL_PERMISSIONS,
   registerPermissionAuthorizationProvider,
-} from "@dotli/ui/permissions";
-import { setProductError, setProductLoaded } from "@dotli/ui/state/product";
-import { recordPermissionChange } from "@dotli/ui/state/permissions";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+} from "../../../src/permissions.js";
+import {
+  setProductError,
+  setProductLoaded,
+} from "../../../src/state/product.js";
+import { recordPermissionChange } from "../../../src/state/permissions.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
 import {
   pointerPressUnfocusable,
   renderComponent,
   resetStores,
   tabTo,
-} from "../../helpers/solid";
+} from "../../helpers/solid.js";
 import {
   oldPermissionsBackdrop,
   oldPermissionsButton,
   oldPermissionsPopover,
   type OldPermissionsList,
-} from "./old-permissions-markup";
-import { normalized } from "./old-auth-markup";
-import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
-import { focusables } from "@dotli/ui/components/focus";
-import { byId, must } from "../../support";
+} from "./old-permissions-markup.js";
+import { normalized } from "./old-auth-markup.js";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness.js";
+import { focusables } from "../../../src/components/focus.js";
+import { byId, must } from "../../support.js";
 
 const LABEL = "localhost:3000";
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { wireHoverTooltips } from "@dotli/ui/components/truapi-debug/hover-tooltip";
+import { wireHoverTooltips } from "../../src/components/truapi-debug/hover-tooltip.js";
 
 const PANEL = { left: 0, top: 0, right: 1000, bottom: 600 };
 /** A prose tooltip's natural width; it wraps narrower when less room is left. */

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { setBlockingModalActive } from "./state/topbar";
+import { setBlockingModalActive } from "./state/topbar.js";
 
 type BlockingModalTask<T> = (signal: AbortSignal) => Promise<T> | T;
 

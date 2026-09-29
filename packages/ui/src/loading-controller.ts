@@ -8,10 +8,10 @@
 // from apps/host/index.html, which it removes when the loading root is
 // disposed before the island has taken the screen over.
 
-import { isSandboxOrigin } from "@dotli/config/config";
-import { withActiveTld } from "@dotli/config/network";
-import { disposeAppRoot, registerAppRoot } from "./mount/app-roots";
-import { getLoadingState, updateLoading } from "./state/loading";
+import { isSandboxOrigin, withActiveTld } from "@dotli/config";
+
+import { disposeAppRoot, registerAppRoot } from "./mount/app-roots.js";
+import { getLoadingState, updateLoading } from "./state/loading.js";
 
 // Phase-based loading indicator.
 //

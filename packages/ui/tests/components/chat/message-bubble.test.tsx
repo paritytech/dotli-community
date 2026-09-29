@@ -4,23 +4,23 @@
 import { createSignal } from "solid-js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
-import type { ChatMessageRecord } from "@dotli/ui/chat/service";
+import type { ChatMessageRecord } from "../../../src/chat/service.js";
 
 const service = vi.hoisted(() => ({
   userTriggerAction: vi.fn(),
   renderCustomMessage: vi.fn(),
   userTriggerRendererAction: vi.fn(),
 }));
-vi.mock("@dotli/ui/chat/service", () => service);
+vi.mock("../../../src/chat/service.js", () => service);
 
-import { MessageBubble } from "@dotli/ui/components/chat/MessageBubble";
-import { ContactIcon } from "@dotli/ui/components/chat/ContactIcon";
+import { MessageBubble } from "../../../src/components/chat/MessageBubble.js";
+import { ContactIcon } from "../../../src/components/chat/ContactIcon.js";
 import {
   contactEntries,
   relativeTime,
-} from "@dotli/ui/components/chat/contacts";
-import { renderComponent, settle } from "../../helpers/solid";
-import { query } from "../../support";
+} from "../../../src/components/chat/contacts.js";
+import { renderComponent, settle } from "../../helpers/solid.js";
+import { query } from "../../support.js";
 
 const NOW = 1_700_000_000_000;
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetStores } from "../helpers/solid";
+import { resetStores } from "../helpers/solid.js";
 
 const monitor = vi.hoisted(() => {
   const listeners = new Set<() => void>();
@@ -14,7 +14,7 @@ const monitor = vi.hoisted(() => {
   };
 });
 
-vi.mock("@dotli/ui/network-monitor", () => ({
+vi.mock("../../src/network-monitor.js", () => ({
   subscribeNetwork: (l: () => void) => {
     monitor.listeners.add(l);
     return () => monitor.listeners.delete(l);
@@ -44,7 +44,7 @@ describe("network store", () => {
   it("As the chains popover, the store mirrors the monitor on every change after start", async () => {
     // Given
     const { getNetworkState, startNetworkStore } =
-      await import("@dotli/ui/state/network");
+      await import("../../src/state/network.js");
     const stop = startNetworkStore();
     monitor.status = [{ role: "relay", label: "Relay" }];
 
@@ -64,7 +64,7 @@ describe("network store", () => {
   it("As the host with no reader subscribed, monitor changes build no snapshot until one is read", async () => {
     // Given
     const { getNetworkState, networkStore, startNetworkStore } =
-      await import("@dotli/ui/state/network");
+      await import("../../src/state/network.js");
     let reads = 0;
     const stop = startNetworkStore();
     const status = [{ role: "relay", label: "Relay" }];
@@ -109,7 +109,7 @@ describe("network store", () => {
 
   it("As the host, the store does nothing until started", async () => {
     // Given
-    const { getNetworkState } = await import("@dotli/ui/state/network");
+    const { getNetworkState } = await import("../../src/state/network.js");
 
     // Then
     expect(getNetworkState().chains).toEqual([]);
@@ -118,7 +118,7 @@ describe("network store", () => {
   it("As the chains popover, watching starts the monitor's watch and re-reads it at once, and the stop ends the watch", async () => {
     // Given
     const { getNetworkState, startNetworkStore, watchNetwork } =
-      await import("@dotli/ui/state/network");
+      await import("../../src/state/network.js");
     const stopStore = startNetworkStore();
     monitor.status = [{ role: "relay", label: "Relay", reachable: true }];
 
@@ -144,7 +144,7 @@ describe("network store", () => {
   it("As a test, resetting the stores forgets a reader left subscribed, so changes build no snapshot again", async () => {
     // Given: a reader that is never unsubscribed.
     const { networkStore, startNetworkStore } =
-      await import("@dotli/ui/state/network");
+      await import("../../src/state/network.js");
     networkStore.subscribe(() => undefined);
     let reads = 0;
     Object.defineProperty(monitor, "status", {
@@ -171,7 +171,7 @@ describe("network store", () => {
   it("As a test, resetting the stores drops a stale mark, so the next read gets the reset value", async () => {
     // Given: a change with nobody subscribed marks the store stale.
     const { networkStore, startNetworkStore } =
-      await import("@dotli/ui/state/network");
+      await import("../../src/state/network.js");
     const stop = startNetworkStore();
     monitor.status = [{ role: "relay", label: "Relay" }];
     for (const l of monitor.listeners) {

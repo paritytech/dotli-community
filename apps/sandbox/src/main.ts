@@ -13,9 +13,16 @@ import {
   initSentry,
   installGlobalErrorHandlers,
   captureException,
-} from "@dotli/metrics/sentry";
-import { showNotification } from "@dotli/ui/notification";
-import { prefetchOverlays } from "@dotli/ui/overlays/load";
+  m,
+  setResolutionId,
+  spans as S,
+} from "@dotli/metrics";
+import {
+  showNotification,
+  prefetchOverlays,
+  showError,
+  showPasswordPrompt,
+} from "@dotli/ui";
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -41,31 +48,32 @@ window.addEventListener("vite:preloadError", (event) => {
 // before a deploy could make later chunk loads fail.
 prefetchOverlays();
 
-import { packArchive, type ArchiveFiles } from "@dotli/content/archive";
-import type { FetchResult } from "@dotli/content/fetch";
-import { isEncrypted, decryptContent } from "@dotli/content/decrypt";
-import { showError } from "@dotli/ui/ui";
-import { showPasswordPrompt } from "@dotli/ui/password-prompt";
-import { TIMEOUTS, BASE_DOMAIN } from "@dotli/config/config";
 import {
+  packArchive,
+  type ArchiveFiles,
+  isEncrypted,
+  decryptContent,
+  parseIpfsResponse,
+  loadFetch,
+} from "@dotli/content";
+import type { FetchResult } from "@dotli/content";
+
+import {
+  TIMEOUTS,
+  BASE_DOMAIN,
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
-} from "@dotli/config/host-sandbox-contract";
-import {
   getActiveServicesConfig,
   setNetworkOverride,
-} from "@dotli/config/network";
-import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
-import { elapsed } from "@dotli/shared/perf";
-import { log } from "@dotli/shared/log";
-import { parseIpfsResponse } from "@dotli/content/archive";
-import { SANDBOX_ERRORS } from "./errors";
+} from "@dotli/config";
+
+import { endpointHost, gatewayUnreachable, elapsed, log } from "@dotli/shared";
+
+import { SANDBOX_ERRORS } from "./errors.js";
 
 initSentry("sandbox");
 installGlobalErrorHandlers("sandbox");
-
-import { m, setResolutionId } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
+import { loadSandboxChecker } from "@dotli/sandbox-checker";
 
 const T0 = performance.now();
 
@@ -382,8 +390,7 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   ) {
     return html;
   }
-  const { injectSandboxChecker } =
-    await import("@dotli/sandbox-checker/sandbox-checker");
+  const { injectSandboxChecker } = await loadSandboxChecker();
   return injectSandboxChecker(html);
 }
 
@@ -640,8 +647,8 @@ async function main(): Promise<void> {
   // Pre-load the fetch chunk. Gateway mode only
   // needs `fetchViaGateway` (small). The smoldot backends additionally
   // need the bitswap-bridge module to call into the protocol iframe.
-  const fetchChunkPromise = import("@dotli/content/fetch");
-  const bitswapBridgePromise = isGateway ? null : import("./bitswap-bridge");
+  const fetchChunkPromise = loadFetch();
+  const bitswapBridgePromise = isGateway ? null : import("./bitswap-bridge.js");
 
   // The SW must control the page before the archive is handed to it.
   await swReady;

@@ -18,10 +18,10 @@ vi.hoisted(() => {
 });
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../../metrics/src/sentry.js", () => sentry);
 // The landing page loads the recent names from the shared storage frame,
 // which happy-dom would try to fetch.
-vi.mock("@dotli/ui/recent-labels", () => ({
+vi.mock("../../../src/recent-labels.js", () => ({
   loadRecentLabels: () => Promise.resolve([]),
   forgetRecentLabel: () => Promise.resolve(),
 }));
@@ -29,18 +29,18 @@ vi.mock("@dotli/ui/recent-labels", () => ({
 import {
   mountIslands,
   mountLoadingIsland,
-} from "@dotli/ui/components/shell/islands";
-import * as ctl from "@dotli/ui/loading-controller";
+} from "../../../src/components/shell/islands.js";
+import * as ctl from "../../../src/loading-controller.js";
 import {
   disposeAppRoot,
   disposeAppRoots,
   registerAppRoot,
-} from "@dotli/ui/mount/app-roots";
-import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
-import { getLoadingState, updateLoading } from "@dotli/ui/state/loading";
-import { showErrorPage } from "@dotli/ui/ui";
-import { showLanding } from "@dotli/ui/landing/load";
-import { byId } from "../../support";
+} from "../../../src/mount/app-roots.js";
+import { resetAllStoresForTests } from "../../../src/state/create-store.js";
+import { getLoadingState, updateLoading } from "../../../src/state/loading.js";
+import { showErrorPage } from "../../../src/ui.js";
+import { showLanding } from "../../../src/landing/load.js";
+import { byId } from "../../support.js";
 
 const INDEX_HTML = readFileSync(
   resolve(import.meta.dirname, "../../../../../apps/host/index.html"),

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { getMimeType } from "@dotli/shared/mime";
+import { getMimeType } from "../src/mime.js";
 
 describe("getMimeType", () => {
   it("returns text/html for .html", () => {

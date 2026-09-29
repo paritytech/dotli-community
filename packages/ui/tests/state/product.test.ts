@@ -7,8 +7,8 @@ import {
   productStore,
   setProductError,
   setProductLoaded,
-} from "@dotli/ui/state/product";
-import { resetStores, settle } from "../helpers/solid";
+} from "../../src/state/product.js";
+import { resetStores, settle } from "../helpers/solid.js";
 
 describe("product store", () => {
   afterEach(() => {

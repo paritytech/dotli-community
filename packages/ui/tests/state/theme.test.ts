@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { getThemeState, setTheme, themeStore } from "@dotli/ui/state/theme";
-import { resetStores, settle } from "../helpers/solid";
+import { getThemeState, setTheme, themeStore } from "../../src/state/theme.js";
+import { resetStores, settle } from "../helpers/solid.js";
 
 describe("theme store", () => {
   afterEach(() => {

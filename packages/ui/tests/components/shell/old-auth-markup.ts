@@ -6,8 +6,8 @@
 // Shell.tsx's static markup, changed by the same writes topbar.ts made. The
 // island tests compare against it node for node.
 
-import { escapeHtml } from "@dotli/shared/html";
-import { query } from "../../support";
+import { escapeHtml } from "@dotli/shared";
+import { query } from "../../support.js";
 
 const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 

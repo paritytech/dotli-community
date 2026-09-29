@@ -3,17 +3,17 @@
 
 import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { requestTruapiDisconnect, startLogin } from "../../auth-controller";
-import { getAuthState } from "../../state/auth";
-import { authModalStore } from "../../state/auth-modal";
-import { useStore } from "../use-store";
+import { requestTruapiDisconnect, startLogin } from "../../auth-controller.js";
+import { getAuthState } from "../../state/auth.js";
+import { authModalStore } from "../../state/auth-modal.js";
+import { useStore } from "../use-store.js";
 import {
   sessionInitials,
   sessionUsername,
   shortenAccount,
   useAccount,
-} from "./account";
-import { createPopover } from "./popover";
+} from "./account.js";
+import { createPopover } from "./popover.js";
 
 function UserIcon(): JSX.Element {
   return (

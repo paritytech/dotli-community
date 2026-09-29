@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { stubColorScheme } from "./helpers/color-scheme";
-import type * as ThemeControllerModule from "@dotli/ui/theme-controller";
-import type * as ThemeModule from "@dotli/ui/state/theme";
+import { stubColorScheme } from "./helpers/color-scheme.js";
+import type * as ThemeControllerModule from "../src/theme-controller.js";
+import type * as ThemeModule from "../src/state/theme.js";
 
 beforeEach(() => {
   vi.resetModules();
@@ -19,8 +19,8 @@ beforeEach(() => {
 async function loadController(): Promise<
   typeof ThemeControllerModule & typeof ThemeModule
 > {
-  const controller = await import("@dotli/ui/theme-controller");
-  const store = await import("@dotli/ui/state/theme");
+  const controller = await import("../src/theme-controller.js");
+  const store = await import("../src/state/theme.js");
   return { ...controller, ...store };
 }
 

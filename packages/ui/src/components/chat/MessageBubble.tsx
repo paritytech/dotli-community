@@ -8,9 +8,12 @@
 import { For, Show, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
 import type { ChatMessageContent } from "@parity/truapi";
-import { userTriggerAction, type ChatMessageRecord } from "../../chat/service";
-import { CustomMessage } from "./CustomMessage";
-import { relativeTime } from "./contacts";
+import {
+  userTriggerAction,
+  type ChatMessageRecord,
+} from "../../chat/service.js";
+import { CustomMessage } from "./CustomMessage.js";
+import { relativeTime } from "./contacts.js";
 
 export function MessageBubble(props: {
   record: ChatMessageRecord;

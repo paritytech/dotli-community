@@ -3,11 +3,11 @@
 
 import { test as base, type Page, type Frame } from "@playwright/test";
 import { existsSync } from "node:fs";
-import { STATE_FILE } from "./paths";
+import { STATE_FILE } from "./paths.js";
 import {
   E2E_CHAIN_BACKEND,
   initializeChainBackend,
-} from "../helpers/chain-backend";
+} from "../helpers/chain-backend.js";
 
 const PORT = process.env.PORT ?? "5173";
 const HOST = process.env.E2E_HOST ?? "host-playground";

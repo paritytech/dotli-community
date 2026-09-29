@@ -2,8 +2,8 @@ import type { ProductStorage } from "@parity/truapi-host";
 import type { HostLocalStorageChangeItem } from "@parity/truapi";
 import { bytesToHex } from "@parity/truapi/scale";
 import { base64 } from "@scure/base";
-import { ERRORS } from "../errors";
-import { createResultStream } from "./result-stream";
+import { ERRORS } from "../errors.js";
+import { createResultStream } from "./result-stream.js";
 
 // Same-window writes don't fire the `storage` event, so every runtime in this
 // window (app frames and the chat worker) is told through this set instead.

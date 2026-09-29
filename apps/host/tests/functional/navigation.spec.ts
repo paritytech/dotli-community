@@ -18,10 +18,10 @@ import {
   getProductFrame,
   getProductLocation,
   waitForSandboxErrorPage,
-} from "../product-frame";
-import { test } from "./helpers/shared-mode-reset";
-import { seedBackend as seedChainBackend } from "./fixtures/settings";
-import { PORT } from "../env";
+} from "../product-frame.js";
+import { test } from "./helpers/shared-mode-reset.js";
+import { seedBackend as seedChainBackend } from "./fixtures/settings.js";
+import { PORT } from "../env.js";
 
 const LABEL = "host-playground";
 const TIMEOUT_MS = parseInt(process.env.COMBO_TIMEOUT_MS ?? "45000", 10);

@@ -9,7 +9,7 @@ import {
   getBackend,
   isSharedWorkerAvailable,
   type ModeStorage,
-} from "@dotli/config/mode";
+} from "../src/mode.js";
 
 function makeMemoryStorage(): ModeStorage & {
   dump: () => Record<string, string>;

@@ -5,9 +5,9 @@
 // account; both live in the one auth island.
 
 import { createMemo, type Accessor } from "solid-js";
-import type { TruapiSessionUiState } from "../../host-callbacks/SessionStore";
-import { authStore, loggedInStore } from "../../state/auth";
-import { useStore } from "../use-store";
+import type { TruapiSessionUiState } from "../../host-callbacks/SessionStore.js";
+import { authStore, loggedInStore } from "../../state/auth.js";
+import { useStore } from "../use-store.js";
 
 export interface Account {
   /** True from `Connected` until `Disconnected` (loggedInStore). */

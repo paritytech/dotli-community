@@ -7,7 +7,7 @@ import {
   parseRootManifest,
   validateExecutableManifest,
   validateRootManifest,
-} from "@dotli/resolver/manifest-types";
+} from "../src/manifest-types.js";
 
 const VALID_ROOT = {
   $v: 1,

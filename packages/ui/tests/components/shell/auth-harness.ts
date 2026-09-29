@@ -8,13 +8,16 @@
 
 import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { flush } from "solid-js";
-import { closeAuthModal, initAuthController } from "@dotli/ui/auth-controller";
+import {
+  closeAuthModal,
+  initAuthController,
+} from "../../../src/auth-controller.js";
 import {
   createBlockingModalCoordinator,
   type BlockingModalCoordinator,
-} from "@dotli/ui/blocking-modal-queue";
-import { resetStores } from "../../helpers/solid";
-import { byId } from "../../support";
+} from "../../../src/blocking-modal-queue.js";
+import { resetStores } from "../../helpers/solid.js";
+import { byId } from "../../support.js";
 
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 let events = new AbortController();

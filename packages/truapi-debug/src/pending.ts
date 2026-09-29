@@ -18,7 +18,7 @@ import {
   firstNewIndex,
   type StoredEvent,
   type StoredTruapiEvent,
-} from "./event-store.ts";
+} from "./event-store.js";
 
 /** Requests outstanding for longer than this are called out rather than just
  *  counted, so a hung call is findable without reading every row. */

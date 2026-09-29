@@ -10,7 +10,7 @@
  * fired first.
  */
 
-import { NetworkSyncTimeoutError } from "./errors";
+import { NetworkSyncTimeoutError } from "./errors.js";
 
 /** Race `work` against a `NetworkSyncTimeoutError` naming `chain`. */
 export function raceSyncTimeout<T>(

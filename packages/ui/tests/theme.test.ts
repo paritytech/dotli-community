@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { createThemeSubscribe } from "@dotli/ui/host-callbacks/Theme";
-import { yielded } from "./support";
+import { createThemeSubscribe } from "../src/host-callbacks/Theme.js";
+import { yielded } from "./support.js";
 
 describe("theme host callbacks", () => {
   beforeEach(() => {

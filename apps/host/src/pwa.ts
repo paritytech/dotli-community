@@ -14,8 +14,8 @@
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
 
 import { Workbox } from "workbox-window";
-import { showNotification } from "@dotli/ui/notification";
-import { log } from "@dotli/shared/log";
+import { showNotification } from "@dotli/ui";
+import { log } from "@dotli/shared";
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { showPermissionRequestModal } from "@dotli/ui/permission-modal";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { showPermissionRequestModal } from "../src/permission-modal.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 afterEach(() => {
   resetOverlays();

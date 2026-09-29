@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi } from "vitest";
-import { m } from "../src/metrics";
+import { m } from "../src/metrics.js";
 
 describe("metrics (disabled)", () => {
   it("has enabled = false when VITE_METRICS is not 'true'", () => {
@@ -61,7 +61,8 @@ describe("metrics (disabled)", () => {
 describe("resolution id", () => {
   it("As the protocol client, I read back the id the host minted", async () => {
     // Given
-    const { setResolutionId, getResolutionId } = await import("../src/metrics");
+    const { setResolutionId, getResolutionId } =
+      await import("../src/metrics.js");
 
     // When
     setResolutionId("f1e2d3c4-b5a6-4778-8899-aabbccddeeff");
@@ -73,7 +74,7 @@ describe("resolution id", () => {
   it("As a maintainer, a realm that boots before the host mints an id reports none rather than a fabricated one", async () => {
     // Given a fresh module, as a realm gets on boot.
     vi.resetModules();
-    const { getResolutionId } = await import("../src/metrics");
+    const { getResolutionId } = await import("../src/metrics.js");
 
     // Then
     expect(getResolutionId()).toBeNull();
@@ -84,7 +85,7 @@ describe("resolution id", () => {
     // is unset. It drops the Sentry tagging but must not drop propagation,
     // or the sandbox and protocol URLs would differ between builds.
     vi.resetModules();
-    const noop = await import("../src/metrics.noop");
+    const noop = await import("../src/metrics.noop.js");
 
     // When
     noop.setResolutionId("boot-1234-abcdef");

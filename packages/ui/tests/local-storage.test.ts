@@ -4,8 +4,8 @@ import {
   createLocalStorageRead,
   createLocalStorageSubscribe,
   createLocalStorageWrite,
-} from "@dotli/ui/host-callbacks/LocalStorage";
-import { yielded } from "./support";
+} from "../src/host-callbacks/LocalStorage.js";
+import { yielded } from "./support.js";
 
 describe("local-storage host callbacks", () => {
   beforeEach(() => {

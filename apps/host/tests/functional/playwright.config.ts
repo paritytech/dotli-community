@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "@playwright/test";
-import { baseConfig, previewServer } from "../playwright.base.config";
+import { baseConfig, previewServer } from "../playwright.base.config.js";
 
 // One by default: every cold load downloads host-playground's ~14 MB CAR
 // from paseo-bulletin-next-ipfs, which Cloudflare doesn't cache, so parallel

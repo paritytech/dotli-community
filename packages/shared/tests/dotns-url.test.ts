@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, afterEach } from "vitest";
-import { NetworkName, setNetworkOverride } from "@dotli/config/network";
-import { dotNsUrl } from "@dotli/shared/dotns-url";
+import { NetworkName, setNetworkOverride } from "@dotli/config";
+import { dotNsUrl } from "../src/dotns-url.js";
 
 describe("parseDotNsDomain", () => {
   it("parses bare .paseo domain", () => {

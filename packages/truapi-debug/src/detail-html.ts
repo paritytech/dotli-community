@@ -9,24 +9,24 @@
 // `@dotli/ui` or `solid-js`. Every product/network value threaded into
 // these strings goes through `escapeHtml` before it reaches `innerHTML`.
 
-import { escapeHtml } from "@dotli/shared/html";
+import { escapeHtml } from "@dotli/shared";
 import {
   decodeChainAnnotations,
   formatChainLabel,
   type ChainAnnotations,
-} from "./chain-decode.ts";
-import { summariseChainMessage } from "./chain-summary.ts";
+} from "./chain-decode.js";
+import { summariseChainMessage } from "./chain-summary.js";
 import {
   correlationKeyOf,
   type EventStore,
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-} from "./event-store.ts";
-import { formatPayloadDetail } from "./format.ts";
-import { ridColor, tagClass } from "./row-format.ts";
-import { getSystemExplanation } from "./system-explanations.ts";
-import { summariseSystemEvent } from "./system-summary.ts";
+} from "./event-store.js";
+import { formatPayloadDetail } from "./format.js";
+import { ridColor, tagClass } from "./row-format.js";
+import { getSystemExplanation } from "./system-explanations.js";
+import { summariseSystemEvent } from "./system-summary.js";
 
 export function formatTime(ts: number): string {
   const d = new Date(ts);

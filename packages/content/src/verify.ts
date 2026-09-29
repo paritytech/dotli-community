@@ -17,7 +17,7 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { blake2b } from "@noble/hashes/blake2.js";
 import { equals as bytesEqual } from "multiformats/bytes";
 import { CID } from "multiformats/cid";
-import type { BlockSource } from "./archive";
+import type { BlockSource } from "./archive.js";
 
 // Multihash codes we can recompute. sha2-256 is IPFS's default; blake2b-256
 // (0xb220) is what dot.li's bulletin/preimage path uses (see preimage.ts).

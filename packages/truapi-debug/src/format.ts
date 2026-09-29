@@ -7,7 +7,7 @@
 // suitable for the debug panel. Handles Uint8Array (hex, truncated) and
 // cycles. No DOM or SDK imports here, kept pure for easy testing.
 
-import { toHex } from "@dotli/shared/hex";
+import { toHex } from "@dotli/shared";
 
 const MAX_UINT8_PREVIEW_BYTES = 32;
 const MAX_STRING_PREVIEW_CHARS = 200;

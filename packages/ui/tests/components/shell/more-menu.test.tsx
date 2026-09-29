@@ -9,22 +9,22 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { setChatCapability } from "@dotli/shared/chat-capability";
-import { setLoggedIn } from "@dotli/ui/state/auth";
-import { initChatPanelState } from "@dotli/ui/state/chat-panel";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import { setChatCapability } from "@dotli/shared";
+import { setLoggedIn } from "../../../src/state/auth.js";
+import { initChatPanelState } from "../../../src/state/chat-panel.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
 import {
   mouseClick,
   pointerPress,
   resetStores,
   settle,
-} from "../../helpers/solid";
-import { normalized } from "./old-auth-markup";
-import { mountMoreMenu } from "./more-menu-harness";
-import { byId, query } from "../../support";
+} from "../../helpers/solid.js";
+import { normalized } from "./old-auth-markup.js";
+import { mountMoreMenu } from "./more-menu-harness.js";
+import { byId, query } from "../../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../../metrics/src/sentry.js", () => sentry);
 
 const FIXTURE = readFileSync(
   resolve(import.meta.dirname, "original-shell.html"),

@@ -3,8 +3,8 @@
 
 // Entry of the lazily loaded landing chunk. Only landing/load.ts imports it.
 
-import { mountRoot } from "../../mount/root";
-import { Landing } from "./Landing";
+import { mountRoot } from "../../mount/root.js";
+import { Landing } from "./Landing.js";
 
 /**
  * Mount the landing page into `container` as the `"page"` app root, which

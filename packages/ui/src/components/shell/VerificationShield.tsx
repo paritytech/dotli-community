@@ -6,8 +6,8 @@ import {
   VERIFICATION_SHIELD_ID,
   VERIFICATION_TOOLTIP_ID,
   type ShieldState,
-} from "../../verification-shield";
-import { createPopover } from "./popover";
+} from "../../verification-shield.js";
+import { createPopover } from "./popover.js";
 
 const TOOLTIP_TITLE = "How was this site loaded?";
 

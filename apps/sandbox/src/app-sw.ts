@@ -16,7 +16,7 @@ declare const self: ServiceWorkerGlobalScope;
 // queries this via `GET_SW_VERSION` to detect stale workers.
 declare const __SW_VERSION__: string;
 
-import { getMimeType } from "@dotli/shared/mime";
+import { getMimeType } from "@dotli/shared";
 
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");

@@ -5,12 +5,12 @@
 // chain provider. Eager and Solid-free: initTopBar hands it to the network
 // monitor at boot (setBlockSource), before the islands chunk loads.
 
-import { log } from "@dotli/shared/log";
+import { log } from "@dotli/shared";
 import {
   createRemoteChainProvider,
   isRemoteChainConnectable,
-} from "@dotli/protocol/client";
-import type { BlockSource } from "./network-monitor";
+} from "@dotli/protocol";
+import type { BlockSource } from "./network-monitor.js";
 
 /**
  * Watch the best block of each chain over a client held for the session.

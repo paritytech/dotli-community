@@ -3,51 +3,51 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flush } from "solid-js";
-import { setBackend, setCacheSettings } from "@dotli/config/mode";
-import { setNetwork } from "@dotli/config/network";
-import { SettingsPopover } from "@dotli/ui/components/shell/SettingsPopover";
-import { initSettingsStore } from "@dotli/ui/state/settings";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import { setBackend, setCacheSettings, setNetwork } from "@dotli/config";
+
+import { SettingsPopover } from "../../../src/components/shell/SettingsPopover.js";
+import { initSettingsStore } from "../../../src/state/settings.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
 import {
   pointerPress,
   pointerPressUnfocusable,
   renderComponent,
   resetStores,
   tabTo,
-} from "../../helpers/solid";
-import { normalized } from "./old-auth-markup";
-import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
+} from "../../helpers/solid.js";
+import { normalized } from "./old-auth-markup.js";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness.js";
 import {
   oldModeBackdrop,
   oldModeButton,
   oldModePopover,
   type OldSettings,
-} from "./old-settings-markup";
-import type * as SettingsActionsModule from "@dotli/ui/settings-actions";
-import type * as NetworkModule from "@dotli/config/network";
-import { byId, query } from "../../support";
+} from "./old-settings-markup.js";
+import type * as SettingsActionsModule from "../../../src/settings-actions.js";
+import type * as NetworkModule from "../../../../config/src/network.js";
+import { byId, query } from "../../support.js";
 
 const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
-vi.mock("@dotli/ui/settings-actions", async (importOriginal) => ({
+vi.mock("../../../src/settings-actions.js", async (importOriginal) => ({
   ...(await importOriginal<typeof SettingsActionsModule>()),
   applyAndReset: actions.applyAndReset,
 }));
 
 // No chain answers here: the share report's block heights read "n/a".
-vi.mock("@dotli/protocol/client", () => ({
+vi.mock("../../../../protocol/src/client.js", () => ({
   isRemoteChainSupported: () => false,
   createRemoteChainProvider: () => null,
 }));
 
 const rpc = vi.hoisted(() => ({ live: null as string | null }));
-vi.mock("@dotli/resolver/rpc-resolve", () => ({
+vi.mock("../../../../resolver/src/rpc-resolve.js", () => ({
   getConnectedAssetHubRpcEndpoint: () => rpc.live,
 }));
 
 const networks = vi.hoisted(() => ({
   enabled: null as ReturnType<typeof NetworkModule.getEnabledNetworks> | null,
 }));
-vi.mock("@dotli/config/network", async (importOriginal) => {
+vi.mock("../../../../config/src/network.js", async (importOriginal) => {
   const actual = await importOriginal<typeof NetworkModule>();
   return {
     ...actual,

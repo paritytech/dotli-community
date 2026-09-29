@@ -12,12 +12,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { chromium, expect, type Page } from "@playwright/test";
-import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env";
-import { setupTest } from "./helpers/context";
-import { waitForResolutionOutcome } from "../product-frame";
-import { BACKENDS, seedSettings } from "./fixtures/settings";
-import { BROWSER_PERMISSIONS, seedPermissions } from "./fixtures/permissions";
-import { test } from "./helpers/shared-mode-reset";
+import { DOMAIN, DOTNS_NAME, PORT, TIMEOUT_MS } from "../env.js";
+import { setupTest } from "./helpers/context.js";
+import { waitForResolutionOutcome } from "../product-frame.js";
+import { BACKENDS, seedSettings } from "./fixtures/settings.js";
+import {
+  BROWSER_PERMISSIONS,
+  seedPermissions,
+} from "./fixtures/permissions.js";
+import { test } from "./helpers/shared-mode-reset.js";
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 

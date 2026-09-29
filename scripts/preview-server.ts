@@ -16,7 +16,7 @@ import { createServer } from "node:http";
 import { join, extname } from "node:path";
 import { Readable } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
-import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin.ts";
+import { runtimeNetworkConfigScriptBody } from "@dotli/config/vite";
 
 const RUNTIME_CONFIG_PATH = "/dotli-network.js";
 

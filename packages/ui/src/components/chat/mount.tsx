@@ -3,8 +3,8 @@
 
 // Entry of the lazily loaded chat chunk. Only chat/load.ts imports it.
 
-import { mountRoot } from "../../mount/root";
-import { ChatPanel } from "./ChatPanel";
+import { mountRoot } from "../../mount/root.js";
+import { ChatPanel } from "./ChatPanel.js";
 
 export function mountChatPanel(onBroken: () => void): () => void {
   const container = document.getElementById("chat-panel");

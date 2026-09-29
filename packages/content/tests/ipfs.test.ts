@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { fetchFromIpfs, fetchCarFromIpfs } from "@dotli/content/ipfs";
+import { fetchFromIpfs, fetchCarFromIpfs } from "../src/ipfs.js";
 
 const CID = "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
 const GATEWAY = "https://gw.example";

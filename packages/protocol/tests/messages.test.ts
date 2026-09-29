@@ -7,7 +7,7 @@ import {
   NetworkName,
   getActiveSupportedGenesisHashes,
   setNetwork,
-} from "@dotli/config/network";
+} from "@dotli/config";
 import {
   ENVELOPE_CHAIN_KEYS,
   ENVELOPE_SYNC_KINDS,
@@ -23,7 +23,7 @@ import {
   type ProtocolReadyEnvelope,
   type ProtocolChainSyncEnvelope,
   type ProtocolSmoldotDbEnvelope,
-} from "@dotli/protocol/messages";
+} from "../src/messages.js";
 
 describe("isProtocolEnvelope", () => {
   it("returns true for a valid request envelope", () => {

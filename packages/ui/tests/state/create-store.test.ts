@@ -4,13 +4,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 import {
   createSyncStore,
   resetAllStoresForTests,
   shallowEqual,
-} from "@dotli/ui/state/create-store";
+} from "../../src/state/create-store.js";
 
 describe("createSyncStore", () => {
   beforeEach(() => {

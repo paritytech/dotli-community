@@ -6,8 +6,8 @@
 
 import { onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { currentProductFrame } from "../../product-frame-layout";
-import { containTab } from "../focus";
+import { currentProductFrame } from "../../product-frame-layout.js";
+import { containTab } from "../focus.js";
 
 export interface DialogProps {
   titleId: string;

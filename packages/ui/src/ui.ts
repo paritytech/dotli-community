@@ -8,10 +8,10 @@
 // dependencies and no Solid (the sandbox imports this), kept in the eager
 // bundle.
 
-import { escapeHtml } from "@dotli/shared/html";
-import { getActiveTldSuffix } from "@dotli/config/network";
-import { setProductError } from "./state/product";
-import { disposeAppRoots } from "./mount/app-roots";
+import { escapeHtml } from "@dotli/shared";
+import { getActiveTldSuffix } from "@dotli/config";
+import { setProductError } from "./state/product.js";
+import { disposeAppRoots } from "./mount/app-roots.js";
 
 const app = document.getElementById("app") ?? document.body;
 

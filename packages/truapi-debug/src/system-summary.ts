@@ -8,8 +8,8 @@
 // renderers (row + timeline tooltip + detail) consistent across event
 // kinds.
 
-import { withActiveTld } from "@dotli/config/network";
-import type { StoredSystemEvent } from "./event-store.ts";
+import { withActiveTld } from "@dotli/config";
+import type { StoredSystemEvent } from "./event-store.js";
 
 export function summariseSystemEvent(ev: StoredSystemEvent): string {
   const p = ev.payload as Record<string, unknown>;

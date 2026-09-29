@@ -33,13 +33,13 @@ import {
   removeById,
   removeStale,
   type ScheduledNotificationRecord,
-} from "@dotli/storage/scheduled-notifications";
+} from "@dotli/storage";
 import {
   SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS,
   SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS,
-} from "@dotli/config/config";
-import { log } from "@dotli/shared/log";
-import { showNotification } from "./notification";
+} from "@dotli/config";
+import { log } from "@dotli/shared";
+import { showNotification } from "./notification.js";
 
 export type ScheduleNotificationResult =
   | { ok: true; id: number; immediate: boolean }

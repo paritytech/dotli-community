@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ShieldState } from "../verification-shield";
+import type { ShieldState } from "../verification-shield.js";
 import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 /**
  * What the topbar's URL pill shows. `none` is the landing page (and the

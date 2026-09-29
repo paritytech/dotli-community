@@ -13,14 +13,10 @@
 // never finishes is the one worth looking at, and a tree assembled at the end
 // is exactly the tree such a load never produces.
 
-import type {
-  ChainKey,
-  ChainPeer,
-  ChainSyncKind,
-} from "@dotli/resolver/chain-sync";
-import type { ChainPhase } from "@dotli/ui/network-monitor";
-import { m, type SpanHandle, type SpanValue } from "@dotli/metrics/metrics";
-import { getLoadingState } from "@dotli/ui/state/loading";
+import type { ChainKey, ChainPeer, ChainSyncKind } from "@dotli/resolver";
+import type { ChainPhase } from "@dotli/ui";
+import { m, type SpanHandle, type SpanValue } from "@dotli/metrics";
+import { getLoadingState } from "@dotli/ui";
 
 /** How a resolution ended. `abandoned` means the tab left before it did. */
 export type ResolutionOutcome = "rendered" | "error" | "abandoned";

@@ -16,10 +16,10 @@ import {
   addToSlot,
   extractAddress,
   decodeBytesSlot,
-} from "./abi";
-import { PartialStorageReadError } from "./errors";
-import type { Api } from "./api";
-import { ApiStoppedError } from "./api";
+} from "./abi.js";
+import { PartialStorageReadError } from "./errors.js";
+import type { Api } from "./api.js";
+import { ApiStoppedError } from "./api.js";
 
 export type StatusCallback = (status: string) => void;
 

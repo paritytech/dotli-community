@@ -29,14 +29,14 @@ import {
   decodeChainAnnotations,
   formatChainLabel,
   type ChainAnnotations,
-} from "./chain-decode.ts";
-import { formatChainDisplay } from "./chain-registry.ts";
+} from "./chain-decode.js";
+import { formatChainDisplay } from "./chain-registry.js";
 import type {
   EventSeq,
   StoredEvent,
   StoredSystemEvent,
   StoredTruapiEvent,
-} from "./event-store.ts";
+} from "./event-store.js";
 
 /** Vertical pixels each event occupies. Intentionally small: box
  *  labels moved to the hover tooltip so the timeline can be vertically

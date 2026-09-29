@@ -12,8 +12,8 @@
 
 import { onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { DockPosition } from "@dotli/truapi-debug/dock-storage";
-import { startDrag } from "../drag";
+import type { DockPosition } from "@dotli/truapi-debug";
+import { startDrag } from "../drag.js";
 
 /** Events list / top pane: filter chips and tabs need room. */
 const MIN_PRIMARY_PX = 220;

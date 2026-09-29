@@ -9,7 +9,7 @@
 // `packages/ui/src/components/truapi-debug/`, so it must not import
 // `@dotli/ui` or `solid-js`.
 
-import type { DockPosition } from "./dock-storage.ts";
+import type { DockPosition } from "./dock-storage.js";
 
 /** A collapsed panel is its 32px header bar. */
 const COLLAPSED_HEIGHT_PX = 32;

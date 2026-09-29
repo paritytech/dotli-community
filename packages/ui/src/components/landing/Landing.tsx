@@ -3,8 +3,8 @@
 
 import { onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { NavForm } from "./NavForm";
-import { RecentPills } from "./RecentPills";
+import { NavForm } from "./NavForm.js";
+import { RecentPills } from "./RecentPills.js";
 
 /**
  * Move the shell's auth button, then its theme button and menu, into the

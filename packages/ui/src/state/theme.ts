@@ -5,7 +5,7 @@ import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 export type ThemePref = "light" | "dark" | "system";
 

@@ -31,7 +31,7 @@ import {
   modifierStyle,
   rowStyle,
   textStyle,
-} from "../../chat/custom-styles";
+} from "../../chat/custom-styles.js";
 
 /** Reports a user gesture inside a rendered tree back to the product. */
 export type CustomActionHandler = (

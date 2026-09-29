@@ -3,14 +3,6 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@dotli/ui/shared-auth", () => ({
-  getSharedAuth: () => ({
-    read: () => null,
-    write: () => {},
-    subscribe: () => () => {},
-  }),
-}));
-
 describe("full reset", () => {
   beforeEach(() => {
     vi.resetModules();
@@ -21,7 +13,7 @@ describe("full reset", () => {
     // Given
     localStorage.setItem("dotli-theme", "light");
     localStorage.setItem("dotli:network", "paseo");
-    const { wipeOriginState } = await import("@dotli/ui/settings-actions");
+    const { wipeOriginState } = await import("../src/settings-actions.js");
 
     // When
     await wipeOriginState();
@@ -35,7 +27,7 @@ describe("full reset", () => {
   it("As a dotli user who never picked a theme, the reset does not invent one", async () => {
     // Given
     localStorage.setItem("dotli:network", "paseo");
-    const { wipeOriginState } = await import("@dotli/ui/settings-actions");
+    const { wipeOriginState } = await import("../src/settings-actions.js");
 
     // When
     await wipeOriginState();

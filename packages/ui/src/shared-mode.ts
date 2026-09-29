@@ -25,8 +25,9 @@
 // (`getBackend`, `getCacheSettings`, …) resolves against the cache.
 // Writes go through the same channel that produced the read.
 
-import { SITE_ID, isLocalhost } from "@dotli/config/config";
 import {
+  SITE_ID,
+  isLocalhost,
   BACKEND_KEY,
   CACHE_KEY,
   configureModeStorage,
@@ -34,15 +35,16 @@ import {
   localStorageAdapter,
   migrateLegacyOn,
   type ModeStorage,
-} from "@dotli/config/mode";
+} from "@dotli/config";
+
 import {
   getProtocolOrigin,
   readSharedModeStorage,
   resetProtocolFrame,
   writeSharedModeStorage,
   clearSharedModeStorage,
-} from "@dotli/protocol/client";
-import { log } from "@dotli/shared/log";
+} from "@dotli/protocol";
+import { log } from "@dotli/shared";
 
 const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY];
 

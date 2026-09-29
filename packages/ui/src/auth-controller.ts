@@ -7,15 +7,15 @@
 // the auth-state to modal-view mapping, and writes state/auth-modal.ts. The
 // view renders that store and calls back in here (closeAuthModal, retryLogin).
 
-import { withActiveTld } from "@dotli/config/network";
+import { withActiveTld } from "@dotli/config";
 import type {
   BlockingModalCoordinator,
   BlockingModalScope,
-} from "./blocking-modal-queue";
-import { ERRORS } from "./errors";
-import type { DotliAuthState } from "./host-callbacks/AuthState";
-import { authStore, setLoggedIn } from "./state/auth";
-import { resetAuthModal, updateAuthModal } from "./state/auth-modal";
+} from "./blocking-modal-queue.js";
+import { ERRORS } from "./errors.js";
+import type { DotliAuthState } from "./host-callbacks/AuthState.js";
+import { authStore, setLoggedIn } from "./state/auth.js";
+import { resetAuthModal, updateAuthModal } from "./state/auth-modal.js";
 
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;

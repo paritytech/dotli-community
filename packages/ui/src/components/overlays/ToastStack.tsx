@@ -7,9 +7,9 @@ import {
   dismissAllToasts,
   setToastsExpanded,
   toastsStore,
-} from "../../state/toasts";
-import { useStore } from "../use-store";
-import { CLOSE_SVG, ToastCard } from "./ToastCard";
+} from "../../state/toasts.js";
+import { useStore } from "../use-store.js";
+import { CLOSE_SVG, ToastCard } from "./ToastCard.js";
 
 const MAX_STACK = 3;
 

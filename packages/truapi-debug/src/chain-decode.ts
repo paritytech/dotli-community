@@ -17,7 +17,7 @@
 //
 // Shapes mirror the TrUAPI chain callback payloads.
 
-import { asEnum, asObj, asString, peelVersion } from "./shape.ts";
+import { asEnum, asObj, asString, peelVersion } from "./shape.js";
 
 /** High-level categorisation of a chain message. Direction (request vs
  *  response vs subscription start/receive) is already known from the

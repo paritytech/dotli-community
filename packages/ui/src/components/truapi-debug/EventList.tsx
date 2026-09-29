@@ -18,27 +18,25 @@ import {
   untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { formatLatency, formatTime } from "@dotli/truapi-debug/detail-html";
 import {
+  formatLatency,
+  formatTime,
   correlationKeyOf,
   type EventSeq,
   type EventStore,
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-} from "@dotli/truapi-debug/event-store";
-import {
   formatPending,
   OpenCallTracker,
   pendingKeyOf,
   SLOW_AFTER_MS,
-} from "@dotli/truapi-debug/pending";
-import {
   rowClassName,
   systemRowData,
   truapiRowData,
-} from "@dotli/truapi-debug/row-format";
-import { createKeyedSignals, type KeyedSignals } from "./keyed-signals";
+} from "@dotli/truapi-debug";
+
+import { createKeyedSignals, type KeyedSignals } from "./keyed-signals.js";
 
 /** A pending badge counts up with the clock rather than with traffic, and a
  *  host that has stalled is precisely one that has stopped emitting events,

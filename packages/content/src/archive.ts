@@ -14,7 +14,7 @@ import {
   assertBlockMatchesCid,
   assertSameContentId,
   verifyingBlockSource,
-} from "./verify";
+} from "./verify.js";
 
 export type ArchiveFiles = Record<string, Uint8Array>;
 

@@ -7,13 +7,13 @@
 // gone and prompt the user again.
 
 import type { Notifications } from "@parity/truapi-host";
-import { log } from "@dotli/shared/log";
+import { log } from "@dotli/shared";
 import {
   cancelNotification,
   scheduleNotification,
-} from "../scheduled-notifications";
-import { showNotification } from "../notification";
-import { ERRORS } from "../errors";
+} from "../scheduled-notifications.js";
+import { showNotification } from "../notification.js";
+import { ERRORS } from "../errors.js";
 
 export function createNotificationAdapters(
   label: string,

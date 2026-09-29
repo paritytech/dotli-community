@@ -9,11 +9,12 @@ import stylesheetUrl from "@dotli/truapi-debug/styles.css?url";
 import {
   onDotliDebugEvent,
   type DotliDebugBusEvent,
-} from "@dotli/truapi-debug/dotli-debug-bus";
-import { EventStore } from "@dotli/truapi-debug/event-store";
-import { createResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
-import { mountRoot } from "../../mount/root";
-import { Panel, PANEL_ID } from "./Panel";
+  EventStore,
+  createResolutionRecorder,
+} from "@dotli/truapi-debug";
+
+import { mountRoot } from "../../mount/root.js";
+import { Panel, PANEL_ID } from "./Panel.js";
 
 const ROOT = "truapi-debug";
 const DEFAULT_CAPACITY = 2000;

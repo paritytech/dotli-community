@@ -5,9 +5,9 @@
 // carry it. Everything here is Solid-free: it prepares `#app` and imports the
 // chunk dynamically.
 
-import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot } from "../mount/app-roots";
-import { showError } from "../ui";
+import { captureException } from "@dotli/metrics";
+import { disposeAppRoot } from "../mount/app-roots.js";
+import { showError } from "../ui.js";
 
 let showing: Promise<void> | null = null;
 
@@ -33,7 +33,7 @@ function showBroken(): void {
  * Never rejects.
  */
 export function showLanding(): Promise<void> {
-  showing ??= import("../components/landing/mount")
+  showing ??= import("../components/landing/mount.js")
     .then(({ mountLanding }) => {
       const app = document.getElementById("app") ?? document.body;
       const topbar = document.getElementById("topbar");

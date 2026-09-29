@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
+import { endpointHost, gatewayUnreachable } from "../src/error-copy.js";
 
 describe("gatewayUnreachable", () => {
   it("As a visitor, I am told which provider could not be reached", () => {

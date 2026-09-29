@@ -12,10 +12,9 @@
 //
 // UnixFS walking lives in `archive.ts`, driven by an injected `BlockSource`.
 
-import { dur } from "@dotli/shared/perf";
-import { log } from "@dotli/shared/log";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
+import { dur, log } from "@dotli/shared";
+
+import { m, spans as S } from "@dotli/metrics";
 import { CID } from "multiformats/cid";
 
 export type StatusCallback = (status: string) => void;
@@ -33,9 +32,9 @@ import {
   walkUnixFsDag,
   type ArchiveFiles,
   type BlockSource,
-} from "./archive";
-import { fetchFromIpfs, fetchCarFromIpfs } from "./ipfs";
-import { assertBlockMatchesCid, rootVerifyingBlockSource } from "./verify";
+} from "./archive.js";
+import { fetchFromIpfs, fetchCarFromIpfs } from "./ipfs.js";
+import { assertBlockMatchesCid, rootVerifyingBlockSource } from "./verify.js";
 
 // CID codec constants
 const CODEC_DAG_PB = 0x70;

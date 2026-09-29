@@ -13,8 +13,8 @@
 
 import { createEffect, createSignal, For, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { setDockInset } from "../../product-frame-layout";
-import { startDrag } from "../drag";
+import { setDockInset } from "../../product-frame-layout.js";
+import { startDrag } from "../drag.js";
 
 interface Violation {
   id: number;

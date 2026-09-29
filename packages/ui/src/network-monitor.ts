@@ -16,8 +16,8 @@ import {
   getActiveChainRoles,
   type ActiveChainRole,
   type ChainRole,
-} from "@dotli/config/network";
-import { log } from "@dotli/shared/log";
+} from "@dotli/config";
+import { log } from "@dotli/shared";
 
 /** How the arrival of a single block compares to what the chain promises. */
 export type BlockHealth = "onTime" | "late" | "veryLate";

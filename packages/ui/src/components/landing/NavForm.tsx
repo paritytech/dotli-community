@@ -3,9 +3,9 @@
 
 import { createSignal, onCleanup, onSettled } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { getActiveTldSuffix } from "@dotli/config/network";
-import { validateDotLabel, type DotLabelResult } from "@dotli/shared/html";
-import { dotUrl } from "./dot-url";
+import { getActiveTldSuffix } from "@dotli/config";
+import { validateDotLabel, type DotLabelResult } from "@dotli/shared";
+import { dotUrl } from "./dot-url.js";
 
 const PLACEHOLDER_NAMES = ["browse", "mark3t", "playground"] as const;
 

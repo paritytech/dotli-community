@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { showPasswordPrompt } from "@dotli/ui/password-prompt";
-import { ERRORS } from "@dotli/ui/errors";
-import { failAllModals } from "@dotli/ui/state/modals";
-import { settle } from "./helpers/solid";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
-import { query } from "./support";
+import { showPasswordPrompt } from "../src/password-prompt.js";
+import { ERRORS } from "../src/errors.js";
+import { failAllModals } from "../src/state/modals.js";
+import { settle } from "./helpers/solid.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
+import { query } from "./support.js";
 
 afterEach(() => {
   resetOverlays();

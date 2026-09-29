@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 
-// `prod-no-analytics-aliases` swaps these modules for their no-op twins at
+// `stripAnalytics` (strip-analytics-plugin.ts) swaps these modules for their no-op twins at
 // bundle time whenever `VITE_METRICS` is not "true". Types always resolve to the
 // real module, so `tsc` never compares the two and an export added to one but
 // not the other only fails in the bundler, on a build nobody runs locally.
@@ -12,13 +12,13 @@ const PAIRS: readonly [string, () => Promise<object>, () => Promise<object>][] =
   [
     [
       "sentry",
-      () => import("@dotli/metrics/sentry"),
-      () => import("@dotli/metrics/sentry.noop"),
+      () => import("../src/sentry.js"),
+      () => import("../src/sentry.noop.js"),
     ],
     [
       "metrics",
-      () => import("@dotli/metrics/metrics"),
-      () => import("@dotli/metrics/metrics.noop"),
+      () => import("../src/metrics.js"),
+      () => import("../src/metrics.noop.js"),
     ],
   ];
 

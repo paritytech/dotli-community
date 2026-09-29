@@ -6,12 +6,12 @@ const mocks = vi.hoisted(() => ({
   showPermissionRequestModal: vi.fn(),
 }));
 
-vi.mock("@dotli/ui/scheduled-notifications", () => ({
+vi.mock("../src/scheduled-notifications.js", () => ({
   scheduleNotification: mocks.scheduleNotification,
   cancelNotification: mocks.cancelNotification,
 }));
 
-vi.mock("@dotli/ui/permission-modal", () => ({
+vi.mock("../src/permission-modal.js", () => ({
   showPermissionRequestModal: mocks.showPermissionRequestModal,
 }));
 
@@ -32,7 +32,7 @@ describe("notification host callbacks", () => {
   it("As a dotli integrator, the host schedules, fires immediate notifications, and returns ids", async () => {
     // Given
     const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
+      await import("../src/host-callbacks/PushNotification.js");
     const { pushNotification } = createNotificationAdapters("myapp");
 
     // When
@@ -51,7 +51,7 @@ describe("notification host callbacks", () => {
       deeplink: null,
       scheduledAt: null,
     });
-    const { ensureOverlays } = await import("@dotli/ui/overlays/load");
+    const { ensureOverlays } = await import("../src/overlays/load.js");
     await ensureOverlays();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
@@ -65,7 +65,7 @@ describe("notification host callbacks", () => {
     // Given: the core already authorized and consumed the one-time grant, so
     // no stored grant is left for a host-side check to find.
     const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
+      await import("../src/host-callbacks/PushNotification.js");
     const { pushNotification } = createNotificationAdapters("myapp");
 
     // When
@@ -83,7 +83,7 @@ describe("notification host callbacks", () => {
   it("As a dotli integrator, the host schedules later notifications and cancels through the shared scheduler", async () => {
     // Given
     const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
+      await import("../src/host-callbacks/PushNotification.js");
     const { pushNotification, cancelNotification } =
       createNotificationAdapters("myapp");
 
@@ -110,7 +110,7 @@ describe("notification host callbacks", () => {
     // Given
     mocks.scheduleNotification.mockResolvedValue({ ok: false });
     const { createNotificationAdapters } =
-      await import("@dotli/ui/host-callbacks/PushNotification");
+      await import("../src/host-callbacks/PushNotification.js");
     const { pushNotification } = createNotificationAdapters("myapp");
 
     // When

@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ProductContext } from "@parity/truapi-host";
-import { createBlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
-import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
-import { createPromptPermission } from "@dotli/ui/host-callbacks/PromptPermission";
-import { createHostCallbacks } from "@dotli/ui/host-callbacks/handlers";
-import { registerPermissionAuthorizationProvider } from "@dotli/ui/permissions";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { createBlockingModalCoordinator } from "../src/blocking-modal-queue.js";
+import { createUserConfirmationAdapters } from "../src/host-callbacks/UserConfirmation.js";
+import { createPromptPermission } from "../src/host-callbacks/PromptPermission.js";
+import { createHostCallbacks } from "../src/host-callbacks/handlers.js";
+import { registerPermissionAuthorizationProvider } from "../src/permissions.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 const PRODUCT: ProductContext = {
   productId: "myapp.paseo",

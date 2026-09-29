@@ -42,7 +42,7 @@
 import { createServer, type ServerResponse } from "node:http";
 import { createReadStream, existsSync, statSync } from "node:fs";
 import { extname, join, normalize, resolve } from "node:path";
-import { runtimeNetworkConfigScriptBody } from "../packages/config/src/runtime-network-config-plugin.ts";
+import { runtimeNetworkConfigScriptBody } from "@dotli/config/vite";
 
 const PORT = Number(process.env.PORT ?? "5173");
 const HOST = process.env.HOST ?? "127.0.0.1";

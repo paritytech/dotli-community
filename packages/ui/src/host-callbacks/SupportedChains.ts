@@ -13,10 +13,12 @@
 import type { Features } from "@parity/truapi-host";
 import type { ChainIdentifier } from "@parity/truapi";
 import { toHexString } from "@parity/truapi/scale";
-import { getBackend } from "@dotli/config/mode";
-import { getActiveServicesConfig, getNetwork } from "@dotli/config/network";
-import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/provider";
-import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
+import { getBackend, getActiveServicesConfig, getNetwork } from "@dotli/config";
+
+import {
+  isChainSupported as isSmoldotChainSupported,
+  isRpcChainSupported,
+} from "@dotli/resolver";
 
 export function createSupportedChains(): Features["supportedChains"] {
   return () => {

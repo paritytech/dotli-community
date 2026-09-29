@@ -8,8 +8,8 @@
 // key a row, its status and its block history the same way, and nothing else
 // has to know both vocabularies.
 
-import type { ChainRole } from "@dotli/config/network";
-import type { ChainKey } from "@dotli/resolver/chain-sync";
+import type { ChainRole } from "@dotli/config";
+import type { ChainKey } from "@dotli/resolver";
 
 /**
  * Which role each chain the resolver runs belongs to.

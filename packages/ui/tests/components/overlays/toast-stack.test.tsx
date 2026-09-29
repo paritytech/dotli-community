@@ -3,40 +3,43 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
-import { ToastStack } from "@dotli/ui/components/overlays/ToastStack";
+import { ToastStack } from "../../../src/components/overlays/ToastStack.js";
 import {
   dismissToast,
   pushToast,
   resetToastsForTests,
   toastsStore,
   type ToastInput,
-} from "@dotli/ui/state/toasts";
-import { renderComponent, settle } from "../../helpers/solid";
-import type * as ToastCardModule from "@dotli/ui/components/overlays/ToastCard";
-import { query } from "../../support";
+} from "../../../src/state/toasts.js";
+import { renderComponent, settle } from "../../helpers/solid.js";
+import type * as ToastCardModule from "../../../src/components/overlays/ToastCard.js";
+import { query } from "../../support.js";
 
 /** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
 const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
-vi.mock("@dotli/ui/components/overlays/ToastCard", async (importOriginal) => {
-  const actual = await importOriginal<typeof ToastCardModule>();
-  return {
-    ...actual,
-    ToastCard: (props: Parameters<typeof actual.ToastCard>[0]) =>
-      actual.ToastCard({
-        get entry() {
-          return props.entry;
-        },
-        get hidden() {
-          cardLayoutReads.count += 1;
-          return props.hidden;
-        },
-        get depth() {
-          cardLayoutReads.count += 1;
-          return props.depth;
-        },
-      }),
-  };
-});
+vi.mock(
+  "../../../src/components/overlays/ToastCard.js",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ToastCardModule>();
+    return {
+      ...actual,
+      ToastCard: (props: Parameters<typeof actual.ToastCard>[0]) =>
+        actual.ToastCard({
+          get entry() {
+            return props.entry;
+          },
+          get hidden() {
+            cardLayoutReads.count += 1;
+            return props.hidden;
+          },
+          get depth() {
+            cardLayoutReads.count += 1;
+            return props.depth;
+          },
+        }),
+    };
+  },
+);
 
 function input(label: string, overrides: Partial<ToastInput> = {}): ToastInput {
   return {

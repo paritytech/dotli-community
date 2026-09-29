@@ -13,20 +13,19 @@
 // resolver's cached client, so both the smoldot and gateway paths can
 // share the same code.
 
-import { log } from "@dotli/shared/log";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import type { DotnsContracts } from "@dotli/config/network";
-import { namehash } from "./abi";
-import { readNestedMappingString } from "./access-raw-storage";
-import type { Api } from "./api";
+import { log } from "@dotli/shared";
+import { m, spans as S } from "@dotli/metrics";
+import type { DotnsContracts } from "@dotli/config";
+import { namehash } from "./abi.js";
+import { readNestedMappingString } from "./access-raw-storage.js";
+import type { Api } from "./api.js";
 import {
   parseExecutableManifest,
   parseRootManifest,
   type ExecutableKind,
   type ExecutableManifest,
   type RootManifest,
-} from "./manifest-types";
+} from "./manifest-types.js";
 
 export const ROOT_MANIFEST_KEY = "manifest";
 export const EXECUTABLE_MANIFEST_KEY = "executable";
@@ -175,4 +174,4 @@ export type {
   ExecutableKind,
   ExecutableManifest,
   RootManifest,
-} from "./manifest-types";
+} from "./manifest-types.js";

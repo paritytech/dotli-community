@@ -9,7 +9,11 @@ import {
   untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { dismissToast, removeToast, type ToastEntry } from "../../state/toasts";
+import {
+  dismissToast,
+  removeToast,
+  type ToastEntry,
+} from "../../state/toasts.js";
 
 export const CLOSE_SVG =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +

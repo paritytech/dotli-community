@@ -29,7 +29,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Window } from "happy-dom";
 import { beforeAll, describe, expect, it } from "vitest";
-import { renderShellOnServer } from "../../helpers/shell-ssr";
+import { renderShellOnServer } from "../../helpers/shell-ssr.js";
 
 const FIXTURE_PATH = resolve(import.meta.dirname, "original-shell.html");
 

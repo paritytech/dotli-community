@@ -5,7 +5,7 @@ import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 /**
  * Up while loading, fading out once dismissed, then gone. `"gone"` is

@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import {
-  isCarFile,
-  packArchive,
-  parseIpfsResponse,
-} from "@dotli/content/archive";
-import type { ArchiveFiles } from "@dotli/content/archive";
+import { isCarFile, packArchive, parseIpfsResponse } from "../src/archive.js";
+import type { ArchiveFiles } from "../src/archive.js";
 
 describe("isCarFile", () => {
   it("returns false for empty buffer", () => {

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { m } from "@dotli/metrics/metrics";
-import { updateLoading } from "@dotli/ui/state/loading";
-import { startResolutionTrace } from "../../src/resolution-trace";
+import { m } from "@dotli/metrics";
+import { updateLoading } from "@dotli/ui";
+import { startResolutionTrace } from "../../src/resolution-trace.js";
 
 /**
  * A Sentry stand-in that records the span tree instead of sending it.

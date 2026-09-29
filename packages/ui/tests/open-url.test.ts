@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { withActiveTld } from "@dotli/config/network";
-import { createNavigateTo } from "@dotli/ui/host-callbacks/OpenUrl";
+import { withActiveTld } from "@dotli/config";
+import { createNavigateTo } from "../src/host-callbacks/OpenUrl.js";
 
 afterEach(() => {
   vi.restoreAllMocks();

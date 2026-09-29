@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { recordPermissionChange } from "@dotli/ui/state/permissions";
+import { recordPermissionChange } from "../../src/state/permissions.js";
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];

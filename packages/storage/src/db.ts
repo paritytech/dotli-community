@@ -12,8 +12,8 @@
 // capture the underlying rejection before falling back, so the warm-start
 // failure is visible even though we still return a working DB.
 
-import { log } from "@dotli/shared/log";
-import { captureException } from "@dotli/metrics/sentry";
+import { log } from "@dotli/shared";
+import { captureException } from "@dotli/metrics";
 
 declare global {
   interface Window {

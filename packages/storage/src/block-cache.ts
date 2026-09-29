@@ -15,9 +15,9 @@
 // Bytes and bookkeeping live in separate stores, so touching a block on read
 // and walking the cache to prune it never load the bytes.
 
-import { getDb } from "./db";
-import { log } from "@dotli/shared/log";
-import { captureException } from "@dotli/metrics/sentry";
+import { getDb } from "./db.js";
+import { log } from "@dotli/shared";
+import { captureException } from "@dotli/metrics";
 
 const BLOCKS = "blocks";
 const META = "block_meta";

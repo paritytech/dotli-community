@@ -11,8 +11,8 @@ import {
   type ModalButton,
   type ModalButtonVariant,
   type ModalEntry,
-} from "../../state/modals";
-import { Dialog } from "./Dialog";
+} from "../../state/modals.js";
+import { Dialog } from "./Dialog.js";
 
 const BUTTON_CLASS: Record<ModalButtonVariant, string> = {
   cancel: "signing-btn-cancel",

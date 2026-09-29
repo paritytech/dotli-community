@@ -13,7 +13,7 @@ const gauge = vi.fn();
 // metrics-stripped path without tearing down the module registry.
 const metrics = { enabled: true };
 
-vi.mock("@dotli/metrics/metrics", () => ({
+vi.mock("../../metrics/src/metrics.js", () => ({
   m: {
     get enabled() {
       return metrics.enabled;
@@ -25,7 +25,7 @@ vi.mock("@dotli/metrics/metrics", () => ({
 }));
 
 async function loadHeartbeat(): Promise<(intervalMs?: number) => () => void> {
-  const mod = await import("@dotli/resolver/provider");
+  const mod = await import("../src/provider.js");
   return mod.startLightClientHeartbeat;
 }
 

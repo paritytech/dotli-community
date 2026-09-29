@@ -7,8 +7,8 @@ import {
   getAuthModalState,
   resetAuthModal,
   updateAuthModal,
-} from "@dotli/ui/state/auth-modal";
-import { resetStores } from "../helpers/solid";
+} from "../../src/state/auth-modal.js";
+import { resetStores } from "../helpers/solid.js";
 
 describe("auth modal store", () => {
   afterEach(() => {

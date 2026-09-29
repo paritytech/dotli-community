@@ -6,8 +6,8 @@
 // by itself. End-to-end resolution lives in resolution.spec.ts.
 
 import { expect } from "@playwright/test";
-import { PORT } from "../env";
-import { test } from "./helpers/shared-mode-reset";
+import { PORT } from "../env.js";
+import { test } from "./helpers/shared-mode-reset.js";
 
 const LANDING_URL = `http://localhost:${PORT}/`;
 const LABEL_URL = `http://browse.localhost:${PORT}/`;

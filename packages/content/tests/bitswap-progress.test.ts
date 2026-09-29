@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { onContentProgress, __testing } from "@dotli/content/bitswap";
+import { onContentProgress, __testing } from "../src/bitswap.js";
 
 describe("Content progress reporting works", () => {
   it("As a user, the loading bar keeps moving while the trace listens along", () => {

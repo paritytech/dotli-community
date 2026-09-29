@@ -22,9 +22,12 @@ import {
   IFRAME_FORWARDER,
   SHARED_WORKER_FORWARDER,
   WORKER_FORWARDER,
-} from "../../iframe-logs-forwarder";
-import { BROWSER_PERMISSIONS, seedPermissions } from "../fixtures/permissions";
-import { seedSettings, type SettingsSeed } from "../fixtures/settings";
+} from "../../iframe-logs-forwarder.js";
+import {
+  BROWSER_PERMISSIONS,
+  seedPermissions,
+} from "../fixtures/permissions.js";
+import { seedSettings, type SettingsSeed } from "../fixtures/settings.js";
 
 export interface PageWithCapture {
   page: Page;

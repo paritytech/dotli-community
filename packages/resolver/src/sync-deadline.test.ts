@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { raceSyncTimeout, withSyncBudget } from "./sync-deadline";
+import { raceSyncTimeout, withSyncBudget } from "./sync-deadline.js";
 
 const CAP_MS = 180_000;
 

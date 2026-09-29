@@ -10,17 +10,17 @@ import {
   Switch,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { isMobileDevice } from "@dotli/shared/device";
-import { log } from "@dotli/shared/log";
-import { closeAuthModal, retryLogin } from "../../auth-controller";
+import { isMobileDevice, log } from "@dotli/shared";
+
+import { closeAuthModal, retryLogin } from "../../auth-controller.js";
 import {
   authModalStore,
   getAuthModalState,
   type AuthModalView,
-} from "../../state/auth-modal";
-import { shallowEqual } from "../../state/create-store";
-import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+} from "../../state/auth-modal.js";
+import { shallowEqual } from "../../state/create-store.js";
+import { useStore } from "../use-store.js";
+import { createPopover } from "./popover.js";
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
 const POLKADOT_MOBILE_DOWNLOAD_URL = "https://docs.polkadot.com/apps/";

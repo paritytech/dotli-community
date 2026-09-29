@@ -10,12 +10,14 @@ import { hexToBytes } from "@noble/hashes/utils.js";
 import {
   createRemoteChainProvider,
   isRemoteChainSupported,
-} from "@dotli/protocol/client";
-import { isSandboxOrigin } from "@dotli/config/config";
-import { getBackend } from "@dotli/config/mode";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { log } from "@dotli/shared/log";
-import { serializeError } from "@dotli/shared/errors";
+} from "@dotli/protocol";
+import {
+  isSandboxOrigin,
+  getBackend,
+  getActiveServicesConfig,
+} from "@dotli/config";
+
+import { log, serializeError } from "@dotli/shared";
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
 // the retryable pair. Anything else, including an invalid CID, falls to the
@@ -451,7 +453,7 @@ interface ServedBlock {
 async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
   let blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean;
   try {
-    ({ blockMatchesCid } = await import("./verify"));
+    ({ blockMatchesCid } = await import("./verify.js"));
   } catch (err) {
     // Fail closed: a verifier we couldn't even load can't vouch for this
     // block. The caller treats `false` as "not verified" either way, so a

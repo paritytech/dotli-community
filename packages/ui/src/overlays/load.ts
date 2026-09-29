@@ -5,19 +5,19 @@
 // bundle carries Solid. Everything here is Solid-free: it writes the stores
 // and imports the chunk dynamically.
 
-import { createLazyRoot } from "../mount/lazy-root";
+import { createLazyRoot } from "../mount/lazy-root.js";
 import {
   failAllModals,
   openModal,
   type ModalOutcome,
   type ModalView,
-} from "../state/modals";
+} from "../state/modals.js";
 import {
   clearToasts,
   pushToast,
   toastsStore,
   type ToastInput,
-} from "../state/toasts";
+} from "../state/toasts.js";
 
 /**
  * When the chunk cannot load, or the mounted root later throws while
@@ -41,7 +41,7 @@ function fallBack(): void {
 
 const overlays = createLazyRoot({
   load: (onBroken) =>
-    import("../components/overlays/mount").then(({ mountOverlays }) =>
+    import("../components/overlays/mount.js").then(({ mountOverlays }) =>
       mountOverlays(onBroken),
     ),
   errorKind: "overlays_load_error",

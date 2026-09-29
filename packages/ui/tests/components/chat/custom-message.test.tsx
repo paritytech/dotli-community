@@ -3,8 +3,8 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RendererNode } from "@parity/truapi";
-import { CustomMessage } from "@dotli/ui/components/chat/CustomMessage";
-import { renderComponent, settle } from "../../helpers/solid";
+import { CustomMessage } from "../../../src/components/chat/CustomMessage.js";
+import { renderComponent, settle } from "../../helpers/solid.js";
 
 interface Sink {
   onUpdate: (node: RendererNode) => void;
@@ -18,7 +18,7 @@ const service = vi.hoisted(() => ({
   actionFails: false,
 }));
 
-vi.mock("@dotli/ui/chat/service", () => ({
+vi.mock("../../../src/chat/service.js", () => ({
   renderCustomMessage: (_productId: string, _request: unknown, sink: Sink) => {
     service.sinks.push(sink);
     return () => {

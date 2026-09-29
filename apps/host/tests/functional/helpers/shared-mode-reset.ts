@@ -3,7 +3,7 @@
 
 import { test as base } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
-import { PORT } from "../../env";
+import { PORT } from "../../env.js";
 
 /**
  * Wipe the preview-server's process-wide mode-sync `Map` (see

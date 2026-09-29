@@ -8,16 +8,16 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
+vi.mock("../../protocol/src/client.js", () => ({
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));
-vi.mock("@dotli/config/mode", () => ({ getBackend: mocks.getBackend }));
-vi.mock("@dotli/config/network", () => ({
+vi.mock("../../config/src/mode.js", () => ({ getBackend: mocks.getBackend }));
+vi.mock("../../config/src/network.js", () => ({
   getActiveServicesConfig: mocks.getActiveServicesConfig,
 }));
-vi.mock("@dotli/config/config", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@dotli/config/config")>()),
+vi.mock("../../config/src/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/src/config.js")>()),
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
@@ -86,7 +86,7 @@ describe("bitswapGet retry policy", () => {
       { hex: "0xabcd" },
     ]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
 
     // When
     const promise = bitswapGet("bafyTest");
@@ -101,7 +101,7 @@ describe("bitswapGet retry policy", () => {
     // Given every peer keeps answering DONT_HAVE
     const chain = stubChain([]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
 
     // When
     const promise = bitswapGet("bafyMissing");
@@ -123,7 +123,7 @@ describe("bitswapGet retry policy", () => {
       { code: -32812 },
     ]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
 
     // When
     const promise = bitswapGet("bafySlowStart");
@@ -152,7 +152,7 @@ describe("bitswapGet retry policy", () => {
       { hex: "0x01" },
     ]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
 
     // When
     const promise = bitswapGet("bafyTransientRamp");
@@ -169,7 +169,7 @@ describe("bitswapGet retry policy", () => {
     // Given
     const chain = stubChain([{ code: -32602 }]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
 
     // When
     const promise = bitswapGet("not-a-cid");
@@ -188,7 +188,7 @@ describe("bitswapGet retry policy", () => {
       disconnect: () => undefined,
     }));
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
     const aborter = new AbortController();
 
     // When
@@ -204,7 +204,7 @@ describe("bitswapGet retry policy", () => {
     // Given a retry that is sleeping between attempts
     const chain = stubChain([], { code: -32812 });
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
     const aborter = new AbortController();
 
     // When the abort lands during the backoff rather than during a call
@@ -224,7 +224,7 @@ describe("bitswapGet retry policy", () => {
     // Given
     const chain = stubChain([{ hex: "0x01" }]);
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
     const aborter = new AbortController();
     aborter.abort();
 
@@ -275,7 +275,7 @@ describe("listenForSandboxBitswap", () => {
     // Given a sandbox frame with a fetch in flight
     const chain = stubChain([], { code: -32812 });
     vi.resetModules();
-    const { listenForSandboxBitswap } = await import("@dotli/content/bitswap");
+    const { listenForSandboxBitswap } = await import("../src/bitswap.js");
     listenForSandboxBitswap();
     const frame = fakeFrame();
     post(frame, { type: "dotli:bitswap-get", id: "req-1", cid: "bafyX" });
@@ -295,7 +295,7 @@ describe("listenForSandboxBitswap", () => {
     // fetch belonging to the first
     const chain = stubChain([], { code: -32812 });
     vi.resetModules();
-    const { listenForSandboxBitswap } = await import("@dotli/content/bitswap");
+    const { listenForSandboxBitswap } = await import("../src/bitswap.js");
     listenForSandboxBitswap();
     const victim = fakeFrame();
     const attacker = fakeFrame();
@@ -315,7 +315,7 @@ describe("listenForSandboxBitswap", () => {
     // Given a fetch in flight
     const chain = stubChain([], { code: -32812 });
     vi.resetModules();
-    const { listenForSandboxBitswap } = await import("@dotli/content/bitswap");
+    const { listenForSandboxBitswap } = await import("../src/bitswap.js");
     listenForSandboxBitswap();
     const frame = fakeFrame();
     post(frame, { type: "dotli:bitswap-get", id: "req-1", cid: "bafyX" });
@@ -340,7 +340,7 @@ describe("listenForSandboxBitswap", () => {
     // restart at 1 in every frame
     const chain = stubChain([{ hex: "0x01" }], { code: -32812 });
     vi.resetModules();
-    const { listenForSandboxBitswap } = await import("@dotli/content/bitswap");
+    const { listenForSandboxBitswap } = await import("../src/bitswap.js");
     listenForSandboxBitswap();
     const first = fakeFrame();
     const second = fakeFrame();
@@ -366,7 +366,7 @@ describe("listenForSandboxBitswap", () => {
       disconnect: () => undefined,
     }));
     vi.resetModules();
-    const { bitswapGet } = await import("@dotli/content/bitswap");
+    const { bitswapGet } = await import("../src/bitswap.js");
     const aborter = new AbortController();
     let added = 0;
     let removed = 0;

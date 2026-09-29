@@ -2,14 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
-import { AuthModal } from "@dotli/ui/components/shell/AuthModal";
-import { setAuthState } from "@dotli/ui/state/auth";
-import { updateAuthModal } from "@dotli/ui/state/auth-modal";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
-import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
-import { mouseClick, pointerPress, renderComponent } from "../../helpers/solid";
+import { AuthButton } from "../../../src/components/shell/AuthButton.js";
+import { AuthModal } from "../../../src/components/shell/AuthModal.js";
+import { setAuthState } from "../../../src/state/auth.js";
+import { updateAuthModal } from "../../../src/state/auth-modal.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
+import { ThemeToggle } from "../../../src/components/shell/ThemeToggle.js";
+import type { DotliAuthState } from "../../../src/host-callbacks/AuthState.js";
+import {
+  mouseClick,
+  pointerPress,
+  renderComponent,
+} from "../../helpers/solid.js";
 import {
   byId,
   coordinator,
@@ -17,13 +21,13 @@ import {
   recordEvents,
   settleAll,
   useAuthController,
-} from "./auth-harness";
-import { normalized, oldModal, type OldModalBody } from "./old-auth-markup";
-import type * as PopoverModule from "@dotli/ui/components/shell/popover";
-import { query } from "../../support";
+} from "./auth-harness.js";
+import { normalized, oldModal, type OldModalBody } from "./old-auth-markup.js";
+import type * as PopoverModule from "../../../src/components/shell/popover.js";
+import { query } from "../../support.js";
 
 const device = vi.hoisted(() => ({ mobile: false }));
-vi.mock("@dotli/shared/device", () => ({
+vi.mock("../../../../shared/src/device.js", () => ({
   isMobileDevice: () => device.mobile,
 }));
 
@@ -48,7 +52,7 @@ vi.mock("qrcode", () => {
 // Counts the auth modal's dialog `setOpen` calls: its popover is the only
 // one in `dialog` mode here.
 const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
-vi.mock("@dotli/ui/components/shell/popover", async (importOriginal) => {
+vi.mock("../../../src/components/shell/popover.js", async (importOriginal) => {
   const actual = await importOriginal<typeof PopoverModule>();
   return {
     ...actual,

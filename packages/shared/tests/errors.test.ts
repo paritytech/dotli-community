@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { serializeError, fullErrorChain } from "@dotli/shared/errors";
+import { serializeError, fullErrorChain } from "../src/errors.js";
 
 describe("serializeError", () => {
   // primitives

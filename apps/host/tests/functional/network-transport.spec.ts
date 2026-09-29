@@ -33,10 +33,10 @@
 
 import { test, expect } from "@playwright/test";
 import type { APIRequestContext, Page } from "@playwright/test";
-import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
-import { findAppFrame } from "../product-frame";
-import { seedBackend, seedSettings } from "./fixtures/settings";
-import { resetSharedMode } from "./helpers/shared-mode-reset";
+import { DOMAIN, PORT, TIMEOUT_MS } from "../env.js";
+import { findAppFrame } from "../product-frame.js";
+import { seedBackend, seedSettings } from "./fixtures/settings.js";
+import { resetSharedMode } from "./helpers/shared-mode-reset.js";
 
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const HOST_SHELL_ORIGIN = `http://${DOMAIN}.localhost:${PORT}`;

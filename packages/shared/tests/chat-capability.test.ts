@@ -9,7 +9,7 @@ import {
   resetChatCapabilityForTests,
   setChatCapability,
   type ChatAvailabilityDetail,
-} from "@dotli/shared/chat-capability";
+} from "../src/chat-capability.js";
 
 function nextAnnouncement(): Promise<ChatAvailabilityDetail> {
   return new Promise((resolve) => {

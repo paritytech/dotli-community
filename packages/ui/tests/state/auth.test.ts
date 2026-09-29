@@ -9,9 +9,9 @@ import {
   loggedInStore,
   setAuthState,
   setLoggedIn,
-} from "@dotli/ui/state/auth";
-import { dispatchAuthState } from "@dotli/ui/host-callbacks/AuthState";
-import { resetStores, settle } from "../helpers/solid";
+} from "../../src/state/auth.js";
+import { dispatchAuthState } from "../../src/host-callbacks/AuthState.js";
+import { resetStores, settle } from "../helpers/solid.js";
 
 describe("auth store", () => {
   afterEach(() => {

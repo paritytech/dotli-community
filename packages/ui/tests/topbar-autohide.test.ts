@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as TopbarAutohideModule from "@dotli/ui/topbar-autohide";
-import { byId } from "./support";
+import type * as TopbarAutohideModule from "../src/topbar-autohide.js";
+import { byId } from "./support.js";
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
 // box helper is mocked with plain stand-in values here. The real inset math and
 // units are covered by product-iframe-box tests.
-vi.mock("@dotli/ui/product-iframe-box", () => ({
+vi.mock("../src/product-iframe-box.js", () => ({
   productIframeBox: (opts: { topbarOffset: boolean }) =>
     opts.topbarOffset
       ? {
@@ -74,12 +74,12 @@ let dispose: (() => void) | null = null;
 
 async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   // Logged in, as the auth controller records it (state/auth.ts).
-  const { setLoggedIn } = await import("@dotli/ui/state/auth");
+  const { setLoggedIn } = await import("../src/state/auth.js");
   setLoggedIn(true);
   // The bridge hands each rendered product frame to the layout module.
-  const { attachProductFrame } = await import("@dotli/ui/product-frame-layout");
+  const { attachProductFrame } = await import("../src/product-frame-layout.js");
   attachProductFrame(appFrame());
-  const mod = await import("@dotli/ui/topbar-autohide");
+  const mod = await import("../src/topbar-autohide.js");
   dispose = mod.disposeTopbarAutoHide;
   return mod;
 }
@@ -427,7 +427,7 @@ describe("topbar auto-hide motion and layout", () => {
 
     // When a new render hands the layout module a fresh frame
     const { attachProductFrame } =
-      await import("@dotli/ui/product-frame-layout");
+      await import("../src/product-frame-layout.js");
     const frame = document.createElement("iframe");
     appFrame().replaceWith(frame);
     frame.id = "app-frame";
@@ -448,7 +448,7 @@ describe("topbar auto-hide motion and layout", () => {
     expect(isHidden()).toBe(true);
 
     // When
-    const { setLoggedIn } = await import("@dotli/ui/state/auth");
+    const { setLoggedIn } = await import("../src/state/auth.js");
     setLoggedIn(false);
     document.querySelector(".user-badge")?.remove();
     pinTopbarVisible();

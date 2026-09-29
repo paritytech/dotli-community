@@ -11,11 +11,11 @@ import {
   formatAppVersion,
   getActiveAppManifest,
   getActiveRootManifest,
-} from "@dotli/shared/active-manifest";
+} from "@dotli/shared";
 import {
   createRemoteChainProvider,
   isRemoteChainSupported,
-} from "@dotli/protocol/client";
+} from "@dotli/protocol";
 import {
   getCacheSettings,
   setCacheSettings,
@@ -24,20 +24,18 @@ import {
   BACKEND_LABELS,
   type Backend,
   type CacheSettings,
-} from "@dotli/config/mode";
-import { clearCidCache } from "@dotli/storage/cid-cache";
-import { clearBlockCache } from "@dotli/storage/block-cache";
-import {
   getNetwork,
   setNetwork,
   NETWORK_NAME_TO_SERVICES_CONFIG,
   type Network,
-} from "@dotli/config/network";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { writeSettingsToSearch } from "@dotli/config/url-settings";
-import { ALL_PERMISSIONS, getPermissionStatuses } from "./permissions";
-import { getProductState } from "./state/product";
-import { THEME_KEY } from "./theme-controller";
+  getActiveServicesConfig,
+  writeSettingsToSearch,
+} from "@dotli/config";
+import { clearCidCache, clearBlockCache } from "@dotli/storage";
+
+import { ALL_PERMISSIONS, getPermissionStatuses } from "./permissions.js";
+import { getProductState } from "./state/product.js";
+import { THEME_KEY } from "./theme-controller.js";
 
 /**
  * Draft of everything the popover can change. Controls mutate this. Nothing

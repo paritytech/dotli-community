@@ -4,8 +4,8 @@
 // Loads the Solid chat panel on first use, so the host startup bundle does
 // not carry it. Solid-free: it only imports the chunk dynamically.
 
-import { createLazyRoot } from "../mount/lazy-root";
-import { setChatPanelOpen } from "../state/chat-panel";
+import { createLazyRoot } from "../mount/lazy-root.js";
+import { setChatPanelOpen } from "../state/chat-panel.js";
 
 /**
  * The chat panel root. If the chunk cannot load, or the panel throws while
@@ -13,7 +13,7 @@ import { setChatPanelOpen } from "../state/chat-panel";
  */
 const chatPanel = createLazyRoot({
   load: (onBroken) =>
-    import("../components/chat/mount").then(({ mountChatPanel }) =>
+    import("../components/chat/mount.js").then(({ mountChatPanel }) =>
       mountChatPanel(onBroken),
     ),
   errorKind: "chat_panel_load_error",

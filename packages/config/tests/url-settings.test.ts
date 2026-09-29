@@ -5,8 +5,8 @@ import { describe, it, expect } from "vitest";
 import {
   parseSettingsFromSearch,
   writeSettingsToSearch,
-} from "@dotli/config/url-settings";
-import { NetworkName } from "@dotli/config/network";
+} from "../src/url-settings.js";
+import { NetworkName } from "../src/network.js";
 
 const globalAny = globalThis as { SharedWorker?: unknown };
 

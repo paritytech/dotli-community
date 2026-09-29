@@ -8,38 +8,41 @@ import type {
   BlockBar,
   ChainStatus,
   TransferState,
-} from "@dotli/ui/network-monitor";
-import { ChainsPopover } from "@dotli/ui/components/shell/ChainsPopover";
-import { mountRoot } from "@dotli/ui/mount/root";
-import { startNetworkStore } from "@dotli/ui/state/network";
-import { setProductLoaded } from "@dotli/ui/state/product";
+} from "../../../src/network-monitor.js";
+import { ChainsPopover } from "../../../src/components/shell/ChainsPopover.js";
+import { mountRoot } from "../../../src/mount/root.js";
+import { startNetworkStore } from "../../../src/state/network.js";
+import { setProductLoaded } from "../../../src/state/product.js";
 import {
   recordChainsButtonVisible,
   setBlockingModalActive,
-} from "@dotli/ui/state/topbar";
+} from "../../../src/state/topbar.js";
 import {
   pointerPress,
   pointerPressUnfocusable,
   renderComponent,
   resetStores,
   tabTo,
-} from "../../helpers/solid";
-import { normalized } from "./old-auth-markup";
-import { oldChainsButton, oldChainsPopover } from "./old-chains-markup";
-import type * as ChainsFormatModule from "@dotli/ui/components/shell/chains-format";
-import { focusables } from "@dotli/ui/components/focus";
-import { byId, query } from "../../support";
+} from "../../helpers/solid.js";
+import { normalized } from "./old-auth-markup.js";
+import { oldChainsButton, oldChainsPopover } from "./old-chains-markup.js";
+import type * as ChainsFormatModule from "../../../src/components/shell/chains-format.js";
+import { focusables } from "../../../src/components/focus.js";
+import { byId, query } from "../../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../../metrics/src/sentry.js", () => sentry);
 
 /** The verdict, counted as the popover computes it. */
 const format = vi.hoisted(() => ({ describeLiveNetwork: vi.fn() }));
-vi.mock("@dotli/ui/components/shell/chains-format", async (importOriginal) => {
-  const actual = await importOriginal<typeof ChainsFormatModule>();
-  format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
-  return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
-});
+vi.mock(
+  "../../../src/components/shell/chains-format.js",
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof ChainsFormatModule>();
+    format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
+    return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
+  },
+);
 
 /** The network monitor, as a test drives it. */
 const monitor = vi.hoisted(() => {
@@ -57,7 +60,7 @@ const monitor = vi.hoisted(() => {
   };
 });
 
-vi.mock("@dotli/ui/network-monitor", () => ({
+vi.mock("../../../src/network-monitor.js", () => ({
   subscribeNetwork: (l: () => void) => {
     monitor.listeners.add(l);
     return () => monitor.listeners.delete(l);

@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from "@solidjs/web";
-import { chatButtonVisible, chatPanelStore } from "../../state/chat-panel";
-import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+import { chatButtonVisible, chatPanelStore } from "../../state/chat-panel.js";
+import { useStore } from "../use-store.js";
+import { createPopover } from "./popover.js";
 
 /**
  * The mobile "More" button and its flyout, which collapses Chat,

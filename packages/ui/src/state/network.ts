@@ -9,12 +9,12 @@ import {
   subscribeNetwork,
   type ChainStatus,
   type TransferState,
-} from "../network-monitor";
+} from "../network-monitor.js";
 import {
   createSyncStore,
   registerStoreStateReset,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 export interface NetworkState {
   chains: ChainStatus[];

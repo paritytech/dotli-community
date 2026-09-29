@@ -2,25 +2,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
-import { requestTruapiDisconnect } from "@dotli/ui/auth-controller";
-import { setAuthState } from "@dotli/ui/state/auth";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
-import type { TruapiSessionUiState } from "@dotli/ui/host-callbacks/SessionStore";
+import { AuthButton } from "../../../src/components/shell/AuthButton.js";
+import { requestTruapiDisconnect } from "../../../src/auth-controller.js";
+import { setAuthState } from "../../../src/state/auth.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
+import type { TruapiSessionUiState } from "../../../src/host-callbacks/SessionStore.js";
 import {
   pointerPress,
   pointerPressUnfocusable,
   renderComponent,
   tabTo,
-} from "../../helpers/solid";
+} from "../../helpers/solid.js";
 import {
   byId,
   press,
   recordEvents,
   settleAll,
   useAuthController,
-} from "./auth-harness";
-import { normalized, oldUserPopover } from "./old-auth-markup";
+} from "./auth-harness.js";
+import { normalized, oldUserPopover } from "./old-auth-markup.js";
 
 useAuthController();
 

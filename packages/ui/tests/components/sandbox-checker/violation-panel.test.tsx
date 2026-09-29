@@ -3,14 +3,14 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
-import { mountViolationPanel } from "@dotli/ui/components/sandbox-checker/mount";
+import { mountViolationPanel } from "../../../src/components/sandbox-checker/mount.js";
 import {
   attachProductFrame,
   resetProductFrameLayout,
   setChatWidth,
-} from "@dotli/ui/product-frame-layout";
-import { settle } from "../../helpers/solid";
-import { byId, query } from "../../support";
+} from "../../../src/product-frame-layout.js";
+import { settle } from "../../helpers/solid.js";
+import { byId, query } from "../../support.js";
 
 const BELOW_BAR_HEIGHT =
   "calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))";

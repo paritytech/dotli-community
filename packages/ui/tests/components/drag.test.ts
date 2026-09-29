@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { startDrag } from "@dotli/ui/components/drag";
+import { startDrag } from "../../src/components/drag.js";
 
 function pointer(target: EventTarget, type: string, x = 0): PointerEvent {
   const event = new PointerEvent(type, {

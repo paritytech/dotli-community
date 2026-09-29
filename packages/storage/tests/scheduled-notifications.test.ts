@@ -11,8 +11,8 @@ import {
   removeById,
   removeStale,
   type ScheduledNotificationRecord,
-} from "@dotli/storage/scheduled-notifications";
-import { getDb } from "@dotli/storage/db";
+} from "../src/scheduled-notifications.js";
+import { getDb } from "../src/db.js";
 
 const RECORD_STORE = "scheduled_notifications";
 const COUNTER_STORE = "notification_counters";

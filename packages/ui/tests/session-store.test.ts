@@ -1,15 +1,15 @@
 import "fake-indexeddb/auto";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
-import { SITE_ID } from "@dotli/config/config";
+import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol";
+import { SITE_ID } from "@dotli/config";
 import {
   createSessionStoreAdapters,
   emitPersistedSessionUiState,
   onStoredSessionChanged,
-} from "@dotli/ui/host-callbacks/SessionStore";
-import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
+} from "../src/host-callbacks/SessionStore.js";
+import { createAuthStateChanged } from "../src/host-callbacks/AuthState.js";
 import type { CoreStorageKey, SessionUiInfo } from "@parity/truapi-host";
-import { must } from "./support";
+import { must } from "./support.js";
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -18,7 +18,7 @@ const sharedAuth = vi.hoisted(() => ({
   >(),
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
+vi.mock("../../protocol/src/client.js", () => ({
   readSharedAuthStorage: (siteId: string, key: string) =>
     Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {

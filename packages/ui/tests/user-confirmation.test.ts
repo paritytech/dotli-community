@@ -1,7 +1,7 @@
 import type { UserConfirmation } from "@parity/truapi-host";
 import { afterEach, describe, expect, it } from "vitest";
-import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { createUserConfirmationAdapters } from "../src/host-callbacks/UserConfirmation.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 type UserConfirmationReview = Parameters<
   Required<UserConfirmation>["confirmUserAction"]

@@ -8,57 +8,57 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
-import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared/chat-capability";
-import type { ReadableStore } from "@dotli/ui/state/create-store";
-import { resetStores } from "../helpers/solid";
+import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared";
+import type { ReadableStore } from "../../src/state/create-store.js";
+import { resetStores } from "../helpers/solid.js";
 import {
   getLoadingState,
   loadingStore,
   updateLoading,
-} from "@dotli/ui/state/loading";
+} from "../../src/state/loading.js";
 import {
   recordChainsButtonVisible,
   setBlockingModalActive,
   setTopbarVisible,
   topbarStore,
-} from "@dotli/ui/state/topbar";
+} from "../../src/state/topbar.js";
 import {
   chatPanelStore,
   initChatPanelState,
   resetChatPanelStateForTests,
   setChatComposerError,
   setChatPanelWidth,
-} from "@dotli/ui/state/chat-panel";
+} from "../../src/state/chat-panel.js";
 import {
   authModalStore,
   resetAuthModal,
   updateAuthModal,
-} from "@dotli/ui/state/auth-modal";
+} from "../../src/state/auth-modal.js";
 import {
   clearToasts,
   resetToastsForTests,
   toastsStore,
-} from "@dotli/ui/state/toasts";
+} from "../../src/state/toasts.js";
 import {
   authStore,
   loggedInStore,
   setAuthState,
   setLoggedIn,
-} from "@dotli/ui/state/auth";
+} from "../../src/state/auth.js";
 import {
   productStore,
   setProductError,
   setProductLoaded,
-} from "@dotli/ui/state/product";
-import { setTheme, themeStore } from "@dotli/ui/state/theme";
+} from "../../src/state/product.js";
+import { setTheme, themeStore } from "../../src/state/theme.js";
 import {
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
   urlPillStore,
-} from "@dotli/ui/state/url-pill";
+} from "../../src/state/url-pill.js";
 
 /** Count the store's notifications from now on. */
 function countNotifications<T>(store: ReadableStore<T>): {

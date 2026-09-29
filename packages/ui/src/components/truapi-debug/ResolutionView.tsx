@@ -17,8 +17,8 @@ import {
   buildResolutionContainer,
   renderResolution,
   type ResolutionRecorder,
-} from "@dotli/truapi-debug/resolution-view";
-import { wireHoverTooltips } from "./hover-tooltip";
+} from "@dotli/truapi-debug";
+import { wireHoverTooltips } from "./hover-tooltip.js";
 
 /** How often the Resolution view redraws the open block of an in-flight load. */
 const RESOLUTION_TICK_MS = 500;

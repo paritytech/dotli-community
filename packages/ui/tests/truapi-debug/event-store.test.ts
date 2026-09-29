@@ -6,11 +6,8 @@
 // without diffing the array on every render.
 
 import { describe, expect, it } from "vitest";
-import {
-  EventStore,
-  type TruapiDebugMessageEvent,
-} from "@dotli/truapi-debug/event-store";
-import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
+import { EventStore, type TruapiDebugMessageEvent } from "@dotli/truapi-debug";
+import type { DotliDebugEvent } from "@dotli/truapi-debug";
 
 function truapiEvent(requestId: string): TruapiDebugMessageEvent {
   return {

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { buildResolution } from "@dotli/truapi-debug/resolution-view";
-import type { DotliDebugEvent } from "@dotli/truapi-debug/dotli-debug-types";
+import { buildResolution } from "@dotli/truapi-debug";
+import type { DotliDebugEvent } from "@dotli/truapi-debug";
 
 function load(hits: number, misses: number): DotliDebugEvent[] {
   return [

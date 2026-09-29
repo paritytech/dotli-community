@@ -9,8 +9,8 @@ import {
   getCachedBlock,
   pruneBlockCache,
   putCachedBlock,
-} from "@dotli/storage/block-cache";
-import { getDb } from "@dotli/storage/db";
+} from "../src/block-cache.js";
+import { getDb } from "../src/db.js";
 
 describe("block cache", () => {
   beforeEach(async () => {

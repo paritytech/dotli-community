@@ -3,15 +3,17 @@
 // subscription is dropped.
 
 import type { PreimageHost } from "@parity/truapi-host";
-import { hashToCid } from "@dotli/content/preimage";
-import { fetchFromIpfs } from "@dotli/content/ipfs";
-import { assertBlockMatchesCid } from "@dotli/content/verify";
-import { getBackend } from "@dotli/config/mode";
-import { serializeError } from "@dotli/shared/errors";
-import { log } from "@dotli/shared/log";
-import { bitswapGet } from "@dotli/content/bitswap";
-import { toHex } from "@dotli/shared/hex";
-import { createResultStream } from "./result-stream";
+import {
+  hashToCid,
+  fetchFromIpfs,
+  assertBlockMatchesCid,
+  bitswapGet,
+} from "@dotli/content";
+
+import { getBackend } from "@dotli/config";
+import { serializeError, log, toHex } from "@dotli/shared";
+
+import { createResultStream } from "./result-stream.js";
 
 const POLL_INTERVAL_MS = 10_000;
 const INITIAL_POLL_DELAY_MS = 1000;

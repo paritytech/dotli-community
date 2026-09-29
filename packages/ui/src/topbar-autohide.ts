@@ -7,10 +7,10 @@
 // returns on pointer hover, on keyboard focus, and on the reveal shortcut,
 // so home, settings, permissions and login never become mouse-only.
 //
-import { isMobileDevice } from "@dotli/shared/device";
-import { setTopbarLayout } from "./product-frame-layout";
-import { getLoggedIn } from "./state/auth";
-import { setTopbarVisible } from "./state/topbar";
+import { isMobileDevice } from "@dotli/shared";
+import { setTopbarLayout } from "./product-frame-layout.js";
+import { getLoggedIn } from "./state/auth.js";
+import { setTopbarVisible } from "./state/topbar.js";
 
 const HIDE_DELAY_MS = 5000;
 const SLIDE_TRANSITION = "transform 0.3s ease";

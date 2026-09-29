@@ -11,24 +11,26 @@ import {
   ProtocolFatalError,
   PROTOCOL_ERRORS,
   ProtocolInitFailedError,
-} from "./errors";
+} from "./errors.js";
 import type {
   ExecutableManifest,
   ManifestResult,
   RootManifest,
-} from "@dotli/resolver/manifest";
-import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
+} from "@dotli/resolver";
 import {
+  BASE_DOMAIN,
+  type SiteId,
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
   getActiveSupportedGenesisHashes,
   getNetwork,
-} from "@dotli/config/network";
-import { getBackend, type Backend } from "@dotli/config/mode";
-import { log } from "@dotli/shared/log";
-import { getResolutionId, m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import type { SmoldotDbChain, SmoldotDbOutcome } from "./messages";
+  getBackend,
+  type Backend,
+} from "@dotli/config";
+
+import { log, serializeError } from "@dotli/shared";
+import { getResolutionId, m, spans as S } from "@dotli/metrics";
+import type { SmoldotDbChain, SmoldotDbOutcome } from "./messages.js";
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -39,17 +41,17 @@ import {
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
-} from "./messages";
+} from "./messages.js";
 import {
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
-} from "./auth-storage";
-import { serializeError } from "@dotli/shared/errors";
+} from "./auth-storage.js";
+
 import {
   DEFAULT_TIMEOUT_MS,
   METHOD_TIMEOUTS,
   UNTIMED_METHODS,
-} from "./method-timeouts";
+} from "./method-timeouts.js";
 
 interface PendingRequest {
   resolve: (value: unknown) => void;

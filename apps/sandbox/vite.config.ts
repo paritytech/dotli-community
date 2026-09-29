@@ -11,11 +11,17 @@ import {
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
-import wasm from "vite-plugin-wasm";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
-import { buildInfo } from "../../packages/config/src/build-info-plugin.ts";
-import { socialMetaTags } from "../../packages/config/src/social-meta-plugin.ts";
+import wasmPlugin from "vite-plugin-wasm";
+import {
+  buildInfo,
+  runtimeNetworkConfigScript,
+  socialMetaTags,
+} from "@dotli/config/vite";
+import { stripAnalytics } from "@dotli/metrics/vite";
+
+// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
+// NodeNext sees the module object; at runtime the default export is the plugin.
+const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
@@ -72,18 +78,6 @@ function buildServiceWorker(): Plugin {
       await viteBuild({
         configFile: false,
         plugins: [wasm()],
-        resolve: {
-          alias: {
-            "@dotli/config": resolve(
-              import.meta.dirname,
-              "../../packages/config/src",
-            ),
-            "@dotli/shared": resolve(
-              import.meta.dirname,
-              "../../packages/shared/src",
-            ),
-          },
-        },
         define: {
           __SW_VERSION__: JSON.stringify(swVersion),
         },
@@ -143,15 +137,13 @@ function preloadCriticalAssets(): Plugin {
   };
 }
 
-const PACKAGES = resolve(import.meta.dirname, "../../packages");
-const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
-
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
   base: process.env.VITE_APP_URL
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    stripAnalytics(process.env.VITE_METRICS !== "true"),
     solid(),
     wasm(),
     runtimeNetworkConfigScript(),
@@ -168,18 +160,6 @@ export default defineConfig({
     buildServiceWorker(),
     sentry(),
   ],
-  resolve: {
-    alias: {
-      ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
-      "@dotli/config": resolve(PACKAGES, "config/src"),
-      "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
-      "@dotli/shared": resolve(PACKAGES, "shared/src"),
-      "@dotli/storage": resolve(PACKAGES, "storage/src"),
-      "@dotli/content": resolve(PACKAGES, "content/src"),
-      "@dotli/ui": resolve(PACKAGES, "ui/src"),
-      "@dotli/sandbox-checker": SANDBOX_CHECKER_SRC,
-    },
-  },
   define: {
     __BUILD_TARGET__: JSON.stringify("app"),
   },

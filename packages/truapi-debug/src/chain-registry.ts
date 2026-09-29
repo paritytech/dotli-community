@@ -12,7 +12,7 @@
 // The registry is lowercase-keyed so inputs with mixed case (e.g. from
 // payloads) resolve without extra normalisation at every call site.
 
-import { NETWORK_NAME_TO_SERVICES_CONFIG } from "@dotli/config/network";
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from "@dotli/config";
 
 function buildRegistry(): ReadonlyMap<string, string> {
   const out = new Map<string, string>();

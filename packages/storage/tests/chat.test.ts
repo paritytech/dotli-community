@@ -10,7 +10,7 @@ import {
   listMessages,
   listRooms,
   registerBot,
-} from "@dotli/storage/chat";
+} from "../src/chat.js";
 
 const textContent = (text: string): unknown => ({
   tag: "Text",

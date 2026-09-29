@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@dotli/config": "*",
+    "@dotli/content": "*",
     "@dotli/metrics": "*",
     "@dotli/protocol": "*",
     "@dotli/resolver": "*",

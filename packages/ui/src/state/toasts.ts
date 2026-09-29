@@ -5,12 +5,12 @@
 // countdown pauses while the tab is hidden or the stack is expanded and
 // resumes from what was left. The overlays root renders this store.
 
-import { captureException } from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics";
 import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
+} from "./create-store.js";
 
 export interface ToastAction {
   label: string;

@@ -3,7 +3,7 @@
 
 // IPFS gateway utilities.
 
-import { getActiveServicesConfig } from "@dotli/config/network";
+import { getActiveServicesConfig } from "@dotli/config";
 
 /**
  * Fetch content from IPFS by CID via HTTP gateway.

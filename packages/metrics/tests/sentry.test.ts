@@ -5,7 +5,7 @@ import { describe, it, expect } from "vitest";
 import {
   excludeBrowserApiErrorsIntegration,
   isSmoldotEvent,
-} from "../src/sentry";
+} from "../src/sentry.js";
 
 describe("excludeBrowserApiErrorsIntegration", () => {
   it("As a host user, my callbacks remain intact when Sentry starts", () => {

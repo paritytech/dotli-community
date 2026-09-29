@@ -13,7 +13,7 @@
  * insets.
  */
 
-import { productIframeBox } from "./product-iframe-box";
+import { productIframeBox } from "./product-iframe-box.js";
 
 const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
 const SAFE_TOP = "var(--safe-top, 0px)";

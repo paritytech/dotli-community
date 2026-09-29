@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { showError, showErrorPage } from "@dotli/ui/ui";
+import { showError, showErrorPage } from "../src/ui.js";
 
 const XSS = '<img src=x onerror="alert(1)">';
 

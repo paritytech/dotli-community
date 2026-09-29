@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { MoreMenu } from "@dotli/ui/components/shell/MoreMenu";
-import { mountRoot } from "@dotli/ui/mount/root";
-import { pointerPress, settle } from "../../helpers/solid";
-import { byId, query } from "../../support";
+import { MoreMenu } from "../../../src/components/shell/MoreMenu.js";
+import { mountRoot } from "../../../src/mount/root.js";
+import { pointerPress, settle } from "../../helpers/solid.js";
+import { byId, query } from "../../support.js";
 
 const MORE_IDS = ["more-button", "more-popover"];
 

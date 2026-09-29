@@ -3,8 +3,8 @@
 
 // Imported dynamically by bridge.ts, only in VITE_SANDBOX_CHECKER builds.
 
-import { mountRoot } from "../../mount/root";
-import { ViolationPanel } from "./ViolationPanel";
+import { mountRoot } from "../../mount/root.js";
+import { ViolationPanel } from "./ViolationPanel.js";
 
 const ROOT = "sandbox-checker";
 

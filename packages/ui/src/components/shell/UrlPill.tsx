@@ -3,9 +3,9 @@
 
 import { Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { urlPillStore, type UrlPillState } from "../../state/url-pill";
-import { useStore } from "../use-store";
-import { VerificationShield } from "./VerificationShield";
+import { urlPillStore, type UrlPillState } from "../../state/url-pill.js";
+import { useStore } from "../use-store.js";
+import { VerificationShield } from "./VerificationShield.js";
 
 type Pill<K extends UrlPillState["kind"]> = Extract<UrlPillState, { kind: K }>;
 

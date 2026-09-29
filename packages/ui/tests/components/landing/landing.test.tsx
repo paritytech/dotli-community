@@ -7,19 +7,19 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flush } from "solid-js";
-import { escapeHtml } from "@dotli/shared/html";
-import { getActiveTldSuffix, withActiveTld } from "@dotli/config/network";
-import { mountLandingPage } from "../../helpers/landing";
-import { byId, query, must } from "../../support";
+import { escapeHtml } from "@dotli/shared";
+import { getActiveTldSuffix, withActiveTld } from "@dotli/config";
+import { mountLandingPage } from "../../helpers/landing.js";
+import { byId, query, must } from "../../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../../metrics/src/sentry.js", () => sentry);
 
 const recents = vi.hoisted(() => ({
   labels: [] as string[],
   forget: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("@dotli/ui/recent-labels", () => ({
+vi.mock("../../../src/recent-labels.js", () => ({
   loadRecentLabels: () => Promise.resolve([...recents.labels]),
   forgetRecentLabel: recents.forget,
 }));

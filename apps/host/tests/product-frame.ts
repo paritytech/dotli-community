@@ -11,7 +11,7 @@
  */
 
 import { expect, type Frame, type Page } from "@playwright/test";
-import { SANDBOX_CONTRACT_PARAMS } from "@dotli/config/host-sandbox-contract";
+import { SANDBOX_CONTRACT_PARAMS } from "@dotli/config";
 
 export interface ProductLocation {
   pathname: string;

@@ -13,9 +13,9 @@
 // which is left untouched; this is a separate, narrowly scoped file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPanel, type PanelModule } from "./panel-entry";
-import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
-import { query } from "../support";
+import { loadPanel, type PanelModule } from "./panel-entry.js";
+import type * as DotliDebugBusModule from "../../../truapi-debug/src/dotli-debug-bus.js";
+import { query } from "../support.js";
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
@@ -46,7 +46,7 @@ beforeEach(async () => {
   document.body.replaceChildren();
   localStorage.clear();
   sessionStorage.clear();
-  bus = await import("@dotli/truapi-debug/dotli-debug-bus");
+  bus = await import("../../../truapi-debug/src/dotli-debug-bus.js");
   panelModule = await loadPanel();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableDotliDebugBuffering();

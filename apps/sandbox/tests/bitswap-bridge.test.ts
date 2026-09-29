@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { requestBitswapBlock } from "../src/bitswap-bridge";
+import { requestBitswapBlock } from "../src/bitswap-bridge.js";
 
 /**
  * Drives the host side of the relay: captures what the bridge posts to its

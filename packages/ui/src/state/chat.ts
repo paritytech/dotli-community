@@ -10,7 +10,7 @@ import {
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
   type ChatMessageEventDetail,
-} from "../chat/service";
+} from "../chat/service.js";
 
 function emit(name: string, detail: unknown): void {
   window.dispatchEvent(new CustomEvent(name, { detail }));

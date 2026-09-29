@@ -9,8 +9,8 @@
 // over the prerendered static markup when their chunk arrives, and a click
 // on one of their triggers before that is held and replayed.
 
-import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
-import { ensureIslands } from "@dotli/ui/mount/load-islands";
+import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics";
+import { ensureIslands } from "@dotli/ui";
 
 initSentry("host");
 installGlobalErrorHandlers("host");

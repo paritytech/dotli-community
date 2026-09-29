@@ -9,7 +9,7 @@ import {
   resetModalsForTests,
   settleModal,
   type ModalView,
-} from "@dotli/ui/state/modals";
+} from "../../src/state/modals.js";
 
 type Choice = "yes" | "no" | "dismissed";
 

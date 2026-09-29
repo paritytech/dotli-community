@@ -6,9 +6,9 @@
 // handoff between products reads as one experience. Websites open apart.
 
 import type { Navigation } from "@parity/truapi-host";
-import { isLocalhost, BASE_DOMAIN } from "@dotli/config/config";
-import { getActiveTldSuffix } from "@dotli/config/network";
-import { dotNsUrl } from "@dotli/shared/dotns-url";
+import { isLocalhost, BASE_DOMAIN, getActiveTldSuffix } from "@dotli/config";
+
+import { dotNsUrl } from "@dotli/shared";
 
 // Only ever called behind `isDotDomain`, so the suffix is always present.
 function identifierToLabel(identifier: string): string {

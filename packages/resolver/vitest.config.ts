@@ -2,17 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "vitest/config";
-import { resolve } from "node:path";
 
 export default defineConfig({
-  resolve: {
-    alias: {
-      "@dotli/resolver": resolve(import.meta.dirname, "src"),
-      "@dotli/config": resolve(import.meta.dirname, "../config/src"),
-      "@dotli/shared": resolve(import.meta.dirname, "../shared/src"),
-      "@dotli/storage": resolve(import.meta.dirname, "../storage/src"),
-    },
-  },
   // `npm run link:truapi` points @parity/truapi-provider at a checkout outside
   // this workspace, and its `?url` wasm import would be refused by Vite's
   // workspace-only file serving.

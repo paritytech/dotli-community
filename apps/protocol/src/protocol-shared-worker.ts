@@ -12,24 +12,24 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
 import type {
+  StringJsonRpcConnection,
   SmoldotDbChain,
   SmoldotDbOutcome,
-} from "@dotli/protocol/messages";
-import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
+} from "@dotli/protocol";
+
 import {
+  MAX_CONNECTIONS_PER_ORIGIN,
   isValidNetwork,
   setNetworkOverride,
   getActiveServicesConfig,
-} from "@dotli/config/network";
+} from "@dotli/config";
+
 import {
   createChainProvider,
   isChainSupported,
   onProviderFatal,
   onSmoldotDbOutcome,
-} from "@dotli/resolver/provider";
-import {
   resolveDotName,
   resolveExecutableManifest,
   resolveOwner,
@@ -38,33 +38,34 @@ import {
   setResolverPeopleProvider,
   waitForAssetHubFinalized,
   waitForPeopleFinalized,
-} from "@dotli/resolver/resolve";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
+} from "@dotli/resolver";
+
+import {
+  m,
+  initSentry,
+  installGlobalErrorHandlers,
+  spans as S,
+} from "@dotli/metrics";
+
 import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
-} from "@dotli/protocol/broker";
-import { errorName, serializeError } from "@dotli/shared/errors";
-import { isExecutableKind } from "@dotli/shared/executables";
-import { PROTOCOL_APP_ERRORS } from "./errors";
+  isSharedAuthRequestMethod,
+  isSharedModeRequestMethod,
+  getRequestSyncTimeoutMs,
+  type ProtocolRequestEnvelope,
+  type ProtocolRequestMap,
+  type ProtocolEnvelope,
+} from "@dotli/protocol";
+import { errorName, serializeError, isExecutableKind } from "@dotli/shared";
+
+import { PROTOCOL_APP_ERRORS } from "./errors.js";
 
 initSentry("worker");
 installGlobalErrorHandlers("worker");
 // Only ever runs in shared-worker mode. Tag every metric emitted from this
 // context so broker/smoldot counters aggregate cleanly with the iframe's.
 m.setDefaults({ protocol_mode: "shared-worker" });
-import {
-  isSharedAuthRequestMethod,
-  isSharedModeRequestMethod,
-} from "@dotli/protocol/auth-storage";
-import {
-  getRequestSyncTimeoutMs,
-  type ProtocolRequestEnvelope,
-  type ProtocolRequestMap,
-  type ProtocolEnvelope,
-} from "@dotli/protocol/messages";
 
 export interface SWRelayRequest {
   type: "relay-request";

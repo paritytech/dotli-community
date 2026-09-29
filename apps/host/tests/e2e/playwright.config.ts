@@ -4,7 +4,7 @@
 import { defineConfig } from "@playwright/test";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
-import { baseConfig } from "../playwright.base.config";
+import { baseConfig } from "../playwright.base.config.js";
 
 const repoRoot = resolve(import.meta.dirname, "../../../..");
 

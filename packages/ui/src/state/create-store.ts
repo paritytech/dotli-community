@@ -9,7 +9,7 @@
  * Components read a store through the `useStore` helper in `components/`.
  */
 
-import { captureException } from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics";
 
 export interface ReadableStore<T> {
   /** Latest written value, immediately. */

@@ -1,7 +1,9 @@
 import type { Features } from "@parity/truapi-host";
-import { getBackend } from "@dotli/config/mode";
-import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/provider";
-import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
+import { getBackend } from "@dotli/config";
+import {
+  isChainSupported as isSmoldotChainSupported,
+  isRpcChainSupported,
+} from "@dotli/resolver";
 
 export function createFeatureSupported(): Features["featureSupported"] {
   return (request) => {

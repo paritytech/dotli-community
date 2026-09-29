@@ -6,9 +6,9 @@ import {
   onProgressStall,
   stopProgressWatch,
   type LoadingPhase,
-} from "@dotli/ui/loading-controller";
-import { getLoadingState } from "@dotli/ui/state/loading";
-import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
+} from "../src/loading-controller.js";
+import { getLoadingState } from "../src/state/loading.js";
+import { resetAllStoresForTests } from "../src/state/create-store.js";
 
 // Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;

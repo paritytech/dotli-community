@@ -11,7 +11,7 @@ import {
   assertSameContentId,
   verifyingBlockSource,
   rootVerifyingBlockSource,
-} from "@dotli/content/verify";
+} from "../src/verify.js";
 
 const RAW = 0x55;
 const DAG_PB = 0x70;

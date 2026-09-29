@@ -5,9 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   NOTIFICATION_DISMISS_MS,
   showNotification,
-} from "@dotli/ui/notification";
-import { toastsStore } from "@dotli/ui/state/toasts";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+} from "../src/notification.js";
+import { toastsStore } from "../src/state/toasts.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 function setVisibility(state: "visible" | "hidden"): void {
   Object.defineProperty(document, "visibilityState", {

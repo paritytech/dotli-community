@@ -6,10 +6,10 @@
 // first import can be held back.
 
 import { describe, expect, it, vi } from "vitest";
-import { AuthModal } from "@dotli/ui/components/shell/AuthModal";
-import { setAuthState } from "@dotli/ui/state/auth";
-import { renderComponent } from "../../helpers/solid";
-import { byId, settleAll, useAuthController } from "./auth-harness";
+import { AuthModal } from "../../../src/components/shell/AuthModal.js";
+import { setAuthState } from "../../../src/state/auth.js";
+import { renderComponent } from "../../helpers/solid.js";
+import { byId, settleAll, useAuthController } from "./auth-harness.js";
 
 const qr = vi.hoisted(() => {
   let release = (): void => {};

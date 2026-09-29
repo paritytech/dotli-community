@@ -1,6 +1,6 @@
 import type { LocaleHost } from "@parity/truapi-host";
 import type { HostLocaleSubscribeItem } from "@parity/truapi";
-import { createResultStream } from "./result-stream";
+import { createResultStream } from "./result-stream.js";
 
 // dotli presents English chrome and has no language setting of its own, so the
 // visitor's browser preference is the only real signal a product can localize

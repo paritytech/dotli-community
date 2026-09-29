@@ -17,9 +17,9 @@ import {
   initChatPanelState,
   setChatPanelOpen,
   totalChatUnread,
-} from "../state/chat-panel";
-import { setChatWidth } from "../product-frame-layout";
-import { ensureChatPanel, prefetchChatPanel } from "./load";
+} from "../state/chat-panel.js";
+import { setChatWidth } from "../product-frame-layout.js";
+import { ensureChatPanel, prefetchChatPanel } from "./load.js";
 
 /** Wire the chat button + panel. Called once from `initTopBar`. */
 export function initChatPanel(): void {

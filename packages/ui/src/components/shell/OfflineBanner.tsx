@@ -3,8 +3,8 @@
 
 import { createSignal, onCleanup } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { topbarStore } from "../../state/topbar";
-import { useStore } from "../use-store";
+import { topbarStore } from "../../state/topbar.js";
+import { useStore } from "../use-store.js";
 
 /**
  * The topbar's offline banner (`#offline-banner`), a shell island (see

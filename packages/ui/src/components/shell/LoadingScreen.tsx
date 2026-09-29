@@ -3,8 +3,8 @@
 
 import { createMemo } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { loadingStore } from "../../state/loading";
-import { useStore } from "../use-store";
+import { loadingStore } from "../../state/loading.js";
+import { useStore } from "../use-store.js";
 
 /**
  * The loading screen (`#app-loading`), an island (see islands.tsx) swapped in

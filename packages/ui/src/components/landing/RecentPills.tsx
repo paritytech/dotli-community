@@ -3,9 +3,9 @@
 
 import { createSignal, For, onCleanup, Show } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { getActiveTldSuffix } from "@dotli/config/network";
-import { forgetRecentLabel, loadRecentLabels } from "../../recent-labels";
-import { dotUrl } from "./dot-url";
+import { getActiveTldSuffix } from "@dotli/config";
+import { forgetRecentLabel, loadRecentLabels } from "../../recent-labels.js";
+import { dotUrl } from "./dot-url.js";
 
 // Touch has no hover, so a long press on a pill reveals its remove button
 // instead of navigating.

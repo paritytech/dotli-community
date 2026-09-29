@@ -7,7 +7,7 @@ import type {
   ALL_PERMISSIONS,
   EnforceablePermissionName,
   PermissionStatus,
-} from "../../permissions";
+} from "../../permissions.js";
 
 /** Trusted host SVG for each permission row's icon. */
 export const PERM_ICONS: Readonly<Record<string, string>> = {

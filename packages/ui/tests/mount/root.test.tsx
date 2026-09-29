@@ -4,10 +4,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createSignal, flush, onCleanup } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { settle } from "../helpers/solid";
+import { settle } from "../helpers/solid.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 function container(id: string): HTMLElement {
   const el = document.createElement("div");
@@ -24,7 +24,7 @@ describe("mountRoot", () => {
 
   it("As a sub-project, a mounted root renders and its disposer empties the container", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { mountRoot } = await import("../../src/mount/root.js");
     const el = container("a");
 
     // When
@@ -39,8 +39,8 @@ describe("mountRoot", () => {
 
   it("As activateHost, disposeAppRoot by name unmounts a root and is a no-op for unknown names", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
-    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const { mountRoot } = await import("../../src/mount/root.js");
+    const { disposeAppRoot } = await import("../../src/mount/app-roots.js");
     const el = container("b");
     mountRoot("b", el, () => <span>b</span>);
     await settle();
@@ -55,7 +55,7 @@ describe("mountRoot", () => {
 
   it("As a user, a root whose view throws is reported to Sentry and does not break sibling roots", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { mountRoot } = await import("../../src/mount/root.js");
     const good = container("good");
     const bad = container("bad");
     mountRoot("good", good, () => <span class="ok">ok</span>);
@@ -77,7 +77,7 @@ describe("mountRoot", () => {
 
   it("As a sub-project, mounting the same name twice disposes the first root", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { mountRoot } = await import("../../src/mount/root.js");
     const first = container("first");
     const second = container("second");
     mountRoot("dup", first, () => <span>1</span>);
@@ -93,8 +93,8 @@ describe("mountRoot", () => {
 
   it("As a sub-project, a disposer runs once and removeContainer takes the container out", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
-    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const { mountRoot } = await import("../../src/mount/root.js");
+    const { disposeAppRoot } = await import("../../src/mount/app-roots.js");
     const el = container("removable");
     const cleanups = vi.fn();
     const dispose = mountRoot(
@@ -120,7 +120,7 @@ describe("mountRoot", () => {
 
   it("As a sub-project, a root that breaks after it mounted is reported once, disposed, then hears onBroken once", async () => {
     // Given a view that throws a new error on every change
-    const { mountRoot } = await import("@dotli/ui/mount/root");
+    const { mountRoot } = await import("../../src/mount/root.js");
     const el = container("late");
     const order: string[] = [];
     let breakAgain = (): void => {};
@@ -171,8 +171,8 @@ describe("mountRoot", () => {
 
   it("As a sub-project, a view that throws on its first render is disposed and hears onBroken once", async () => {
     // Given
-    const { mountRoot } = await import("@dotli/ui/mount/root");
-    const { disposeAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const { mountRoot } = await import("../../src/mount/root.js");
+    const { disposeAppRoot } = await import("../../src/mount/app-roots.js");
     const el = container("broken-at-once");
     const onBroken = vi.fn();
     const Broken = (): JSX.Element => {

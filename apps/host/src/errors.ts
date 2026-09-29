@@ -1,14 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  ProtocolFatalError,
-  ProtocolInitFailedError,
-} from "@dotli/protocol/errors";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { BACKEND_LABELS } from "@dotli/config/mode";
-import { endpointHost, gatewayUnreachable } from "@dotli/shared/error-copy";
-import type { ResolverErrorName } from "@dotli/resolver/errors";
+import { ProtocolFatalError, ProtocolInitFailedError } from "@dotli/protocol";
+import { getActiveServicesConfig, BACKEND_LABELS } from "@dotli/config";
+
+import { endpointHost, gatewayUnreachable } from "@dotli/shared";
+import type { ResolverErrorName } from "@dotli/resolver";
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived

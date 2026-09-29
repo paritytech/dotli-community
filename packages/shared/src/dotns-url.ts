@@ -21,7 +21,7 @@
 // responsibility. The caller has enough context (which input, which user
 // action) to tag the metric meaningfully.
 
-import { getActiveTldSuffix } from "@dotli/config/network";
+import { getActiveTldSuffix } from "@dotli/config";
 
 export interface DotNsUrl {
   identifier: string; // e.g. "mytestapp.paseo" (always ends with the active TLD)

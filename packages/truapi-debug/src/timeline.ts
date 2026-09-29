@@ -15,7 +15,7 @@
 // element identity stable so the browser's native hover/selection
 // tracking is uninterrupted.
 
-import type { EventSeq, StoredEvent } from "./event-store.ts";
+import type { EventSeq, StoredEvent } from "./event-store.js";
 import {
   computeGlobalYPositions,
   computeLayout,
@@ -32,7 +32,7 @@ import {
   type SegmentEntry,
   type SwimlanePartition,
   type TickEntry,
-} from "./timeline-layout.ts";
+} from "./timeline-layout.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 

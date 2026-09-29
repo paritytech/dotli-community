@@ -30,7 +30,7 @@ export async function settle(): Promise<void> {
   await Promise.resolve();
 }
 
-export { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-store";
+export { resetAllStoresForTests as resetStores } from "../../src/state/create-store.js";
 
 /**
  * A mouse press on `el`: pointerdown, which is what dismisses a shell

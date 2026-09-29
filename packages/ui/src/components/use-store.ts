@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
-import type { ReadableStore } from "../state/create-store";
+import type { ReadableStore } from "../state/create-store.js";
 
 /**
  * Read a store from a component. Returns a Solid accessor that follows the

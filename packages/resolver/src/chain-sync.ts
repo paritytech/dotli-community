@@ -14,11 +14,9 @@
 // polkadot-api sees it, so papi's numeric ids can never collide with ours.
 
 import type { ChainLifecycle } from "@parity/truapi-provider";
-// Import via the package specifier, not a relative path. `prodNoAnalyticsAliases`
-// rewrites `@dotli/metrics/metrics` to the no-op at bundle time.
-import { m } from "@dotli/metrics/metrics";
-import { log } from "@dotli/shared/log";
-import { chainRoleForGenesis, type ChainRole } from "@dotli/config/network";
+import { m } from "@dotli/metrics";
+import { log } from "@dotli/shared";
+import { chainRoleForGenesis, type ChainRole } from "@dotli/config";
 
 /** The chains the resolver runs, named by role rather than by chain spec. */
 export const CHAIN_KEYS = ["relay", "asset-hub", "bulletin", "people"] as const;

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from "vitest";
-import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin } from "@dotli/config/config";
+import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin } from "../src/config.js";
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
-} from "@dotli/config/network";
+} from "../src/network.js";
 
 describe("config constants", () => {
   describe("contract addresses", () => {

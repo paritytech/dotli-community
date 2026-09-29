@@ -1,6 +1,6 @@
 import type { ThemeHost } from "@parity/truapi-host";
 import type { HostThemeSubscribeItem } from "@parity/truapi";
-import { createResultStream } from "./result-stream";
+import { createResultStream } from "./result-stream.js";
 
 function currentTheme(): HostThemeSubscribeItem {
   return {

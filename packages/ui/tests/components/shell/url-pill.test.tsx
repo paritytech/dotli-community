@@ -2,17 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { UrlPill } from "@dotli/ui/components/shell/UrlPill";
+import { UrlPill } from "../../../src/components/shell/UrlPill.js";
 import {
   resetUrlPill,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
   urlPillStore,
-} from "@dotli/ui/state/url-pill";
-import { setVerificationShieldState as setShieldStateReexport } from "@dotli/ui/verification-shield";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
-import { byId, must } from "../../support";
+} from "../../../src/state/url-pill.js";
+import { setVerificationShieldState as setShieldStateReexport } from "../../../src/verification-shield.js";
+import { renderComponent, resetStores, settle } from "../../helpers/solid.js";
+import { byId, must } from "../../support.js";
 
 // The markup main.ts wrote into `#topbar-url` before the pill became a
 // component (its three `urlBar.innerHTML = ...` writes and

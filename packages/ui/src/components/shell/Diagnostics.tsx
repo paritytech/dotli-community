@@ -3,7 +3,7 @@
 
 import { createSignal, For, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { Backend } from "@dotli/config/mode";
+import type { Backend } from "@dotli/config";
 import {
   buildBaseDiagnosticsRows,
   buildLightClientVersionLabel,
@@ -11,8 +11,9 @@ import {
   formatDiagnosticsReport,
   isTruapiDebugEnabled,
   packageVersions,
-} from "../../settings-actions";
-import { InfoRow, SectionHeader } from "./SettingsRows";
+} from "../../settings-actions.js";
+import { InfoRow, SectionHeader } from "./SettingsRows.js";
+import { loadRpcResolve } from "@dotli/resolver";
 
 /** The rows a click copies. */
 const COPYABLE_ROWS = new Set([
@@ -54,19 +55,17 @@ export function Diagnostics(props: {
   // imported it to resolve the name. Both the row and the base snapshot
   // are updated so the Share-diagnostic export stays honest.
   if (untrack(() => props.backend) === "rpc-gateway") {
-    void import("@dotli/resolver/rpc-resolve").then(
-      ({ getConnectedAssetHubRpcEndpoint }) => {
-        const live = getConnectedAssetHubRpcEndpoint();
-        if (live === null || disposed) {
-          return;
-        }
-        setAssetHubNode(live);
-        const row = base.find((r) => r[0] === "AssetHub node");
-        if (row !== undefined) {
-          row[1] = live;
-        }
-      },
-    );
+    void loadRpcResolve().then(({ getConnectedAssetHubRpcEndpoint }) => {
+      const live = getConnectedAssetHubRpcEndpoint();
+      if (live === null || disposed) {
+        return;
+      }
+      setAssetHubNode(live);
+      const row = base.find((r) => r[0] === "AssetHub node");
+      if (row !== undefined) {
+        row[1] = live;
+      }
+    });
   }
 
   const { polkadotApi, parityTruapi } = packageVersions();

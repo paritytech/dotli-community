@@ -6,11 +6,11 @@
 // Serializes stored debug events for file download and clipboard copy.
 // Unlike the display formatters in format.ts, nothing is truncated.
 
-import { toHex } from "@dotli/shared/hex";
+import { toHex } from "@dotli/shared";
 
-import type { StoredEvent } from "./event-store.ts";
-import type { FilterState } from "./filters.ts";
-import { isUint8ArrayLike } from "./format.ts";
+import type { StoredEvent } from "./event-store.js";
+import type { FilterState } from "./filters.js";
+import { isUint8ArrayLike } from "./format.js";
 
 export interface ExportMeta {
   exportedAt: string;

@@ -13,7 +13,7 @@ import {
   NetworkName,
   isValidNetwork,
   type Network,
-} from "@dotli/config/network";
+} from "@dotli/config";
 
 export const DOMAIN = process.env.DOMAIN ?? "host-playground";
 /**

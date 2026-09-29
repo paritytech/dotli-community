@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN } from "@dotli/config/config";
+import { BASE_DOMAIN } from "@dotli/config";
 
 /**
  * The site of the `.dot` name `label`: its `.localhost` subdomain on this port

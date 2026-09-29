@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { getActiveChainRoles } from "@dotli/config/network";
-import { ChainsPopover } from "@dotli/ui/components/shell/ChainsPopover";
-import { resetNetworkMonitor, setBlockSource } from "@dotli/ui/network-monitor";
-import { startNetworkStore } from "@dotli/ui/state/network";
-import { renderComponent, resetStores, settle } from "./helpers/solid";
-import { query } from "./support";
+import { getActiveChainRoles } from "@dotli/config";
+import { ChainsPopover } from "../src/components/shell/ChainsPopover.js";
+import { resetNetworkMonitor, setBlockSource } from "../src/network-monitor.js";
+import { startNetworkStore } from "../src/state/network.js";
+import { renderComponent, resetStores, settle } from "./helpers/solid.js";
+import { query } from "./support.js";
 
 const BAR = ".chains-bar[data-block]";
 

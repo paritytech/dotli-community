@@ -6,13 +6,13 @@ import {
   recordBotsChanged,
   recordMessage,
   recordRoomsChanged,
-} from "@dotli/ui/state/chat";
+} from "../../src/state/chat.js";
 import {
   CHAT_BOTS_CHANGED_EVENT,
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
-} from "@dotli/ui/chat/service";
-import { settle } from "../helpers/solid";
+} from "../../src/chat/service.js";
+import { settle } from "../helpers/solid.js";
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];

@@ -5,11 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   BlockingModalCoordinator,
   BlockingModalScope,
-} from "@dotli/ui/blocking-modal-queue";
-import type * as AuthControllerModule from "@dotli/ui/auth-controller";
-import type * as AuthModalModule from "@dotli/ui/state/auth-modal";
-import type * as AuthModule from "@dotli/ui/state/auth";
-import type * as BlockingModalQueueModule from "@dotli/ui/blocking-modal-queue";
+} from "../src/blocking-modal-queue.js";
+import type * as AuthControllerModule from "../src/auth-controller.js";
+import type * as AuthModalModule from "../src/state/auth-modal.js";
+import type * as AuthModule from "../src/state/auth.js";
+import type * as BlockingModalQueueModule from "../src/blocking-modal-queue.js";
 
 type Modules = typeof AuthControllerModule &
   typeof AuthModalModule &
@@ -26,10 +26,10 @@ async function load(
   coordinator?: BlockingModalCoordinator,
 ): Promise<Modules & { coordinator: BlockingModalCoordinator }> {
   const [controller, modal, auth, queue] = await Promise.all([
-    import("@dotli/ui/auth-controller"),
-    import("@dotli/ui/state/auth-modal"),
-    import("@dotli/ui/state/auth"),
-    import("@dotli/ui/blocking-modal-queue"),
+    import("../src/auth-controller.js"),
+    import("../src/state/auth-modal.js"),
+    import("../src/state/auth.js"),
+    import("../src/blocking-modal-queue.js"),
   ]);
   const used = coordinator ?? queue.createBlockingModalCoordinator();
   const spy = vi.spyOn(window, "addEventListener");
@@ -122,7 +122,7 @@ describe("auth controller: login requests", () => {
   it("As a product, a deployed label gets the active network's TLD in the modal title", async () => {
     // Given
     const { getAuthModalState } = await load();
-    const { withActiveTld } = await import("@dotli/config/network");
+    const { withActiveTld } = await import("../../config/src/network.js");
 
     // When
     window.dispatchEvent(
@@ -355,7 +355,7 @@ describe("auth controller: blocking-modal lease", () => {
 
   it("As the host, opening without a coordinator is a wiring error", async () => {
     // Given
-    const { openAuthModal } = await import("@dotli/ui/auth-controller");
+    const { openAuthModal } = await import("../src/auth-controller.js");
 
     // When / Then
     expect(() => {

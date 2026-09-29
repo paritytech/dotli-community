@@ -5,7 +5,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   injectPrerendered,
   prerenderPlugin,
-} from "@dotli/ui/mount/prerender-plugin";
+} from "../../src/mount/prerender-plugin.js";
 
 const PLACEHOLDER = "<!--ssr:shell-->";
 

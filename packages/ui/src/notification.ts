@@ -8,7 +8,7 @@
 // hidden or the stack is expanded. Optionally fires the browser Notification
 // API when the tab is hidden; that part does not depend on the overlays.
 
-import { presentToast } from "./overlays/load";
+import { presentToast } from "./overlays/load.js";
 
 /** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;

@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect, openHostPlayground } from "./fixtures/paired";
+import { test, expect, openHostPlayground } from "./fixtures/paired.js";
 import {
   waitForPlaygroundReady,
   runTestExpectSuccess,
-} from "./helpers/run-test";
-import { runWebSignedTest } from "./helpers/signing";
+} from "./helpers/run-test.js";
+import { runWebSignedTest } from "./helpers/signing.js";
 
 // Playwright destroys the worker process after a test failure, so the
 // worker-scoped pairing fixture re-pairs from scratch on every failed test

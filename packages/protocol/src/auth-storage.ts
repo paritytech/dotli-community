@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config/config";
-import type { ProtocolRequestMethod } from "./messages";
+import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config";
+import type { ProtocolRequestMethod } from "./messages.js";
 
 export type SharedAuthRequestMethod =
   "authStorageRead" | "authStorageWrite" | "authStorageClear";

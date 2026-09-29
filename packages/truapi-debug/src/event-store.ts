@@ -8,7 +8,7 @@
 //
 // Events are never mutated after insertion.
 
-import type { DotliDebugEvent } from "./dotli-debug-types.ts";
+import type { DotliDebugEvent } from "./dotli-debug-types.js";
 
 export interface TruapiDebugMessageEvent {
   kind: "truapi";

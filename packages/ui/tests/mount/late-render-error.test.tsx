@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flush } from "solid-js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 /** A stand-in view that can be made to throw later, counting its ticks. */
 const view = vi.hoisted(() => ({
@@ -44,10 +44,10 @@ async function lateView(id: string): Promise<() => unknown> {
   };
 }
 
-vi.mock("@dotli/ui/components/sandbox-checker/ViolationPanel", async () => ({
+vi.mock("../../src/components/sandbox-checker/ViolationPanel.js", async () => ({
   ViolationPanel: await lateView("sandbox-checker-panel"),
 }));
-vi.mock("@dotli/ui/components/truapi-debug/Panel", async () => ({
+vi.mock("../../src/components/truapi-debug/Panel.js", async () => ({
   PANEL_ID: "truapi-debug-panel",
   Panel: await lateView("truapi-debug-panel"),
 }));
@@ -89,7 +89,7 @@ describe("late render errors", () => {
   it("As a dotli developer, a violation panel that throws after it mounted is disposed once and leaves the page", async () => {
     // Given
     const { mountViolationPanel } =
-      await import("@dotli/ui/components/sandbox-checker/mount");
+      await import("../../src/components/sandbox-checker/mount.js");
     const iframe = document.createElement("iframe");
     document.body.appendChild(iframe);
     const dispose = mountViolationPanel(iframe);
@@ -121,7 +121,7 @@ describe("late render errors", () => {
   it("As a dotli developer, a debug panel that throws after it mounted is disposed once, leaves the page and can be set up again", async () => {
     // Given
     const { setupTruapiDebugPanel } =
-      await import("@dotli/ui/components/truapi-debug/mount");
+      await import("../../src/components/truapi-debug/mount.js");
     const dispose = setupTruapiDebugPanel();
     await settleError();
     const panel = document.getElementById("truapi-debug-panel");

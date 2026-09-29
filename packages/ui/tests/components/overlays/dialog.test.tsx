@@ -3,18 +3,18 @@
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fireEvent } from "@solidjs/testing-library";
-import { ModalOutlet } from "@dotli/ui/components/overlays/ModalOutlet";
+import { ModalOutlet } from "../../../src/components/overlays/ModalOutlet.js";
 import {
   openModal,
   resetModalsForTests,
   type ModalView,
-} from "@dotli/ui/state/modals";
+} from "../../../src/state/modals.js";
 import {
   attachProductFrame,
   resetProductFrameLayout,
-} from "@dotli/ui/product-frame-layout";
-import { renderComponent, settle } from "../../helpers/solid";
-import { query } from "../../support";
+} from "../../../src/product-frame-layout.js";
+import { renderComponent, settle } from "../../helpers/solid.js";
+import { query } from "../../support.js";
 
 type Choice = "deny" | "allow" | "once" | "dismissed";
 

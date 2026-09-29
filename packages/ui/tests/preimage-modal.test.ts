@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { showPreimageSubmitModal } from "@dotli/ui/preimage-modal";
-import { ERRORS } from "@dotli/ui/errors";
-import { overlaysReady, resetOverlays } from "./helpers/overlays";
+import { showPreimageSubmitModal } from "../src/preimage-modal.js";
+import { ERRORS } from "../src/errors.js";
+import { overlaysReady, resetOverlays } from "./helpers/overlays.js";
 
 afterEach(() => {
   resetOverlays();

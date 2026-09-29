@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
-import { topbarStore } from "../../state/topbar";
-import { containTab, focusInto, lockScroll } from "../focus";
-import { useStore } from "../use-store";
+import { topbarStore } from "../../state/topbar.js";
+import { containTab, focusInto, lockScroll } from "../focus.js";
+import { useStore } from "../use-store.js";
 
 /**
  * How a shell surface behaves, after the Radix UI v1 primitive it

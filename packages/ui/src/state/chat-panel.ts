@@ -10,21 +10,21 @@
 import {
   CHAT_AVAILABILITY_EVENT,
   type ChatAvailabilityDetail,
-} from "@dotli/shared/chat-capability";
+} from "@dotli/shared";
 import {
   CHAT_BOTS_CHANGED_EVENT,
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
   type ChatMessageEventDetail,
-} from "../chat/service";
-import { labelToProductId } from "../runtime-config";
-import { getLoggedIn, loggedInStore } from "./auth";
+} from "../chat/service.js";
+import { labelToProductId } from "../runtime-config.js";
+import { getLoggedIn, loggedInStore } from "./auth.js";
 import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "./create-store";
-import { getTopbarState, topbarStore } from "./topbar";
+} from "./create-store.js";
+import { getTopbarState, topbarStore } from "./topbar.js";
 
 export const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
 export const MIN_PANEL_WIDTH = 280;

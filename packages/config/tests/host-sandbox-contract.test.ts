@@ -6,8 +6,8 @@ import {
   SANDBOX_SCHEMA_VERSION,
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
-} from "@dotli/config/host-sandbox-contract";
-import { NetworkName } from "@dotli/config/network";
+} from "../src/host-sandbox-contract.js";
+import { NetworkName } from "../src/network.js";
 
 const VALID_CID = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
 

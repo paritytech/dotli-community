@@ -6,7 +6,7 @@ import {
   loadRecentLabels,
   recordRecentLabel,
   forgetRecentLabel,
-} from "@dotli/ui/recent-labels";
+} from "../src/recent-labels.js";
 
 // The recent list is written on `<label>.<root>` and read on the bare root,
 // so the shared cross-subdomain store is authoritative and localStorage is
@@ -21,7 +21,7 @@ const mocks = vi.hoisted(() => ({
   clear: vi.fn(),
 }));
 
-vi.mock("@dotli/ui/shared-mode", () => ({
+vi.mock("../src/shared-mode.js", () => ({
   getSharedChannel: () => ({
     read: (key: string): Promise<string | null> => {
       mocks.read(key);

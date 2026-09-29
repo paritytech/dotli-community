@@ -14,19 +14,19 @@ import {
   vi,
   type MockInstance,
 } from "vitest";
-import type { BlockingModalCoordinator } from "@dotli/ui/blocking-modal-queue";
+import type { BlockingModalCoordinator } from "../../src/blocking-modal-queue.js";
 import {
   mountMoreMenu,
   tapMoreRow,
-} from "../components/shell/more-menu-harness";
-import type * as LoadIslandsModule from "@dotli/ui/mount/load-islands";
-import type * as AuthModule from "@dotli/ui/state/auth";
-import { byId, query } from "../support";
+} from "../components/shell/more-menu-harness.js";
+import type * as LoadIslandsModule from "../../src/mount/load-islands.js";
+import type * as AuthModule from "../../src/state/auth.js";
+import { byId, query } from "../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
-const ISLANDS_CHUNK = "@dotli/ui/components/shell/islands";
+const ISLANDS_CHUNK = "../../src/components/shell/islands.js";
 
 interface Chunk {
   /** The pending import of the chunk finishes loading. */
@@ -160,7 +160,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
 }
 
 async function loadLoader(): Promise<typeof LoadIslandsModule> {
-  return import("@dotli/ui/mount/load-islands");
+  return import("../../src/mount/load-islands.js");
 }
 
 /**
@@ -180,10 +180,10 @@ async function initAuth(): Promise<{
     modal,
     { setAuthState },
   ] = await Promise.all([
-    import("@dotli/ui/auth-controller"),
-    import("@dotli/ui/blocking-modal-queue"),
-    import("@dotli/ui/state/auth-modal"),
-    import("@dotli/ui/state/auth"),
+    import("../../src/auth-controller.js"),
+    import("../../src/blocking-modal-queue.js"),
+    import("../../src/state/auth-modal.js"),
+    import("../../src/state/auth.js"),
   ]);
   recordAuthState = setAuthState;
   const coordinator = createBlockingModalCoordinator();
@@ -657,7 +657,7 @@ describe("ensureIslands", () => {
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     // The loader's instance of the store (modules are reset per test).
-    const { setTopbarVisible } = await import("@dotli/ui/state/topbar");
+    const { setTopbarVisible } = await import("../../src/state/topbar.js");
     const staticBanner = byId("offline-banner");
     const loading = ensureIslands();
 

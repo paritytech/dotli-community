@@ -18,13 +18,13 @@
 // They are part of the public URL contract surface and changing them
 // belongs in this file too.
 
-import { defaultNetwork, isValidNetwork, type Network } from "./network";
+import { defaultNetwork, isValidNetwork, type Network } from "./network.js";
 import {
   defaultBackend,
   isSharedWorkerAvailable,
   type Backend,
   type CacheSettings,
-} from "./mode";
+} from "./mode.js";
 
 const URL_PARAM_NAMES = {
   network: "network",

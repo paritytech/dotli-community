@@ -19,12 +19,12 @@ import {
   setPermissionStatus,
   type EnforceablePermissionName,
   type PermissionStatus,
-} from "../../permissions";
-import { recordPermissionChange } from "../../state/permissions";
-import { productStore } from "../../state/product";
-import { useStore } from "../use-store";
-import { PermissionRow } from "./PermissionRow";
-import { createPopover } from "./popover";
+} from "../../permissions.js";
+import { recordPermissionChange } from "../../state/permissions.js";
+import { productStore } from "../../state/product.js";
+import { useStore } from "../use-store.js";
+import { PermissionRow } from "./PermissionRow.js";
+import { createPopover } from "./popover.js";
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 

@@ -14,7 +14,7 @@
  * bump does not require a migration; readers must tolerate unknown tags.
  */
 
-import { getDb } from "./db";
+import { getDb } from "./db.js";
 
 const ROOM_STORE = "chat_rooms";
 const MESSAGE_STORE = "chat_messages";

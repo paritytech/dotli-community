@@ -8,8 +8,8 @@ import {
   recordChainsButtonVisible,
   setTopbarVisible,
   topbarStore,
-} from "@dotli/ui/state/topbar";
-import { resetStores } from "../helpers/solid";
+} from "../../src/state/topbar.js";
+import { resetStores } from "../helpers/solid.js";
 
 describe("topbar store", () => {
   afterEach(() => {

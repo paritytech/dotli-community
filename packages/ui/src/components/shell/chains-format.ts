@@ -5,7 +5,7 @@
 // the network store's values: moved unchanged from topbar.ts, except that the
 // verdict takes the chains it judges instead of reading the monitor.
 
-import type { ChainStatus } from "../../network-monitor";
+import type { ChainStatus } from "../../network-monitor.js";
 
 /**
  * How the arrival of a single block reads on hover.

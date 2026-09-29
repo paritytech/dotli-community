@@ -11,7 +11,7 @@
 // so initTheme() re-applies what is already on the page, never a different
 // theme. Free of Solid: topbar.ts calls initTheme() on the boot path.
 
-import { setTheme, type ThemePref } from "./state/theme";
+import { setTheme, type ThemePref } from "./state/theme.js";
 
 /** localStorage key of the theme preference; apps/host/index.html reads it too. */
 export const THEME_KEY = "dotli-theme";

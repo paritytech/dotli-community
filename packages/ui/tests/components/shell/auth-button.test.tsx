@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from "vitest";
-import { AuthButton } from "@dotli/ui/components/shell/AuthButton";
-import { getAuthModalState } from "@dotli/ui/state/auth-modal";
-import { authStore, setAuthState } from "@dotli/ui/state/auth";
-import type { DotliAuthState } from "@dotli/ui/host-callbacks/AuthState";
-import { renderComponent } from "../../helpers/solid";
+import { AuthButton } from "../../../src/components/shell/AuthButton.js";
+import { getAuthModalState } from "../../../src/state/auth-modal.js";
+import { authStore, setAuthState } from "../../../src/state/auth.js";
+import type { DotliAuthState } from "../../../src/host-callbacks/AuthState.js";
+import { renderComponent } from "../../helpers/solid.js";
 import {
   byId,
   recordEvents,
   settleAll,
   useAuthController,
-} from "./auth-harness";
-import { normalized, oldAuthButton } from "./old-auth-markup";
+} from "./auth-harness.js";
+import { normalized, oldAuthButton } from "./old-auth-markup.js";
 
 useAuthController();
 

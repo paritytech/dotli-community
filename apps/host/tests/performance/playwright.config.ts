@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { defineConfig } from "@playwright/test";
-import { baseConfig } from "../playwright.base.config";
+import { baseConfig } from "../playwright.base.config.js";
 
 export default defineConfig({
   ...baseConfig,

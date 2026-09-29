@@ -23,10 +23,10 @@ import {
   serializeRecentLabels,
   withRecentLabel,
   writeRecentLabels,
-} from "@dotli/storage/cid-cache";
-import { isValidDotLabel } from "@dotli/shared/html";
-import { log } from "@dotli/shared/log";
-import { getSharedChannel } from "./shared-mode";
+} from "@dotli/storage";
+import { isValidDotLabel, log } from "@dotli/shared";
+
+import { getSharedChannel } from "./shared-mode.js";
 
 /**
  * Read the shared list, falling back to this origin's mirror.

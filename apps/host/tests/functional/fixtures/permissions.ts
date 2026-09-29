@@ -6,7 +6,7 @@
  */
 
 import type { BrowserContext } from "@playwright/test";
-import { DOMAIN } from "../../env";
+import { DOMAIN } from "../../env.js";
 
 export const BROWSER_PERMISSIONS = [
   "camera",

@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from "vitest";
 import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
-import { isEncrypted, decryptContent } from "@dotli/content/decrypt";
+import { isEncrypted, decryptContent } from "../src/decrypt.js";
 
 const MAGIC = new Uint8Array([
   0x44, 0x4f, 0x54, 0x4c, 0x49, 0x5f, 0x45, 0x4e, 0x43, 0x01,

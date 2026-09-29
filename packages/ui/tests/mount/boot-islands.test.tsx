@@ -20,22 +20,22 @@ import {
   it,
   vi,
 } from "vitest";
-import { disposeAppRoot } from "@dotli/ui/mount/app-roots";
+import { disposeAppRoot } from "../../src/mount/app-roots.js";
 import { flush } from "solid-js";
-import { mouseClick } from "../helpers/solid";
-import { renderShellOnServer } from "../helpers/shell-ssr";
-import { stubColorScheme } from "../helpers/color-scheme";
-import { ensureIslands } from "@dotli/ui/mount/load-islands";
-import { resetAllStoresForTests } from "@dotli/ui/state/create-store";
-import { setTopbarVisible } from "@dotli/ui/state/topbar";
+import { mouseClick } from "../helpers/solid.js";
+import { renderShellOnServer } from "../helpers/shell-ssr.js";
+import { stubColorScheme } from "../helpers/color-scheme.js";
+import { ensureIslands } from "../../src/mount/load-islands.js";
+import { resetAllStoresForTests } from "../../src/state/create-store.js";
+import { setTopbarVisible } from "../../src/state/topbar.js";
 import {
   setVerificationShieldState,
   showProductPill,
-} from "@dotli/ui/state/url-pill";
-import { byId } from "../support";
+} from "../../src/state/url-pill.js";
+import { byId } from "../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 /** How many elements in the document carry `id`. */
 function countById(id: string): number {

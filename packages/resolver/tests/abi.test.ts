@@ -12,7 +12,7 @@ import {
   extractAddress,
   decodeBytesSlot,
   decodeIpfsContenthash,
-} from "@dotli/resolver/abi";
+} from "../src/abi.js";
 
 describe("namehash", () => {
   it("returns 32 zero bytes for empty string", () => {

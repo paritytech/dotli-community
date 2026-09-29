@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from "@solidjs/web";
-import { themeStore, type ThemePref } from "../../state/theme";
-import { selectThemePref } from "../../theme-controller";
-import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+import { themeStore, type ThemePref } from "../../state/theme.js";
+import { selectThemePref } from "../../theme-controller.js";
+import { useStore } from "../use-store.js";
+import { createPopover } from "./popover.js";
 
 const THEME_LABEL: Record<ThemePref, string> = {
   light: "Light",

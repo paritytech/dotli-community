@@ -13,9 +13,15 @@
 //   initSentry("host");
 
 import * as Sentry from "@sentry/browser";
-import { bindLogSink, log, type LogLevel } from "@dotli/shared/log";
-import { serializeError, fullErrorChain } from "@dotli/shared/errors";
-import { m } from "./metrics";
+import {
+  bindLogSink,
+  log,
+  type LogLevel,
+  serializeError,
+  fullErrorChain,
+} from "@dotli/shared";
+
+import { m } from "./metrics.js";
 
 /**
  * Logical source of a Sentry event. All surfaces report to a single Sentry

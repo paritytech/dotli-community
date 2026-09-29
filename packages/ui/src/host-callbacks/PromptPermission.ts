@@ -13,7 +13,7 @@
 // saw. Each instance serves one product, so the product the core passes is
 // already known as `label`.
 
-import { withActiveTld } from "@dotli/config/network";
+import { withActiveTld } from "@dotli/config";
 import type { PermissionDecision, Permissions } from "@parity/truapi-host";
 import type { RemotePermission } from "@parity/truapi";
 import {
@@ -22,17 +22,20 @@ import {
   isEnforceableDevicePermission,
   setPermissionStatus,
   type EnforceablePermissionName,
-} from "../permissions";
-import { showPermissionRequestModal } from "../permission-modal";
-import { showNotification } from "../notification";
+} from "../permissions.js";
+import { showPermissionRequestModal } from "../permission-modal.js";
+import { showNotification } from "../notification.js";
 import {
   createBlockingModalScope,
   throwIfAborted,
   type BlockingModalScope,
-} from "../blocking-modal-queue";
-import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
-import { ERRORS } from "../errors";
-import { recordPermissionChange } from "../state/permissions";
+} from "../blocking-modal-queue.js";
+import {
+  createSubmitRateLimiter,
+  type SubmitRateLimiter,
+} from "./rate-limit.js";
+import { ERRORS } from "../errors.js";
+import { recordPermissionChange } from "../state/permissions.js";
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be

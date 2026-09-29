@@ -3,16 +3,13 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-import type {
-  ChainSyncTap,
-  ParsedRpcMessage,
-} from "@dotli/resolver/chain-sync";
+import type { ChainSyncTap, ParsedRpcMessage } from "../src/chain-sync.js";
 
 // A getter rather than a literal, so a test can flip it to reach the
 // metrics-stripped path without tearing down the module registry.
 const metrics = { enabled: true };
 
-vi.mock("@dotli/metrics/metrics", () => ({
+vi.mock("../../metrics/src/metrics.js", () => ({
   m: {
     get enabled() {
       return metrics.enabled;
@@ -20,9 +17,9 @@ vi.mock("@dotli/metrics/metrics", () => ({
   },
 }));
 
-let onChainSync: typeof import("@dotli/resolver/chain-sync").onChainSync;
-let enableSyncReporting: typeof import("@dotli/resolver/chain-sync").enableSyncReporting;
-let attachChainSync: typeof import("@dotli/resolver/chain-sync").attachChainSync;
+let onChainSync: typeof import("../src/chain-sync.js").onChainSync;
+let enableSyncReporting: typeof import("../src/chain-sync.js").enableSyncReporting;
+let attachChainSync: typeof import("../src/chain-sync.js").attachChainSync;
 
 beforeEach(async () => {
   vi.clearAllMocks();
@@ -30,7 +27,7 @@ beforeEach(async () => {
   // The event history and the opt-in sets are module state, so each test
   // needs its own copy of the module.
   vi.resetModules();
-  const mod = await import("@dotli/resolver/chain-sync");
+  const mod = await import("../src/chain-sync.js");
   onChainSync = mod.onChainSync;
   enableSyncReporting = mod.enableSyncReporting;
   attachChainSync = mod.attachChainSync;
@@ -349,7 +346,7 @@ describe("Light client sync reporting works", () => {
     enableSyncReporting(["relay"]);
     const pipe = requirePipe("relay");
     const details: unknown[] = [];
-    const mod = await import("@dotli/resolver/chain-sync");
+    const mod = await import("../src/chain-sync.js");
     mod.onChainDetail((detail) => details.push(detail));
 
     // When
@@ -459,8 +456,9 @@ describe("Light client sync reporting is opt-in", () => {
 describe("Chain detail reporting works", () => {
   it("As a maintainer, a second connection to the same chain cannot rewrite a warm start as cold", async () => {
     // Given
-    const mod = await import("@dotli/resolver/chain-sync");
-    const { getActiveServicesConfig } = await import("@dotli/config/network");
+    const mod = await import("../src/chain-sync.js");
+    const { getActiveServicesConfig } =
+      await import("../../config/src/network.js");
     const genesis = getActiveServicesConfig().bulletin.genesis;
     const seen: unknown[] = [];
     mod.onChainDetail((detail) => seen.push(detail));
@@ -475,8 +473,9 @@ describe("Chain detail reporting works", () => {
 
   it("As a maintainer, a panel opened late still shows the warm start rather than the later miss", async () => {
     // Given
-    const mod = await import("@dotli/resolver/chain-sync");
-    const { getActiveServicesConfig } = await import("@dotli/config/network");
+    const mod = await import("../src/chain-sync.js");
+    const { getActiveServicesConfig } =
+      await import("../../config/src/network.js");
     const genesis = getActiveServicesConfig().bulletin.genesis;
     mod.reportDbCache(genesis, true);
     mod.reportDbCache(genesis, false);

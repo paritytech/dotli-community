@@ -14,7 +14,7 @@
  * on the host's startup path, and the sandbox imports `ui.ts`, which disposes
  * the roots, without Solid on its startup path.
  */
-import { captureException } from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics";
 
 const disposers = new Map<string, () => void>();
 

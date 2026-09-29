@@ -14,8 +14,8 @@ import {
   subscribeNetwork,
   type BlockSource,
   type ChainStatus,
-} from "@dotli/ui/network-monitor";
-import { getActiveChainRoles } from "@dotli/config/network";
+} from "../src/network-monitor.js";
+import { getActiveChainRoles } from "@dotli/config";
 
 // Mirror of IDLE_GRACE_MS and MAX_BARS in network-monitor.ts.
 const GRACE_MS = 60_000;

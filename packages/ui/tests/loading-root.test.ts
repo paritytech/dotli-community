@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoadingPhase } from "@dotli/ui/loading-controller";
-import type * as UiModule from "@dotli/ui/ui";
-import type * as LoadingControllerModule from "@dotli/ui/loading-controller";
-import type * as AppRootsModule from "@dotli/ui/mount/app-roots";
-import type * as LoadingModule from "@dotli/ui/state/loading";
+import type { LoadingPhase } from "../src/loading-controller.js";
+import type * as UiModule from "../src/ui.js";
+import type * as LoadingControllerModule from "../src/loading-controller.js";
+import type * as AppRootsModule from "../src/mount/app-roots.js";
+import type * as LoadingModule from "../src/state/loading.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../metrics/src/sentry.js", () => sentry);
 
 type Ui = typeof UiModule;
 type Controller = typeof LoadingControllerModule;
@@ -69,10 +69,10 @@ describe("The loading screen is a tracked app root", () => {
     installLoadingDom();
     // `ui.ts` binds `#app` when it loads, so it loads after the fixture.
     [ui, ctl, roots, state] = await Promise.all([
-      import("@dotli/ui/ui"),
-      import("@dotli/ui/loading-controller"),
-      import("@dotli/ui/mount/app-roots"),
-      import("@dotli/ui/state/loading"),
+      import("../src/ui.js"),
+      import("../src/loading-controller.js"),
+      import("../src/mount/app-roots.js"),
+      import("../src/state/loading.js"),
     ]);
   });
 

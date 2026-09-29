@@ -14,7 +14,7 @@
 // has to match it key for key, and the build-time server compiling Solid in
 // dev posture (it is a `serve` server) is harmless.
 //
-// Imported by apps/host/vite.config.ts, alongside `prodNoAnalyticsAliases`.
+// Imported by apps/host/vite.config.ts through `@dotli/ui/vite`.
 
 import { existsSync } from "node:fs";
 import { basename } from "node:path";

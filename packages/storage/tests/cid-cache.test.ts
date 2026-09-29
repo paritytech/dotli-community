@@ -12,8 +12,8 @@ import {
   setCachedCid,
   evictCachedCid,
   recordRevalidateOutcome,
-} from "@dotli/storage/cid-cache";
-import { getDb } from "@dotli/storage/db";
+} from "../src/cid-cache.js";
+import { getDb } from "../src/db.js";
 
 // Recent labels live in localStorage (happy-dom). CIDs live in IndexedDB (fake-indexeddb).
 

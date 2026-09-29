@@ -17,8 +17,8 @@ import {
   productCreateRoom,
   productPostMessage,
   registerBot,
-} from "../chat/service";
-import { createResultStream } from "./result-stream";
+} from "../chat/service.js";
+import { createResultStream } from "./result-stream.js";
 
 export function createChatPlatform(): Required<ChatPlatform> {
   return {

@@ -8,7 +8,7 @@
 // here, keyed by `0x`-prefixed genesis hash, and resumes a chain from the
 // stored finalized state instead.
 
-import { log } from "@dotli/shared/log";
+import { log } from "@dotli/shared";
 
 const DB_NAME = "dotli-smoldot-db";
 const STORE = "chain-databases";

@@ -9,8 +9,8 @@
 //
 // Rendered by the overlays root (components/overlays/SigningDialog.tsx).
 
-import { ERRORS } from "./errors";
-import { presentModal } from "./overlays/load";
+import { ERRORS } from "./errors.js";
+import { presentModal } from "./overlays/load.js";
 
 function formatSize(bytes: number): string {
   return bytes >= 1024

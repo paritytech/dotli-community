@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { createChainConnect } from "@dotli/ui/host-callbacks/Chain";
-import { yielded } from "./support";
+import { getActiveServicesConfig } from "@dotli/config";
+import { createChainConnect } from "../src/host-callbacks/Chain.js";
+import { yielded } from "./support.js";
 
 const mocks = vi.hoisted(() => {
   const smoldotBrokerProvider = vi.fn();
@@ -22,21 +22,21 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@dotli/config/mode", () => ({
+vi.mock("../../config/src/mode.js", () => ({
   getBackend: () => mocks.backend,
 }));
 
-vi.mock("@dotli/resolver/provider", () => ({
+vi.mock("../../resolver/src/provider.js", () => ({
   createChainProvider: mocks.createSmoldotChainProvider,
   isChainSupported: mocks.isSmoldotChainSupported,
 }));
 
-vi.mock("@dotli/resolver/rpc-chain", () => ({
+vi.mock("../../resolver/src/rpc-chain.js", () => ({
   createCoreRpcChainProvider: mocks.createRpcChainProvider,
   isCoreRpcChainSupported: mocks.isCoreRpcChainSupported,
 }));
 
-vi.mock("@dotli/protocol/broker", () => ({
+vi.mock("../../protocol/src/broker.js", () => ({
   createChainBrokerManager: mocks.createChainBrokerManager,
 }));
 

@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { DotliAuthState } from "../host-callbacks/AuthState";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import type { DotliAuthState } from "../host-callbacks/AuthState.js";
+import { createSyncStore, type ReadableStore } from "./create-store.js";
 
 // Each value is one step of the core's login flow, not a state to dedupe: the
 // auth controller must see every step as it happens, including a repeated

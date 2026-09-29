@@ -8,9 +8,9 @@
 // for its static markup. Keeping them off the startup bundle is the point,
 // so everything here is Solid-free.
 
-import { captureException } from "@dotli/metrics/sentry";
-import { disableAuthModal } from "../auth-controller";
-import { topbarStore } from "../state/topbar";
+import { captureException } from "@dotli/metrics";
+import { disableAuthModal } from "../auth-controller.js";
+import { topbarStore } from "../state/topbar.js";
 
 /**
  * The islands' triggers: the static buttons users can click before the
@@ -86,7 +86,7 @@ export function ensureIslands(): Promise<void> {
   document.addEventListener("click", holdBack, true);
   const staticBanner = (): HTMLElement | null =>
     document.getElementById("offline-banner");
-  loading = import("../components/shell/islands").then(
+  loading = import("../components/shell/islands.js").then(
     ({ mountIslands }) => {
       stopHoldingBack();
       const banner = staticBanner();

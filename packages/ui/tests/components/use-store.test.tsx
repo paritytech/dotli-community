@@ -8,12 +8,12 @@ import {
   createSyncStore,
   shallowEqual,
   type ReadableStore,
-} from "@dotli/ui/state/create-store";
-import { useStore } from "@dotli/ui/components/use-store";
-import { renderComponent, settle } from "../helpers/solid";
+} from "../../src/state/create-store.js";
+import { useStore } from "../../src/components/use-store.js";
+import { renderComponent, settle } from "../helpers/solid.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 function Label(props: { store: ReadableStore<string> }): JSX.Element {
   // eslint-disable-next-line solid/reactivity -- the store object is fixed for the component's life; useStore tracks its value.

@@ -8,8 +8,8 @@ import {
   focusFirst,
   focusInto,
   lockScroll,
-} from "@dotli/ui/components/focus";
-import { query } from "../support";
+} from "../../src/components/focus.js";
+import { query } from "../support.js";
 
 function surface(html: string): HTMLElement {
   const el = document.createElement("div");

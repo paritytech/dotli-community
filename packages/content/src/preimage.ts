@@ -8,7 +8,7 @@
 // lookup (convert hash to CID for P2P/IPFS retrieval).
 
 import { blake2b } from "@noble/hashes/blake2.js";
-import { fromHex, toHex } from "@dotli/shared/hex";
+import { fromHex, toHex } from "@dotli/shared";
 import { CID } from "multiformats/cid";
 import { create } from "multiformats/hashes/digest";
 

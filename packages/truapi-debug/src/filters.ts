@@ -9,7 +9,7 @@
 // match against the TrUAPI method tag for truapi events and against the
 // `layer:event` string for system events.
 
-import type { StoredEvent } from "./event-store.ts";
+import type { StoredEvent } from "./event-store.js";
 
 export type DirectionFilter = "both" | "incoming" | "outgoing";
 

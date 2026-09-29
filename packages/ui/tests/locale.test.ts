@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createLocaleSubscribe } from "@dotli/ui/host-callbacks/Locale";
-import { yielded } from "./support";
+import { createLocaleSubscribe } from "../src/host-callbacks/Locale.js";
+import { yielded } from "./support.js";
 
 const realLanguage = navigator.language;
 

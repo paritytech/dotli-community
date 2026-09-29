@@ -4,7 +4,7 @@
 // A root whose chunk loads on first use. Solid-free: the loaders that use it
 // sit on startup paths and only import their chunk dynamically.
 
-import { captureException } from "@dotli/metrics/sentry";
+import { captureException } from "@dotli/metrics";
 
 /** How long an idle prefetch waits for the browser to go idle. */
 const PREFETCH_TIMEOUT_MS = 2000;

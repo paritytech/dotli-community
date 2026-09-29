@@ -17,13 +17,9 @@
 // with `resolution-trace.ts`: that one samples a fraction of loads and keeps
 // only aggregates, where a debug panel has to show every load in full.
 
-import { escapeHtml } from "@dotli/shared/html";
-import {
-  CHAIN_ROLE_LABELS,
-  CHAIN_ROLES,
-  type ChainRole,
-} from "@dotli/config/network";
-import type { DotliDebugEvent } from "./dotli-debug-types.ts";
+import { escapeHtml } from "@dotli/shared";
+import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from "@dotli/config";
+import type { DotliDebugEvent } from "./dotli-debug-types.js";
 
 /** One phase a chain sat in. `endMs` is null while it is still sitting there. */
 export interface ResolutionBlock {

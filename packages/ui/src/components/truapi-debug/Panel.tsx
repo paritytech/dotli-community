@@ -34,31 +34,29 @@ import {
   readStoredDock,
   writeStoredDock,
   type DockPosition,
-} from "@dotli/truapi-debug/dock-storage";
-import {
   correlationKeyOf,
   firstNewIndex,
   type EventSeq,
   type EventStore,
   type StoredEvent,
-} from "@dotli/truapi-debug/event-store";
-import { buildExport, type ExportMeta } from "@dotli/truapi-debug/export";
-import {
+  buildExport,
+  type ExportMeta,
   initialFilterState,
   matches,
   type FilterState,
-} from "@dotli/truapi-debug/filters";
-import { panelDockInset } from "@dotli/truapi-debug/iframe-layout";
-import type { ResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
-import { setDockInset } from "../../product-frame-layout";
-import { DetailPane } from "./DetailPane";
-import { EventList, type Selection } from "./EventList";
-import { Filters } from "./Filters";
-import { Header } from "./Header";
-import { BodySplitter, ResizeHandle } from "./Resizers";
-import { ResolutionView } from "./ResolutionView";
-import { Tabs, type PanelView } from "./Tabs";
-import { TimelineView } from "./TimelineView";
+  panelDockInset,
+} from "@dotli/truapi-debug";
+
+import type { ResolutionRecorder } from "@dotli/truapi-debug";
+import { setDockInset } from "../../product-frame-layout.js";
+import { DetailPane } from "./DetailPane.js";
+import { EventList, type Selection } from "./EventList.js";
+import { Filters } from "./Filters.js";
+import { Header } from "./Header.js";
+import { BodySplitter, ResizeHandle } from "./Resizers.js";
+import { ResolutionView } from "./ResolutionView.js";
+import { Tabs, type PanelView } from "./Tabs.js";
+import { TimelineView } from "./TimelineView.js";
 
 export const PANEL_ID = "truapi-debug-panel";
 

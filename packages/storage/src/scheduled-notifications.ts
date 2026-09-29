@@ -15,11 +15,11 @@
  * a stable, unique `perProductId` for TrUAPI notification callbacks.
  */
 
-import { getDb } from "./db";
+import { getDb } from "./db.js";
 import {
   SCHEDULED_NOTIFICATIONS_MAX_AGE_MS,
   SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP,
-} from "@dotli/config/config";
+} from "@dotli/config";
 
 const RECORD_STORE = "scheduled_notifications";
 const COUNTER_STORE = "notification_counters";

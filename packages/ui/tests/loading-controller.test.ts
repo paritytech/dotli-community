@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoadingPhase } from "@dotli/ui/loading-controller";
-import type * as LoadingControllerModule from "@dotli/ui/loading-controller";
-import type * as LoadingModule from "@dotli/ui/state/loading";
+import type { LoadingPhase } from "../src/loading-controller.js";
+import type * as LoadingControllerModule from "../src/loading-controller.js";
+import type * as LoadingModule from "../src/state/loading.js";
 
 type Controller = typeof LoadingControllerModule;
 type LoadingStateModule = typeof LoadingModule;
@@ -57,13 +57,13 @@ describe("The loading controller drives the loading store", () => {
     stubMotionPreference();
     installLoadingDom();
     [ctl, store] = await Promise.all([
-      import("@dotli/ui/loading-controller"),
-      import("@dotli/ui/state/loading"),
+      import("../src/loading-controller.js"),
+      import("../src/state/loading.js"),
     ]);
   });
 
   afterEach(async () => {
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
     roots.disposeAppRoots();
     vi.useRealTimers();
     vi.unstubAllGlobals();
@@ -324,7 +324,7 @@ describe("The loading controller drives the loading store", () => {
     ctl.onProgressStall(onStall);
     ctl.advancePhase(0);
     vi.advanceTimersByTime(1_000);
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
 
     // When
     roots.disposeAppRoot("loading");
@@ -350,7 +350,7 @@ describe("The loading controller drives the loading store", () => {
       },
     ]);
     ctl.advancePhase(0);
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
     roots.disposeAppRoot("loading");
     expect(vi.getTimerCount()).toBe(0);
 
@@ -368,7 +368,7 @@ describe("The loading controller drives the loading store", () => {
   it("As the shell, the static screen is the loading root from the moment the controller loads", async () => {
     // Given a controller that has started nothing
     const screen = document.getElementById("app-loading");
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
 
     // When whatever replaces the screen disposes the roots
     roots.disposeAppRoots();
@@ -394,7 +394,7 @@ describe("The loading controller drives the loading store", () => {
     expect(store.getLoadingState().phase).toBe("active");
 
     // When
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
     roots.disposeAppRoot("loading");
 
     // Then one root, disposed once
@@ -407,9 +407,9 @@ describe("The loading controller drives the loading store", () => {
     vi.resetModules();
     document.body.innerHTML = `<div id="app"></div>`;
     const [fresh, freshStore, roots] = await Promise.all([
-      import("@dotli/ui/loading-controller"),
-      import("@dotli/ui/state/loading"),
-      import("@dotli/ui/mount/app-roots"),
+      import("../src/loading-controller.js"),
+      import("../src/state/loading.js"),
+      import("../src/mount/app-roots.js"),
     ]);
 
     // When
@@ -474,7 +474,7 @@ describe("The loading controller drives the loading store", () => {
       { label: "a", base: 5, target: 90, expectedMs: 60_000, stage: "relay" },
     ]);
     const screen = document.getElementById("app-loading");
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
 
     // When
     roots.disposeAppRoot("loading");
@@ -521,7 +521,7 @@ describe("The loading controller drives the loading store", () => {
     expect(progress()).toBeGreaterThan(before);
 
     // When
-    const roots = await import("@dotli/ui/mount/app-roots");
+    const roots = await import("../src/mount/app-roots.js");
     roots.disposeAppRoot("loading");
     const frozen = progress();
     vi.advanceTimersByTime(10_000);

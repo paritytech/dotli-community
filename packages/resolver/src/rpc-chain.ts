@@ -24,8 +24,8 @@ import type { JsonRpcProvider } from "polkadot-api";
 import {
   getActiveCoreGatewayChains,
   getActiveGatewayChains,
-} from "@dotli/config/network";
-import type { ChainService } from "@dotli/config/network";
+} from "@dotli/config";
+import type { ChainService } from "@dotli/config";
 
 /**
  * Resolve a genesis hash to its active-network chain, or `null` when gateway

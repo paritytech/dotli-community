@@ -13,11 +13,18 @@ import {
   initSentry,
   installGlobalErrorHandlers,
   captureException,
-} from "@dotli/metrics/sentry";
+  m,
+  setResolutionId,
+  spans as S,
+} from "@dotli/metrics";
 import {
   chainBytesReceived,
   installByteMeter,
-} from "@dotli/resolver/byte-meter";
+  createCoreRpcChainProvider,
+  isCoreRpcChainSupported,
+  loadProvider,
+  loadResolve,
+} from "@dotli/resolver";
 
 // Before anything opens a socket. the smoldot transports are the bulk of
 // cold-load traffic and are invisible to resource timing, so the loading
@@ -50,43 +57,41 @@ window.addEventListener("vite:preloadError", (event) => {
   }
 });
 import type { JsonRpcProvider } from "@polkadot-api/json-rpc-provider";
-import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
+import type { StringJsonRpcConnection } from "@dotli/protocol";
 import type {
   ExecutableManifest,
   ManifestResult,
   RootManifest,
-} from "@dotli/resolver/manifest";
-import type { ResolveOptions } from "@dotli/resolver/resolve";
-import { isExecutableKind } from "@dotli/shared/executables";
+  ResolveOptions,
+} from "@dotli/resolver";
+
+import {
+  isExecutableKind,
+  log,
+  errorName,
+  serializeError,
+} from "@dotli/shared";
 import {
   MAX_CONNECTIONS_PER_ORIGIN,
   SITE_ID,
   TIMEOUTS,
   type SiteId,
-} from "@dotli/config/config";
-import {
   getActiveServicesConfig,
   isValidNetwork,
   setNetworkOverride,
   type Network,
-} from "@dotli/config/network";
+} from "@dotli/config";
+
 // Smoldot, relay-chain, and dot-name resolver imports live behind
 // `initDirectMode()` (dynamic) so `rpc` mode doesn't drag smoldot into the
 // protocol iframe's initial chunk. The SharedWorker path doesn't import
 // these either. Smoldot for shared-worker mode lives inside
 // `./protocol-shared-worker.ts`, which is already a separate bundle.
-import {
-  createCoreRpcChainProvider,
-  isCoreRpcChainSupported,
-} from "@dotli/resolver/rpc-chain";
-import { log } from "@dotli/shared/log";
-import { errorName, serializeError } from "@dotli/shared/errors";
+
 import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
   type ChainBrokerManager,
-} from "@dotli/protocol/broker";
-import {
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -95,22 +100,18 @@ import {
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-} from "@dotli/protocol/auth-storage";
-import {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
-} from "@dotli/protocol/messages";
-import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker";
-import { PROTOCOL_APP_ERRORS } from "./errors";
+} from "@dotli/protocol";
+
+import type { SWRelayRequest, SWOutbound } from "./protocol-shared-worker.js";
+import { PROTOCOL_APP_ERRORS } from "./errors.js";
 
 initSentry("host");
 installGlobalErrorHandlers("host");
-
-import { m, setResolutionId } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
 
 // Adopted at module scope, not inside init(): an auth-only iframe and every
 // invalid-mode path return before init() gets far, and those boots still
@@ -692,8 +693,8 @@ async function initDirectMode(): Promise<void> {
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
   const [provider, resolve] = await Promise.all([
-    import("@dotli/resolver/provider"),
-    import("@dotli/resolver/resolve"),
+    loadProvider(),
+    loadResolve(),
   ]);
   const {
     createChainProvider,

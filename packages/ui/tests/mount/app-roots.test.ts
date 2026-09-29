@@ -4,13 +4,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 import {
   disposeAppRoot,
   disposeAppRoots,
   registerAppRoot,
-} from "@dotli/ui/mount/app-roots";
+} from "../../src/mount/app-roots.js";
 
 describe("app roots", () => {
   afterEach(() => {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { productIframeBox } from "@dotli/ui/product-iframe-box";
+import { productIframeBox } from "../src/product-iframe-box.js";
 
 /**
  * These assert the declared style, not the resolved pixels.

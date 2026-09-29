@@ -10,14 +10,14 @@
 
 import { createEffect, onCleanup, untrack } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import type { EventSeq, StoredEvent } from "@dotli/truapi-debug/event-store";
+import type { EventSeq, StoredEvent } from "@dotli/truapi-debug";
 import {
   applyTimelineSelection,
   buildTimelineContainer,
   renderSwimlanes,
   resolveTimelineClick,
-} from "@dotli/truapi-debug/timeline";
-import { wireHoverTooltips } from "./hover-tooltip";
+} from "@dotli/truapi-debug";
+import { wireHoverTooltips } from "./hover-tooltip.js";
 
 export function TimelineView(props: {
   active: boolean;

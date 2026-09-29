@@ -7,7 +7,7 @@
 // so every line here says what is happening and, where it can, why. The copy
 // lives beside `errors.ts` because both carry the user-facing copy of the host.
 
-import type { ChainKey } from "@dotli/resolver/chain-sync";
+import type { ChainKey } from "@dotli/resolver";
 
 /**
  * How long a chain may sit in one lifecycle state before it owes an

@@ -11,7 +11,7 @@ import {
   compileQuery,
   type DirectionFilter,
   type FilterState,
-} from "@dotli/truapi-debug/filters";
+} from "@dotli/truapi-debug";
 
 const DIRECTIONS: readonly { dir: DirectionFilter; label: string }[] = [
   { dir: "both", label: "both" },

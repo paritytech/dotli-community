@@ -18,7 +18,7 @@ import { test, expect, type Page, type Browser } from "@playwright/test";
 import * as ss from "simple-statistics";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { findAppFrame } from "../product-frame";
+import { findAppFrame } from "../product-frame.js";
 
 interface PerfMark {
   name: string;

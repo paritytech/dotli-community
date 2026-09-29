@@ -16,8 +16,8 @@ import { bytesToHex } from "@parity/truapi/scale";
 import {
   renderCustomMessage,
   userTriggerRendererAction,
-} from "../../chat/service";
-import { CustomNode } from "./CustomNode";
+} from "../../chat/service.js";
+import { CustomNode } from "./CustomNode.js";
 
 export interface CustomMessageProps {
   productId: string;

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import { describeStall } from "./warnings";
+import { describeStall } from "./warnings.js";
 
 describe("describeStall throughput", () => {
   it("As a user on a slow connection, I see the real rate rather than zero", () => {

@@ -8,7 +8,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { createChainBrokerManager } from "@dotli/protocol/broker";
+import { createChainBrokerManager } from "../src/broker.js";
 
 function createProviderHarness(): {
   provider: JsonRpcProvider;

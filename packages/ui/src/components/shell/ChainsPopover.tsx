@@ -12,21 +12,21 @@ import {
   untrack,
 } from "solid-js";
 import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import type { ChainStatus } from "../../network-monitor";
-import { shallowEqual } from "../../state/create-store";
-import { networkStore, watchNetwork } from "../../state/network";
-import { productStore } from "../../state/product";
-import { topbarStore } from "../../state/topbar";
-import { useStore } from "../use-store";
+import { captureException } from "@dotli/metrics";
+import type { ChainStatus } from "../../network-monitor.js";
+import { shallowEqual } from "../../state/create-store.js";
+import { networkStore, watchNetwork } from "../../state/network.js";
+import { productStore } from "../../state/product.js";
+import { topbarStore } from "../../state/topbar.js";
+import { useStore } from "../use-store.js";
 import {
   describeBlockDelay,
   describeLiveNetwork,
   formatRate,
   formatSize,
   stripCapacity,
-} from "./chains-format";
-import { createPopover } from "./popover";
+} from "./chains-format.js";
+import { createPopover } from "./popover.js";
 
 /**
  * How often the pending cells' countdown is recomputed while open and a

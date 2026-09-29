@@ -4,8 +4,8 @@ import type { RendererNode } from "@parity/truapi";
 import {
   CustomNode,
   type CustomActionHandler,
-} from "@dotli/ui/components/chat/CustomNode";
-import { renderComponent, settle } from "../../helpers/solid";
+} from "../../../src/components/chat/CustomNode.js";
+import { renderComponent, settle } from "../../helpers/solid.js";
 
 const noAction = (): void => undefined;
 

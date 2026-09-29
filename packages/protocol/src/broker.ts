@@ -6,7 +6,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from "@polkadot-api/json-rpc-provider";
-import { log } from "@dotli/shared/log";
+import { log } from "@dotli/shared";
 
 /**
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.

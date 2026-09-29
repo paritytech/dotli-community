@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it } from "vitest";
-import { ensureOverlayRoot } from "@dotli/ui/mount/overlay-root";
+import { ensureOverlayRoot } from "../../src/mount/overlay-root.js";
 
 describe("ensureOverlayRoot", () => {
   beforeEach(() => {

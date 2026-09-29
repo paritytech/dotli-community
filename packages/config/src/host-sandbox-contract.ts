@@ -31,7 +31,7 @@
 // have the validator reject unmatched versions so stale host builds
 // don't feed malformed params to fresh sandbox deploys.
 
-import { NetworkName, isValidNetwork, type Network } from "./network";
+import { NetworkName, isValidNetwork, type Network } from "./network.js";
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 

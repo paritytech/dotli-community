@@ -27,8 +27,8 @@ import {
   wireFrameId,
   wireFrameKey,
   __testing,
-} from "@dotli/ui/debug-wire-describe";
-import { blockHash, genesisHash, unwrap } from "./support.ts";
+} from "../src/debug-wire-describe.js";
+import { blockHash, genesisHash, unwrap } from "./support.js";
 
 function payloadBytes(
   codec: { enc: (v: never) => Uint8Array },

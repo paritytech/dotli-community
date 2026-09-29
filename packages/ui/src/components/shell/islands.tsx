@@ -16,22 +16,22 @@
 // `on*` JSX props under components/shell/ (packages/ui/eslint.config.js).
 
 import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot } from "../../mount/app-roots";
-import { mountRoot } from "../../mount/root";
-import { adoptLoadingScreen } from "../../loading-controller";
-import { getLoadingState } from "../../state/loading";
-import { FOCUSABLE, focusFirst } from "../focus";
-import { AuthButton } from "./AuthButton";
-import { AuthModal } from "./AuthModal";
-import { ChainsPopover } from "./ChainsPopover";
-import { LoadingScreen } from "./LoadingScreen";
-import { MoreMenu } from "./MoreMenu";
-import { OfflineBanner } from "./OfflineBanner";
-import { PermissionsPopover } from "./PermissionsPopover";
-import { SettingsPopover } from "./SettingsPopover";
-import { ThemeToggle } from "./ThemeToggle";
-import { UrlPill } from "./UrlPill";
+import { captureException } from "@dotli/metrics";
+import { disposeAppRoot } from "../../mount/app-roots.js";
+import { mountRoot } from "../../mount/root.js";
+import { adoptLoadingScreen } from "../../loading-controller.js";
+import { getLoadingState } from "../../state/loading.js";
+import { FOCUSABLE, focusFirst } from "../focus.js";
+import { AuthButton } from "./AuthButton.js";
+import { AuthModal } from "./AuthModal.js";
+import { ChainsPopover } from "./ChainsPopover.js";
+import { LoadingScreen } from "./LoadingScreen.js";
+import { MoreMenu } from "./MoreMenu.js";
+import { OfflineBanner } from "./OfflineBanner.js";
+import { PermissionsPopover } from "./PermissionsPopover.js";
+import { SettingsPopover } from "./SettingsPopover.js";
+import { ThemeToggle } from "./ThemeToggle.js";
+import { UrlPill } from "./UrlPill.js";
 
 /** The child indexes that lead from `ancestor` down to `el`. */
 function childPath(ancestor: Element, el: Element): number[] {

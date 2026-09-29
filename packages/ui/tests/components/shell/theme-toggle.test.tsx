@@ -2,24 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ThemeToggle } from "@dotli/ui/components/shell/ThemeToggle";
-import { initTheme } from "@dotli/ui/theme-controller";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import { ThemeToggle } from "../../../src/components/shell/ThemeToggle.js";
+import { initTheme } from "../../../src/theme-controller.js";
+import { setBlockingModalActive } from "../../../src/state/topbar.js";
 import {
   mouseClick,
   pointerPress,
   renderComponent,
   resetStores,
   settle,
-} from "../../helpers/solid";
-import { stubColorScheme } from "../../helpers/color-scheme";
-import { mountMoreMenu, tapMoreRow } from "./more-menu-harness";
-import { mountLandingPage } from "../../helpers/landing";
-import { byId } from "../../support";
+} from "../../helpers/solid.js";
+import { stubColorScheme } from "../../helpers/color-scheme.js";
+import { mountMoreMenu, tapMoreRow } from "./more-menu-harness.js";
+import { mountLandingPage } from "../../helpers/landing.js";
+import { byId } from "../../support.js";
 
 // The landing page loads the recent names from the shared storage frame,
 // which happy-dom would try to fetch.
-vi.mock("@dotli/ui/recent-labels", () => ({
+vi.mock("../../../src/recent-labels.js", () => ({
   loadRecentLabels: () => Promise.resolve([]),
   forgetRecentLabel: () => Promise.resolve(),
 }));

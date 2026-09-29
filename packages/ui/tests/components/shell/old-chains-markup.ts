@@ -9,7 +9,10 @@
 // builder below is that code, with its formatters, copied as it was. The
 // island tests compare against it node for node.
 
-import type { ChainStatus, TransferState } from "@dotli/ui/network-monitor";
+import type {
+  ChainStatus,
+  TransferState,
+} from "../../../src/network-monitor.js";
 
 const STATIC_BUTTON = `<button id="chains-button" class="topbar-btn topbar-chains-btn" title="Network" aria-label="Network" aria-expanded="false" aria-controls="chains-popover"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></button>`;
 

@@ -2,27 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModeDraft } from "@dotli/ui/settings-actions";
+import type { ModeDraft } from "../src/settings-actions.js";
 
 const mocks = vi.hoisted(() => ({
   clearCidCache: vi.fn(() => Promise.resolve()),
   clearBlockCache: vi.fn(() => Promise.resolve()),
 }));
 
-vi.mock("@dotli/storage/cid-cache", async (importOriginal) => ({
+vi.mock("../../storage/src/cid-cache.js", async (importOriginal) => ({
   // eslint-disable-next-line @typescript-eslint/consistent-type-imports -- required for mock typing
-  ...(await importOriginal<typeof import("@dotli/storage/cid-cache")>()),
+  ...(await importOriginal<typeof import("../../storage/src/cid-cache.js")>()),
   clearCidCache: mocks.clearCidCache,
 }));
-vi.mock("@dotli/storage/block-cache", () => ({
+vi.mock("../../storage/src/block-cache.js", () => ({
   clearBlockCache: mocks.clearBlockCache,
-}));
-vi.mock("@dotli/ui/shared-auth", () => ({
-  getSharedAuth: () => ({
-    read: () => null,
-    write: () => {},
-    subscribe: () => () => {},
-  }),
 }));
 
 const CACHE_ON = {
@@ -50,7 +43,7 @@ describe("applyAndReset: archive cache", () => {
 
   it("As a user, turning the archive cache off clears the blocks the host kept", async () => {
     // Given
-    const { applyAndReset } = await import("@dotli/ui/settings-actions");
+    const { applyAndReset } = await import("../src/settings-actions.js");
     const draft: ModeDraft = {
       ...prior,
       cache: { ...CACHE_ON, skipArchiveCache: true },
@@ -67,7 +60,7 @@ describe("applyAndReset: archive cache", () => {
 
   it("As a user, turning the archive cache back on keeps nothing I would lose", async () => {
     // Given
-    const { applyAndReset } = await import("@dotli/ui/settings-actions");
+    const { applyAndReset } = await import("../src/settings-actions.js");
     const off: ModeDraft = {
       ...prior,
       cache: { ...CACHE_ON, skipArchiveCache: true },

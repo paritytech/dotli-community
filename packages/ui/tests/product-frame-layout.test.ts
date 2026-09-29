@@ -9,7 +9,7 @@ import {
   setChatWidth,
   setDockInset,
   setTopbarLayout,
-} from "@dotli/ui/product-frame-layout";
+} from "../src/product-frame-layout.js";
 
 /**
  * These assert the declared style, not the resolved pixels.

@@ -3,11 +3,11 @@ import {
   NetworkName,
   getActiveServicesConfig,
   setNetworkOverride,
-} from "@dotli/config/network";
+} from "@dotli/config";
 import {
   createTruapiRuntimeConfig,
   labelToProductId,
-} from "@dotli/ui/runtime-config";
+} from "../src/runtime-config.js";
 
 describe("labelToProductId", () => {
   afterEach(() => {

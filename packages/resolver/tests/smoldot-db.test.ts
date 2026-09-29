@@ -3,7 +3,7 @@
 
 import "fake-indexeddb/auto";
 import { describe, it, expect } from "vitest";
-import { createSmoldotDb } from "@dotli/resolver/smoldot-db";
+import { createSmoldotDb } from "../src/smoldot-db.js";
 
 const GENESIS =
   "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd";

@@ -4,16 +4,16 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 import {
   presentModal,
   presentToast,
   prefetchOverlays,
-} from "@dotli/ui/overlays/load";
-import { toastsStore } from "@dotli/ui/state/toasts";
-import type { ModalView } from "@dotli/ui/state/modals";
-import { overlaysReady, resetOverlays } from "../helpers/overlays";
+} from "../../src/overlays/load.js";
+import { toastsStore } from "../../src/state/toasts.js";
+import type { ModalView } from "../../src/state/modals.js";
+import { overlaysReady, resetOverlays } from "../helpers/overlays.js";
 
 const VIEW: ModalView<"no" | "yes" | "dismissed"> = {
   title: "Question",
@@ -30,7 +30,7 @@ const VIEW: ModalView<"no" | "yes" | "dismissed"> = {
 afterEach(() => {
   resetOverlays();
   vi.unstubAllGlobals();
-  vi.doUnmock("@dotli/ui/components/overlays/mount");
+  vi.doUnmock("../../src/components/overlays/mount.js");
   sentry.captureException.mockReset();
   document.body.replaceChildren();
 });
@@ -197,11 +197,11 @@ describe("overlays loader", () => {
   it("As a dotli user, when the overlay code cannot load, action toasts fall back to a confirm and dialogs settle with their fallback", async () => {
     // Given
     vi.resetModules();
-    vi.doMock("@dotli/ui/components/overlays/mount", () => {
+    vi.doMock("../../src/components/overlays/mount.js", () => {
       throw new Error("chunk failed");
     });
-    const load = await import("@dotli/ui/overlays/load");
-    const toasts = await import("@dotli/ui/state/toasts");
+    const load = await import("../../src/overlays/load.js");
+    const toasts = await import("../../src/state/toasts.js");
     const confirm = vi.fn(() => true);
     vi.stubGlobal("confirm", confirm);
     const onClick = vi.fn();

@@ -4,10 +4,13 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type PluginOption } from "vite";
 import { resolve } from "node:path";
-import wasm from "vite-plugin-wasm";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
-import { buildInfo } from "../../packages/config/src/build-info-plugin.ts";
+import wasmPlugin from "vite-plugin-wasm";
+import { buildInfo, runtimeNetworkConfigScript } from "@dotli/config/vite";
+import { stripAnalytics } from "@dotli/metrics/vite";
+
+// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
+// NodeNext sees the module object; at runtime the default export is the plugin.
+const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 const OUT_DIR = "dist";
 
@@ -24,30 +27,18 @@ function sentry(): PluginOption {
   });
 }
 
-const PACKAGES = resolve(import.meta.dirname, "../../packages");
-
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
   base: process.env.VITE_APP_URL
     ? new URL(process.env.VITE_APP_URL).pathname
     : "/",
   plugins: [
+    stripAnalytics(process.env.VITE_METRICS !== "true"),
     wasm(),
     runtimeNetworkConfigScript(),
     buildInfo("protocol"),
     sentry(),
   ],
-  resolve: {
-    alias: {
-      ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
-      "@dotli/config": resolve(PACKAGES, "config/src"),
-      "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
-      "@dotli/shared": resolve(PACKAGES, "shared/src"),
-      "@dotli/storage": resolve(PACKAGES, "storage/src"),
-      "@dotli/resolver": resolve(PACKAGES, "resolver/src"),
-      "@dotli/protocol": resolve(PACKAGES, "protocol/src"),
-    },
-  },
   define: {
     __BUILD_TARGET__: JSON.stringify("protocol"),
   },

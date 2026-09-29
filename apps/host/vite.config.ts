@@ -7,16 +7,20 @@ import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
-import wasm from "vite-plugin-wasm";
+import wasmPlugin from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
 import {
   buildInfo,
   readPackageVersion,
-} from "../../packages/config/src/build-info-plugin.ts";
-import { socialMetaTags } from "../../packages/config/src/social-meta-plugin.ts";
-import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin.ts";
+  runtimeNetworkConfigScript,
+  socialMetaTags,
+} from "@dotli/config/vite";
+import { stripAnalytics } from "@dotli/metrics/vite";
+import { prerenderPlugin, SHELL_SERVER_ENTRY } from "@dotli/ui/vite";
+
+// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
+// NodeNext sees the module object; at runtime the default export is the plugin.
+const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
@@ -236,9 +240,6 @@ function sentry(): PluginOption {
   });
 }
 
-const PACKAGES = resolve(import.meta.dirname, "../../packages");
-const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
-
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
   base: process.env.VITE_APP_URL
@@ -254,6 +255,7 @@ export default defineConfig({
     // non-hydratable: the client output is a plain SPA compile, without
     // hydration keys or claim walks, and the prerender carries no `_hk`
     // markers.
+    stripAnalytics(process.env.VITE_METRICS !== "true"),
     solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
@@ -269,7 +271,7 @@ export default defineConfig({
     preloadCriticalAssets(),
     prerenderPlugin({
       placeholder: "<!--ssr:shell-->",
-      entry: resolve(PACKAGES, "ui/src/components/shell/shell.server.tsx"),
+      entry: SHELL_SERVER_ENTRY,
       exportName: "renderShell",
     }),
     previewCoepHeaders(),
@@ -327,20 +329,6 @@ export default defineConfig({
       },
     }),
   ],
-  resolve: {
-    alias: {
-      ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
-      "@dotli/config": resolve(PACKAGES, "config/src"),
-      "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
-      "@dotli/shared": resolve(PACKAGES, "shared/src"),
-      "@dotli/storage": resolve(PACKAGES, "storage/src"),
-      "@dotli/resolver": resolve(PACKAGES, "resolver/src"),
-      "@dotli/protocol": resolve(PACKAGES, "protocol/src"),
-      "@dotli/content": resolve(PACKAGES, "content/src"),
-      "@dotli/ui": resolve(PACKAGES, "ui/src"),
-      "@dotli/sandbox-checker": SANDBOX_CHECKER_SRC,
-    },
-  },
   define: {
     __BUILD_TARGET__: JSON.stringify("host"),
     // Baked once at build time, read lazily at the declaration site so a

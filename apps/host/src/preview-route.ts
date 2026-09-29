@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { DEBUG } from "@dotli/config/config";
-import { dotNsUrl } from "@dotli/shared/dotns-url";
+import { DEBUG } from "@dotli/config";
+import { dotNsUrl } from "@dotli/shared";
 
 export function parsePreviewTargetUrl(
   location: Pick<Location, "pathname" | "search">,

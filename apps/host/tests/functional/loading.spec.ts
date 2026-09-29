@@ -11,14 +11,14 @@ import {
   RELOAD_BTN_LABEL,
   ERROR_TITLES,
   TRY_ANYWAY_BTN_LABEL,
-} from "../../src/errors";
-import { test } from "./helpers/shared-mode-reset";
-import { findAppFrame } from "../product-frame";
-import { seedBackend, type Backend } from "./fixtures/settings";
-import { TIMEOUTS } from "@dotli/config/timeouts";
-import { METHOD_TIMEOUTS } from "@dotli/protocol/method-timeouts";
+} from "../../src/errors.js";
+import { test } from "./helpers/shared-mode-reset.js";
+import { findAppFrame } from "../product-frame.js";
+import { seedBackend, type Backend } from "./fixtures/settings.js";
+import { TIMEOUTS } from "@dotli/config";
+import { METHOD_TIMEOUTS } from "@dotli/protocol";
 
-import { PORT, TLD_SUFFIX } from "../env";
+import { PORT, TLD_SUFFIX } from "../env.js";
 
 const DOMAIN = process.env.COMBO_DOMAIN ?? "host-playground";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;

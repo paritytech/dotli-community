@@ -1,13 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type {
-  ChainKey,
-  ChainPeer,
-  ChainSyncKind,
-} from "@dotli/resolver/chain-sync";
+import type { ChainKey, ChainPeer, ChainSyncKind } from "@dotli/resolver";
 // Leaf import: the `config` barrel reads `self.location` at module load.
-import { TIMEOUTS } from "@dotli/config/timeouts";
+import { TIMEOUTS } from "@dotli/config";
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;

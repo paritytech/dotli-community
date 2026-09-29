@@ -81,7 +81,7 @@ vi.mock("@parity/truapi-host/worker-runtime?worker", () => ({
   default: mocks.HostWorker,
 }));
 
-vi.mock("@dotli/metrics/metrics", () => ({
+vi.mock("../../metrics/src/metrics.js", () => ({
   m: {
     measure: vi.fn(),
     timer: vi.fn(() => mocks.timerStop),
@@ -276,15 +276,15 @@ describe("bridge render lifecycle", () => {
     );
     const [{ initBridgeEventListeners }, { createBlockingModalCoordinator }] =
       await Promise.all([
-        import("@dotli/ui/bridge"),
-        import("@dotli/ui/blocking-modal-queue"),
+        import("../src/bridge.js"),
+        import("../src/blocking-modal-queue.js"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
   });
 
   it("As a dotli integrator, the host disposes a host that resolves after a newer render has started", async () => {
     // Given
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await import("../src/bridge.js");
 
     // When
     const first = renderIframe("https://first.example/app", "first");
@@ -321,7 +321,7 @@ describe("bridge render lifecycle", () => {
 
   it("As a dotli integrator, the host keeps the previous iframe visible while its replacement initializes", async () => {
     // Given
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await import("../src/bridge.js");
 
     const first = renderIframe("https://first.example/app", "first");
     await waitForProviderRequests(1);
@@ -354,7 +354,7 @@ describe("bridge render lifecycle", () => {
 
   it("As a dotli integrator, the host keeps the previous app-subdomain iframe visible while its replacement initializes", async () => {
     // Given
-    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const { renderAppSubdomain } = await import("../src/bridge.js");
 
     const first = renderAppSubdomain("first-cid", "first");
     await waitForProviderRequests(1);
@@ -385,8 +385,8 @@ describe("bridge render lifecycle", () => {
   it("As a dApp user, both render paths hand the product frame to the frame layout", async () => {
     // Given
     const [{ renderIframe, renderAppSubdomain }, layout] = await Promise.all([
-      import("@dotli/ui/bridge"),
-      import("@dotli/ui/product-frame-layout"),
+      import("../src/bridge.js"),
+      import("../src/product-frame-layout.js"),
     ]);
     const renders = [
       () => renderIframe("https://product.example/app", "product"),
@@ -416,7 +416,7 @@ describe("bridge render lifecycle", () => {
     async (path) => {
       // Given
       window.history.replaceState(null, "", path);
-      const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+      const { renderAppSubdomain } = await import("../src/bridge.js");
 
       // When
       const render = renderAppSubdomain("cid", "first");
@@ -435,7 +435,7 @@ describe("bridge render lifecycle", () => {
 
   it("As a dotli integrator, the host cancels pairing on the active product host", async () => {
     // Given
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await import("../src/bridge.js");
 
     const render = renderIframe("https://product.example/app", "product");
     await waitForProviderRequests(1);
@@ -451,7 +451,7 @@ describe("bridge render lifecycle", () => {
 
   it("As a dotli integrator, the host boots the landing auth core to disconnect a stored session without a product", async () => {
     // Given
-    await import("@dotli/ui/bridge");
+    await import("../src/bridge.js");
 
     // When
     window.dispatchEvent(new Event("dotli:truapi-disconnect-request"));
@@ -502,8 +502,8 @@ describe("bridge app roots", () => {
     );
     const [{ initBridgeEventListeners }, { createBlockingModalCoordinator }] =
       await Promise.all([
-        import("@dotli/ui/bridge"),
-        import("@dotli/ui/blocking-modal-queue"),
+        import("../src/bridge.js"),
+        import("../src/blocking-modal-queue.js"),
       ]);
     initBridgeEventListeners(createBlockingModalCoordinator());
   });
@@ -515,7 +515,7 @@ describe("bridge app roots", () => {
     disposeLoading: ReturnType<typeof vi.fn>;
     disposePage: ReturnType<typeof vi.fn>;
   }> {
-    const { registerAppRoot } = await import("@dotli/ui/mount/app-roots");
+    const { registerAppRoot } = await import("../src/mount/app-roots.js");
     const app = document.getElementById("app");
     const loading = app?.querySelector<HTMLElement>(".loading");
     if (app === null || loading === null || loading === undefined) {
@@ -543,7 +543,7 @@ describe("bridge app roots", () => {
 
   it("As the shell, an app-subdomain render disposes the page root and keeps the loading overlay up", async () => {
     // Given
-    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const { renderAppSubdomain } = await import("../src/bridge.js");
     const { loading, page, disposeLoading, disposePage } =
       await registerRoots();
 
@@ -561,7 +561,7 @@ describe("bridge app roots", () => {
 
   it("As the shell, a later app-subdomain render disposes a loading overlay the first one kept", async () => {
     // Given
-    const { renderAppSubdomain } = await import("@dotli/ui/bridge");
+    const { renderAppSubdomain } = await import("../src/bridge.js");
     const { loading, disposeLoading } = await registerRoots();
     await settle(renderAppSubdomain("first-cid", "first"), 0);
 
@@ -580,7 +580,7 @@ describe("bridge app roots", () => {
 
   it("As the shell, a direct iframe render disposes both the page and the loading roots", async () => {
     // Given
-    const { renderIframe } = await import("@dotli/ui/bridge");
+    const { renderIframe } = await import("../src/bridge.js");
     const { disposeLoading, disposePage } = await registerRoots();
 
     // When
@@ -603,9 +603,9 @@ describe("bridge app roots", () => {
     // controller loaded over it as the host's startup bundle loads it
     document.body.innerHTML = `<div id="app"><div class="loading" id="app-loading"></div></div>`;
     const [{ renderIframe }, loading] = await Promise.all([
-      import("@dotli/ui/bridge"),
-      import("@dotli/ui/state/loading"),
-      import("@dotli/ui/loading-controller"),
+      import("../src/bridge.js"),
+      import("../src/state/loading.js"),
+      import("../src/loading-controller.js"),
     ]);
 
     // When
@@ -619,8 +619,8 @@ describe("bridge app roots", () => {
   it("As a dApp user, an error page shown over a live product is cleared when the product is rebuilt", async () => {
     // Given a product whose load failed after its frame went up
     const [{ renderAppSubdomain }, { showErrorPage }] = await Promise.all([
-      import("@dotli/ui/bridge"),
-      import("@dotli/ui/ui"),
+      import("../src/bridge.js"),
+      import("../src/ui.js"),
     ]);
     await settle(renderAppSubdomain("cid", "reloaded"), 0);
     showErrorPage({ title: "Failed" });
@@ -657,7 +657,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host resolves successful login responses", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const provider = makeLoginProvider({
       onPostMessage(message) {
         provider.listener?.(
@@ -680,7 +680,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host rejects typed login errors as LoginRequestError", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const provider = makeLoginProvider({
       onPostMessage(message) {
         provider.listener?.(
@@ -712,7 +712,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host rejects host failures with the reason as the error message", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const reason = "no free statement-store slot for device registration";
     const provider = makeLoginProvider({
       onPostMessage(message) {
@@ -739,7 +739,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host rejects malformed response frames and unsubscribes", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const provider = makeLoginProvider({
       onPostMessage() {
         provider.listener?.(new Uint8Array([0xff, 0x00]));
@@ -756,7 +756,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host rejects send failures and unsubscribes", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const provider = makeLoginProvider({
       onPostMessage() {
         throw new Error("send failed");
@@ -773,7 +773,7 @@ describe("requestCoreLogin", () => {
 
   it("As a dotli integrator, the host rejects and unsubscribes when the core provider closes", async () => {
     // Given
-    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const { requestCoreLogin } = await import("../src/bridge.js");
     const provider = makeLoginProvider({});
 
     // When

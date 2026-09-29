@@ -17,18 +17,17 @@ import type {
 } from "@polkadot-api/json-rpc-provider";
 import type { ChainProvider } from "@parity/truapi-host";
 import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
-import { getBackend } from "@dotli/config/mode";
-import { createChainBrokerManager } from "@dotli/protocol/broker";
+import { getBackend } from "@dotli/config";
+import { createChainBrokerManager } from "@dotli/protocol";
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
-} from "@dotli/resolver/provider";
-import {
   createCoreRpcChainProvider,
   isCoreRpcChainSupported,
-} from "@dotli/resolver/rpc-chain";
-import { log } from "@dotli/shared/log";
-import { ERRORS } from "../errors";
+} from "@dotli/resolver";
+
+import { log } from "@dotli/shared";
+import { ERRORS } from "../errors.js";
 
 // `createSmoldotChainProvider` returns wrappers around singleton smoldot
 // chains. Every wrapper drains the same response queue, so independent core

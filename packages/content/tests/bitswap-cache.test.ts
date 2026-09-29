@@ -14,7 +14,7 @@ import { CID } from "multiformats/cid";
 import * as raw from "multiformats/codecs/raw";
 import { sha256 } from "multiformats/hashes/sha2";
 import { create as createDigest } from "multiformats/hashes/digest";
-import type { SandboxBitswapOptions } from "@dotli/content/bitswap";
+import type { SandboxBitswapOptions } from "../src/bitswap.js";
 
 const mocks = vi.hoisted(() => ({
   createRemoteChainProvider: vi.fn(),
@@ -24,16 +24,16 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
+vi.mock("../../protocol/src/client.js", () => ({
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));
-vi.mock("@dotli/config/mode", () => ({ getBackend: mocks.getBackend }));
-vi.mock("@dotli/config/network", () => ({
+vi.mock("../../config/src/mode.js", () => ({ getBackend: mocks.getBackend }));
+vi.mock("../../config/src/network.js", () => ({
   getActiveServicesConfig: mocks.getActiveServicesConfig,
 }));
-vi.mock("@dotli/config/config", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@dotli/config/config")>()),
+vi.mock("../../config/src/config.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../config/src/config.js")>()),
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
@@ -126,11 +126,11 @@ describe("listenForSandboxBitswap with a block cache", () => {
     // Unconditional, not just at the end of the tests that mock it: an
     // assertion failure inside one of those tests would otherwise skip the
     // unmock and leak a throwing "./verify" into every test after it.
-    vi.doUnmock("../src/verify");
+    vi.doUnmock("../src/verify.js");
   });
 
   async function startRelay(options: SandboxBitswapOptions): Promise<void> {
-    const { listenForSandboxBitswap } = await import("@dotli/content/bitswap");
+    const { listenForSandboxBitswap } = await import("../src/bitswap.js");
     stop = listenForSandboxBitswap(options);
   }
 
@@ -254,7 +254,7 @@ describe("listenForSandboxBitswap with a block cache", () => {
   it("As a user, a verifier module that fails to load treats a cached block as a miss", async () => {
     // Given a cache already holding the block, but a verifier that cannot be
     // imported
-    vi.doMock("../src/verify", () => {
+    vi.doMock("../src/verify.js", () => {
       throw new Error("verify module failed to load");
     });
     const chain = stubChain(BLOCK_HEX);
@@ -275,7 +275,7 @@ describe("listenForSandboxBitswap with a block cache", () => {
 
   it("As a user, a verifier module that fails to load still serves a freshly fetched block, unstored", async () => {
     // Given a verifier that cannot be imported
-    vi.doMock("../src/verify", () => {
+    vi.doMock("../src/verify.js", () => {
       throw new Error("verify module failed to load");
     });
     const chain = stubChain(BLOCK_HEX);

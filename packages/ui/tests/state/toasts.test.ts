@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
 
 import {
   clearToasts,
@@ -16,7 +16,7 @@ import {
   setToastsExpanded,
   toastsStore,
   type ToastInput,
-} from "@dotli/ui/state/toasts";
+} from "../../src/state/toasts.js";
 
 function input(overrides: Partial<ToastInput> = {}): ToastInput {
   return {

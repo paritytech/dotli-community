@@ -159,4 +159,4 @@ export const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
 // Re-exported from the pure-constants `timeouts` submodule, so existing
 // `@dotli/config/config` callers keep working unchanged.
-export { TIMEOUTS } from "./timeouts";
+export { TIMEOUTS } from "./timeouts.js";

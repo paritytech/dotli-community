@@ -6,20 +6,20 @@
 // shows the error page if the chunk cannot load.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type * as LoadModule from "@dotli/ui/landing/load";
-import type * as AppRootsModule from "@dotli/ui/mount/app-roots";
-import type * as UiModule from "@dotli/ui/ui";
-import type * as LoadingModule from "@dotli/ui/state/loading";
-import { must } from "../support";
+import type * as LoadModule from "../../src/landing/load.js";
+import type * as AppRootsModule from "../../src/mount/app-roots.js";
+import type * as UiModule from "../../src/ui.js";
+import type * as LoadingModule from "../../src/state/loading.js";
+import { must } from "../support.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
-vi.mock("@dotli/ui/recent-labels", () => ({
+vi.mock("../../../metrics/src/sentry.js", () => sentry);
+vi.mock("../../src/recent-labels.js", () => ({
   loadRecentLabels: () => Promise.resolve(["alpha"]),
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-const CHUNK = "@dotli/ui/components/landing/mount";
+const CHUNK = "../../src/components/landing/mount.js";
 
 type Loader = typeof LoadModule;
 type AppRoots = typeof AppRootsModule;
@@ -38,11 +38,11 @@ let loading: LoadingState;
  */
 async function importFresh(): Promise<void> {
   [load, roots, ui, loading] = await Promise.all([
-    import("@dotli/ui/landing/load"),
-    import("@dotli/ui/mount/app-roots"),
-    import("@dotli/ui/ui"),
-    import("@dotli/ui/state/loading"),
-    import("@dotli/ui/loading-controller"),
+    import("../../src/landing/load.js"),
+    import("../../src/mount/app-roots.js"),
+    import("../../src/ui.js"),
+    import("../../src/state/loading.js"),
+    import("../../src/loading-controller.js"),
   ]);
 }
 
@@ -219,7 +219,7 @@ describe("landing loader", () => {
   it("As a visitor, when the landing page fails to render, I see an error page with a reload button, and it is reported once", async () => {
     // Given
     const failure = new Error("landing render failed");
-    vi.doMock("@dotli/ui/components/landing/Landing", () => ({
+    vi.doMock("../../src/components/landing/Landing.js", () => ({
       Landing: () => {
         throw failure;
       },
@@ -248,6 +248,6 @@ describe("landing loader", () => {
 
     // Then
     expect(reload).toHaveBeenCalledTimes(1);
-    vi.doUnmock("@dotli/ui/components/landing/Landing");
+    vi.doUnmock("../../src/components/landing/Landing.js");
   });
 });

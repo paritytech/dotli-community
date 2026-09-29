@@ -30,12 +30,12 @@ import {
   type ChatBotRecord,
   type ChatMessageRecord,
   type ChatRoomRecord,
-} from "@dotli/storage/chat";
+} from "@dotli/storage";
 import {
   recordBotsChanged,
   recordMessage,
   recordRoomsChanged,
-} from "../state/chat";
+} from "../state/chat.js";
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
 

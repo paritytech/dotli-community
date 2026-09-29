@@ -7,8 +7,8 @@ import {
   toSessionUiState,
   writeUiStateCache,
   type TruapiSessionUiState,
-} from "./SessionStore";
-import { setAuthState } from "../state/auth";
+} from "./SessionStore.js";
+import { setAuthState } from "../state/auth.js";
 
 /**
  * UI-level auth state held in `authStore`. Mirrors the core's `AuthState`

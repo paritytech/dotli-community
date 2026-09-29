@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
-import { computePreimageKey } from "@dotli/content/preimage";
-import { fromHex } from "@dotli/shared/hex";
-import type { bitswapGet } from "@dotli/content/bitswap";
-import { yielded } from "./support";
+import { createPreimageAdapters } from "../src/host-callbacks/Preimage.js";
+import { computePreimageKey } from "@dotli/content";
+import { fromHex } from "@dotli/shared";
+import type { bitswapGet } from "@dotli/content";
+import { yielded } from "./support.js";
 
 const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
@@ -11,15 +11,15 @@ const mocks = vi.hoisted(() => ({
   getBackend: vi.fn(() => "rpc-gateway"),
 }));
 
-vi.mock("@dotli/content/ipfs", () => ({
+vi.mock("../../content/src/ipfs.js", () => ({
   fetchFromIpfs: mocks.fetchFromIpfs,
 }));
 
-vi.mock("@dotli/content/bitswap", () => ({
+vi.mock("../../content/src/bitswap.js", () => ({
   bitswapGet: mocks.bitswapGet,
 }));
 
-vi.mock("@dotli/config/mode", () => ({
+vi.mock("../../config/src/mode.js", () => ({
   getBackend: mocks.getBackend,
 }));
 

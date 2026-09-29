@@ -10,7 +10,7 @@ import {
   getActiveGatewayChains,
   getActiveGatewaySupportedGenesisHashes,
   setNetworkOverride,
-} from "@dotli/config/network";
+} from "../src/network.js";
 
 const v2 = NETWORK_NAME_TO_SERVICES_CONFIG[NetworkName.PASEO];
 

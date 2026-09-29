@@ -18,18 +18,18 @@ import {
   stopSigningHostPid,
   type SigningHostConfig,
   type SigningHostProcess,
-} from "./helpers/signing-host-cli";
-import { extractQrPayload } from "./helpers/extract-qr-payload";
+} from "./helpers/signing-host-cli.js";
+import { extractQrPayload } from "./helpers/extract-qr-payload.js";
 import {
   E2E_CHAIN_BACKEND,
   initializeChainBackend,
-} from "./helpers/chain-backend";
+} from "./helpers/chain-backend.js";
 import {
   STATE_FILE,
   SESSION_FILE,
   SIGNING_HOST_STATE_DIR,
   type PersistedSession,
-} from "./fixtures/paths";
+} from "./fixtures/paths.js";
 
 // Must equal the host's default network (`packages/config/src/network.ts`
 // `defaultNetwork()`, "paseo-next-v2" at time of writing). Required with no

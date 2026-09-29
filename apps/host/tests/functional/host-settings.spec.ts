@@ -21,9 +21,9 @@
 
 import { expect } from "@playwright/test";
 import type { Page } from "@playwright/test";
-import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
-import { setupTest } from "./helpers/context";
-import { waitForResolutionOutcome } from "../product-frame";
+import { DOMAIN, PORT, TIMEOUT_MS } from "../env.js";
+import { setupTest } from "./helpers/context.js";
+import { waitForResolutionOutcome } from "../product-frame.js";
 import {
   cachedBlockCount,
   hasCachedCid,
@@ -32,15 +32,15 @@ import {
   hostResolveStarted,
   trackBlockCacheReads,
   waitForCachedCid,
-} from "./helpers/cache";
+} from "./helpers/cache.js";
 import {
   BACKENDS,
   CACHE_ENABLED,
   SKIP_ARCHIVE_ONLY,
   SKIP_CID_ONLY,
   updateCacheSettings,
-} from "./fixtures/settings";
-import { test } from "./helpers/shared-mode-reset";
+} from "./fixtures/settings.js";
+import { test } from "./helpers/shared-mode-reset.js";
 
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const LANDING_URL = `http://localhost:${PORT}/`;

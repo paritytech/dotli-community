@@ -2,15 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared/chat-capability";
+import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared";
 import {
   CHAT_BOTS_CHANGED_EVENT,
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
-} from "@dotli/ui/chat/service";
-import { labelToProductId } from "@dotli/ui/runtime-config";
-import { setLoggedIn } from "@dotli/ui/state/auth";
-import { setTopbarVisible } from "@dotli/ui/state/topbar";
+} from "../../src/chat/service.js";
+import { labelToProductId } from "../../src/runtime-config.js";
+import { setLoggedIn } from "../../src/state/auth.js";
+import { setTopbarVisible } from "../../src/state/topbar.js";
 import {
   backToChatRooms,
   chatButtonVisible,
@@ -26,8 +26,8 @@ import {
   setChatPanelOpen,
   setChatPanelWidth,
   totalChatUnread,
-} from "@dotli/ui/state/chat-panel";
-import { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-store";
+} from "../../src/state/chat-panel.js";
+import { resetAllStoresForTests as resetStores } from "../../src/state/create-store.js";
 
 let remove: () => void = () => undefined;
 

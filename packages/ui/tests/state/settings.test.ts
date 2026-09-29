@@ -2,15 +2,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from "vitest";
-import { getSettingsState, initSettingsStore } from "@dotli/ui/state/settings";
+import {
+  getSettingsState,
+  initSettingsStore,
+} from "../../src/state/settings.js";
 import {
   getBackend,
   getCacheSettings,
   isSharedWorkerAvailable,
   isVerifiedSession,
-} from "@dotli/config/mode";
-import { getEnabledNetworks, getNetwork } from "@dotli/config/network";
-import { resetStores } from "../helpers/solid";
+  getEnabledNetworks,
+  getNetwork,
+} from "@dotli/config";
+
+import { resetStores } from "../helpers/solid.js";
 
 describe("settings store", () => {
   afterEach(() => {

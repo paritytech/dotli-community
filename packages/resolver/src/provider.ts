@@ -15,13 +15,9 @@ import type { JsonRpcProvider } from "polkadot-api";
 import {
   getActiveServicesConfig,
   getActiveSupportedGenesisHashes,
-} from "@dotli/config/network";
-// Import via the package specifier, not a relative path. `prodNoAnalyticsAliases`
-// rewrites `@dotli/metrics/metrics` to the no-op at bundle time, and a relative
-// import would slip past that and pull real metrics into a stripped build.
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { log } from "@dotli/shared/log";
+} from "@dotli/config";
+import { m, spans as S } from "@dotli/metrics";
+import { log } from "@dotli/shared";
 import init, {
   ChainProviderBuilder,
   setLogLevel,
@@ -29,13 +25,13 @@ import init, {
   type Connection,
 } from "@parity/truapi-provider";
 import wasmUrl from "@parity/truapi-provider/truapi_provider_bg.wasm?url";
-import { createSmoldotDb } from "./smoldot-db";
+import { createSmoldotDb } from "./smoldot-db.js";
 import {
   attachChainSync,
   chainKeyForGenesis,
   reportDbCache,
   type ChainSyncTap,
-} from "./chain-sync";
+} from "./chain-sync.js";
 
 // One provider per host process: every connection shares the single embedded
 // light client.

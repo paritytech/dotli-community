@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ProductContext } from "@parity/truapi-host";
-import { createProductOperations } from "@dotli/ui/host-callbacks/ProductOperations";
+import { createProductOperations } from "../src/host-callbacks/ProductOperations.js";
 
 // Operations belong to Worker executions.
 const PRODUCT: ProductContext = {

@@ -5,8 +5,8 @@
 // the first entry; everything that decides how a dialog settles (buttons,
 // dismissal, abort, fallback) lives here, outside Solid.
 
-import { blockingModalAbortError } from "../blocking-modal-queue";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import { blockingModalAbortError } from "../blocking-modal-queue.js";
+import { createSyncStore, type ReadableStore } from "./create-store.js";
 
 export type ModalButtonVariant = "cancel" | "secondary" | "primary";
 

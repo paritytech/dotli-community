@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { UrlPill } from "@dotli/ui/components/shell/UrlPill";
-import { showProductPill } from "@dotli/ui/state/url-pill";
-import { setBlockingModalActive } from "@dotli/ui/state/topbar";
+import { UrlPill } from "../src/components/shell/UrlPill.js";
+import { showProductPill } from "../src/state/url-pill.js";
+import { setBlockingModalActive } from "../src/state/topbar.js";
 import {
   setVerificationShieldState,
   VERIFICATION_SHIELD_ID,
   VERIFICATION_TOOLTIP_ID,
-} from "@dotli/ui/verification-shield";
+} from "../src/verification-shield.js";
 import {
   pointerPress,
   pointerPressUnfocusable,
@@ -14,8 +14,8 @@ import {
   resetStores,
   settle,
   tabTo,
-} from "./helpers/solid";
-import { byId, query } from "./support";
+} from "./helpers/solid.js";
+import { byId, query } from "./support.js";
 
 function button(): HTMLButtonElement {
   return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);

@@ -8,16 +8,16 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MockInstance } from "vitest";
-import type * as FiltersModule from "@dotli/truapi-debug/filters";
-import type * as PendingModule from "@dotli/truapi-debug/pending";
-import type * as RowFormatModule from "@dotli/truapi-debug/row-format";
-import type * as TimelineModule from "@dotli/truapi-debug/timeline";
-import type * as ResolutionViewModule from "@dotli/truapi-debug/resolution-view";
-import type * as KeyedSignalsModule from "@dotli/ui/components/truapi-debug/keyed-signals";
-import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
-import type * as MountModule from "@dotli/ui/components/truapi-debug/mount";
-import type * as ProductFrameLayoutModule from "@dotli/ui/product-frame-layout";
-import { query } from "../support";
+import type * as FiltersModule from "../../../truapi-debug/src/filters.js";
+import type * as PendingModule from "../../../truapi-debug/src/pending.js";
+import type * as RowFormatModule from "../../../truapi-debug/src/row-format.js";
+import type * as TimelineModule from "../../../truapi-debug/src/timeline.js";
+import type * as ResolutionViewModule from "../../../truapi-debug/src/resolution-view.js";
+import type * as KeyedSignalsModule from "../../src/components/truapi-debug/keyed-signals.js";
+import type * as DotliDebugBusModule from "../../../truapi-debug/src/dotli-debug-bus.js";
+import type * as MountModule from "../../src/components/truapi-debug/mount.js";
+import type * as ProductFrameLayoutModule from "../../src/product-frame-layout.js";
+import { query } from "../support.js";
 
 const calls = vi.hoisted(() => ({
   matches: 0,
@@ -34,7 +34,7 @@ function resetCalls(): void {
   }
 }
 
-vi.mock("@dotli/truapi-debug/filters", async (importOriginal) => {
+vi.mock("../../../truapi-debug/src/filters.js", async (importOriginal) => {
   const real = await importOriginal<typeof FiltersModule>();
   return {
     ...real,
@@ -44,7 +44,7 @@ vi.mock("@dotli/truapi-debug/filters", async (importOriginal) => {
     },
   };
 });
-vi.mock("@dotli/truapi-debug/pending", async (importOriginal) => {
+vi.mock("../../../truapi-debug/src/pending.js", async (importOriginal) => {
   const real = await importOriginal<typeof PendingModule>();
   return {
     ...real,
@@ -58,7 +58,7 @@ vi.mock("@dotli/truapi-debug/pending", async (importOriginal) => {
     },
   };
 });
-vi.mock("@dotli/truapi-debug/row-format", async (importOriginal) => {
+vi.mock("../../../truapi-debug/src/row-format.js", async (importOriginal) => {
   const real = await importOriginal<typeof RowFormatModule>();
   return {
     ...real,
@@ -68,7 +68,7 @@ vi.mock("@dotli/truapi-debug/row-format", async (importOriginal) => {
     },
   };
 });
-vi.mock("@dotli/truapi-debug/timeline", async (importOriginal) => {
+vi.mock("../../../truapi-debug/src/timeline.js", async (importOriginal) => {
   const real = await importOriginal<typeof TimelineModule>();
   return {
     ...real,
@@ -78,23 +78,26 @@ vi.mock("@dotli/truapi-debug/timeline", async (importOriginal) => {
     },
   };
 });
-vi.mock("@dotli/truapi-debug/resolution-view", async (importOriginal) => {
-  const real = await importOriginal<typeof ResolutionViewModule>();
-  return {
-    ...real,
-    buildResolution: (...args: Parameters<typeof real.buildResolution>) => {
-      calls.buildResolution++;
-      return real.buildResolution(...args);
-    },
-  };
-});
+vi.mock(
+  "../../../truapi-debug/src/resolution-view.js",
+  async (importOriginal) => {
+    const real = await importOriginal<typeof ResolutionViewModule>();
+    return {
+      ...real,
+      buildResolution: (...args: Parameters<typeof real.buildResolution>) => {
+        calls.buildResolution++;
+        return real.buildResolution(...args);
+      },
+    };
+  },
+);
 
 /** Every keyed-signal map the list creates, in creation order. */
 const keyedMaps = vi.hoisted(
   () => [] as { subscribedKeys: () => IterableIterator<unknown> }[],
 );
 vi.mock(
-  "@dotli/ui/components/truapi-debug/keyed-signals",
+  "../../src/components/truapi-debug/keyed-signals.js",
   async (importOriginal) => {
     const real = await importOriginal<typeof KeyedSignalsModule>();
     return {
@@ -138,9 +141,9 @@ beforeEach(async () => {
   document.head.replaceChildren();
   document.body.replaceChildren();
   localStorage.clear();
-  bus = await import("@dotli/truapi-debug/dotli-debug-bus");
-  layout = await import("@dotli/ui/product-frame-layout");
-  panelModule = await import("@dotli/ui/components/truapi-debug/mount");
+  bus = await import("../../../truapi-debug/src/dotli-debug-bus.js");
+  layout = await import("../../src/product-frame-layout.js");
+  panelModule = await import("../../src/components/truapi-debug/mount.js");
   bus.enableDotliDebugBuffering();
   warn = vi.spyOn(console, "warn");
   resetCalls();

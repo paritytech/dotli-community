@@ -23,15 +23,15 @@ import type {
   RawPayload,
   RingLocationJunction,
 } from "@parity/truapi";
-import { showPreimageSubmitModal } from "../preimage-modal";
-import { ERRORS } from "../errors";
+import { showPreimageSubmitModal } from "../preimage-modal.js";
+import { ERRORS } from "../errors.js";
 import {
   createBlockingModalScope,
   throwIfAborted,
   type BlockingModalScope,
-} from "../blocking-modal-queue";
-import { presentModal } from "../overlays/load";
-import type { ModalButton, ModalField } from "../state/modals";
+} from "../blocking-modal-queue.js";
+import { presentModal } from "../overlays/load.js";
+import type { ModalButton, ModalField } from "../state/modals.js";
 
 interface ConfirmationCopy {
   title: string;
