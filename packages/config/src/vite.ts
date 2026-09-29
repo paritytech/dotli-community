@@ -5,6 +5,7 @@
 // loaded by Node directly, hence the `.ts` specifiers. Kept apart from the
 // `@dotli/config` barrel so no browser bundle reaches the Node-only plugins.
 
+export { appBuildOptions, rolldownOptions } from "./build-options.ts";
 export { buildInfo, readPackageVersion } from "./build-info-plugin.ts";
 export {
   runtimeNetworkConfigScript,

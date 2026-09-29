@@ -10,6 +10,8 @@ import solid from "@solidjs/vite-plugin";
 import wasmPlugin from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import {
+  appBuildOptions,
+  rolldownOptions,
   buildInfo,
   readPackageVersion,
   runtimeNetworkConfigScript,
@@ -40,12 +42,6 @@ if (!process.env["VITE_COMMIT_SHA"]) {
 }
 
 const OUT_DIR = "dist";
-
-// The workspace packages are side-effect-free barrels. Lazy barrel mode keeps
-// a barrel's unused re-exports out of the graph: without it, a static
-// re-export of a module that another importer loads lazily pins that module
-// into the barrel importer's chunk. Workers take their own copy.
-const ROLLDOWN_OPTIONS = { experimental: { lazyBarrel: true } };
 
 /**
  * Walk every workspace member's `package.json` and collect its direct
@@ -241,7 +237,10 @@ function sentry(): PluginOption {
     project: "dotli",
     telemetry: false,
     authToken: process.env["SENTRY_AUTH_TOKEN"],
-    release: { name: process.env["VITE_COMMIT_SHA"] },
+    release:
+      process.env["VITE_COMMIT_SHA"] !== undefined
+        ? { name: process.env["VITE_COMMIT_SHA"] }
+        : {},
     sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
   });
 }
@@ -337,7 +336,7 @@ export default defineConfig({
   ],
   worker: {
     plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
-    rolldownOptions: ROLLDOWN_OPTIONS,
+    rolldownOptions: rolldownOptions(),
   },
   define: {
     __BUILD_TARGET__: JSON.stringify("host"),
@@ -358,8 +357,8 @@ export default defineConfig({
     exclude: ["@polkadot-api/wasm-executor"],
   },
   build: {
+    ...appBuildOptions(),
     target: "esnext",
-    rolldownOptions: ROLLDOWN_OPTIONS,
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",

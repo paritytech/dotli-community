@@ -5,7 +5,12 @@ import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type PluginOption } from "vite";
 import { resolve } from "node:path";
 import wasmPlugin from "vite-plugin-wasm";
-import { buildInfo, runtimeNetworkConfigScript } from "@dotli/config/vite";
+import {
+  buildInfo,
+  runtimeNetworkConfigScript,
+  appBuildOptions,
+  rolldownOptions,
+} from "@dotli/config/vite";
 import { stripAnalytics } from "@dotli/metrics/vite";
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
@@ -13,12 +18,6 @@ import { stripAnalytics } from "@dotli/metrics/vite";
 const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 
 const OUT_DIR = "dist";
-
-// The workspace packages are side-effect-free barrels. Lazy barrel mode keeps
-// a barrel's unused re-exports out of the graph: without it, a static
-// re-export of a module that another importer loads lazily pins that module
-// into the barrel importer's chunk. Workers take their own copy.
-const ROLLDOWN_OPTIONS = { experimental: { lazyBarrel: true } };
 
 function sentry(): PluginOption {
   if (process.env["VITE_METRICS"] !== "true") return false;
@@ -28,7 +27,10 @@ function sentry(): PluginOption {
     project: "dotli",
     telemetry: false,
     authToken: process.env["SENTRY_AUTH_TOKEN"],
-    release: { name: process.env["VITE_COMMIT_SHA"] },
+    release:
+      process.env["VITE_COMMIT_SHA"] !== undefined
+        ? { name: process.env["VITE_COMMIT_SHA"] }
+        : {},
     sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
   });
 }
@@ -47,7 +49,7 @@ export default defineConfig({
   ],
   worker: {
     plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
-    rolldownOptions: ROLLDOWN_OPTIONS,
+    rolldownOptions: rolldownOptions(),
   },
   define: {
     __BUILD_TARGET__: JSON.stringify("protocol"),
@@ -56,8 +58,8 @@ export default defineConfig({
     exclude: ["@polkadot-api/wasm-executor"],
   },
   build: {
+    ...appBuildOptions(),
     target: "esnext",
-    rolldownOptions: ROLLDOWN_OPTIONS,
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
     sourcemap: "hidden",
