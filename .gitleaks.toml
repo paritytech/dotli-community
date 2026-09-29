@@ -29,3 +29,15 @@ regexTarget = "line"
 regexes = [
   '''TRUAPI_WIRE_SCHEMA_HASH\s*[:=]\s*["'][0-9a-f]{16}["']''',
 ]
+
+[[allowlists]]
+description = "The resolver mapping-slot test uses a repeating public hexadecimal pattern, not a credential. Scope this exception to that exact value and test file."
+condition = "AND"
+targetRules = ["generic-api-key"]
+paths = [
+  '''^packages/resolver/tests/abi\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^0x(?:1234567890abcdef){4}$''',
+]
