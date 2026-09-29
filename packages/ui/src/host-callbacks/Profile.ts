@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// ProfilePlatform host callbacks: `profile.present` and the contact avatars a
-// product places.
+// ProfilePlatform host callbacks: `profile.present`, `profile.presentContact`
+// and the contact avatars a product places.
 //
 // The core has already screened the reference's shape. The host parses it,
 // opens the drawer, and fetches and decrypts the avatar through its own
@@ -15,7 +15,7 @@
 // learn which of its contacts shared a profile.
 
 import type { ProfilePlatform } from "@parity/truapi-host";
-import { fromHex } from "@dotli/shared/hex";
+import { fromHex, toHex } from "@dotli/shared/hex";
 import { showProfileDrawer, type LoadedProfile } from "../profile/drawer";
 import {
   createAvatarProfileCache,
@@ -98,6 +98,35 @@ export function presentProfileReference(
   reference: string,
 ): void {
   showProfileDrawer({ productId, loadProfile: profileLoader(reference) });
+}
+
+/**
+ * The name a contact's profile is attributed to: a shortened form of the
+ * identity account the core authenticated as the Chat sender, the same form
+ * the top bar uses for an account without a username. dot.li has no
+ * account-to-username lookup, and the product's own label for the contact is
+ * never used.
+ */
+function contactLabel(peerIdentity: Uint8Array): string {
+  const account = toHex(peerIdentity);
+  return `${account.slice(0, 8)}...${account.slice(-4)}`;
+}
+
+/**
+ * Show the profile a Chat contact shared, attributed to that contact and
+ * shown in `productId`. Throws for a reference this host cannot parse, before
+ * any UI appears.
+ */
+export function presentContactProfileReference(
+  productId: string,
+  reference: string,
+  peerIdentity: Uint8Array,
+): void {
+  showProfileDrawer({
+    productId,
+    sharedBy: contactLabel(peerIdentity),
+    loadProfile: profileLoader(reference),
+  });
 }
 
 /**
@@ -198,6 +227,16 @@ export function createProfilePlatform(
       // A parse failure thrown here rejects the call instead of escaping it.
       return new Promise<void>((resolve) => {
         presentProfileReference(product.productId, request.reference);
+        resolve();
+      });
+    },
+    presentContactProfile(product, presented) {
+      return new Promise<void>((resolve) => {
+        presentContactProfileReference(
+          product.productId,
+          presented.reference,
+          presented.peerIdentity,
+        );
         resolve();
       });
     },

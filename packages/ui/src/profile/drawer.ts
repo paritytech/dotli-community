@@ -27,6 +27,11 @@ export interface LoadedProfile {
 export interface ProfileDrawerOptions {
   /** Product that asked for the presentation, shown as attribution. */
   readonly productId: string;
+  /**
+   * Host-derived name of the Chat contact who shared the reference, for a
+   * profile the host received from that contact. Never product-supplied.
+   */
+  readonly sharedBy?: string;
   /** Fetch and decrypt the profile. Aborted when the drawer closes. */
   readonly loadProfile: (signal: AbortSignal) => Promise<LoadedProfile>;
 }
@@ -134,7 +139,10 @@ export function showProfileDrawer(
 
   const attribution = document.createElement("p");
   attribution.className = "profile-drawer-attribution";
-  attribution.textContent = `Shown by ${options.productId}. Seity profile content is self-described; dot.li does not verify it.`;
+  attribution.textContent =
+    options.sharedBy === undefined
+      ? `Shown by ${options.productId}. Seity profile content is self-described; dot.li does not verify it.`
+      : `Shared with you over Chat by ${options.sharedBy} · shown in ${options.productId}. Profile content is self-described; the host confirms who sent it, not who it depicts.`;
 
   drawer.append(header, portrait, moodText, status, attribution);
   backdrop.appendChild(drawer);
