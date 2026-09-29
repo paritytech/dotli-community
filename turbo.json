@@ -1,5 +1,6 @@
 {
   "$schema": "https://v2-11-5.turborepo.dev/schema.json",
+  "agentGuidance": false,
   "globalEnv": ["DEV", "BASE_URL", "VITE_*", "DOTLI_NETWORK"],
   "tasks": {
     "build": {
