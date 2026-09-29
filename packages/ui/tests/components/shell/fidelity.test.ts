@@ -13,7 +13,7 @@
 //
 // The rendered side is the real SSR output (see helpers/shell-ssr.ts).
 //
-// Two deliberate changes to the fixture since it was frozen. First, the QR
+// Three deliberate changes to the fixture since it was frozen. First, the QR
 // modal's `#auth-modal-backdrop` carries the dialog semantics the auth-modal
 // island renders (`role="dialog"`, `aria-modal`, `aria-labelledby`,
 // `tabindex="-1"`, issue #90), so the prerendered node says what it is before
@@ -23,7 +23,11 @@
 // now prerendered, hidden (`display: none`) with offline.ts's role, live
 // region, text and inline style (written the way Solid's compiler emits a
 // static style string, without spaces), and the offline-banner island shows
-// it. Every other node is still the original block.
+// it. Third: the action group (`.topbar-right`) is `#topbar-actions`, which
+// the topbar island swaps, and the More flyout (`#more-popover`) is empty:
+// its rows are the items the live group collapses. Fourth: the topbar's
+// popovers (POPOVERS below) are not prerendered at all, since nothing static
+// can open them. Every other node is still the original block.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -94,12 +98,31 @@ function normalizeChildren(node: DomNode): NormalizedChild[] {
  * nodes and normalizes them, using a fresh happy-dom window per parse so
  * this never touches the ambient `document` the test-runner's own
  * environment may provide. */
-function normalizeFragment(html: string): NormalizedChild[] {
+function normalizeFragment(html: string, without: readonly string[] = []): NormalizedChild[] {
   const document = new Window().document;
   const container = document.createElement('div');
   container.innerHTML = html;
+  for (const id of without) {
+    container.querySelector(`[id="${id}"]`)?.remove();
+  }
   return normalizeChildren(container as unknown as DomNode);
 }
+
+/**
+ * The topbar's popovers, which the prerender no longer carries: the topbar
+ * island renders them into the body, and nothing can open them before it.
+ * The fixture keeps them, as the markup the island's popovers match.
+ */
+const POPOVERS = [
+  'chains-popover',
+  'theme-popover',
+  'more-popover',
+  'user-popover',
+  'mode-popover-backdrop',
+  'mode-popover',
+  'permissions-popover-backdrop',
+  'permissions-popover',
+];
 
 describe('Shell prerender fidelity', () => {
   let rendered: string;
@@ -113,7 +136,7 @@ describe('Shell prerender fidelity', () => {
     const fixture = readFileSync(FIXTURE_PATH, 'utf8');
 
     // When / Then
-    expect(normalizeFragment(rendered)).toEqual(normalizeFragment(fixture));
+    expect(normalizeFragment(rendered)).toEqual(normalizeFragment(fixture, POPOVERS));
   });
 
   it('As a prerender nothing hydrates, the shell carries no hydration markers and no script', () => {

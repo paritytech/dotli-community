@@ -2,13 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { Show } from 'solid-js';
-import type { JSX } from '@solidjs/web';
+import { Portal, type JSX } from '@solidjs/web';
 import { requestTruapiDisconnect, startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
 import { authModalStore } from '../../state/auth-modal.js';
 import { useStore } from '../use-store.js';
 import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
 import { createPopover } from './popover.js';
+import { TOPBAR_PRIORITY } from './topbar/fit.js';
+import { TopbarItem } from './topbar/TopbarItem.js';
 
 function UserIcon(): JSX.Element {
   return (
@@ -30,12 +32,12 @@ function UserIcon(): JSX.Element {
 
 /**
  * The topbar's auth button (`#auth-button`) and the logged-in account's
- * popover (`#user-popover`), one shell island (see islands.tsx). Shell.tsx
+ * popover (`#user-popover`, rendered into the body), an item of the topbar
+ * island (see islands.tsx) that never collapses into More. Shell.tsx
  * prerenders the button disabled and "Connecting...", and it stays so until
- * this component is swapped in, enabled, after boot (so it is none of the
+ * the island is swapped in, enabled, after boot (so it is none of the
  * islands loader's click triggers). The landing page (components/landing/)
- * moves the button into `#landing-auth`; the swap is by id, so it happens
- * where the button is, and the popover still follows it.
+ * renders it too, in its corner.
  *
  * Logged out, the button shows the person icon and a click starts a login.
  * Logged in, it shows the account's initials (`.user-badge`, or the icon as
@@ -102,80 +104,84 @@ export function AuthButton(): JSX.Element {
 
   return (
     <>
-      <button
-        ref={el => {
-          button = el;
-          el.addEventListener('click', onClick);
-        }}
-        id="auth-button"
-        class="topbar-btn"
-        title={label()}
-        aria-label={label()}
-        aria-haspopup="dialog"
-        aria-expanded={(opensPopover() ? menu.open() : authModal().open) ? 'true' : 'false'}
-        aria-controls={opensPopover() ? 'user-popover' : 'auth-modal-backdrop'}
-      >
-        <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
-          {session => (
-            <Show
-              when={sessionInitials(session())}
-              fallback={
-                <div class="user-badge user-badge-anon">
-                  <UserIcon />
-                </div>
-              }
-            >
-              {initials => <div class="user-badge">{initials()}</div>}
-            </Show>
-          )}
-        </Show>
-      </button>
-      <div
-        ref={el => {
-          popover = el;
-        }}
-        class={['user-popover', { open: menu.open() }]}
-        id="user-popover"
-        role="dialog"
-        aria-label="Welcome back"
-        tabindex="-1"
-      >
-        <div class="user-popover-name">
-          <div class="label">Welcome back</div>
-          <div class="name" id="user-popover-username">
-            {name()}
-          </div>
-          {/* Explains the username-less state instead of leaving a bare
-              address that reads as a rendering bug. */}
-          <Show when={account.loggedIn() && (username() ?? '').length === 0}>
-            <div id="user-popover-hint" class="user-popover-hint">
-              No username found for this account on this network.
-            </div>
-          </Show>
-        </div>
-        <div class="user-popover-divider" />
+      <TopbarItem name="auth" label={label()} icon={UserIcon} priority={TOPBAR_PRIORITY.auth} activate={onClick}>
         <button
           ref={el => {
-            el.addEventListener('click', onDisconnect);
+            button = el;
+            el.addEventListener('click', onClick);
           }}
-          class="user-popover-disconnect"
-          id="user-popover-disconnect"
+          id="auth-button"
+          class="topbar-btn"
+          title={label()}
+          aria-label={label()}
+          aria-haspopup="dialog"
+          aria-expanded={(opensPopover() ? menu.open() : authModal().open) ? 'true' : 'false'}
+          aria-controls={opensPopover() ? 'user-popover' : 'auth-modal-backdrop'}
         >
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
-            <polyline points="16 17 21 12 16 7" />
-            <line x1="21" y1="12" x2="9" y2="12" />
-          </svg>
-          Log out
+          <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
+            {session => (
+              <Show
+                when={sessionInitials(session())}
+                fallback={
+                  <div class="user-badge user-badge-anon">
+                    <UserIcon />
+                  </div>
+                }
+              >
+                {initials => <div class="user-badge">{initials()}</div>}
+              </Show>
+            )}
+          </Show>
         </button>
-      </div>
+      </TopbarItem>
+      <Portal>
+        <div
+          ref={el => {
+            popover = el;
+          }}
+          class={['user-popover', { open: menu.open() }]}
+          id="user-popover"
+          role="dialog"
+          aria-label="Welcome back"
+          tabindex="-1"
+        >
+          <div class="user-popover-name">
+            <div class="label">Welcome back</div>
+            <div class="name" id="user-popover-username">
+              {name()}
+            </div>
+            {/* Explains the username-less state instead of leaving a bare
+                address that reads as a rendering bug. */}
+            <Show when={account.loggedIn() && (username() ?? '').length === 0}>
+              <div id="user-popover-hint" class="user-popover-hint">
+                No username found for this account on this network.
+              </div>
+            </Show>
+          </div>
+          <div class="user-popover-divider" />
+          <button
+            ref={el => {
+              el.addEventListener('click', onDisconnect);
+            }}
+            class="user-popover-disconnect"
+            id="user-popover-disconnect"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+            Log out
+          </button>
+        </div>
+      </Portal>
     </>
   );
 }

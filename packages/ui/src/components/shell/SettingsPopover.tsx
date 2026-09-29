@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
-import type { JSX } from '@solidjs/web';
+import { Portal, type JSX } from '@solidjs/web';
 import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
 import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
@@ -11,6 +11,8 @@ import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
 import { createPopover } from './popover.js';
 import { CacheToggle, RadioRow, SectionHeader } from './SettingsRows.js';
+import { TOPBAR_PRIORITY } from './topbar/fit.js';
+import { TopbarItem } from './topbar/TopbarItem.js';
 
 const SETTINGS_ICON_PATH =
   'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
@@ -235,10 +237,30 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   );
 }
 
+/** The settings gear, on the button and the More menu row. */
+function GearIcon(props: { size: number }): JSX.Element {
+  return (
+    <svg
+      width={props.size}
+      height={props.size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d={SETTINGS_ICON_PATH} />
+    </svg>
+  );
+}
+
 /**
  * The settings button (`#mode-button`), its popover (`#mode-popover`) and
- * the popover's backdrop, a shell island (see islands.tsx) swapped in for
- * Shell.tsx's static markup after boot.
+ * the popover's backdrop, both rendered into the body, an item of the topbar
+ * island (see islands.tsx) swapped in for Shell.tsx's static markup after
+ * boot.
  *
  * The popover shows the saved settings: the network and transport choices,
  * the cache switches, "Clear all caches" and the diagnostics. Changes stay a
@@ -261,11 +283,11 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * Tab stays inside, the page does not scroll, and Escape, the sheet's close
  * button and a blocking modal close it. The width is read at each opening,
  * against the stylesheet's breakpoint. Unless the user moved focus
- * elsewhere, closing hands it back to the button or, when that is hidden
- * (narrow screens), to the More button.
+ * elsewhere, closing hands it back to the button or, while the topbar has
+ * collapsed it, to the More button.
  * The popover's content stays after a close, for the fade-out, and is
- * rendered afresh on the next opening. The mobile "More" menu's Settings
- * row opens it by dispatching a click on the button, looked up by id.
+ * rendered afresh on the next opening. The More menu's Settings row opens
+ * it while the topbar has collapsed the button.
  */
 export function SettingsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -285,80 +307,79 @@ export function SettingsPopover(): JSX.Element {
   const close = (): void => {
     surface.setOpen(false);
   };
+  const onButtonClick = (): void => {
+    if (!untrack(surface.open)) {
+      setOpening(n => n + 1);
+      setSheet(window.matchMedia(SHEET_QUERY).matches);
+    }
+    surface.toggle();
+  };
 
   return (
     <>
-      <button
-        ref={el => {
-          button = el;
-          el.addEventListener('click', () => {
-            if (!untrack(surface.open)) {
-              setOpening(n => n + 1);
-              setSheet(window.matchMedia(SHEET_QUERY).matches);
-            }
-            surface.toggle();
-          });
-        }}
-        id="mode-button"
-        class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
-        title="Settings"
-        aria-label="Settings"
-        aria-haspopup="dialog"
-        aria-expanded={surface.open() ? 'true' : 'false'}
-        aria-controls="mode-popover"
+      <TopbarItem
+        name="settings"
+        label="Settings"
+        icon={() => <GearIcon size={14} />}
+        priority={TOPBAR_PRIORITY.settings}
+        activate={onButtonClick}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <button
+          ref={el => {
+            button = el;
+            el.addEventListener('click', onButtonClick);
+          }}
+          id="mode-button"
+          class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
+          title="Settings"
+          aria-label="Settings"
+          aria-haspopup="dialog"
+          aria-expanded={surface.open() ? 'true' : 'false'}
+          aria-controls="mode-popover"
         >
-          <circle cx="12" cy="12" r="3" />
-          <path d={SETTINGS_ICON_PATH} />
-        </svg>
-      </button>
-      {/* Blocks clicks under the popover and dismisses it when clicked. */}
-      <div
-        ref={el => {
-          el.addEventListener('click', close);
-        }}
-        class={`mode-popover-backdrop${surface.open() ? ' open' : ''}`}
-        id="mode-popover-backdrop"
-      />
-      <div
-        ref={el => {
-          popover = el;
-        }}
-        class={`mode-popover${surface.open() ? ' open' : ''}`}
-        id="mode-popover"
-        role="dialog"
-        aria-label="Settings"
-        aria-modal={surface.open() && sheet() ? 'true' : undefined}
-        tabindex="-1"
-      >
-        <div class="mode-popover-content" id="mode-popover-content">
-          {/* Rendered from the first opening on, settings or not, so the
-              sheet always has its close button. */}
-          <Show when={opening() > 0}>
-            <SheetHeader close={close} />
-          </Show>
-          {/* Keyed on the opening, and taking it as a parameter (Show calls
-              only a child that declares one), so each opening mounts a
-              fresh panel. Until the store is seeded the key is 0, which
-              renders nothing; the seeding then mounts the panel of an
-              opening already under way. */}
-          <Show when={settings() === null ? 0 : opening()} keyed>
-            {(_opening: number) => {
-              const saved = untrack(settings);
-              return saved === null ? null : <SettingsPanel saved={saved} />;
-            }}
-          </Show>
+          <GearIcon size={12} />
+        </button>
+      </TopbarItem>
+      <Portal>
+        {/* Blocks clicks under the popover and dismisses it when clicked. */}
+        <div
+          ref={el => {
+            el.addEventListener('click', close);
+          }}
+          class={`mode-popover-backdrop${surface.open() ? ' open' : ''}`}
+          id="mode-popover-backdrop"
+        />
+        <div
+          ref={el => {
+            popover = el;
+          }}
+          class={`mode-popover${surface.open() ? ' open' : ''}`}
+          id="mode-popover"
+          role="dialog"
+          aria-label="Settings"
+          aria-modal={surface.open() && sheet() ? 'true' : undefined}
+          tabindex="-1"
+        >
+          <div class="mode-popover-content" id="mode-popover-content">
+            {/* Rendered from the first opening on, settings or not, so the
+                sheet always has its close button. */}
+            <Show when={opening() > 0}>
+              <SheetHeader close={close} />
+            </Show>
+            {/* Keyed on the opening, and taking it as a parameter (Show calls
+                only a child that declares one), so each opening mounts a
+                fresh panel. Until the store is seeded the key is 0, which
+                renders nothing; the seeding then mounts the panel of an
+                opening already under way. */}
+            <Show when={settings() === null ? 0 : opening()} keyed>
+              {(_opening: number) => {
+                const saved = untrack(settings);
+                return saved === null ? null : <SettingsPanel saved={saved} />;
+              }}
+            </Show>
+          </div>
         </div>
-      </div>
+      </Portal>
     </>
   );
 }

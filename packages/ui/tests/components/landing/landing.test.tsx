@@ -3,7 +3,7 @@
 
 // The landing page (components/landing/Landing.tsx), mounted as the loader
 // mounts it: the name form, the typing placeholder, the recently visited
-// pills, and the auth and theme controls it moves into its corner.
+// pills, and the auth and theme buttons it renders in its corner.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
@@ -185,9 +185,12 @@ describe('landing page', () => {
     const { view } = mount();
     await settle();
 
-    // Then
+    // Then: the corner, which held the shell's moved controls, now renders
+    // its own (see the corner tests below).
     expect(view.children).toHaveLength(1);
-    expect(shape(nth(view.children, 0))).toBe(shape(oldLandingMarkup()));
+    const landing = nth(view.children, 0).cloneNode(true) as Element;
+    query(landing, '#landing-auth').replaceChildren();
+    expect(shape(landing)).toBe(shape(oldLandingMarkup()));
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
@@ -519,31 +522,66 @@ describe('landing page', () => {
     expect(remove).toHaveBeenCalledWith('pointerdown', added[0]?.[1]);
   });
 
-  it("As a visitor, the auth and theme controls move from the topbar into the page's corner", async () => {
-    // Given
-    document.body.innerHTML = `<div id="topbar"><button id="auth-button"></button><button id="theme-toggle"></button><div id="theme-popover"></div></div>`;
-    const nodes = ['auth-button', 'theme-toggle', 'theme-popover'].map(id => byId(id));
-
+  it("As a visitor, the auth and theme buttons sit in the page's corner, with their surfaces in the body", async () => {
     // When
     mount();
     await settle();
 
-    // Then
+    // Then: the buttons, each in its item wrapper, always inline (there is
+    // no topbar to collapse them into).
     const corner = byId('landing-auth');
-    expect([...corner.children]).toEqual(nodes);
-    expect(byId('topbar').children).toHaveLength(0);
+    expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth', 'theme']);
+    expect(query(corner, '[data-item="auth"] > #auth-button', HTMLButtonElement).disabled).toBe(false);
+    expect(query(corner, '[data-item="theme"] > #theme-toggle')).not.toBeNull();
+    expect(corner.querySelector('.topbar-item-collapsed')).toBeNull();
+    expect(document.getElementById('more-button')).toBeNull();
+    // The menus render through portals, outside the page.
+    expect(byId('theme-popover').parentElement).toBe(document.body);
+    expect(byId('user-popover').parentElement).toBe(document.body);
+    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
+    }
+    expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it('As a visitor, a page without the auth button leaves the theme controls where they are, as before', async () => {
+  it("As a visitor, the corner's theme button opens its menu, and picking a theme applies it and closes the menu", async () => {
     // Given
-    document.body.innerHTML = `<div id="topbar"><button id="theme-toggle"></button><div id="theme-popover"></div></div>`;
-
-    // When
     mount();
     await settle();
 
+    // When
+    click(byId('theme-toggle'));
+    await settle();
+
     // Then
-    expect(byId('landing-auth').children).toHaveLength(0);
-    expect(byId('topbar').children).toHaveLength(2);
+    expect(byId('theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('theme-toggle').getAttribute('aria-expanded')).toBe('true');
+
+    // When
+    click(query(document, '.theme-popover-option[data-theme-option="dark"]'));
+    await settle();
+
+    // Then
+    expect(byId('theme-popover').classList.contains('open')).toBe(false);
+    expect(query(document, '.theme-popover-option[data-theme-option="dark"]').getAttribute('aria-checked')).toBe(
+      'true',
+    );
+    expect(byId('theme-toggle').title).toBe('Theme: Dark');
+  });
+
+  it('As a visitor, leaving the landing page takes its corner buttons and their menus with it', async () => {
+    // Given
+    mount();
+    await settle();
+
+    // When
+    page?.dispose();
+    page = null;
+    await settle();
+
+    // Then
+    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+      expect(document.getElementById(id)).toBeNull();
+    }
   });
 });

@@ -17,7 +17,7 @@ import {
   type OldPermissionsList,
 } from './old-permissions-markup.js';
 import { normalized } from './old-auth-markup.js';
-import { mountMoreMenu, tapMoreRow } from './more-menu-harness.js';
+import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { focusables } from '../../../src/components/focus.js';
 import { byId, must } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
@@ -33,6 +33,7 @@ afterEach(() => {
   cleanups = [];
   resetStores();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 /** The permission a request asks about. */
@@ -738,19 +739,18 @@ describe('PermissionsPopover', () => {
     expect(grants).toEqual([{ label, permission: 'Notifications' }]);
   });
 
-  it("As a mobile user, the More menu's Permissions row opens the popover by clicking the button it looks up by id", async () => {
-    // Given: the real More menu, mounted as its own island.
+  it("As a mobile user, the More menu's Permissions row opens the popover", async () => {
+    // Given: the bar has collapsed the permissions button into the More menu.
     provide();
     setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    cleanups.push(mountMoreMenu());
+    await renderTopbar(() => <PermissionsPopover />, 1);
 
     // When
-    await tapMoreRow('permissions-button');
+    await tapMoreRow('permissions');
     await settleAll();
 
     // Then
-    expect(document.getElementById('more-popover')?.classList.contains('open')).toBe(false);
+    expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
   });

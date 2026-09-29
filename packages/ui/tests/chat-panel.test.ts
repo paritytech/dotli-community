@@ -13,6 +13,7 @@ import type * as TopbarModule from '../src/state/topbar.js';
 import type * as PanelModule from '../src/chat/panel.js';
 import type * as ServiceModule from '../src/chat/service.js';
 import { byId, query } from './support.js';
+import { moreRow, stubTopbarLayout } from './components/shell/topbar-harness.js';
 import { nth } from './helpers/nth.js';
 
 // happy-dom drops a calc() that holds a var(), so the box helper returns plain
@@ -38,21 +39,44 @@ async function loadChatModules(): Promise<{
   service: typeof ServiceModule;
 }> {
   vi.resetModules();
+  await loadStores();
+  const modules = {
+    panel: await import('../src/chat/panel.js'),
+    service: await import('../src/chat/service.js'),
+  };
+  await mountChatButton();
+  return modules;
+}
+
+async function loadStores(): Promise<void> {
   stores = {
     auth: await import('../src/state/auth.js'),
     topbar: await import('../src/state/topbar.js'),
   };
-  return {
-    panel: await import('../src/chat/panel.js'),
-    service: await import('../src/chat/service.js'),
-  };
+}
+
+/** Applies the topbar button's batched Solid updates. */
+let flushUi: () => void = () => undefined;
+let disposeButton: (() => void) | undefined;
+
+/**
+ * Render the topbar's ChatButton (components/shell/ChatButton.tsx) into the
+ * page, from the current module graph, so it follows the same chat-panel
+ * store as the panel. Built without JSX: this file's JSX would bind to the
+ * Solid instance loaded before resetModules.
+ */
+async function mountChatButton(): Promise<void> {
+  const solid = await import('solid-js');
+  const web = await import('@solidjs/web');
+  const { ChatButton } = await import('../src/components/shell/ChatButton.js');
+  disposeButton = web.render(() => solid.createComponent(ChatButton, {}), byId('topbar-slot'));
+  flushUi = solid.flush;
+  flushUi();
 }
 
 function installChatDom(): void {
   document.body.innerHTML = `
-    <button id="chat-button" aria-expanded="false" hidden>
-      <span id="chat-unread-badge" hidden></span>
-    </button>
+    <div id="topbar-slot"></div>
     <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
     <div id="app"><iframe></iframe></div>
   `;
@@ -61,6 +85,13 @@ function installChatDom(): void {
 /** What the auth controller records on Connected and Disconnected. */
 function setLoggedIn(loggedIn: boolean): void {
   stores.auth.setLoggedIn(loggedIn);
+  flushUi();
+}
+
+/** A tap on the chat button, and the button's updates. */
+function clickChat(): void {
+  byId('chat-button').click();
+  flushUi();
 }
 
 function loadProduct(label: string): void {
@@ -92,6 +123,10 @@ describe('chat panel', () => {
   });
 
   afterEach(() => {
+    disposeButton?.();
+    disposeButton = undefined;
+    flushUi = () => undefined;
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -103,35 +138,57 @@ describe('chat panel', () => {
 
     loadProduct('chatless');
     setChatCapability('chatless', false);
+    flushUi();
     expect(button.hidden).toBe(true);
 
     loadProduct('chatty-visible');
     expect(button.hidden).toBe(false);
 
     window.dispatchEvent(new CustomEvent('dotli:product-error'));
+    flushUi();
     expect(button.hidden).toBe(true);
   });
 
-  it("As a user, the chat button works on a page without the More menu's static Chat row", async () => {
-    // Given: the More menu is an island that renders its Chat row from the
-    // chat-panel store, so the panel neither needs nor touches the static
-    // row (installChatDom has none).
-    const { panel } = await loadChatModules();
+  it('As a phone user, the chat button collapses into the More menu, whose Chat row opens the panel', async () => {
+    // Given: a bar with no room for the chat button.
+    vi.resetModules();
+    await loadStores();
+    const panel = await import('../src/chat/panel.js');
+    const solid = await import('solid-js');
+    const web = await import('@solidjs/web');
+    const { ChatButton } = await import('../src/components/shell/ChatButton.js');
+    const { TopbarActions } = await import('../src/components/shell/topbar/TopbarActions.js');
+    stubTopbarLayout(1);
+    disposeButton = web.render(
+      () =>
+        solid.createComponent(TopbarActions, {
+          get children() {
+            return solid.createComponent(ChatButton, {});
+          },
+        }),
+      byId('topbar-slot'),
+    );
+    flushUi = solid.flush;
+    flushUi();
     panel.initChatPanel();
-    const button = byId('chat-button');
+    expect(document.querySelector('#more-popover .more-row[data-item="chat"]')).toBeNull();
 
-    // When
-    loadProduct('chatty-no-row');
+    // When: a product with chat loads, with a session.
+    loadProduct('chatty-more');
 
     // Then
-    expect(button.hidden).toBe(false);
+    expect(moreRow('chat').textContent).toBe('Chat');
 
     // When
-    button.click();
+    byId('more-button').click();
+    flushUi();
+    moreRow('chat').click();
+    flushUi();
 
     // Then
     expect(byId('chat-panel').hidden).toBe(false);
-    expect(button.getAttribute('aria-expanded')).toBe('true');
+    expect(byId('chat-button').getAttribute('aria-expanded')).toBe('true');
+    expect(byId('more-popover').classList.contains('open')).toBe(false);
   });
 
   it('As a user, the chat button is hidden until I log in and hides again on logout', async () => {
@@ -147,7 +204,7 @@ describe('chat panel', () => {
     expect(button.hidden).toBe(false);
 
     // Logging out while the panel is open must also close it.
-    button.click();
+    clickChat();
     expect(byId('chat-panel').hidden).toBe(false);
     setLoggedIn(false);
     expect(button.hidden).toBe(true);
@@ -159,7 +216,7 @@ describe('chat panel', () => {
     panel.initChatPanel();
     loadProduct('chatty-empty');
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => byId('chat-panel-hint').hidden === false);
 
     expect(byId('chat-panel').hidden).toBe(false);
@@ -187,7 +244,7 @@ describe('chat panel', () => {
       icon: '',
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
 
     expect(byId('chat-panel-rooms').hidden).toBe(false);
@@ -249,7 +306,7 @@ describe('chat panel', () => {
       value: { text: 'hello from the app' },
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelector('.chat-room-item') !== null);
     // The panel opens on the room list; enter the room to see messages.
     const roomItem = document.querySelector<HTMLButtonElement>('.chat-room-item');
@@ -323,7 +380,7 @@ describe('chat panel', () => {
       value: { text: 'newer' },
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelectorAll('.chat-room-item').length === 4);
 
     // One recency order across rooms and bots: last message time, falling
@@ -405,7 +462,7 @@ describe('chat panel', () => {
         value: { messageType: 'poll', payload: '0x0102' },
       });
 
-      byId('chat-button').click();
+      clickChat();
       await settle(() => document.querySelector('.chat-room-item') !== null);
       document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
       await settle(() => renders.length === 1);
@@ -491,10 +548,10 @@ describe('chat panel', () => {
     });
 
     const badge = byId('chat-unread-badge');
-    expect(badge.hidden).toBe(false);
+    await settle(() => badge.hidden === false);
     expect(badge.textContent).toBe('1');
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => badge.hidden === true);
     expect(badge.hidden).toBe(true);
   });
@@ -527,9 +584,9 @@ describe('chat panel', () => {
 
     // The topbar badge sums unreads across rooms.
     const badge = byId('chat-unread-badge');
-    expect(badge.textContent).toBe('2');
+    await settle(() => badge.textContent === '2');
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
     const roomBadges = document.querySelectorAll('.chat-room-unread');
     expect(roomBadges).toHaveLength(1);
@@ -558,6 +615,7 @@ describe('chat panel', () => {
 
     // Closing the panel surfaces the remaining unread on the topbar.
     byId('chat-panel-close').click();
+    flushUi();
     expect(badge.hidden).toBe(false);
     expect(badge.textContent).toBe('1');
   });
@@ -570,7 +628,7 @@ describe('chat panel', () => {
     panel.initChatPanel();
     loadProduct('chatty-iframe');
 
-    byId('chat-button').click();
+    clickChat();
     expect(byId('chat-panel').hidden).toBe(false);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('true');
     expect(byId('chat-button').classList.contains('active')).toBe(true);
@@ -584,6 +642,7 @@ describe('chat panel', () => {
 
     await settle(() => document.getElementById('chat-panel-close') !== null);
     byId('chat-panel-close').click();
+    flushUi();
     expect(byId('chat-panel').hidden).toBe(true);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('false');
     // Closed, the frame gets the whole safe box, as a fresh render does.
@@ -596,7 +655,7 @@ describe('chat panel', () => {
     layout.attachProductFrame(query(document, '#app iframe', HTMLIFrameElement));
     panel.initChatPanel();
     loadProduct('chatty-reload');
-    byId('chat-button').click();
+    clickChat();
 
     // A reload renders a fresh frame and hands it to the layout module.
     const fresh = document.createElement('iframe');
@@ -613,10 +672,11 @@ describe('chat panel', () => {
     panel.initChatPanel();
     loadProduct('chatty-escape');
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.getElementById('chat-panel-close') !== null);
     byId('chat-panel-close').focus();
     byId('chat-panel').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    flushUi();
 
     expect(byId('chat-panel').hidden).toBe(true);
     expect(document.activeElement).toBe(byId('chat-button'));
@@ -651,7 +711,7 @@ describe('chat panel', () => {
         value: { messageType: 'poll', payload: '0x01' },
       });
 
-      byId('chat-button').click();
+      clickChat();
       await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
       [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')]
         .find(row => row.textContent.includes('Main'))
@@ -686,7 +746,7 @@ describe('chat panel', () => {
       icon: '',
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => byId('chat-panel-rooms').textContent.includes('First room'));
     document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
@@ -714,7 +774,7 @@ describe('chat panel', () => {
       icon: '',
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelector('.chat-room-item') !== null);
     document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
@@ -753,7 +813,7 @@ describe('chat panel', () => {
       icon: '',
     });
 
-    byId('chat-button').click();
+    clickChat();
     await settle(() => document.querySelector('.chat-room-item') !== null);
     document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
     await settle(() => document.activeElement === byId('chat-panel-input'));
@@ -789,7 +849,7 @@ describe('chat panel', () => {
       return original(readProductId, readRoomId);
     });
     try {
-      byId('chat-button').click();
+      clickChat();
       await settle(() => document.querySelector('.chat-room-item') !== null);
       document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
       await settle(() => byId('chat-panel-rooms').hidden === true);
@@ -821,11 +881,11 @@ describe('chat panel', () => {
       throw new Error('render boom');
     });
     try {
-      byId('chat-button').click();
+      clickChat();
       await settle(() => byId('chat-panel').hidden === true);
       expect(byId('chat-panel').hidden).toBe(true);
 
-      byId('chat-button').click();
+      clickChat();
       await settle(() => document.getElementById('chat-panel-close') !== null);
       expect(byId('chat-panel-close')).not.toBeNull();
     } finally {
@@ -843,17 +903,19 @@ describe('chat panel', () => {
       throw new Error('chunk failed');
     });
     try {
+      await loadStores();
       const panel = await import('../src/chat/panel.js');
       const load = await import('../src/chat/load.js');
+      await mountChatButton();
       panel.initChatPanel();
       loadProduct('chatty-broken');
 
-      byId('chat-button').click();
+      clickChat();
       await load.ensureChatPanel();
       expect(byId('chat-panel').hidden).toBe(true);
       expect(calls).toBe(1);
 
-      byId('chat-button').click();
+      clickChat();
       await load.ensureChatPanel();
       expect(calls).toBe(2);
       expect(byId('chat-panel').hidden).toBe(true);

@@ -7,7 +7,7 @@ import { initTheme } from '../../../src/theme-controller.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
-import { mountMoreMenu, tapMoreRow } from './more-menu-harness.js';
+import { moreRow, renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { mountLandingPage } from '../../helpers/landing.js';
 import { byId } from '../../support.js';
 
@@ -27,6 +27,8 @@ beforeEach(() => {
 
 afterEach(() => {
   resetStores();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function themeButton(): HTMLButtonElement {
@@ -66,6 +68,20 @@ async function renderToggle(
   initTheme();
   await settle();
   return { os: scheme };
+}
+
+/**
+ * The toggle in a topbar with no room for it, so the bar has collapsed it
+ * into the More menu. A collapsed button cannot take focus (CSS hides it),
+ * which happy-dom, without the stylesheet, has to be told.
+ */
+async function renderCollapsedToggle(stored: 'light' | 'dark' | 'system', os: 'light' | 'dark'): Promise<void> {
+  stubColorScheme(os);
+  localStorage.setItem('dotli-theme', stored);
+  await renderTopbar(() => <ThemeToggle />, 1);
+  initTheme();
+  await settle();
+  themeButton().focus = () => undefined;
 }
 
 async function openThemeMenu(stored: 'light' | 'dark' | 'system', os: 'light' | 'dark'): Promise<HTMLButtonElement> {
@@ -392,58 +408,48 @@ describe('ThemeToggle', () => {
     expect(btn.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it("As a mobile user, the More menu's Theme row opens the theme menu by clicking the theme button", async () => {
-    // Given: the real More menu, mounted as its own island.
-    await renderToggle('dark', 'dark');
-    const unmountMore = mountMoreMenu();
+  it("As a mobile user, the More menu's Theme row opens the theme menu", async () => {
+    // Given: the bar has collapsed the theme button into the More menu.
+    await renderCollapsedToggle('dark', 'dark');
 
     // When
-    await tapMoreRow('theme-toggle');
-    await settle();
+    await tapMoreRow('theme');
 
     // Then
-    expect(document.getElementById('more-popover')?.classList.contains('open')).toBe(false);
+    expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(themePopover());
-    unmountMore();
   });
 
   it('As a keyboard user on a phone, choosing Theme in the More menu with the keyboard opens the theme menu on its first option', async () => {
-    // Given: the theme button hidden, as on narrow screens.
-    await renderToggle('dark', 'dark');
-    const unmountMore = mountMoreMenu();
-    themeButton().focus = () => undefined;
-    const themeRow = document.querySelector<HTMLElement>('#more-popover .more-row[data-target="theme-toggle"]');
-    document.getElementById('more-button')?.focus();
+    // Given
+    await renderCollapsedToggle('dark', 'dark');
+    byId('more-button').focus();
 
     // When: Enter opens the More menu, ArrowDown reaches Theme, and Enter
     // picks it (the browser fires the row's click, with detail 0).
     await pressThemeKey('Enter');
     document.activeElement?.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
     await new Promise(resolve => setTimeout(resolve, 0));
+    const themeRow = moreRow('theme');
     while (document.activeElement !== themeRow) {
       await pressThemeKey('ArrowDown');
     }
     await pressThemeKey('Enter');
-    themeRow?.click();
+    themeRow.click();
     await settle();
 
     // Then
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(themeOption('light'));
-    unmountMore();
   });
 
   it('As a mobile user, the theme menu I opened from the More menu takes focus, and Escape hands it back to the More button', async () => {
-    // Given: on narrow screens CSS hides the theme button, so it cannot take
-    // focus.
-    await renderToggle('dark', 'dark');
-    const unmountMore = mountMoreMenu();
-    themeButton().focus = () => undefined;
+    // Given
+    await renderCollapsedToggle('dark', 'dark');
 
     // When
-    await tapMoreRow('theme-toggle');
-    await settle();
+    await tapMoreRow('theme');
 
     // Then: the theme menu took focus, and its keys work.
     expect(isOpen()).toBe(true);
@@ -456,8 +462,7 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.getElementById('more-button'));
-    unmountMore();
+    expect(document.activeElement).toBe(byId('more-button'));
   });
 
   it('As a dotli user whose browser blocks storage, picking a theme still applies it and closes the menu', async () => {
@@ -479,14 +484,10 @@ describe('ThemeToggle', () => {
     expect(document.activeElement).toBe(themeButton());
   });
 
-  it('As a mobile user, picking a theme while the theme button is hidden hands focus to the More button', async () => {
-    // Given: on narrow screens CSS hides the theme button, so it cannot
-    // take focus; the menu is reached through the More button.
-    await openThemeMenu('dark', 'dark');
-    const more = document.createElement('button');
-    more.id = 'more-button';
-    document.body.append(more);
-    themeButton().focus = () => undefined;
+  it('As a mobile user, picking a theme while the bar has collapsed the theme button hands focus to the More button', async () => {
+    // Given
+    await renderCollapsedToggle('dark', 'dark');
+    await tapMoreRow('theme');
 
     // When
     themeOption('light')?.click();
@@ -495,23 +496,21 @@ describe('ThemeToggle', () => {
     // Then
     expect(localStorage.getItem('dotli-theme')).toBe('light');
     expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(more);
-    more.remove();
+    expect(document.activeElement).toBe(byId('more-button'));
   });
 
-  it('As a visitor on the landing page, the theme menu still works after the page moves the button and menu out of the shell', async () => {
-    // Given: the landing page moves both into its top-right corner, after
-    // the auth button, outside the root Solid rendered them in.
-    await renderToggle('light', 'dark');
-    const authButton = document.createElement('button');
-    authButton.id = 'auth-button';
-    document.body.append(authButton);
+  it("As a visitor on the landing page, the page's own theme button and menu work in its corner", async () => {
+    // Given: the landing page renders its own theme button, outside any
+    // topbar, and the menu in the body.
+    stubColorScheme('dark');
+    localStorage.setItem('dotli-theme', 'light');
     const landing = mountLandingPage();
     await settle();
-    const landingAuth = document.getElementById('landing-auth');
-    expect(themeButton().parentElement).toBe(landingAuth);
-    expect(themePopover().parentElement).toBe(landingAuth);
+    initTheme();
+    await settle();
     const btn = themeButton();
+    expect(btn.closest('#landing-auth')).not.toBeNull();
+    expect(themePopover().parentElement).toBe(document.body);
 
     // When
     mouseClick(btn);

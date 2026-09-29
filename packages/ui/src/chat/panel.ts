@@ -10,23 +10,17 @@
 // right dock. Its contents are Solid components loaded on first use
 // (components/chat/ChatPanel.tsx).
 
-import {
-  chatButtonVisible,
-  chatPanelStore,
-  chatUnreadLabel,
-  initChatPanelState,
-  setChatPanelOpen,
-  totalChatUnread,
-} from '../state/chat-panel.js';
+import { chatButtonVisible, chatPanelStore, initChatPanelState, setChatPanelOpen } from '../state/chat-panel.js';
 import { setChatWidth } from '../product-frame-layout.js';
 import { ensureChatPanel, prefetchChatPanel } from './load.js';
 
-/** Wire the chat button + panel. Called once from `initTopBar`. */
+/**
+ * Wire the chat panel to its state. Called once from `initTopBar`. The
+ * topbar button is the ChatButton topbar item (components/shell/).
+ */
 export function initChatPanel(): void {
-  const button = document.getElementById('chat-button');
-  const badge = document.getElementById('chat-unread-badge');
   const panel = document.getElementById('chat-panel');
-  if (button === null || badge === null || panel === null) {
+  if (panel === null) {
     return;
   }
 
@@ -36,14 +30,6 @@ export function initChatPanel(): void {
   let prefetched = false;
   const sync = (): void => {
     const state = chatPanelStore.get();
-    const visible = chatButtonVisible(state);
-    button.hidden = !visible;
-    // While the panel is open the room rows carry their own badges.
-    const unread = state.open ? 0 : totalChatUnread(state);
-    badge.hidden = unread === 0;
-    badge.textContent = chatUnreadLabel(unread);
-    button.setAttribute('aria-expanded', state.open ? 'true' : 'false');
-    button.classList.toggle('active', state.open);
     panel.hidden = !state.open;
     // The auto-hidden topbar frees its strip; stretch the panel into it.
     panel.classList.toggle('topbar-hidden', !state.topbarVisible);
@@ -55,7 +41,7 @@ export function initChatPanel(): void {
       setChatWidth(state.open ? state.width : 0);
     }
     wasOpen = state.open;
-    if (visible && !prefetched) {
+    if (chatButtonVisible(state) && !prefetched) {
       prefetched = true;
       prefetchChatPanel();
     }
@@ -66,13 +52,10 @@ export function initChatPanel(): void {
   chatPanelStore.subscribe(sync);
   sync();
 
-  button.addEventListener('click', () => {
-    setChatPanelOpen(!chatPanelStore.get().open);
-  });
+  // The chat button takes focus back as the panel closes.
   panel.addEventListener('keydown', (event: KeyboardEvent) => {
     if (event.key === 'Escape') {
       setChatPanelOpen(false);
-      button.focus();
     }
   });
 }

@@ -79,7 +79,14 @@ beforeEach(() => {
   sentry.captureException.mockReset();
   // Shaped like apps/host/index.html: the topbar, then `#app` holding the
   // static loading screen.
-  document.body.innerHTML = `<div id="topbar"><button id="auth-button"></button><button id="theme-toggle"></button><div id="theme-popover"></div></div><div id="app"><div class="loading" id="app-loading"></div></div>`;
+  // Shaped like apps/host/index.html: the topbar with its action group, then
+  // `#app` holding the static loading screen.
+  document.body.innerHTML = [
+    '<div id="topbar"><div class="topbar-right" id="topbar-actions">',
+    '<button id="auth-button"></button><button id="theme-toggle"></button>',
+    '</div></div>',
+    '<div id="app"><div class="loading" id="app-loading"></div></div>',
+  ].join('');
 });
 
 afterEach(() => {
@@ -120,12 +127,34 @@ describe('landing loader', () => {
     expect([...app().children].map(el => el.id)).toEqual(['app-view']);
     const view = must(byId('app-view'), '#app-view');
     expect(view.firstElementChild?.className).toBe('landing');
-    expect([...must(byId('landing-auth'), '#landing-auth').children].map(el => el.id)).toEqual([
-      'auth-button',
-      'theme-toggle',
-      'theme-popover',
-    ]);
+    // The topbar's action group went: the page renders its own auth and
+    // theme buttons, whose menus it portals into the body, so every id is
+    // there once.
+    expect(byId('topbar-actions')).toBeNull();
+    expect(
+      [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
+    ).toEqual(['auth', 'theme']);
+    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
+    }
+    expect(byId('topbar')?.contains(byId('auth-button'))).toBe(false);
     expect(sentry.captureException).not.toHaveBeenCalled();
+  });
+
+  it('As a visitor, the landing page disposes the topbar island, when it is up, before taking its place', async () => {
+    // Given: the topbar island, as a root.
+    await importFresh();
+    const disposeTopbar = vi.fn();
+    roots.registerAppRoot('island:topbar', disposeTopbar);
+
+    // When
+    await load.showLanding();
+    await settle();
+
+    // Then
+    expect(disposeTopbar).toHaveBeenCalledTimes(1);
+    expect(byId('topbar-actions')).toBeNull();
+    expect(byId('landing-auth')?.querySelector('#auth-button')).not.toBeNull();
   });
 
   it('As a visitor, the landing page mounts once however often it is asked for', async () => {

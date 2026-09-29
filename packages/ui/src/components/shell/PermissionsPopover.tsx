@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
-import type { JSX } from '@solidjs/web';
+import { Portal, type JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
   getPermissionStatuses,
@@ -18,6 +18,8 @@ import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import { PermissionRow } from './PermissionRow.js';
 import { createPopover } from './popover.js';
+import { TOPBAR_PRIORITY } from './topbar/fit.js';
+import { TopbarItem } from './topbar/TopbarItem.js';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
@@ -38,10 +40,30 @@ function currentLabel(): string | null {
   return product.status === 'loaded' ? product.label : null;
 }
 
+/** The permissions' lock, on the button and the More menu row. */
+function LockIcon(props: { size: number }): JSX.Element {
+  return (
+    <svg
+      width={props.size}
+      height={props.size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}
+
 /**
  * The permissions button (`#permissions-button`), its popover
- * (`#permissions-popover`) and the popover's backdrop, a shell island (see
- * islands.tsx) swapped in for Shell.tsx's static markup after boot.
+ * (`#permissions-popover`) and the popover's backdrop, both rendered into the
+ * body, an item of the topbar island (see islands.tsx) swapped in for
+ * Shell.tsx's static markup after boot.
  *
  * The popover lists every permission of the loaded product (productStore)
  * with a dropdown to allow, deny or reset it, through the async API in
@@ -54,8 +76,8 @@ function currentLabel(): string | null {
  * blocking modal close the popover, a non-modal one (createPopover's
  * `popover` mode).
  * An open row dropdown takes Escape first: the first Escape closes the
- * dropdown, the next the popover. The mobile "More" menu's Permissions row
- * opens it by dispatching a click on the button, looked up by id.
+ * dropdown, the next the popover. The More menu's Permissions row opens it
+ * while the topbar has collapsed the button.
  */
 export function PermissionsPopover(): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -258,82 +280,80 @@ export function PermissionsPopover(): JSX.Element {
 
   return (
     <>
-      <button
-        ref={el => {
-          button = el;
-          el.addEventListener('click', surface.toggle);
-        }}
-        id="permissions-button"
-        class={['topbar-btn', { 'has-grants': hasGrants() }]}
-        title="Permissions"
-        aria-label="Permissions"
-        aria-haspopup="dialog"
-        aria-expanded={surface.open() ? 'true' : 'false'}
-        aria-controls="permissions-popover"
+      <TopbarItem
+        name="permissions"
+        label="Permissions"
+        icon={() => <LockIcon size={14} />}
+        priority={TOPBAR_PRIORITY.permissions}
+        activate={surface.toggle}
       >
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <button
+          ref={el => {
+            button = el;
+            el.addEventListener('click', surface.toggle);
+          }}
+          id="permissions-button"
+          class={['topbar-btn', { 'has-grants': hasGrants() }]}
+          title="Permissions"
+          aria-label="Permissions"
+          aria-haspopup="dialog"
+          aria-expanded={surface.open() ? 'true' : 'false'}
+          aria-controls="permissions-popover"
         >
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-        </svg>
-      </button>
-      {/* Blocks clicks under the popover and dismisses it when clicked, as
-          the settings menu's backdrop does. */}
-      <div
-        ref={el => {
-          el.addEventListener('click', () => {
-            surface.setOpen(false);
-          });
-        }}
-        class={['permissions-popover-backdrop', { open: surface.open() }]}
-        id="permissions-popover-backdrop"
-      />
-      <div
-        ref={el => {
-          popover = el;
-        }}
-        class={['permissions-popover', { open: surface.open() }]}
-        id="permissions-popover"
-        role="dialog"
-        aria-label="Permissions"
-        tabindex="-1"
-      >
-        <div class="permissions-popover-header">Permissions</div>
-        <div class="permissions-popover-list" id="permissions-popover-list">
-          <Show when={surface.open()}>
-            <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
-            <Show when={statuses()}>
-              {list => (
-                <>
-                  <For each={ALL_PERMISSIONS}>
-                    {(perm, index) => (
-                      <PermissionRow
-                        perm={perm}
-                        status={list()[index()] ?? 'ask'}
-                        open={openRow() === perm.name}
-                        toggleMenu={toggleDropdown}
-                        choose={choose}
-                        menuRef={el => {
-                          menu = el;
-                        }}
-                      />
-                    )}
-                  </For>
-                  <div class="permissions-popover-footer">Changing permissions will reload the app.</div>
-                </>
-              )}
+          <LockIcon size={12} />
+        </button>
+      </TopbarItem>
+      <Portal>
+        {/* Blocks clicks under the popover and dismisses it when clicked, as
+            the settings menu's backdrop does. */}
+        <div
+          ref={el => {
+            el.addEventListener('click', () => {
+              surface.setOpen(false);
+            });
+          }}
+          class={['permissions-popover-backdrop', { open: surface.open() }]}
+          id="permissions-popover-backdrop"
+        />
+        <div
+          ref={el => {
+            popover = el;
+          }}
+          class={['permissions-popover', { open: surface.open() }]}
+          id="permissions-popover"
+          role="dialog"
+          aria-label="Permissions"
+          tabindex="-1"
+        >
+          <div class="permissions-popover-header">Permissions</div>
+          <div class="permissions-popover-list" id="permissions-popover-list">
+            <Show when={surface.open()}>
+              <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
+              <Show when={statuses()}>
+                {list => (
+                  <>
+                    <For each={ALL_PERMISSIONS}>
+                      {(perm, index) => (
+                        <PermissionRow
+                          perm={perm}
+                          status={list()[index()] ?? 'ask'}
+                          open={openRow() === perm.name}
+                          toggleMenu={toggleDropdown}
+                          choose={choose}
+                          menuRef={el => {
+                            menu = el;
+                          }}
+                        />
+                      )}
+                    </For>
+                    <div class="permissions-popover-footer">Changing permissions will reload the app.</div>
+                  </>
+                )}
+              </Show>
             </Show>
-          </Show>
+          </div>
         </div>
-      </div>
+      </Portal>
     </>
   );
 }

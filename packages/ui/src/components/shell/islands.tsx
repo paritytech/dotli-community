@@ -22,15 +22,17 @@ import { mountRoot } from '../../mount/root.js';
 import { adoptLoadingScreen } from '../../loading-controller.js';
 import { getLoadingState } from '../../state/loading.js';
 import { FOCUSABLE, focusFirst } from '../focus.js';
+import { TOPBAR_ACTIONS_ID } from '../../mount/topbar-ids.js';
 import { AuthButton } from './AuthButton.js';
 import { AuthModal } from './AuthModal.js';
 import { ChainsPopover } from './ChainsPopover.js';
+import { ChatButton } from './ChatButton.js';
 import { LoadingScreen } from './LoadingScreen.js';
-import { MoreMenu } from './MoreMenu.js';
 import { OfflineBanner } from './OfflineBanner.js';
 import { PermissionsPopover } from './PermissionsPopover.js';
 import { SettingsPopover } from './SettingsPopover.js';
 import { ThemeToggle } from './ThemeToggle.js';
+import { TopbarActions } from './topbar/TopbarActions.js';
 import { UrlPill } from './UrlPill.js';
 
 /** The child indexes that lead from `ancestor` down to `el`. */
@@ -85,10 +87,9 @@ function carryFocus(focused: Element, stale: Element, fresh: Element): void {
  * the boundary either leaves them frozen in the page or takes them out,
  * leaving a hole. Once mountRoot has reported the error and disposed the
  * island, each static node goes back where its live one was, focus with it,
- * and `onLateFailure` hears the
- * island's name, so the loader can fall back as for an island that failed to
- * mount.
- * Returns whether the island was swapped in.
+ * and `onLateFailure` hears the island's name, so the loader can fall back
+ * as for an island that failed to mount. Returns whether the island was
+ * swapped in.
  */
 function mountIsland(
   name: string,
@@ -245,35 +246,35 @@ export function mountIslands(onLateFailure?: (name: string) => void): string[] {
       failed.push(name);
     }
   };
-  mount('theme', () => <ThemeToggle />, ['theme-toggle', 'theme-popover']);
   // The URL bar element itself is swapped (main.ts only checks that
   // `#topbar-url` exists and writes the url-pill store, never the element).
   mount('url-pill', () => <UrlPill />, ['topbar-url']);
   mount('offline-banner', () => <OfflineBanner />, ['offline-banner']);
-  // The static auth button stays disabled until this swap (it is none of
-  // the loader's click triggers). The popover and the modal render the auth
-  // stores, which the eager auth controller has kept since boot.
-  mount('auth-button', () => <AuthButton />, ['auth-button', 'user-popover']);
+  // The action group, one island: its items in bar order, whose surfaces
+  // render through portals into the body, and the More menu the bar
+  // collapses them into. The static auth button stays disabled until this
+  // swap (it is none of the loader's click triggers); the other static
+  // buttons are enabled, so a click on one before the swap is held back and
+  // replayed by the loader, on the live button with the same id. The
+  // landing page has taken the group out of the page, and renders its own
+  // auth and theme buttons.
+  if (document.getElementById(TOPBAR_ACTIONS_ID) !== null) {
+    mount(
+      'topbar',
+      () => (
+        <TopbarActions>
+          <AuthButton />
+          <ChainsPopover />
+          <ChatButton />
+          <PermissionsPopover />
+          <ThemeToggle />
+          <SettingsPopover />
+        </TopbarActions>
+      ),
+      [TOPBAR_ACTIONS_ID],
+    );
+  }
   mount('auth-modal', () => <AuthModal />, ['auth-modal-backdrop']);
-  // The static permissions button is enabled, so a click on it before this
-  // swap is held back and replayed by the loader (one of its triggers).
-  mount('permissions', () => <PermissionsPopover />, [
-    'permissions-button',
-    'permissions-popover-backdrop',
-    'permissions-popover',
-  ]);
-  // Also a loader trigger. The static button is shown or not by the host
-  // (setChainsButtonVisible) until this swap; the island reads the store
-  // that call also writes.
-  mount('chains', () => <ChainsPopover />, ['chains-button', 'chains-popover']);
-  // Also a loader trigger, and the mobile "More" menu's Settings row
-  // forwards its tap to it. The popover renders the settings store the host
-  // seeds at boot.
-  mount('settings', () => <SettingsPopover />, ['mode-button', 'mode-popover-backdrop', 'mode-popover']);
-  // Also a loader trigger. Its rows forward a tap to the buttons above by
-  // id at click time, so they reach the live islands; the Chat row follows
-  // the chat-panel store, which chat/panel.ts keeps from boot.
-  mount('more', () => <MoreMenu />, ['more-button', 'more-popover']);
   // Not a loader trigger: nothing on it is clickable. The one island that is
   // also an app root (see mountLoadingIsland).
   if (!mountLoadingIsland(onLateFailure)) {
