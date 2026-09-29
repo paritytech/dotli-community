@@ -383,7 +383,7 @@ describe("landing page", () => {
     expect(recent.hidden).toBe(false);
     expect(recent.children).toHaveLength(1);
     expect(recent.children[0].className).toBe("landing-recent-list");
-    expect(items().map((item) => item.dataset.label)).toEqual([
+    expect(items().map((item) => item.dataset["label"])).toEqual([
       "alpha",
       "beta",
     ]);
@@ -428,7 +428,7 @@ describe("landing page", () => {
 
     // Then
     expect(document.querySelector("img")).toBeNull();
-    expect(items()[0].dataset.label).toBe(hostile);
+    expect(items()[0].dataset["label"]).toBe(hostile);
     expect(
       items()[0].querySelector(".landing-recent-label")?.firstChild
         ?.textContent,
@@ -448,7 +448,7 @@ describe("landing page", () => {
     // Then
     expect(event.defaultPrevented).toBe(true);
     expect(recents.forget).toHaveBeenCalledWith("alpha");
-    expect(items().map((item) => item.dataset.label)).toEqual(["beta"]);
+    expect(items().map((item) => item.dataset["label"])).toEqual(["beta"]);
     expect(byId("dotli-recent").hidden).toBe(false);
 
     // When

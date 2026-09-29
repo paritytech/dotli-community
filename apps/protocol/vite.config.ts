@@ -21,32 +21,32 @@ const OUT_DIR = "dist";
 const ROLLDOWN_OPTIONS = { experimental: { lazyBarrel: true } };
 
 function sentry(): PluginOption {
-  if (process.env.VITE_METRICS !== "true") return false;
-  if (!process.env.SENTRY_AUTH_TOKEN) return false;
+  if (process.env["VITE_METRICS"] !== "true") return false;
+  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
     telemetry: false,
-    authToken: process.env.SENTRY_AUTH_TOKEN,
-    release: { name: process.env.VITE_COMMIT_SHA },
+    authToken: process.env["SENTRY_AUTH_TOKEN"],
+    release: { name: process.env["VITE_COMMIT_SHA"] },
     sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
   });
 }
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env.VITE_APP_URL
-    ? new URL(process.env.VITE_APP_URL).pathname
+  base: process.env["VITE_APP_URL"]
+    ? new URL(process.env["VITE_APP_URL"]).pathname
     : "/",
   plugins: [
-    stripAnalytics(process.env.VITE_METRICS !== "true"),
+    stripAnalytics(process.env["VITE_METRICS"] !== "true"),
     wasm(),
     runtimeNetworkConfigScript(),
     buildInfo("protocol"),
     sentry(),
   ],
   worker: {
-    plugins: () => [stripAnalytics(process.env.VITE_METRICS !== "true")],
+    plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
     rolldownOptions: ROLLDOWN_OPTIONS,
   },
   define: {

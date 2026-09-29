@@ -20,7 +20,7 @@ import { METHOD_TIMEOUTS } from "@dotli/protocol";
 
 import { PORT, TLD_SUFFIX } from "../env.js";
 
-const DOMAIN = process.env.COMBO_DOMAIN ?? "host-playground";
+const DOMAIN = process.env["COMBO_DOMAIN"] ?? "host-playground";
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 // The drop to a trusted provider is gated: the first sighting of a failure

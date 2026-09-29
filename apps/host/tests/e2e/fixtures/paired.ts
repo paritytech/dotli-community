@@ -9,9 +9,9 @@ import {
   initializeChainBackend,
 } from "../helpers/chain-backend.js";
 
-const PORT = process.env.PORT ?? "5173";
-const HOST = process.env.E2E_HOST ?? "host-playground";
-const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
+const PORT = process.env["PORT"] ?? "5173";
+const HOST = process.env["E2E_HOST"] ?? "host-playground";
+const PRODUCT_URL = process.env["E2E_PRODUCT_URL"];
 
 // Restored-session badge wait. The signing host was paired once in
 // globalSetup, the storageState restores the host's auth on every context,

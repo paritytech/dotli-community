@@ -699,7 +699,7 @@ describe("AuthModal QR", () => {
       "#auth-modal-qr canvas",
     );
     expect(canvases).toHaveLength(1);
-    expect(canvases[0].dataset.qrPayload).toBe("polkadotapp://second");
+    expect(canvases[0].dataset["qrPayload"]).toBe("polkadotapp://second");
   });
 
   it("As a user who scanned, then was shown a new code, the first code's late drawing never shows", async () => {
@@ -731,7 +731,7 @@ describe("AuthModal QR", () => {
     // Then
     expect(
       document.querySelector<HTMLCanvasElement>("#auth-modal-qr canvas")
-        ?.dataset.qrPayload,
+        ?.dataset["qrPayload"],
     ).toBe("polkadotapp://second");
   });
 

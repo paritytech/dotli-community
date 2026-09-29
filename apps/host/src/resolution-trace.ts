@@ -55,7 +55,8 @@ const DEFAULT_SAMPLE_RATE = 0.2;
 
 function sampleRate(): number {
   const raw = Number(
-    (import.meta.env.VITE_RESOLUTION_SAMPLE_RATE as string | undefined) ?? "",
+    (import.meta.env["VITE_RESOLUTION_SAMPLE_RATE"] as string | undefined) ??
+      "",
   );
   return Number.isFinite(raw) && raw >= 0 && raw <= 1
     ? raw
@@ -411,46 +412,50 @@ function chainAttributes(
     stall_count: state.stallCount,
   };
   if (state.dbCache !== null) {
-    attrs.db_cache = state.dbCache;
+    attrs["db_cache"] = state.dbCache;
   }
   if (state.firstPeerMs !== null) {
-    attrs.time_to_first_peer_ms = state.firstPeerMs;
+    attrs["time_to_first_peer_ms"] = state.firstPeerMs;
   }
   if (state.readyMs !== null) {
-    attrs.time_to_ready_ms = state.readyMs;
+    attrs["time_to_ready_ms"] = state.readyMs;
   }
   if (state.stallReasons.size > 0) {
-    attrs.stall_reasons = [...state.stallReasons].join(",");
+    attrs["stall_reasons"] = [...state.stallReasons].join(",");
   }
   if (state.warpTarget !== null) {
-    attrs.warp_target = state.warpTarget;
+    attrs["warp_target"] = state.warpTarget;
     if (state.warpAt !== null) {
-      attrs.warp_at = state.warpAt;
+      attrs["warp_at"] = state.warpAt;
     }
     if (state.warpFrom !== null && state.warpAt !== null) {
-      attrs.warp_from = state.warpFrom;
-      attrs.warp_blocks = state.warpAt - state.warpFrom;
+      attrs["warp_from"] = state.warpFrom;
+      attrs["warp_blocks"] = state.warpAt - state.warpFrom;
     }
   }
   const peers = state.peers;
   if (peers !== null && peers.length > 0) {
     const heights = peers.map((peer) => peer.bestNumber).sort((a, b) => a - b);
     const median = heights[Math.floor(heights.length / 2)];
-    attrs.peers_count = peers.length;
-    attrs.peers_authority = peers.filter(
+    attrs["peers_count"] = peers.length;
+    attrs["peers_authority"] = peers.filter(
       (peer) => peer.roles === "AUTHORITY",
     ).length;
-    attrs.peers_best_median = median;
+    attrs["peers_best_median"] = median;
     // Peer ids are the public libp2p identities of infrastructure nodes,
     // published in chain specs. They name a remote server, never the visitor.
-    attrs.peers_ids = peers
+    // Peer ids are the public libp2p identities of infrastructure nodes,
+    // published in chain specs. They name a remote server, never the visitor.
+    attrs["peers_ids"] = peers
       .map((peer) => peer.peerId)
       .join(",")
       .slice(0, 1000);
     if (state.warpTarget !== null) {
       // How far behind the peers of the chain were. A lag near zero says the
       // network was fine and the time went somewhere else.
-      attrs.peer_best_lag = state.warpTarget - median;
+      // How far behind the peers of the chain were. A lag near zero says the
+      // network was fine and the time went somewhere else.
+      attrs["peer_best_lag"] = state.warpTarget - median;
     }
   }
   return attrs;

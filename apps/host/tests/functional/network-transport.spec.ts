@@ -113,7 +113,7 @@ for (const [label, backend, expected] of [
     // nothing to do with light clients. The Functional job sets it on both the
     // build and the run.
     test.skip(
-      process.env.VITE_METRICS !== "true",
+      process.env["VITE_METRICS"] !== "true",
       "needs a VITE_METRICS=true build",
     );
     test.setTimeout(TIMEOUT_MS * 4);

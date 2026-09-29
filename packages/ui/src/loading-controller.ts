@@ -665,7 +665,7 @@ export function listenForSandboxStatus(): void {
     if (
       data === null ||
       typeof data !== "object" ||
-      data.type !== "dotli:loading-status"
+      data["type"] !== "dotli:loading-status"
     ) {
       return;
     }
@@ -675,7 +675,7 @@ export function listenForSandboxStatus(): void {
     // The progress prose the sandbox writes is written for a developer reading
     // the console, so it is left there. The stage messages narrate this step
     // to the user, and `done` is the part the loading screen acts on.
-    if (data.done === true) {
+    if (data["done"] === true) {
       dismissLoading();
       for (const cb of sandboxDoneCallbacks.splice(0)) {
         cb();

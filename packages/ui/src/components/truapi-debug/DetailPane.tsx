@@ -68,7 +68,7 @@ export function DetailPane(props: {
         const pair = (e.target as HTMLElement).closest<HTMLElement>(
           ".td-detail-pair",
         );
-        const seqAttr = pair?.dataset.seq;
+        const seqAttr = pair?.dataset["seq"];
         if (seqAttr !== undefined) {
           props.onSelectPair(Number(seqAttr));
         }

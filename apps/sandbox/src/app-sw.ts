@@ -83,8 +83,9 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed as ArrayBuffer | undefined;
-    const idx = data.index as { p: string; o: number; l: number }[] | undefined;
+    const packed = data["packed"] as ArrayBuffer | undefined;
+    const idx = data["index"] as
+      { p: string; o: number; l: number }[] | undefined;
 
     if (packed === undefined || idx === undefined) {
       if (event.source) {
@@ -245,7 +246,8 @@ function lookupArchive(
 /** Inject the sandbox checker script into HTML, inlined for the SW context. */
 function injectSandboxScript(html: string): string {
   if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) === undefined
+    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) ===
+    undefined
   ) {
     return html;
   }

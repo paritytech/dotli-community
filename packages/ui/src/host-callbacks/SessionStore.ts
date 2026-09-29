@@ -93,29 +93,31 @@ function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
   }
   const state = parsed as Record<string, unknown>;
   if (
-    state.connected !== true ||
-    !isOptionalString(state.publicKey) ||
-    !isOptionalString(state.identityAccountId) ||
-    !isOptionalString(state.liteUsername) ||
-    !isOptionalString(state.fullUsername) ||
-    !isOptionalString(state.primaryUsername)
+    state["connected"] !== true ||
+    !isOptionalString(state["publicKey"]) ||
+    !isOptionalString(state["identityAccountId"]) ||
+    !isOptionalString(state["liteUsername"]) ||
+    !isOptionalString(state["fullUsername"]) ||
+    !isOptionalString(state["primaryUsername"])
   ) {
     return null;
   }
   return {
     connected: true,
-    ...(state.publicKey !== undefined ? { publicKey: state.publicKey } : {}),
-    ...(state.identityAccountId !== undefined
-      ? { identityAccountId: state.identityAccountId }
+    ...(state["publicKey"] !== undefined
+      ? { publicKey: state["publicKey"] }
       : {}),
-    ...(state.liteUsername !== undefined
-      ? { liteUsername: state.liteUsername }
+    ...(state["identityAccountId"] !== undefined
+      ? { identityAccountId: state["identityAccountId"] }
       : {}),
-    ...(state.fullUsername !== undefined
-      ? { fullUsername: state.fullUsername }
+    ...(state["liteUsername"] !== undefined
+      ? { liteUsername: state["liteUsername"] }
       : {}),
-    ...(state.primaryUsername !== undefined
-      ? { primaryUsername: state.primaryUsername }
+    ...(state["fullUsername"] !== undefined
+      ? { fullUsername: state["fullUsername"] }
+      : {}),
+    ...(state["primaryUsername"] !== undefined
+      ? { primaryUsername: state["primaryUsername"] }
       : {}),
   };
 }

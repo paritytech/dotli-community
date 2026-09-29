@@ -9,7 +9,7 @@ import { baseConfig, previewServer } from "../playwright.base.config.js";
 // workers only add concurrent downloads to the same bottleneck. On CI,
 // 2 workers took as long as 1 and failed 11 tests when the gateway slowed
 // down. Raise FUNCTIONAL_WORKERS once paritytech/devops#5734 is fixed.
-const WORKERS = Number(process.env.FUNCTIONAL_WORKERS ?? "1");
+const WORKERS = Number(process.env["FUNCTIONAL_WORKERS"] ?? "1");
 
 export default defineConfig({
   ...baseConfig,

@@ -829,7 +829,7 @@ describe("chat panel", () => {
       tag: "Text",
       value: { text: "ping" },
     });
-    expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+    expect(state.chatPanelStore.get().unreadByRoom["main"]).toBe(1);
 
     // Gate the room's message read so it resolves only after the panel has
     // already closed, the way a slow IndexedDB read would.
@@ -858,7 +858,7 @@ describe("chat panel", () => {
 
       // The read resolved after the panel closed: it must not have marked
       // the room seen behind the user's back.
-      expect(state.chatPanelStore.get().unreadByRoom.main).toBe(1);
+      expect(state.chatPanelStore.get().unreadByRoom["main"]).toBe(1);
     } finally {
       readSpy.mockRestore();
     }

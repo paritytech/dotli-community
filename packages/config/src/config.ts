@@ -43,12 +43,13 @@ const isLocalEnv =
  */
 function configuredBaseDomain(): string | null {
   const enabled =
-    ((import.meta as { env?: Record<string, string | undefined> }).env
-      ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
+    ((import.meta as { env?: Record<string, string | undefined> }).env?.[
+      "VITE_RUNTIME_NETWORK_CONFIG"
+    ] ?? "") === "true";
   if (!enabled) {
     return null;
   }
-  const raw = (globalThis as Record<string, unknown>).__DOTLI_NETWORK__;
+  const raw = (globalThis as Record<string, unknown>)["__DOTLI_NETWORK__"];
   if (typeof raw !== "object" || raw === null) {
     return null;
   }
@@ -129,11 +130,11 @@ export function isSandboxOrigin(origin: string): boolean {
  *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
  *  When unset, the default Paseo relay chain is reused. */
 export const SS_RELAY_CHAIN: string | undefined =
-  (import.meta.env.VITE_SS_RELAY_CHAIN as string | undefined) ?? undefined;
+  (import.meta.env["VITE_SS_RELAY_CHAIN"] as string | undefined) ?? undefined;
 
 // Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
 export const DEBUG =
-  (import.meta.env.VITE_APP_DEBUG as string | undefined) === "true";
+  (import.meta.env["VITE_APP_DEBUG"] as string | undefined) === "true";
 
 /**
  * Most bytes of content blocks the host keeps between page loads. After each

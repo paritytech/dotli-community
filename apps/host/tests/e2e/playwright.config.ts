@@ -27,7 +27,7 @@ try {
   /* no .env, env must already be set */
 }
 
-const localProductUrl = process.env.E2E_PRODUCT_URL;
+const localProductUrl = process.env["E2E_PRODUCT_URL"];
 
 // Stale-dist guard. The preview server serves built artifacts from
 // `apps/{host,sandbox,protocol}/dist`. If those are older than the lockfile
@@ -35,7 +35,7 @@ const localProductUrl = process.env.E2E_PRODUCT_URL;
 // look like obscure SDK byte-parity bugs but the fix is `npm run build`. CI
 // is unaffected because it always builds fresh. This only fires for local
 // repeat runs.
-if (process.env.CI !== "true") {
+if (process.env["CI"] !== "true") {
   try {
     const lockMtime = statSync(resolve(repoRoot, "package-lock.json")).mtimeMs;
     for (const app of ["host", "sandbox", "protocol"]) {
@@ -60,7 +60,7 @@ if (process.env.CI !== "true") {
 
 const dotliWebServer = {
   command: "node ../../../../scripts/preview-server.ts",
-  url: `http://localhost:${process.env.PORT ?? "5173"}`,
+  url: `http://localhost:${process.env["PORT"] ?? "5173"}`,
   reuseExistingServer: true,
   timeout: 30_000,
 };
@@ -79,7 +79,7 @@ if (localProductUrl !== undefined) {
     );
   }
   const hostPlaygroundRoot = resolve(
-    process.env.E2E_PRODUCT_REPO ??
+    process.env["E2E_PRODUCT_REPO"] ??
       resolve(repoRoot, "../../../host-playground"),
   );
   if (!existsSync(resolve(hostPlaygroundRoot, "package.json"))) {

@@ -134,7 +134,7 @@ describe("ThemeToggle", () => {
     const options = Array.from(
       popover.querySelectorAll<HTMLButtonElement>(".theme-popover-option"),
     );
-    expect(options.map((o) => o.dataset.themeOption)).toEqual([
+    expect(options.map((o) => o.dataset["themeOption"])).toEqual([
       "light",
       "dark",
       "system",

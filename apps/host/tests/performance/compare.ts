@@ -565,9 +565,9 @@ if (markdown) {
   sections.push("");
   sections.push(
     (() => {
-      const sha = process.env.GITHUB_SHA;
-      const server = process.env.GITHUB_SERVER_URL ?? "https://github.com";
-      const repo = process.env.GITHUB_REPOSITORY ?? "";
+      const sha = process.env["GITHUB_SHA"];
+      const server = process.env["GITHUB_SERVER_URL"] ?? "https://github.com";
+      const repo = process.env["GITHUB_REPOSITORY"] ?? "";
       const commitRef =
         sha !== undefined && sha !== "" && repo !== ""
           ? `[${sha.slice(0, 7)}](${server}/${repo}/commit/${sha})`

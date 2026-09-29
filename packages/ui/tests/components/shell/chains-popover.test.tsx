@@ -351,7 +351,7 @@ describe("The network popover island", () => {
     expect(
       [
         ...document.querySelectorAll<HTMLElement>(".chains-bar[data-block]"),
-      ].map((m) => m.dataset.block),
+      ].map((m) => m.dataset["block"]),
     ).toEqual(["11", "12"]);
     expect(document.querySelector(".chains-group-peers")?.textContent).toBe(
       "2 peers",
@@ -662,7 +662,7 @@ describe("The network popover island, on network updates", () => {
   function shownBlocks(): string[] {
     return [
       ...document.querySelectorAll<HTMLElement>(".chains-bar[data-block]"),
-    ].map((bar) => bar.dataset.block ?? "");
+    ].map((bar) => bar.dataset["block"] ?? "");
   }
 
   it("As a dotli user watching the download, updates that land no block read no layout", async () => {

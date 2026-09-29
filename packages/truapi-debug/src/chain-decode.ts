@@ -110,7 +110,7 @@ export function decodeChainAnnotations(
       const p = asObj(payload);
       return {
         kind: "follow-start",
-        genesisHash: asString(p?.genesisHash),
+        genesisHash: asString(p?.["genesisHash"]),
       };
     }
     case "remote_chain_head_follow_receive": {
@@ -121,7 +121,7 @@ export function decodeChainAnnotations(
         chainEventTag: ev?.tag,
         // Only operation variants carry an operationId. The rest (Initialized,
         // NewBlock, Finalized, Stop) leave it undefined.
-        operationId: asString(eventValue?.operationId),
+        operationId: asString(eventValue?.["operationId"]),
       };
     }
 
@@ -157,9 +157,9 @@ export function decodeChainAnnotations(
       const p = asObj(payload);
       return {
         kind: "head-continue-request",
-        genesisHash: asString(p?.genesisHash),
-        followSubscriptionId: asString(p?.followSubscriptionId),
-        operationId: asString(p?.operationId),
+        genesisHash: asString(p?.["genesisHash"]),
+        followSubscriptionId: asString(p?.["followSubscriptionId"]),
+        operationId: asString(p?.["operationId"]),
       };
     }
     case "remote_chain_head_continue_response":
@@ -169,9 +169,9 @@ export function decodeChainAnnotations(
       const p = asObj(payload);
       return {
         kind: "head-stop-op-request",
-        genesisHash: asString(p?.genesisHash),
-        followSubscriptionId: asString(p?.followSubscriptionId),
-        operationId: asString(p?.operationId),
+        genesisHash: asString(p?.["genesisHash"]),
+        followSubscriptionId: asString(p?.["followSubscriptionId"]),
+        operationId: asString(p?.["operationId"]),
       };
     }
     case "remote_chain_head_stop_operation_response":
@@ -198,7 +198,7 @@ export function decodeChainAnnotations(
       const p = asObj(payload);
       return {
         kind: "tx-broadcast-request",
-        genesisHash: asString(p?.genesisHash),
+        genesisHash: asString(p?.["genesisHash"]),
       };
     }
     case "remote_chain_transaction_broadcast_response": {
@@ -207,7 +207,8 @@ export function decodeChainAnnotations(
       // is tolerated in case a producer already unwrapped the field.
       const r = payload as ResultValue<unknown, unknown>;
       if (r.success) {
-        const opId = asString(r.value) ?? asString(asObj(r.value)?.operationId);
+        const opId =
+          asString(r.value) ?? asString(asObj(r.value)?.["operationId"]);
         if (opId !== undefined) {
           return {
             kind: "tx-broadcast-response",
@@ -230,8 +231,8 @@ export function decodeChainAnnotations(
       const p = asObj(payload);
       return {
         kind: "tx-stop-request",
-        genesisHash: asString(p?.genesisHash),
-        operationId: asString(p?.operationId),
+        genesisHash: asString(p?.["genesisHash"]),
+        operationId: asString(p?.["operationId"]),
       };
     }
     case "remote_chain_transaction_stop_response":
@@ -245,12 +246,12 @@ export function decodeChainAnnotations(
 function isRawWirePayload(payload: unknown): boolean {
   const obj = asObj(payload);
   return (
-    typeof obj?.wireId === "number" &&
-    (obj.bytes instanceof Uint8Array ||
-      (typeof obj.bytes === "object" &&
-        obj.bytes !== null &&
-        (obj.bytes as { constructor?: { name?: string } }).constructor?.name ===
-          "Uint8Array"))
+    typeof obj?.["wireId"] === "number" &&
+    (obj["bytes"] instanceof Uint8Array ||
+      (typeof obj["bytes"] === "object" &&
+        obj["bytes"] !== null &&
+        (obj["bytes"] as { constructor?: { name?: string } }).constructor
+          ?.name === "Uint8Array"))
   );
 }
 
@@ -312,12 +313,12 @@ function opRequest(kind: ChainKind, payload: unknown): ChainAnnotations {
   const p = asObj(payload);
   return {
     kind,
-    genesisHash: asString(p?.genesisHash),
-    followSubscriptionId: asString(p?.followSubscriptionId),
+    genesisHash: asString(p?.["genesisHash"]),
+    followSubscriptionId: asString(p?.["followSubscriptionId"]),
     // unpin has `hashes` (plural) rather than a single `hash`. We leave
     // blockHash undefined there. unpin typically covers many blocks and
     // a single-slot display would misrepresent that.
-    blockHash: asString(p?.hash),
+    blockHash: asString(p?.["hash"]),
   };
 }
 
@@ -327,7 +328,7 @@ function specRequest(kind: ChainKind, payload: unknown): ChainAnnotations {
   const p = asObj(payload);
   return {
     kind,
-    genesisHash: asString(payload) ?? asString(p?.genesisHash),
+    genesisHash: asString(payload) ?? asString(p?.["genesisHash"]),
   };
 }
 
@@ -362,7 +363,7 @@ function operationStarterResponse(
     };
   }
   const struct = asObj(r.value);
-  const inner = asEnum(struct?.operation) ?? asEnum(r.value);
+  const inner = asEnum(struct?.["operation"]) ?? asEnum(r.value);
   if (inner === undefined) {
     // Unknown shape, but the response was still a success. Report ok.
     return { kind, outcome: "ok" };
@@ -372,7 +373,7 @@ function operationStarterResponse(
     return {
       kind,
       outcome: "started",
-      operationId: asString(innerVal?.operationId),
+      operationId: asString(innerVal?.["operationId"]),
     };
   }
   if (inner.tag === "LimitReached") {
@@ -393,11 +394,11 @@ function extractErrorReason(v: unknown): string | undefined {
   if (o === undefined) {
     return undefined;
   }
-  if (typeof o.tag === "string") {
-    switch (o.tag) {
+  if (typeof o["tag"] === "string") {
+    switch (o["tag"]) {
       case "Domain": {
-        const domain = asObj(peelVersion(o.value));
-        const reason = asString(domain?.reason);
+        const domain = asObj(peelVersion(o["value"]));
+        const reason = asString(domain?.["reason"]);
         if (reason !== undefined) {
           return reason;
         }
@@ -405,7 +406,7 @@ function extractErrorReason(v: unknown): string | undefined {
       }
       case "MalformedFrame":
       case "HostFailure": {
-        const reason = asString(asObj(o.value)?.reason);
+        const reason = asString(asObj(o["value"])?.["reason"]);
         if (reason !== undefined) {
           return reason;
         }
@@ -413,18 +414,18 @@ function extractErrorReason(v: unknown): string | undefined {
       }
       case "Denied":
       case "Unsupported":
-        return o.tag;
+        return o["tag"];
       default:
         break;
     }
   }
   // Older and ad-hoc error shapes: `.payload.reason`, a top-level
   // `.reason`, or an Error's `.message` as a last resort.
-  const payload = asObj(o.payload);
-  const reason = asString(payload?.reason) ?? asString(o.reason);
+  const payload = asObj(o["payload"]);
+  const reason = asString(payload?.["reason"]) ?? asString(o["reason"]);
   if (reason !== undefined) {
     return reason;
   }
-  const message = asString(o.message);
+  const message = asString(o["message"]);
   return message === undefined || message === "" ? undefined : message;
 }

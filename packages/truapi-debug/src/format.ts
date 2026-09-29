@@ -131,7 +131,7 @@ function formatInline(v: unknown): string {
       return "{}";
     }
     if (keys.length === 2 && "tag" in obj && "value" in obj) {
-      return `{${stringifyPrimitive(obj.tag)}}`;
+      return `{${stringifyPrimitive(obj["tag"])}}`;
     }
     return `{${String(keys.length)} keys}`;
   }

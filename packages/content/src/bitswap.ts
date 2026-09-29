@@ -404,11 +404,11 @@ function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
   }
   const obj = value as Record<string, unknown>;
   return (
-    obj.type === "dotli:bitswap-get" &&
-    typeof obj.id === "string" &&
-    typeof obj.cid === "string" &&
-    obj.id.length > 0 &&
-    obj.cid.length > 0
+    obj["type"] === "dotli:bitswap-get" &&
+    typeof obj["id"] === "string" &&
+    typeof obj["cid"] === "string" &&
+    obj["id"].length > 0 &&
+    obj["cid"].length > 0
   );
 }
 
@@ -418,9 +418,9 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
   }
   const obj = value as Record<string, unknown>;
   return (
-    obj.type === "dotli:bitswap-abort" &&
-    Array.isArray(obj.ids) &&
-    obj.ids.every((id) => typeof id === "string")
+    obj["type"] === "dotli:bitswap-abort" &&
+    Array.isArray(obj["ids"]) &&
+    obj["ids"].every((id) => typeof id === "string")
   );
 }
 

@@ -24,13 +24,13 @@ export const previewServer = {
 export const baseConfig: PlaywrightTestConfig = {
   use: {
     browserName: "chromium",
-    channel: process.env.CHANNEL,
-    headless: process.env.HEADED !== "1",
+    channel: process.env["CHANNEL"],
+    headless: process.env["HEADED"] !== "1",
     bypassCSP: true,
     launchOptions: {
       slowMo:
-        process.env.SLOWMO !== undefined && process.env.SLOWMO !== ""
-          ? Number(process.env.SLOWMO)
+        process.env["SLOWMO"] !== undefined && process.env["SLOWMO"] !== ""
+          ? Number(process.env["SLOWMO"])
           : 0,
     },
   },

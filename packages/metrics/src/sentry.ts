@@ -124,7 +124,7 @@ function tagSmoldotEvents<E extends SmoldotEventLike>(event: E): E {
 /** Sentry `environment` is the deploy domain (e.g. "paseo.li"), derived from
  *  VITE_APP_URL; falls back to "development" when unset or unparseable. */
 function sentryEnvironment(): string {
-  const appUrl = import.meta.env.VITE_APP_URL as string | undefined;
+  const appUrl = import.meta.env["VITE_APP_URL"] as string | undefined;
   if (appUrl === undefined || appUrl === "") {
     return "development";
   }
@@ -142,7 +142,7 @@ function sentryEnvironment(): string {
  * no-op, but we warn loudly instead of silently disabling reporting.
  */
 export function initSentry(source: SentrySource): void {
-  const dsn = import.meta.env.VITE_SENTRY_DSN as string | undefined;
+  const dsn = import.meta.env["VITE_SENTRY_DSN"] as string | undefined;
   const env = sentryEnvironment();
   const extraIntegrations =
     source === "worker"
@@ -166,7 +166,7 @@ export function initSentry(source: SentrySource): void {
     dsn,
     tunnel: "/t",
     environment: env,
-    release: import.meta.env.VITE_COMMIT_SHA as string | undefined,
+    release: import.meta.env["VITE_COMMIT_SHA"] as string | undefined,
     beforeSend: tagSmoldotEvents,
     integrations: (defaultIntegrations) => [
       ...excludeBrowserApiErrorsIntegration(defaultIntegrations).filter(
@@ -217,7 +217,7 @@ export function initSentry(source: SentrySource): void {
       if (args !== undefined && args.length > 0) {
         const errArg = args.find((a) => a instanceof Error);
         if (errArg !== undefined) {
-          data.error = serializeError(errArg);
+          data["error"] = serializeError(errArg);
         }
       }
       Sentry.addBreadcrumb({

@@ -149,7 +149,7 @@ export function AuthModal(): JSX.Element {
     }
     let current = true;
     const canvas = document.createElement("canvas");
-    canvas.dataset.qrPayload = payload;
+    canvas.dataset["qrPayload"] = payload;
     void import("qrcode")
       .then((QRCode) =>
         QRCode.default.toCanvas(canvas, payload, {

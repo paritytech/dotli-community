@@ -231,7 +231,7 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
 async function ensureFreshServiceWorker(
   registration: ServiceWorkerRegistration,
 ): Promise<void> {
-  const expected = import.meta.env.VITE_COMMIT_SHA as string | undefined;
+  const expected = import.meta.env["VITE_COMMIT_SHA"] as string | undefined;
   if (expected === undefined || expected === "") {
     return; // dev build, no version to compare against
   }
@@ -386,7 +386,8 @@ async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
  */
 async function maybeInjectSandboxChecker(html: string): Promise<string> {
   if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) === undefined
+    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) ===
+    undefined
   ) {
     return html;
   }

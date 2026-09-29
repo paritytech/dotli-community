@@ -20,9 +20,9 @@ function isBitswapResultMessage(value: unknown): value is BitswapResultMessage {
   }
   const obj = value as Record<string, unknown>;
   return (
-    obj.type === "dotli:bitswap-result" &&
-    typeof obj.id === "string" &&
-    typeof obj.ok === "boolean"
+    obj["type"] === "dotli:bitswap-result" &&
+    typeof obj["id"] === "string" &&
+    typeof obj["ok"] === "boolean"
   );
 }
 

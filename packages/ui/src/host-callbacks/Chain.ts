@@ -40,10 +40,10 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
     return false;
   }
   const record = value as Record<string, unknown>;
-  const id = record.id;
+  const id = record["id"];
   return (
-    record.jsonrpc === "2.0" &&
-    typeof record.method === "string" &&
+    record["jsonrpc"] === "2.0" &&
+    typeof record["method"] === "string" &&
     (id === undefined ||
       id === null ||
       typeof id === "string" ||

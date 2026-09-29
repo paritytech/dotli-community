@@ -138,7 +138,7 @@ function buildJsonRpcResult(
 }
 
 function isRequestMessage(value: unknown): value is JsonRpcRequest {
-  return isJsonRpcObject(value) && typeof value.method === "string";
+  return isJsonRpcObject(value) && typeof value["method"] === "string";
 }
 
 function isResponseMessage(value: unknown): value is JsonRpcResponse {
@@ -149,8 +149,8 @@ function isSubscriptionMessage(value: unknown): value is SubscriptionMessage {
   return (
     isJsonRpcObject(value) &&
     "method" in value &&
-    isJsonRpcObject(value.params) &&
-    "subscription" in value.params
+    isJsonRpcObject(value["params"]) &&
+    "subscription" in value["params"]
   );
 }
 
@@ -560,9 +560,9 @@ class ChainBroker {
     if (!isJsonRpcObject(eventResult)) {
       return;
     }
-    if (eventResult.event === "initialized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes
+    if (eventResult["event"] === "initialized") {
+      const hashes = Array.isArray(eventResult["finalizedBlockHashes"])
+        ? eventResult["finalizedBlockHashes"]
         : [];
       for (const hash of hashes) {
         if (typeof hash === "string") {
@@ -572,10 +572,10 @@ class ChainBroker {
       return;
     }
     if (
-      eventResult.event === "newBlock" &&
-      typeof eventResult.blockHash === "string"
+      eventResult["event"] === "newBlock" &&
+      typeof eventResult["blockHash"] === "string"
     ) {
-      this.registerPin(sharedFollow, localToken, eventResult.blockHash);
+      this.registerPin(sharedFollow, localToken, eventResult["blockHash"]);
     }
   }
 
@@ -708,7 +708,7 @@ class ChainBroker {
     if (isSubscriptionMessage(parsed)) {
       const result = parsed.params?.result;
       if (isJsonRpcObject(result)) {
-        const event = result.event;
+        const event = result["event"];
         const rawSub = parsed.params?.subscription;
         const token = typeof rawSub === "string" ? rawSub : "?";
         const ownedLocals = this.upstreamToOwned.get(token);
@@ -723,10 +723,10 @@ class ChainBroker {
             : "unknown";
         if (event === "newBlock") {
           brokerLog(
-            `← raw newBlock [${sessionTag}] hash=${String(result.blockHash).slice(0, 18)}… parent=${String(result.parentBlockHash).slice(0, 18)}… token=${token.slice(0, 12)}…`,
+            `← raw newBlock [${sessionTag}] hash=${String(result["blockHash"]).slice(0, 18)}… parent=${String(result["parentBlockHash"]).slice(0, 18)}… token=${token.slice(0, 12)}…`,
           );
         } else if (event === "initialized") {
-          const hashes = result.finalizedBlockHashes;
+          const hashes = result["finalizedBlockHashes"];
           const hashList = Array.isArray(hashes)
             ? (hashes as string[]).map((h) => h.slice(0, 18) + "…").join(", ")
             : "?";
@@ -835,7 +835,7 @@ class ChainBroker {
       id: pending.clientId,
     };
     if ("result" in response) {
-      rewritten.result = result;
+      rewritten["result"] = result;
     }
     this.sendToSession(session, rewritten);
     if (releaseMethod !== undefined && typeof response.result === "string") {
@@ -868,8 +868,8 @@ class ChainBroker {
         const eventResult = message.params?.result;
         this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
         const eventType = isJsonRpcObject(eventResult)
-          ? typeof eventResult.event === "string"
-            ? eventResult.event
+          ? typeof eventResult["event"] === "string"
+            ? eventResult["event"]
             : "unknown"
           : "?";
         brokerLog(
@@ -890,7 +890,7 @@ class ChainBroker {
       // already reached every session above, which papi needs before it
       // re-issues `chainHead_v1_follow`.
       const eventResult = message.params?.result;
-      if (isJsonRpcObject(eventResult) && eventResult.event === "stop") {
+      if (isJsonRpcObject(eventResult) && eventResult["event"] === "stop") {
         brokerLog(
           `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
         );
@@ -917,8 +917,8 @@ class ChainBroker {
 
     const eventResult = message.params?.result;
     const eventType = isJsonRpcObject(eventResult)
-      ? typeof eventResult.event === "string"
-        ? eventResult.event
+      ? typeof eventResult["event"] === "string"
+        ? eventResult["event"]
         : "unknown"
       : "?";
     const localTokens = [...ownedLocals];
@@ -949,7 +949,7 @@ class ChainBroker {
       });
     }
 
-    if (isJsonRpcObject(eventResult) && eventResult.event === "stop") {
+    if (isJsonRpcObject(eventResult) && eventResult["event"] === "stop") {
       brokerLog(`Token stopped by upstream: ${upstreamToken}`);
       for (const localToken of localTokens) {
         this.releaseOwnedToken(localToken, false);
@@ -1264,16 +1264,16 @@ class ChainBroker {
     }
 
     const eventType =
-      typeof eventResult.event === "string" ? eventResult.event : "";
+      typeof eventResult["event"] === "string" ? eventResult["event"] : "";
     if (eventType === "initialized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes.filter(
+      const hashes = Array.isArray(eventResult["finalizedBlockHashes"])
+        ? eventResult["finalizedBlockHashes"].filter(
             (hash): hash is string => typeof hash === "string",
           )
         : [];
       sharedFollow.finalizedBlockHashes = hashes;
       sharedFollow.finalizedBlockRuntime =
-        eventResult.finalizedBlockRuntime ?? null;
+        eventResult["finalizedBlockRuntime"] ?? null;
       sharedFollow.blocks.clear();
       sharedFollow.bestBlockHash = null;
       return;
@@ -1281,8 +1281,8 @@ class ChainBroker {
 
     if (eventType === "newBlock") {
       const blockHash =
-        typeof eventResult.blockHash === "string"
-          ? eventResult.blockHash
+        typeof eventResult["blockHash"] === "string"
+          ? eventResult["blockHash"]
           : null;
       if (blockHash === null) {
         return;
@@ -1290,8 +1290,8 @@ class ChainBroker {
       sharedFollow.blocks.set(blockHash, {
         result: { ...eventResult },
         parentBlockHash:
-          typeof eventResult.parentBlockHash === "string"
-            ? eventResult.parentBlockHash
+          typeof eventResult["parentBlockHash"] === "string"
+            ? eventResult["parentBlockHash"]
             : null,
       });
       return;
@@ -1299,21 +1299,21 @@ class ChainBroker {
 
     if (eventType === "bestBlockChanged") {
       sharedFollow.bestBlockHash =
-        typeof eventResult.bestBlockHash === "string"
-          ? eventResult.bestBlockHash
+        typeof eventResult["bestBlockHash"] === "string"
+          ? eventResult["bestBlockHash"]
           : null;
       return;
     }
 
     if (eventType === "finalized") {
-      const hashes = Array.isArray(eventResult.finalizedBlockHashes)
-        ? eventResult.finalizedBlockHashes.filter(
+      const hashes = Array.isArray(eventResult["finalizedBlockHashes"])
+        ? eventResult["finalizedBlockHashes"].filter(
             (hash): hash is string => typeof hash === "string",
           )
         : [];
       sharedFollow.finalizedBlockHashes = hashes;
-      const pruned = Array.isArray(eventResult.prunedBlockHashes)
-        ? eventResult.prunedBlockHashes.filter(
+      const pruned = Array.isArray(eventResult["prunedBlockHashes"])
+        ? eventResult["prunedBlockHashes"].filter(
             (hash): hash is string => typeof hash === "string",
           )
         : [];

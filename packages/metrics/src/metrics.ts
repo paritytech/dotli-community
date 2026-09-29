@@ -111,7 +111,7 @@ function sentry(): SentryLike | null {
     return _sentry;
   }
   try {
-    const hub = (globalThis as Record<string, unknown>).__SENTRY_HUB__;
+    const hub = (globalThis as Record<string, unknown>)["__SENTRY_HUB__"];
     if (hub !== undefined && hub !== null) {
       _sentry = hub as SentryLike;
     }
@@ -157,7 +157,8 @@ function bind(s: SentryLike): void {
   _unboundWarned = false;
 }
 
-const ENABLED = (import.meta.env.VITE_METRICS as string | undefined) === "true";
+const ENABLED =
+  (import.meta.env["VITE_METRICS"] as string | undefined) === "true";
 
 // Apps register session-level context (e.g. `dotli_mode`) via `setDefaults()`.
 // Every metric emitted afterwards carries these attributes, so dashboards can

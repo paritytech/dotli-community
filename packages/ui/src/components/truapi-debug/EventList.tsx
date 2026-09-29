@@ -191,7 +191,7 @@ export function EventList(props: {
       }}
       onClick={(e) => {
         const row = (e.target as HTMLElement).closest<HTMLElement>(".td-row");
-        const seqAttr = row?.dataset.seq;
+        const seqAttr = row?.dataset["seq"];
         if (seqAttr === undefined) {
           return;
         }

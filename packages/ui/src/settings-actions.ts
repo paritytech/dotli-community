@@ -320,7 +320,8 @@ export async function formatDiagnosticsReport(
 export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
   const version =
     typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : "0.0.0";
-  const sha = (import.meta.env.VITE_COMMIT_SHA as string | undefined) ?? "dev";
+  const sha =
+    (import.meta.env["VITE_COMMIT_SHA"] as string | undefined) ?? "dev";
 
   const backend = getBackend();
   const network = getNetwork();

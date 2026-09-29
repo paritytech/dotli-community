@@ -656,7 +656,7 @@ describe("truapi debug panel work: pointer moves", () => {
 
     // Then
     expect(appFrame.writes() - writesBefore).toBe(1);
-    expect(appFrame.style.height).toMatch(/ - 264px\)$/);
+    expect(appFrame.style["height"]).toMatch(/ - 264px\)$/);
     pointer(q(".td-resize-handle"), "pointerup");
   });
 
@@ -766,7 +766,7 @@ describe("truapi debug panel work: keyed row state", () => {
 
     // Then only the current rows hold entries: a seq, a group key and a
     // pending key each
-    const seqs = rows().map((r) => r.dataset.seq ?? "");
+    const seqs = rows().map((r) => r.dataset["seq"] ?? "");
     const keys = subscribed();
     expect(keys.filter((k) => k.includes("old"))).toEqual([]);
     expect(keys).toHaveLength(30);

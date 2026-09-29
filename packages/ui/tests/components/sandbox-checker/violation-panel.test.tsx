@@ -151,7 +151,7 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(toggle.getAttribute("aria-label")).toBe("Toggle panel");
     expect(toggle.textContent).toBe("▼");
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
 
     // When
     fireEvent.click(toggle);
@@ -160,13 +160,13 @@ describe("sandbox checker violation panel", () => {
     // Then
     expect(panel().classList.contains("collapsed")).toBe(true);
     expect(toggle.textContent).toBe("▲");
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
 
     // When: opening chat keeps the reservation
     setChatWidth(360);
 
     // Then
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
 
     // When: resizing while collapsed does nothing
     const handle = query(panel(), ".sc-resize-handle");
@@ -200,7 +200,7 @@ describe("sandbox checker violation panel", () => {
       timestamp: 0,
     });
     await settle();
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
 
     // When
     dispose();
@@ -215,7 +215,7 @@ describe("sandbox checker violation panel", () => {
 
     // Then
     expect(document.getElementById("sandbox-checker-panel")).toBeNull();
-    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
+    expect(frame["height"]).toBe(BELOW_BAR_HEIGHT);
   });
 
   it("As a dotli developer, dragging the handle resizes the panel within 40px and 80% of the viewport, until the drag ends or is cancelled", async () => {
@@ -403,6 +403,6 @@ describe("sandbox checker violation panel", () => {
     expect(Math.max(...layouts)).toBe(1);
     expect(heightWrites).toBe(0);
     expect(top).toBe(500);
-    expect(style.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
+    expect(style["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 180px)`);
   });
 });

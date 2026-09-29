@@ -75,7 +75,7 @@ describe("message bubble", () => {
     expect(bubble.textContent).toContain("hello <b>there</b>");
     const time = query(bubble, "time.chat-msg-time", HTMLTimeElement);
     expect(time.textContent).toBe("5 mins ago");
-    expect(time.dataset.timestamp).toBe(String(NOW - 5 * 60_000));
+    expect(time.dataset["timestamp"]).toBe(String(NOW - 5 * 60_000));
     expect(time.title).not.toBe("");
   });
 

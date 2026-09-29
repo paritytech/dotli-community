@@ -10,7 +10,7 @@ const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
 ]);
 
 function readChainBackend(): Backend {
-  const backend = process.env.E2E_CHAIN_BACKEND ?? "rpc-gateway";
+  const backend = process.env["E2E_CHAIN_BACKEND"] ?? "rpc-gateway";
   if (!VALID_BACKENDS.has(backend)) {
     throw new Error(
       `E2E_CHAIN_BACKEND must be smoldot-direct, smoldot-shared-worker, or rpc-gateway; got ${JSON.stringify(backend)}`,

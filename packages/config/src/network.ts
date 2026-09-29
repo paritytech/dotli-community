@@ -200,8 +200,9 @@ const RUNTIME_GLOBAL_KEY = "__DOTLI_NETWORK__";
  * alone turns it on.
  */
 const RUNTIME_CONFIG_ENABLED =
-  ((import.meta as { env?: Record<string, string | undefined> }).env
-    ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
+  ((import.meta as { env?: Record<string, string | undefined> }).env?.[
+    "VITE_RUNTIME_NETWORK_CONFIG"
+  ] ?? "") === "true";
 
 function readRuntimeConfig(): RuntimeNetworkConfig | null {
   if (!RUNTIME_CONFIG_ENABLED) {
@@ -286,7 +287,10 @@ function mergeChain(
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
-    rpcs: p.rpcs === undefined ? base.rpcs : asStrings(p.rpcs, `${path}.rpcs`),
+    rpcs:
+      p["rpcs"] === undefined
+        ? base.rpcs
+        : asStrings(p["rpcs"], `${path}.rpcs`),
   };
 }
 
@@ -300,11 +304,14 @@ function mergeBulletin(
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
-    rpcs: p.rpcs === undefined ? base.rpcs : asStrings(p.rpcs, `${path}.rpcs`),
+    rpcs:
+      p["rpcs"] === undefined
+        ? base.rpcs
+        : asStrings(p["rpcs"], `${path}.rpcs`),
     ipfsGateways:
-      p.ipfsGateways === undefined
+      p["ipfsGateways"] === undefined
         ? base.ipfsGateways
-        : asStrings(p.ipfsGateways, `${path}.ipfsGateways`),
+        : asStrings(p["ipfsGateways"], `${path}.ipfsGateways`),
   };
 }
 
@@ -318,23 +325,25 @@ function mergeNetwork(
   return {
     ...base,
     label:
-      p.label === undefined ? base.label : asString(p.label, `${path}.label`),
+      p["label"] === undefined
+        ? base.label
+        : asString(p["label"], `${path}.label`),
     relay:
-      p.relay === undefined
+      p["relay"] === undefined
         ? base.relay
-        : mergeChain(base.relay, p.relay, `${path}.relay`),
+        : mergeChain(base.relay, p["relay"], `${path}.relay`),
     assethub:
-      p.assethub === undefined
+      p["assethub"] === undefined
         ? base.assethub
-        : mergeChain(base.assethub, p.assethub, `${path}.assethub`),
+        : mergeChain(base.assethub, p["assethub"], `${path}.assethub`),
     bulletin:
-      p.bulletin === undefined
+      p["bulletin"] === undefined
         ? base.bulletin
-        : mergeBulletin(base.bulletin, p.bulletin, `${path}.bulletin`),
+        : mergeBulletin(base.bulletin, p["bulletin"], `${path}.bulletin`),
     people:
-      p.people === undefined
+      p["people"] === undefined
         ? base.people
-        : mergeChain(base.people, p.people, `${path}.people`),
+        : mergeChain(base.people, p["people"], `${path}.people`),
   };
 }
 
@@ -396,8 +405,9 @@ export function getEnabledNetworks(): Network[] {
       : {
           label: "VITE_NETWORKS",
           entries: (
-            (import.meta as { env?: Record<string, string | undefined> }).env
-              ?.VITE_NETWORKS ?? ""
+            (import.meta as { env?: Record<string, string | undefined> }).env?.[
+              "VITE_NETWORKS"
+            ] ?? ""
           ).split(","),
         };
 

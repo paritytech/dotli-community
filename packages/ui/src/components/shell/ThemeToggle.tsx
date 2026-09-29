@@ -55,7 +55,7 @@ export function ThemeToggle(): JSX.Element {
     const option = (e.target as HTMLElement).closest<HTMLElement>(
       ".theme-popover-option",
     );
-    const next = option?.dataset.themeOption;
+    const next = option?.dataset["themeOption"];
     if (next === "light" || next === "dark" || next === "system") {
       selectThemePref(next);
       menu.onItemChosen();

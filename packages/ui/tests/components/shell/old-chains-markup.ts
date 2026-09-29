@@ -199,7 +199,7 @@ export function oldChainsPopover(
     for (const bar of chain.bars) {
       const key = String(bar.number);
       const mark = document.createElement("span");
-      mark.dataset.block = key;
+      mark.dataset["block"] = key;
       mark.className = `chains-bar is-${bar.health}`;
       const delay = describeBlockDelay(bar.gapMs, chain.blockTimeMs);
       mark.title = delay;

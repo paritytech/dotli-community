@@ -29,7 +29,7 @@ const SCRIPT_SRC = "/dotli-network.js";
  * with HTML that the browser then tries to execute as JavaScript.
  */
 export function runtimeNetworkConfigScriptBody(): string {
-  const raw = process.env.DOTLI_NETWORK?.trim();
+  const raw = process.env["DOTLI_NETWORK"]?.trim();
   const config = raw === undefined || raw === "" ? "{}" : raw;
   // Parsed only to fail early on a typo; the original text is what gets served.
   try {
@@ -49,7 +49,7 @@ export function runtimeNetworkConfigScriptBody(): string {
  * synchronous — the same trick the apps already use to pre-open IndexedDB.
  */
 export function runtimeNetworkConfigScript(): Plugin {
-  const enabled = process.env.VITE_RUNTIME_NETWORK_CONFIG === "true";
+  const enabled = process.env["VITE_RUNTIME_NETWORK_CONFIG"] === "true";
   return {
     name: "dotli-runtime-network-config",
     transformIndexHtml() {

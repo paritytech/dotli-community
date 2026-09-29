@@ -45,7 +45,7 @@ export function MoreMenu(): JSX.Element {
     // listener, which would see it as outside the popover it opens.
     e.stopPropagation();
     menu.onItemChosen();
-    const targetId = row.dataset.target;
+    const targetId = row.dataset["target"];
     if (targetId !== undefined) {
       // With the row click's detail: 0 for a keyboard choice, which opens a
       // menu (the theme menu) on its first item, as a keyboard opening does.

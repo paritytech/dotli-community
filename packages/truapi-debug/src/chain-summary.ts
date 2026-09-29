@@ -26,7 +26,7 @@ export function summariseChainMessage(
   switch (ann.kind) {
     case "follow-start": {
       const p = asObj(inner);
-      const withRuntime = p?.withRuntime === true;
+      const withRuntime = p?.["withRuntime"] === true;
       return `Subscribe to chain head${withRuntime ? " (with runtime)" : ""}${fmtChain(ann.genesisHash)}.`;
     }
     case "follow-receive":
@@ -49,7 +49,7 @@ export function summariseChainMessage(
       return summariseOperationStarter(ann, "Runtime call");
     case "head-unpin-request": {
       const p = asObj(inner);
-      const hashes = Array.isArray(p?.hashes) ? p.hashes : [];
+      const hashes = Array.isArray(p?.["hashes"]) ? p["hashes"] : [];
       return `Release ${String(hashes.length)} pinned block${hashes.length === 1 ? "" : "s"}${fmtFollowSub(ann.followSubscriptionId)}.`;
     }
     case "head-unpin-response":
@@ -76,7 +76,7 @@ export function summariseChainMessage(
       return summariseStringResponse(ann, inner, "Properties");
     case "tx-broadcast-request": {
       const p = asObj(inner);
-      const tx = asString(p?.transaction);
+      const tx = asString(p?.["transaction"]);
       const bytes = tx === undefined ? null : hexByteLen(tx);
       return `Broadcast transaction${bytes === null ? "" : ` (${String(bytes)} bytes)`}${fmtChain(ann.genesisHash)}.`;
     }
@@ -106,48 +106,48 @@ function summariseFollowEvent(inner: unknown): string | null {
   const v = asObj(ev.value);
   switch (ev.tag) {
     case "Initialized": {
-      const hashes = Array.isArray(v?.finalizedBlockHashes)
-        ? v.finalizedBlockHashes
+      const hashes = Array.isArray(v?.["finalizedBlockHashes"])
+        ? v["finalizedBlockHashes"]
         : [];
       return `Initialised with ${String(hashes.length)} finalized block${hashes.length === 1 ? "" : "s"}.`;
     }
     case "NewBlock": {
-      const block = asString(v?.blockHash);
-      const parent = asString(v?.parentBlockHash);
+      const block = asString(v?.["blockHash"]);
+      const parent = asString(v?.["parentBlockHash"]);
       return `New block ${fmtBlock(block)} (parent ${fmtBlock(parent)}).`;
     }
     case "BestBlockChanged": {
-      const block = asString(v?.bestBlockHash);
+      const block = asString(v?.["bestBlockHash"]);
       return `Best block now ${fmtBlock(block)}.`;
     }
     case "Finalized": {
-      const fin = Array.isArray(v?.finalizedBlockHashes)
-        ? v.finalizedBlockHashes
+      const fin = Array.isArray(v?.["finalizedBlockHashes"])
+        ? v["finalizedBlockHashes"]
         : [];
-      const pruned = Array.isArray(v?.prunedBlockHashes)
-        ? v.prunedBlockHashes
+      const pruned = Array.isArray(v?.["prunedBlockHashes"])
+        ? v["prunedBlockHashes"]
         : [];
       return `Finalized ${String(fin.length)} block${fin.length === 1 ? "" : "s"}, pruned ${String(pruned.length)}.`;
     }
     case "OperationBodyDone": {
-      const extrinsics = Array.isArray(v?.value) ? v.value : [];
-      return `Body returned: ${String(extrinsics.length)} extrinsic${extrinsics.length === 1 ? "" : "s"} (op ${shortId(asString(v?.operationId))}).`;
+      const extrinsics = Array.isArray(v?.["value"]) ? v["value"] : [];
+      return `Body returned: ${String(extrinsics.length)} extrinsic${extrinsics.length === 1 ? "" : "s"} (op ${shortId(asString(v?.["operationId"]))}).`;
     }
     case "OperationCallDone":
-      return `Runtime call result ready (op ${shortId(asString(v?.operationId))}).`;
+      return `Runtime call result ready (op ${shortId(asString(v?.["operationId"]))}).`;
     case "OperationStorageItems": {
-      const items = Array.isArray(v?.items) ? v.items : [];
-      return `Storage batch: ${String(items.length)} item${items.length === 1 ? "" : "s"} (op ${shortId(asString(v?.operationId))}).`;
+      const items = Array.isArray(v?.["items"]) ? v["items"] : [];
+      return `Storage batch: ${String(items.length)} item${items.length === 1 ? "" : "s"} (op ${shortId(asString(v?.["operationId"]))}).`;
     }
     case "OperationStorageDone":
-      return `Storage operation complete (op ${shortId(asString(v?.operationId))}).`;
+      return `Storage operation complete (op ${shortId(asString(v?.["operationId"]))}).`;
     case "OperationWaitingForContinue":
-      return `Paused — client must call chainHead.continue (op ${shortId(asString(v?.operationId))}).`;
+      return `Paused — client must call chainHead.continue (op ${shortId(asString(v?.["operationId"]))}).`;
     case "OperationInaccessible":
-      return `Block unavailable, retry (op ${shortId(asString(v?.operationId))}).`;
+      return `Block unavailable, retry (op ${shortId(asString(v?.["operationId"]))}).`;
     case "OperationError": {
-      const err = asString(v?.error);
-      return `Operation failed: ${err ?? "unknown"} (op ${shortId(asString(v?.operationId))}).`;
+      const err = asString(v?.["error"]);
+      return `Operation failed: ${err ?? "unknown"} (op ${shortId(asString(v?.["operationId"]))}).`;
     }
     case "Stop":
       return "Subscription stopped by the server — client must create a new follow.";
@@ -160,10 +160,10 @@ function summariseStorageRequest(
   inner: unknown,
 ): string {
   const p = asObj(inner);
-  const items = Array.isArray(p?.items) ? p.items : [];
+  const items = Array.isArray(p?.["items"]) ? p["items"] : [];
   const types = new Set<string>();
   for (const it of items) {
-    const t = asString(asObj(it)?.type);
+    const t = asString(asObj(it)?.["type"]);
     if (t !== undefined) {
       types.add(t);
     }
@@ -175,7 +175,7 @@ function summariseStorageRequest(
 
 function summariseCallRequest(ann: ChainAnnotations, inner: unknown): string {
   const p = asObj(inner);
-  const fn = asString(p?.function);
+  const fn = asString(p?.["function"]);
   return `Invoke runtime api ${fn ?? "?"} on block ${fmtBlock(ann.blockHash)}${fmtFollowSub(ann.followSubscriptionId)}.`;
 }
 
@@ -187,7 +187,7 @@ function summariseHeaderResponse(
     return `Header fetch failed: ${ann.errorMessage ?? "unknown"}.`;
   }
   const r = asObj(inner);
-  const value = r?.value;
+  const value = r?.["value"];
   if (value === null) {
     return "Block not found (header null).";
   }
@@ -234,7 +234,7 @@ function summariseStringResponse(
     return `${label} lookup failed: ${ann.errorMessage ?? "unknown"}.`;
   }
   const r = asObj(inner);
-  const value = asString(r?.value);
+  const value = asString(r?.["value"]);
   if (value === undefined) {
     return `${label} lookup returned.`;
   }

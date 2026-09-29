@@ -287,7 +287,7 @@ describe("A resolution reports how it ended", () => {
     trace.finish("rendered");
 
     // Then
-    expect(span("resolution")?.attributes.bar_at_render).toBe(62);
+    expect(span("resolution")?.attributes["bar_at_render"]).toBe(62);
     updateLoading({ progress: 0 });
   });
 
@@ -301,6 +301,6 @@ describe("A resolution reports how it ended", () => {
     trace.finish("rendered");
 
     // Then
-    expect(span("resolution")?.attributes.bytes_total).toBe(21_266_125);
+    expect(span("resolution")?.attributes["bytes_total"]).toBe(21_266_125);
   });
 });

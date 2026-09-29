@@ -24,7 +24,7 @@ import { seedBackend as seedChainBackend } from "./fixtures/settings.js";
 import { PORT } from "../env.js";
 
 const LABEL = "host-playground";
-const TIMEOUT_MS = parseInt(process.env.COMBO_TIMEOUT_MS ?? "45000", 10);
+const TIMEOUT_MS = parseInt(process.env["COMBO_TIMEOUT_MS"] ?? "45000", 10);
 
 const HOST_BY_LABEL = `http://${LABEL}.localhost:${PORT}`;
 

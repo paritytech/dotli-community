@@ -26,9 +26,9 @@ const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
 // literal "dev" is only used when we're not in a git checkout at all (e.g. a
 // tarball).
-if (!process.env.VITE_COMMIT_SHA) {
+if (!process.env["VITE_COMMIT_SHA"]) {
   try {
-    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
+    process.env["VITE_COMMIT_SHA"] = execSync("git rev-parse HEAD", {
       cwd: import.meta.dirname,
       stdio: ["ignore", "pipe", "ignore"],
     })
@@ -234,22 +234,22 @@ function previewCoepHeaders(): Plugin {
  * (preserves source maps for debugging).
  */
 function sentry(): PluginOption {
-  if (process.env.VITE_METRICS !== "true") return false;
-  if (!process.env.SENTRY_AUTH_TOKEN) return false;
+  if (process.env["VITE_METRICS"] !== "true") return false;
+  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
     telemetry: false,
-    authToken: process.env.SENTRY_AUTH_TOKEN,
-    release: { name: process.env.VITE_COMMIT_SHA },
+    authToken: process.env["SENTRY_AUTH_TOKEN"],
+    release: { name: process.env["VITE_COMMIT_SHA"] },
     sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
   });
 }
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env.VITE_APP_URL
-    ? new URL(process.env.VITE_APP_URL).pathname
+  base: process.env["VITE_APP_URL"]
+    ? new URL(process.env["VITE_APP_URL"]).pathname
     : "/",
   plugins: [
     // `ssr: true` gives the ssr environment Solid's server codegen, which
@@ -261,7 +261,7 @@ export default defineConfig({
     // non-hydratable: the client output is a plain SPA compile, without
     // hydration keys or claim walks, and the prerender carries no `_hk`
     // markers.
-    stripAnalytics(process.env.VITE_METRICS !== "true"),
+    stripAnalytics(process.env["VITE_METRICS"] !== "true"),
     solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
@@ -336,7 +336,7 @@ export default defineConfig({
     }),
   ],
   worker: {
-    plugins: () => [stripAnalytics(process.env.VITE_METRICS !== "true")],
+    plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
     rolldownOptions: ROLLDOWN_OPTIONS,
   },
   define: {

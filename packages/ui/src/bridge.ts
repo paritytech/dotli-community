@@ -302,7 +302,7 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (
     data === null ||
     typeof data !== "object" ||
-    data.type !== "dotli:sandbox-recover"
+    data["type"] !== "dotli:sandbox-recover"
   ) {
     return;
   }
@@ -989,7 +989,8 @@ export async function renderIframe(
   );
 
   if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
+    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) !==
+    undefined
   ) {
     const { mountViolationPanel } =
       await import("./components/sandbox-checker/mount.js");
@@ -1151,7 +1152,8 @@ export async function renderAppSubdomain(
   );
 
   if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
+    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) !==
+    undefined
   ) {
     const { mountViolationPanel } =
       await import("./components/sandbox-checker/mount.js");

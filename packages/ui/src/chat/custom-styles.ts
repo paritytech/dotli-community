@@ -161,10 +161,10 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
   for (const mod of modifiers) {
     switch (mod.tag) {
       case "Margin":
-        style.margin = dimensionsToCss(mod.value);
+        style["margin"] = dimensionsToCss(mod.value);
         break;
       case "Padding":
-        style.padding = dimensionsToCss(mod.value);
+        style["padding"] = dimensionsToCss(mod.value);
         break;
       case "Background": {
         style["background-color"] = COLOR_TOKEN_CSS[mod.value.color];
@@ -185,10 +185,10 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
         break;
       }
       case "Height":
-        style.height = px(mod.value);
+        style["height"] = px(mod.value);
         break;
       case "Width":
-        style.width = px(mod.value);
+        style["width"] = px(mod.value);
         break;
       case "MinWidth":
         style["min-width"] = px(mod.value);
@@ -198,17 +198,17 @@ export function modifierStyle(modifiers: Modifier[]): CustomStyle {
         break;
       case "FillWidth":
         if (mod.value) {
-          style.width = "100%";
+          style["width"] = "100%";
         }
         break;
       case "FillHeight":
         if (mod.value) {
-          style.height = "100%";
+          style["height"] = "100%";
         }
         break;
       // The wire carries a u8 alpha; CSS wants the unit interval.
       case "Opacity":
-        style.opacity = String(mod.value / 255);
+        style["opacity"] = String(mod.value / 255);
         break;
       case "BlendingMode":
         style["mix-blend-mode"] = BLENDING_MODE_CSS[mod.value];

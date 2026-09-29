@@ -259,7 +259,7 @@ describe("bridge render lifecycle", () => {
         container: HTMLElement;
       }) => {
         const iframe = document.createElement("iframe");
-        iframe.dataset.src = args.iframeUrl;
+        iframe.dataset["src"] = args.iframeUrl;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -297,7 +297,7 @@ describe("bridge render lifecycle", () => {
     await second;
 
     // Then
-    expect(document.querySelector("iframe")?.dataset.src).toBe(
+    expect(document.querySelector("iframe")?.dataset["src"]).toBe(
       "https://second.example/app",
     );
 
@@ -314,7 +314,7 @@ describe("bridge render lifecycle", () => {
     expect(firstHost?.dispose).toHaveBeenCalledTimes(1);
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
-    expect(document.querySelector("iframe")?.dataset.src).toBe(
+    expect(document.querySelector("iframe")?.dataset["src"]).toBe(
       "https://second.example/app",
     );
   }, 10_000);
@@ -335,7 +335,7 @@ describe("bridge render lifecycle", () => {
     // Then
     expect(firstHost.iframe.isConnected).toBe(true);
     expect(firstHost.dispose).not.toHaveBeenCalled();
-    expect(document.querySelector("iframe")?.dataset.src).toBe(
+    expect(document.querySelector("iframe")?.dataset["src"]).toBe(
       "https://first.example/app",
     );
 
@@ -347,7 +347,7 @@ describe("bridge render lifecycle", () => {
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
     const app = document.getElementById("app");
     expect(app?.querySelectorAll("iframe")).toHaveLength(1);
-    expect(app?.querySelector("iframe")?.dataset.src).toBe(
+    expect(app?.querySelector("iframe")?.dataset["src"]).toBe(
       "https://second.example/app",
     );
   }, 10_000);
@@ -377,7 +377,7 @@ describe("bridge render lifecycle", () => {
     expect(firstHost.dispose).toHaveBeenCalledTimes(1);
     const app = document.getElementById("app");
     expect(app?.querySelectorAll("iframe")).toHaveLength(1);
-    expect(app?.querySelector("iframe")?.dataset.src).toContain(
+    expect(app?.querySelector("iframe")?.dataset["src"]).toContain(
       "cid=second-cid",
     );
   }, 10_000);
@@ -486,7 +486,7 @@ describe("bridge app roots", () => {
         container: HTMLElement;
       }) => {
         const iframe = document.createElement("iframe");
-        iframe.dataset.src = args.iframeUrl;
+        iframe.dataset["src"] = args.iframeUrl;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -573,7 +573,7 @@ describe("bridge app roots", () => {
     expect(loading.isConnected).toBe(false);
     const app = document.getElementById("app");
     expect(app?.children).toHaveLength(1);
-    expect(app?.querySelector("iframe")?.dataset.src).toContain(
+    expect(app?.querySelector("iframe")?.dataset["src"]).toContain(
       "cid=second-cid",
     );
   }, 10_000);

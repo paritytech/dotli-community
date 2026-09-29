@@ -45,16 +45,16 @@ const SIGNING_HOST_BASE_PATH =
 // scopes wallet-level signing (signRaw) to this id.
 const PRODUCT_ID =
   nonEmptyEnv("SIGNING_HOST_PRODUCT_ID") ??
-  (process.env.E2E_PRODUCT_URL === undefined
-    ? `${process.env.E2E_HOST ?? "host-playground"}.dot`
-    : new URL(process.env.E2E_PRODUCT_URL).host);
+  (process.env["E2E_PRODUCT_URL"] === undefined
+    ? `${process.env["E2E_HOST"] ?? "host-playground"}.dot`
+    : new URL(process.env["E2E_PRODUCT_URL"]).host);
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
-const PORT = process.env.PORT ?? "5173";
+const PORT = process.env["PORT"] ?? "5173";
 // Pairing only needs the host shell and protocol iframe. Loading the
 // host-playground product here can open product permission modals before the
 // auth button is clicked, so keep global auth setup on the bare host origin.
-const AUTH_HOST = process.env.E2E_AUTH_HOST ?? "localhost";
+const AUTH_HOST = process.env["E2E_AUTH_HOST"] ?? "localhost";
 
 /** The env var `name`, or undefined when it is unset or empty. */
 function nonEmptyEnv(name: string): string | undefined {
@@ -140,7 +140,7 @@ function signingHostConfig(): SigningHostConfig {
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
     liteUsernamePrefix:
-      (process.env.HOST_CLI_SIGNER_MNEMONIC?.trim() ?? "") !== ""
+      (process.env["HOST_CLI_SIGNER_MNEMONIC"]?.trim() ?? "") !== ""
         ? undefined
         : randomLiteUsernamePrefix(),
   };
@@ -180,10 +180,10 @@ export default async function globalSetup(
 
   // Honor HEADED=1 here too so a local repro can watch the pair flow.
   const browser = await chromium.launch({
-    headless: process.env.HEADED !== "1",
+    headless: process.env["HEADED"] !== "1",
     slowMo:
-      process.env.SLOWMO !== undefined && process.env.SLOWMO !== ""
-        ? Number(process.env.SLOWMO)
+      process.env["SLOWMO"] !== undefined && process.env["SLOWMO"] !== ""
+        ? Number(process.env["SLOWMO"])
         : 0,
   });
   let lastErr: unknown = null;

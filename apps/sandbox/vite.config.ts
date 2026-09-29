@@ -26,9 +26,9 @@ const wasm = wasmPlugin as unknown as typeof wasmPlugin.default;
 // Mirror the host's behavior: fall back to git HEAD when CI didn't inject
 // `VITE_COMMIT_SHA`, so the SW's baked `__SW_VERSION__` is a real commit in
 // dev builds too.
-if (!process.env.VITE_COMMIT_SHA) {
+if (!process.env["VITE_COMMIT_SHA"]) {
   try {
-    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
+    process.env["VITE_COMMIT_SHA"] = execSync("git rev-parse HEAD", {
       cwd: import.meta.dirname,
       stdio: ["ignore", "pipe", "ignore"],
     })
@@ -53,14 +53,14 @@ const ROLLDOWN_OPTIONS = { experimental: { lazyBarrel: true } };
  * (preserves source maps for debugging).
  */
 function sentry(): PluginOption {
-  if (process.env.VITE_METRICS !== "true") return false;
-  if (!process.env.SENTRY_AUTH_TOKEN) return false;
+  if (process.env["VITE_METRICS"] !== "true") return false;
+  if (!process.env["SENTRY_AUTH_TOKEN"]) return false;
   return sentryVitePlugin({
     org: "paritytech",
     project: "dotli",
     telemetry: false,
-    authToken: process.env.SENTRY_AUTH_TOKEN,
-    release: { name: process.env.VITE_COMMIT_SHA },
+    authToken: process.env["SENTRY_AUTH_TOKEN"],
+    release: { name: process.env["VITE_COMMIT_SHA"] },
     sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
   });
 }
@@ -79,7 +79,7 @@ function buildServiceWorker(): Plugin {
       // Using `define` guarantees the SHA is inlined as a literal, so the SW
       // bytes actually change between releases (otherwise the browser might
       // skip updating a byte-identical script).
-      const swVersion = process.env.VITE_COMMIT_SHA ?? "dev";
+      const swVersion = process.env["VITE_COMMIT_SHA"] ?? "dev";
       console.log(`\nBuilding Service Worker (app-sw) @ ${swVersion}...`);
       await viteBuild({
         configFile: false,
@@ -145,11 +145,11 @@ function preloadCriticalAssets(): Plugin {
 
 export default defineConfig({
   envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env.VITE_APP_URL
-    ? new URL(process.env.VITE_APP_URL).pathname
+  base: process.env["VITE_APP_URL"]
+    ? new URL(process.env["VITE_APP_URL"]).pathname
     : "/",
   plugins: [
-    stripAnalytics(process.env.VITE_METRICS !== "true"),
+    stripAnalytics(process.env["VITE_METRICS"] !== "true"),
     solid(),
     wasm(),
     runtimeNetworkConfigScript(),
@@ -167,7 +167,7 @@ export default defineConfig({
     sentry(),
   ],
   worker: {
-    plugins: () => [stripAnalytics(process.env.VITE_METRICS !== "true")],
+    plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
     rolldownOptions: ROLLDOWN_OPTIONS,
   },
   define: {

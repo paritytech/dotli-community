@@ -69,12 +69,12 @@ export interface SavedResults {
 const RESULTS_DIR = path.join(import.meta.dirname, "results");
 const BASE_FILE = path.join(RESULTS_DIR, "base.json");
 const LAST_FILE = path.join(RESULTS_DIR, "last.json");
-const SAVE_AS_BASE = process.env.PERF_SAVE_BASE === "1";
-const NUM_RUNS = parseInt(process.env.PERF_RUNS ?? "10", 10);
-const DOMAIN_A = process.env.PERF_DOMAIN_A ?? "browse";
-const DOMAIN_B = process.env.PERF_DOMAIN_B ?? "host-playground";
-const PORT = process.env.PERF_PORT ?? "5173";
-const PERF_VERBOSE = process.env.PERF_VERBOSE === "1";
+const SAVE_AS_BASE = process.env["PERF_SAVE_BASE"] === "1";
+const NUM_RUNS = parseInt(process.env["PERF_RUNS"] ?? "10", 10);
+const DOMAIN_A = process.env["PERF_DOMAIN_A"] ?? "browse";
+const DOMAIN_B = process.env["PERF_DOMAIN_B"] ?? "host-playground";
+const PORT = process.env["PERF_PORT"] ?? "5173";
+const PERF_VERBOSE = process.env["PERF_VERBOSE"] === "1";
 const ITERATION_TIMEOUT = 3 * 60_000; // 3 minutes per iteration
 
 const PHASE_PAIRS: [string, string, string][] = [

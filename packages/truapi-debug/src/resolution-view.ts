@@ -221,8 +221,8 @@ function withLatestPeers(
       continue;
     }
     const p = payloadOf(ev);
-    const chain = str(p.chain);
-    const peers = num(p.peers);
+    const chain = str(p["chain"]);
+    const peers = num(p["peers"]);
     if (chain === null || peers === null) {
       continue;
     }
@@ -330,13 +330,13 @@ function buildRows(
       continue;
     }
     const p = payloadOf(ev);
-    const role = CHAIN_ROLES.find((r) => r === str(p.chain));
+    const role = CHAIN_ROLES.find((r) => r === str(p["chain"]));
     const row = role === undefined ? undefined : byRole.get(role);
     if (row === undefined) {
       continue;
     }
     if (ev.event === "dbcache") {
-      const cache = str(p.dbCache);
+      const cache = str(p["dbCache"]);
       if (cache === "hit" || cache === "miss") {
         // First answer wins, matching the resolver-side latch.
         row.dbCache ??= cache;
@@ -348,10 +348,10 @@ function buildRows(
       // whatever phase it was already drawing.
       const open =
         row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
-      notePeers(row, num(p.peers), open?.phase ?? "unknown");
+      notePeers(row, num(p["peers"]), open?.phase ?? "unknown");
       continue;
     }
-    const phase = str(p.phase) ?? "unknown";
+    const phase = str(p["phase"]) ?? "unknown";
     const at = Math.max(0, ev.timestamp - startedAt);
     const previous =
       row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
@@ -361,9 +361,9 @@ function buildRows(
         // A warp update: the chain never left the phase, so the block it is
         // already drawing simply keeps running rather than being cut in two.
         previous.endMs = null;
-        notePeers(row, num(p.peers), phase);
-        row.warpAt = num(p.warpAt) ?? row.warpAt;
-        row.warpTarget = num(p.warpTarget) ?? row.warpTarget;
+        notePeers(row, num(p["peers"]), phase);
+        row.warpAt = num(p["warpAt"]) ?? row.warpAt;
+        row.warpTarget = num(p["warpTarget"]) ?? row.warpTarget;
         continue;
       }
     }
@@ -371,11 +371,11 @@ function buildRows(
       phase,
       startMs: at,
       endMs: null,
-      reason: str(p.reason),
+      reason: str(p["reason"]),
     });
-    notePeers(row, num(p.peers), phase);
-    row.warpAt = num(p.warpAt) ?? row.warpAt;
-    row.warpTarget = num(p.warpTarget) ?? row.warpTarget;
+    notePeers(row, num(p["peers"]), phase);
+    row.warpAt = num(p["warpAt"]) ?? row.warpAt;
+    row.warpTarget = num(p["warpTarget"]) ?? row.warpTarget;
   }
 
   for (const row of byRole.values()) {
@@ -454,32 +454,32 @@ function buildSummary(
     const key = `${ev.layer}:${ev.event}`;
     switch (key) {
       case "resolve:started": {
-        const source = str(p.source);
+        const source = str(p["source"]);
         if (source === "smoldot" || source === "rpc-gateway") {
           summary.backend = source;
         }
-        summary.label = str(p.label) ?? summary.label;
+        summary.label = str(p["label"]) ?? summary.label;
         break;
       }
       case "resolve:completed": {
-        const source = str(p.source);
+        const source = str(p["source"]);
         if (source === "smoldot" || source === "rpc-gateway") {
           summary.backend = source;
         }
-        summary.label = str(p.label) ?? summary.label;
-        summary.cid = str(p.cid);
-        summary.resolveMs = num(p.durationMs);
+        summary.label = str(p["label"]) ?? summary.label;
+        summary.cid = str(p["cid"]);
+        summary.resolveMs = num(p["durationMs"]);
         summary.outcome = summary.cid === null ? "empty" : "resolved";
         break;
       }
       case "resolve:failed":
         summary.outcome = "failed";
-        summary.failureReason = str(p.reason);
-        summary.label = str(p.label) ?? summary.label;
+        summary.failureReason = str(p["reason"]);
+        summary.label = str(p["label"]) ?? summary.label;
         break;
       case "boot:failed":
         summary.outcome = "failed";
-        summary.failureReason = str(p.reason);
+        summary.failureReason = str(p["reason"]);
         break;
       case "render:iframe_ready":
         summary.renderedMs = Math.max(0, ev.timestamp - startedAt);
@@ -494,7 +494,7 @@ function buildSummary(
         // carries one, but a load served from the CID cache never emits a
         // resolve event at all, and without this the gateway rows rendered as
         // four chains that "never started" when no light client had ever run.
-        const backend = str(p.chainBackend);
+        const backend = str(p["chainBackend"]);
         if (backend === "rpc-gateway") {
           summary.backend = "rpc-gateway";
         } else if (backend?.startsWith("smoldot") === true) {
@@ -503,21 +503,21 @@ function buildSummary(
         // A cache the user turned off never reports a result. Seed the fields
         // here so the panel says so instead of "not reported", which reads as
         // a missing instrumentation hook.
-        if (p.skipCidCache === true) {
+        if (p["skipCidCache"] === true) {
           summary.cidCache = "skipped";
         }
-        if (p.skipArchiveCache === true) {
+        if (p["skipArchiveCache"] === true) {
           summary.archiveCache = "skipped";
         }
         break;
       }
       case "boot:cid_cache_checked":
-        summary.cidCache = p.hit === true ? "hit" : "miss";
+        summary.cidCache = p["hit"] === true ? "hit" : "miss";
         // A cache hit resolves the name without a `resolve:completed` event.
         // `??=` so a later real resolve still wins if both somehow appear.
-        if (p.hit === true) {
-          summary.cid ??= str(p.cid);
-          summary.label ??= str(p.label);
+        if (p["hit"] === true) {
+          summary.cid ??= str(p["cid"]);
+          summary.label ??= str(p["label"]);
           // The moment the CID was known, which is what "resolved in" means on
           // this path. Without it the field read "—" beside outcome "resolved".
           summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
@@ -525,22 +525,22 @@ function buildSummary(
         break;
       case "boot:block_cache":
         summary.archiveCache =
-          num(p.misses) === 0 && (num(p.hits) ?? 0) > 0 ? "hit" : "miss";
+          num(p["misses"]) === 0 && (num(p["hits"]) ?? 0) > 0 ? "hit" : "miss";
         break;
       case "sandbox:document_written":
-        summary.appBytes = num(p.bytes);
-        summary.appFileCount = num(p.fileCount);
+        summary.appBytes = num(p["bytes"]);
+        summary.appFileCount = num(p["fileCount"]);
         paintedMs = Math.max(0, ev.timestamp - startedAt);
         break;
       case "failover:chain_backend": {
-        const to = str(p.to);
+        const to = str(p["to"]);
         if (to === "smoldot" || to === "rpc-gateway") {
           summary.backend = to;
         }
         break;
       }
       case "chain:bytes": {
-        const total = num(p.received);
+        const total = num(p["received"]);
         if (total === null) {
           break;
         }

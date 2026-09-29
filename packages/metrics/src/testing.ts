@@ -115,14 +115,14 @@ export function installMetricsHarness(): MetricsHarness {
     },
   };
 
-  (globalThis as Record<string, unknown>).__SENTRY_HUB__ = stub;
+  (globalThis as Record<string, unknown>)["__SENTRY_HUB__"] = stub;
 
   return {
     metrics,
     breadcrumbs,
     tags,
     restore(): void {
-      delete (globalThis as Record<string, unknown>).__SENTRY_HUB__;
+      delete (globalThis as Record<string, unknown>)["__SENTRY_HUB__"];
     },
   };
 }

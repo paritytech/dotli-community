@@ -240,9 +240,9 @@ test.describe("Settings works", () => {
       string,
       unknown
     >;
-    expect(cache.skipCidCache).toBe(true);
-    expect(cache.skipArchiveCache).toBe(true);
-    expect(cache.skipWorkerCache).toBe(false);
+    expect(cache["skipCidCache"]).toBe(true);
+    expect(cache["skipArchiveCache"]).toBe(true);
+    expect(cache["skipWorkerCache"]).toBe(false);
     expect(state.url).toContain("skipCidCache=1");
     expect(state.url).toContain("skipArchiveCache=1");
     expect(state.url).not.toContain("skipWorkerCache=");

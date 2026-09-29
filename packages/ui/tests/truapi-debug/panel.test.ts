@@ -319,7 +319,7 @@ describe("truapi debug panel: mount and dispose", () => {
     const kinds = [
       ...root.querySelectorAll<HTMLInputElement>(".td-filters input.td-kind"),
     ];
-    expect(kinds.map((k) => [k.dataset.kind, k.checked])).toEqual([
+    expect(kinds.map((k) => [k.dataset["kind"], k.checked])).toEqual([
       ["truapi", true],
       ["system", true],
     ]);
@@ -1020,12 +1020,12 @@ describe("truapi debug panel: selection and detail", () => {
       "requestId",
       "group",
     ]);
-    expect(detail.time).toBe("12:34:56.789");
-    expect(detail.direction).toBe("outgoing");
-    expect(detail.product).toBe("app.dot");
-    expect(detail.tag).toBe("system_handshake_request");
-    expect(detail.requestId).toBe("req-aa req-aaa-111");
-    expect(detail.group).toBe("2 events — system_handshake_response +50ms");
+    expect(detail["time"]).toBe("12:34:56.789");
+    expect(detail["direction"]).toBe("outgoing");
+    expect(detail["product"]).toBe("app.dot");
+    expect(detail["tag"]).toBe("system_handshake_request");
+    expect(detail["requestId"]).toBe("req-aa req-aaa-111");
+    expect(detail["group"]).toBe("2 events — system_handshake_response +50ms");
     expect(q(".td-detail .td-detail-pre").textContent).toBe(
       JSON.stringify({ version: 1 }, null, 2),
     );
@@ -1040,7 +1040,7 @@ describe("truapi debug panel: selection and detail", () => {
     expect(
       rowByTag("system_handshake_request").classList.contains("paired"),
     ).toBe(true);
-    expect(detailRows().group).toBe(
+    expect(detailRows()["group"]).toBe(
       "2 events — system_handshake_request −50ms",
     );
 
@@ -1071,11 +1071,11 @@ describe("truapi debug panel: selection and detail", () => {
       "flowId",
       "group",
     ]);
-    expect(detail.source).toBe("dotli");
-    expect(detail.layer).toBe("boot");
-    expect(detail.event).toBe("started");
-    expect(detail.flowId).toBe("flow-b flow-boot-1");
-    expect(detail.group).toBe("1 event");
+    expect(detail["source"]).toBe("dotli");
+    expect(detail["layer"]).toBe("boot");
+    expect(detail["event"]).toBe("started");
+    expect(detail["flowId"]).toBe("flow-b flow-boot-1");
+    expect(detail["group"]).toBe("1 event");
     expect(q(".td-detail .td-detail-section-title").textContent).toBe(
       "Summary",
     );
@@ -1107,7 +1107,7 @@ describe("truapi debug panel: selection and detail", () => {
 
     // Then
     expect(selectedTag()).toEqual(["system_handshake_request"]);
-    expect(detailRows().tag).toBe("system_handshake_request");
+    expect(detailRows()["tag"]).toBe("system_handshake_request");
 
     // When
     key(list, "ArrowDown");
@@ -1209,7 +1209,7 @@ describe("truapi debug panel: selection and detail", () => {
     expect(
       rowByTag("system_handshake_response").classList.contains("paired"),
     ).toBe(true);
-    expect(detailRows().tag).toBe("system_handshake_request");
+    expect(detailRows()["tag"]).toBe("system_handshake_request");
   });
 });
 
@@ -1291,9 +1291,9 @@ describe("truapi debug panel: views", () => {
       "system_handshake_response",
     ]);
     const head = detailRows();
-    expect(head.requestId).toBe("req-aa req-aaa-111");
-    expect(head.group).toBe("2 events");
-    expect(head.duration).toBe("50ms");
+    expect(head["requestId"]).toBe("req-aa req-aaa-111");
+    expect(head["group"]).toBe("2 events");
+    expect(head["duration"]).toBe("50ms");
   });
 
   it("As a dotli developer, new events keep the timeline up to date while it is open", () => {
@@ -1705,14 +1705,14 @@ describe("truapi debug panel: product iframe geometry", () => {
     mount();
 
     // Then
-    expect(frame.width).toBe(SAFE_WIDTH);
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(frame["width"]).toBe(SAFE_WIDTH);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
 
     // When
     click(q(".td-collapse"));
 
     // Then
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
   });
 
   it("As a dotli developer, without a topbar the frame keeps the full safe height, and a collapsed mount reserves 32px", () => {
@@ -1724,8 +1724,8 @@ describe("truapi debug panel: product iframe geometry", () => {
     mount({ startCollapsed: true });
 
     // Then
-    expect(frame.width).toBe(SAFE_WIDTH);
-    expect(frame.height).toBe(`calc(${FULL_HEIGHT} - 32px)`);
+    expect(frame["width"]).toBe(SAFE_WIDTH);
+    expect(frame["height"]).toBe(`calc(${FULL_HEIGHT} - 32px)`);
   });
 
   it("As a dotli developer, a right-docked panel narrows the iframe by its width, and collapsing gives it back", () => {
@@ -1738,23 +1738,23 @@ describe("truapi debug panel: product iframe geometry", () => {
     click(q(".td-dock"));
 
     // Then
-    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
-    expect(frame.width).toBe(`calc(${SAFE_WIDTH} - 400px)`);
+    expect(frame["height"]).toBe(BELOW_BAR_HEIGHT);
+    expect(frame["width"]).toBe(`calc(${SAFE_WIDTH} - 400px)`);
 
     // When
     click(q(".td-collapse"));
 
     // Then
-    expect(frame.width).toBe(SAFE_WIDTH);
-    expect(frame.height).toBe(BELOW_BAR_HEIGHT);
+    expect(frame["width"]).toBe(SAFE_WIDTH);
+    expect(frame["height"]).toBe(BELOW_BAR_HEIGHT);
 
     // When
     click(q(".td-collapse"));
     click(q(".td-dock"));
 
     // Then
-    expect(frame.width).toBe(SAFE_WIDTH);
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(frame["width"]).toBe(SAFE_WIDTH);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
   });
 
   it("As a dotli developer, dragging the panel edge refits the iframe", () => {
@@ -1779,7 +1779,7 @@ describe("truapi debug panel: product iframe geometry", () => {
     vi.advanceTimersByTime(20);
 
     // Then
-    expect(frame.height).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
+    expect(frame["height"]).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
     pointer(q(".td-resize-handle"), "pointerup");
   });
 
@@ -1797,8 +1797,8 @@ describe("truapi debug panel: product iframe geometry", () => {
     layout.setChatWidth(360);
 
     // Then
-    expect(reloaded.width).toBe(`calc(${SAFE_WIDTH} - 760px)`);
-    expect(reloaded.height).toBe(BELOW_BAR_HEIGHT);
+    expect(reloaded["width"]).toBe(`calc(${SAFE_WIDTH} - 760px)`);
+    expect(reloaded["height"]).toBe(BELOW_BAR_HEIGHT);
   });
 
   it("As a dotli developer, closing the panel with chat open restores the full layout", () => {
@@ -1808,22 +1808,22 @@ describe("truapi debug panel: product iframe geometry", () => {
     layout.setChatWidth(360);
     layout.setTopbarLayout({ offset: false, shown: false, transition: "" });
     const dispose = mount();
-    expect(frame.height).toBe(`calc(${FULL_HEIGHT} - 300px)`);
+    expect(frame["height"]).toBe(`calc(${FULL_HEIGHT} - 300px)`);
 
     // When
     dispose();
 
     // Then chat, the safe insets and the tracked bar all still apply
-    expect(frame.width).toBe(`calc(${SAFE_WIDTH} - 360px)`);
-    expect(frame.height).toBe(FULL_HEIGHT);
-    expect(frame.top).toBe("var(--safe-top, 0px)");
-    expect(frame.transform).toBe("translateY(0)");
+    expect(frame["width"]).toBe(`calc(${SAFE_WIDTH} - 360px)`);
+    expect(frame["height"]).toBe(FULL_HEIGHT);
+    expect(frame["top"]).toBe("var(--safe-top, 0px)");
+    expect(frame["transform"]).toBe("translateY(0)");
 
     // When a product loads after the panel is gone
     window.dispatchEvent(new CustomEvent("dotli:product-loaded"));
 
     // Then
-    expect(frame.height).toBe(FULL_HEIGHT);
+    expect(frame["height"]).toBe(FULL_HEIGHT);
   });
 });
 
@@ -1955,7 +1955,7 @@ describe("truapi debug panel: streaming load", () => {
     // Then
     expect(rowByTag("system_handshake_response")).toBe(target);
     expect(target.classList.contains("selected")).toBe(true);
-    expect(detailRows().tag).toBe("system_handshake_response");
+    expect(detailRows()["tag"]).toBe("system_handshake_response");
     expect(rows()).toHaveLength(23);
   });
 });

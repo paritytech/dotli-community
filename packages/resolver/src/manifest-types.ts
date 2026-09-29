@@ -111,20 +111,20 @@ function validateWidgetFields(
   const errors: string[] = [];
   if (
     "description" in input &&
-    input.description !== undefined &&
-    typeof input.description !== "string"
+    input["description"] !== undefined &&
+    typeof input["description"] !== "string"
   ) {
     errors.push(`${p}description must be a string when present`);
   }
-  if (!isPlainObject(input.dimensions)) {
+  if (!isPlainObject(input["dimensions"])) {
     errors.push(`${p}dimensions must be an object`);
     return errors;
   }
-  const dims = input.dimensions;
+  const dims = input["dimensions"];
   if (
-    !Array.isArray(dims.height) ||
-    dims.height.length === 0 ||
-    !dims.height.every(
+    !Array.isArray(dims["height"]) ||
+    dims["height"].length === 0 ||
+    !dims["height"].every(
       (h) => typeof h === "number" && Number.isInteger(h) && h > 0,
     )
   ) {
@@ -134,11 +134,11 @@ function validateWidgetFields(
   }
   if (
     "width" in dims &&
-    dims.width !== undefined &&
+    dims["width"] !== undefined &&
     !(
-      typeof dims.width === "number" &&
-      Number.isInteger(dims.width) &&
-      dims.width > 0
+      typeof dims["width"] === "number" &&
+      Number.isInteger(dims["width"]) &&
+      dims["width"] > 0
     )
   ) {
     errors.push(`${p}dimensions.width must be a positive integer when present`);
@@ -151,26 +151,26 @@ function validateWorkerFields(
   p: string,
 ): string[] {
   const errors: string[] = [];
-  if (!isNonEmptyString(input.entrypoint)) {
+  if (!isNonEmptyString(input["entrypoint"])) {
     errors.push(`${p}entrypoint must be a non-empty string`);
   } else if (
-    input.entrypoint.startsWith("/") ||
-    input.entrypoint.split("/").includes("..")
+    input["entrypoint"].startsWith("/") ||
+    input["entrypoint"].split("/").includes("..")
   ) {
     errors.push(`${p}entrypoint must be a relative path with no '..' segments`);
   }
-  if (!isPlainObject(input.includes)) {
+  if (!isPlainObject(input["includes"])) {
     errors.push(`${p}includes must be an object`);
     return errors;
   }
-  const inc = input.includes;
-  if (typeof inc.chat !== "boolean") {
+  const inc = input["includes"];
+  if (typeof inc["chat"] !== "boolean") {
     errors.push(`${p}includes.chat must be a boolean`);
   }
-  if (typeof inc.pocket !== "boolean") {
+  if (typeof inc["pocket"] !== "boolean") {
     errors.push(`${p}includes.pocket must be a boolean`);
   }
-  if (inc.chat === false && inc.pocket === false) {
+  if (inc["chat"] === false && inc["pocket"] === false) {
     errors.push(`${p}includes must have at least one of chat / pocket = true`);
   }
   return errors;
@@ -219,24 +219,26 @@ export function validateRootManifest(
   if (!isPlainObject(input)) {
     return { ok: false, errors: ["root manifest must be an object"] };
   }
-  if (input.$v !== 1) {
-    errors.push(`root manifest $v must be 1 (got ${JSON.stringify(input.$v)})`);
+  if (input["$v"] !== 1) {
+    errors.push(
+      `root manifest $v must be 1 (got ${JSON.stringify(input["$v"])})`,
+    );
   }
-  if (!isNonEmptyString(input.displayName)) {
+  if (!isNonEmptyString(input["displayName"])) {
     errors.push("root manifest displayName must be a non-empty string");
   }
-  if (typeof input.description !== "string") {
+  if (typeof input["description"] !== "string") {
     errors.push("root manifest description must be a string");
   }
-  if (!isPlainObject(input.icon)) {
+  if (!isPlainObject(input["icon"])) {
     errors.push("root manifest icon must be an object");
   } else {
-    if (!isNonEmptyString(input.icon.cid)) {
+    if (!isNonEmptyString(input["icon"]["cid"])) {
       errors.push("root manifest icon.cid must be a non-empty string");
     }
-    if (!ICON_FORMATS.includes(input.icon.format as IconFormat)) {
+    if (!ICON_FORMATS.includes(input["icon"]["format"] as IconFormat)) {
       errors.push(
-        `root manifest icon.format must be one of ${ICON_FORMATS.join(", ")} (got ${JSON.stringify(input.icon.format)})`,
+        `root manifest icon.format must be one of ${ICON_FORMATS.join(", ")} (got ${JSON.stringify(input["icon"]["format"])})`,
       );
     }
   }
@@ -252,17 +254,17 @@ export function validateExecutableManifest(
   if (!isPlainObject(input)) {
     return { ok: false, errors: ["executable manifest must be an object"] };
   }
-  if (input.$v !== 1) {
+  if (input["$v"] !== 1) {
     errors.push(
-      `executable manifest $v must be 1 (got ${JSON.stringify(input.$v)})`,
+      `executable manifest $v must be 1 (got ${JSON.stringify(input["$v"])})`,
     );
   }
-  if (!isAppVersion(input.appVersion)) {
+  if (!isAppVersion(input["appVersion"])) {
     errors.push(
       "executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]",
     );
   }
-  const kind = input.kind;
+  const kind = input["kind"];
   const p = "executable manifest ";
   if (kind === "app") {
     // App has no kind-specific fields beyond the common ones.

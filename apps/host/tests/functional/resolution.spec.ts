@@ -25,7 +25,7 @@ import { test } from "./helpers/shared-mode-reset.js";
 const BASE_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 
 /** A second product, so session 2 cannot be answered from the content cache. */
-const WARM_DOMAIN = process.env.WARM_DOMAIN ?? "browse";
+const WARM_DOMAIN = process.env["WARM_DOMAIN"] ?? "browse";
 const WARM_BASE_URL = `http://${WARM_DOMAIN}.localhost:${PORT}/`;
 /** The provider's smoldot database store, on the protocol iframe's origin. */
 const PROTOCOL_ORIGIN = `http://host.localhost:${PORT}`;

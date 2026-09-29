@@ -90,7 +90,7 @@ describe("toast stack", () => {
     const card = cards()[0];
     expect(card.classList.contains("notif-card")).toBe(true);
     expect(card.classList.contains("notif-enter")).toBe(true);
-    expect(card.dataset.id).toBe("0");
+    expect(card.dataset["id"]).toBe("0");
     expect(
       card.querySelector<HTMLElement>(".notif-icon")?.style.background,
     ).not.toBe("");

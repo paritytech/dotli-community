@@ -21,8 +21,12 @@ export function peelVersion(v: unknown): unknown {
   if (o === undefined) {
     return v;
   }
-  if (typeof o.tag === "string" && VERSION_TAG.test(o.tag) && "value" in o) {
-    return o.value;
+  if (
+    typeof o["tag"] === "string" &&
+    VERSION_TAG.test(o["tag"]) &&
+    "value" in o
+  ) {
+    return o["value"];
   }
   return v;
 }
@@ -39,10 +43,10 @@ export function asEnum(v: unknown): EnumValue | undefined {
   if (o === undefined) {
     return undefined;
   }
-  if (typeof o.tag !== "string") {
+  if (typeof o["tag"] !== "string") {
     return undefined;
   }
-  return { tag: o.tag, value: o.value };
+  return { tag: o["tag"], value: o["value"] };
 }
 
 export function asString(v: unknown): string | undefined {

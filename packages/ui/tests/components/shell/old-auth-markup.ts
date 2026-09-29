@@ -165,14 +165,14 @@ export function oldModal(opts: {
       break;
     case "canvas": {
       const canvas = document.createElement("canvas");
-      canvas.dataset.qrPayload = body.payload;
+      canvas.dataset["qrPayload"] = body.payload;
       qr.innerHTML = "";
       qr.appendChild(canvas);
       break;
     }
     case "mobile-qr": {
       const canvas = document.createElement("canvas");
-      canvas.dataset.qrPayload = body.payload;
+      canvas.dataset["qrPayload"] = body.payload;
       qr.innerHTML = "";
       const qrLink = document.createElement("a");
       qrLink.href = body.payload;

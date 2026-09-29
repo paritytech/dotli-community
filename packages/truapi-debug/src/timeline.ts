@@ -470,7 +470,7 @@ function findSegmentForSeq(
 ): SVGRectElement | null {
   const segs = container.querySelectorAll<SVGRectElement>(".td-tl-segment");
   for (const seg of Array.from(segs)) {
-    const seqs = seg.dataset.seqs?.split(",") ?? [];
+    const seqs = seg.dataset["seqs"]?.split(",") ?? [];
     if (seqs.includes(String(seq))) {
       return seg;
     }

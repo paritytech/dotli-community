@@ -21,7 +21,7 @@ export interface SocialMeta {
 
 /** Resolves `image` against `VITE_APP_URL`, keeping it relative when unset. */
 export function socialImageUrl(image: string): string {
-  const appUrl = process.env.VITE_APP_URL?.trim();
+  const appUrl = process.env["VITE_APP_URL"]?.trim();
   if (appUrl === undefined || appUrl === "") {
     return image;
   }

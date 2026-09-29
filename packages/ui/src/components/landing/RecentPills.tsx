@@ -37,7 +37,7 @@ export function RecentPills(): JSX.Element {
   // Native listeners, like the shell's islands (components/shell/islands.tsx).
   const onClick = (e: MouseEvent): void => {
     const item = itemOf(e.target);
-    const label = item?.dataset.label;
+    const label = item?.dataset["label"];
     if (item === null || label === undefined) {
       return;
     }
@@ -62,7 +62,7 @@ export function RecentPills(): JSX.Element {
     }
   };
   const onTouchStart = (e: Event): void => {
-    const label = itemOf(e.target)?.dataset.label;
+    const label = itemOf(e.target)?.dataset["label"];
     if (label === undefined || revealed() === label) {
       return;
     }

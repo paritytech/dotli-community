@@ -99,7 +99,7 @@ describe("The network panel blocks arrive as motion", () => {
 
     // Then
     const marks = strip.querySelectorAll<HTMLElement>(BAR);
-    expect([...marks].map((m) => m.dataset.block)).toEqual(["101", "102"]);
+    expect([...marks].map((m) => m.dataset["block"])).toEqual(["101", "102"]);
     expect(getComputedStyle(strip).flexDirection).not.toBe("row-reverse");
   });
 
@@ -176,6 +176,6 @@ describe("The network panel blocks arrive as motion", () => {
     // Then
     const marks = [...strip.querySelectorAll<HTMLElement>(BAR)];
     expect(marks).toHaveLength(25);
-    expect(marks.at(-1)?.dataset.block).toBe("130");
+    expect(marks.at(-1)?.dataset["block"]).toBe("130");
   });
 });
