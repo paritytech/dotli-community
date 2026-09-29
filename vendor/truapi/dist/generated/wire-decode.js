@@ -372,6 +372,10 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostWorkerEndOperationRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostWorkerEndOperationResponse, S.CallError(T.VersionedHostWorkerEndOperationError)).dec(payload),
     },
+    [W.CONTACTS_PICK.trait * 256 + W.CONTACTS_PICK.method]: {
+        0: (payload) => T.VersionedHostContactsPickRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload),
+    },
     [W.JAM_PEER_TRANSPORT_DIAL.trait * 256 + W.JAM_PEER_TRANSPORT_DIAL.method]: {
         0: (payload) => T.VersionedHostJamPeerTransportDialRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload),

@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -59,6 +59,9 @@ var init_host_callbacks = __esm({
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi.ChainIdentifier, genesisHash: import_truapi.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
+    HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi.Bytes32, handles: S.Vector(import_truapi.Bytes32) }));
+    HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.Option(import_truapi.Bytes32)) }));
+    HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi.HostDevicePermissionRequest, Remote: import_truapi.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }) }));
@@ -177,6 +180,7 @@ __export(host_callbacks_adapter_exports, {
 });
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
+  const contacts = callbacks.contacts;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
   return {
@@ -187,6 +191,10 @@ function createWasmRawCallbacks(callbacks) {
       registerChatBot: async (product, request) => import_truapi2.HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), import_truapi2.HostChatRegisterBotRequest.dec(request))),
       postChatMessage: async (product, request) => import_truapi2.HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), import_truapi2.HostChatPostMessageRequest.dec(request))),
       subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(import_truapi2.HostChatListSubscribeItem.enc(item)), sendError)
+    } : {},
+    ...contacts ? {
+      contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
+      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product)))
     } : {},
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
@@ -1599,7 +1607,8 @@ function createWebWorkerHostRuntime(worker, host, options) {
           capabilities: {
             chat: host.chat !== void 0,
             permissionStatus: host.permissionStatus !== void 0,
-            pocket: host.pocket !== void 0
+            pocket: host.pocket !== void 0,
+            contacts: host.contacts !== void 0
           },
           debuggerUrl: debuggerDial
         });
@@ -1738,6 +1747,9 @@ function buildRuntime(state) {
       state.worker.postMessage({
         kind: "notifySessionStoreChanged"
       });
+    },
+    notifyContactsChanged() {
+      postUnlessDisposed(state, { kind: "notifyContactsChanged" });
     },
     acquireWorker(productId) {
       postUnlessDisposed(state, { kind: "acquireWorker", productId });

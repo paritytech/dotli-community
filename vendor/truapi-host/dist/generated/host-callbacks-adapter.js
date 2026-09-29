@@ -5,12 +5,13 @@
 // platform-local types cross as SCALE bytes (`.enc`/`.dec`); strings,
 // primitives and byte blobs pass through unchanged.
 import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, driveResultStream, } from "../adapter-support.js";
 /** Adapt typed host callbacks into the raw SCALE callback surface the
  *  WASM core invokes. */
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
+    const contacts = callbacks.contacts;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
     return {
@@ -22,6 +23,12 @@ export function createWasmRawCallbacks(callbacks) {
                 registerChatBot: async (product, request) => HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), HostChatRegisterBotRequest.dec(request))),
                 postChatMessage: async (product, request) => HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), HostChatPostMessageRequest.dec(request))),
                 subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(HostChatListSubscribeItem.enc(item)), sendError),
+            }
+            : {}),
+        ...(contacts
+            ? {
+                contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
+                pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product))),
             }
             : {}),
         readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
