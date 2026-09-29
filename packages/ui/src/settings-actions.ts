@@ -26,6 +26,7 @@ import {
   type CacheSettings,
 } from "@dotli/config/mode";
 import { clearCidCache } from "@dotli/storage/cid-cache";
+import { clearBlockCache } from "@dotli/storage/block-cache";
 import {
   getNetwork,
   setNetwork,
@@ -58,9 +59,7 @@ export interface ModeDraft {
  *     and worker state stay warm.
  *   - Turning a cache toggle off clears that cache's origin:
  *       dotNS clears the host-origin CID store here, directly.
- *       Archive flags the sandbox iframe to purge its origin on next boot
- *               (reuses the existing `pending-reset:sandbox` signal the
- *               bridge already consumes).
+ *       Archive clears the host-origin block store here, directly.
  *       Worker needs no signal. The persisted `skipWorkerCache` flag
  *              makes the protocol iframe purge on its next boot.
  *
@@ -107,15 +106,7 @@ export async function applyAndReset(
         await clearCidCache();
       }
       if (archiveTurnedOff) {
-        // Archive cache lives on the sandbox origin, unreachable from here.
-        // Reuse the existing one-shot flag the bridge turns into fullReset=1
-        // so the sandbox purges itself on its next boot.
-        try {
-          sessionStorage.setItem("dotli:pending-reset:sandbox", "1");
-          // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable (Safari private mode); the sandbox purge is best-effort, reload below is unconditional.
-        } catch {
-          /* sessionStorage unavailable: sandbox purge skipped */
-        }
+        await clearBlockCache();
       }
     }
 
