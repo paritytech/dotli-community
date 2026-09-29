@@ -13,6 +13,7 @@ import {
 import { CID } from "multiformats/cid";
 import * as raw from "multiformats/codecs/raw";
 import { sha256 } from "multiformats/hashes/sha2";
+import { create as createDigest } from "multiformats/hashes/digest";
 import type { SandboxBitswapOptions } from "@dotli/content/bitswap";
 
 const mocks = vi.hoisted(() => ({
@@ -85,7 +86,12 @@ function memoryCache(initial: [string, Uint8Array][] = []) {
   const blocks = new Map(initial);
   return {
     blocks,
-    get: vi.fn((cid: string) => Promise.resolve(blocks.get(cid) ?? null)),
+    // A real cache backs onto storage the caller doesn't share a buffer
+    // with, so hand back a copy: the relay transfers the returned buffer to
+    // the sandbox, which would otherwise detach this map's own copy.
+    get: vi.fn((cid: string) =>
+      Promise.resolve(blocks.get(cid)?.slice() ?? null),
+    ),
     put: vi.fn((cid: string, bytes: Uint8Array) => {
       blocks.set(cid, bytes);
       return Promise.resolve();
@@ -117,6 +123,10 @@ describe("listenForSandboxBitswap with a block cache", () => {
 
   afterEach(() => {
     stop();
+    // Unconditional, not just at the end of the tests that mock it: an
+    // assertion failure inside one of those tests would otherwise skip the
+    // unmock and leak a throwing "./verify" into every test after it.
+    vi.doUnmock("../src/verify");
   });
 
   async function startRelay(options: SandboxBitswapOptions): Promise<void> {
@@ -239,5 +249,136 @@ describe("listenForSandboxBitswap with a block cache", () => {
 
     // Then
     expect(chain.sent).toBe(2);
+  });
+
+  it("As a user, a verifier module that fails to load treats a cached block as a miss", async () => {
+    // Given a cache already holding the block, but a verifier that cannot be
+    // imported
+    vi.doMock("../src/verify", () => {
+      throw new Error("verify module failed to load");
+    });
+    const chain = stubChain(BLOCK_HEX);
+    const cache = memoryCache([[blockCid, BLOCK.slice()]]);
+    await startRelay({ blockCache: cache });
+
+    // When
+    const frame = fakeFrame();
+    request(frame, "req-1");
+    await vi.waitFor(() => {
+      expect(frame.replies).toHaveLength(1);
+    });
+
+    // Then the cached copy was not trusted, so the block was fetched fresh
+    expect(chain.sent).toBe(1);
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+  });
+
+  it("As a user, a verifier module that fails to load still serves a freshly fetched block, unstored", async () => {
+    // Given a verifier that cannot be imported
+    vi.doMock("../src/verify", () => {
+      throw new Error("verify module failed to load");
+    });
+    const chain = stubChain(BLOCK_HEX);
+    const cache = memoryCache();
+    await startRelay({ blockCache: cache });
+
+    // When
+    const frame = fakeFrame();
+    request(frame, "req-1");
+    await vi.waitFor(() => {
+      expect(frame.replies).toHaveLength(1);
+    });
+
+    // Then the network bytes were still handed to the sandbox, but the
+    // unverifiable block was never written to the cache
+    expect(chain.sent).toBe(1);
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("As a user, a CID with an unsupported multihash is served from the network but never cached", async () => {
+    // Given a CID built on a multihash the verifier cannot recompute
+    // (identity, 0x00)
+    const unsupportedDigest = createDigest(0x00, BLOCK);
+    const unsupportedCid = CID.create(
+      1,
+      raw.code,
+      unsupportedDigest,
+    ).toString();
+    const chain = stubChain(BLOCK_HEX);
+    const cache = memoryCache();
+    await startRelay({ blockCache: cache });
+
+    // When
+    const frame = fakeFrame();
+    window.dispatchEvent(
+      Object.assign(
+        new MessageEvent("message", {
+          data: {
+            type: "dotli:bitswap-get",
+            id: "req-1",
+            cid: unsupportedCid,
+          },
+        }),
+        { source: frame, origin: "https://a.app.dot.li" },
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(frame.replies).toHaveLength(1);
+    });
+
+    // Then
+    expect(chain.sent).toBe(1);
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("As a user, an unparseable CID is served (as it is today) but never cached", async () => {
+    // Given a request whose "cid" does not parse as a CID at all
+    const chain = stubChain(BLOCK_HEX);
+    const cache = memoryCache();
+    await startRelay({ blockCache: cache });
+
+    // When
+    const frame = fakeFrame();
+    window.dispatchEvent(
+      Object.assign(
+        new MessageEvent("message", {
+          data: {
+            type: "dotli:bitswap-get",
+            id: "req-1",
+            cid: "not-a-cid",
+          },
+        }),
+        { source: frame, origin: "https://a.app.dot.li" },
+      ),
+    );
+    await vi.waitFor(() => {
+      expect(frame.replies).toHaveLength(1);
+    });
+
+    // Then
+    expect(chain.sent).toBe(1);
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
+    expect(cache.put).not.toHaveBeenCalled();
+  });
+
+  it("As a user, a block cache write that rejects still serves the fetched block", async () => {
+    // Given a cache whose put always rejects
+    const chain = stubChain(BLOCK_HEX);
+    const cache = memoryCache();
+    cache.put.mockRejectedValue(new Error("write failed"));
+    await startRelay({ blockCache: cache });
+
+    // When
+    const frame = fakeFrame();
+    request(frame, "req-1");
+    await vi.waitFor(() => {
+      expect(frame.replies).toHaveLength(1);
+    });
+
+    // Then
+    expect(chain.sent).toBe(1);
+    expect(frame.replies[0]).toMatchObject({ ok: true, bytes: BLOCK });
   });
 });

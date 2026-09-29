@@ -424,6 +424,13 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
 
 /** Where the relay keeps blocks between page loads. */
 export interface BlockCache {
+  /**
+   * The cached bytes for `cid`, or `null` on a miss.
+   *
+   * Must return a fresh copy the caller owns: the relay transfers the
+   * returned buffer to the sandbox, which detaches it, so a shared backing
+   * buffer would corrupt the cache's own copy.
+   */
   get: (cid: string) => Promise<Uint8Array | null>;
   put: (cid: string, bytes: Uint8Array) => Promise<void>;
   delete: (cid: string) => Promise<void>;
@@ -442,7 +449,19 @@ interface ServedBlock {
 }
 
 async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
-  const { blockMatchesCid } = await import("./verify");
+  let blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean;
+  try {
+    ({ blockMatchesCid } = await import("./verify"));
+  } catch (err) {
+    // Fail closed: a verifier we couldn't even load can't vouch for this
+    // block. The caller treats `false` as "not verified" either way, so a
+    // cached block falls back to the network and a freshly fetched one is
+    // served but never cached.
+    log.warn(
+      `[dot.li bitswap-relay] verifier import failed for ${cid}: ${serializeError(err)}`,
+    );
+    return false;
+  }
   return blockMatchesCid(cid, bytes);
 }
 
