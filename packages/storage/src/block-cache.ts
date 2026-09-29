@@ -105,23 +105,24 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
         // Reading a block is using it, so it outlives blocks nobody asked for.
         tx.objectStore(META).put(meta(cid, entry.bytes.byteLength));
       };
-      request.onerror = () => {
-        report("read", request.error ?? new Error("IDB read error"));
+      // A failed request bubbles to `tx.onerror` and then aborts the
+      // transaction, so one failure fires both. Report it once.
+      let reported = false;
+      const fail = (err: Error): void => {
+        if (!reported) {
+          reported = true;
+          report(settled ? "touch" : "read", err);
+        }
         settle(null);
       };
-      tx.onerror = () => {
-        report(
-          settled ? "touch" : "read",
-          tx.error ?? new Error("IDB transaction error"),
-        );
-        settle(null);
+      tx.onerror = (event) => {
+        // `tx.error` is still null while the failing request bubbles; the
+        // request carries the cause.
+        const failed = event.target as IDBRequest | null;
+        fail(failed?.error ?? tx.error ?? new Error("IDB transaction error"));
       };
       tx.onabort = () => {
-        report(
-          settled ? "touch" : "read",
-          tx.error ?? new Error("IDB transaction aborted"),
-        );
-        settle(null);
+        fail(tx.error ?? new Error("IDB transaction aborted"));
       };
     });
   } catch (err) {
