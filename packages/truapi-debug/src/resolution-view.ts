@@ -536,9 +536,6 @@ function buildSummary(
         summary.appFileCount = num(p.fileCount);
         paintedMs = Math.max(0, ev.timestamp - startedAt);
         break;
-      case "sandbox:cache_checked":
-        summary.archiveCache = p.hit === true ? "hit" : "miss";
-        break;
       case "failover:chain_backend": {
         const to = str(p.to);
         if (to === "smoldot" || to === "rpc-gateway") {

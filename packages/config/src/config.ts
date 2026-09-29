@@ -135,9 +135,6 @@ export const SS_RELAY_CHAIN: string | undefined =
 export const DEBUG =
   (import.meta.env.VITE_APP_DEBUG as string | undefined) === "true";
 
-/** Max number of domain archives kept in the SW in-memory LRU cache. */
-export const SW_ARCHIVE_CACHE_MAX = 8;
-
 /**
  * Most bytes of content blocks the host keeps between page loads. After each
  * load, the blocks used longest ago are dropped until the cache fits.

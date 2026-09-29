@@ -66,17 +66,6 @@ export type SandboxEvent =
     }
   | {
       layer: "sandbox";
-      event: "cache_checked";
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        hit: boolean;
-        fileCount?: number;
-      };
-    }
-  | {
-      layer: "sandbox";
       event: "fetch_begin";
       flowId: string;
       timestamp: number;

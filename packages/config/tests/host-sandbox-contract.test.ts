@@ -139,6 +139,18 @@ describe("validateSandboxParams: v3 cid contract", () => {
     expect(result.ok).toBe(false);
   });
 
+  it("As the sandbox, a skipArchiveCache value is no longer mine to judge, since the archive cache lives on the host", () => {
+    // Given a contract from an older host that still sends the flag, with a
+    // value the old validator refused
+    const params = search({ skipArchiveCache: "yes" });
+
+    // When
+    const result = validateSandboxParams(params);
+
+    // Then
+    expect(result.ok).toBe(true);
+  });
+
   it("As a user whose dApp reloads itself after the param strip, the contract failure is recoverable so the host can restore my session", () => {
     // Given a URL with no contract params at all, which is what a booted
     // sandbox window looks like after stripContractParamsFromUrl: a dApp

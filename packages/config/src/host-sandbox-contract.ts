@@ -13,8 +13,7 @@
 // The sandbox origin is keyed on the dotns label (not the CID) so all
 // versions of a product share an origin. The host owns dotns resolution
 // and threads the resolved CID through `?cid=`. The sandbox does not
-// re-resolve. Archive caching still keys on the CID so a new CID under
-// the same name is never served a stale archive.
+// re-resolve.
 //
 // Schema v3 (current):
 //
@@ -24,7 +23,6 @@
 //     ?network=<"paseo-next-v2" | "previewnet">
 //
 //   Optional:
-//     ?skipArchiveCache=<"0" | "1">
 //     ?fullReset=<"0" | "1">
 //     ?resolutionId=<correlation id for the telemetry of this page load>
 //     ?v=<schema version integer, reserved for future breakage>
@@ -63,7 +61,6 @@ export const SANDBOX_CONTRACT_PARAMS = {
   cid: "cid",
   chainBackend: "chainBackend",
   network: "network",
-  skipArchiveCache: "skipArchiveCache",
   fullReset: "fullReset",
   resolutionId: "resolutionId",
   v: "v",
@@ -76,7 +73,6 @@ export interface SandboxParams {
   cid: string;
   chainBackend: "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
   network: Network;
-  skipArchiveCache: boolean;
   fullReset: boolean;
   /**
    * Correlation id for this page load, absent on a host build that predates
@@ -174,14 +170,6 @@ export function validateSandboxParams(
     };
   }
 
-  const skipRaw = search.get(SANDBOX_CONTRACT_PARAMS.skipArchiveCache);
-  if (skipRaw !== null && !VALID_BOOLEAN_FLAGS.has(skipRaw)) {
-    return {
-      ok: false,
-      reason: `Invalid skipArchiveCache "${skipRaw}" — expected "0" or "1".`,
-    };
-  }
-
   const resetRaw = search.get(SANDBOX_CONTRACT_PARAMS.fullReset);
   if (resetRaw !== null && !VALID_BOOLEAN_FLAGS.has(resetRaw)) {
     return {
@@ -209,7 +197,6 @@ export function validateSandboxParams(
       chainBackend: chainBackend as
         "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway",
       network,
-      skipArchiveCache: skipRaw === "1",
       fullReset: resetRaw === "1",
       resolutionId,
     },

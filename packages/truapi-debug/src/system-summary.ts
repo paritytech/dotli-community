@@ -111,10 +111,6 @@ export function summariseSystemEvent(ev: StoredSystemEvent): string {
       return `Registering service worker${p.waitForFreshController === true ? " (waiting for fresh controller)" : ""}.`;
     case "sandbox:sw_ready":
       return `Service worker ready in ${numMs(p.durationMs)}.`;
-    case "sandbox:cache_checked":
-      return p.hit === true
-        ? `SW archive cache HIT (${str(p.fileCount)} files).`
-        : "SW archive cache MISS.";
     case "sandbox:fetch_begin":
       return `Fetching archive via ${str(p.contentBackend)}.`;
     case "sandbox:helia_ready":
