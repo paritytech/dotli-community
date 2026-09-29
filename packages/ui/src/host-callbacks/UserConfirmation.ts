@@ -142,6 +142,27 @@ function formatProductAccount(account: ProductAccountId): string {
   return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
 }
 
+/**
+ * Name the calling product when it signs with another product's account.
+ *
+ * A manifest `context` grant lets one product sign with an account derived for
+ * another. The core always asks the user about such a request, and the prompt
+ * has to say who is asking, not only whose account it is.
+ */
+function withCallingProduct(
+  fields: ConfirmationField[],
+  callingProductId: string | undefined,
+  account: ProductAccountId,
+): ConfirmationField[] {
+  if (
+    callingProductId === undefined ||
+    callingProductId === account.dotNsIdentifier
+  ) {
+    return fields;
+  }
+  return [{ label: "Requesting product", value: callingProductId }, ...fields];
+}
+
 function createPayloadFields(
   app: string,
   signer: string,
@@ -161,10 +182,15 @@ function createSignPayloadFields(
   review: SignPayloadReview,
 ): ConfirmationField[] {
   if (review.tag === "Product") {
-    return createPayloadFields(
-      label,
-      formatProductAccount(review.value.account),
-      review.value.payload,
+    const { callingProductId, request } = review.value;
+    return withCallingProduct(
+      createPayloadFields(
+        label,
+        formatProductAccount(request.account),
+        request.payload,
+      ),
+      callingProductId,
+      request.account,
     );
   }
 
@@ -179,7 +205,7 @@ function createSignRawFields(
     review.tag === "Product"
       ? formatProductAccount(review.value.request.account)
       : review.value.request.signer;
-  const fields: ConfirmationField[] = [
+  const base: ConfirmationField[] = [
     { label: "App", value: label },
     { label: "Signer", value: signer },
     {
@@ -188,6 +214,14 @@ function createSignRawFields(
       mono: true,
     },
   ];
+  const fields =
+    review.tag === "Product"
+      ? withCallingProduct(
+          base,
+          review.value.callingProductId,
+          review.value.request.account,
+        )
+      : base;
   // Without the <Bytes> watermark the signed bytes could be a valid
   // transaction, so the user has to be told before approving.
   if (!review.value.watermarked) {
@@ -204,19 +238,27 @@ function createTransactionFields(
   label: string,
   review: CreateTransactionReview,
 ): ConfirmationField[] {
-  const payload = review.value;
+  const payload =
+    review.tag === "Product" ? review.value.payload : review.value;
   const signer =
     review.tag === "Product"
-      ? formatProductAccount(review.value.signer)
+      ? formatProductAccount(review.value.payload.signer)
       : review.value.signer;
 
-  return [
+  const fields: ConfirmationField[] = [
     { label: "App", value: label },
     { label: "Signer", value: signer },
     { label: "Genesis Hash", value: payload.genesisHash, mono: true },
     { label: "Call Data", value: truncateHex(payload.callData), mono: true },
     { label: "Tx Ext Version", value: String(payload.txExtVersion) },
   ];
+  return review.tag === "Product"
+    ? withCallingProduct(
+        fields,
+        review.value.callingProductId,
+        review.value.payload.signer,
+      )
+    : fields;
 }
 
 function formatRingJunction(junction: RingLocationJunction): string {
@@ -253,15 +295,19 @@ function createStatementSignFields(
   label: string,
   review: StatementStoreProductSignReview,
 ): ConfirmationField[] {
-  return [
-    { label: "App", value: label },
-    { label: "Signer", value: formatProductAccount(review.account) },
-    {
-      label: "Statement",
-      value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
-      mono: true,
-    },
-  ];
+  return withCallingProduct(
+    [
+      { label: "App", value: label },
+      { label: "Signer", value: formatProductAccount(review.account) },
+      {
+        label: "Statement",
+        value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
+        mono: true,
+      },
+    ],
+    review.callingProductId,
+    review.account,
+  );
 }
 
 function createSignVrfFields(review: SignVrfReview): ConfirmationField[] {
@@ -302,6 +348,7 @@ function createResourceAllocationFields(
   review: ResourceAllocationReview,
 ): ConfirmationField[] {
   return [
+    { label: "Requesting product", value: review.callingProductId },
     {
       label: "Resources",
       value: review.resources.map(formatResource).join(", "),

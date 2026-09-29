@@ -4,10 +4,11 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const packageNames = ["truapi", "truapi-host"];
+const packageNames = ["truapi", "truapi-host", "truapi-provider"];
 const installRoots = [
   resolve(dotliRoot, "node_modules/@parity"),
   resolve(dotliRoot, "packages/ui/node_modules/@parity"),
+  resolve(dotliRoot, "packages/resolver/node_modules/@parity"),
 ];
 
 for (const root of installRoots) {

@@ -10,8 +10,14 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const dotliRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// dotli lives either as the `hosts/dotli` submodule of the truapi checkout or
+// as a standalone clone next to it.
 const truapiRoot = resolve(
-  process.env.TRUAPI_REPO ?? resolve(dotliRoot, "../.."),
+  process.env.TRUAPI_REPO ??
+    [resolve(dotliRoot, "../.."), resolve(dotliRoot, "../host-rust-core")].find(
+      (root) => existsSync(resolve(root, "js/packages/truapi/package.json")),
+    ) ??
+    resolve(dotliRoot, "../.."),
 );
 
 const packages = [
@@ -22,6 +28,10 @@ const packages = [
   {
     name: "@parity/truapi-host",
     path: resolve(truapiRoot, "js/packages/truapi-host"),
+  },
+  {
+    name: "@parity/truapi-provider",
+    path: resolve(truapiRoot, "js/packages/truapi-provider"),
   },
 ];
 
@@ -58,8 +68,13 @@ for (const pkg of packages) {
 const packageNames = packages.map((pkg) => pkg.name);
 run(["link", ...packageNames], dotliRoot);
 
-for (const name of ["truapi", "truapi-host"]) {
-  rmSync(resolve(dotliRoot, "packages/ui/node_modules/@parity", name), {
+// Workspace-local installs shadow the root link, so drop them.
+for (const [workspace, name] of [
+  ["packages/ui", "truapi"],
+  ["packages/ui", "truapi-host"],
+  ["packages/resolver", "truapi-provider"],
+]) {
+  rmSync(resolve(dotliRoot, workspace, "node_modules/@parity", name), {
     force: true,
     recursive: true,
   });

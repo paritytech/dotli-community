@@ -13,6 +13,10 @@ export default defineConfig({
       "@dotli/storage": resolve(import.meta.dirname, "../storage/src"),
     },
   },
+  // `bun run link:truapi` points @parity/truapi-provider at a checkout outside
+  // this workspace, and its `?url` wasm import would be refused by Vite's
+  // workspace-only file serving.
+  server: { fs: { strict: false } },
   test: {
     include: ["src/**/*.test.ts", "tests/**/*.test.ts"],
     environment: "happy-dom",
