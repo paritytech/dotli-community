@@ -274,7 +274,7 @@ test("a verified PolkaVM package translates and renders in the sandbox", async (
   expect(teardown).toEqual({ captured: "false", releases: 1 });
 });
 
-test("a PolkaVM package stays stopped until the user enables the experimental runtime", async ({
+test("a PolkaVM package starts only after the user enables the experimental runtime", async ({
   page,
 }) => {
   const fixture = await polkavmCar();
@@ -287,6 +287,7 @@ test("a PolkaVM package stays stopped until the user enables the experimental ru
   });
   await page.goto("http://localhost:5173/", { waitUntil: "domcontentloaded" });
   await waitForHostInitialization(page);
+  await installTruapiPortResponder(page);
   await page.evaluate(
     ({ cid, schemaVersion }) => {
       const iframe = document.createElement("iframe");
@@ -305,6 +306,20 @@ test("a PolkaVM package stays stopped until the user enables the experimental ru
     "Enable PolkaVM apps in dot.li Settings",
   );
   await expect(product.locator("#dotli-polkavm-canvas")).toHaveCount(0);
+
+  await page.locator("#polkavm-disabled-product").evaluate((element) => {
+    if (!(element instanceof HTMLIFrameElement)) {
+      throw new Error("PolkaVM product frame is unavailable");
+    }
+    const url = new URL(element.src);
+    url.searchParams.set("polkaVmEnabled", "1");
+    element.src = url.toString();
+  });
+  await expect(product.locator("#dotli-polkavm-canvas")).toHaveAttribute(
+    "data-polkavm-ready",
+    "true",
+    { timeout: 30_000 },
+  );
 });
 
 test("a WebGPU PolkaVM package selects its web fallback without an adapter", async ({
