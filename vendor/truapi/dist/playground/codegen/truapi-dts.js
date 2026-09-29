@@ -536,9 +536,6 @@ export declare function indexedTaggedUnion<Variants extends Record<string, Index
 // generated/types.d.ts (namespace T)
 
 declare namespace T {
-/** A 32-byte raw account identifier used for legacy (non-product) accounts. */
-export type AccountId = HexString;
-export const AccountId: Codec<AccountId>;
 /**
  * A press on a button the host draws for a \`ChatMessageContent::Actions\`
  * message.
@@ -611,12 +608,6 @@ export interface Background {
     shape?: Shape;
 }
 export const Background: Codec<Background>;
-/**
- * Balance amount for payment operations. Interpreted according to the host's
- * single fixed payment asset (e.g. pUSD).
- */
-export type Balance = bigint;
-export const Balance: Codec<Balance>;
 /**
  * How a node composites with what is behind it. The values are those common
  * to CSS \`mix-blend-mode\`, SwiftUI \`BlendMode\` and Compose \`BlendMode\`.
@@ -821,15 +812,12 @@ export const ChatRoomParticipation: Codec<ChatRoomParticipation>;
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus = "New" | "Exists";
 export const ChatRoomRegistrationStatus: Codec<ChatRoomRegistrationStatus>;
-/** Balance amount for CoinPayment operations. */
-export type CoinPaymentBalance = number;
-export const CoinPaymentBalance: Codec<CoinPaymentBalance>;
 /** Standardized encrypted Coinage secret transmission payload. */
 export interface CoinPaymentCheque {
     /** Receivable public key protecting the cheque contents. */
-    id: CoinPaymentReceivable;
+    id: HexString;
     /** Claimed payment amount. */
-    amount: CoinPaymentBalance;
+    amount: number;
     /** Concatenated coin secrets encrypted to the receivable. */
     encryptedSecrets: HexString;
 }
@@ -837,49 +825,34 @@ export const CoinPaymentCheque: Codec<CoinPaymentCheque>;
 /** Product-visible clearing reference for reconciliation and receipts. */
 export interface CoinPaymentClearingReference {
     /** Clearing Merkle root. */
-    root: CoinPaymentMerkleRoot;
+    root: HexString;
     /** Product-visible coin key and transaction hash leaves. */
-    leaves: Array<[CoinPaymentCoinagePubKey, CoinPaymentTransactionHash]>;
+    leaves: Array<[HexString, HexString]>;
 }
 export const CoinPaymentClearingReference: Codec<CoinPaymentClearingReference>;
-/** Public Coinage key referenced by clearing evidence. */
-export type CoinPaymentCoinagePubKey = HexString;
-export const CoinPaymentCoinagePubKey: Codec<CoinPaymentCoinagePubKey>;
 /** Errors returned by CoinPayment host operations. */
 export type CoinPaymentError = "BalanceLow" | "Denied" | "BadCoins" | "SnipedCoins" | "PurseNotFound" | "ReceivableNotFound" | "UnsupportedChannel" | "UserAgentCapabilityUnavailable" | "Internal";
 export const CoinPaymentError: Codec<CoinPaymentError>;
-/** Merkle root for a product-visible clearing reference. */
-export type CoinPaymentMerkleRoot = HexString;
-export const CoinPaymentMerkleRoot: Codec<CoinPaymentMerkleRoot>;
-/** Authenticated product identifier recorded for a product-created purse. */
-export type CoinPaymentProductId = string;
-export const CoinPaymentProductId: Codec<CoinPaymentProductId>;
-/** RFC 0017 CoinPayment purse identifier. */
-export type CoinPaymentPurseId = number;
-export const CoinPaymentPurseId: Codec<CoinPaymentPurseId>;
 /** Product-visible metadata and balance state for a CoinPayment purse. */
 export interface CoinPaymentPurseInfo {
     /** Human-readable purse name supplied by the creating product. */
     name: string;
     /** Creation timestamp. */
-    created: CoinPaymentTimestamp;
+    created: bigint;
     /** Product that created the purse. */
-    creator: CoinPaymentProductId;
+    creator: string;
     /** Current product-visible balance. */
-    balance: CoinPaymentBalance;
+    balance: number;
 }
 export const CoinPaymentPurseInfo: Codec<CoinPaymentPurseInfo>;
-/** Public key identifying a CoinPayment receivable. */
-export type CoinPaymentReceivable = HexString;
-export const CoinPaymentReceivable: Codec<CoinPaymentReceivable>;
 /** Clearing status stream item. */
 export type CoinPaymentStatus = 
 /** More coins have cleared. */
 {
     tag: "Clearing";
     value: {
-        clearing: CoinPaymentBalance;
-        cleared: CoinPaymentBalance;
+        clearing: number;
+        cleared: number;
     };
 }
 /** Some or all coins failed to transfer. */
@@ -887,7 +860,7 @@ export type CoinPaymentStatus =
     tag: "Failed";
     value: {
         error: CoinPaymentError;
-        cleared: CoinPaymentBalance;
+        cleared: number;
         reference: CoinPaymentClearingReference;
     };
 }
@@ -895,17 +868,11 @@ export type CoinPaymentStatus =
  | {
     tag: "Done";
     value: {
-        cleared: CoinPaymentBalance;
+        cleared: number;
         reference: CoinPaymentClearingReference;
     };
 };
 export const CoinPaymentStatus: Codec<CoinPaymentStatus>;
-/** Milliseconds since Unix epoch. */
-export type CoinPaymentTimestamp = bigint;
-export const CoinPaymentTimestamp: Codec<CoinPaymentTimestamp>;
-/** Transaction hash for a product-visible clearing reference. */
-export type CoinPaymentTransactionHash = HexString;
-export const CoinPaymentTransactionHash: Codec<CoinPaymentTransactionHash>;
 /** Standardized cheque transmission channel. */
 export type CoinPaymentTransmissionChannel = 
 /** Statement-store/HOP handoff identified by an SSS topic. */
@@ -927,6 +894,51 @@ export interface ColumnProps {
     verticalArrangement?: Arrangement;
 }
 export const ColumnProps: Codec<ColumnProps>;
+/**
+ * A contact as a product knows them: 32 bytes and nothing else.
+ *
+ * Its own type rather than a bare [\`Bytes32\`], because an account id is also
+ * 32 bytes. A product that could pass one where the other is expected would
+ * build a valid-looking transfer to an address nobody controls. A handle is
+ * not an address, and the type is where that is said.
+ */
+export interface ContactHandle {
+    /** The handle's bytes. */
+    bytes: Bytes32;
+}
+export const ContactHandle: Codec<ContactHandle>;
+/**
+ * How a contact pick ended.
+ *
+ * Distinguishing these matters to a product deciding what to do next: a
+ * dismissal is worth retrying, an empty list is not.
+ */
+export type ContactPickOutcome = 
+/**
+ * The user chose someone.
+ *
+ * \`handle\` is the same value for this person in every product, and on every
+ * host of this user. It is not an address and cannot be turned into one:
+ * the core resolves it when it builds a transaction, so a product can name
+ * a recipient it never learns the account of.
+ */
+{
+    tag: "Picked";
+    value: {
+        handle: ContactHandle;
+    };
+}
+/** The user closed the picker without choosing. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/** The user has no contacts, so no picker was shown. */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+};
+export const ContactPickOutcome: Codec<ContactPickOutcome>;
 /** Placement of content within a \`Box\`. */
 export type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd";
 export const ContentAlignment: Codec<ContentAlignment>;
@@ -989,9 +1001,6 @@ export interface GenericError {
     reason: string;
 }
 export const GenericError: Codec<GenericError>;
-/** A 32-byte chain genesis hash used to identify the target chain. */
-export type GenesisHash = HexString;
-export const GenesisHash: Codec<GenesisHash>;
 /** Cross-axis alignment of \`Column\` children. */
 export type HorizontalAlignment = "Start" | "Center" | "End";
 export const HorizontalAlignment: Codec<HorizontalAlignment>;
@@ -1136,7 +1145,7 @@ export type VersionedHostAccountRegisterRingVrfKeyResponse =
 /** Version 1 payload. */
 {
     tag: "V1";
-    value: RingVrfPublicKey;
+    value: HexString;
 };
 export const VersionedHostAccountRegisterRingVrfKeyResponse: Codec<VersionedHostAccountRegisterRingVrfKeyResponse>;
 /** Versioned envelope for [\`HostAccountRingVrfSignError\`]. */
@@ -1523,6 +1532,30 @@ export type VersionedHostCoinPaymentRefundRequest =
     value: HostCoinPaymentRefundRequest;
 };
 export const VersionedHostCoinPaymentRefundRequest: Codec<VersionedHostCoinPaymentRefundRequest>;
+/** Versioned envelope for [\`HostContactsPickError\`]. */
+export type VersionedHostContactsPickError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickError;
+};
+export const VersionedHostContactsPickError: Codec<VersionedHostContactsPickError>;
+/** Versioned envelope for [\`HostContactsPickRequest\`]. */
+export type VersionedHostContactsPickRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickRequest;
+};
+export const VersionedHostContactsPickRequest: Codec<VersionedHostContactsPickRequest>;
+/** Versioned envelope for [\`HostContactsPickResponse\`]. */
+export type VersionedHostContactsPickResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickResponse;
+};
+export const VersionedHostContactsPickResponse: Codec<VersionedHostContactsPickResponse>;
 /** Versioned envelope for [\`HostCreateTransactionError\`]. */
 export type VersionedHostCreateTransactionError = 
 /** Version 1 payload. */
@@ -2821,18 +2854,21 @@ export const LegacyAccount: Codec<LegacyAccount>;
  * Transaction payload for a legacy (non-product) account.
  *
  * Identical to [\`ProductAccountTxPayload\`] except the signer is a raw
- * 32-byte [\`AccountId\`].
+ * 32-byte account identifier.
  */
 export interface LegacyAccountTxPayload {
     /** Raw 32-byte public key of the legacy account. */
-    signer: AccountId;
+    signer: HexString;
     /** Chain where the transaction will execute. */
-    genesisHash: GenesisHash;
+    genesisHash: HexString;
     /** SCALE-encoded Call data. */
     callData: HexString;
     /** Transaction extensions supplied by the caller. */
     extensions: Array<TxPayloadExtension>;
-    /** 0 for Extrinsic V4, runtime-supported value for V5. */
+    /**
+     * Version of the transaction extensions in \`extensions\`, as the runtime
+     * numbers them.
+     */
     txExtVersion: number;
 }
 export const LegacyAccountTxPayload: Codec<LegacyAccountTxPayload>;
@@ -2899,12 +2935,6 @@ export type Modifier =
     value: BlendingMode;
 };
 export const Modifier: Codec<Modifier>;
-/** Opaque identifier for a push notification, unique per product. */
-export type NotificationId = number;
-export const NotificationId: Codec<NotificationId>;
-/** Opaque host-assigned pending-operation identifier, unique per product. */
-export type OperationId = number;
-export const OperationId: Codec<OperationId>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -3002,13 +3032,27 @@ export interface ProductAccountTxPayload {
     /** Product account that will sign the transaction. */
     signer: ProductAccountId;
     /** Chain where the transaction will execute. */
-    genesisHash: GenesisHash;
+    genesisHash: HexString;
     /** SCALE-encoded Call data. */
     callData: HexString;
     /** Transaction extensions supplied by the caller. */
     extensions: Array<TxPayloadExtension>;
-    /** 0 for Extrinsic V4, runtime-supported value for V5. */
+    /**
+     * Version of the transaction extensions in \`extensions\`, as the runtime
+     * numbers them.
+     */
     txExtVersion: number;
+    /**
+     * Contact handles \`call_data\` names, which the host replaces with the
+     * accounts they resolve to before anything is signed or shown.
+     *
+     * A product declares them rather than passing offsets: an offset is a
+     * number it computes about its own encoding and gets wrong silently,
+     * while a declared handle is either in the call or it is not, and a host
+     * that cannot find one refuses rather than signing a call that names
+     * somebody else. A call naming nobody leaves this empty.
+     */
+    contacts: Array<ContactHandle>;
 }
 export const ProductAccountTxPayload: Codec<ProductAccountTxPayload>;
 /**
@@ -3076,7 +3120,7 @@ export interface RegisteredRingVrfKey {
     /** Rings the owning product declared this key for. */
     rings: Array<RingLocation>;
     /** Present when the caller owns the key or requested/granted disclosure. */
-    publicKey?: RingVrfPublicKey;
+    publicKey?: HexString;
 }
 export const RegisteredRingVrfKey: Codec<RegisteredRingVrfKey>;
 /** Versioned envelope for [\`RemoteChainHeadBodyError\`]. */
@@ -3767,7 +3811,7 @@ export const ResourceAllocationError: Codec<ResourceAllocationError>;
  */
 export interface RingLocation {
     /** Genesis hash of the chain hosting the ring. */
-    chainId: GenesisHash;
+    chainId: HexString;
     /** Path addressing the ring within the chain. */
     junctions: Array<RingLocationJunction>;
 }
@@ -3788,9 +3832,6 @@ export const RingLocationJunction: Codec<RingLocationJunction>;
 /** How much of a registry entry the caller asks for. */
 export type RingVrfKeyDisclosure = "Anonymized" | "PublicKey";
 export const RingVrfKeyDisclosure: Codec<RingVrfKeyDisclosure>;
-/** Ring-VRF member public key. */
-export type RingVrfPublicKey = HexString;
-export const RingVrfPublicKey: Codec<RingVrfPublicKey>;
 /** Properties of a \`Row\`. */
 export interface RowProps {
     /** Cross-axis alignment of children. */
@@ -3991,9 +4032,6 @@ export const ThemeName: Codec<ThemeName>;
 /** Light or dark variant. */
 export type ThemeVariant = "Light" | "Dark";
 export const ThemeVariant: Codec<ThemeVariant>;
-/** 32-byte statement topic. */
-export type Topic = HexString;
-export const Topic: Codec<Topic>;
 /** A signed extension for a transaction payload. */
 export interface TxPayloadExtension {
     /** Extension name (e.g., \`"CheckSpecVersion"\`). */
@@ -4404,11 +4442,11 @@ export const HostChatRegisterBotResponse: Codec<HostChatRegisterBotResponse>;
 /** Request to create a cheque from a local purse to a receivable. */
 export interface HostCoinPaymentCreateChequeRequest {
     /** Source purse. */
-    from: CoinPaymentPurseId;
+    from: number;
     /** Destination receivable. */
-    to: CoinPaymentReceivable;
+    to: HexString;
     /** Payment amount. */
-    amount: CoinPaymentBalance;
+    amount: number;
 }
 export const HostCoinPaymentCreateChequeRequest: Codec<HostCoinPaymentCreateChequeRequest>;
 /** Created cheque response. */
@@ -4426,27 +4464,27 @@ export const HostCoinPaymentCreatePurseRequest: Codec<HostCoinPaymentCreatePurse
 /** Created purse identifier. */
 export interface HostCoinPaymentCreatePurseResponse {
     /** Assigned purse identifier. */
-    purse: CoinPaymentPurseId;
+    purse: number;
 }
 export const HostCoinPaymentCreatePurseResponse: Codec<HostCoinPaymentCreatePurseResponse>;
 /** Request to create a fresh receivable for a purse. */
 export interface HostCoinPaymentCreateReceivableRequest {
     /** Target purse for future deposits. */
-    into: CoinPaymentPurseId;
+    into: number;
 }
 export const HostCoinPaymentCreateReceivableRequest: Codec<HostCoinPaymentCreateReceivableRequest>;
 /** Created receivable response. */
 export interface HostCoinPaymentCreateReceivableResponse {
     /** Receivable public key. */
-    receivable: CoinPaymentReceivable;
+    receivable: HexString;
 }
 export const HostCoinPaymentCreateReceivableResponse: Codec<HostCoinPaymentCreateReceivableResponse>;
 /** Request to delete a purse after draining its balance. */
 export interface HostCoinPaymentDeletePurseRequest {
     /** Purse to delete. */
-    target: CoinPaymentPurseId;
+    target: number;
     /** Purse that receives drained funds. */
-    drainInto: CoinPaymentPurseId;
+    drainInto: number;
 }
 export const HostCoinPaymentDeletePurseRequest: Codec<HostCoinPaymentDeletePurseRequest>;
 /** Request to deposit a cheque into the purse associated with its receivable. */
@@ -4471,13 +4509,13 @@ export const HostCoinPaymentListenForItem: Codec<HostCoinPaymentListenForItem>;
 /** Request to listen for a cheque delivered to a receivable. */
 export interface HostCoinPaymentListenForRequest {
     /** Receivable to listen for. */
-    receivable: CoinPaymentReceivable;
+    receivable: HexString;
 }
 export const HostCoinPaymentListenForRequest: Codec<HostCoinPaymentListenForRequest>;
 /** Request to query product-visible purse metadata. */
 export interface HostCoinPaymentQueryPurseRequest {
     /** Purse to query. */
-    purse: CoinPaymentPurseId;
+    purse: number;
 }
 export const HostCoinPaymentQueryPurseRequest: Codec<HostCoinPaymentQueryPurseRequest>;
 /** Product-visible purse metadata response. */
@@ -4489,19 +4527,55 @@ export const HostCoinPaymentQueryPurseResponse: Codec<HostCoinPaymentQueryPurseR
 /** Request to transfer balance between local purses. */
 export interface HostCoinPaymentRebalancePurseRequest {
     /** Source purse. */
-    from: CoinPaymentPurseId;
+    from: number;
     /** Destination purse. */
-    to: CoinPaymentPurseId;
+    to: number;
     /** Amount to move. */
-    amount: CoinPaymentBalance;
+    amount: number;
 }
 export const HostCoinPaymentRebalancePurseRequest: Codec<HostCoinPaymentRebalancePurseRequest>;
 /** Request to refund coins associated with a receivable. */
 export interface HostCoinPaymentRefundRequest {
     /** Receivable to refund. */
-    receivable: CoinPaymentReceivable;
+    receivable: HexString;
 }
 export const HostCoinPaymentRefundRequest: Codec<HostCoinPaymentRefundRequest>;
+/**
+ * Error returned by the contact picker.
+ *
+ * Neither a dismissal nor an empty contact list is an error; both are outcomes.
+ * A host that serves no picker at all answers \`Unsupported\` at the framework
+ * level rather than through this enum.
+ */
+export type HostContactsPickError = 
+/** No active session. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostContactsPickError: Codec<HostContactsPickError>;
+/**
+ * Request to open the host's contact picker.
+ *
+ * Carries no arguments: the host owns the overlay, draws it from its own chat
+ * contacts, and nothing the product supplies appears in it.
+ */
+export interface HostContactsPickRequest {
+}
+export const HostContactsPickRequest: Codec<HostContactsPickRequest>;
+/** Outcome of a pick. */
+export interface HostContactsPickResponse {
+    /** How the pick ended. */
+    outcome: ContactPickOutcome;
+}
+export const HostContactsPickResponse: Codec<HostContactsPickResponse>;
 /** Transaction creation error. */
 export type HostCreateTransactionError = 
 /** Payload could not be deserialized. */
@@ -4532,6 +4606,16 @@ export type HostCreateTransactionError =
     value: {
         reason: string;
     };
+}
+/**
+ * A declared contact handle names nobody this host has a contact for, or
+ * does not appear in the call it was declared for, or a handle appears in
+ * the call without being declared. One refusal for all three, because
+ * telling them apart would say whether a handle is current.
+ */
+ | {
+    tag: "UnknownContact";
+    value?: undefined;
 };
 export const HostCreateTransactionError: Codec<HostCreateTransactionError>;
 /** Response containing a created transaction. */
@@ -4801,13 +4885,13 @@ export const HostPaymentBalanceSubscribeError: Codec<HostPaymentBalanceSubscribe
  */
 export interface HostPaymentBalanceSubscribeItem {
     /** Balance that can be spent right now. */
-    available: Balance;
+    available: bigint;
 }
 export const HostPaymentBalanceSubscribeItem: Codec<HostPaymentBalanceSubscribeItem>;
 /** Request to subscribe to payment balance updates. */
 export interface HostPaymentBalanceSubscribeRequest {
     /** Optional purse selector. \`None\` means MAIN_PURSE. */
-    purse?: CoinPaymentPurseId;
+    purse?: number;
 }
 export const HostPaymentBalanceSubscribeRequest: Codec<HostPaymentBalanceSubscribeRequest>;
 /**
@@ -4839,9 +4923,9 @@ export const HostPaymentError: Codec<HostPaymentError>;
 /** Request to initiate a payment to another account. */
 export interface HostPaymentRequest {
     /** Optional purse selector. \`None\` means MAIN_PURSE. */
-    from?: CoinPaymentPurseId;
+    from?: number;
     /** Amount to pay. */
-    amount: Balance;
+    amount: bigint;
     /** Destination account. */
     destination: HexString;
 }
@@ -4936,7 +5020,7 @@ export type HostPaymentTopUpError =
  | {
     tag: "PartialPayment";
     value: {
-        credited: Balance;
+        credited: bigint;
     };
 }
 /** Catch-all. */
@@ -4950,9 +5034,9 @@ export const HostPaymentTopUpError: Codec<HostPaymentTopUpError>;
 /** Request to top up the product payment balance. */
 export interface HostPaymentTopUpRequest {
     /** Optional purse selector. \`None\` means MAIN_PURSE. */
-    into?: CoinPaymentPurseId;
+    into?: number;
     /** Amount to top up. */
-    amount: Balance;
+    amount: bigint;
     /** Funding source for the top-up. */
     source: PaymentTopUpSource;
 }
@@ -4987,7 +5071,7 @@ export const HostPocketRemoveCardRequest: Codec<HostPocketRemoveCardRequest>;
 /** Request to cancel a previously scheduled notification. */
 export interface HostPushNotificationCancelRequest {
     /** The notification identifier returned by [\`HostPushNotificationResponse\`]. */
-    id: NotificationId;
+    id: number;
 }
 export const HostPushNotificationCancelRequest: Codec<HostPushNotificationCancelRequest>;
 /** Push notification error. */
@@ -5029,7 +5113,7 @@ export const HostPushNotificationRequest: Codec<HostPushNotificationRequest>;
 /** Successful push notification response carrying the assigned id. */
 export interface HostPushNotificationResponse {
     /** Host-assigned notification identifier. */
-    id: NotificationId;
+    id: number;
 }
 export const HostPushNotificationResponse: Codec<HostPushNotificationResponse>;
 /** An action triggered inside a product-rendered body. */
@@ -5166,13 +5250,13 @@ export const HostWorkerBeginOperationRequest: Codec<HostWorkerBeginOperationRequ
 /** Response carrying the id of a newly begun operation. */
 export interface HostWorkerBeginOperationResponse {
     /** Id to pass to \`end_operation\`. */
-    id: OperationId;
+    id: number;
 }
 export const HostWorkerBeginOperationResponse: Codec<HostWorkerBeginOperationResponse>;
 /** Request to end a pending operation. */
 export interface HostWorkerEndOperationRequest {
     /** Id returned by \`begin_operation\`. */
-    id: OperationId;
+    id: number;
 }
 export const HostWorkerEndOperationRequest: Codec<HostWorkerEndOperationRequest>;
 /** A body the host needs drawn. */
@@ -5552,12 +5636,12 @@ export type RemoteStatementStoreSubscribeRequest =
 /** AND: statement must contain every listed topic. */
 {
     tag: "MatchAll";
-    value: Array<Topic>;
+    value: Array<HexString>;
 }
 /** OR: statement must contain at least one listed topic. */
  | {
     tag: "MatchAny";
-    value: Array<Topic>;
+    value: Array<HexString>;
 };
 export const RemoteStatementStoreSubscribeRequest: Codec<RemoteStatementStoreSubscribeRequest>;
 /** Local storage read failure. */
@@ -5864,13 +5948,11 @@ export const VrfTranscriptItem: Codec<VrfTranscriptItem>;
 
 // re-export namespace T at module top level (mirrors index.d.ts \`export *\`)
 
-export import AccountId = T.AccountId;
 export import ActionTrigger = T.ActionTrigger;
 export import AllocatableResource = T.AllocatableResource;
 export import AllocationOutcome = T.AllocationOutcome;
 export import Arrangement = T.Arrangement;
 export import Background = T.Background;
-export import Balance = T.Balance;
 export import BlendingMode = T.BlendingMode;
 export import BorderStyle = T.BorderStyle;
 export import BoxProps = T.BoxProps;
@@ -5893,22 +5975,16 @@ export import ChatRichText = T.ChatRichText;
 export import ChatRoom = T.ChatRoom;
 export import ChatRoomParticipation = T.ChatRoomParticipation;
 export import ChatRoomRegistrationStatus = T.ChatRoomRegistrationStatus;
-export import CoinPaymentBalance = T.CoinPaymentBalance;
 export import CoinPaymentCheque = T.CoinPaymentCheque;
 export import CoinPaymentClearingReference = T.CoinPaymentClearingReference;
-export import CoinPaymentCoinagePubKey = T.CoinPaymentCoinagePubKey;
 export import CoinPaymentError = T.CoinPaymentError;
-export import CoinPaymentMerkleRoot = T.CoinPaymentMerkleRoot;
-export import CoinPaymentProductId = T.CoinPaymentProductId;
-export import CoinPaymentPurseId = T.CoinPaymentPurseId;
 export import CoinPaymentPurseInfo = T.CoinPaymentPurseInfo;
-export import CoinPaymentReceivable = T.CoinPaymentReceivable;
 export import CoinPaymentStatus = T.CoinPaymentStatus;
-export import CoinPaymentTimestamp = T.CoinPaymentTimestamp;
-export import CoinPaymentTransactionHash = T.CoinPaymentTransactionHash;
 export import CoinPaymentTransmissionChannel = T.CoinPaymentTransmissionChannel;
 export import ColorToken = T.ColorToken;
 export import ColumnProps = T.ColumnProps;
+export import ContactHandle = T.ContactHandle;
+export import ContactPickOutcome = T.ContactPickOutcome;
 export import ContentAlignment = T.ContentAlignment;
 export import ContextualAlias = T.ContextualAlias;
 export import DerivationIndex = T.DerivationIndex;
@@ -5916,7 +5992,6 @@ export import Dimensions = T.Dimensions;
 export import Effect = T.Effect;
 export import EffectProps = T.EffectProps;
 export import GenericError = T.GenericError;
-export import GenesisHash = T.GenesisHash;
 export import HorizontalAlignment = T.HorizontalAlignment;
 export import VersionedHostAccountConnectionStatusSubscribeError = T.VersionedHostAccountConnectionStatusSubscribeError;
 export import VersionedHostAccountConnectionStatusSubscribeItem = T.VersionedHostAccountConnectionStatusSubscribeItem;
@@ -5984,6 +6059,9 @@ export import VersionedHostCoinPaymentRebalancePurseRequest = T.VersionedHostCoi
 export import VersionedHostCoinPaymentRefundError = T.VersionedHostCoinPaymentRefundError;
 export import VersionedHostCoinPaymentRefundItem = T.VersionedHostCoinPaymentRefundItem;
 export import VersionedHostCoinPaymentRefundRequest = T.VersionedHostCoinPaymentRefundRequest;
+export import VersionedHostContactsPickError = T.VersionedHostContactsPickError;
+export import VersionedHostContactsPickRequest = T.VersionedHostContactsPickRequest;
+export import VersionedHostContactsPickResponse = T.VersionedHostContactsPickResponse;
 export import VersionedHostCreateTransactionError = T.VersionedHostCreateTransactionError;
 export import VersionedHostCreateTransactionRequest = T.VersionedHostCreateTransactionRequest;
 export import VersionedHostCreateTransactionResponse = T.VersionedHostCreateTransactionResponse;
@@ -6122,8 +6200,6 @@ export import ImageSource = T.ImageSource;
 export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
-export import NotificationId = T.NotificationId;
-export import OperationId = T.OperationId;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
@@ -6207,7 +6283,6 @@ export import ResourceAllocationError = T.ResourceAllocationError;
 export import RingLocation = T.RingLocation;
 export import RingLocationJunction = T.RingLocationJunction;
 export import RingVrfKeyDisclosure = T.RingVrfKeyDisclosure;
-export import RingVrfPublicKey = T.RingVrfPublicKey;
 export import RowProps = T.RowProps;
 export import RuntimeApi = T.RuntimeApi;
 export import RuntimeSpec = T.RuntimeSpec;
@@ -6224,7 +6299,6 @@ export import TextFieldProps = T.TextFieldProps;
 export import TextProps = T.TextProps;
 export import ThemeName = T.ThemeName;
 export import ThemeVariant = T.ThemeVariant;
-export import Topic = T.Topic;
 export import TxPayloadExtension = T.TxPayloadExtension;
 export import TypographyStyle = T.TypographyStyle;
 export import HostAccountConnectionStatusSubscribeItem = T.HostAccountConnectionStatusSubscribeItem;
@@ -6269,6 +6343,9 @@ export import HostCoinPaymentQueryPurseRequest = T.HostCoinPaymentQueryPurseRequ
 export import HostCoinPaymentQueryPurseResponse = T.HostCoinPaymentQueryPurseResponse;
 export import HostCoinPaymentRebalancePurseRequest = T.HostCoinPaymentRebalancePurseRequest;
 export import HostCoinPaymentRefundRequest = T.HostCoinPaymentRefundRequest;
+export import HostContactsPickError = T.HostContactsPickError;
+export import HostContactsPickRequest = T.HostContactsPickRequest;
+export import HostContactsPickResponse = T.HostContactsPickResponse;
 export import HostCreateTransactionError = T.HostCreateTransactionError;
 export import HostCreateTransactionResponse = T.HostCreateTransactionResponse;
 export import HostCreateTransactionWithLegacyAccountResponse = T.HostCreateTransactionWithLegacyAccountResponse;
@@ -6828,7 +6905,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "193ba518e8c1a8ec";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -6851,7 +6928,7 @@ export declare class AccountClient {
      */
     signVrf(request: T.HostAccountSignVrfRequest, options?: CallOptions): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
     /** Register a ring-VRF key owned by the calling product. */
-    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
+    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
     /** List registered ring-VRF keys owned by a product. */
     listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest, options?: CallOptions): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
@@ -7001,6 +7078,35 @@ export declare class CoinPaymentClient {
         request: T.HostCoinPaymentListenForRequest;
     }): ObservableLike<T.HostCoinPaymentListenForItem, S.CallErrorValue<T.VersionedHostCoinPaymentListenForError>>;
 }
+/**
+ * User-mediated access to the user's contacts.
+ *
+ * A product never reads the contact list. It opens the host's picker; the host
+ * renders an overlay from the chat lists its chat extensions hold, and
+ * returns only the person the user selected. Names, accounts, and every other
+ * contact the user did not pick stay host-side.
+ *
+ * That is also why there is no permission to request: the user choosing a
+ * contact in host UI is the consent, and a product that is never handed the
+ * list has nothing to be granted.
+ */
+export declare class ContactsClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Ask the host to let the user pick one contact.
+     *
+     * Resolves with the chosen contact's handle, or with why nothing was
+     * chosen. A host that serves no picker answers \`Unsupported\`.
+     *
+     * The handle is not an address and cannot be turned into one. To pay the
+     * person it names, put the handle where the recipient goes in the call and
+     * list it in \`contacts\` on the transaction payload: the host replaces it
+     * with their account before anything is signed or shown. A handle sent
+     * anywhere else is 32 bytes that resolve to nobody.
+     */
+    pick(request: T.HostContactsPickRequest, options?: CallOptions): ResultAsync<T.HostContactsPickResponse, S.CallErrorValue<T.VersionedHostContactsPickError>>;
+}
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {
     #private;
@@ -7043,7 +7149,7 @@ export declare class NotificationsClient {
     /**
      * Send a push notification to the user.
      *
-     * Returns a [\`NotificationId\`](crate::v01::NotificationId) that can be
+     * Returns a notification id that can be
      * passed to [\`cancel_push_notification\`](Self::cancel_push_notification)
      * to retract a scheduled notification. When \`scheduled_at\` is set the host
      * persists the notification across restarts and fires it through the
@@ -7162,6 +7268,19 @@ export declare class SigningClient {
      * lets the host sign with the signer's key. Listing it — as \`Disabled\`,
      * with a proof in a later extension — encodes the given bytes verbatim and
      * returns an unsigned transaction.
+     *
+     * \`txExtVersion\` is the version of the transaction extensions in
+     * \`extensions\`, as the runtime numbers them. The host picks the extrinsic
+     * format from it. V4 always uses version 0, so a non-zero version builds a
+     * V5 general transaction. Version 0 builds V5 when it includes
+     * \`VerifyMultiSignature\`, and a signed V4 transaction otherwise.
+     *
+     * \`contacts\` lists the contact handles \`callData\` names, and the host
+     * replaces each with the account it resolves to before the call is shown
+     * or signed. A declared handle the call does not contain, or one no
+     * contact matches, refuses the whole call as \`UnknownContact\` rather than
+     * signing something that names somebody else. A call paying nobody from
+     * the picker leaves it empty.
      */
     createTransaction(request: T.ProductAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
     /**
@@ -7307,6 +7426,7 @@ export interface TrUApiClient {
     readonly chain: ChainClient;
     readonly chat: ChatClient;
     readonly coinPayment: CoinPaymentClient;
+    readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;

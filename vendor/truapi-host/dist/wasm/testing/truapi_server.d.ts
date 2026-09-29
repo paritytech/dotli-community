@@ -294,6 +294,15 @@ export class WasmSigningHostRuntime {
      */
     sessionChatIdentityKey(): Uint8Array | undefined;
     /**
+     * Answer resource allocation as granted without performing it.
+     *
+     * A test host serves suites that exercise allowance-dependent product
+     * paths without an on-chain personhood identity. Nothing is allocated, so
+     * a green run says the product handles a grant, not that a host would
+     * have given one.
+     */
+    setGrantAllowancesUnchecked(granted: boolean): void;
+    /**
      * Update one stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
@@ -333,6 +342,15 @@ export function hasTrustedRemotePermissions(product_id: string): boolean;
 export function productAccountAddress(public_key: Uint8Array): string;
 
 /**
+ * The ring-VRF member for `entropy`, derived through the module this core
+ * loads on demand.
+ *
+ * For test hosts: it shows the core finds `truapi_verifiable` beside it and accepts
+ * the build it pins, which no product call reaches without a chain.
+ */
+export function ringVrfMember(entropy: Uint8Array): Promise<Uint8Array>;
+
+/**
  * Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
  * Hosts may call this during boot, or again at any time to re-tune verbosity.
  * Unknown values are parsed as `off`.
@@ -364,6 +382,7 @@ export interface InitOutput {
     readonly describeCoreStorageKey: (a: number, b: number, c: number) => void;
     readonly hasTrustedRemotePermissions: (a: number, b: number) => number;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
+    readonly ringVrfMember: (a: number, b: number) => number;
     readonly setLogLevel: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_acquireWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_activateExternalSession: (a: number, b: number, c: number) => number;
@@ -415,14 +434,15 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
+    readonly wasmsigninghostruntime_setGrantAllowancesUnchecked: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_9363: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9421: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4252: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4245: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9245: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4249: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9378: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9436: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4312: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4305: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_9260: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4309: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

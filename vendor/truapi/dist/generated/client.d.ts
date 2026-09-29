@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "87a3b34c06a7c823";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "193ba518e8c1a8ec";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -31,7 +31,7 @@ export declare class AccountClient {
      */
     signVrf(request: T.HostAccountSignVrfRequest, options?: CallOptions): ResultAsync<T.VrfSignature, S.CallErrorValue<T.VersionedHostAccountSignVrfError>>;
     /** Register a ring-VRF key owned by the calling product. */
-    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<T.RingVrfPublicKey, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
+    registerRingVrfKey(request: T.HostAccountRegisterRingVrfKeyRequest, options?: CallOptions): ResultAsync<HexString, S.CallErrorValue<T.VersionedHostAccountRegisterRingVrfKeyError>>;
     /** List registered ring-VRF keys owned by a product. */
     listRingVrfKeys(request: T.HostAccountListRingVrfKeysRequest, options?: CallOptions): ResultAsync<Array<T.RegisteredRingVrfKey>, S.CallErrorValue<T.VersionedHostAccountListRingVrfKeysError>>;
     /** Sign bytes directly with a registered ring-VRF member key. */
@@ -181,6 +181,35 @@ export declare class CoinPaymentClient {
         request: T.HostCoinPaymentListenForRequest;
     }): ObservableLike<T.HostCoinPaymentListenForItem, S.CallErrorValue<T.VersionedHostCoinPaymentListenForError>>;
 }
+/**
+ * User-mediated access to the user's contacts.
+ *
+ * A product never reads the contact list. It opens the host's picker; the host
+ * renders an overlay from the chat lists its chat extensions hold, and
+ * returns only the person the user selected. Names, accounts, and every other
+ * contact the user did not pick stay host-side.
+ *
+ * That is also why there is no permission to request: the user choosing a
+ * contact in host UI is the consent, and a product that is never handed the
+ * list has nothing to be granted.
+ */
+export declare class ContactsClient {
+    #private;
+    constructor(transport: TrUApiTransport);
+    /**
+     * Ask the host to let the user pick one contact.
+     *
+     * Resolves with the chosen contact's handle, or with why nothing was
+     * chosen. A host that serves no picker answers `Unsupported`.
+     *
+     * The handle is not an address and cannot be turned into one. To pay the
+     * person it names, put the handle where the recipient goes in the call and
+     * list it in `contacts` on the transaction payload: the host replaces it
+     * with their account before anything is signed or shown. A handle sent
+     * anywhere else is 32 bytes that resolve to nobody.
+     */
+    pick(request: T.HostContactsPickRequest, options?: CallOptions): ResultAsync<T.HostContactsPickResponse, S.CallErrorValue<T.VersionedHostContactsPickError>>;
+}
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {
     #private;
@@ -223,7 +252,7 @@ export declare class NotificationsClient {
     /**
      * Send a push notification to the user.
      *
-     * Returns a [`NotificationId`](crate::v01::NotificationId) that can be
+     * Returns a notification id that can be
      * passed to [`cancel_push_notification`](Self::cancel_push_notification)
      * to retract a scheduled notification. When `scheduled_at` is set the host
      * persists the notification across restarts and fires it through the
@@ -342,6 +371,19 @@ export declare class SigningClient {
      * lets the host sign with the signer's key. Listing it — as `Disabled`,
      * with a proof in a later extension — encodes the given bytes verbatim and
      * returns an unsigned transaction.
+     *
+     * `txExtVersion` is the version of the transaction extensions in
+     * `extensions`, as the runtime numbers them. The host picks the extrinsic
+     * format from it. V4 always uses version 0, so a non-zero version builds a
+     * V5 general transaction. Version 0 builds V5 when it includes
+     * `VerifyMultiSignature`, and a signed V4 transaction otherwise.
+     *
+     * `contacts` lists the contact handles `callData` names, and the host
+     * replaces each with the account it resolves to before the call is shown
+     * or signed. A declared handle the call does not contain, or one no
+     * contact matches, refuses the whole call as `UnknownContact` rather than
+     * signing something that names somebody else. A call paying nobody from
+     * the picker leaves it empty.
      */
     createTransaction(request: T.ProductAccountTxPayload, options?: CallOptions): ResultAsync<T.HostCreateTransactionResponse, S.CallErrorValue<T.VersionedHostCreateTransactionError>>;
     /**
@@ -487,6 +529,7 @@ export interface TrUApiClient {
     readonly chain: ChainClient;
     readonly chat: ChatClient;
     readonly coinPayment: CoinPaymentClient;
+    readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;

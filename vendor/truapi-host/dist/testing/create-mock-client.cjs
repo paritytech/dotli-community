@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -563,6 +563,9 @@ var init_host_callbacks = __esm({
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
     HostChainEntry = S.lazy(() => S.Struct({ identifier: import_truapi3.ChainIdentifier, genesisHash: import_truapi3.Bytes32 }));
     HostChainSet = S.lazy(() => S.Struct({ network: S.str, chains: S.Vector(HostChainEntry) }));
+    HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi3.Bytes32, handles: S.Vector(import_truapi3.Bytes32) }));
+    HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.Option(import_truapi3.Bytes32)) }));
+    HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi3.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
@@ -798,6 +801,7 @@ __export(host_callbacks_adapter_exports, {
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
+  const contacts = callbacks.contacts;
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
@@ -814,6 +818,10 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     ...coinageWallet ? {
       nativeCoinage: async (request) => NativeCoinageResponse.enc(await coinageWallet.nativeCoinage(NativeCoinageRequest.dec(request)))
+    } : {},
+    ...contacts ? {
+      contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
+      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product)))
     } : {},
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),

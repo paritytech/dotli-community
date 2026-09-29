@@ -1018,6 +1018,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         pocket: host.pocket !== undefined,
                         identityBackend: host.identityBackend !== undefined,
                         coinageWallet: callbacks.nativeCoinage !== undefined,
+                        contacts: host.contacts !== undefined,
                     },
                     debuggerUrl: debuggerDial,
                 });
@@ -1182,6 +1183,9 @@ function buildRuntime(state) {
             state.worker.postMessage({
                 kind: "notifySessionStoreChanged",
             });
+        },
+        notifyContactsChanged() {
+            postUnlessDisposed(state, { kind: "notifyContactsChanged" });
         },
         acquireWorker(productId) {
             postUnlessDisposed(state, { kind: "acquireWorker", productId });
