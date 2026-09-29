@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationId, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -387,6 +387,78 @@ export interface HostChainSet {
      */
     chains: Array<HostChainEntry>;
 }
+/**
+ * Contact handles the core needs turned back into accounts, and the key they
+ * were minted under.
+ *
+ * A handle is `BLAKE2b-256(key = handle_key, message = account)`, the account
+ * being its 32 raw bytes. The host holds the accounts, so it is the one that
+ * can match: hash each contact's account under `handle_key`, or keep that hash
+ * as an indexed column for the session, and look the handles up.
+ */
+export interface HostContactLookup {
+    /**
+     * The key every handle here was minted under. Per session, and never
+     * given to a product.
+     */
+    handleKey: Bytes32;
+    /**
+     * The handles to resolve, in the order the answer must follow.
+     */
+    handles: Array<Bytes32>;
+}
+/**
+ * The host's answer to a `HostContactLookup`.
+ *
+ * A named wrapper because the callback emitter cannot return a bare `Vec`.
+ */
+export interface HostContactMatches {
+    /**
+     * One entry per requested handle, in order: the contact's account, or
+     * ``undefined`` when no current contact hashes to it.
+     */
+    accounts: Array<Bytes32 | undefined>;
+}
+/**
+ * How a host's contact picker ended.
+ */
+export type HostContactPick = 
+/**
+ * The user chose this account.
+ *
+ * Consumed by the core to mint the product-facing handle and never
+ * forwarded to a product: it is the person's real account, and the handle
+ * exists precisely so a product does not receive it.
+ */
+{
+    tag: "Picked";
+    value: {
+        account: Bytes32;
+    };
+}
+/**
+ * The user closed the picker without choosing.
+ */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/**
+ * The user has no contacts, so the host drew nothing.
+ */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+}
+/**
+ * This host resolves contacts but cannot present a picker. The core
+ * answers the product `Unsupported`, so it can tell "try again later"
+ * apart from "this host will never pick".
+ */
+ | {
+    tag: "Unsupported";
+    value?: undefined;
+};
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -1271,6 +1343,26 @@ export declare const HostChainEntry: S.Codec<HostChainEntry>;
  */
 export declare const HostChainSet: S.Codec<HostChainSet>;
 /**
+ * Contact handles the core needs turned back into accounts, and the key they
+ * were minted under.
+ *
+ * A handle is `BLAKE2b-256(key = handle_key, message = account)`, the account
+ * being its 32 raw bytes. The host holds the accounts, so it is the one that
+ * can match: hash each contact's account under `handle_key`, or keep that hash
+ * as an indexed column for the session, and look the handles up.
+ */
+export declare const HostContactLookup: S.Codec<HostContactLookup>;
+/**
+ * The host's answer to a `HostContactLookup`.
+ *
+ * A named wrapper because the callback emitter cannot return a bare `Vec`.
+ */
+export declare const HostContactMatches: S.Codec<HostContactMatches>;
+/**
+ * How a host's contact picker ended.
+ */
+export declare const HostContactPick: S.Codec<HostContactPick>;
+/**
  * Review shown before a product learns the user's primary identity.
  */
 export declare const IdentityDisclosureReview: S.Codec<IdentityDisclosureReview>;
@@ -1519,6 +1611,50 @@ export interface CoinageWalletHost {
     nativeCoinage(request: NativeCoinageRequest): Promise<NativeCoinageResponse>;
 }
 /**
+ * Host-owned contact picker, drawn from the chat lists the host's chat
+ * extensions hold.
+ *
+ * Optional, and listed on `OptionalPlatform` as `ChatPlatform` is.
+ *
+ * The host owns the UI and the list. It draws the names, so nothing it renders
+ * reaches the product, and the list never crosses to the core either: the core
+ * asks only about the handles a transaction names. A host omits contacts the
+ * user has blocked, from the picker and from lookups alike.
+ */
+export interface ContactsPlatform {
+    /**
+     * Resolve `lookup.handles` to the contacts they name.
+     *
+     * The one method a host has to write. Answer one entry per handle, in
+     * order, with ``undefined`` for a handle no current contact hashes to — a
+     * removed or blocked contact, or a handle a product made up. The core
+     * re-hashes every account returned and refuses one that does not match
+     * its handle, so a wrong answer is caught rather than trusted.
+     */
+    contacts(lookup: HostContactLookup): Promise<HostContactMatches>;
+    /**
+     * Present the contact picker on behalf of `product` and return the user's
+     * choice.
+     *
+     * Defaults to `HostContactPick::Unsupported`, so a Rust host that
+     * implements `Self::contacts` alone still compiles and its products get
+     * a truthful answer rather than a dismissal they would retry forever.
+     *
+     * A JS host reaches the same answer by another route: the generated
+     * surface types this method optional, but a capability group counts as
+     * served only when every callback in it is present, so omitting this one
+     * makes the whole group absent and `contacts.pick` answers `Unsupported`
+     * before any of it is reached.
+     *
+     * The core cannot draw UI, so a selection has to come from the host; the
+     * whole point is that the host renders the names rather than shipping
+     * them to the product. `product` is passed so the host can say who is
+     * asking; it is not a filter. A host with no contacts answers
+     * `HostContactPick::NoContacts` instead of drawing an empty overlay.
+     */
+    pickContact?(product: ProductContext): Promise<HostContactPick>;
+}
+/**
  * Core-owned administration API exposed to host UI.
  *
  * Hosts call this surface to drive global runtime actions or inspect/update
@@ -1686,7 +1822,7 @@ export interface IdentityBackendHost {
     identityUsernameCandidates(username: string, peopleChainGenesisHash: Uint8Array): Promise<Array<Uint8Array>>;
 }
 /**
- * A live JSON-RPC connection to a host-selected service.
+ * A live JSON-RPC connection to a chain.
  */
 export interface JsonRpcConnection {
     /**
@@ -1779,7 +1915,7 @@ export interface Notifications {
      * Cancel a notification by id. Idempotent: cancelling an already-fired or
      * unknown id still returns `success`.
      */
-    cancelNotification?(id: NotificationId): Promise<void>;
+    cancelNotification?(id: number): Promise<void>;
 }
 /**
  * Pairing-host-only administration API exposed to host UI.
@@ -2022,6 +2158,7 @@ export interface HostCallbacks {
     productOperations: ProductOperations;
     chat?: ChatPlatform;
     coinageWallet?: CoinageWalletHost;
+    contacts?: ContactsPlatform;
     identityBackend?: IdentityBackendHost;
     permissionStatus?: PermissionStatusHost;
     pocket?: PocketPlatform;
@@ -2045,6 +2182,7 @@ export interface RequiredHostCallbacks {
     productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
     coinageWallet?: Required<CoinageWalletHost>;
+    contacts?: Required<ContactsPlatform>;
     identityBackend?: Required<IdentityBackendHost>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;
