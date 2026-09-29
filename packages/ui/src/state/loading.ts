@@ -1,17 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store";
+import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
  * Up while loading, fading out once dismissed, then gone. `"gone"` is
  * terminal: the controller starts no timer once it is reached.
  */
-export type LoadingScreenPhase = "active" | "dismissing" | "gone";
+export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
 
 /** What the loading screen shows. Written only by `loading-controller.ts`. */
 export interface LoadingState {
@@ -32,11 +28,11 @@ export interface LoadingState {
 const loading = createSyncStore<LoadingState>(
   {
     progress: 0,
-    statusText: "Reaching out",
+    statusText: 'Reaching out',
     statusOpacity: 1,
-    srText: "",
+    srText: '',
     warning: null,
-    phase: "active",
+    phase: 'active',
   },
   // The typing loop writes every frame; an unchanged frame notifies nobody.
   { equals: shallowEqual },

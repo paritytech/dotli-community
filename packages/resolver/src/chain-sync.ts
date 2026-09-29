@@ -13,22 +13,20 @@
 // reserved string id and `./provider` hands its reply here before
 // polkadot-api sees it, so papi's numeric ids can never collide with ours.
 
-import type { ChainLifecycle } from "@parity/truapi-provider";
-// Import via the package specifier, not a relative path. `prodNoAnalyticsAliases`
-// rewrites `@dotli/metrics/metrics` to the no-op at bundle time.
-import { m } from "@dotli/metrics/metrics";
-import { log } from "@dotli/shared/log";
-import { chainRoleForGenesis, type ChainRole } from "@dotli/config/network";
+import type { ChainLifecycle } from '@parity/truapi-provider';
+import { m } from '@dotli/metrics';
+import { log } from '@dotli/shared';
+import { chainRoleForGenesis, type ChainRole } from '@dotli/config';
 
 /** The chains the resolver runs, named by role rather than by chain spec. */
-export const CHAIN_KEYS = ["relay", "asset-hub", "bulletin", "people"] as const;
+export const CHAIN_KEYS = ['relay', 'asset-hub', 'bulletin', 'people'] as const;
 export type ChainKey = (typeof CHAIN_KEYS)[number];
 
 const CHAIN_KEY_BY_ROLE: Record<ChainRole, ChainKey> = {
-  relay: "relay",
-  assethub: "asset-hub",
-  bulletin: "bulletin",
-  people: "people",
+  relay: 'relay',
+  assethub: 'asset-hub',
+  bulletin: 'bulletin',
+  people: 'people',
 };
 
 /**
@@ -53,14 +51,14 @@ export function chainKeyForGenesis(genesisHash: string): ChainKey | null {
  * that run. A chain that never warped emits neither.
  */
 export const CHAIN_SYNC_KINDS = [
-  "firstPeer",
-  "bootstrapComplete",
-  "stalled",
-  "recovered",
-  "peers",
-  "connecting",
-  "warpSyncProgress",
-  "warpSyncFinished",
+  'firstPeer',
+  'bootstrapComplete',
+  'stalled',
+  'recovered',
+  'peers',
+  'connecting',
+  'warpSyncProgress',
+  'warpSyncFinished',
 ] as const;
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
@@ -104,7 +102,7 @@ export interface ChainPeer {
 export interface ChainDetail {
   chain: ChainKey;
   /** Whether the light client resumed this chain from its stored database. */
-  dbCache?: "hit" | "miss";
+  dbCache?: 'hit' | 'miss';
   /** Peers held at the moment the chain reported ready. */
   peers?: ChainPeer[];
 }
@@ -138,7 +136,7 @@ export function onChainDetail(cb: DetailCallback): () => void {
 }
 
 function emitChainDetail(detail: ChainDetail): void {
-  const kind = detail.dbCache === undefined ? "peers" : "dbCache";
+  const kind = detail.dbCache === undefined ? 'peers' : 'dbCache';
   detailHistory.set(`${detail.chain}:${kind}`, detail);
   for (const cb of detailListeners) {
     try {
@@ -166,7 +164,7 @@ export function reportDbCache(genesisHash: string, warm: boolean): void {
   if (detailHistory.has(`${chain}:dbCache`)) {
     return;
   }
-  emitChainDetail({ chain, dbCache: warm ? "hit" : "miss" });
+  emitChainDetail({ chain, dbCache: warm ? 'hit' : 'miss' });
 }
 
 type SyncCallback = (event: ChainSyncEvent) => void;
@@ -198,23 +196,19 @@ export function onChainSync(cb: SyncCallback): () => void {
 }
 
 function emitChainSync(event: ChainSyncEvent): void {
-  if (event.kind === "peers") {
+  if (event.kind === 'peers') {
     // Repeating an unchanged report would wake every listener once a second
     // for nothing. `isSyncing` is part of the report, so a flip with a stable
     // count still goes out.
     const prev = syncHistory.get(`${event.chain}:peers`);
-    if (
-      prev !== undefined &&
-      prev.peers === event.peers &&
-      prev.isSyncing === event.isSyncing
-    ) {
+    if (prev !== undefined && prev.peers === event.peers && prev.isSyncing === event.isSyncing) {
       return;
     }
-  } else if (event.kind === "stalled") {
+  } else if (event.kind === 'stalled') {
     // `stalled` and `recovered` describe one condition. Keeping both in the
     // replay history would let a late subscriber end on the outdated half.
     syncHistory.delete(`${event.chain}:recovered`);
-  } else if (event.kind === "recovered") {
+  } else if (event.kind === 'recovered') {
     syncHistory.delete(`${event.chain}:stalled`);
   }
   syncHistory.set(`${event.chain}:${event.kind}`, event);
@@ -244,7 +238,7 @@ export function enableSyncReporting(chains: readonly ChainKey[]): void {
 // Reserved id prefix for our internal JSON-RPC request. Chosen so it cannot
 // collide with the numeric ids polkadot-api uses, and so the tap can recognize
 // and consume the response before it reaches polkadot-api.
-const PEERS_ID_PREFIX = "__dotli_peers__:";
+const PEERS_ID_PREFIX = '__dotli_peers__:';
 
 // A peer list is a forensic snapshot, not a readout: it answers "who was this
 // chain talking to, and were they themselves caught up" after the fact. Asked
@@ -322,43 +316,43 @@ export function attachChainSync(
     const { peers, phase, health } = state;
     if (peers > 0 && !firstPeerEmitted) {
       firstPeerEmitted = true;
-      emitChainSync({ chain, kind: "firstPeer" });
+      emitChainSync({ chain, kind: 'firstPeer' });
     }
     if (peers !== lastPeers) {
       emitChainSync({
         chain,
-        kind: "peers",
+        kind: 'peers',
         peers,
-        isSyncing: phase.kind !== "ready",
+        isSyncing: phase.kind !== 'ready',
       });
     }
     lastPeers = peers;
 
     if (phase.kind !== lastPhase) {
-      if (phase.kind === "connecting") {
-        emitChainSync({ chain, kind: "connecting" });
-      } else if (phase.kind === "ready") {
+      if (phase.kind === 'connecting') {
+        emitChainSync({ chain, kind: 'connecting' });
+      } else if (phase.kind === 'ready') {
         // Ordered before `bootstrapComplete` so a listener reading milestones
         // in sequence never sees the warp finish after the chain is already up.
         if (lastWarpAt !== null) {
           emitChainSync({
             chain,
-            kind: "warpSyncFinished",
+            kind: 'warpSyncFinished',
             finalized: lastWarpAt,
           });
         }
-        emitChainSync({ chain, kind: "bootstrapComplete" });
+        emitChainSync({ chain, kind: 'bootstrapComplete' });
         requestPeers();
       }
       lastPhase = phase.kind;
     }
     // Warp progress repeats while the target moves, so it is emitted on every
     // syncing snapshot rather than only on a phase change.
-    if (phase.kind === "syncing") {
+    if (phase.kind === 'syncing') {
       lastWarpAt = phase.at;
       emitChainSync({
         chain,
-        kind: "warpSyncProgress",
+        kind: 'warpSyncProgress',
         at: phase.at,
         target: phase.target,
       });
@@ -366,22 +360,21 @@ export function attachChainSync(
 
     // The reason is the half of a stall worth showing, and it can change while
     // the chain stays stalled, so the pair is what gets compared.
-    const healthKey =
-      health.kind === "stalled" ? `stalled:${health.reason}` : health.kind;
+    const healthKey = health.kind === 'stalled' ? `stalled:${health.reason}` : health.kind;
     if (healthKey !== lastHealth) {
-      if (health.kind === "ok") {
+      if (health.kind === 'ok') {
         // Only a chain that was previously unwell can recover, so the first
         // `ok` of a session is not an event.
         if (lastStallReason !== null) {
           emitChainSync({
             chain,
-            kind: "recovered",
+            kind: 'recovered',
             reason: lastStallReason,
           });
         }
         lastStallReason = null;
       } else {
-        emitChainSync({ chain, kind: "stalled", reason: health.reason });
+        emitChainSync({ chain, kind: 'stalled', reason: health.reason });
         lastStallReason = health.reason;
       }
       lastHealth = healthKey;
@@ -399,9 +392,9 @@ export function attachChainSync(
     try {
       send(
         JSON.stringify({
-          jsonrpc: "2.0",
+          jsonrpc: '2.0',
           id: `${PEERS_ID_PREFIX}${chain}`,
-          method: "system_peers",
+          method: 'system_peers',
           params: [],
         }),
       );
@@ -426,27 +419,20 @@ export function attachChainSync(
         roles?: unknown;
         bestNumber?: unknown;
       };
-      if (typeof peer.peerId !== "string") {
+      if (typeof peer.peerId !== 'string') {
         continue;
       }
       peers.push({
         peerId: peer.peerId,
-        roles: typeof peer.roles === "string" ? peer.roles : "UNKNOWN",
-        bestNumber:
-          typeof peer.bestNumber === "number" &&
-          Number.isFinite(peer.bestNumber)
-            ? peer.bestNumber
-            : 0,
+        roles: typeof peer.roles === 'string' ? peer.roles : 'UNKNOWN',
+        bestNumber: typeof peer.bestNumber === 'number' && Number.isFinite(peer.bestNumber) ? peer.bestNumber : 0,
       });
     }
     emitChainDetail({ chain, peers });
   };
 
   const intercept = (parsed: ParsedRpcMessage): boolean => {
-    if (
-      typeof parsed.id === "string" &&
-      parsed.id.startsWith(PEERS_ID_PREFIX)
-    ) {
+    if (typeof parsed.id === 'string' && parsed.id.startsWith(PEERS_ID_PREFIX)) {
       handlePeersResponse(parsed.result);
       return true;
     }

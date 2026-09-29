@@ -5,7 +5,7 @@
 // the network store's values: moved unchanged from topbar.ts, except that the
 // verdict takes the chains it judges instead of reading the monitor.
 
-import type { ChainStatus } from "../../network-monitor";
+import type { ChainStatus } from '../../network-monitor.js';
 
 /**
  * How the arrival of a single block reads on hover.
@@ -17,20 +17,14 @@ import type { ChainStatus } from "../../network-monitor";
  */
 export function describeBlockDelay(gapMs: number, blockTimeMs: number): string {
   const secs = (ms: number): string =>
-    ms < 10_000
-      ? `${(ms / 1000).toFixed(1)}s`
-      : `${String(Math.round(ms / 1000))}s`;
+    ms < 10_000 ? `${(ms / 1000).toFixed(1)}s` : `${String(Math.round(ms / 1000))}s`;
   const late = gapMs - blockTimeMs;
-  return late <= 0
-    ? `${secs(gapMs)}, on time`
-    : `${secs(gapMs)}, ${secs(late)} late`;
+  return late <= 0 ? `${secs(gapMs)}, on time` : `${secs(gapMs)}, ${secs(late)} late`;
 }
 
 /** Bytes as the panel says them: kB up to a megabyte, then MB. */
 export function formatSize(bytes: number): string {
-  return bytes < 1_048_576
-    ? `${String(Math.round(bytes / 1024))} kB`
-    : `${(bytes / 1_048_576).toFixed(1)} MB`;
+  return bytes < 1_048_576 ? `${String(Math.round(bytes / 1024))} kB` : `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
 export function formatRate(bytesPerSecond: number): string {
@@ -58,15 +52,10 @@ export function stripCapacity(strip: HTMLElement, fallback: number): number {
     return fallback;
   }
   const style = getComputedStyle(strip);
-  const barWidth = Number.parseFloat(style.getPropertyValue("--chains-bar-w"));
+  const barWidth = Number.parseFloat(style.getPropertyValue('--chains-bar-w'));
   const gap = Number.parseFloat(style.gap);
-  const step =
-    (Number.isFinite(barWidth) ? barWidth : 4) +
-    (Number.isFinite(gap) ? gap : 4);
-  return Math.max(
-    1,
-    Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step),
-  );
+  const step = (Number.isFinite(barWidth) ? barWidth : 4) + (Number.isFinite(gap) ? gap : 4);
+  return Math.max(1, Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step));
 }
 
 /**
@@ -80,28 +69,26 @@ export function describeLiveNetwork(status: readonly ChainStatus[]): {
   text: string;
   tone: string;
 } {
-  const chains = status.filter((c) => c.reachable);
+  const chains = status.filter(c => c.reachable);
   if (chains.length === 0) {
-    return { text: "Starting", tone: "idle" };
+    return { text: 'Starting', tone: 'idle' };
   }
-  const started = chains.filter((c) => c.latest !== null);
+  const started = chains.filter(c => c.latest !== null);
   if (started.length === 0) {
-    return { text: "Connecting", tone: "idle" };
+    return { text: 'Connecting', tone: 'idle' };
   }
-  const overdue = started.filter(
-    (c) => c.sinceLast !== null && c.sinceLast > c.blockTimeMs * 3,
-  );
+  const overdue = started.filter(c => c.sinceLast !== null && c.sinceLast > c.blockTimeMs * 3);
   if (overdue.length > 0) {
     return {
-      text: `Waiting on ${overdue.map((c) => c.label).join(" and ")}`,
-      tone: "warn",
+      text: `Waiting on ${overdue.map(c => c.label).join(' and ')}`,
+      tone: 'warn',
     };
   }
   if (started.length < chains.length) {
     return {
       text: `Connecting, ${String(started.length)} of ${String(chains.length)} ready`,
-      tone: "idle",
+      tone: 'idle',
     };
   }
-  return { text: "Your connection is good", tone: "ok" };
+  return { text: 'Your connection is good', tone: 'ok' };
 }

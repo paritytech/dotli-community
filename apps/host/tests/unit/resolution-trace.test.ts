@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it } from "vitest";
-import { m } from "@dotli/metrics/metrics";
-import { updateLoading } from "@dotli/ui/state/loading";
-import { startResolutionTrace } from "../../src/resolution-trace";
+import { beforeEach, describe, expect, it } from 'vitest';
+import { m } from '@dotli/metrics';
+import { updateLoading } from '@dotli/ui';
+import { startResolutionTrace } from '../../src/resolution-trace.js';
 
 /**
  * A Sentry stand-in that records the span tree instead of sending it.
@@ -18,8 +18,8 @@ interface RecordedSpan {
   parent: RecordedSpan | null;
   attributes: Record<string, unknown>;
   ended: boolean;
-  startTime?: number;
-  endTime?: number;
+  startTime?: number | undefined;
+  endTime?: number | undefined;
 }
 
 function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
@@ -33,9 +33,7 @@ function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {
     }) {
       const rec: RecordedSpan = {
         name: opts.name,
-        parent:
-          (opts.parentSpan as { __rec?: RecordedSpan } | undefined)?.__rec ??
-          null,
+        parent: (opts.parentSpan as { __rec?: RecordedSpan } | undefined)?.__rec ?? null,
         attributes: { ...opts.attributes },
         ended: false,
         startTime: opts.startTime,
@@ -69,11 +67,11 @@ let spans: RecordedSpan[];
 
 /** The span named `dotli.<name>`, or undefined. */
 function span(name: string): RecordedSpan | undefined {
-  return spans.find((s) => s.name === `dotli.${name}`);
+  return spans.find(s => s.name === `dotli.${name}`);
 }
 
 function names(): string[] {
-  return spans.map((s) => s.name);
+  return spans.map(s => s.name);
 }
 
 beforeEach(() => {
@@ -83,95 +81,95 @@ beforeEach(() => {
 });
 
 const OPTS = {
-  domain: "host-playground.dot",
-  network: "paseo-next-v2",
-  backend: "smoldot-direct",
+  domain: 'host-playground.dot',
+  network: 'paseo-next-v2',
+  backend: 'smoldot-direct',
 };
 
-describe("A resolution is traced as one unit", () => {
-  it("As a maintainer, one search returns the whole page load with what was asked for", () => {
+describe('A resolution is traced as one unit', () => {
+  it('As a maintainer, one search returns the whole page load with what was asked for', () => {
     // Given
     startResolutionTrace(OPTS);
 
     // Then
-    const root = span("resolution");
+    const root = span('resolution');
     expect(root).toBeDefined();
     expect(root?.parent).toBeNull();
     expect(root?.attributes).toMatchObject({
-      domain: "host-playground.dot",
-      network: "paseo-next-v2",
-      backend: "smoldot-direct",
+      domain: 'host-playground.dot',
+      network: 'paseo-next-v2',
+      backend: 'smoldot-direct',
     });
   });
 
-  it("As a maintainer, a chain appears in the trace only once it has actually started", () => {
+  it('As a maintainer, a chain appears in the trace only once it has actually started', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // Then
-    expect(names()).not.toContain("dotli.chain.bulletin");
+    expect(names()).not.toContain('dotli.chain.bulletin');
 
     // When
-    trace.chainSync({ chain: "bulletin", syncKind: "connecting" });
+    trace.chainSync({ chain: 'bulletin', syncKind: 'connecting' });
 
     // Then
-    expect(span("chain.bulletin")?.parent).toBe(span("resolution"));
+    expect(span('chain.bulletin')?.parent).toBe(span('resolution'));
   });
 
-  it("As a maintainer, I can read how long each chain spent in every phase", () => {
+  it('As a maintainer, I can read how long each chain spent in every phase', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.chainSync({ chain: "relay", syncKind: "connecting" });
+    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
     trace.chainSync({
-      chain: "relay",
-      syncKind: "warpSyncProgress",
+      chain: 'relay',
+      syncKind: 'warpSyncProgress',
       at: 10,
       target: 20,
     });
-    trace.chainSync({ chain: "relay", syncKind: "bootstrapComplete" });
+    trace.chainSync({ chain: 'relay', syncKind: 'bootstrapComplete' });
 
     // Then
-    const chain = span("chain.relay");
-    for (const phase of ["connecting", "syncing", "ready"]) {
+    const chain = span('chain.relay');
+    for (const phase of ['connecting', 'syncing', 'ready']) {
       expect(span(`chain.relay.${phase}`)?.parent).toBe(chain);
     }
   });
 
-  it("As a maintainer, the time a chain spent connecting is a closed interval", () => {
+  it('As a maintainer, the time a chain spent connecting is a closed interval', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.chainSync({ chain: "relay", syncKind: "connecting" });
-    trace.chainSync({ chain: "relay", syncKind: "bootstrapComplete" });
+    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
+    trace.chainSync({ chain: 'relay', syncKind: 'bootstrapComplete' });
 
     // Then
-    expect(span("chain.relay.connecting")?.ended).toBe(true);
+    expect(span('chain.relay.connecting')?.ended).toBe(true);
   });
 
-  it("As a maintainer, I can read how far the relay had to catch up", () => {
+  it('As a maintainer, I can read how far the relay had to catch up', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
     trace.chainSync({
-      chain: "relay",
-      syncKind: "warpSyncProgress",
+      chain: 'relay',
+      syncKind: 'warpSyncProgress',
       at: 974196,
       target: 1006056,
     });
     trace.chainSync({
-      chain: "relay",
-      syncKind: "warpSyncProgress",
+      chain: 'relay',
+      syncKind: 'warpSyncProgress',
       at: 1006053,
       target: 1006056,
     });
-    trace.finish("rendered");
+    trace.finish('rendered');
 
     // Then
-    expect(span("chain.relay")?.attributes).toMatchObject({
+    expect(span('chain.relay')?.attributes).toMatchObject({
       warp_from: 974196,
       warp_at: 1006053,
       warp_target: 1006056,
@@ -179,103 +177,103 @@ describe("A resolution is traced as one unit", () => {
     });
   });
 
-  it("As a maintainer, I can read whether a chain started warm and who it was talking to", () => {
+  it('As a maintainer, I can read whether a chain started warm and who it was talking to', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
-    trace.chainSync({ chain: "relay", syncKind: "connecting" });
+    trace.chainSync({ chain: 'relay', syncKind: 'connecting' });
 
     // When
     trace.chainDetail({
-      chain: "relay",
-      dbCache: "miss",
+      chain: 'relay',
+      dbCache: 'miss',
       peers: [
-        { peerId: "12D3KooWA", roles: "AUTHORITY", bestNumber: 1006056 },
-        { peerId: "12D3KooWB", roles: "FULL", bestNumber: 1006056 },
+        { peerId: '12D3KooWA', roles: 'AUTHORITY', bestNumber: 1006056 },
+        { peerId: '12D3KooWB', roles: 'FULL', bestNumber: 1006056 },
       ],
     });
-    trace.finish("rendered");
+    trace.finish('rendered');
 
     // Then
-    expect(span("chain.relay")?.attributes).toMatchObject({
-      db_cache: "miss",
+    expect(span('chain.relay')?.attributes).toMatchObject({
+      db_cache: 'miss',
       peers_authority: 1,
     });
   });
 });
 
-describe("A resolution reports how it ended", () => {
-  it("As a maintainer, a rendered load reports its outcome and duration", () => {
+describe('A resolution reports how it ended', () => {
+  it('As a maintainer, a rendered load reports its outcome and duration', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.nameResolved("bafy123");
-    trace.finish("rendered");
+    trace.nameResolved('bafy123');
+    trace.finish('rendered');
 
     // Then
-    const root = span("resolution");
+    const root = span('resolution');
     expect(root?.attributes).toMatchObject({
-      outcome: "rendered",
-      cid: "bafy123",
+      outcome: 'rendered',
+      cid: 'bafy123',
     });
     expect(root?.ended).toBe(true);
   });
 
-  it("As a maintainer, a load the visitor walked away from still reaches me", () => {
+  it('As a maintainer, a load the visitor walked away from still reaches me', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.finish("abandoned");
+    trace.finish('abandoned');
 
     // Then
-    expect(span("resolution")?.attributes).toMatchObject({
-      outcome: "abandoned",
+    expect(span('resolution')?.attributes).toMatchObject({
+      outcome: 'abandoned',
     });
-    expect(span("resolution")?.ended).toBe(true);
+    expect(span('resolution')?.ended).toBe(true);
   });
 
-  it("As a maintainer, a failed load keeps the reason it failed", () => {
+  it('As a maintainer, a failed load keeps the reason it failed', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.finish("error", "no contenthash");
+    trace.finish('error', 'no contenthash');
 
     // Then
-    expect(span("resolution")?.attributes).toMatchObject({
-      outcome: "error",
-      failure_reason: "no contenthash",
-    });
-  });
-
-  it("As a maintainer, a navigation after success cannot rewrite the outcome", () => {
-    // Given
-    const trace = startResolutionTrace(OPTS);
-
-    // When
-    trace.finish("rendered");
-    trace.finish("abandoned");
-
-    // Then
-    expect(span("resolution")?.attributes).toMatchObject({
-      outcome: "rendered",
+    expect(span('resolution')?.attributes).toMatchObject({
+      outcome: 'error',
+      failure_reason: 'no contenthash',
     });
   });
 
-  it("As a maintainer, a chain that never finished cannot hold the trace open", () => {
+  it('As a maintainer, a navigation after success cannot rewrite the outcome', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
-    trace.chainSync({ chain: "asset-hub", syncKind: "connecting" });
 
     // When
-    trace.finish("abandoned");
+    trace.finish('rendered');
+    trace.finish('abandoned');
 
     // Then
-    expect(spans.every((s) => s.ended)).toBe(true);
+    expect(span('resolution')?.attributes).toMatchObject({
+      outcome: 'rendered',
+    });
   });
 
-  it("As a maintainer, I see the progress the visitor actually saw, not a forced 100%", () => {
+  it('As a maintainer, a chain that never finished cannot hold the trace open', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+    trace.chainSync({ chain: 'asset-hub', syncKind: 'connecting' });
+
+    // When
+    trace.finish('abandoned');
+
+    // Then
+    expect(spans.every(s => s.ended)).toBe(true);
+  });
+
+  it('As a maintainer, I see the progress the visitor actually saw, not a forced 100%', () => {
     // Given the bar at 62%, with no loading screen markup on the page, as
     // before the loading island mounts or when its chunk failed
     updateLoading({ progress: 62 });
@@ -284,23 +282,23 @@ describe("A resolution reports how it ended", () => {
 
     // When the load completes and the bar is forced full
     updateLoading({ progress: 100 });
-    trace.finish("rendered");
+    trace.finish('rendered');
 
     // Then
-    expect(span("resolution")?.attributes.bar_at_render).toBe(62);
+    expect(span('resolution')?.attributes['bar_at_render']).toBe(62);
     updateLoading({ progress: 0 });
   });
 
-  it("As a maintainer, I can read how much the load downloaded", () => {
+  it('As a maintainer, I can read how much the load downloaded', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
     // When
     trace.bytes(1_000_000);
     trace.bytes(21_266_125);
-    trace.finish("rendered");
+    trace.finish('rendered');
 
     // Then
-    expect(span("resolution")?.attributes.bytes_total).toBe(21_266_125);
+    expect(span('resolution')?.attributes['bytes_total']).toBe(21_266_125);
   });
 });

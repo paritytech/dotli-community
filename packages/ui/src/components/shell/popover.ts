@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, type Accessor } from "solid-js";
-import { topbarStore } from "../../state/topbar";
-import { containTab, focusInto, lockScroll } from "../focus";
-import { useStore } from "../use-store";
+import { createEffect, createSignal, onCleanup, type Accessor } from 'solid-js';
+import { topbarStore } from '../../state/topbar.js';
+import { containTab, focusInto, lockScroll } from '../focus.js';
+import { useStore } from '../use-store.js';
 
 /**
  * How a shell surface behaves, after the Radix UI v1 primitive it
@@ -22,7 +22,7 @@ import { useStore } from "../use-store";
  * - `dialog` (Radix Dialog, modal): the surface has `role="dialog"`,
  *   `aria-modal="true"` and `tabindex="-1"`, behind a backdrop outside it.
  */
-export type PopoverMode = "popover" | "menu" | "dialog";
+export type PopoverMode = 'popover' | 'menu' | 'dialog';
 
 export interface PopoverOptions {
   /**
@@ -31,7 +31,7 @@ export interface PopoverOptions {
    * decides (the settings popover, a modal sheet on narrow screens). A menu
    * is always a menu, so a function cannot return one.
    */
-  mode: PopoverMode | (() => Exclude<PopoverMode, "menu">);
+  mode: PopoverMode | (() => Exclude<PopoverMode, 'menu'>);
   /** The button that opens the popover. */
   trigger: () => HTMLElement | undefined;
   /** The popover itself. */
@@ -82,11 +82,7 @@ export interface Popover {
 /** Whether focus is lost (on the body) or still inside `surface`. */
 function focusLostOrInside(surface: HTMLElement | undefined): boolean {
   const active = document.activeElement;
-  return (
-    active === null ||
-    active === document.body ||
-    surface?.contains(active) === true
-  );
+  return active === null || active === document.body || surface?.contains(active) === true;
 }
 
 /**
@@ -96,7 +92,7 @@ function focusLostOrInside(surface: HTMLElement | undefined): boolean {
 function focusTrigger(trigger: HTMLElement | undefined): void {
   trigger?.focus();
   if (trigger !== undefined && document.activeElement !== trigger) {
-    document.getElementById("more-button")?.focus();
+    document.getElementById('more-button')?.focus();
   }
 }
 
@@ -104,14 +100,12 @@ const MENU_ITEM_SELECTOR = '[role^="menuitem"]';
 
 /** The menu's items that can take focus, in order. */
 function menuItems(surface: HTMLElement): HTMLElement[] {
-  return Array.from(
-    surface.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR),
-  ).filter(
-    (el) =>
+  return Array.from(surface.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)).filter(
+    el =>
       el.hidden === false &&
-      el.getAttribute("aria-disabled") !== "true" &&
+      el.getAttribute('aria-disabled') !== 'true' &&
       !(el instanceof HTMLButtonElement && el.disabled) &&
-      (typeof el.checkVisibility !== "function" || el.checkVisibility()),
+      (typeof el.checkVisibility !== 'function' || el.checkVisibility()),
   );
 }
 
@@ -126,35 +120,24 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   }
   const index = items.indexOf(document.activeElement as HTMLElement);
   let next: HTMLElement | undefined;
-  if (ev.key === "ArrowDown") {
+  if (ev.key === 'ArrowDown') {
     next = items[(index + 1) % items.length];
-  } else if (ev.key === "ArrowUp") {
+  } else if (ev.key === 'ArrowUp') {
     next = items[index <= 0 ? items.length - 1 : index - 1];
-  } else if (ev.key === "Home") {
+  } else if (ev.key === 'Home') {
     next = items[0];
-  } else if (ev.key === "End") {
+  } else if (ev.key === 'End') {
     next = items[items.length - 1];
-  } else if (
-    ev.key.length === 1 &&
-    ev.key !== " " &&
-    !ev.ctrlKey &&
-    !ev.altKey &&
-    !ev.metaKey
-  ) {
+  } else if (ev.key.length === 1 && ev.key !== ' ' && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
     // The next item after the focused one whose text starts with the
     // letter, so pressing it again cycles through the matches.
     const letter = ev.key.toLowerCase();
-    const ordered =
-      index < 0
-        ? items
-        : [...items.slice(index + 1), ...items.slice(0, index + 1)];
-    next = ordered.find((item) =>
-      item.textContent.trim().toLowerCase().startsWith(letter),
-    );
-    if (next === undefined) {
-      return false;
-    }
+    const ordered = index < 0 ? items : [...items.slice(index + 1), ...items.slice(0, index + 1)];
+    next = ordered.find(item => item.textContent.trim().toLowerCase().startsWith(letter));
   } else {
+    return false;
+  }
+  if (next === undefined) {
     return false;
   }
   ev.preventDefault();
@@ -247,17 +230,14 @@ export function createPopover(options: PopoverOptions): Popover {
   // whole store would close the popover on any topbar write. This runs when
   // the flag changes, so a popover opened while a modal is already up stays
   // open until the next one comes up.
-  const blockingModalActive = useStore(
-    topbarStore,
-    (s) => s.blockingModalActive,
-  );
-  createEffect(blockingModalActive, (active) => {
+  const blockingModalActive = useStore(topbarStore, s => s.blockingModalActive);
+  createEffect(blockingModalActive, active => {
     if (active && options.closeOnBlockingModal !== false) {
       setOpen(false);
     }
   });
 
-  if (options.mode === "menu") {
+  if (options.mode === 'menu') {
     /** Ends the guard against the click of the last key handled below. */
     let stopKeyClickGuard: (() => void) | undefined;
     // Radix DropdownMenu's trigger keys: Enter and Space toggle, ArrowDown
@@ -266,49 +246,47 @@ export function createPopover(options: PopoverOptions): Popover {
       if (
         ev.defaultPrevented ||
         options.trigger()?.contains(ev.target as Node | null) !== true ||
-        !["Enter", " ", "ArrowDown"].includes(ev.key)
+        !['Enter', ' ', 'ArrowDown'].includes(ev.key)
       ) {
         return;
       }
       // Also stops the click the key would otherwise produce.
       ev.preventDefault();
-      if (ev.key !== "ArrowDown") {
+      if (ev.key !== 'ArrowDown') {
         stopKeyClickGuard?.();
         stopKeyClickGuard = guardKeyClick(ev.key);
       }
       if (!current) {
         openedWithKeyboard = true;
         setOpen(true);
-      } else if (ev.key === "ArrowDown") {
+      } else if (ev.key === 'ArrowDown') {
         const surface = options.surface();
         (surface === undefined ? undefined : menuItems(surface)[0])?.focus();
       } else {
         setOpen(false);
       }
     };
-    document.addEventListener("keydown", onTriggerKeyDown);
+    document.addEventListener('keydown', onTriggerKeyDown);
     onCleanup(() => {
-      document.removeEventListener("keydown", onTriggerKeyDown);
+      document.removeEventListener('keydown', onTriggerKeyDown);
       stopKeyClickGuard?.();
     });
   }
 
-  createEffect(open, (isOpen) => {
+  createEffect(open, isOpen => {
     if (!isOpen) {
       return;
     }
-    const mode =
-      typeof options.mode === "function" ? options.mode() : options.mode;
+    const mode = typeof options.mode === 'function' ? options.mode() : options.mode;
     keepFocus = false;
     const keyboard = openedWithKeyboard;
     openedWithKeyboard = false;
 
     const isInside = (node: Node | null): boolean =>
-      options.trigger()?.contains(node) === true ||
-      options.surface()?.contains(node) === true;
+      options.trigger()?.contains(node) === true || options.surface()?.contains(node) === true;
 
     const closeOutside = (): void => {
-      if (mode === "popover") {
+      if (mode === 'popover') {
         keepFocus = true;
       }
       setOpen(false);
@@ -321,14 +299,14 @@ export function createPopover(options: PopoverOptions): Popover {
       if (isInside(ev.target as Node | null)) {
         return;
       }
-      if (mode === "menu") {
+      if (mode === 'menu') {
         // Like Radix's modal menu, which blocks outside pointer events: the
         // press neither takes focus (a prevented pointerdown skips the
         // mousedown focus, which Radix's trigger relies on too) nor
         // activates what is underneath (its click is swallowed).
         ev.preventDefault();
       }
-      if (ev.pointerType === "touch") {
+      if (ev.pointerType === 'touch') {
         // Like Radix's usePointerDownOutside: a touch closes only once it
         // is a tap, so a scroll or drag that starts outside (a
         // pointercancel, a scroll) closes nothing. The tap is its pointerup,
@@ -336,18 +314,18 @@ export function createPopover(options: PopoverOptions): Popover {
         // when the only listeners are on the document. A menu's close
         // swallows the click, if one follows.
         cancelTouchClose = awaitEvent(
-          "pointerup",
+          'pointerup',
           () => {
-            if (mode === "menu") {
+            if (mode === 'menu') {
               swallowNextClick();
             }
             closeOutside();
           },
-          ["pointerdown", "pointercancel", "keydown", "scroll"],
+          ['pointerdown', 'pointercancel', 'keydown', 'scroll'],
         );
         return;
       }
-      if (mode === "menu") {
+      if (mode === 'menu') {
         swallowNextClick();
       }
       closeOutside();
@@ -359,7 +337,7 @@ export function createPopover(options: PopoverOptions): Popover {
       if (surface?.isConnected === false || ev.defaultPrevented) {
         return;
       }
-      if (ev.key === "Escape") {
+      if (ev.key === 'Escape') {
         if (options.shouldHandleEscape?.() !== false) {
           closeReturningFocus();
         }
@@ -368,14 +346,10 @@ export function createPopover(options: PopoverOptions): Popover {
       if (surface === undefined) {
         return;
       }
-      if (
-        ev.key === "Tab" &&
-        (mode === "dialog" ||
-          (mode === "popover" && options.trapFocus !== false))
-      ) {
+      if (ev.key === 'Tab' && (mode === 'dialog' || (mode === 'popover' && options.trapFocus !== false))) {
         containTab(ev, surface);
-      } else if (mode === "menu" && surface.contains(document.activeElement)) {
-        if (ev.key === "Tab") {
+      } else if (mode === 'menu' && surface.contains(document.activeElement)) {
+        if (ev.key === 'Tab') {
           ev.preventDefault();
         } else {
           moveMenuFocus(ev, surface);
@@ -393,10 +367,7 @@ export function createPopover(options: PopoverOptions): Popover {
       }
     };
     const onPointerMove = (ev: PointerEvent): void => {
-      const item =
-        ev.pointerType === "mouse"
-          ? (ev.target as Element).closest<HTMLElement>(MENU_ITEM_SELECTOR)
-          : null;
+      const item = ev.pointerType === 'mouse' ? (ev.target as Element).closest<HTMLElement>(MENU_ITEM_SELECTOR) : null;
       if (item !== null && item !== document.activeElement) {
         item.focus();
       }
@@ -407,34 +378,31 @@ export function createPopover(options: PopoverOptions): Popover {
     };
 
     const surface = options.surface();
-    document.addEventListener("pointerdown", onPointerDown, true);
-    document.addEventListener("keydown", onKeyDown);
-    if (mode === "popover") {
-      document.addEventListener("focusout", onFocusOut);
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    if (mode === 'popover') {
+      document.addEventListener('focusout', onFocusOut);
     }
-    if (mode === "menu") {
-      surface?.addEventListener("pointermove", onPointerMove);
+    if (mode === 'menu') {
+      surface?.addEventListener('pointermove', onPointerMove);
     }
     if (options.closeOnBlur === true) {
-      window.addEventListener("blur", onBlur);
+      window.addEventListener('blur', onBlur);
     }
     if (surface !== undefined) {
       // A menu opened with the keyboard focuses its first item, one opened
       // with a pointer the surface.
-      focusInto(
-        surface,
-        mode === "menu" ? (keyboard ? menuItems(surface) : []) : undefined,
-      );
+      focusInto(surface, mode === 'menu' ? (keyboard ? menuItems(surface) : []) : undefined);
     }
     // Last, so nothing after it can throw and leave the page locked.
-    const unlockScroll = mode === "dialog" ? lockScroll() : undefined;
+    const unlockScroll = mode === 'dialog' ? lockScroll() : undefined;
 
     return () => {
-      document.removeEventListener("pointerdown", onPointerDown, true);
-      document.removeEventListener("keydown", onKeyDown);
-      document.removeEventListener("focusout", onFocusOut);
-      surface?.removeEventListener("pointermove", onPointerMove);
-      window.removeEventListener("blur", onBlur);
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('focusout', onFocusOut);
+      surface?.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('blur', onBlur);
       cancelTouchClose?.();
       unlockScroll?.();
       // Closed, not disposed while open: hand focus back unless the user
@@ -449,12 +417,7 @@ export function createPopover(options: PopoverOptions): Popover {
     open,
     setOpen,
     toggle: (ev?: Event) => {
-      if (
-        !current &&
-        options.mode === "menu" &&
-        ev instanceof MouseEvent &&
-        ev.detail === 0
-      ) {
+      if (!current && options.mode === 'menu' && ev instanceof MouseEvent && ev.detail === 0) {
         openedWithKeyboard = true;
       }
       setOpen(!current);
@@ -471,7 +434,7 @@ export function createPopover(options: PopoverOptions): Popover {
  * comes first (a press that never becomes a tap or a click: a scroll, a
  * drag, a new press). Returns a function that stops waiting.
  */
-function awaitEvent<K extends "click" | "pointerup">(
+function awaitEvent<K extends 'click' | 'pointerup'>(
   type: K,
   onEvent: (ev: DocumentEventMap[K]) => void,
   cancelOn: string[],
@@ -502,12 +465,12 @@ function awaitEvent<K extends "click" | "pointerup">(
  */
 function swallowNextClick(): void {
   awaitEvent(
-    "click",
-    (ev) => {
+    'click',
+    ev => {
       ev.preventDefault();
       ev.stopPropagation();
     },
-    ["pointerdown", "pointercancel", "keydown"],
+    ['pointerdown', 'pointercancel', 'keydown'],
   );
 }
 
@@ -533,7 +496,7 @@ function guardKeyClick(key: string): () => void {
       return;
     }
     ev.preventDefault();
-    document.removeEventListener("keyup", onKeyUp, true);
+    document.removeEventListener('keyup', onKeyUp, true);
     // The click comes as the keyup's default action, after its listeners.
     timer = setTimeout(stop, 0);
   };
@@ -544,16 +507,16 @@ function guardKeyClick(key: string): () => void {
   };
   const stop = (): void => {
     clearTimeout(timer);
-    document.removeEventListener("click", onClick, true);
-    document.removeEventListener("keyup", onKeyUp, true);
-    document.removeEventListener("keydown", onKeyDown, true);
-    document.removeEventListener("pointerdown", stop, true);
-    window.removeEventListener("blur", stop);
+    document.removeEventListener('click', onClick, true);
+    document.removeEventListener('keyup', onKeyUp, true);
+    document.removeEventListener('keydown', onKeyDown, true);
+    document.removeEventListener('pointerdown', stop, true);
+    window.removeEventListener('blur', stop);
   };
-  document.addEventListener("click", onClick, true);
-  document.addEventListener("keyup", onKeyUp, true);
-  document.addEventListener("keydown", onKeyDown, true);
-  document.addEventListener("pointerdown", stop, true);
-  window.addEventListener("blur", stop);
+  document.addEventListener('click', onClick, true);
+  document.addEventListener('keyup', onKeyUp, true);
+  document.addEventListener('keydown', onKeyDown, true);
+  document.addEventListener('pointerdown', stop, true);
+  window.addEventListener('blur', stop);
   return stop;
 }

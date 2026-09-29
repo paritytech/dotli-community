@@ -1,9 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { config } from "@dotli/eslint-config/vite";
+/// <reference types="node" />
 
-export default [
+import { defineConfig } from 'eslint/config';
+import { config } from '@dotli/eslint-config/vite';
+
+export default defineConfig([
   ...config,
   {
     languageOptions: {
@@ -18,10 +21,10 @@ export default [
     // which reach `playwright test` straight from the shell, never through a
     // turbo task, so turbo has no cache to key on them. The Vitest unit tests,
     // which run under the turbo `test` task, keep the rule.
-    files: ["tests/**/*.ts"],
-    ignores: ["tests/unit/**"],
+    files: ['tests/**/*.ts'],
+    ignores: ['tests/unit/**'],
     rules: {
-      "turbo/no-undeclared-env-vars": "off",
+      'turbo/no-undeclared-env-vars': 'off',
     },
   },
-];
+]);

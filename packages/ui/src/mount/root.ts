@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createComponent, Errored } from "solid-js";
-import { render, type JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot, registerAppRoot } from "./app-roots";
+import { createComponent, Errored } from 'solid-js';
+import { render, type JSX } from '@solidjs/web';
+import { captureException } from '@dotli/metrics';
+import { disposeAppRoot, registerAppRoot } from './app-roots.js';
 
 export interface MountRootOptions {
   /**

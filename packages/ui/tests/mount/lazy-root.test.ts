@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock('../../../metrics/src/sentry.js', () => sentry);
 
-import { createLazyRoot } from "@dotli/ui/mount/lazy-root";
+import { createLazyRoot } from '../../src/mount/lazy-root.js';
 
 beforeEach(() => {
   sentry.captureException.mockClear();
@@ -17,11 +17,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("createLazyRoot", () => {
-  it("As a loader, ensure loads and mounts once, however often it is called", async () => {
+describe('createLazyRoot', () => {
+  it('As a loader, ensure loads and mounts once, however often it is called', async () => {
     // Given
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: "x", onFailure: vi.fn() });
+    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
 
     // When
     const first = root.ensure();
@@ -34,9 +34,9 @@ describe("createLazyRoot", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it("As a loader, a chunk that cannot load is reported, falls back and never rejects, and the next ensure retries", async () => {
+  it('As a loader, a chunk that cannot load is reported, falls back and never rejects, and the next ensure retries', async () => {
     // Given
-    const failure = new Error("chunk failed");
+    const failure = new Error('chunk failed');
     const load = vi
       .fn<(onBroken: () => void) => Promise<unknown>>()
       .mockRejectedValueOnce(failure)
@@ -44,7 +44,7 @@ describe("createLazyRoot", () => {
     const onFailure = vi.fn();
     const root = createLazyRoot({
       load,
-      errorKind: "thing_load_error",
+      errorKind: 'thing_load_error',
       onFailure,
     });
 
@@ -54,7 +54,7 @@ describe("createLazyRoot", () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-      kind: "thing_load_error",
+      kind: 'thing_load_error',
     });
     expect(onFailure).toHaveBeenCalledTimes(1);
 
@@ -66,15 +66,15 @@ describe("createLazyRoot", () => {
     expect(onFailure).toHaveBeenCalledTimes(1);
   });
 
-  it("As a loader, a mount that throws is reported and falls back like a failed load", async () => {
+  it('As a loader, a mount that throws is reported and falls back like a failed load', async () => {
     // Given
     const onFailure = vi.fn();
     const root = createLazyRoot({
       load: () =>
         Promise.resolve().then(() => {
-          throw new Error("container missing");
+          throw new Error('container missing');
         }),
-      errorKind: "thing_load_error",
+      errorKind: 'thing_load_error',
       onFailure,
     });
 
@@ -82,14 +82,13 @@ describe("createLazyRoot", () => {
     await root.ensure();
 
     // Then
-    expect(sentry.captureException).toHaveBeenCalledWith(
-      expect.objectContaining({ message: "container missing" }),
-      { kind: "thing_load_error" },
-    );
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'container missing' }), {
+      kind: 'thing_load_error',
+    });
     expect(onFailure).toHaveBeenCalledTimes(1);
   });
 
-  it("As a loader, a root that broke falls back, is not reported again here, and the next ensure mounts afresh", async () => {
+  it('As a loader, a root that broke falls back, is not reported again here, and the next ensure mounts afresh', async () => {
     // Given
     let onBroken = (): void => {};
     const load = vi.fn((broken: () => void) => {
@@ -97,7 +96,7 @@ describe("createLazyRoot", () => {
       return Promise.resolve();
     });
     const onFailure = vi.fn();
-    const root = createLazyRoot({ load, errorKind: "x", onFailure });
+    const root = createLazyRoot({ load, errorKind: 'x', onFailure });
     await root.ensure();
 
     // When
@@ -114,18 +113,16 @@ describe("createLazyRoot", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 
-  it("As a loader, prefetch mounts the root when the browser goes idle", async () => {
+  it('As a loader, prefetch mounts the root when the browser goes idle', async () => {
     // Given
     let idle: (() => void) | null = null;
-    const requestIdleCallback = vi.fn(
-      (cb: () => void, options: { timeout: number }) => {
-        idle = cb;
-        return options.timeout;
-      },
-    );
-    vi.stubGlobal("requestIdleCallback", requestIdleCallback);
+    const requestIdleCallback = vi.fn((cb: () => void, options: { timeout: number }) => {
+      idle = cb;
+      return options.timeout;
+    });
+    vi.stubGlobal('requestIdleCallback', requestIdleCallback);
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: "x", onFailure: vi.fn() });
+    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
 
     // When
     root.prefetch();
@@ -144,12 +141,12 @@ describe("createLazyRoot", () => {
     expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it("As a loader, prefetch falls back to a 2 s timer without requestIdleCallback", () => {
+  it('As a loader, prefetch falls back to a 2 s timer without requestIdleCallback', () => {
     // Given
     vi.useFakeTimers();
-    vi.stubGlobal("requestIdleCallback", undefined);
+    vi.stubGlobal('requestIdleCallback', undefined);
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: "x", onFailure: vi.fn() });
+    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
 
     // When
     root.prefetch();

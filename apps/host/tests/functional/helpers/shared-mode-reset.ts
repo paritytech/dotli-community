@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test as base } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
-import { PORT } from "../../env";
+import { test as base } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
+import { PORT } from '../../env.js';
 
 /**
  * Wipe the preview-server's process-wide mode-sync `Map` (see
@@ -17,14 +17,10 @@ import { PORT } from "../../env";
  * `host.localhost:PORT` here would ECONNREFUSED on CI. The mode-sync
  * endpoint gates on path, not hostname, so this is safe.
  */
-export async function resetSharedMode(
-  request: APIRequestContext,
-): Promise<void> {
+export async function resetSharedMode(request: APIRequestContext): Promise<void> {
   const res = await request.delete(`http://127.0.0.1:${PORT}/__dotli-mode/`);
   if (!res.ok()) {
-    throw new Error(
-      `[shared-mode-reset] preview-server returned HTTP ${String(res.status())}`,
-    );
+    throw new Error(`[shared-mode-reset] preview-server returned HTTP ${String(res.status())}`);
   }
 }
 
@@ -40,7 +36,7 @@ export async function resetSharedMode(
 async function disableTruapiDebugPanel(page: Page): Promise<void> {
   await page.addInitScript(() => {
     try {
-      sessionStorage.setItem("dotli:truapi-debug", "0");
+      sessionStorage.setItem('dotli:truapi-debug', '0');
       // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in exotic init contexts; fixture is best-effort.
     } catch {
       /* ignore */

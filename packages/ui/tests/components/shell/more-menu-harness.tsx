@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { MoreMenu } from "@dotli/ui/components/shell/MoreMenu";
-import { mountRoot } from "@dotli/ui/mount/root";
-import { pointerPress, settle } from "../../helpers/solid";
-import { byId, query } from "../../support";
+import { MoreMenu } from '../../../src/components/shell/MoreMenu.js';
+import { mountRoot } from '../../../src/mount/root.js';
+import { pointerPress, settle } from '../../helpers/solid.js';
+import { byId, query } from '../../support.js';
 
-const MORE_IDS = ["more-button", "more-popover"];
+const MORE_IDS = ['more-button', 'more-popover'];
 
 /**
  * Mount the real "More" menu the way mountIslands does: rendered as its own
@@ -15,8 +15,8 @@ const MORE_IDS = ["more-button", "more-popover"];
  * none). Returns the unmount, which also removes the live nodes.
  */
 export function mountMoreMenu(): () => void {
-  const container = document.createElement("div");
-  const dispose = mountRoot("island:more", container, () => <MoreMenu />);
+  const container = document.createElement('div');
+  const dispose = mountRoot('island:more', container, () => <MoreMenu />);
   const fresh: Element[] = [];
   for (const id of MORE_IDS) {
     const node = container.querySelector(`[id="${id}"]`);
@@ -41,9 +41,7 @@ export function mountMoreMenu(): () => void {
 
 /** Open the More menu and tap the row that forwards to `targetId`. */
 export async function tapMoreRow(targetId: string): Promise<void> {
-  pointerPress(byId("more-button"));
+  pointerPress(byId('more-button'));
   await settle();
-  pointerPress(
-    query(document, `#more-popover .more-row[data-target="${targetId}"]`),
-  );
+  pointerPress(query(document, `#more-popover .more-row[data-target="${targetId}"]`));
 }

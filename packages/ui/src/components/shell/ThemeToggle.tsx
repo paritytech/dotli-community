@@ -1,16 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JSX } from "@solidjs/web";
-import { themeStore, type ThemePref } from "../../state/theme";
-import { selectThemePref } from "../../theme-controller";
-import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+import type { JSX } from '@solidjs/web';
+import { themeStore, type ThemePref } from '../../state/theme.js';
+import { selectThemePref } from '../../theme-controller.js';
+import { useStore } from '../use-store.js';
+import { createPopover } from './popover.js';
 
 const THEME_LABEL: Record<ThemePref, string> = {
-  light: "Light",
-  dark: "Dark",
-  system: "System",
+  light: 'Light',
+  dark: 'Dark',
+  system: 'System',
 };
 
 /**
@@ -42,7 +42,7 @@ export function ThemeToggle(): JSX.Element {
   const title = (): string => `Theme: ${THEME_LABEL[pref()]}`;
 
   const menu = createPopover({
-    mode: "menu",
+    mode: 'menu',
     trigger: () => button,
     surface: () => popover,
   });
@@ -52,11 +52,9 @@ export function ThemeToggle(): JSX.Element {
   // island renders into before it is swapped in (islands.tsx). The landing
   // page (components/landing/) also moves the button and the menu around.
   const onClick = (e: MouseEvent): void => {
-    const option = (e.target as HTMLElement).closest<HTMLElement>(
-      ".theme-popover-option",
-    );
-    const next = option?.dataset.themeOption;
-    if (next === "light" || next === "dark" || next === "system") {
+    const option = (e.target as HTMLElement).closest<HTMLElement>('.theme-popover-option');
+    const next = option?.dataset['themeOption'];
+    if (next === 'light' || next === 'dark' || next === 'system') {
       selectThemePref(next);
       menu.onItemChosen();
     }
@@ -65,16 +63,16 @@ export function ThemeToggle(): JSX.Element {
   return (
     <>
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
-          el.addEventListener("click", menu.toggle);
+          el.addEventListener('click', menu.toggle);
         }}
         id="theme-toggle"
         class="topbar-btn"
         title={title()}
         aria-label={title()}
         aria-haspopup="menu"
-        aria-expanded={menu.open() ? "true" : "false"}
+        aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="theme-popover"
       >
         <svg
@@ -128,11 +126,11 @@ export function ThemeToggle(): JSX.Element {
         </svg>
       </button>
       <div
-        ref={(el) => {
+        ref={el => {
           popover = el;
-          el.addEventListener("click", onClick);
+          el.addEventListener('click', onClick);
         }}
-        class={["more-popover theme-popover", { open: menu.open() }]}
+        class={['more-popover theme-popover', { open: menu.open() }]}
         id="theme-popover"
         role="menu"
         aria-label="Theme"
@@ -141,7 +139,7 @@ export function ThemeToggle(): JSX.Element {
         <button
           class="more-row theme-popover-option"
           role="menuitemradio"
-          aria-checked={pref() === "light" ? "true" : "false"}
+          aria-checked={pref() === 'light' ? 'true' : 'false'}
           data-theme-option="light"
           tabindex="-1"
         >
@@ -185,7 +183,7 @@ export function ThemeToggle(): JSX.Element {
         <button
           class="more-row theme-popover-option"
           role="menuitemradio"
-          aria-checked={pref() === "dark" ? "true" : "false"}
+          aria-checked={pref() === 'dark' ? 'true' : 'false'}
           data-theme-option="dark"
           tabindex="-1"
         >
@@ -221,7 +219,7 @@ export function ThemeToggle(): JSX.Element {
         <button
           class="more-row theme-popover-option"
           role="menuitemradio"
-          aria-checked={pref() === "system" ? "true" : "false"}
+          aria-checked={pref() === 'system' ? 'true' : 'false'}
           data-theme-option="system"
           tabindex="-1"
         >

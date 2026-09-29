@@ -1,14 +1,6 @@
-import type {
-  AuthPresenter,
-  AuthState,
-  LoginFailureKind,
-} from "@parity/truapi-host";
-import {
-  toSessionUiState,
-  writeUiStateCache,
-  type TruapiSessionUiState,
-} from "./SessionStore";
-import { setAuthState } from "../state/auth";
+import type { AuthPresenter, AuthState, LoginFailureKind } from '@parity/truapi-host';
+import { toSessionUiState, writeUiStateCache, type TruapiSessionUiState } from './SessionStore.js';
+import { setAuthState } from '../state/auth.js';
 
 /**
  * UI-level auth state held in `authStore`. Mirrors the core's `AuthState`
@@ -16,17 +8,17 @@ import { setAuthState } from "../state/auth";
  * presentation context the topbar modal needs.
  */
 export type DotliAuthState =
-  | { tag: "Disconnected" }
+  | { tag: 'Disconnected' }
   | {
-      tag: "Pairing";
+      tag: 'Pairing';
       deeplink: string;
       label: string;
-      dotSuffix?: boolean;
-      hostGlobal?: boolean;
+      dotSuffix?: boolean | undefined;
+      hostGlobal?: boolean | undefined;
     }
-  | { tag: "Authenticating" }
-  | { tag: "Connected"; session: TruapiSessionUiState }
-  | { tag: "LoginFailed"; kind: LoginFailureKind; reason: string };
+  | { tag: 'Authenticating' }
+  | { tag: 'Connected'; session: TruapiSessionUiState }
+  | { tag: 'LoginFailed'; kind: LoginFailureKind; reason: string };
 
 /** Record the auth state in `authStore` (see `setAuthState`). */
 export function dispatchAuthState(state: DotliAuthState): void {
@@ -40,13 +32,16 @@ export function dispatchAuthState(state: DotliAuthState): void {
  */
 export function createAuthStateChanged(
   label: string,
-  options: { dotSuffix?: boolean; hostGlobal?: boolean } = {},
-): Required<AuthPresenter>["authStateChanged"] {
+  options: {
+    dotSuffix?: boolean | undefined;
+    hostGlobal?: boolean | undefined;
+  } = {},
+): Required<AuthPresenter>['authStateChanged'] {
   return (state: AuthState) => {
     switch (state.tag) {
-      case "Pairing": {
+      case 'Pairing': {
         dispatchAuthState({
-          tag: "Pairing",
+          tag: 'Pairing',
           deeplink: state.value.deeplink,
           label,
           dotSuffix: options.dotSuffix,
@@ -54,24 +49,24 @@ export function createAuthStateChanged(
         });
         break;
       }
-      case "Authenticating": {
-        dispatchAuthState({ tag: "Authenticating" });
+      case 'Authenticating': {
+        dispatchAuthState({ tag: 'Authenticating' });
         break;
       }
-      case "Connected": {
+      case 'Connected': {
         const session = toSessionUiState(state.value);
         void writeUiStateCache(session);
-        dispatchAuthState({ tag: "Connected", session });
+        dispatchAuthState({ tag: 'Connected', session });
         break;
       }
-      case "Disconnected": {
+      case 'Disconnected': {
         void writeUiStateCache({ connected: false });
-        dispatchAuthState({ tag: "Disconnected" });
+        dispatchAuthState({ tag: 'Disconnected' });
         break;
       }
-      case "LoginFailed": {
+      case 'LoginFailed': {
         dispatchAuthState({
-          tag: "LoginFailed",
+          tag: 'LoginFailed',
           kind: state.value.kind,
           reason: state.value.reason,
         });

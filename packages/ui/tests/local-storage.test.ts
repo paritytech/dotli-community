@@ -1,68 +1,52 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createLocalStorageClear,
   createLocalStorageRead,
   createLocalStorageSubscribe,
   createLocalStorageWrite,
-} from "@dotli/ui/host-callbacks/LocalStorage";
-import { yielded } from "./support";
+} from '../src/host-callbacks/LocalStorage.js';
+import { yielded } from './support.js';
 
-describe("local-storage host callbacks", () => {
+describe('local-storage host callbacks', () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
-  it("As a dotli integrator, the host round-trips product-scoped bytes", async () => {
+  it('As a dotli integrator, the host round-trips product-scoped bytes', async () => {
     // Given
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
     const clear = createLocalStorageClear();
 
     // When
-    await write(
-      "truapi:product-storage:v1:9:myapp.dot:key",
-      new Uint8Array([0, 1, 2, 253, 254, 255]),
-    );
+    await write('truapi:product-storage:v1:9:myapp.dot:key', new Uint8Array([0, 1, 2, 253, 254, 255]));
 
     // Then
-    expect(
-      localStorage.getItem("dotli:truapi:product-storage:v1:9:myapp.dot:key"),
-    ).toBe("AAEC/f7/");
-    expect(
-      Array.from(
-        (await read("truapi:product-storage:v1:9:myapp.dot:key")) ?? [],
-      ),
-    ).toEqual([0, 1, 2, 253, 254, 255]);
+    expect(localStorage.getItem('dotli:truapi:product-storage:v1:9:myapp.dot:key')).toBe('AAEC/f7/');
+    expect(Array.from((await read('truapi:product-storage:v1:9:myapp.dot:key')) ?? [])).toEqual([
+      0, 1, 2, 253, 254, 255,
+    ]);
 
-    await clear("truapi:product-storage:v1:9:myapp.dot:key");
-    expect(
-      await read("truapi:product-storage:v1:9:myapp.dot:key"),
-    ).toBeUndefined();
+    await clear('truapi:product-storage:v1:9:myapp.dot:key');
+    expect(await read('truapi:product-storage:v1:9:myapp.dot:key')).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host writes values larger than a single argument-spread chunk", async () => {
+  it('As a dotli integrator, the host writes values larger than a single argument-spread chunk', async () => {
     // Given
     const read = createLocalStorageRead();
     const write = createLocalStorageWrite();
-    const value = Uint8Array.from(
-      { length: 70_000 },
-      (_, index) => index % 256,
-    );
+    const value = Uint8Array.from({ length: 70_000 }, (_, index) => index % 256);
 
     // When
-    await write("truapi:product-storage:v1:9:myapp.dot:large", value);
+    await write('truapi:product-storage:v1:9:myapp.dot:large', value);
 
     // Then
-    expect(
-      Array.from(
-        (await read("truapi:product-storage:v1:9:myapp.dot:large")) ?? [],
-      ),
-    ).toEqual(Array.from(value));
+    expect(Array.from((await read('truapi:product-storage:v1:9:myapp.dot:large')) ?? [])).toEqual(Array.from(value));
   });
 
-  it("As a product, my storage subscription sees the current value, then each write and clear", async () => {
+  it('As a product, my storage subscription sees the current value, then each write and clear', async () => {
     // Given
-    const key = "truapi:product-storage:v1:9:myapp.dot:watched";
+    const key = 'truapi:product-storage:v1:9:myapp.dot:watched';
     await createLocalStorageWrite()(key, new Uint8Array([1]));
     const items = createLocalStorageSubscribe()(key)[Symbol.asyncIterator]();
 
@@ -75,28 +59,25 @@ describe("local-storage host callbacks", () => {
     await items.return?.();
 
     // Then
-    expect(yielded(initial)._unsafeUnwrap()).toEqual({ value: "0x01" });
-    expect(yielded(written)._unsafeUnwrap()).toEqual({ value: "0x0203" });
+    expect(yielded(initial)._unsafeUnwrap()).toEqual({ value: '0x01' });
+    expect(yielded(written)._unsafeUnwrap()).toEqual({ value: '0x0203' });
     expect(yielded(cleared)._unsafeUnwrap()).toEqual({});
   });
 
-  it("As a product, my storage subscription ignores other keys and follows other tabs", async () => {
+  it('As a product, my storage subscription ignores other keys and follows other tabs', async () => {
     // Given
-    const key = "truapi:product-storage:v1:9:myapp.dot:watched";
+    const key = 'truapi:product-storage:v1:9:myapp.dot:watched';
     const items = createLocalStorageSubscribe()(key)[Symbol.asyncIterator]();
     await items.next();
 
     // When
-    await createLocalStorageWrite()(
-      "truapi:product-storage:v1:9:myapp.dot:other",
-      new Uint8Array([9]),
-    );
-    localStorage.setItem(`dotli:${key}`, "BA==");
-    window.dispatchEvent(new StorageEvent("storage", { key: `dotli:${key}` }));
+    await createLocalStorageWrite()('truapi:product-storage:v1:9:myapp.dot:other', new Uint8Array([9]));
+    localStorage.setItem(`dotli:${key}`, 'BA==');
+    window.dispatchEvent(new StorageEvent('storage', { key: `dotli:${key}` }));
     const fromOtherTab = await items.next();
     await items.return?.();
 
     // Then
-    expect(yielded(fromOtherTab)._unsafeUnwrap()).toEqual({ value: "0x04" });
+    expect(yielded(fromOtherTab)._unsafeUnwrap()).toEqual({ value: '0x04' });
   });
 });

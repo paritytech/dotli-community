@@ -1,9 +1,9 @@
-import type { ProductStorage } from "@parity/truapi-host";
-import type { HostLocalStorageChangeItem } from "@parity/truapi";
-import { bytesToHex } from "@parity/truapi/scale";
-import { base64 } from "@scure/base";
-import { ERRORS } from "../errors";
-import { createResultStream } from "./result-stream";
+import type { ProductStorage } from '@parity/truapi-host';
+import type { HostLocalStorageChangeItem } from '@parity/truapi';
+import { bytesToHex } from '@parity/truapi/scale';
+import { base64 } from '@scure/base';
+import { ERRORS } from '../errors.js';
+import { createResultStream } from './result-stream.js';
 
 // Same-window writes don't fire the `storage` event, so every runtime in this
 // window (app frames and the chat worker) is told through this set instead.
@@ -17,8 +17,8 @@ function notifyChanged(key: string): void {
   }
 }
 
-export function createLocalStorageRead(): ProductStorage["read"] {
-  return (key) => {
+export function createLocalStorageRead(): ProductStorage['read'] {
+  return key => {
     try {
       const raw = localStorage.getItem(storageKey(key));
       if (raw === null) {
@@ -31,7 +31,7 @@ export function createLocalStorageRead(): ProductStorage["read"] {
   };
 }
 
-export function createLocalStorageWrite(): ProductStorage["write"] {
+export function createLocalStorageWrite(): ProductStorage['write'] {
   return (key, value) => {
     try {
       localStorage.setItem(storageKey(key), base64.encode(value));
@@ -43,8 +43,8 @@ export function createLocalStorageWrite(): ProductStorage["write"] {
   };
 }
 
-export function createLocalStorageClear(): ProductStorage["clear"] {
-  return (key) => {
+export function createLocalStorageClear(): ProductStorage['clear'] {
+  return key => {
     try {
       localStorage.removeItem(storageKey(key));
       notifyChanged(key);
@@ -57,8 +57,8 @@ export function createLocalStorageClear(): ProductStorage["clear"] {
 
 // The core drops items repeating the last delivered value, so every write is
 // forwarded without comparing bytes here.
-export function createLocalStorageSubscribe(): ProductStorage["subscribeStorage"] {
-  return (key) =>
+export function createLocalStorageSubscribe(): ProductStorage['subscribeStorage'] {
+  return key =>
     createResultStream<HostLocalStorageChangeItem>([], (push, pushError) => {
       const emit = (): void => {
         try {
@@ -68,7 +68,7 @@ export function createLocalStorageSubscribe(): ProductStorage["subscribeStorage"
           pushError({ reason: ERRORS.STORAGE_READ_FAILED });
         }
       };
-      const onLocalChange: StorageListener = (changed) => {
+      const onLocalChange: StorageListener = changed => {
         if (changed === key) {
           emit();
         }
@@ -80,11 +80,11 @@ export function createLocalStorageSubscribe(): ProductStorage["subscribeStorage"
         }
       };
       listeners.add(onLocalChange);
-      window.addEventListener("storage", onStorage);
+      window.addEventListener('storage', onStorage);
       emit();
       return () => {
         listeners.delete(onLocalChange);
-        window.removeEventListener("storage", onStorage);
+        window.removeEventListener('storage', onStorage);
       };
     });
 }

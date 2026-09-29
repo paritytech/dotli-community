@@ -20,21 +20,21 @@ export function startDrag(
   } catch {
     /* not capturable */
   }
-  document.body.style.userSelect = "none";
+  document.body.style.userSelect = 'none';
   let done = false;
   const end = (): void => {
     if (done) {
       return;
     }
     done = true;
-    target.removeEventListener("pointermove", handlers.move);
-    target.removeEventListener("pointerup", end);
-    target.removeEventListener("pointercancel", end);
-    document.body.style.userSelect = "";
+    target.removeEventListener('pointermove', handlers.move);
+    target.removeEventListener('pointerup', end);
+    target.removeEventListener('pointercancel', end);
+    document.body.style.userSelect = '';
     handlers.end?.();
   };
-  target.addEventListener("pointermove", handlers.move);
-  target.addEventListener("pointerup", end);
-  target.addEventListener("pointercancel", end);
+  target.addEventListener('pointermove', handlers.move);
+  target.addEventListener('pointerup', end);
+  target.addEventListener('pointercancel', end);
   return end;
 }

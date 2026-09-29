@@ -13,26 +13,26 @@
 // Scope is the host origin only. The protocol iframe (host.dot.li) and
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
 
-import { Workbox } from "workbox-window";
-import { showNotification } from "@dotli/ui/notification";
-import { log } from "@dotli/shared/log";
+import { Workbox } from 'workbox-window';
+import { showNotification } from '@dotli/ui';
+import { log } from '@dotli/shared';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
-if ("serviceWorker" in navigator) {
-  const wb = new Workbox("/host-sw.js");
+if ('serviceWorker' in navigator) {
+  const wb = new Workbox('/host-sw.js');
 
-  wb.addEventListener("waiting", () => {
+  wb.addEventListener('waiting', () => {
     showNotification({
-      label: "Update available",
-      text: "A new version of dot.li is ready. Reload to apply.",
+      label: 'Update available',
+      text: 'A new version of dot.li is ready. Reload to apply.',
       dismissMs: 0,
       action: {
-        label: "Reload",
+        label: 'Reload',
         onClick: () => {
           // Reload once the new SW is in control to avoid serving a mix of
           // old and new chunks during the swap.
-          wb.addEventListener("controlling", () => {
+          wb.addEventListener('controlling', () => {
             window.location.reload();
           });
           wb.messageSkipWaiting();
@@ -43,7 +43,7 @@ if ("serviceWorker" in navigator) {
 
   void wb
     .register()
-    .then((registration) => {
+    .then(registration => {
       if (!registration) {
         return;
       }
@@ -52,8 +52,8 @@ if ("serviceWorker" in navigator) {
           void registration.update();
         }
       }, UPDATE_INTERVAL_MS);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && navigator.onLine) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
           void registration.update();
         }
       });

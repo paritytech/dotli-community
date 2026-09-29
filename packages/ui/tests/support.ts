@@ -3,10 +3,10 @@
 
 // Shared fixtures and helpers for the ui test suites.
 
-import type { Result } from "neverthrow";
+import type { Result } from 'neverthrow';
 
-export const genesisHash = `0x${"11".repeat(32)}` as const;
-export const blockHash = `0x${"22".repeat(32)}` as const;
+export const genesisHash = `0x${'11'.repeat(32)}` as const;
+export const blockHash = `0x${'22'.repeat(32)}` as const;
 
 export function unwrap<T, E>(result: Result<T, E>): T {
   if (result.isErr()) {
@@ -28,11 +28,7 @@ export function must<T>(value: T | null | undefined, what: string): T {
 /** An element class to check a node against, such as `HTMLInputElement`. */
 type ElementClass<E extends Element> = abstract new (...args: never[]) => E;
 
-function asElement<E extends Element>(
-  node: Element | null,
-  type: ElementClass<E>,
-  what: string,
-): E {
+function asElement<E extends Element>(node: Element | null, type: ElementClass<E>, what: string): E {
   const element = must(node, what);
   if (!(element instanceof type)) {
     throw new Error(`expected ${what} to be a ${type.name}`);
@@ -43,10 +39,7 @@ function asElement<E extends Element>(
 /** The element with `id`, which must exist and be a `type` (by default an HTMLElement). */
 export function byId(id: string): HTMLElement;
 export function byId<E extends Element>(id: string, type: ElementClass<E>): E;
-export function byId(
-  id: string,
-  type: ElementClass<Element> = HTMLElement,
-): Element {
+export function byId(id: string, type: ElementClass<Element> = HTMLElement): Element {
   return asElement(document.getElementById(id), type, `#${id}`);
 }
 
@@ -55,16 +48,8 @@ export function byId(
  * `type` (by default an HTMLElement).
  */
 export function query(root: ParentNode, selector: string): HTMLElement;
-export function query<E extends Element>(
-  root: ParentNode,
-  selector: string,
-  type: ElementClass<E>,
-): E;
-export function query(
-  root: ParentNode,
-  selector: string,
-  type: ElementClass<Element> = HTMLElement,
-): Element {
+export function query<E extends Element>(root: ParentNode, selector: string, type: ElementClass<E>): E;
+export function query(root: ParentNode, selector: string, type: ElementClass<Element> = HTMLElement): Element {
   return asElement(root.querySelector(selector), type, `"${selector}"`);
 }
 
@@ -75,7 +60,7 @@ export function query(
  */
 export function yielded<T>(step: IteratorResult<T, unknown>): T {
   if (step.done === true) {
-    throw new Error("expected a yielded value, the iterator finished");
+    throw new Error('expected a yielded value, the iterator finished');
   }
   return step.value;
 }

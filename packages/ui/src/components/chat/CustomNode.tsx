@@ -13,68 +13,40 @@
 // written when the product changes the text it sends (and, while the user
 // is typing, only once they pause: see TextField).
 
-import {
-  createEffect,
-  createUniqueId,
-  For,
-  Match,
-  onCleanup,
-  Show,
-  Switch,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { RendererNode } from "@parity/truapi";
-import {
-  boxStyle,
-  columnStyle,
-  modifierStyle,
-  rowStyle,
-  textStyle,
-} from "../../chat/custom-styles";
+import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { RendererNode } from '@parity/truapi';
+import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from '../../chat/custom-styles.js';
 
 /** Reports a user gesture inside a rendered tree back to the product. */
-export type CustomActionHandler = (
-  actionId: string,
-  payload?: Uint8Array,
-) => void;
+export type CustomActionHandler = (actionId: string, payload?: Uint8Array) => void;
 
-type NodeTag = Exclude<RendererNode["tag"], "Nil">;
+type NodeTag = Exclude<RendererNode['tag'], 'Nil'>;
 type NodeValues = {
-  [N in RendererNode as N["tag"]]: N extends { value: infer V } ? V : never;
+  [N in RendererNode as N['tag']]: N extends { value: infer V } ? V : never;
 };
 type NodeValue<T extends NodeTag> = NodeValues[T];
 
 const textEncoder = new TextEncoder();
 
 /** `node`'s value when it is a `tag` node, for a non-keyed `Match`. */
-function valueOf<T extends NodeTag>(
-  node: RendererNode,
-  tag: T,
-): NodeValue<T> | false {
+function valueOf<T extends NodeTag>(node: RendererNode, tag: T): NodeValue<T> | false {
   // A matching tag is a node whose value is NodeValue<T>; TypeScript
   // cannot narrow a union by a generic tag, so say so once here.
-  return node.tag === tag
-    ? ((node as { value?: unknown }).value as NodeValue<T>)
-    : false;
+  return node.tag === tag ? ((node as { value?: unknown }).value as NodeValue<T>) : false;
 }
 
-function buttonVariant(
-  variant: NodeValue<"Button">["props"]["variant"],
-): string {
-  if (variant === "Primary" || variant === undefined) {
-    return "primary";
+function buttonVariant(variant: NodeValue<'Button'>['props']['variant']): string {
+  if (variant === 'Primary' || variant === undefined) {
+    return 'primary';
   }
-  return variant === "Secondary" ? "secondary" : "text";
+  return variant === 'Secondary' ? 'secondary' : 'text';
 }
 
-function Children(props: {
-  nodes: RendererNode[];
-  onAction: CustomActionHandler;
-}): JSX.Element {
+function Children(props: { nodes: RendererNode[]; onAction: CustomActionHandler }): JSX.Element {
   return (
     <For each={props.nodes} keyed={false}>
-      {(child) => <CustomNode node={child()} onAction={props.onAction} />}
+      {child => <CustomNode node={child()} onAction={props.onAction} />}
     </For>
   );
 }
@@ -83,8 +55,8 @@ function Children(props: {
  * What makes a text field the same field from one tree to the next: the
  * action its edits report and its label.
  */
-function fieldIdentity(value: NodeValue<"TextField">): string {
-  return `${value.props.valueChangeAction ?? ""}\u0000${value.props.label ?? ""}`;
+function fieldIdentity(value: NodeValue<'TextField'>): string {
+  return `${value.props.valueChangeAction ?? ''}\u0000${value.props.label ?? ''}`;
 }
 
 /**
@@ -93,10 +65,7 @@ function fieldIdentity(value: NodeValue<"TextField">): string {
  */
 const TYPING_HOLD_MS = 1000;
 
-function TextField(props: {
-  value: NodeValue<"TextField">;
-  onAction: CustomActionHandler;
-}): JSX.Element {
+function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActionHandler }): JSX.Element {
   const inputId = createUniqueId();
   let input: HTMLInputElement | undefined;
   // The product text last seen, applied or held.
@@ -146,20 +115,14 @@ function TextField(props: {
   // applied when typing pauses, if it still differs from the field.
   createEffect(
     () => props.value.props.text,
-    (text) => {
+    text => {
       if (input === undefined || text === written) {
         return;
       }
       written = text;
-      if (
-        document.activeElement === input &&
-        Date.now() - lastTypedAt < TYPING_HOLD_MS
-      ) {
+      if (document.activeElement === input && Date.now() - lastTypedAt < TYPING_HOLD_MS) {
         held = text;
-        holdTimer ??= setTimeout(
-          settleHeld,
-          lastTypedAt + TYPING_HOLD_MS - Date.now(),
-        );
+        holdTimer ??= setTimeout(settleHeld, lastTypedAt + TYPING_HOLD_MS - Date.now());
         return;
       }
       dropHeld();
@@ -173,11 +136,7 @@ function TextField(props: {
   createEffect(
     () => fieldIdentity(props.value),
     (identity, previous) => {
-      if (
-        input === undefined ||
-        previous === undefined ||
-        identity === previous
-      ) {
+      if (input === undefined || previous === undefined || identity === previous) {
         return;
       }
       dropHeld();
@@ -191,18 +150,13 @@ function TextField(props: {
   );
   return (
     <div class="chat-custom-field" style={modifierStyle(props.value.modifiers)}>
-      <Show
-        when={
-          props.value.props.label !== undefined &&
-          props.value.props.label !== ""
-        }
-      >
+      <Show when={props.value.props.label !== undefined && props.value.props.label !== ''}>
         <label class="chat-custom-field-label" for={inputId}>
           {props.value.props.label}
         </label>
       </Show>
       <input
-        ref={(el) => {
+        ref={el => {
           input = el;
           written = untrack(() => props.value.props.text);
           el.value = written;
@@ -212,14 +166,11 @@ function TextField(props: {
         class="chat-custom-field-input"
         placeholder={props.value.props.placeholder}
         disabled={props.value.props.enabled === false}
-        onInput={(event) => {
+        onInput={event => {
           lastTypedAt = Date.now();
           const action = props.value.props.valueChangeAction;
           if (action !== undefined) {
-            props.onAction(
-              action,
-              textEncoder.encode(event.currentTarget.value),
-            );
+            props.onAction(action, textEncoder.encode(event.currentTarget.value));
           }
         }}
       />
@@ -228,89 +179,59 @@ function TextField(props: {
 }
 
 /** One node of a product-authored render tree. `Nil` renders nothing. */
-export function CustomNode(props: {
-  node: RendererNode;
-  onAction: CustomActionHandler;
-}): JSX.Element {
+export function CustomNode(props: { node: RendererNode; onAction: CustomActionHandler }): JSX.Element {
   return (
     <Switch>
-      <Match when={valueOf(props.node, "String")}>
-        {(value) => <>{value().text}</>}
-      </Match>
+      <Match when={valueOf(props.node, 'String')}>{value => <>{value().text}</>}</Match>
 
-      <Match when={valueOf(props.node, "Box")}>
-        {(value) => (
-          <div
-            class="chat-custom-box"
-            style={boxStyle(value().props.contentAlignment, value().modifiers)}
-          >
+      <Match when={valueOf(props.node, 'Box')}>
+        {value => (
+          <div class="chat-custom-box" style={boxStyle(value().props.contentAlignment, value().modifiers)}>
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}
       </Match>
 
-      <Match when={valueOf(props.node, "Column")}>
-        {(value) => (
+      <Match when={valueOf(props.node, 'Column')}>
+        {value => (
           <div
             class="chat-custom-column"
-            style={columnStyle(
-              value().props.horizontalAlignment,
-              value().props.verticalArrangement,
-              value().modifiers,
-            )}
+            style={columnStyle(value().props.horizontalAlignment, value().props.verticalArrangement, value().modifiers)}
           >
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}
       </Match>
 
-      <Match when={valueOf(props.node, "Row")}>
-        {(value) => (
+      <Match when={valueOf(props.node, 'Row')}>
+        {value => (
           <div
             class="chat-custom-row"
-            style={rowStyle(
-              value().props.horizontalArrangement,
-              value().props.verticalAlignment,
-              value().modifiers,
-            )}
+            style={rowStyle(value().props.horizontalArrangement, value().props.verticalAlignment, value().modifiers)}
           >
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}
       </Match>
 
-      <Match when={valueOf(props.node, "Spacer")}>
-        {(value) => (
-          <div
-            class="chat-custom-spacer"
-            style={modifierStyle(value().modifiers)}
-          />
-        )}
+      <Match when={valueOf(props.node, 'Spacer')}>
+        {value => <div class="chat-custom-spacer" style={modifierStyle(value().modifiers)} />}
       </Match>
 
-      <Match when={valueOf(props.node, "Text")}>
-        {(value) => (
-          <span
-            class="chat-custom-text"
-            style={textStyle(
-              value().props.style,
-              value().props.color,
-              value().modifiers,
-            )}
-          >
+      <Match when={valueOf(props.node, 'Text')}>
+        {value => (
+          <span class="chat-custom-text" style={textStyle(value().props.style, value().props.color, value().modifiers)}>
             <Children nodes={value().children} onAction={props.onAction} />
           </span>
         )}
       </Match>
 
-      <Match when={valueOf(props.node, "Button")}>
-        {(value) => (
+      <Match when={valueOf(props.node, 'Button')}>
+        {value => (
           <button
             type="button"
-            class={`chat-custom-btn chat-custom-btn-${buttonVariant(value().props.variant)}${value().props.loading === true ? " chat-custom-btn-loading" : ""}`}
-            disabled={
-              value().props.enabled === false || value().props.loading === true
-            }
+            class={`chat-custom-btn chat-custom-btn-${buttonVariant(value().props.variant)}${value().props.loading === true ? ' chat-custom-btn-loading' : ''}`}
+            disabled={value().props.enabled === false || value().props.loading === true}
             style={modifierStyle(value().modifiers)}
             onClick={() => {
               const action = value().props.clickAction;
@@ -324,26 +245,19 @@ export function CustomNode(props: {
         )}
       </Match>
 
-      <Match when={valueOf(props.node, "TextField")}>
-        {(value) => <TextField value={value()} onAction={props.onAction} />}
+      <Match when={valueOf(props.node, 'TextField')}>
+        {value => <TextField value={value()} onAction={props.onAction} />}
       </Match>
 
       {/* No fetch path for Bulletin or archive image bytes in the host frame
           yet, so an image draws as the empty space the RFC gives a miss. */}
-      <Match when={valueOf(props.node, "Image")}>
-        {(value) => (
-          <div
-            class="chat-custom-image"
-            style={modifierStyle(value().modifiers)}
-          />
-        )}
+      <Match when={valueOf(props.node, 'Image')}>
+        {value => <div class="chat-custom-image" style={modifierStyle(value().modifiers)} />}
       </Match>
 
-      <Match when={valueOf(props.node, "Effect")}>
-        {(value) => (
-          <div
-            class={`chat-custom-effect chat-custom-effect-${value().props.effect.toLowerCase()}`}
-          >
+      <Match when={valueOf(props.node, 'Effect')}>
+        {value => (
+          <div class={`chat-custom-effect chat-custom-effect-${value().props.effect.toLowerCase()}`}>
             <Children nodes={value().children} onAction={props.onAction} />
           </div>
         )}

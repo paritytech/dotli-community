@@ -13,11 +13,11 @@
 // is verified, to hash-check the raw-codec plain GET, and to spot-check the
 // bitswap root block as defense-in-depth (see fetch.ts).
 
-import { sha256 } from "@noble/hashes/sha2.js";
-import { blake2b } from "@noble/hashes/blake2.js";
-import { equals as bytesEqual } from "multiformats/bytes";
-import { CID } from "multiformats/cid";
-import type { BlockSource } from "./archive";
+import { sha256 } from '@noble/hashes/sha2.js';
+import { blake2b } from '@noble/hashes/blake2.js';
+import { equals as bytesEqual } from 'multiformats/bytes';
+import { CID } from 'multiformats/cid';
+import type { BlockSource } from './archive.js';
 
 // Multihash codes we can recompute. sha2-256 is IPFS's default; blake2b-256
 // (0xb220) is what dot.li's bulletin/preimage path uses (see preimage.ts).
@@ -32,9 +32,7 @@ function recomputeDigest(multihashCode: number, bytes: Uint8Array): Uint8Array {
       return blake2b(bytes, { dkLen: 32 });
     default:
       // Fail closed: a hash we can't recompute is content we can't verify.
-      throw new Error(
-        `Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`,
-      );
+      throw new Error(`Cannot verify content: unsupported multihash code 0x${multihashCode.toString(16)}`);
   }
 }
 
@@ -48,9 +46,7 @@ export function assertBlockMatchesCid(cid: CID, bytes: Uint8Array): void {
   const expected = cid.multihash.digest;
   const actual = recomputeDigest(cid.multihash.code, bytes);
   if (!bytesEqual(actual, expected)) {
-    throw new Error(
-      `Content hash mismatch for ${cid.toString()} — refusing tampered content`,
-    );
+    throw new Error(`Content hash mismatch for ${cid.toString()} — refusing tampered content`);
   }
 }
 
@@ -84,10 +80,7 @@ export function verifyingBlockSource(source: BlockSource): BlockSource {
  * `rootCid` — defense-in-depth for a transport that already verifies interior
  * blocks (smoldot's bitswap), without re-hashing the whole DAG.
  */
-export function rootVerifyingBlockSource(
-  rootCid: CID,
-  source: BlockSource,
-): BlockSource {
+export function rootVerifyingBlockSource(rootCid: CID, source: BlockSource): BlockSource {
   return async (cid: CID): Promise<Uint8Array> => {
     const bytes = await source(cid);
     if (cid.equals(rootCid)) {
@@ -104,12 +97,7 @@ export function rootVerifyingBlockSource(
  * on-chain CID.
  */
 export function assertSameContentId(actual: CID, expected: CID): void {
-  if (
-    actual.code !== expected.code ||
-    !bytesEqual(actual.multihash.bytes, expected.multihash.bytes)
-  ) {
-    throw new Error(
-      `CAR root ${actual.toString()} does not match requested ${expected.toString()}`,
-    );
+  if (actual.code !== expected.code || !bytesEqual(actual.multihash.bytes, expected.multihash.bytes)) {
+    throw new Error(`CAR root ${actual.toString()} does not match requested ${expected.toString()}`);
   }
 }

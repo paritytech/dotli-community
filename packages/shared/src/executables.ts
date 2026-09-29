@@ -5,7 +5,7 @@
 // kind under an `<kind>.<base>.<tld>` subname. The host passes the base product
 // name to the Rust core, so every executable kind shares one derived account.
 
-export const EXECUTABLE_KINDS = ["app", "widget", "worker"] as const;
+export const EXECUTABLE_KINDS = ['app', 'widget', 'worker'] as const;
 
 export type ExecutableKind = (typeof EXECUTABLE_KINDS)[number];
 

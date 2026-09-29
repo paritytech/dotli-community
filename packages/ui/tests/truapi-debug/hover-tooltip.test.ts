@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from "vitest";
-import { wireHoverTooltips } from "@dotli/ui/components/truapi-debug/hover-tooltip";
+import { afterEach, describe, expect, it } from 'vitest';
+import { wireHoverTooltips } from '../../src/components/truapi-debug/hover-tooltip.js';
 
 const PANEL = { left: 0, top: 0, right: 1000, bottom: 600 };
 /** A prose tooltip's natural width; it wraps narrower when less room is left. */
@@ -22,12 +22,12 @@ function setup(): {
   measures: () => number;
   dispose: () => void;
 } {
-  const panel = document.createElement("div");
-  const root = document.createElement("div");
-  const tooltip = document.createElement("div");
-  const target = document.createElement("span");
-  target.setAttribute("data-tooltip", "A long explanation");
-  target.setAttribute("data-tooltip-prose", "");
+  const panel = document.createElement('div');
+  const root = document.createElement('div');
+  const tooltip = document.createElement('div');
+  const target = document.createElement('span');
+  target.setAttribute('data-tooltip', 'A long explanation');
+  target.setAttribute('data-tooltip-prose', '');
   root.append(target);
   panel.append(root, tooltip);
   document.body.append(panel);
@@ -49,29 +49,24 @@ function setup(): {
 }
 
 function pointer(el: Element, type: string, x: number, y: number): void {
-  el.dispatchEvent(
-    new PointerEvent(type, { bubbles: true, clientX: x, clientY: y }),
-  );
+  el.dispatchEvent(new PointerEvent(type, { bubbles: true, clientX: x, clientY: y }));
 }
 
 function rightEdge(tooltip: HTMLElement): number {
-  return (
-    tooltip.getBoundingClientRect().width +
-    Number.parseFloat(tooltip.style.left)
-  );
+  return tooltip.getBoundingClientRect().width + Number.parseFloat(tooltip.style.left);
 }
 
 afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("hover tooltip clamp", () => {
+describe('hover tooltip clamp', () => {
   it("As a dotli developer hovering near the panel's right edge, a wrapped tooltip stays inside the panel", () => {
     // Given
     const { tooltip, target, dispose } = setup();
 
     // When: shown near the right edge, where it first wraps narrow and tall.
-    pointer(target, "pointerover", 900, 40);
+    pointer(target, 'pointerover', 900, 40);
 
     // Then
     expect(rightEdge(tooltip)).toBeLessThanOrEqual(PANEL.right - 4);
@@ -79,7 +74,7 @@ describe("hover tooltip clamp", () => {
 
     // When: moves along the edge.
     for (let x = 901; x <= 905; x++) {
-      pointer(target, "pointermove", x, 40);
+      pointer(target, 'pointermove', x, 40);
     }
 
     // Then
@@ -87,15 +82,15 @@ describe("hover tooltip clamp", () => {
     dispose();
   });
 
-  it("As a dotli developer, moving over the same tooltip after the clamp measured it does not measure again", () => {
+  it('As a dotli developer, moving over the same tooltip after the clamp measured it does not measure again', () => {
     // Given
     const { target, measures, dispose } = setup();
-    pointer(target, "pointerover", 900, 40);
+    pointer(target, 'pointerover', 900, 40);
     const before = measures();
 
     // When
     for (let x = 901; x <= 905; x++) {
-      pointer(target, "pointermove", x, 40);
+      pointer(target, 'pointermove', x, 40);
     }
 
     // Then
@@ -103,15 +98,15 @@ describe("hover tooltip clamp", () => {
     dispose();
   });
 
-  it("As a dotli developer, a tooltip whose text changes under the cursor is measured again", () => {
+  it('As a dotli developer, a tooltip whose text changes under the cursor is measured again', () => {
     // Given
     const { target, measures, dispose } = setup();
-    pointer(target, "pointerover", 100, 40);
+    pointer(target, 'pointerover', 100, 40);
     const before = measures();
 
     // When
-    target.setAttribute("data-tooltip", "Another explanation");
-    pointer(target, "pointermove", 101, 40);
+    target.setAttribute('data-tooltip', 'Another explanation');
+    pointer(target, 'pointermove', 101, 40);
 
     // Then
     expect(measures()).toBe(before + 1);

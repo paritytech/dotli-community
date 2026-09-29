@@ -1,18 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect } from "vitest";
-import { onContentProgress, __testing } from "@dotli/content/bitswap";
+import { describe, it, expect } from 'vitest';
+import { onContentProgress, __testing } from '../src/bitswap.js';
 
-describe("Content progress reporting works", () => {
-  it("As a user, the loading bar keeps moving while the trace listens along", () => {
+describe('Content progress reporting works', () => {
+  it('As a user, the loading bar keeps moving while the trace listens along', () => {
     // Given
     const first: number[] = [];
     const second: number[] = [];
     onContentProgress(({ bytesFetched }) => first.push(bytesFetched));
-    const unsubscribe = onContentProgress(({ bytesFetched }) =>
-      second.push(bytesFetched),
-    );
+    const unsubscribe = onContentProgress(({ bytesFetched }) => second.push(bytesFetched));
 
     // When
     __testing.noteBlock(new Uint8Array(100));

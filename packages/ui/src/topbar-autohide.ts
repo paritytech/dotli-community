@@ -7,39 +7,35 @@
 // returns on pointer hover, on keyboard focus, and on the reveal shortcut,
 // so home, settings, permissions and login never become mouse-only.
 //
-import { isMobileDevice } from "@dotli/shared/device";
-import { setTopbarLayout } from "./product-frame-layout";
-import { getLoggedIn } from "./state/auth";
-import { setTopbarVisible } from "./state/topbar";
+import { isMobileDevice } from '@dotli/shared';
+import { setTopbarLayout } from './product-frame-layout.js';
+import { getLoggedIn } from './state/auth.js';
+import { setTopbarVisible } from './state/topbar.js';
 
 const HIDE_DELAY_MS = 5000;
-const SLIDE_TRANSITION = "transform 0.3s ease";
-const HOVER_STRIP_HEIGHT = "6px";
-const FIRST_CONTROL_SELECTOR = "a[href], button:not([disabled])";
+const SLIDE_TRANSITION = 'transform 0.3s ease';
+const HOVER_STRIP_HEIGHT = '6px';
+const FIRST_CONTROL_SELECTOR = 'a[href], button:not([disabled])';
 
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
-export const TOPBAR_REVEAL_SHORTCUT = "Alt+Shift+T";
+export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 
 /** The always-reachable reveal control, one Tab past the app frame. */
-export const TOPBAR_REVEAL_BUTTON_ID = "topbar-reveal";
+export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 
 // Popovers and the pairing modal belong to the bar but render outside
 // #topbar, so focus or an open state in one of them counts as "in the bar".
 const TOPBAR_SURFACE_IDS = [
-  "user-popover",
-  "mode-popover",
-  "permissions-popover",
-  "auth-modal-backdrop",
-  "chains-popover",
+  'user-popover',
+  'mode-popover',
+  'permissions-popover',
+  'auth-modal-backdrop',
+  'chains-popover',
 ];
 
 // The mobile "more" flyout and the shield explainer live inside #topbar, so
 // they only matter here.
-const OPEN_SURFACE_IDS = [
-  ...TOPBAR_SURFACE_IDS,
-  "more-popover",
-  "verification-tooltip",
-];
+const OPEN_SURFACE_IDS = [...TOPBAR_SURFACE_IDS, 'more-popover', 'verification-tooltip'];
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
@@ -51,14 +47,12 @@ let visible = true;
 let appFrameTracking = false;
 
 function getTopbar(): HTMLElement | null {
-  return document.getElementById("topbar");
+  return document.getElementById('topbar');
 }
 
 /** The product frame. The 0x0 protocol iframe is aria-hidden, so skip it. */
 function getAppFrame(): HTMLIFrameElement | null {
-  return document.querySelector<HTMLIFrameElement>(
-    'iframe:not([aria-hidden="true"])',
-  );
+  return document.querySelector<HTMLIFrameElement>('iframe:not([aria-hidden="true"])');
 }
 
 // The session store, not the `.user-badge` it renders: the badge island
@@ -69,9 +63,7 @@ function isLoggedIn(): boolean {
 }
 
 function reducedMotionQuery(): MediaQueryList | null {
-  return typeof window.matchMedia === "function"
-    ? window.matchMedia("(prefers-reduced-motion: reduce)")
-    : null;
+  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 }
 
 function applySlideTransition(): void {
@@ -81,8 +73,7 @@ function applySlideTransition(): void {
   }
   // The transform is an inline style, so the reduced-motion block in
   // topbar.css cannot gate it for us.
-  topbar.style.transition =
-    reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION;
+  topbar.style.transition = reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION;
 }
 
 /**
@@ -98,10 +89,9 @@ function syncFrameLayout(): void {
       ? {
           offset: false,
           shown: visible,
-          transition:
-            reducedMotionQuery()?.matches === true ? "none" : SLIDE_TRANSITION,
+          transition: reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION,
         }
-      : { offset: true, shown: true, transition: "" },
+      : { offset: true, shown: true, transition: '' },
   );
 }
 
@@ -112,7 +102,7 @@ function setVisible(next: boolean): void {
   }
   visible = next;
   applySlideTransition();
-  topbar.style.transform = next ? "translateY(0)" : "translateY(-100%)";
+  topbar.style.transform = next ? 'translateY(0)' : 'translateY(-100%)';
   // The hidden bar keeps its tab stops on purpose: tabbing into it is what
   // reveals it again for keyboard users.
   if (!next) {
@@ -132,9 +122,7 @@ function cancelHide(): void {
 }
 
 function focusedElement(): HTMLElement | null {
-  return document.activeElement instanceof HTMLElement
-    ? document.activeElement
-    : null;
+  return document.activeElement instanceof HTMLElement ? document.activeElement : null;
 }
 
 function topbarHoldsFocus(): boolean {
@@ -145,15 +133,11 @@ function topbarHoldsFocus(): boolean {
   if (getTopbar()?.contains(active) === true || active === revealButton) {
     return true;
   }
-  return TOPBAR_SURFACE_IDS.some(
-    (id) => document.getElementById(id)?.contains(active) === true,
-  );
+  return TOPBAR_SURFACE_IDS.some(id => document.getElementById(id)?.contains(active) === true);
 }
 
 function hasOpenSurface(): boolean {
-  return OPEN_SURFACE_IDS.some(
-    (id) => document.getElementById(id)?.classList.contains("open") === true,
-  );
+  return OPEN_SURFACE_IDS.some(id => document.getElementById(id)?.classList.contains('open') === true);
 }
 
 /** True while the user is working in the bar, so it must stay on screen. */
@@ -204,10 +188,8 @@ function releaseFocusToApp(): void {
 function isRevealShortcut(event: KeyboardEvent): boolean {
   // `code` carries the physical key, which matters because macOS turns
   // Option+Shift+T into a dead key. Fall back to `key` when it is missing.
-  const isT = event.code === "KeyT" || event.key.toLowerCase() === "t";
-  return (
-    event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && isT
-  );
+  const isT = event.code === 'KeyT' || event.key.toLowerCase() === 't';
+  return event.altKey && event.shiftKey && !event.ctrlKey && !event.metaKey && isT;
 }
 
 function onKeyDown(event: KeyboardEvent): void {
@@ -249,16 +231,16 @@ function syncFocus(): void {
  * never reach this document, which rules out a shortcut-only recovery.
  */
 function createRevealButton(signal: AbortSignal): void {
-  revealButton = document.createElement("button");
-  revealButton.type = "button";
+  revealButton = document.createElement('button');
+  revealButton.type = 'button';
   revealButton.id = TOPBAR_REVEAL_BUTTON_ID;
-  revealButton.className = "topbar-reveal";
-  revealButton.textContent = "Show browser bar";
-  revealButton.setAttribute("aria-keyshortcuts", TOPBAR_REVEAL_SHORTCUT);
-  revealButton.setAttribute("aria-controls", "topbar");
+  revealButton.className = 'topbar-reveal';
+  revealButton.textContent = 'Show browser bar';
+  revealButton.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
+  revealButton.setAttribute('aria-controls', 'topbar');
   // Directly after the app container, so tabbing out of the dApp reaches it
   // before the toasts and debug chrome that also live at the end of body.
-  const appContainer = document.getElementById("app");
+  const appContainer = document.getElementById('app');
   if (appContainer !== null) {
     appContainer.after(revealButton);
   } else {
@@ -267,9 +249,9 @@ function createRevealButton(signal: AbortSignal): void {
 
   // Focus alone reveals the bar, so a passing Tab already shows what the
   // control does. Activating it hands focus to the bar's first control.
-  revealButton.addEventListener("focus", reveal, { signal });
+  revealButton.addEventListener('focus', reveal, { signal });
   revealButton.addEventListener(
-    "click",
+    'click',
     () => {
       reveal();
       focusFirstControl();
@@ -288,17 +270,17 @@ function bindListeners(): void {
 
   // Invisible strip at the very top, so hover reaches the host document even
   // when the pointer is over the product frame.
-  hoverStrip = document.createElement("div");
-  hoverStrip.setAttribute("aria-hidden", "true");
+  hoverStrip = document.createElement('div');
+  hoverStrip.setAttribute('aria-hidden', 'true');
   hoverStrip.style.cssText = `position:fixed;top:0;left:0;right:0;height:${HOVER_STRIP_HEIGHT};z-index:999;`;
   document.body.appendChild(hoverStrip);
-  hoverStrip.addEventListener("mouseenter", reveal, { signal });
+  hoverStrip.addEventListener('mouseenter', reveal, { signal });
 
   createRevealButton(signal);
 
-  topbar.addEventListener("mouseenter", reveal, { signal });
+  topbar.addEventListener('mouseenter', reveal, { signal });
   topbar.addEventListener(
-    "mouseleave",
+    'mouseleave',
     () => {
       scheduleHide();
     },
@@ -306,9 +288,9 @@ function bindListeners(): void {
   );
 
   // Tabbing into the offscreen bar reveals it, leaving it re-arms the timer.
-  document.addEventListener("focusin", syncFocus, { signal });
+  document.addEventListener('focusin', syncFocus, { signal });
   document.addEventListener(
-    "focusout",
+    'focusout',
     () => {
       // activeElement only settles after focusout, so check on the next tick.
       if (focusoutTimer !== null) {
@@ -321,12 +303,12 @@ function bindListeners(): void {
     },
     { signal },
   );
-  document.addEventListener("keydown", onKeyDown, { signal });
+  document.addEventListener('keydown', onKeyDown, { signal });
 
   const reducedMotion = reducedMotionQuery();
-  if (typeof reducedMotion?.addEventListener === "function") {
+  if (typeof reducedMotion?.addEventListener === 'function') {
     reducedMotion.addEventListener(
-      "change",
+      'change',
       () => {
         applySlideTransition();
         syncFrameLayout();
@@ -347,7 +329,7 @@ export function armTopbarAutoHide(): void {
     return;
   }
   armed = true;
-  topbar.setAttribute("aria-keyshortcuts", TOPBAR_REVEAL_SHORTCUT);
+  topbar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
   applySlideTransition();
   bindListeners();
   if (revealButton !== null) {
@@ -366,7 +348,7 @@ export function pinTopbarVisible(): void {
     clearTimeout(focusoutTimer);
     focusoutTimer = null;
   }
-  getTopbar()?.removeAttribute("aria-keyshortcuts");
+  getTopbar()?.removeAttribute('aria-keyshortcuts');
   // A pinned bar needs no reveal control, and a stray tab stop would just
   // sit in the way.
   if (revealButton !== null) {

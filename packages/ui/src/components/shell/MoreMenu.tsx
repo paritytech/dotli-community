@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JSX } from "@solidjs/web";
-import { chatButtonVisible, chatPanelStore } from "../../state/chat-panel";
-import { useStore } from "../use-store";
-import { createPopover } from "./popover";
+import type { JSX } from '@solidjs/web';
+import { chatButtonVisible, chatPanelStore } from '../../state/chat-panel.js';
+import { useStore } from '../use-store.js';
+import { createPopover } from './popover.js';
 
 /**
  * The mobile "More" button and its flyout, which collapses Chat,
@@ -28,7 +28,7 @@ export function MoreMenu(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const menu = createPopover({
-    mode: "menu",
+    mode: 'menu',
     trigger: () => button,
     surface: () => popover,
   });
@@ -37,7 +37,7 @@ export function MoreMenu(): JSX.Element {
   const chatVisible = useStore(chatPanelStore, chatButtonVisible);
 
   const onClick = (e: MouseEvent): void => {
-    const row = (e.target as Element).closest<HTMLElement>(".more-row");
+    const row = (e.target as Element).closest<HTMLElement>('.more-row');
     if (row === null) {
       return;
     }
@@ -45,12 +45,12 @@ export function MoreMenu(): JSX.Element {
     // listener, which would see it as outside the popover it opens.
     e.stopPropagation();
     menu.onItemChosen();
-    const targetId = row.dataset.target;
+    const targetId = row.dataset['target'];
     if (targetId !== undefined) {
       // With the row click's detail: 0 for a keyboard choice, which opens a
       // menu (the theme menu) on its first item, as a keyboard opening does.
       document.getElementById(targetId)?.dispatchEvent(
-        new MouseEvent("click", {
+        new MouseEvent('click', {
           bubbles: true,
           cancelable: true,
           composed: true,
@@ -63,16 +63,16 @@ export function MoreMenu(): JSX.Element {
   return (
     <>
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
-          el.addEventListener("click", menu.toggle);
+          el.addEventListener('click', menu.toggle);
         }}
         id="more-button"
         class="topbar-btn topbar-more-btn"
         title="More"
         aria-label="More"
         aria-haspopup="menu"
-        aria-expanded={menu.open() ? "true" : "false"}
+        aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="more-popover"
       >
         <span class="hamburger" aria-hidden="true">
@@ -82,11 +82,11 @@ export function MoreMenu(): JSX.Element {
         </span>
       </button>
       <div
-        ref={(el) => {
+        ref={el => {
           popover = el;
-          el.addEventListener("click", onClick);
+          el.addEventListener('click', onClick);
         }}
-        class={["more-popover", { open: menu.open() }]}
+        class={['more-popover', { open: menu.open() }]}
         id="more-popover"
         role="menu"
         aria-labelledby="more-button"
@@ -114,12 +114,7 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Chat</span>
         </button>
-        <button
-          class="more-row"
-          role="menuitem"
-          tabindex="-1"
-          data-target="permissions-button"
-        >
+        <button class="more-row" role="menuitem" tabindex="-1" data-target="permissions-button">
           <svg
             width="14"
             height="14"
@@ -135,12 +130,7 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Permissions</span>
         </button>
-        <button
-          class="more-row"
-          role="menuitem"
-          tabindex="-1"
-          data-target="theme-toggle"
-        >
+        <button class="more-row" role="menuitem" tabindex="-1" data-target="theme-toggle">
           <svg
             class="more-row-icon-sun"
             width="14"
@@ -192,12 +182,7 @@ export function MoreMenu(): JSX.Element {
           </svg>
           <span>Theme</span>
         </button>
-        <button
-          class="more-row"
-          role="menuitem"
-          tabindex="-1"
-          data-target="mode-button"
-        >
+        <button class="more-row" role="menuitem" tabindex="-1" data-target="mode-button">
           <svg
             width="14"
             height="14"

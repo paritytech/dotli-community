@@ -31,7 +31,7 @@
 // have the validator reject unmatched versions so stale host builds
 // don't feed malformed params to fresh sandbox deploys.
 
-import { NetworkName, isValidNetwork, type Network } from "./network";
+import { NetworkName, isValidNetwork, type Network } from './network.js';
 
 export const SANDBOX_SCHEMA_VERSION = 3;
 
@@ -42,13 +42,9 @@ export const SANDBOX_SCHEMA_VERSION = 3;
 const CID_PATTERN = /^[a-zA-Z0-9]+$/;
 
 /** Known chain backends. The only values the sandbox accepts. */
-const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set([
-  "smoldot-direct",
-  "smoldot-shared-worker",
-  "rpc-gateway",
-]);
+const VALID_CHAIN_BACKENDS: ReadonlySet<string> = new Set(['smoldot-direct', 'smoldot-shared-worker', 'rpc-gateway']);
 
-const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["0", "1"]);
+const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
 
@@ -58,20 +54,19 @@ const RESOLUTION_ID_PATTERN = /^[A-Za-z0-9-]+$/;
  * post-validation strip in the sandbox so the wire format never drifts.
  */
 export const SANDBOX_CONTRACT_PARAMS = {
-  cid: "cid",
-  chainBackend: "chainBackend",
-  network: "network",
-  fullReset: "fullReset",
-  resolutionId: "resolutionId",
-  v: "v",
+  cid: 'cid',
+  chainBackend: 'chainBackend',
+  network: 'network',
+  fullReset: 'fullReset',
+  resolutionId: 'resolutionId',
+  v: 'v',
 } as const;
 
-export type SandboxContractParam =
-  (typeof SANDBOX_CONTRACT_PARAMS)[keyof typeof SANDBOX_CONTRACT_PARAMS];
+export type SandboxContractParam = (typeof SANDBOX_CONTRACT_PARAMS)[keyof typeof SANDBOX_CONTRACT_PARAMS];
 
 export interface SandboxParams {
   cid: string;
-  chainBackend: "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
+  chainBackend: 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
   network: Network;
   fullReset: boolean;
   /**
@@ -83,8 +78,7 @@ export interface SandboxParams {
 }
 
 export type SandboxParamsResult =
-  | { ok: true; params: SandboxParams }
-  | { ok: false; reason: string; recoverable?: boolean };
+  { ok: true; params: SandboxParams } | { ok: false; reason: string; recoverable?: boolean };
 
 /**
  * Validate a sandbox URL against the host-to-sandbox contract.
@@ -100,9 +94,7 @@ export type SandboxParamsResult =
  * invalid means the host build itself is broken. Re-rendering would
  * produce the same bad value, so those stay fatal.
  */
-export function validateSandboxParams(
-  search: URLSearchParams,
-): SandboxParamsResult {
+export function validateSandboxParams(search: URLSearchParams): SandboxParamsResult {
   // Version gate: if the host sends an explicit version token, it must
   // match. Absent `?v=` means "pre-versioned host", a path now rejected
   // post-collapse because the `?backend=` requirement is also new and a
@@ -119,12 +111,12 @@ export function validateSandboxParams(
   // origin it must arrive as a param so the sandbox knows which content to
   // fetch and verify. Missing or malformed is a hard error, never a default.
   const cid = search.get(SANDBOX_CONTRACT_PARAMS.cid);
-  if (cid === null || cid === "") {
+  if (cid === null || cid === '') {
     return {
       ok: false,
       recoverable: cid === null,
       reason:
-        "Missing required URL param `cid`. The host did not propagate the resolved content id. Reload from dot.li.",
+        'Missing required URL param `cid`. The host did not propagate the resolved content id. Reload from dot.li.',
     };
   }
   if (!CID_PATTERN.test(cid)) {
@@ -139,8 +131,7 @@ export function validateSandboxParams(
     return {
       ok: false,
       recoverable: true,
-      reason:
-        "Missing required URL param `chainBackend`. The host did not specify a backend — reload from dot.li.",
+      reason: 'Missing required URL param `chainBackend`. The host did not specify a backend — reload from dot.li.',
     };
   }
   if (!VALID_CHAIN_BACKENDS.has(chainBackend)) {
@@ -156,17 +147,15 @@ export function validateSandboxParams(
       ok: false,
       recoverable: true,
       reason:
-        "Missing required URL param `network`. The host did not propagate the active network — reload from dot.li.",
+        'Missing required URL param `network`. The host did not propagate the active network — reload from dot.li.',
     };
   }
   if (!isValidNetwork(network)) {
     return {
       ok: false,
-      reason: `Unknown network "${network}". Expected one of: ${Object.values(
-        NetworkName,
-      )
-        .map((n) => `"${n}"`)
-        .join(", ")}.`,
+      reason: `Unknown network "${network}". Expected one of: ${Object.values(NetworkName)
+        .map(n => `"${n}"`)
+        .join(', ')}.`,
     };
   }
 
@@ -194,10 +183,9 @@ export function validateSandboxParams(
     ok: true,
     params: {
       cid,
-      chainBackend: chainBackend as
-        "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway",
+      chainBackend: chainBackend as 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway',
       network,
-      fullReset: resetRaw === "1",
+      fullReset: resetRaw === '1',
       resolutionId,
     },
   };

@@ -13,11 +13,11 @@
 // It compiles with the host build's Solid options (apps/host/vite.config.ts),
 // so the markup is what the build puts in index.html.
 
-import { resolve } from "node:path";
-import solid from "@solidjs/vite-plugin";
-import { createServer } from "vite";
+import { resolve } from 'node:path';
+import solid from '@solidjs/vite-plugin';
+import { createServer } from 'vite';
 
-const UI_ROOT = resolve(import.meta.dirname, "../..");
+const UI_ROOT = resolve(import.meta.dirname, '../..');
 
 /**
  * Loads the server entry `entry` (a path under packages/ui) the way the
@@ -28,12 +28,12 @@ async function renderOnServer(entry: string, render: string): Promise<string> {
   const server = await createServer({
     configFile: false,
     root: UI_ROOT,
-    logLevel: "warn",
-    appType: "custom",
+    logLevel: 'warn',
+    appType: 'custom',
     server: { middlewareMode: true, hmr: false, ws: false, watch: null },
     // The host build's Solid options.
     plugins: [solid({ ssr: true, solid: { hydratable: false } })],
-    resolve: { alias: { "@dotli/ui": resolve(UI_ROOT, "src") } },
+    resolve: { alias: { '@dotli/ui': resolve(UI_ROOT, 'src') } },
   });
   try {
     const mod = await server.ssrLoadModule(resolve(UI_ROOT, entry));
@@ -45,5 +45,5 @@ async function renderOnServer(entry: string, render: string): Promise<string> {
 
 /** Server-renders the host shell exactly as the build-time prerender does. */
 export function renderShellOnServer(): Promise<string> {
-  return renderOnServer("src/components/shell/shell.server.tsx", "renderShell");
+  return renderOnServer('src/components/shell/shell.server.tsx', 'renderShell');
 }

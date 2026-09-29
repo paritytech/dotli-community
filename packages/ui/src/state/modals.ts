@@ -5,10 +5,10 @@
 // the first entry; everything that decides how a dialog settles (buttons,
 // dismissal, abort, fallback) lives here, outside Solid.
 
-import { blockingModalAbortError } from "../blocking-modal-queue";
-import { createSyncStore, type ReadableStore } from "./create-store";
+import { blockingModalAbortError } from '../blocking-modal-queue.js';
+import { createSyncStore, type ReadableStore } from './create-store.js';
 
-export type ModalButtonVariant = "cancel" | "secondary" | "primary";
+export type ModalButtonVariant = 'cancel' | 'secondary' | 'primary';
 
 export interface ModalField {
   label: string;
@@ -24,7 +24,7 @@ export interface ModalButton<R extends string> {
 }
 
 export interface ModalPasswordInput {
-  kind: "password";
+  kind: 'password';
   placeholder: string;
   hint?: string;
   error?: string;
@@ -76,7 +76,7 @@ function take(id: number): Pending | undefined {
   }
   pending.delete(id);
   entry.detach();
-  modals.set(modals.get().filter((e) => e.id !== id));
+  modals.set(modals.get().filter(e => e.id !== id));
   return entry;
 }
 
@@ -84,10 +84,7 @@ function take(id: number): Pending | undefined {
  * Queue a dialog. Resolves with the chosen result once a button, a dismissal
  * or the fallback decides it; rejects with an AbortError when `signal` fires.
  */
-export function openModal<R extends string>(
-  view: ModalView<R>,
-  signal?: AbortSignal,
-): Promise<ModalOutcome<R>> {
+export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSignal): Promise<ModalOutcome<R>> {
   if (signal?.aborted === true) {
     return Promise.reject(blockingModalAbortError(signal.reason));
   }
@@ -98,12 +95,12 @@ export function openModal<R extends string>(
         reject(blockingModalAbortError(signal?.reason));
       }
     };
-    signal?.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
     pending.set(id, {
       resolve: resolve as (outcome: ModalOutcome<string>) => void,
       fallbackResult: view.fallbackResult,
       detach: () => {
-        signal?.removeEventListener("abort", onAbort);
+        signal?.removeEventListener('abort', onAbort);
       },
     });
     modals.set([...modals.get(), { id, view }]);

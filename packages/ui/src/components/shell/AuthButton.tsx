@@ -1,19 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { requestTruapiDisconnect, startLogin } from "../../auth-controller";
-import { getAuthState } from "../../state/auth";
-import { authModalStore } from "../../state/auth-modal";
-import { useStore } from "../use-store";
-import {
-  sessionInitials,
-  sessionUsername,
-  shortenAccount,
-  useAccount,
-} from "./account";
-import { createPopover } from "./popover";
+import { Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { requestTruapiDisconnect, startLogin } from '../../auth-controller.js';
+import { getAuthState } from '../../state/auth.js';
+import { authModalStore } from '../../state/auth-modal.js';
+import { useStore } from '../use-store.js';
+import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
+import { createPopover } from './popover.js';
 
 function UserIcon(): JSX.Element {
   return (
@@ -67,7 +62,7 @@ export function AuthButton(): JSX.Element {
   const account = useAccount();
   const authModal = useStore(authModalStore);
   const menu = createPopover({
-    mode: "popover",
+    mode: 'popover',
     trigger: () => button,
     surface: () => popover,
   });
@@ -76,8 +71,7 @@ export function AuthButton(): JSX.Element {
    * onClick), so the ARIA says so.
    */
   const opensPopover = account.connected;
-  const label = (): string =>
-    account.loggedIn() ? "Account" : "Login with Polkadot Mobile";
+  const label = (): string => (account.loggedIn() ? 'Account' : 'Login with Polkadot Mobile');
   const username = (): string | undefined => {
     const session = account.session();
     return session === undefined ? undefined : sessionUsername(session);
@@ -85,17 +79,17 @@ export function AuthButton(): JSX.Element {
   const name = (): string => {
     const session = account.session();
     if (session === undefined) {
-      return "";
+      return '';
     }
     return (
       sessionUsername(session) ??
       shortenAccount(session.identityAccountId ?? session.publicKey) ??
-      "Connected with Polkadot Mobile"
+      'Connected with Polkadot Mobile'
     );
   };
 
   const onClick = (): void => {
-    if (getAuthState().tag === "Connected") {
+    if (getAuthState().tag === 'Connected') {
       menu.toggle();
     } else {
       startLogin();
@@ -109,25 +103,20 @@ export function AuthButton(): JSX.Element {
   return (
     <>
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
-          el.addEventListener("click", onClick);
+          el.addEventListener('click', onClick);
         }}
         id="auth-button"
         class="topbar-btn"
         title={label()}
         aria-label={label()}
         aria-haspopup="dialog"
-        aria-expanded={
-          (opensPopover() ? menu.open() : authModal().open) ? "true" : "false"
-        }
-        aria-controls={opensPopover() ? "user-popover" : "auth-modal-backdrop"}
+        aria-expanded={(opensPopover() ? menu.open() : authModal().open) ? 'true' : 'false'}
+        aria-controls={opensPopover() ? 'user-popover' : 'auth-modal-backdrop'}
       >
-        <Show
-          when={account.loggedIn() && account.session()}
-          fallback={<UserIcon />}
-        >
-          {(session) => (
+        <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
+          {session => (
             <Show
               when={sessionInitials(session())}
               fallback={
@@ -136,16 +125,16 @@ export function AuthButton(): JSX.Element {
                 </div>
               }
             >
-              {(initials) => <div class="user-badge">{initials()}</div>}
+              {initials => <div class="user-badge">{initials()}</div>}
             </Show>
           )}
         </Show>
       </button>
       <div
-        ref={(el) => {
+        ref={el => {
           popover = el;
         }}
-        class={["user-popover", { open: menu.open() }]}
+        class={['user-popover', { open: menu.open() }]}
         id="user-popover"
         role="dialog"
         aria-label="Welcome back"
@@ -158,7 +147,7 @@ export function AuthButton(): JSX.Element {
           </div>
           {/* Explains the username-less state instead of leaving a bare
               address that reads as a rendering bug. */}
-          <Show when={account.loggedIn() && (username() ?? "").length === 0}>
+          <Show when={account.loggedIn() && (username() ?? '').length === 0}>
             <div id="user-popover-hint" class="user-popover-hint">
               No username found for this account on this network.
             </div>
@@ -166,8 +155,8 @@ export function AuthButton(): JSX.Element {
         </div>
         <div class="user-popover-divider" />
         <button
-          ref={(el) => {
-            el.addEventListener("click", onDisconnect);
+          ref={el => {
+            el.addEventListener('click', onDisconnect);
           }}
           class="user-popover-disconnect"
           id="user-popover-disconnect"

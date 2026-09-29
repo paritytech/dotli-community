@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from "vitest";
-import { recordPermissionChange } from "@dotli/ui/state/permissions";
+import { describe, expect, it } from 'vitest';
+import { recordPermissionChange } from '../../src/state/permissions.js';
 
 function capture(name: string): { details: unknown[]; stop: () => void } {
   const details: unknown[] = [];
@@ -18,47 +18,47 @@ function capture(name: string): { details: unknown[]; stop: () => void } {
   };
 }
 
-describe("permission changes", () => {
-  it("As a listener, a grant fires dotli:permission-changed { label, permission } and no device change", () => {
+describe('permission changes', () => {
+  it('As a listener, a grant fires dotli:permission-changed { label, permission } and no device change', () => {
     // Given
-    const grants = capture("dotli:permission-changed");
-    const devices = capture("dotli:device-permission-changed");
+    const grants = capture('dotli:permission-changed');
+    const devices = capture('dotli:device-permission-changed');
 
     // When
     recordPermissionChange({
-      kind: "grant",
-      label: "myapp",
-      permission: "camera",
+      kind: 'grant',
+      label: 'myapp',
+      permission: 'camera',
     });
 
     // Then
-    expect(grants.details).toEqual([{ label: "myapp", permission: "camera" }]);
+    expect(grants.details).toEqual([{ label: 'myapp', permission: 'camera' }]);
     expect(devices.details).toEqual([]);
     grants.stop();
     devices.stop();
   });
 
-  it("As a listener, each device change fires dotli:device-permission-changed { label, permission } and no grant", () => {
+  it('As a listener, each device change fires dotli:device-permission-changed { label, permission } and no grant', () => {
     // Given
-    const grants = capture("dotli:permission-changed");
-    const devices = capture("dotli:device-permission-changed");
+    const grants = capture('dotli:permission-changed');
+    const devices = capture('dotli:device-permission-changed');
 
     // When
     recordPermissionChange({
-      kind: "device",
-      label: "myapp",
-      permission: "camera",
+      kind: 'device',
+      label: 'myapp',
+      permission: 'camera',
     });
     recordPermissionChange({
-      kind: "device",
-      label: "myapp",
-      permission: "camera",
+      kind: 'device',
+      label: 'myapp',
+      permission: 'camera',
     });
 
     // Then
     expect(devices.details).toEqual([
-      { label: "myapp", permission: "camera" },
-      { label: "myapp", permission: "camera" },
+      { label: 'myapp', permission: 'camera' },
+      { label: 'myapp', permission: 'camera' },
     ]);
     expect(grants.details).toEqual([]);
     grants.stop();

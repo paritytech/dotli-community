@@ -16,15 +16,15 @@ declare const self: ServiceWorkerGlobalScope;
 // queries this via `GET_SW_VERSION` to detect stale workers.
 declare const __SW_VERSION__: string;
 
-import { getMimeType } from "@dotli/shared/mime";
+import { getMimeType } from '@dotli/shared';
 
 // Base path, derived at runtime from the SW script location.
-const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, "");
+const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
 
 function hasExtension(path: string): boolean {
-  const lastSlash = path.lastIndexOf("/");
-  const lastDot = path.lastIndexOf(".");
+  const lastSlash = path.lastIndexOf('/');
+  const lastDot = path.lastIndexOf('.');
   return lastDot > lastSlash;
 }
 
@@ -38,59 +38,58 @@ function hasArchive(): boolean {
 }
 
 function getFile(path: string): ArrayBuffer | undefined {
-  return servedFiles !== null && Object.hasOwn(servedFiles, path)
-    ? servedFiles[path]
-    : undefined;
+  return servedFiles !== null && Object.hasOwn(servedFiles, path) ? servedFiles[path] : undefined;
 }
 
 // SW lifecycle.
 
-self.addEventListener("install", () => {
+self.addEventListener('install', () => {
   void self.skipWaiting();
 });
 
-self.addEventListener("activate", (event) => {
+self.addEventListener('activate', event => {
   event.waitUntil(self.clients.claim());
 });
 
 // Message handling.
 
-self.addEventListener("message", (event: ExtendableMessageEvent) => {
+self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const data = event.data as { type?: string; [key: string]: unknown } | null;
-  if (data?.type === undefined || data.type === "") {
+  if (data?.type === undefined || data.type === '') {
     return;
   }
 
-  if (data.type === "SW_CLAIM_EVENT") {
+  if (data.type === 'SW_CLAIM_EVENT') {
     void self.clients.claim();
     return;
   }
 
-  if (data.type === "GET_SW_VERSION") {
+  if (data.type === 'GET_SW_VERSION') {
     // Reply synchronously via MessageChannel port so the caller doesn't have
     // to wire up a global listener. If no port was provided (older callers),
     // fall back to source.postMessage.
-    const reply = { type: "SW_VERSION", version: __SW_VERSION__ } as const;
-    if (event.ports.length > 0) {
-      event.ports[0].postMessage(reply);
+    const reply = { type: 'SW_VERSION', version: __SW_VERSION__ } as const;
+    const [port] = event.ports;
+    if (port !== undefined) {
+      port.postMessage(reply);
     } else if (event.source) {
       (event.source as Client).postMessage(reply);
     }
     return;
   }
 
-  if (data.type === "SET_ARCHIVE") {
+  if (data.type === 'SET_ARCHIVE') {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data.packed as ArrayBuffer | undefined;
-    const idx = data.index as { p: string; o: number; l: number }[] | undefined;
+    const packed = data['packed'] as ArrayBuffer | undefined;
+    const idx = data['index'] as { p: string; o: number; l: number }[] | undefined;
 
     if (packed === undefined || idx === undefined) {
       if (event.source) {
         (event.source as Client).postMessage({
-          type: "ARCHIVE_ERROR",
-          reason: "SET_ARCHIVE missing packed/index payload",
+          type: 'ARCHIVE_ERROR',
+          reason: 'SET_ARCHIVE missing packed/index payload',
         });
       }
       return;
@@ -102,7 +101,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     }
     servedFiles = files;
     if (event.source) {
-      (event.source as Client).postMessage({ type: "ARCHIVE_READY" });
+      (event.source as Client).postMessage({ type: 'ARCHIVE_READY' });
     }
     return;
   }
@@ -110,7 +109,7 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
 
 // Fetch interception (archive serving).
 
-self.addEventListener("fetch", (event: FetchEvent) => {
+self.addEventListener('fetch', (event: FetchEvent) => {
   const url = new URL(event.request.url);
   if (url.origin !== self.location.origin) {
     return;
@@ -142,17 +141,14 @@ self.addEventListener("fetch", (event: FetchEvent) => {
       event.respondWith(
         new Response(null, {
           status: 503,
-          statusText: "App archive not yet loaded",
+          statusText: 'App archive not yet loaded',
         }),
       );
     }
     return;
   }
 
-  if (
-    event.request.mode === "navigate" &&
-    !url.pathname.startsWith(DOTLI_APP_PREFIX)
-  ) {
+  if (event.request.mode === 'navigate' && !url.pathname.startsWith(DOTLI_APP_PREFIX)) {
     return;
   }
 
@@ -178,10 +174,7 @@ self.addEventListener("fetch", (event: FetchEvent) => {
  *     a module import as `NS_ERROR_CORRUPTED_CONTENT`, so the shell's
  *     own bundle fails to load and the page gets stuck on the loader.
  */
-function lookupArchive(
-  pathname: string,
-  requestMode: RequestMode,
-): Response | null {
+function lookupArchive(pathname: string, requestMode: RequestMode): Response | null {
   let filePath = pathname.startsWith(DOTLI_APP_PREFIX)
     ? pathname.slice(DOTLI_APP_PREFIX.length)
     : pathname.startsWith(BASE)
@@ -193,13 +186,13 @@ function lookupArchive(
   let content = getFile(filePath);
 
   if (content === undefined && !hasExtension(filePath)) {
-    const withIndex = filePath !== "" ? filePath + "/index.html" : "index.html";
+    const withIndex = filePath !== '' ? filePath + '/index.html' : 'index.html';
     content = getFile(withIndex);
     if (content !== undefined) {
       filePath = withIndex;
     }
-    if (content === undefined && filePath !== "") {
-      const noSlash = filePath + "index.html";
+    if (content === undefined && filePath !== '') {
+      const noSlash = filePath + 'index.html';
       content = getFile(noSlash);
       if (content !== undefined) {
         filePath = noSlash;
@@ -207,20 +200,17 @@ function lookupArchive(
     }
   }
 
-  if (content === undefined && (filePath === "" || filePath === "/")) {
-    content = getFile("index.html");
+  if (content === undefined && (filePath === '' || filePath === '/')) {
+    content = getFile('index.html');
     if (content !== undefined) {
-      filePath = "index.html";
+      filePath = 'index.html';
     }
   }
 
   if (content !== undefined) {
     const mime = getMimeType(filePath);
-    if (mime === "text/html") {
-      if (
-        pathname === `${DOTLI_APP_PREFIX}index.html` ||
-        pathname === DOTLI_APP_PREFIX
-      ) {
+    if (mime === 'text/html') {
+      if (pathname === `${DOTLI_APP_PREFIX}index.html` || pathname === DOTLI_APP_PREFIX) {
         // Primary index.html: inject only the sandbox checker, no base or prefix rewrite.
         return makePrimaryHtmlResponse(content, mime);
       }
@@ -232,10 +222,10 @@ function lookupArchive(
   // SPA fallback, only for top-level navigations. Other requests fall
   // through to the network so shell assets (same origin, not in the
   // archive) reach nginx and load correctly.
-  if (requestMode === "navigate") {
-    const indexHtml = getFile("index.html");
+  if (requestMode === 'navigate') {
+    const indexHtml = getFile('index.html');
     if (!hasExtension(filePath) && indexHtml !== undefined) {
-      return makeHtmlResponse(indexHtml, "text/html");
+      return makeHtmlResponse(indexHtml, 'text/html');
     }
   }
 
@@ -244,9 +234,7 @@ function lookupArchive(
 
 /** Inject the sandbox checker script into HTML, inlined for the SW context. */
 function injectSandboxScript(html: string): string {
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) === undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
     return html;
   }
   // Inline the same IIFE as sandbox-checker.ts to avoid importing from main bundle.
@@ -271,8 +259,8 @@ if(window.caches){var _co=window.caches.open.bind(window.caches);var _cd=window.
 var _ck=Object.getOwnPropertyDescriptor(Document.prototype,"cookie")||Object.getOwnPropertyDescriptor(HTMLDocument.prototype,"cookie");if(_ck){Object.defineProperty(document,"cookie",{configurable:true,enumerable:true,get:function(){__dotliReport("Direct storage access (cookie)",{action:"read"});return _ck.get.call(document)},set:function(v){__dotliReport("Direct storage access (cookie)",{action:"write"});return _ck.set.call(document,v)}})}
 var __wr=false;setTimeout(function(){__wr=true},3000);["injectedWeb3","polkadot","ethereum"].forEach(function(p){var s=window[p];var fw=true;Object.defineProperty(window,p,{configurable:true,enumerable:true,get:function(){if(s!==undefined&&__wr){__dotliReport("Direct wallet access ("+p+")",{action:"read"})}return s},set:function(v){if(fw){fw=false}else{__dotliReport("Direct wallet access ("+p+")",{action:"write"})}s=v}})});
 })()</script>`;
-  if (html.includes("<head>")) {
-    return html.replace("<head>", "<head>" + script);
+  if (html.includes('<head>')) {
+    return html.replace('<head>', '<head>' + script);
   }
   return script + html;
 }
@@ -286,9 +274,9 @@ function archiveResponseInit(mime: string): ResponseInit {
   return {
     status: 200,
     headers: {
-      "Content-Type": mime,
-      "X-Content-Type-Options": "nosniff",
-      "Cache-Control": "no-cache",
+      'Content-Type': mime,
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'no-cache',
     },
   };
 }
@@ -297,33 +285,18 @@ function archiveResponseInit(mime: string): ResponseInit {
  * Response for the primary index.html, with only sandbox checker injection
  * and no base href or prefix stripping (those are only for sub-pages).
  */
-function makePrimaryHtmlResponse(
-  content: ArrayBuffer | Uint8Array,
-  mime: string,
-): Response {
+function makePrimaryHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
   let html = new TextDecoder().decode(content);
   html = injectSandboxScript(html);
-  return new Response(
-    new TextEncoder().encode(html),
-    archiveResponseInit(mime),
-  );
+  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
 }
 
-function makeHtmlResponse(
-  content: ArrayBuffer | Uint8Array,
-  mime: string,
-): Response {
+function makeHtmlResponse(content: ArrayBuffer | Uint8Array, mime: string): Response {
   let html = new TextDecoder().decode(content);
   const prefixNoSlash = DOTLI_APP_PREFIX.slice(0, -1);
   const prefixLen = String(prefixNoSlash.length);
   const stripPrefix = `<script>if(location.pathname.startsWith('${prefixNoSlash}')){history.replaceState(null,'',(location.pathname.slice(${prefixLen})||'/')+location.search+location.hash)}</script>`;
-  html = html.replace(
-    "<head>",
-    `<head><base href="${DOTLI_APP_PREFIX}">${stripPrefix}`,
-  );
+  html = html.replace('<head>', `<head><base href="${DOTLI_APP_PREFIX}">${stripPrefix}`);
   html = injectSandboxScript(html);
-  return new Response(
-    new TextEncoder().encode(html),
-    archiveResponseInit(mime),
-  );
+  return new Response(new TextEncoder().encode(html), archiveResponseInit(mime));
 }

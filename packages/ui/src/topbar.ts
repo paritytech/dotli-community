@@ -9,32 +9,25 @@
 // flyout, is a shell island (components/shell/) that renders these stores
 // when it mounts. No framework here: this runs on the startup path.
 //
-import { setBlockSource } from "./network-monitor";
-import { createBlockSource } from "./block-source";
-import { startNetworkStore } from "./state/network";
-import { initChatPanel } from "./chat/panel";
-import { emitPersistedSessionUiState } from "./host-callbacks/SessionStore";
-import {
-  createBlockingModalCoordinator,
-  type BlockingModalCoordinator,
-} from "./blocking-modal-queue";
-import { initAuthController } from "./auth-controller";
-import { recordChainsButtonVisible } from "./state/topbar";
-import { initTheme } from "./theme-controller";
+import { setBlockSource } from './network-monitor.js';
+import { createBlockSource } from './block-source.js';
+import { startNetworkStore } from './state/network.js';
+import { initChatPanel } from './chat/panel.js';
+import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
+import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { initAuthController } from './auth-controller.js';
+import { recordChainsButtonVisible } from './state/topbar.js';
+import { initTheme } from './theme-controller.js';
 
-export function initTopBar(
-  modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator(),
-): void {
+export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
   // The login and auth-state listeners, from boot on: the auth islands
   // mount later and render what the controller has kept.
   initAuthController(modalCoordinator);
 
   // Set logo home link from VITE_APP_URL (defaults to /)
-  const homeLink = document.getElementById(
-    "topbar-home",
-  ) as HTMLAnchorElement | null;
+  const homeLink = document.getElementById('topbar-home') as HTMLAnchorElement | null;
   if (homeLink !== null) {
-    homeLink.href = (import.meta.env.VITE_APP_URL as string | undefined) ?? "/";
+    homeLink.href = import.meta.env.VITE_APP_URL ?? '/';
   }
 
   // Theme preference (the toggle itself is components/shell/ThemeToggle.tsx)
@@ -56,7 +49,7 @@ export function initTopBar(
 }
 
 function scheduleIdle(callback: () => void): void {
-  if (typeof requestIdleCallback === "function") {
+  if (typeof requestIdleCallback === 'function') {
     requestIdleCallback(() => {
       callback();
     });
@@ -74,7 +67,5 @@ function scheduleIdle(callback: () => void): void {
  */
 export function setChainsButtonVisible(visible: boolean): void {
   recordChainsButtonVisible(visible);
-  document
-    .getElementById("chains-button")
-    ?.classList.toggle("visible", visible);
+  document.getElementById('chains-button')?.classList.toggle('visible', visible);
 }

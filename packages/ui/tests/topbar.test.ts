@@ -1,15 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { stubColorScheme } from "./helpers/color-scheme";
-import { byId } from "./support";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { stubColorScheme } from './helpers/color-scheme.js';
+import { byId } from './support.js';
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
-  listeners: new Set<
-    (change: { siteId: string; key: string; value: string | null }) => void
-  >(),
+  listeners: new Set<(change: { siteId: string; key: string; value: string | null }) => void>(),
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
+vi.mock('../../protocol/src/client.js', () => ({
   readSharedAuthStorage: (siteId: string, key: string) =>
     Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null),
   writeSharedAuthStorage: (siteId: string, key: string, value: string) => {
@@ -20,13 +18,7 @@ vi.mock("@dotli/protocol/client", () => ({
     sharedAuth.storage.delete(`${siteId}:${key}`);
     return Promise.resolve();
   },
-  subscribeSharedAuthStorage: (
-    listener: (change: {
-      siteId: string;
-      key: string;
-      value: string | null;
-    }) => void,
-  ) => {
+  subscribeSharedAuthStorage: (listener: (change: { siteId: string; key: string; value: string | null }) => void) => {
     sharedAuth.listeners.add(listener);
     return () => {
       sharedAuth.listeners.delete(listener);
@@ -38,7 +30,7 @@ vi.mock("@dotli/protocol/client", () => ({
 
 const device = vi.hoisted(() => ({ mobile: false }));
 
-vi.mock("@dotli/shared/device", () => ({
+vi.mock('../../shared/src/device.js', () => ({
   isMobileDevice: () => device.mobile,
 }));
 
@@ -61,7 +53,7 @@ beforeEach(() => {
   localStorage.clear();
   sharedAuth.storage.clear();
   sharedAuth.listeners.clear();
-  document.body.innerHTML = "";
+  document.body.innerHTML = '';
 });
 
 // The auth button, the user popover and the pairing modal are islands now:
@@ -72,17 +64,17 @@ beforeEach(() => {
 // (chains-popover.test.tsx), the settings popover (settings-popover.test.tsx)
 // and the mobile "More" flyout (more-menu.test.tsx).
 
-describe("topbar boot wiring", () => {
-  it("As the host, initTopBar starts the auth controller, block source, network store, chat panel, theme and home link, and rehydrates the session on idle", async () => {
+describe('topbar boot wiring', () => {
+  it('As the host, initTopBar starts the auth controller, block source, network store, chat panel, theme and home link, and rehydrates the session on idle', async () => {
     // Given
     document.body.innerHTML = `<a id="topbar-home"></a>`;
-    vi.stubEnv("VITE_APP_URL", "https://app.example/home");
+    vi.stubEnv('VITE_APP_URL', 'https://app.example/home');
     let idle: (() => void) | null = null;
-    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
       idle = callback;
       return 0;
     });
-    const source = { stand: "in" };
+    const source = { stand: 'in' };
     const boot = {
       initAuthController: vi.fn(),
       createBlockSource: vi.fn(() => source),
@@ -92,49 +84,43 @@ describe("topbar boot wiring", () => {
       initTheme: vi.fn(),
       emitPersistedSessionUiState: vi.fn(),
     };
-    vi.doMock("@dotli/ui/auth-controller", () => ({
+    vi.doMock('../src/auth-controller.js', () => ({
       initAuthController: boot.initAuthController,
     }));
-    vi.doMock("@dotli/ui/block-source", () => ({
+    vi.doMock('../src/block-source.js', () => ({
       createBlockSource: boot.createBlockSource,
     }));
-    vi.doMock("@dotli/ui/network-monitor", () => ({
+    vi.doMock('../src/network-monitor.js', () => ({
       setBlockSource: boot.setBlockSource,
     }));
-    vi.doMock("@dotli/ui/state/network", () => ({
+    vi.doMock('../src/state/network.js', () => ({
       startNetworkStore: boot.startNetworkStore,
     }));
-    vi.doMock("@dotli/ui/chat/panel", () => ({
+    vi.doMock('../src/chat/panel.js', () => ({
       initChatPanel: boot.initChatPanel,
     }));
-    vi.doMock("@dotli/ui/theme-controller", () => ({
+    vi.doMock('../src/theme-controller.js', () => ({
       initTheme: boot.initTheme,
     }));
-    vi.doMock("@dotli/ui/host-callbacks/SessionStore", () => ({
+    vi.doMock('../src/host-callbacks/SessionStore.js', () => ({
       emitPersistedSessionUiState: boot.emitPersistedSessionUiState,
     }));
-    const { createBlockingModalCoordinator } =
-      await import("@dotli/ui/blocking-modal-queue");
+    const { createBlockingModalCoordinator } = await import('../src/blocking-modal-queue.js');
     const coordinator = createBlockingModalCoordinator();
 
     try {
       // When
-      const topbar = await import("@dotli/ui/topbar");
+      const topbar = await import('../src/topbar.js');
       topbar.initTopBar(coordinator);
 
       // Then: only boot wiring is left; the popovers are islands.
-      expect(Object.keys(topbar).sort()).toEqual([
-        "initTopBar",
-        "setChainsButtonVisible",
-      ]);
+      expect(Object.keys(topbar).sort()).toEqual(['initTopBar', 'setChainsButtonVisible']);
       expect(boot.initAuthController).toHaveBeenCalledWith(coordinator);
       expect(boot.setBlockSource).toHaveBeenCalledWith(source);
       expect(boot.startNetworkStore).toHaveBeenCalledTimes(1);
       expect(boot.initChatPanel).toHaveBeenCalledTimes(1);
       expect(boot.initTheme).toHaveBeenCalledTimes(1);
-      expect(byId("topbar-home", HTMLAnchorElement).getAttribute("href")).toBe(
-        "https://app.example/home",
-      );
+      expect(byId('topbar-home', HTMLAnchorElement).getAttribute('href')).toBe('https://app.example/home');
       expect(boot.emitPersistedSessionUiState).not.toHaveBeenCalled();
 
       // When
@@ -145,13 +131,13 @@ describe("topbar boot wiring", () => {
     } finally {
       vi.unstubAllEnvs();
       for (const id of [
-        "@dotli/ui/auth-controller",
-        "@dotli/ui/block-source",
-        "@dotli/ui/network-monitor",
-        "@dotli/ui/state/network",
-        "@dotli/ui/chat/panel",
-        "@dotli/ui/theme-controller",
-        "@dotli/ui/host-callbacks/SessionStore",
+        '../src/auth-controller.js',
+        '../src/block-source.js',
+        '../src/network-monitor.js',
+        '../src/state/network.js',
+        '../src/chat/panel.js',
+        '../src/theme-controller.js',
+        '../src/host-callbacks/SessionStore.js',
       ]) {
         vi.doUnmock(id);
       }
@@ -159,68 +145,65 @@ describe("topbar boot wiring", () => {
   });
 });
 
-describe("topbar boot rehydration", () => {
-  it("As a dotli integrator, the host renders the persisted session badge on idle after init", async () => {
+describe('topbar boot rehydration', () => {
+  it('As a dotli integrator, the host renders the persisted session badge on idle after init', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
       callback();
       return 0;
     });
 
-    const { SHARED_CORE_SESSION_KEY } =
-      await import("@dotli/protocol/auth-storage");
-    const { SITE_ID } = await import("@dotli/config/config");
+    const { SHARED_CORE_SESSION_KEY } = await import('../../protocol/src/auth-storage.js');
+    const { SITE_ID } = await import('../../config/src/config.js');
     // Opaque session blob plus the JSON UI-state cache the core-driven
     // authStateChanged callback persists alongside it in shared auth storage.
-    sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, "0x0102");
+    sharedAuth.storage.set(`${SITE_ID}:${SHARED_CORE_SESSION_KEY}`, '0x0102');
     sharedAuth.storage.set(
       `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`,
       JSON.stringify({
         connected: true,
-        publicKey:
-          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-        liteUsername: "pgherveou.04",
-        primaryUsername: "pgherveou.04",
+        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+        liteUsername: 'pgherveou.04',
+        primaryUsername: 'pgherveou.04',
       }),
     );
 
     // When
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { getAuthState, getLoggedIn } = await import("@dotli/ui/state/auth");
+    const { initTopBar } = await import('../src/topbar.js');
+    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
     initTopBar();
     await flushMicrotasks();
 
     // Then: the stores the auth islands render, whenever they mount.
     expect(getAuthState()).toEqual({
-      tag: "Connected",
+      tag: 'Connected',
       session: {
         connected: true,
-        publicKey:
-          "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
-        liteUsername: "pgherveou.04",
-        primaryUsername: "pgherveou.04",
+        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+        liteUsername: 'pgherveou.04',
+        primaryUsername: 'pgherveou.04',
       },
     });
     expect(getLoggedIn()).toBe(true);
   });
 
-  it("As a dotli integrator, the host stays logged out when no session is persisted", async () => {
+  it('As a dotli integrator, the host stays logged out when no session is persisted', async () => {
     // Given
     installTopbarDom();
-    vi.stubGlobal("requestIdleCallback", (callback: () => void): number => {
+    vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
       callback();
       return 0;
     });
 
     // When
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { getAuthState, getLoggedIn } = await import("@dotli/ui/state/auth");
+    const { initTopBar } = await import('../src/topbar.js');
+    const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
     initTopBar();
     await flushMicrotasks();
 
     // Then
-    expect(getAuthState()).toEqual({ tag: "Disconnected" });
+    expect(getAuthState()).toEqual({ tag: 'Disconnected' });
     expect(getLoggedIn()).toBe(false);
   });
 });
@@ -229,60 +212,56 @@ describe("topbar boot rehydration", () => {
 // tests/components/shell/theme-toggle.test.tsx) and the preference logic is
 // theme-controller.ts (tests/theme-controller.test.ts). The topbar keeps
 // applying the stored preference at initTopBar(), as before.
-describe("topbar theme", () => {
+describe('topbar theme', () => {
   beforeEach(() => {
-    document.documentElement.removeAttribute("data-theme");
-    document.documentElement.removeAttribute("data-theme-pref");
+    document.documentElement.removeAttribute('data-theme');
+    document.documentElement.removeAttribute('data-theme-pref');
   });
 
-  it("As a dotli user, initTopBar applies my stored theme", async () => {
+  it('As a dotli user, initTopBar applies my stored theme', async () => {
     // Given
     installTopbarDom();
-    stubColorScheme("dark");
-    localStorage.setItem("dotli-theme", "light");
-    const { initTopBar } = await import("@dotli/ui/topbar");
-    const { getThemeState } = await import("@dotli/ui/state/theme");
+    stubColorScheme('dark');
+    localStorage.setItem('dotli-theme', 'light');
+    const { initTopBar } = await import('../src/topbar.js');
+    const { getThemeState } = await import('../src/state/theme.js');
 
     // When
     initTopBar();
 
     // Then
-    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
-      "light",
-    );
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(getThemeState()).toEqual({ pref: "light", resolved: "light" });
+    expect(document.documentElement.getAttribute('data-theme-pref')).toBe('light');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    expect(getThemeState()).toEqual({ pref: 'light', resolved: 'light' });
   });
 
-  it("As a dotli user, a fresh profile defaults to the System option", async () => {
+  it('As a dotli user, a fresh profile defaults to the System option', async () => {
     // Given
     installTopbarDom();
-    stubColorScheme("light");
-    const { initTopBar } = await import("@dotli/ui/topbar");
+    stubColorScheme('light');
+    const { initTopBar } = await import('../src/topbar.js');
 
     // When
     initTopBar();
 
     // Then
-    expect(localStorage.getItem("dotli-theme")).toBeNull();
-    expect(document.documentElement.getAttribute("data-theme-pref")).toBe(
-      "system",
-    );
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(localStorage.getItem('dotli-theme')).toBeNull();
+    expect(document.documentElement.getAttribute('data-theme-pref')).toBe('system');
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 
-  it("As a dotli user, the System option follows OS theme changes after initTopBar", async () => {
+  it('As a dotli user, the System option follows OS theme changes after initTopBar', async () => {
     // Given
     installTopbarDom();
-    const os = stubColorScheme("dark");
-    localStorage.setItem("dotli-theme", "system");
-    const { initTopBar } = await import("@dotli/ui/topbar");
+    const os = stubColorScheme('dark');
+    localStorage.setItem('dotli-theme', 'system');
+    const { initTopBar } = await import('../src/topbar.js');
     initTopBar();
 
     // When
-    os.set("light");
+    os.set('light');
 
     // Then
-    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 });

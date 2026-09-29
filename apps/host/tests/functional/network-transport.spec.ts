@@ -31,12 +31,12 @@
  * Env overrides: DOMAIN, PORT, TIMEOUT_MS.
  */
 
-import { test, expect } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
-import { DOMAIN, PORT, TIMEOUT_MS } from "../env";
-import { findAppFrame } from "../product-frame";
-import { seedBackend, seedSettings } from "./fixtures/settings";
-import { resetSharedMode } from "./helpers/shared-mode-reset";
+import { test, expect } from '@playwright/test';
+import type { APIRequestContext, Page } from '@playwright/test';
+import { DOMAIN, PORT, TIMEOUT_MS } from '../env.js';
+import { findAppFrame } from '../product-frame.js';
+import { seedBackend, seedSettings } from './fixtures/settings.js';
+import { resetSharedMode } from './helpers/shared-mode-reset.js';
 
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
 const HOST_SHELL_ORIGIN = `http://${DOMAIN}.localhost:${PORT}`;
@@ -64,7 +64,7 @@ async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
     throw new Error(`preview-server returned HTTP ${String(res.status())}`);
   }
   const points = (await res.json()) as GaugePoint[];
-  return points.filter((p) => p.name === "dotli.smoldot.active");
+  return points.filter(p => p.name === 'dotli.smoldot.active');
 }
 
 // Long enough for a flush that lands after the last context reports, so an
@@ -83,11 +83,7 @@ const SETTLE_MS = 5_000;
  * Not self-fulfilling. A count that never reaches `expected` still returns
  * whatever did arrive, and the caller's assertion fails with the real number.
  */
-async function settledGauge(
-  request: APIRequestContext,
-  page: Page,
-  expected: number,
-): Promise<GaugePoint[]> {
+async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
     const points = await readGauge(request);
@@ -101,8 +97,8 @@ async function settledGauge(
 }
 
 for (const [label, backend, expected] of [
-  ["per-product smoldot", "smoldot-direct", 2],
-  ["shared smoldot", "smoldot-shared-worker", 1],
+  ['per-product smoldot', 'smoldot-direct', 2],
+  ['shared smoldot', 'smoldot-shared-worker', 1],
 ] as const) {
   test(`As a user using ${label}, two open tabs open ${String(expected)} active light client(s)`, async ({
     context,
@@ -112,10 +108,7 @@ for (const [label, backend, expected] of [
     // on, so without the flag this reads zero and fails for a reason that has
     // nothing to do with light clients. The Functional job sets it on both the
     // build and the run.
-    test.skip(
-      process.env.VITE_METRICS !== "true",
-      "needs a VITE_METRICS=true build",
-    );
+    test.skip(process.env['VITE_METRICS'] !== 'true', 'needs a VITE_METRICS=true build');
     test.setTimeout(TIMEOUT_MS * 4);
 
     // Given
@@ -124,8 +117,8 @@ for (const [label, backend, expected] of [
     await seedSettings(context, { backend: backend });
     await context.addInitScript((ms: number) => {
       try {
-        sessionStorage.setItem("dotli:truapi-debug", "0");
-        sessionStorage.setItem("dotli:smoldot-heartbeat-ms", String(ms));
+        sessionStorage.setItem('dotli:truapi-debug', '0');
+        sessionStorage.setItem('dotli:smoldot-heartbeat-ms', String(ms));
         // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in exotic init contexts; the seed is best-effort.
       } catch {
         /* ignore */
@@ -136,28 +129,23 @@ for (const [label, backend, expected] of [
     // Both tabs in the SAME context. A second context is a second SharedWorker,
     // and the shared case would read 2 exactly like the direct one.
     const tabA = await context.newPage();
-    await tabA.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+    await tabA.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
     expect(await findAppFrame(tabA, TIMEOUT_MS)).not.toBeNull();
 
     const tabB = await context.newPage();
-    await tabB.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+    await tabB.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
     expect(await findAppFrame(tabB, TIMEOUT_MS)).not.toBeNull();
 
     const points = await settledGauge(request, tabA, expected);
 
     // Then
     const total = points.reduce((sum, p) => sum + p.value, 0);
-    expect(
-      total,
-      `expected ${String(expected)} light client(s) in ${backend}, saw ${String(total)}`,
-    ).toBe(expected);
+    expect(total, `expected ${String(expected)} light client(s) in ${backend}, saw ${String(total)}`).toBe(expected);
 
     // Without this, a run that silently fell back to another backend would
     // still report the right number and read as a pass.
-    const modes = [...new Set(points.map((p) => p.mode))];
-    expect(modes).toEqual([
-      backend === "smoldot-shared-worker" ? "shared-worker" : "direct",
-    ]);
+    const modes = [...new Set(points.map(p => p.mode))];
+    expect(modes).toEqual([backend === 'smoldot-shared-worker' ? 'shared-worker' : 'direct']);
   });
 }
 
@@ -170,15 +158,13 @@ const LIGHT_CLIENT_WASM = /truapi_provider_bg.*\.wasm$/;
 // from it would expire inside this wait rather than reaching the assertion.
 const WASM_SETTLE_MS = 20_000;
 
-test("As a dotli visitor, the host shell must not download the light client wasm it never runs", async ({
-  page,
-}) => {
+test('As a dotli visitor, the host shell must not download the light client wasm it never runs', async ({ page }) => {
   // Given
   // Default transport, which is what a first visit gets (`defaultBackend()` in
   // packages/config/src/mode.ts returns "smoldot-direct").
-  await seedBackend(page, "smoldot-direct", { onlyIfUnset: true });
+  await seedBackend(page, 'smoldot-direct', { onlyIfUnset: true });
   const hostShellWasm: string[] = [];
-  page.context().on("request", (request) => {
+  page.context().on('request', request => {
     const url = request.url();
     if (url.startsWith(HOST_SHELL_ORIGIN) && LIGHT_CLIENT_WASM.test(url)) {
       hostShellWasm.push(url);
@@ -186,7 +172,7 @@ test("As a dotli visitor, the host shell must not download the light client wasm
   });
 
   // When
-  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   expect(await findAppFrame(page, TIMEOUT_MS)).not.toBeNull();
   // The download is eager, but give a slow boot room to make it before
   // concluding it never happens.
@@ -195,6 +181,6 @@ test("As a dotli visitor, the host shell must not download the light client wasm
   // Then
   expect(
     hostShellWasm,
-    `the host shell fetched the light client wasm it never instantiates:\n${hostShellWasm.join("\n")}`,
+    `the host shell fetched the light client wasm it never instantiates:\n${hostShellWasm.join('\n')}`,
   ).toEqual([]);
 });

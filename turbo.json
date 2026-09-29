@@ -27,6 +27,12 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "//#lint:root": {
+      "outputs": []
+    },
+    "//#typecheck:root": {
+      "outputs": []
     }
   }
 }

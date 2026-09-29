@@ -4,12 +4,18 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
-    "./*": "./src/*"
+    ".": "./src/index.ts",
+    "./vite": "./src/vite.ts",
+    "./styles.css": "./src/styles.css",
+    "./package.json": "./package.json"
   },
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
-    "lint": "eslint src/ tests/",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "devDependencies": {

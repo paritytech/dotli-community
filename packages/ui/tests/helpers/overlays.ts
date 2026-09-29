@@ -1,14 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { disposeAppRoot } from "@dotli/ui/mount/app-roots";
-import {
-  ensureOverlays,
-  resetOverlayLoaderForTests,
-} from "@dotli/ui/overlays/load";
-import { resetModalsForTests } from "@dotli/ui/state/modals";
-import { resetToastsForTests } from "@dotli/ui/state/toasts";
-import { settle } from "./solid";
+import { disposeAppRoot } from '../../src/mount/app-roots.js';
+import { ensureOverlays, resetOverlayLoaderForTests } from '../../src/overlays/load.js';
+import { resetModalsForTests } from '../../src/state/modals.js';
+import { resetToastsForTests } from '../../src/state/toasts.js';
+import { settle } from './solid.js';
 
 /** Wait until the lazily loaded overlays root has mounted and rendered. */
 export async function overlaysReady(): Promise<void> {
@@ -18,9 +15,9 @@ export async function overlaysReady(): Promise<void> {
 
 /** Unmount the overlays root and forget queued dialogs and toasts. */
 export function resetOverlays(): void {
-  disposeAppRoot("overlays");
+  disposeAppRoot('overlays');
   resetOverlayLoaderForTests();
   resetModalsForTests();
   resetToastsForTests();
-  document.getElementById("overlay-root")?.remove();
+  document.getElementById('overlay-root')?.remove();
 }

@@ -1,39 +1,39 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createPreimageAdapters } from "@dotli/ui/host-callbacks/Preimage";
-import { computePreimageKey } from "@dotli/content/preimage";
-import { fromHex } from "@dotli/shared/hex";
-import type { bitswapGet } from "@dotli/content/bitswap";
-import { yielded } from "./support";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createPreimageAdapters } from '../src/host-callbacks/Preimage.js';
+import { computePreimageKey } from '@dotli/content';
+import { fromHex } from '@dotli/shared';
+import type { bitswapGet } from '@dotli/content';
+import { yielded } from './support.js';
 
 const mocks = vi.hoisted(() => ({
   fetchFromIpfs: vi.fn(() => Promise.resolve({ data: new Uint8Array() })),
   bitswapGet: vi.fn<typeof bitswapGet>(() => Promise.resolve(new Uint8Array())),
-  getBackend: vi.fn(() => "rpc-gateway"),
+  getBackend: vi.fn(() => 'rpc-gateway'),
 }));
 
-vi.mock("@dotli/content/ipfs", () => ({
+vi.mock('../../content/src/ipfs.js', () => ({
   fetchFromIpfs: mocks.fetchFromIpfs,
 }));
 
-vi.mock("@dotli/content/bitswap", () => ({
+vi.mock('../../content/src/bitswap.js', () => ({
   bitswapGet: mocks.bitswapGet,
 }));
 
-vi.mock("@dotli/config/mode", () => ({
+vi.mock('../../config/src/mode.js', () => ({
   getBackend: mocks.getBackend,
 }));
 
-describe("preimage host callbacks", () => {
+describe('preimage host callbacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.fetchFromIpfs.mockResolvedValue({ data: new Uint8Array() });
     mocks.bitswapGet.mockResolvedValue(new Uint8Array());
-    mocks.getBackend.mockReturnValue("rpc-gateway");
+    mocks.getBackend.mockReturnValue('rpc-gateway');
   });
 
-  it("As a dotli integrator, the host emits a miss immediately for an uncached lookup", async () => {
+  it('As a dotli integrator, the host emits a miss immediately for an uncached lookup', async () => {
     // Given
-    const { lookupPreimage } = createPreimageAdapters("myapp");
+    const { lookupPreimage } = createPreimageAdapters('myapp');
     const missingKey = new Uint8Array(32);
 
     // When
@@ -47,22 +47,20 @@ describe("preimage host callbacks", () => {
     expect(yielded(first)._unsafeUnwrap()).toBeUndefined();
   });
 
-  it("only exposes the lookup callback (submission is core-owned)", () => {
-    const adapters = createPreimageAdapters("myapp");
-    expect(typeof adapters.lookupPreimage).toBe("function");
-    expect("submitPreimage" in adapters).toBe(false);
+  it('only exposes the lookup callback (submission is core-owned)', () => {
+    const adapters = createPreimageAdapters('myapp');
+    expect(typeof adapters.lookupPreimage).toBe('function');
+    expect('submitPreimage' in adapters).toBe(false);
   });
 
-  it("As a dotli integrator, the host retries transient lookup backend failures", async () => {
+  it('As a dotli integrator, the host retries transient lookup backend failures', async () => {
     // Given
     vi.useFakeTimers();
     try {
-      const { lookupPreimage } = createPreimageAdapters("myapp");
-      const found = new TextEncoder().encode("retried preimage");
+      const { lookupPreimage } = createPreimageAdapters('myapp');
+      const found = new TextEncoder().encode('retried preimage');
       const key = fromHex(computePreimageKey(found));
-      mocks.fetchFromIpfs.mockRejectedValueOnce(
-        new Error("gateway unavailable"),
-      );
+      mocks.fetchFromIpfs.mockRejectedValueOnce(new Error('gateway unavailable'));
       mocks.fetchFromIpfs.mockResolvedValueOnce({ data: found });
 
       // When
@@ -97,14 +95,14 @@ describe("preimage host callbacks", () => {
     }
   });
 
-  it("As a dotli integrator, the host caches a gateway preimage only after hash verification", async () => {
+  it('As a dotli integrator, the host caches a gateway preimage only after hash verification', async () => {
     // Given
     vi.useFakeTimers();
     try {
-      const data = new TextEncoder().encode("verified gateway preimage");
+      const data = new TextEncoder().encode('verified gateway preimage');
       const key = fromHex(computePreimageKey(data));
       mocks.fetchFromIpfs.mockResolvedValue({ data });
-      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const { lookupPreimage } = createPreimageAdapters('myapp');
 
       // When
       const iterator = lookupPreimage(key)[Symbol.asyncIterator]();
@@ -132,21 +130,19 @@ describe("preimage host callbacks", () => {
     }
   });
 
-  it.each(["rpc-gateway", "smoldot-direct"] as const)(
-    "As a product, the host rejects and does not cache corrupt data from %s",
-    async (backend) => {
+  it.each(['rpc-gateway', 'smoldot-direct'] as const)(
+    'As a product, the host rejects and does not cache corrupt data from %s',
+    async backend => {
       // Given
       vi.useFakeTimers();
       try {
-        const expected = new TextEncoder().encode(
-          `expected preimage from ${backend}`,
-        );
-        const corrupt = new TextEncoder().encode("corrupt preimage");
+        const expected = new TextEncoder().encode(`expected preimage from ${backend}`);
+        const corrupt = new TextEncoder().encode('corrupt preimage');
         const key = fromHex(computePreimageKey(expected));
         mocks.getBackend.mockReturnValue(backend);
         mocks.fetchFromIpfs.mockResolvedValue({ data: corrupt });
         mocks.bitswapGet.mockResolvedValue(corrupt);
-        const { lookupPreimage } = createPreimageAdapters("myapp");
+        const { lookupPreimage } = createPreimageAdapters('myapp');
 
         // When
         const firstIterator = lookupPreimage(key)[Symbol.asyncIterator]();
@@ -158,9 +154,7 @@ describe("preimage host callbacks", () => {
         // Then
         expect(firstError.done).toBe(false);
         expect(yielded(firstError).isErr()).toBe(true);
-        expect(yielded(firstError)._unsafeUnwrapErr().reason).toContain(
-          "Content hash mismatch",
-        );
+        expect(yielded(firstError)._unsafeUnwrapErr().reason).toContain('Content hash mismatch');
 
         // When
         const secondIterator = lookupPreimage(key)[Symbol.asyncIterator]();
@@ -172,8 +166,7 @@ describe("preimage host callbacks", () => {
         // Then
         expect(yielded(secondMiss)._unsafeUnwrap()).toBeUndefined();
         expect(yielded(secondError).isErr()).toBe(true);
-        const fetch =
-          backend === "rpc-gateway" ? mocks.fetchFromIpfs : mocks.bitswapGet;
+        const fetch = backend === 'rpc-gateway' ? mocks.fetchFromIpfs : mocks.bitswapGet;
         expect(fetch).toHaveBeenCalledTimes(2);
       } finally {
         vi.useRealTimers();
@@ -181,20 +174,20 @@ describe("preimage host callbacks", () => {
     },
   );
 
-  it("As a user, a slow preimage lookup does not stack another on every poll tick", async () => {
+  it('As a user, a slow preimage lookup does not stack another on every poll tick', async () => {
     // Given a lookup that outlives several 10s poll intervals, which bitswapGet
     // can now do while it retries a CID whose providers have not attached
     vi.useFakeTimers();
     try {
-      mocks.getBackend.mockReturnValue("smoldot-direct");
+      mocks.getBackend.mockReturnValue('smoldot-direct');
       let release: (v: Uint8Array) => void = () => undefined;
       mocks.bitswapGet.mockImplementation(
         () =>
-          new Promise<Uint8Array>((resolve) => {
+          new Promise<Uint8Array>(resolve => {
             release = resolve;
           }),
       );
-      const { lookupPreimage } = createPreimageAdapters("myapp");
+      const { lookupPreimage } = createPreimageAdapters('myapp');
       const key = new Uint8Array(32).fill(7);
 
       // When four poll ticks pass while the first lookup is still in flight
@@ -212,19 +205,17 @@ describe("preimage host callbacks", () => {
     }
   });
 
-  it("As a user, dropping a preimage subscription cancels the lookup it left running", async () => {
+  it('As a user, dropping a preimage subscription cancels the lookup it left running', async () => {
     // Given a lookup that is still retrying when the product lets go
     vi.useFakeTimers();
     try {
-      mocks.getBackend.mockReturnValue("smoldot-direct");
+      mocks.getBackend.mockReturnValue('smoldot-direct');
       let handed: AbortSignal | undefined;
-      mocks.bitswapGet.mockImplementation(
-        (_cid: string, signal?: AbortSignal) => {
-          handed = signal;
-          return new Promise<Uint8Array>(() => undefined);
-        },
-      );
-      const { lookupPreimage } = createPreimageAdapters("myapp");
+      mocks.bitswapGet.mockImplementation((_cid: string, signal?: AbortSignal) => {
+        handed = signal;
+        return new Promise<Uint8Array>(() => undefined);
+      });
+      const { lookupPreimage } = createPreimageAdapters('myapp');
       const key = new Uint8Array(32).fill(9);
 
       // When the subscription is torn down mid-lookup

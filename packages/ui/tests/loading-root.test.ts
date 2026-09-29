@@ -1,15 +1,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { LoadingPhase } from "@dotli/ui/loading-controller";
-import type * as UiModule from "@dotli/ui/ui";
-import type * as LoadingControllerModule from "@dotli/ui/loading-controller";
-import type * as AppRootsModule from "@dotli/ui/mount/app-roots";
-import type * as LoadingModule from "@dotli/ui/state/loading";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { LoadingPhase } from '../src/loading-controller.js';
+import type * as UiModule from '../src/ui.js';
+import type * as LoadingControllerModule from '../src/loading-controller.js';
+import type * as AppRootsModule from '../src/mount/app-roots.js';
+import type * as LoadingModule from '../src/state/loading.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("@dotli/metrics/sentry", () => sentry);
+vi.mock('../../metrics/src/sentry.js', () => sentry);
 
 type Ui = typeof UiModule;
 type Controller = typeof LoadingControllerModule;
@@ -22,11 +22,11 @@ const STALL_MS = 4_000;
 // One long clock-driven band, so the crawl moves the bar on every tick.
 const PHASES: LoadingPhase[] = [
   {
-    label: "Connecting",
+    label: 'Connecting',
     base: 5,
     target: 90,
     expectedMs: 60_000,
-    stage: "relay",
+    stage: 'relay',
   },
 ];
 
@@ -34,11 +34,11 @@ const PHASES: LoadingPhase[] = [
 // the stall watch fires unless something stops it.
 const PARKED_PHASES: LoadingPhase[] = [
   {
-    label: "Fetching content",
+    label: 'Fetching content',
     base: 10,
     target: 90,
     expectedMs: 10_000,
-    stage: "content",
+    stage: 'content',
     reportsProgress: true,
   },
 ];
@@ -57,7 +57,7 @@ function installLoadingDom(): void {
     </div>`;
 }
 
-describe("The loading screen is a tracked app root", () => {
+describe('The loading screen is a tracked app root', () => {
   let ui: Ui;
   let ctl: Controller;
   let roots: AppRoots;
@@ -69,10 +69,10 @@ describe("The loading screen is a tracked app root", () => {
     installLoadingDom();
     // `ui.ts` binds `#app` when it loads, so it loads after the fixture.
     [ui, ctl, roots, state] = await Promise.all([
-      import("@dotli/ui/ui"),
-      import("@dotli/ui/loading-controller"),
-      import("@dotli/ui/mount/app-roots"),
-      import("@dotli/ui/state/loading"),
+      import('../src/ui.js'),
+      import('../src/loading-controller.js'),
+      import('../src/mount/app-roots.js'),
+      import('../src/state/loading.js'),
     ]);
   });
 
@@ -95,28 +95,26 @@ describe("The loading screen is a tracked app root", () => {
     expect(progress()).not.toBe(before);
   }
 
-  it("As a visitor whose name has no content, the loading bar stops ticking behind the error", () => {
+  it('As a visitor whose name has no content, the loading bar stops ticking behind the error', () => {
     // Given
     startLoading();
 
     // When
-    ui.showNoContentError("nothing");
+    ui.showNoContentError('nothing');
     const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then no crawl tick lands after the error
     expect(progress()).toBe(frozen);
-    expect(document.querySelector(".error-page-title")?.textContent).toBe(
-      "This app can't be reached",
-    );
+    expect(document.querySelector('.error-page-title')?.textContent).toBe("This app can't be reached");
   });
 
-  it("As a visitor whose load failed, the loading bar stops ticking behind the error", () => {
+  it('As a visitor whose load failed, the loading bar stops ticking behind the error', () => {
     // Given
     startLoading();
 
     // When
-    ui.showErrorPage({ title: "Failed" });
+    ui.showErrorPage({ title: 'Failed' });
     const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
@@ -124,7 +122,7 @@ describe("The loading screen is a tracked app root", () => {
     expect(progress()).toBe(frozen);
   });
 
-  it("As a visitor whose load parked, the stall watch fires while the loading screen is up", () => {
+  it('As a visitor whose load parked, the stall watch fires while the loading screen is up', () => {
     // Given
     const onStall = vi.fn();
     ctl.initPhases(PARKED_PHASES);
@@ -138,7 +136,7 @@ describe("The loading screen is a tracked app root", () => {
     expect(onStall).toHaveBeenCalledTimes(1);
   });
 
-  it("As a visitor whose name has no content, the stall watch does not fire behind the error", () => {
+  it('As a visitor whose name has no content, the stall watch does not fire behind the error', () => {
     // Given
     const onStall = vi.fn();
     ctl.initPhases(PARKED_PHASES);
@@ -146,7 +144,7 @@ describe("The loading screen is a tracked app root", () => {
     ctl.advancePhase(0);
 
     // When
-    ui.showNoContentError("nothing");
+    ui.showNoContentError('nothing');
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then
@@ -155,80 +153,77 @@ describe("The loading screen is a tracked app root", () => {
 
   it.each([
     [
-      "an error page",
+      'an error page',
       (u: Ui) => {
-        u.showErrorPage({ title: "Failed" });
+        u.showErrorPage({ title: 'Failed' });
       },
     ],
     [
-      "a no-content page",
+      'a no-content page',
       (u: Ui) => {
-        u.showNoContentError("nothing");
+        u.showNoContentError('nothing');
       },
     ],
-  ])(
-    "As a visitor, %s shown before the load starts removes the static screen",
-    (_name, show) => {
-      // Given the static screen, with no phases started
-      const screen = document.getElementById("app-loading");
+  ])('As a visitor, %s shown before the load starts removes the static screen', (_name, show) => {
+    // Given the static screen, with no phases started
+    const screen = document.getElementById('app-loading');
 
-      // When
-      show(ui);
+    // When
+    show(ui);
 
-      // Then
-      expect(screen?.isConnected).toBe(false);
-      expect(state.getLoadingState().phase).toBe("gone");
-      expect(vi.getTimerCount()).toBe(0);
-      expect(document.querySelector(".error-page-title")).not.toBeNull();
-    },
-  );
+    // Then
+    expect(screen?.isConnected).toBe(false);
+    expect(state.getLoadingState().phase).toBe('gone');
+    expect(vi.getTimerCount()).toBe(0);
+    expect(document.querySelector('.error-page-title')).not.toBeNull();
+  });
 
-  it("As the shell, an error page disposes the page and loading roots before it replaces #app", () => {
+  it('As the shell, an error page disposes the page and loading roots before it replaces #app', () => {
     // Given
     const seen: string[] = [];
     const record = (name: string) => () => {
       // Disposal comes first, while the old content is still in place.
-      expect(document.querySelector(".error-page")).toBeNull();
+      expect(document.querySelector('.error-page')).toBeNull();
       seen.push(name);
     };
     // Registered loading first, so the order below is the dispose order.
-    roots.registerAppRoot("loading", record("loading"));
-    roots.registerAppRoot("page", record("page"));
+    roots.registerAppRoot('loading', record('loading'));
+    roots.registerAppRoot('page', record('page'));
 
     // When
-    ui.showErrorPage({ title: "Failed" });
+    ui.showErrorPage({ title: 'Failed' });
 
     // Then
-    expect(seen).toEqual(["page", "loading"]);
-    expect(document.querySelector(".error-page")).not.toBeNull();
+    expect(seen).toEqual(['page', 'loading']);
+    expect(document.querySelector('.error-page')).not.toBeNull();
   });
 
-  it("As the shell, the no-content page disposes the page and loading roots before it replaces #app", () => {
+  it('As the shell, the no-content page disposes the page and loading roots before it replaces #app', () => {
     // Given
     const seen: string[] = [];
     const record = (name: string) => () => {
-      expect(document.querySelector(".error-page")).toBeNull();
+      expect(document.querySelector('.error-page')).toBeNull();
       seen.push(name);
     };
     // Registered loading first, so the order below is the dispose order.
-    roots.registerAppRoot("loading", record("loading"));
-    roots.registerAppRoot("page", record("page"));
+    roots.registerAppRoot('loading', record('loading'));
+    roots.registerAppRoot('page', record('page'));
 
     // When
-    ui.showNoContentError("nothing");
+    ui.showNoContentError('nothing');
 
     // Then
-    expect(seen).toEqual(["page", "loading"]);
-    expect(document.querySelector(".error-page")).not.toBeNull();
+    expect(seen).toEqual(['page', 'loading']);
+    expect(document.querySelector('.error-page')).not.toBeNull();
   });
 
-  it("As the shell, disposing the loading root stops its timers and removes the overlay", () => {
+  it('As the shell, disposing the loading root stops its timers and removes the overlay', () => {
     // Given
     startLoading();
-    const loading = document.querySelector("#app > .loading");
+    const loading = document.querySelector('#app > .loading');
 
     // When
-    roots.disposeAppRoot("loading");
+    roots.disposeAppRoot('loading');
     const frozen = progress();
     vi.advanceTimersByTime(STALL_MS * 5);
 
@@ -237,7 +232,7 @@ describe("The loading screen is a tracked app root", () => {
     expect(progress()).toBe(frozen);
   });
 
-  it("As the shell, disposing the loading root stops the stall watch", () => {
+  it('As the shell, disposing the loading root stops the stall watch', () => {
     // Given
     const onStall = vi.fn();
     ctl.initPhases(PARKED_PHASES);
@@ -245,7 +240,7 @@ describe("The loading screen is a tracked app root", () => {
     ctl.advancePhase(0);
 
     // When
-    roots.disposeAppRoot("loading");
+    roots.disposeAppRoot('loading');
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then
@@ -254,46 +249,43 @@ describe("The loading screen is a tracked app root", () => {
 
   it.each([
     [
-      "error page",
+      'error page',
       (u: Ui) => {
-        u.showErrorPage({ title: "Failed" });
+        u.showErrorPage({ title: 'Failed' });
       },
     ],
     [
-      "no-content page",
+      'no-content page',
       (u: Ui) => {
-        u.showNoContentError("nothing");
+        u.showNoContentError('nothing');
       },
     ],
-  ])(
-    "As a visitor, the %s still renders when the page root fails to dispose",
-    (_name, show) => {
-      // Given
-      const failure = new Error("page teardown failed");
-      roots.registerAppRoot("page", () => {
-        throw failure;
-      });
-      ctl.initPhases(PHASES);
-      const loading = document.querySelector("#app > .loading");
+  ])('As a visitor, the %s still renders when the page root fails to dispose', (_name, show) => {
+    // Given
+    const failure = new Error('page teardown failed');
+    roots.registerAppRoot('page', () => {
+      throw failure;
+    });
+    ctl.initPhases(PHASES);
+    const loading = document.querySelector('#app > .loading');
 
-      // When
-      show(ui);
+    // When
+    show(ui);
 
-      // Then the loading root is still disposed and the error page is up
-      expect(loading?.isConnected).toBe(false);
-      expect(document.querySelector(".error-page-title")).not.toBeNull();
-      expect(sentry.captureException).toHaveBeenCalledTimes(1);
-      expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-        kind: "app_root_dispose_error",
-        root: "page",
-      });
-    },
-  );
+    // Then the loading root is still disposed and the error page is up
+    expect(loading?.isConnected).toBe(false);
+    expect(document.querySelector('.error-page-title')).not.toBeNull();
+    expect(sentry.captureException).toHaveBeenCalledTimes(1);
+    expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+      kind: 'app_root_dispose_error',
+      root: 'page',
+    });
+  });
 
-  it("As the shell, starting the loading phases again keeps the overlay on screen", () => {
+  it('As the shell, starting the loading phases again keeps the overlay on screen', () => {
     // Given
     ctl.initPhases(PHASES);
-    const loading = document.querySelector("#app > .loading");
+    const loading = document.querySelector('#app > .loading');
 
     // When
     ctl.initPhases(PHASES);
@@ -302,7 +294,7 @@ describe("The loading screen is a tracked app root", () => {
     expect(loading?.isConnected).toBe(true);
 
     // When
-    roots.disposeAppRoot("loading");
+    roots.disposeAppRoot('loading');
 
     // Then
     expect(loading?.isConnected).toBe(false);

@@ -9,13 +9,13 @@
  * timeouts, and globalSetup as needed.
  */
 
-import type { PlaywrightTestConfig } from "@playwright/test";
+import type { PlaywrightTestConfig } from '@playwright/test';
 
-const PORT = "5173";
+const PORT = '5173';
 
 /** The unified preview server (scripts/preview-server.ts) on `PORT`. */
 export const previewServer = {
-  command: "node ../../../../scripts/preview-server.ts",
+  command: 'node ../../../../scripts/preview-server.ts',
   url: `http://localhost:${PORT}`,
   reuseExistingServer: true,
   timeout: 30_000,
@@ -23,15 +23,12 @@ export const previewServer = {
 
 export const baseConfig: PlaywrightTestConfig = {
   use: {
-    browserName: "chromium",
-    channel: process.env.CHANNEL,
-    headless: process.env.HEADED !== "1",
+    browserName: 'chromium',
+    channel: process.env['CHANNEL'],
+    headless: process.env['HEADED'] !== '1',
     bypassCSP: true,
     launchOptions: {
-      slowMo:
-        process.env.SLOWMO !== undefined && process.env.SLOWMO !== ""
-          ? Number(process.env.SLOWMO)
-          : 0,
+      slowMo: process.env['SLOWMO'] !== undefined && process.env['SLOWMO'] !== '' ? Number(process.env['SLOWMO']) : 0,
     },
   },
   webServer: previewServer,

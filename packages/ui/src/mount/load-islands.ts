@@ -8,9 +8,9 @@
 // for its static markup. Keeping them off the startup bundle is the point,
 // so everything here is Solid-free.
 
-import { captureException } from "@dotli/metrics/sentry";
-import { disableAuthModal } from "../auth-controller";
-import { topbarStore } from "../state/topbar";
+import { captureException } from '@dotli/metrics';
+import { disableAuthModal } from '../auth-controller.js';
+import { topbarStore } from '../state/topbar.js';
 
 /**
  * The islands' triggers: the static buttons users can click before the
@@ -18,8 +18,7 @@ import { topbarStore } from "../state/topbar";
  * selector (comma-separated): a held click is replayed by looking its
  * target's id up again, on the live element that replaced it.
  */
-const TRIGGERS =
-  "#theme-toggle, #permissions-button, #chains-button, #mode-button, #more-button";
+const TRIGGERS = '#theme-toggle, #permissions-button, #chains-button, #mode-button, #more-button';
 
 let loading: Promise<void> | null = null;
 
@@ -36,11 +35,10 @@ function followOfflineWithoutIslands(banner: HTMLElement | null): void {
     return;
   }
   const update = (): void => {
-    banner.style.display =
-      !navigator.onLine && topbarStore.get().visible ? "block" : "none";
+    banner.style.display = !navigator.onLine && topbarStore.get().visible ? 'block' : 'none';
   };
-  window.addEventListener("online", update);
-  window.addEventListener("offline", update);
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
   topbarStore.subscribe(update);
   update();
 }
@@ -73,38 +71,36 @@ export function ensureIslands(): Promise<void> {
   /** The last held-back click: its trigger's id and its `detail`. */
   let pending: { id: string; detail: number } | null = null;
   const holdBack = (ev: MouseEvent): void => {
-    const trigger =
-      ev.target instanceof Element ? ev.target.closest(TRIGGERS) : null;
+    const trigger = ev.target instanceof Element ? ev.target.closest(TRIGGERS) : null;
     if (trigger !== null) {
       ev.preventDefault();
       pending = { id: trigger.id, detail: ev.detail };
     }
   };
   const stopHoldingBack = (): void => {
-    document.removeEventListener("click", holdBack, true);
+    document.removeEventListener('click', holdBack, true);
   };
-  document.addEventListener("click", holdBack, true);
-  const staticBanner = (): HTMLElement | null =>
-    document.getElementById("offline-banner");
-  loading = import("../components/shell/islands").then(
+  document.addEventListener('click', holdBack, true);
+  const staticBanner = (): HTMLElement | null => document.getElementById('offline-banner');
+  loading = import('../components/shell/islands.js').then(
     ({ mountIslands }) => {
       stopHoldingBack();
       const banner = staticBanner();
       // An island that fails after it was swapped in has its static markup
       // back by now: fall back for it as for one that failed to mount.
       const onLateFailure = (name: string): void => {
-        if (name === "auth-modal") {
+        if (name === 'auth-modal') {
           disableAuthModal();
-        } else if (name === "offline-banner") {
+        } else if (name === 'offline-banner') {
           followOfflineWithoutIslands(banner);
         }
       };
       try {
-        if (mountIslands(onLateFailure).includes("auth-modal")) {
+        if (mountIslands(onLateFailure).includes('auth-modal')) {
           disableAuthModal();
         }
       } catch (err) {
-        captureException(err, { kind: "islands_mount_error" });
+        captureException(err, { kind: 'islands_mount_error' });
         disableAuthModal();
         return;
       } finally {
@@ -112,7 +108,7 @@ export function ensureIslands(): Promise<void> {
       }
       if (pending !== null) {
         document.getElementById(pending.id)?.dispatchEvent(
-          new MouseEvent("click", {
+          new MouseEvent('click', {
             bubbles: true,
             cancelable: true,
             composed: true,
@@ -123,7 +119,7 @@ export function ensureIslands(): Promise<void> {
     },
     (err: unknown) => {
       stopHoldingBack();
-      captureException(err, { kind: "islands_load_error" });
+      captureException(err, { kind: 'islands_load_error' });
       disableAuthModal();
       followOfflineWithoutIslands(staticBanner());
     },

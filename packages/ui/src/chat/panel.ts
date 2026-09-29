@@ -17,15 +17,15 @@ import {
   initChatPanelState,
   setChatPanelOpen,
   totalChatUnread,
-} from "../state/chat-panel";
-import { setChatWidth } from "../product-frame-layout";
-import { ensureChatPanel, prefetchChatPanel } from "./load";
+} from '../state/chat-panel.js';
+import { setChatWidth } from '../product-frame-layout.js';
+import { ensureChatPanel, prefetchChatPanel } from './load.js';
 
 /** Wire the chat button + panel. Called once from `initTopBar`. */
 export function initChatPanel(): void {
-  const button = document.getElementById("chat-button");
-  const badge = document.getElementById("chat-unread-badge");
-  const panel = document.getElementById("chat-panel");
+  const button = document.getElementById('chat-button');
+  const badge = document.getElementById('chat-unread-badge');
+  const panel = document.getElementById('chat-panel');
   if (button === null || badge === null || panel === null) {
     return;
   }
@@ -42,11 +42,11 @@ export function initChatPanel(): void {
     const unread = state.open ? 0 : totalChatUnread(state);
     badge.hidden = unread === 0;
     badge.textContent = chatUnreadLabel(unread);
-    button.setAttribute("aria-expanded", state.open ? "true" : "false");
-    button.classList.toggle("active", state.open);
+    button.setAttribute('aria-expanded', state.open ? 'true' : 'false');
+    button.classList.toggle('active', state.open);
     panel.hidden = !state.open;
     // The auto-hidden topbar frees its strip; stretch the panel into it.
-    panel.classList.toggle("topbar-hidden", !state.topbarVisible);
+    panel.classList.toggle('topbar-hidden', !state.topbarVisible);
     if (state.open) {
       panel.style.width = `${String(state.width)}px`;
     }
@@ -66,11 +66,11 @@ export function initChatPanel(): void {
   chatPanelStore.subscribe(sync);
   sync();
 
-  button.addEventListener("click", () => {
+  button.addEventListener('click', () => {
     setChatPanelOpen(!chatPanelStore.get().open);
   });
-  panel.addEventListener("keydown", (event: KeyboardEvent) => {
-    if (event.key === "Escape") {
+  panel.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Escape') {
       setChatPanelOpen(false);
       button.focus();
     }

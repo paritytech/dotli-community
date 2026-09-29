@@ -5,19 +5,9 @@
 // bundle carries Solid. Everything here is Solid-free: it writes the stores
 // and imports the chunk dynamically.
 
-import { createLazyRoot } from "../mount/lazy-root";
-import {
-  failAllModals,
-  openModal,
-  type ModalOutcome,
-  type ModalView,
-} from "../state/modals";
-import {
-  clearToasts,
-  pushToast,
-  toastsStore,
-  type ToastInput,
-} from "../state/toasts";
+import { createLazyRoot } from '../mount/lazy-root.js';
+import { failAllModals, openModal, type ModalOutcome, type ModalView } from '../state/modals.js';
+import { clearToasts, pushToast, toastsStore, type ToastInput } from '../state/toasts.js';
 
 /**
  * When the chunk cannot load, or the mounted root later throws while
@@ -27,11 +17,7 @@ import {
  */
 function fallBack(): void {
   for (const toast of toastsStore.get().items) {
-    if (
-      toast.action !== undefined &&
-      !toast.leaving &&
-      window.confirm(`${toast.label}\n\n${toast.text}`)
-    ) {
+    if (toast.action !== undefined && !toast.leaving && window.confirm(`${toast.label}\n\n${toast.text}`)) {
       toast.action.onClick();
     }
   }
@@ -40,11 +26,8 @@ function fallBack(): void {
 }
 
 const overlays = createLazyRoot({
-  load: (onBroken) =>
-    import("../components/overlays/mount").then(({ mountOverlays }) =>
-      mountOverlays(onBroken),
-    ),
-  errorKind: "overlays_load_error",
+  load: onBroken => import('../components/overlays/mount.js').then(({ mountOverlays }) => mountOverlays(onBroken)),
+  errorKind: 'overlays_load_error',
   onFailure: fallBack,
 });
 
@@ -55,10 +38,7 @@ export const ensureOverlays = overlays.ensure;
 export const prefetchOverlays = overlays.prefetch;
 
 /** Queue a dialog and make sure the overlays are there to show it. */
-export function presentModal<R extends string>(
-  view: ModalView<R>,
-  signal?: AbortSignal,
-): Promise<ModalOutcome<R>> {
+export function presentModal<R extends string>(view: ModalView<R>, signal?: AbortSignal): Promise<ModalOutcome<R>> {
   const outcome = openModal(view, signal);
   if (signal?.aborted !== true) {
     void ensureOverlays();

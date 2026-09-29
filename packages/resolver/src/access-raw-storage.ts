@@ -16,10 +16,10 @@ import {
   addToSlot,
   extractAddress,
   decodeBytesSlot,
-} from "./abi";
-import { PartialStorageReadError } from "./errors";
-import type { Api } from "./api";
-import { ApiStoppedError } from "./api";
+} from './abi.js';
+import { PartialStorageReadError } from './errors.js';
+import type { Api } from './api.js';
+import { ApiStoppedError } from './api.js';
 
 export type StatusCallback = (status: string) => void;
 
@@ -30,12 +30,12 @@ export type StatusCallback = (status: string) => void;
  * humans and change freely, and the phase tokens are a stable contract.
  */
 export type ResolvePhase =
-  | "light-client-starting"
-  | "relay-chain-adding"
-  | "asset-hub-connecting"
-  | "asset-hub-syncing"
-  | "asset-hub-ready"
-  | "resolving-content";
+  | 'light-client-starting'
+  | 'relay-chain-adding'
+  | 'asset-hub-connecting'
+  | 'asset-hub-syncing'
+  | 'asset-hub-ready'
+  | 'resolving-content';
 
 export type PhaseCallback = (phase: ResolvePhase) => void;
 
@@ -50,33 +50,23 @@ export type PhaseCallback = (phase: ResolvePhase) => void;
  * messages that don't map to a known phase.
  */
 export function statusToPhase(message: string): ResolvePhase | null {
-  if (message.startsWith("Starting light client")) {
-    return "light-client-starting";
+  if (message.startsWith('Starting light client')) {
+    return 'light-client-starting';
   }
-  if (message.startsWith("Adding Paseo relay")) {
-    return "relay-chain-adding";
+  if (message.startsWith('Adding Paseo relay')) {
+    return 'relay-chain-adding';
   }
-  if (
-    message.startsWith("Connecting to Asset Hub") ||
-    message.includes("Discovering") ||
-    message.includes("peers")
-  ) {
-    return "asset-hub-connecting";
+  if (message.startsWith('Connecting to Asset Hub') || message.includes('Discovering') || message.includes('peers')) {
+    return 'asset-hub-connecting';
   }
-  if (
-    message.startsWith("Syncing with Asset Hub") ||
-    message.startsWith("Syncing #")
-  ) {
-    return "asset-hub-syncing";
+  if (message.startsWith('Syncing with Asset Hub') || message.startsWith('Syncing #')) {
+    return 'asset-hub-syncing';
   }
-  if (
-    message.startsWith("Synced to") ||
-    message.startsWith("Connected to Asset Hub")
-  ) {
-    return "asset-hub-ready";
+  if (message.startsWith('Synced to') || message.startsWith('Connected to Asset Hub')) {
+    return 'asset-hub-ready';
   }
-  if (message.includes("Resolving content")) {
-    return "resolving-content";
+  if (message.includes('Resolving content')) {
+    return 'resolving-content';
   }
   return null;
 }
@@ -87,10 +77,7 @@ export function statusToPhase(message: string): ResolvePhase | null {
  * has died. Returns `null` if the contract doesn't exist (no AccountInfoOf
  * or wrong enum tag).
  */
-async function pinContract(
-  api: Api,
-  contractAddress: string,
-): Promise<{ hash: string; trieId: Uint8Array } | null> {
+async function pinContract(api: Api, contractAddress: string): Promise<{ hash: string; trieId: Uint8Array } | null> {
   const hash = api.bestHash();
   if (hash === null) {
     throw new ApiStoppedError();
@@ -113,12 +100,7 @@ export async function readMappingBytes(
     return null;
   }
   const baseSlotKey = computeMappingSlot(mappingKey, mappingSlot);
-  const baseData = await api.readSlot(
-    contractAddress,
-    baseSlotKey,
-    pin.hash,
-    pin.trieId,
-  );
+  const baseData = await api.readSlot(contractAddress, baseSlotKey, pin.hash, pin.trieId);
   if (baseData === null) {
     return null;
   }
@@ -133,18 +115,13 @@ export async function readMappingBytes(
   const result = new Uint8Array(decoded.length);
   for (let i = 0; i < slotsNeeded; i++) {
     const slotKey = addToSlot(decoded.dataSlot, i);
-    const slotData = await api.readSlot(
-      contractAddress,
-      slotKey,
-      pin.hash,
-      pin.trieId,
-    );
+    const slotData = await api.readSlot(contractAddress, slotKey, pin.hash, pin.trieId);
     // If any slot read returns null midway, throw. Silently zero-padding
     // the gap would return a corrupted contenthash that reads upstream as
     // "name not found", masking the actual RPC failure.
     if (slotData === null) {
       throw new PartialStorageReadError(contractAddress, i, slotsNeeded, {
-        mappingKind: "mapping bytes",
+        mappingKind: 'mapping bytes',
       });
     }
     const offset = i * 32;
@@ -175,17 +152,8 @@ export async function readNestedMappingString(
   if (pin === null) {
     return null;
   }
-  const baseSlotKey = computeNestedStringMappingSlot(
-    outerKey,
-    innerKey,
-    outerSlot,
-  );
-  const baseData = await api.readSlot(
-    contractAddress,
-    baseSlotKey,
-    pin.hash,
-    pin.trieId,
-  );
+  const baseSlotKey = computeNestedStringMappingSlot(outerKey, innerKey, outerSlot);
+  const baseData = await api.readSlot(contractAddress, baseSlotKey, pin.hash, pin.trieId);
   if (baseData === null) {
     return null;
   }
@@ -193,7 +161,7 @@ export async function readNestedMappingString(
   if (decoded === null) {
     return null;
   }
-  const decoder = new TextDecoder("utf-8", { fatal: false });
+  const decoder = new TextDecoder('utf-8', { fatal: false });
   if (decoded.inline) {
     return decoder.decode(decoded.data);
   }
@@ -201,15 +169,10 @@ export async function readNestedMappingString(
   const result = new Uint8Array(decoded.length);
   for (let i = 0; i < slotsNeeded; i++) {
     const slotKey = addToSlot(decoded.dataSlot, i);
-    const slotData = await api.readSlot(
-      contractAddress,
-      slotKey,
-      pin.hash,
-      pin.trieId,
-    );
+    const slotData = await api.readSlot(contractAddress, slotKey, pin.hash, pin.trieId);
     if (slotData === null) {
       throw new PartialStorageReadError(contractAddress, i, slotsNeeded, {
-        mappingKind: "nested string mapping",
+        mappingKind: 'nested string mapping',
         innerKey,
       });
     }
@@ -233,7 +196,7 @@ export async function readMappingAddress(
     return null;
   }
   const address = extractAddress(data);
-  if (address === "0x0000000000000000000000000000000000000000") {
+  if (address === '0x0000000000000000000000000000000000000000') {
     return null;
   }
   return address;

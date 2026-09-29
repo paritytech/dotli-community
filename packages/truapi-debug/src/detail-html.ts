@@ -9,37 +9,33 @@
 // `@dotli/ui` or `solid-js`. Every product/network value threaded into
 // these strings goes through `escapeHtml` before it reaches `innerHTML`.
 
-import { escapeHtml } from "@dotli/shared/html";
-import {
-  decodeChainAnnotations,
-  formatChainLabel,
-  type ChainAnnotations,
-} from "./chain-decode.ts";
-import { summariseChainMessage } from "./chain-summary.ts";
+import { escapeHtml } from '@dotli/shared';
+import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
+import { summariseChainMessage } from './chain-summary.js';
 import {
   correlationKeyOf,
   type EventStore,
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-} from "./event-store.ts";
-import { formatPayloadDetail } from "./format.ts";
-import { ridColor, tagClass } from "./row-format.ts";
-import { getSystemExplanation } from "./system-explanations.ts";
-import { summariseSystemEvent } from "./system-summary.ts";
+} from './event-store.js';
+import { formatPayloadDetail } from './format.js';
+import { ridColor, tagClass } from './row-format.js';
+import { getSystemExplanation } from './system-explanations.js';
+import { summariseSystemEvent } from './system-summary.js';
 
 export function formatTime(ts: number): string {
   const d = new Date(ts);
-  const hh = d.getHours().toString().padStart(2, "0");
-  const mm = d.getMinutes().toString().padStart(2, "0");
-  const ss = d.getSeconds().toString().padStart(2, "0");
-  const ms = d.getMilliseconds().toString().padStart(3, "0");
+  const hh = d.getHours().toString().padStart(2, '0');
+  const mm = d.getMinutes().toString().padStart(2, '0');
+  const ss = d.getSeconds().toString().padStart(2, '0');
+  const ms = d.getMilliseconds().toString().padStart(3, '0');
   return `${hh}:${mm}:${ss}.${ms}`;
 }
 
 export function formatLatency(ms: number): string {
   if (ms < 1) {
-    return "<1ms";
+    return '<1ms';
   }
   if (ms < 1000) {
     return `${String(Math.round(ms))}ms`;
@@ -53,35 +49,32 @@ export function formatLatency(ms: number): string {
  * between request, response, or subscription receives.
  */
 export function renderSingleDetail(ev: StoredEvent, store: EventStore): string {
-  if (ev.kind === "truapi") {
+  if (ev.kind === 'truapi') {
     return renderTruapiSingleDetail(ev, store);
   }
   return renderSystemSingleDetail(ev, store);
 }
 
-export function renderTruapiSingleDetail(
-  ev: StoredTruapiEvent,
-  store: EventStore,
-): string {
+export function renderTruapiSingleDetail(ev: StoredTruapiEvent, store: EventStore): string {
   const key = ev.requestId;
   const group = store.eventsInGroup(key);
   const first = store.firstInGroup(key);
-  const siblings = group.filter((g) => g.seq !== ev.seq);
+  const siblings = group.filter(g => g.seq !== ev.seq);
   const groupHtml = renderSiblingsHtml(ev, first, siblings);
 
   const ridBadge = `<span class="td-rid" style="color:${ridColor(ev.requestId)}">${escapeHtml(ev.requestId.slice(0, 6))}</span>`;
   const chain = decodeChainAnnotations(ev.tag, ev.payload);
   const summarySection = renderSummarySection(chain, ev.payload);
-  const chainSection = chain === null ? "" : renderChainSection(chain);
+  const chainSection = chain === null ? '' : renderChainSection(chain);
 
   return (
     `<dl class="td-detail-head">` +
     `<dt>time</dt><dd>${formatTime(ev.receivedAt)}</dd>` +
     `<dt>direction</dt><dd>${ev.direction}</dd>` +
-    `<dt>product</dt><dd>${ev.productId === undefined ? "(no id)" : escapeHtml(ev.productId)}</dd>` +
+    `<dt>product</dt><dd>${ev.productId === undefined ? '(no id)' : escapeHtml(ev.productId)}</dd>` +
     `<dt>tag</dt><dd>${escapeHtml(ev.tag)}</dd>` +
     `<dt>requestId</dt><dd>${ridBadge} <code>${escapeHtml(ev.requestId)}</code></dd>` +
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}${siblings.length > 0 ? ` — ${groupHtml}` : ""}</dd>` +
+    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? '' : 's'}${siblings.length > 0 ? ` — ${groupHtml}` : ''}</dd>` +
     `</dl>` +
     summarySection +
     chainSection +
@@ -89,14 +82,11 @@ export function renderTruapiSingleDetail(
   );
 }
 
-export function renderSystemSingleDetail(
-  ev: StoredSystemEvent,
-  store: EventStore,
-): string {
+export function renderSystemSingleDetail(ev: StoredSystemEvent, store: EventStore): string {
   const key = ev.flowId;
   const group = store.eventsInGroup(key);
   const first = store.firstInGroup(key);
-  const siblings = group.filter((g) => g.seq !== ev.seq);
+  const siblings = group.filter(g => g.seq !== ev.seq);
   const groupHtml = renderSiblingsHtml(ev, first, siblings);
   const flowBadge = `<span class="td-rid" style="color:${ridColor(ev.flowId)}">${escapeHtml(ev.flowId.slice(0, 6))}</span>`;
   const summary = summariseSystemEvent(ev);
@@ -108,7 +98,7 @@ export function renderSystemSingleDetail(
     `<dt>layer</dt><dd>${escapeHtml(ev.layer)}</dd>` +
     `<dt>event</dt><dd>${escapeHtml(ev.event)}</dd>` +
     `<dt>flowId</dt><dd>${flowBadge} <code>${escapeHtml(ev.flowId)}</code></dd>` +
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}${siblings.length > 0 ? ` — ${groupHtml}` : ""}</dd>` +
+    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? '' : 's'}${siblings.length > 0 ? ` — ${groupHtml}` : ''}</dd>` +
     `</dl>` +
     `<div class="td-detail-section-title">Summary</div>` +
     `<div class="td-detail-summary">${escapeHtml(summary)}</div>` +
@@ -126,7 +116,7 @@ export function renderSystemSingleDetail(
 export function renderExplanationSection(ev: StoredSystemEvent): string {
   const explanation = getSystemExplanation(ev.layer, ev.event);
   if (explanation === undefined) {
-    return "";
+    return '';
   }
   return (
     `<details class="td-detail-explanation">` +
@@ -144,24 +134,22 @@ export function renderExplanationSection(ev: StoredSystemEvent): string {
  */
 export function renderExplanationBody(body: string): string {
   const paragraphs = body.split(/\n\n+/);
-  return paragraphs.map(renderExplanationParagraph).join("");
+  return paragraphs.map(renderExplanationParagraph).join('');
 }
 
 export function renderExplanationParagraph(paragraph: string): string {
   // Backticked `identifiers` become <code>identifiers</code>. Bullet lines
   // (`• ` prefix) become list items.
-  const lines = paragraph.split("\n");
-  const isBulletList = lines.every(
-    (l) => l.trim().startsWith("• ") || l.trim() === "",
-  );
+  const lines = paragraph.split('\n');
+  const isBulletList = lines.every(l => l.trim().startsWith('• ') || l.trim() === '');
   if (isBulletList) {
     const items = lines
-      .filter((l) => l.trim() !== "")
-      .map((l) => {
+      .filter(l => l.trim() !== '')
+      .map(l => {
         const content = l.trim().slice(2);
         return `<li>${formatInlineCode(content)}</li>`;
       })
-      .join("");
+      .join('');
     return `<ul class="td-detail-explanation-list">${items}</ul>`;
   }
   return `<p>${formatInlineCode(paragraph)}</p>`;
@@ -173,25 +161,21 @@ export function formatInlineCode(text: string): string {
   // backtick search on the escaped string. It still identifies the
   // literal `\`…\`` boundaries.
   const escaped = escapeHtml(text);
-  return escaped.replace(/`([^`]+)`/g, "<code>$1</code>");
+  return escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
 }
 
 /** Shared rendering of sibling pills for the single-event detail view. */
-export function renderSiblingsHtml(
-  ev: StoredEvent,
-  first: StoredEvent | undefined,
-  siblings: StoredEvent[],
-): string {
+export function renderSiblingsHtml(ev: StoredEvent, first: StoredEvent | undefined, siblings: StoredEvent[]): string {
   if (siblings.length === 0) {
-    return "(no siblings in buffer)";
+    return '(no siblings in buffer)';
   }
   return siblings
-    .map((s) => {
+    .map(s => {
       const deltaMs = first === undefined ? 0 : s.receivedAt - first.receivedAt;
-      const sign = ev.receivedAt > s.receivedAt ? "−" : "+";
+      const sign = ev.receivedAt > s.receivedAt ? '−' : '+';
       const deltaRelToSelected = Math.abs(s.receivedAt - ev.receivedAt);
       const label =
-        s.kind === "truapi"
+        s.kind === 'truapi'
           ? `${escapeHtml(s.tag)} ${sign}${formatLatency(deltaRelToSelected)}`
           : `${escapeHtml(s.layer)}.${escapeHtml(s.event)} ${sign}${formatLatency(deltaRelToSelected)}`;
       return (
@@ -201,7 +185,7 @@ export function renderSiblingsHtml(
         `</span>`
       );
     })
-    .join(" · ");
+    .join(' · ');
 }
 
 /**
@@ -209,20 +193,16 @@ export function renderSiblingsHtml(
  * at the top of the detail pane so the reader doesn't have to parse
  * the JSON payload to understand the message intent.
  */
-export function renderSummarySection(
-  chain: ChainAnnotations | null,
-  payload: unknown,
-): string {
+export function renderSummarySection(chain: ChainAnnotations | null, payload: unknown): string {
   if (chain === null) {
-    return "";
+    return '';
   }
   const summary = summariseChainMessage(chain, payload);
   if (summary === null) {
-    return "";
+    return '';
   }
   return (
-    `<div class="td-detail-section-title">Summary</div>` +
-    `<div class="td-detail-summary">${escapeHtml(summary)}</div>`
+    `<div class="td-detail-section-title">Summary</div>` + `<div class="td-detail-summary">${escapeHtml(summary)}</div>`
   );
 }
 
@@ -243,13 +223,13 @@ export function renderGroupDetail(ev: StoredEvent, store: EventStore): string {
   const durationRow =
     first !== undefined && last !== undefined && first.seq !== last.seq
       ? `<dt>duration</dt><dd>${formatLatency(last.receivedAt - first.receivedAt)}</dd>`
-      : "";
+      : '';
 
   const headerRows: string[] = [];
-  if (ev.kind === "truapi") {
+  if (ev.kind === 'truapi') {
     headerRows.push(
       `<dt>requestId</dt><dd>${keyBadge} <code>${escapeHtml(ev.requestId)}</code></dd>`,
-      `<dt>product</dt><dd>${ev.productId === undefined ? "(no id)" : escapeHtml(ev.productId)}</dd>`,
+      `<dt>product</dt><dd>${ev.productId === undefined ? '(no id)' : escapeHtml(ev.productId)}</dd>`,
     );
   } else {
     headerRows.push(
@@ -258,41 +238,30 @@ export function renderGroupDetail(ev: StoredEvent, store: EventStore): string {
       `<dt>layer</dt><dd>${escapeHtml(ev.layer)}</dd>`,
     );
   }
-  headerRows.push(
-    `<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? "" : "s"}</dd>`,
-  );
-  if (durationRow !== "") {
+  headerRows.push(`<dt>group</dt><dd>${String(group.length)} event${group.length === 1 ? '' : 's'}</dd>`);
+  if (durationRow !== '') {
     headerRows.push(durationRow);
   }
-  const header = `<dl class="td-detail-head">${headerRows.join("")}</dl>`;
+  const header = `<dl class="td-detail-head">${headerRows.join('')}</dl>`;
 
   const members = group
-    .map((m) => {
+    .map(m => {
       const deltaMs = first === undefined ? 0 : m.receivedAt - first.receivedAt;
       const deltaLabel =
-        first !== undefined && first.seq !== m.seq
-          ? `<span class="td-latency">+${formatLatency(deltaMs)}</span>`
-          : "";
-      return m.kind === "truapi"
-        ? renderTruapiMemberBlock(m, deltaLabel)
-        : renderSystemMemberBlock(m, deltaLabel);
+        first !== undefined && first.seq !== m.seq ? `<span class="td-latency">+${formatLatency(deltaMs)}</span>` : '';
+      return m.kind === 'truapi' ? renderTruapiMemberBlock(m, deltaLabel) : renderSystemMemberBlock(m, deltaLabel);
     })
-    .join("");
+    .join('');
 
   return header + members;
 }
 
-export function renderTruapiMemberBlock(
-  m: StoredTruapiEvent,
-  deltaLabel: string,
-): string {
+export function renderTruapiMemberBlock(m: StoredTruapiEvent, deltaLabel: string): string {
   const arrow =
-    m.direction === "outgoing"
-      ? `<span class="td-arrow-out">▶</span>`
-      : `<span class="td-arrow-in">◀</span>`;
+    m.direction === 'outgoing' ? `<span class="td-arrow-out">▶</span>` : `<span class="td-arrow-in">◀</span>`;
   const chain = decodeChainAnnotations(m.tag, m.payload);
   const summaryBlock = renderSummarySection(chain, m.payload);
-  const chainBlock = chain === null ? "" : renderChainSection(chain);
+  const chainBlock = chain === null ? '' : renderChainSection(chain);
   return (
     `<div class="td-detail-member" data-seq="${String(m.seq)}">` +
     `<div class="td-detail-member-header">` +
@@ -308,10 +277,7 @@ export function renderTruapiMemberBlock(
   );
 }
 
-export function renderSystemMemberBlock(
-  m: StoredSystemEvent,
-  deltaLabel: string,
-): string {
+export function renderSystemMemberBlock(m: StoredSystemEvent, deltaLabel: string): string {
   const summary = summariseSystemEvent(m);
   return (
     `<div class="td-detail-member" data-seq="${String(m.seq)}">` +
@@ -342,38 +308,25 @@ export function renderChainSection(ann: ChainAnnotations): string {
     rows.push(`<dt>event</dt><dd>${escapeHtml(ann.chainEventTag)}</dd>`);
   }
   if (ann.genesisHash !== undefined) {
-    rows.push(
-      `<dt>genesis</dt><dd><code>${escapeHtml(ann.genesisHash)}</code></dd>`,
-    );
+    rows.push(`<dt>genesis</dt><dd><code>${escapeHtml(ann.genesisHash)}</code></dd>`);
   }
   if (ann.followSubscriptionId !== undefined) {
-    rows.push(
-      `<dt>followSub</dt><dd><code>${escapeHtml(ann.followSubscriptionId)}</code></dd>`,
-    );
+    rows.push(`<dt>followSub</dt><dd><code>${escapeHtml(ann.followSubscriptionId)}</code></dd>`);
   }
   if (ann.operationId !== undefined) {
-    rows.push(
-      `<dt>opId</dt><dd><code>${escapeHtml(ann.operationId)}</code></dd>`,
-    );
+    rows.push(`<dt>opId</dt><dd><code>${escapeHtml(ann.operationId)}</code></dd>`);
   }
   if (ann.blockHash !== undefined) {
-    rows.push(
-      `<dt>blockHash</dt><dd><code>${escapeHtml(ann.blockHash)}</code></dd>`,
-    );
+    rows.push(`<dt>blockHash</dt><dd><code>${escapeHtml(ann.blockHash)}</code></dd>`);
   }
   if (ann.outcome !== undefined) {
-    const outcomeClass =
-      ann.outcome === "error" ? "td-outcome-err" : "td-outcome-ok";
+    const outcomeClass = ann.outcome === 'error' ? 'td-outcome-err' : 'td-outcome-ok';
     const outcomeText =
-      ann.outcome === "error" && ann.errorMessage !== undefined
-        ? `error: ${ann.errorMessage}`
-        : ann.outcome;
-    rows.push(
-      `<dt>outcome</dt><dd class="${outcomeClass}">${escapeHtml(outcomeText)}</dd>`,
-    );
+      ann.outcome === 'error' && ann.errorMessage !== undefined ? `error: ${ann.errorMessage}` : ann.outcome;
+    rows.push(`<dt>outcome</dt><dd class="${outcomeClass}">${escapeHtml(outcomeText)}</dd>`);
   }
   return (
     `<div class="td-detail-section-title">Chain</div>` +
-    `<dl class="td-detail-head td-chain-head">${rows.join("")}</dl>`
+    `<dl class="td-detail-head td-chain-head">${rows.join('')}</dl>`
   );
 }

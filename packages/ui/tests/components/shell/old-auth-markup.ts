@@ -6,8 +6,8 @@
 // Shell.tsx's static markup, changed by the same writes topbar.ts made. The
 // island tests compare against it node for node.
 
-import { escapeHtml } from "@dotli/shared/html";
-import { query } from "../../support";
+import { escapeHtml } from '@dotli/shared';
+import { query } from '../../support.js';
 
 const USER_SVG = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`;
 
@@ -21,7 +21,7 @@ const PENDING_ICON_SVG =
   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>';
 
 function fromHtml(html: string): HTMLElement {
-  const template = document.createElement("template");
+  const template = document.createElement('template');
   template.innerHTML = html;
   return template.content.firstElementChild as HTMLElement;
 }
@@ -39,8 +39,7 @@ export function normalized(el: Element): Element {
   for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
     if (
       node.nodeType === Node.COMMENT_NODE ||
-      (node.nodeType === Node.TEXT_NODE &&
-        (node.textContent ?? "").trim() === "")
+      (node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() === '')
     ) {
       drop.push(node);
     }
@@ -53,46 +52,40 @@ export function normalized(el: Element): Element {
 
 // --- auth button (initTopBar, renderLoggedOut, renderTruapiLoggedIn) ---
 
-export function oldAuthButton(
-  state: { initials: string | undefined } | "logged-out",
-): HTMLElement {
+export function oldAuthButton(state: { initials: string | undefined } | 'logged-out'): HTMLElement {
   const button = fromHtml(STATIC_AUTH_BUTTON);
-  button.removeAttribute("disabled");
-  button.removeAttribute("aria-busy");
-  if (state === "logged-out") {
+  button.removeAttribute('disabled');
+  button.removeAttribute('aria-busy');
+  if (state === 'logged-out') {
     button.innerHTML = USER_SVG;
-    button.title = "Login with Polkadot Mobile";
-    button.setAttribute("aria-label", "Login with Polkadot Mobile");
+    button.title = 'Login with Polkadot Mobile';
+    button.setAttribute('aria-label', 'Login with Polkadot Mobile');
   } else {
     button.innerHTML =
       state.initials !== undefined
         ? `<div class="user-badge">${escapeHtml(state.initials)}</div>`
         : `<div class="user-badge user-badge-anon">${USER_SVG}</div>`;
-    button.title = "Account";
-    button.setAttribute("aria-label", "Account");
+    button.title = 'Account';
+    button.setAttribute('aria-label', 'Account');
   }
   return button;
 }
 
 // --- user popover (renderTruapiLoggedIn, setUserPopoverNoUsernameHint) ---
 
-export function oldUserPopover(opts: {
-  username: string;
-  hint: boolean;
-  open: boolean;
-}): HTMLElement {
+export function oldUserPopover(opts: { username: string; hint: boolean; open: boolean }): HTMLElement {
   const popover = fromHtml(STATIC_USER_POPOVER);
-  const name = query(popover, "#user-popover-username");
+  const name = query(popover, '#user-popover-username');
   name.textContent = opts.username;
   if (opts.hint) {
-    const hint = document.createElement("div");
-    hint.id = "user-popover-hint";
-    hint.className = "user-popover-hint";
-    hint.textContent = "No username found for this account on this network.";
-    name.insertAdjacentElement("afterend", hint);
+    const hint = document.createElement('div');
+    hint.id = 'user-popover-hint';
+    hint.className = 'user-popover-hint';
+    hint.textContent = 'No username found for this account on this network.';
+    name.insertAdjacentElement('afterend', hint);
   }
   if (opts.open) {
-    popover.classList.add("open");
+    popover.classList.add('open');
   }
   return popover;
 }
@@ -100,13 +93,13 @@ export function oldUserPopover(opts: {
 // --- pairing modal (initTopBar, openModal, render*, closeModal) ---
 
 export type OldModalBody =
-  | { kind: "empty" }
-  | { kind: "spinner" }
-  | { kind: "canvas"; payload: string }
-  | { kind: "mobile-qr"; payload: string; qrShown: boolean }
-  | { kind: "authenticating" }
+  | { kind: 'empty' }
+  | { kind: 'spinner' }
+  | { kind: 'canvas'; payload: string }
+  | { kind: 'mobile-qr'; payload: string; qrShown: boolean }
+  | { kind: 'authenticating' }
   | {
-      kind: "error";
+      kind: 'error';
       title: string;
       subtitle: string;
       detail?: string;
@@ -123,80 +116,80 @@ export function oldModal(opts: {
   mobileClass?: boolean;
 }): HTMLElement {
   const backdrop = fromHtml(STATIC_MODAL);
-  backdrop.setAttribute("role", "dialog");
-  backdrop.setAttribute("aria-modal", "true");
-  backdrop.setAttribute("aria-labelledby", "auth-modal-title");
+  backdrop.setAttribute('role', 'dialog');
+  backdrop.setAttribute('aria-modal', 'true');
+  backdrop.setAttribute('aria-labelledby', 'auth-modal-title');
   backdrop.tabIndex = -1;
   const find = (id: string): HTMLElement => query(backdrop, `#${id}`);
-  const title = find("auth-modal-title");
-  const reason = find("auth-modal-reason");
-  const hint = find("auth-modal-hint");
-  const qr = find("auth-modal-qr");
-  const getApp = find("auth-modal-get-app") as HTMLAnchorElement;
-  getApp.href = "https://docs.polkadot.com/apps/";
+  const title = find('auth-modal-title');
+  const reason = find('auth-modal-reason');
+  const hint = find('auth-modal-hint');
+  const qr = find('auth-modal-qr');
+  const getApp = find('auth-modal-get-app') as HTMLAnchorElement;
+  getApp.href = 'https://docs.polkadot.com/apps/';
 
   title.innerHTML =
     opts.productLabel !== undefined
       ? `${escapeHtml(opts.productLabel)} is asking you <span class="auth-modal-title-nowrap">to sign in</span>`
-      : "Login with Polkadot Mobile";
+      : 'Login with Polkadot Mobile';
   if (opts.reason !== undefined) {
     reason.textContent = opts.reason;
     reason.hidden = false;
   } else {
-    reason.textContent = "";
+    reason.textContent = '';
     reason.hidden = true;
   }
   hint.textContent = opts.hint;
   getApp.hidden = opts.getAppHidden;
   if (opts.open) {
-    backdrop.classList.add("open");
+    backdrop.classList.add('open');
   }
   if (opts.mobileClass === true) {
-    qr.classList.add("auth-modal-qr-mobile");
+    qr.classList.add('auth-modal-qr-mobile');
   }
 
   const body = opts.body;
   switch (body.kind) {
-    case "empty":
-      qr.innerHTML = "";
+    case 'empty':
+      qr.innerHTML = '';
       break;
-    case "spinner":
+    case 'spinner':
       qr.innerHTML = `<div class="spinner"></div>`;
       break;
-    case "canvas": {
-      const canvas = document.createElement("canvas");
-      canvas.dataset.qrPayload = body.payload;
-      qr.innerHTML = "";
+    case 'canvas': {
+      const canvas = document.createElement('canvas');
+      canvas.dataset['qrPayload'] = body.payload;
+      qr.innerHTML = '';
       qr.appendChild(canvas);
       break;
     }
-    case "mobile-qr": {
-      const canvas = document.createElement("canvas");
-      canvas.dataset.qrPayload = body.payload;
-      qr.innerHTML = "";
-      const qrLink = document.createElement("a");
+    case 'mobile-qr': {
+      const canvas = document.createElement('canvas');
+      canvas.dataset['qrPayload'] = body.payload;
+      qr.innerHTML = '';
+      const qrLink = document.createElement('a');
       qrLink.href = body.payload;
-      qrLink.className = "auth-modal-qr-link";
+      qrLink.className = 'auth-modal-qr-link';
       qrLink.appendChild(canvas);
       qrLink.hidden = true;
-      const openApp = document.createElement("a");
+      const openApp = document.createElement('a');
       openApp.href = body.payload;
-      openApp.className = "auth-modal-open-app";
-      openApp.textContent = "Login With Polkadot App";
-      const showQr = document.createElement("button");
-      showQr.type = "button";
-      showQr.className = "auth-modal-qr-toggle";
-      showQr.textContent = "Show QR instead";
+      openApp.className = 'auth-modal-open-app';
+      openApp.textContent = 'Login With Polkadot App';
+      const showQr = document.createElement('button');
+      showQr.type = 'button';
+      showQr.className = 'auth-modal-qr-toggle';
+      showQr.textContent = 'Show QR instead';
       qr.append(openApp, showQr, qrLink);
       if (body.qrShown) {
         qrLink.hidden = false;
-        openApp.classList.add("auth-modal-open-app-link");
+        openApp.classList.add('auth-modal-open-app-link');
         showQr.hidden = true;
         qr.append(qrLink, openApp);
       }
       break;
     }
-    case "authenticating":
+    case 'authenticating':
       qr.innerHTML = `
     <div class="attesting">
       <div class="spinner"></div>
@@ -204,34 +197,34 @@ export function oldModal(opts: {
     </div>
   `;
       break;
-    case "error": {
-      const container = document.createElement("div");
-      container.className = "auth-modal-error-view";
-      const icon = document.createElement("div");
-      icon.className = "auth-modal-pending-icon";
+    case 'error': {
+      const container = document.createElement('div');
+      container.className = 'auth-modal-error-view';
+      const icon = document.createElement('div');
+      icon.className = 'auth-modal-pending-icon';
       icon.innerHTML = PENDING_ICON_SVG;
       container.appendChild(icon);
-      const heading = document.createElement("div");
-      heading.className = "auth-modal-pending-title";
+      const heading = document.createElement('div');
+      heading.className = 'auth-modal-pending-title';
       heading.textContent = body.title;
       container.appendChild(heading);
-      const subtitle = document.createElement("div");
-      subtitle.className = "auth-modal-pending-subtitle";
+      const subtitle = document.createElement('div');
+      subtitle.className = 'auth-modal-pending-subtitle';
       subtitle.textContent = body.subtitle;
       container.appendChild(subtitle);
       if (body.detail !== undefined && body.detail.length > 0) {
-        const detail = document.createElement("p");
-        detail.className = "auth-modal-error";
+        const detail = document.createElement('p');
+        detail.className = 'auth-modal-error';
         detail.textContent = body.detail;
         container.appendChild(detail);
       }
       if (body.retry) {
-        const retry = document.createElement("button");
-        retry.className = "auth-modal-retry";
-        retry.textContent = "Retry";
+        const retry = document.createElement('button');
+        retry.className = 'auth-modal-retry';
+        retry.textContent = 'Retry';
         container.appendChild(retry);
       }
-      qr.innerHTML = "";
+      qr.innerHTML = '';
       qr.appendChild(container);
       break;
     }

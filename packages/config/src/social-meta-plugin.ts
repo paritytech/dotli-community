@@ -4,7 +4,7 @@
 // Injects description, OpenGraph and Twitter card tags so shared links unfurl.
 // A plugin, not index.html, because crawlers need an absolute og:image URL.
 
-import type { HtmlTagDescriptor, Plugin } from "vite";
+import type { HtmlTagDescriptor, Plugin } from 'vite';
 
 export interface SocialMeta {
   /** Page title as shown in link previews. Should match `<title>`. */
@@ -21,35 +21,35 @@ export interface SocialMeta {
 
 /** Resolves `image` against `VITE_APP_URL`, keeping it relative when unset. */
 export function socialImageUrl(image: string): string {
-  const appUrl = process.env.VITE_APP_URL?.trim();
-  if (appUrl === undefined || appUrl === "") {
+  const appUrl = process.env['VITE_APP_URL']?.trim();
+  if (appUrl === undefined || appUrl === '') {
     return image;
   }
   return new URL(image, appUrl).href;
 }
 
 function meta(attrs: Record<string, string>): HtmlTagDescriptor {
-  return { tag: "meta", attrs, injectTo: "head" as const };
+  return { tag: 'meta', attrs, injectTo: 'head' as const };
 }
 
 export function socialMetaTags(config: SocialMeta): Plugin {
   return {
-    name: "dotli-social-meta",
+    name: 'dotli-social-meta',
     transformIndexHtml() {
       const image = socialImageUrl(config.image);
       return [
-        meta({ name: "description", content: config.description }),
-        meta({ property: "og:type", content: "website" }),
-        meta({ property: "og:site_name", content: config.siteName }),
-        meta({ property: "og:title", content: config.title }),
-        meta({ property: "og:description", content: config.description }),
-        meta({ property: "og:image", content: image }),
-        meta({ property: "og:image:alt", content: config.imageAlt }),
-        meta({ name: "twitter:card", content: "summary" }),
-        meta({ name: "twitter:title", content: config.title }),
-        meta({ name: "twitter:description", content: config.description }),
-        meta({ name: "twitter:image", content: image }),
-        meta({ name: "twitter:image:alt", content: config.imageAlt }),
+        meta({ name: 'description', content: config.description }),
+        meta({ property: 'og:type', content: 'website' }),
+        meta({ property: 'og:site_name', content: config.siteName }),
+        meta({ property: 'og:title', content: config.title }),
+        meta({ property: 'og:description', content: config.description }),
+        meta({ property: 'og:image', content: image }),
+        meta({ property: 'og:image:alt', content: config.imageAlt }),
+        meta({ name: 'twitter:card', content: 'summary' }),
+        meta({ name: 'twitter:title', content: config.title }),
+        meta({ name: 'twitter:description', content: config.description }),
+        meta({ name: 'twitter:image', content: image }),
+        meta({ name: 'twitter:image:alt', content: config.imageAlt }),
       ];
     },
   };

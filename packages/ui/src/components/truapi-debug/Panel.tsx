@@ -21,46 +21,37 @@
 // - The detail pane is rebuilt only on user actions (`detailRevision`), never
 //   because traffic arrived.
 
-import {
-  createMemo,
-  createSignal,
-  flush,
-  onCleanup,
-  onSettled,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import {
   readStoredDock,
   writeStoredDock,
   type DockPosition,
-} from "@dotli/truapi-debug/dock-storage";
-import {
   correlationKeyOf,
   firstNewIndex,
   type EventSeq,
   type EventStore,
   type StoredEvent,
-} from "@dotli/truapi-debug/event-store";
-import { buildExport, type ExportMeta } from "@dotli/truapi-debug/export";
-import {
+  buildExport,
+  type ExportMeta,
   initialFilterState,
   matches,
   type FilterState,
-} from "@dotli/truapi-debug/filters";
-import { panelDockInset } from "@dotli/truapi-debug/iframe-layout";
-import type { ResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
-import { setDockInset } from "../../product-frame-layout";
-import { DetailPane } from "./DetailPane";
-import { EventList, type Selection } from "./EventList";
-import { Filters } from "./Filters";
-import { Header } from "./Header";
-import { BodySplitter, ResizeHandle } from "./Resizers";
-import { ResolutionView } from "./ResolutionView";
-import { Tabs, type PanelView } from "./Tabs";
-import { TimelineView } from "./TimelineView";
+  panelDockInset,
+} from '@dotli/truapi-debug';
 
-export const PANEL_ID = "truapi-debug-panel";
+import type { ResolutionRecorder } from '@dotli/truapi-debug';
+import { setDockInset } from '../../product-frame-layout.js';
+import { DetailPane } from './DetailPane.js';
+import { EventList, type Selection } from './EventList.js';
+import { Filters } from './Filters.js';
+import { Header } from './Header.js';
+import { BodySplitter, ResizeHandle } from './Resizers.js';
+import { ResolutionView } from './ResolutionView.js';
+import { Tabs, type PanelView } from './Tabs.js';
+import { TimelineView } from './TimelineView.js';
+
+export const PANEL_ID = 'truapi-debug-panel';
 
 /**
  * The first row still in view at `scrollTop`, found by bisection over the
@@ -98,9 +89,7 @@ interface Snapshot {
   takenAt: number;
 }
 
-function sortProducts(
-  products: (string | undefined)[],
-): (string | undefined)[] {
+function sortProducts(products: (string | undefined)[]): (string | undefined)[] {
   return products.sort((a, b) => {
     if (a === undefined) {
       return 1;
@@ -125,14 +114,10 @@ class ShownCounter {
   private filters: FilterState | null = null;
 
   /** Start from what the panel last drew. */
-  seed(
-    shown: readonly StoredEvent[],
-    events: readonly StoredEvent[],
-    filters: FilterState,
-  ): void {
-    this.seqs = shown.map((e) => e.seq);
+  seed(shown: readonly StoredEvent[], events: readonly StoredEvent[], filters: FilterState): void {
+    this.seqs = shown.map(e => e.seq);
     this.head = 0;
-    this.lastSeq = events.length > 0 ? events[events.length - 1].seq : -1;
+    this.lastSeq = events.at(-1)?.seq ?? -1;
     this.filters = filters;
   }
 
@@ -140,21 +125,21 @@ class ShownCounter {
     if (filters !== this.filters) {
       this.seed([], [], filters);
     }
-    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
-    while (this.head < this.seqs.length && this.seqs[this.head] < firstSeq) {
+    const firstSeq = events[0]?.seq ?? Infinity;
+    let headSeq = this.seqs[this.head];
+    while (headSeq !== undefined && headSeq < firstSeq) {
       this.head++;
+      headSeq = this.seqs[this.head];
     }
-    for (
-      let i = firstNewIndex({ lastSeq: this.lastSeq }, events);
-      i < events.length;
-      i++
-    ) {
-      if (matches(events[i], filters)) {
-        this.seqs.push(events[i].seq);
+    for (let i = firstNewIndex({ lastSeq: this.lastSeq }, events); i < events.length; i++) {
+      const ev = events[i];
+      if (ev !== undefined && matches(ev, filters)) {
+        this.seqs.push(ev.seq);
       }
     }
-    if (events.length > 0) {
-      this.lastSeq = events[events.length - 1].seq;
+    const lastEvent = events.at(-1);
+    if (lastEvent !== undefined) {
+      this.lastSeq = lastEvent.seq;
     }
     if (this.head > 1024) {
       this.seqs = this.seqs.slice(this.head);
@@ -165,11 +150,8 @@ class ShownCounter {
 }
 
 function countsLabel(total: number, dropped: number, shown: number): string {
-  const totalLabel =
-    dropped > 0
-      ? `${String(total)} events (+${String(dropped)} dropped)`
-      : `${String(total)} events`;
-  const filterNote = shown !== total ? ` · ${String(shown)} shown` : "";
+  const totalLabel = dropped > 0 ? `${String(total)} events (+${String(dropped)} dropped)` : `${String(total)} events`;
+  const filterNote = shown !== total ? ` · ${String(shown)} shown` : '';
   return `${totalLabel}${filterNote}`;
 }
 
@@ -187,7 +169,7 @@ export function Panel(props: {
   let listEl: HTMLDivElement | undefined;
   let tooltipEl: HTMLDivElement | undefined;
   /** Inline drag-resize height stashed while collapsed, restored on expand. */
-  let expandedHeight = "";
+  let expandedHeight = '';
 
   const takeSnapshot = (): Snapshot => ({
     // `list()` is the live ring buffer; copy it.
@@ -200,11 +182,9 @@ export function Panel(props: {
 
   const [snapshot, setSnapshot] = createSignal<Snapshot>(takeSnapshot());
   const [filters, setFilters] = createSignal<FilterState>(initialFilterState());
-  const [view, setView] = createSignal<PanelView>("list");
+  const [view, setView] = createSignal<PanelView>('list');
   const [selection, setSelection] = createSignal<Selection | null>(null);
-  const [collapsed, setCollapsed] = createSignal(
-    untrack(() => props.startCollapsed),
-  );
+  const [collapsed, setCollapsed] = createSignal(untrack(() => props.startCollapsed));
   const [dock, setDock] = createSignal<DockPosition>(readStoredDock());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
@@ -214,32 +194,29 @@ export function Panel(props: {
     events: readonly StoredEvent[];
     filters: FilterState;
   } | null = null;
-  const visible = createMemo<readonly StoredEvent[]>((prev) => {
+  const visible = createMemo<readonly StoredEvent[]>(prev => {
     const events = snapshot().events;
     const current = filters();
     const last = filtered;
     filtered = { events, filters: current };
     if (prev === undefined || last?.filters !== current) {
-      return events.filter((e) => matches(e, current));
+      return events.filter(e => matches(e, current));
     }
     // Same filters: drop what left the head, filter only what was appended.
-    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
-    let dropped = 0;
-    while (dropped < prev.length && prev[dropped].seq < firstSeq) {
-      dropped++;
-    }
+    const firstSeq = events[0]?.seq ?? Infinity;
+    const kept = prev.findIndex(e => e.seq >= firstSeq);
+    const dropped = kept === -1 ? prev.length : kept;
     const added: StoredEvent[] = [];
     for (let i = firstNewIndex(last.events, events); i < events.length; i++) {
-      if (matches(events[i], current)) {
-        added.push(events[i]);
+      const ev = events[i];
+      if (ev !== undefined && matches(ev, current)) {
+        added.push(ev);
       }
     }
     if (dropped === 0 && added.length === 0) {
       return prev;
     }
-    return dropped === 0
-      ? [...prev, ...added]
-      : [...prev.slice(dropped), ...added];
+    return dropped === 0 ? [...prev, ...added] : [...prev.slice(dropped), ...added];
   });
   // The Resolution view draws the recorder, not the store: TrUAPI traffic
   // (most of it) leaves this unchanged, so it does not redraw.
@@ -250,20 +227,17 @@ export function Panel(props: {
 
   // While collapsed, the header count follows the store without a snapshot.
   const shown = new ShownCounter();
-  const [collapsedCounts, setCollapsedCounts] = createSignal<string | null>(
-    null,
-  );
+  const [collapsedCounts, setCollapsedCounts] = createSignal<string | null>(null);
   if (untrack(collapsed)) {
     untrack(() => {
       shown.seed(visible(), snapshot().events, filters());
     });
   }
   const counts = (): string =>
-    collapsedCounts() ??
-    countsLabel(snapshot().events.length, snapshot().dropped, visible().length);
+    collapsedCounts() ?? countsLabel(snapshot().events.length, snapshot().dropped, visible().length);
 
   const refreshDetail = (): void => {
-    setDetailRevision((n) => n + 1);
+    setDetailRevision(n => n + 1);
   };
 
   /**
@@ -273,19 +247,12 @@ export function Panel(props: {
    */
   const commit = (update: () => void): void => {
     const list = listEl;
-    const wasAtBottom =
-      list !== undefined &&
-      list.scrollHeight - list.clientHeight - list.scrollTop < 4;
+    const wasAtBottom = list !== undefined && list.scrollHeight - list.clientHeight - list.scrollTop < 4;
     const prevScrollTop = list?.scrollTop ?? 0;
-    const anchor =
-      list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
+    const anchor = list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
     const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
-    if (
-      list !== undefined &&
-      view() === "list" &&
-      list.querySelector(".td-row") !== null
-    ) {
+    if (list !== undefined && view() === 'list' && list.querySelector('.td-row') !== null) {
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       } else if (anchor?.isConnected === true) {
@@ -318,11 +285,7 @@ export function Panel(props: {
       // expanding catches up.
       if (collapsed()) {
         const events = store.list();
-        const label = countsLabel(
-          events.length,
-          store.dropped(),
-          shown.count(events, filters()),
-        );
+        const label = countsLabel(events.length, store.dropped(), shown.count(events, filters()));
         flush(() => setCollapsedCounts(label));
         return;
       }
@@ -347,11 +310,11 @@ export function Panel(props: {
         width: size ?? panelEl?.offsetWidth ?? 0,
         height: size ?? panelEl?.offsetHeight ?? 0,
       }),
-      "debug",
+      'debug',
     );
   };
   onCleanup(() => {
-    setDockInset({ right: 0, bottom: 0 }, "debug");
+    setDockInset({ right: 0, bottom: 0 }, 'debug');
   });
 
   /**
@@ -364,19 +327,19 @@ export function Panel(props: {
     if (el === undefined) {
       return;
     }
-    el.style.height = "";
-    el.style.width = "";
+    el.style.height = '';
+    el.style.width = '';
     // The stashed pre-collapse height belongs to the previous orientation.
-    expandedHeight = "";
-    el.style.removeProperty("--td-left-width");
-    el.style.removeProperty("--td-top-height");
+    expandedHeight = '';
+    el.style.removeProperty('--td-left-width');
+    el.style.removeProperty('--td-top-height');
     // Right-dock sits below the host topbar (40px) so the dock toggle and
     // session controls remain reachable. Bottom-dock pins to the viewport
     // bottom edge.
-    if (dock() === "right") {
-      el.style.top = document.getElementById("topbar") !== null ? "40px" : "0";
+    if (dock() === 'right') {
+      el.style.top = document.getElementById('topbar') !== null ? '40px' : '0';
     } else {
-      el.style.top = "";
+      el.style.top = '';
     }
     if (persist) {
       writeStoredDock(dock());
@@ -398,8 +361,7 @@ export function Panel(props: {
     });
   };
 
-  const isShown = (seq: EventSeq | undefined): boolean =>
-    seq !== undefined && visible().some((e) => e.seq === seq);
+  const isShown = (seq: EventSeq | undefined): boolean => seq !== undefined && visible().some(e => e.seq === seq);
 
   // The detail pane does not depend on the filters: it is rebuilt only when
   // the selected event leaves or enters the list.
@@ -421,7 +383,7 @@ export function Panel(props: {
     }
     // `display: none` on the pane under the cursor is not guaranteed to fire
     // a boundary event, which would strand the tooltip over the page.
-    tooltipEl?.classList.remove("visible");
+    tooltipEl?.classList.remove('visible');
     commit(() => {
       setView(next);
       refreshSnapshot();
@@ -433,7 +395,7 @@ export function Panel(props: {
   const exportJson = (): string => {
     const all = store.list();
     const current = filters();
-    const events = all.filter((e) => matches(e, current));
+    const events = all.filter(e => matches(e, current));
     const meta: ExportMeta = {
       exportedAt: new Date().toISOString(),
       url: window.location.href,
@@ -452,19 +414,14 @@ export function Panel(props: {
       id={PANEL_ID}
       class={{
         collapsed: collapsed(),
-        "docked-right": dock() === "right",
-        "res-view": view() === "resolution",
+        'docked-right': dock() === 'right',
+        'res-view': view() === 'resolution',
       }}
-      ref={(el) => {
+      ref={el => {
         panelEl = el;
       }}
     >
-      <ResizeHandle
-        panel={() => panelEl}
-        collapsed={collapsed()}
-        dock={dock()}
-        onResize={refit}
-      />
+      <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={dock()} onResize={refit} />
       <Header
         counts={counts()}
         paused={paused()}
@@ -487,7 +444,7 @@ export function Panel(props: {
           });
         }}
         onToggleDock={() => {
-          flush(() => setDock(dock() === "bottom" ? "right" : "bottom"));
+          flush(() => setDock(dock() === 'bottom' ? 'right' : 'bottom'));
           applyDockLayout(true);
         }}
         onToggleCollapse={() => {
@@ -499,8 +456,8 @@ export function Panel(props: {
               // 32px rule and leave an empty panel-sized box. Stash it while
               // collapsed and restore it on expand.
               expandedHeight = el.style.height;
-              el.style.height = "";
-            } else if (expandedHeight !== "") {
+              el.style.height = '';
+            } else if (expandedHeight !== '') {
               el.style.height = expandedHeight;
             }
           }
@@ -517,11 +474,7 @@ export function Panel(props: {
           refit();
         }}
       />
-      <Filters
-        filters={filters()}
-        products={snapshot().products}
-        onChange={changeFilters}
-      />
+      <Filters filters={filters()} products={snapshot().products} onChange={changeFilters} />
       <div class="td-body">
         <div class="td-views">
           <Tabs view={view()} onSelect={selectView} />
@@ -531,15 +484,15 @@ export function Panel(props: {
             refreshedAt={snapshot().takenAt}
             store={store}
             selection={selection()}
-            active={view() === "list"}
+            active={view() === 'list'}
             collapsed={collapsed()}
             onSelect={select}
-            listRef={(el) => {
+            listRef={el => {
               listEl = el;
             }}
           />
           <TimelineView
-            active={view() === "timeline"}
+            active={view() === 'timeline'}
             events={visible()}
             selectedSeq={selection()?.seq ?? null}
             tooltip={() => tooltipEl}
@@ -547,7 +500,7 @@ export function Panel(props: {
             onSelect={select}
           />
           <ResolutionView
-            active={view() === "resolution"}
+            active={view() === 'resolution'}
             collapsed={collapsed()}
             refresh={resolutionVersion()}
             recorder={recorder}
@@ -561,18 +514,18 @@ export function Panel(props: {
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
-          onSelectPair={(seq) => {
+          onSelectPair={seq => {
             select(seq);
             listEl
               ?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`)
-              ?.scrollIntoView({ block: "nearest" });
+              ?.scrollIntoView({ block: 'nearest' });
           }}
         />
       </div>
       <div
         class="td-tooltip"
         aria-hidden="true"
-        ref={(el) => {
+        ref={el => {
           tooltipEl = el;
         }}
       />

@@ -14,7 +14,7 @@
  * on the host's startup path, and the sandbox imports `ui.ts`, which disposes
  * the roots, without Solid on its startup path.
  */
-import { captureException } from "@dotli/metrics/sentry";
+import { captureException } from '@dotli/metrics';
 
 const disposers = new Map<string, () => void>();
 
@@ -54,12 +54,12 @@ export function disposeAppRoot(name: string): void {
   try {
     disposers.get(name)?.();
   } catch (err) {
-    captureException(err, { kind: "app_root_dispose_error", root: name });
+    captureException(err, { kind: 'app_root_dispose_error', root: name });
   }
 }
 
 /** Dispose the roots in `#app`: the page first, then the loading overlay. */
 export function disposeAppRoots(): void {
-  disposeAppRoot("page");
-  disposeAppRoot("loading");
+  disposeAppRoot('page');
+  disposeAppRoot('loading');
 }

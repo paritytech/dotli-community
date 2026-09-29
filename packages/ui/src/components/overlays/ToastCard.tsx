@@ -1,41 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  Show,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { dismissToast, removeToast, type ToastEntry } from "../../state/toasts";
+import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { dismissToast, removeToast, type ToastEntry } from '../../state/toasts.js';
 
 export const CLOSE_SVG =
   '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
   '<line x1="18" y1="6" x2="6" y2="18"/>' +
   '<line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
-export function ToastCard(props: {
-  entry: ToastEntry;
-  hidden: boolean;
-  depth: number;
-}): JSX.Element {
+export function ToastCard(props: { entry: ToastEntry; hidden: boolean; depth: number }): JSX.Element {
   // The id never changes for a card (the stack keys cards by id).
   const id = untrack(() => props.entry.id);
   const [entering, setEntering] = createSignal(true);
   // A leaving card keeps the layout it had when it started to leave.
-  const hidden = createMemo<boolean>((prev) =>
-    props.entry.leaving ? (prev ?? false) : props.hidden,
-  );
-  const depth = createMemo<number>((prev) =>
-    props.entry.leaving ? (prev ?? 0) : props.depth,
-  );
+  const hidden = createMemo<boolean>(prev => (props.entry.leaving ? (prev ?? false) : props.hidden));
+  const depth = createMemo<number>(prev => (props.entry.leaving ? (prev ?? 0) : props.depth));
 
   // A hidden card is display:none, so no animationend would ever arrive.
   createEffect(
     () => props.entry.leaving && hidden(),
-    (removeNow) => {
+    removeNow => {
       if (removeNow) {
         removeToast(id);
       }
@@ -45,15 +31,15 @@ export function ToastCard(props: {
   return (
     <div
       class={[
-        "notif-card",
+        'notif-card',
         {
-          "notif-enter": entering(),
-          "notif-leave": props.entry.leaving,
-          "notif-hidden-card": hidden(),
+          'notif-enter': entering(),
+          'notif-leave': props.entry.leaving,
+          'notif-hidden-card': hidden(),
         },
       ]}
       data-id={String(id)}
-      style={{ "--i": String(depth()) }}
+      style={{ '--i': String(depth()) }}
       onAnimationEnd={() => {
         if (props.entry.leaving) {
           removeToast(id);
@@ -66,19 +52,12 @@ export function ToastCard(props: {
         class="notif-icon"
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
         innerHTML={props.entry.icon}
-        style={
-          props.entry.iconBackground === undefined
-            ? undefined
-            : { background: props.entry.iconBackground }
-        }
+        style={props.entry.iconBackground === undefined ? undefined : { background: props.entry.iconBackground }}
       />
       <div class="notif-text">
         <span class="notif-title">{props.entry.label}</span>
-        <Show
-          when={props.entry.deeplink}
-          fallback={<span class="notif-body">{props.entry.text}</span>}
-        >
-          {(href) => (
+        <Show when={props.entry.deeplink} fallback={<span class="notif-body">{props.entry.text}</span>}>
+          {href => (
             <a class="notif-body" href={href()} target="_blank" rel="noopener">
               {props.entry.text}
             </a>
@@ -86,11 +65,11 @@ export function ToastCard(props: {
         </Show>
       </div>
       <Show when={props.entry.action}>
-        {(action) => (
+        {action => (
           <button
             type="button"
             class="notif-action"
-            onClick={(event) => {
+            onClick={event => {
               event.stopPropagation();
               action().onClick();
             }}
@@ -106,7 +85,7 @@ export function ToastCard(props: {
         aria-label="Dismiss"
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
         innerHTML={CLOSE_SVG}
-        onClick={(event) => {
+        onClick={event => {
           event.stopPropagation();
           dismissToast(id);
         }}

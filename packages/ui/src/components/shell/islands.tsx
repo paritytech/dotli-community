@@ -15,23 +15,23 @@
 // wire their events with native listeners in callback refs. ESLint rejects
 // `on*` JSX props under components/shell/ (packages/ui/eslint.config.js).
 
-import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { disposeAppRoot } from "../../mount/app-roots";
-import { mountRoot } from "../../mount/root";
-import { adoptLoadingScreen } from "../../loading-controller";
-import { getLoadingState } from "../../state/loading";
-import { FOCUSABLE, focusFirst } from "../focus";
-import { AuthButton } from "./AuthButton";
-import { AuthModal } from "./AuthModal";
-import { ChainsPopover } from "./ChainsPopover";
-import { LoadingScreen } from "./LoadingScreen";
-import { MoreMenu } from "./MoreMenu";
-import { OfflineBanner } from "./OfflineBanner";
-import { PermissionsPopover } from "./PermissionsPopover";
-import { SettingsPopover } from "./SettingsPopover";
-import { ThemeToggle } from "./ThemeToggle";
-import { UrlPill } from "./UrlPill";
+import type { JSX } from '@solidjs/web';
+import { captureException } from '@dotli/metrics';
+import { disposeAppRoot } from '../../mount/app-roots.js';
+import { mountRoot } from '../../mount/root.js';
+import { adoptLoadingScreen } from '../../loading-controller.js';
+import { getLoadingState } from '../../state/loading.js';
+import { FOCUSABLE, focusFirst } from '../focus.js';
+import { AuthButton } from './AuthButton.js';
+import { AuthModal } from './AuthModal.js';
+import { ChainsPopover } from './ChainsPopover.js';
+import { LoadingScreen } from './LoadingScreen.js';
+import { MoreMenu } from './MoreMenu.js';
+import { OfflineBanner } from './OfflineBanner.js';
+import { PermissionsPopover } from './PermissionsPopover.js';
+import { SettingsPopover } from './SettingsPopover.js';
+import { ThemeToggle } from './ThemeToggle.js';
+import { UrlPill } from './UrlPill.js';
 
 /** The child indexes that lead from `ancestor` down to `el`. */
 function childPath(ancestor: Element, el: Element): number[] {
@@ -57,19 +57,15 @@ function childPath(ancestor: Element, el: Element): number[] {
  */
 function carryFocus(focused: Element, stale: Element, fresh: Element): void {
   const same =
-    focused.id === ""
-      ? childPath(stale, focused).reduce<Element | undefined>(
-          (node, index) => node?.children[index],
-          fresh,
-        )
+    focused.id === ''
+      ? childPath(stale, focused).reduce<Element | undefined>((node, index) => node?.children[index], fresh)
       : fresh.id === focused.id
         ? fresh
         : fresh.querySelector(`[id="${focused.id}"]`);
   focusFirst(
     [same, fresh, ...fresh.querySelectorAll(FOCUSABLE)].filter(
       (el): el is HTMLElement | SVGElement =>
-        (el instanceof HTMLElement || el instanceof SVGElement) &&
-        el.matches(FOCUSABLE),
+        (el instanceof HTMLElement || el instanceof SVGElement) && el.matches(FOCUSABLE),
     ),
   );
 }
@@ -100,7 +96,7 @@ function mountIsland(
   ids: string[],
   onLateFailure?: (name: string) => void,
 ): boolean {
-  const container = document.createElement("div");
+  const container = document.createElement('div');
   let swapped = false;
   let swapBack: (() => void) | null = null;
   const pairs: [stale: Element, fresh: Element][] = [];
@@ -155,10 +151,8 @@ function mountIsland(
       // has already reported.
       if (container.hasChildNodes()) {
         captureException(
-          new Error(
-            `[islands] island:${name} has no #${id} on the ${stale === null ? "page" : "island"}`,
-          ),
-          { root: `island:${name}`, kind: "island_missing_node" },
+          new Error(`[islands] island:${name} has no #${id} on the ${stale === null ? 'page' : 'island'}`),
+          { root: `island:${name}`, kind: 'island_missing_node' },
         );
       }
       dispose();
@@ -198,14 +192,14 @@ function mountIsolated(
   } catch (err) {
     captureException(err, {
       root: `island:${name}`,
-      kind: "island_mount_error",
+      kind: 'island_mount_error',
     });
     disposeAppRoot(`island:${name}`);
     return false;
   }
 }
 
-const LOADING_ID = "app-loading";
+const LOADING_ID = 'app-loading';
 
 /**
  * Mount the loading screen island over the static screen from
@@ -219,23 +213,16 @@ const LOADING_ID = "app-loading";
  * the loading root was already disposed. Returns false only when mounting
  * failed, which leaves the static screen in place.
  */
-export function mountLoadingIsland(
-  onLateFailure?: (name: string) => void,
-): boolean {
+export function mountLoadingIsland(onLateFailure?: (name: string) => void): boolean {
   const staticScreen = document.getElementById(LOADING_ID);
-  if (staticScreen === null || getLoadingState().phase === "gone") {
+  if (staticScreen === null || getLoadingState().phase === 'gone') {
     return true;
   }
-  const mounted = mountIsolated(
-    "loading",
-    () => <LoadingScreen />,
-    [LOADING_ID],
-    onLateFailure,
-  );
+  const mounted = mountIsolated('loading', () => <LoadingScreen />, [LOADING_ID], onLateFailure);
   if (mounted) {
     const screen = document.getElementById(LOADING_ID);
     adoptLoadingScreen(() => {
-      disposeAppRoot("island:loading");
+      disposeAppRoot('island:loading');
       screen?.remove();
       // Back in the page if the island failed late (see mountIsland).
       staticScreen.remove();
@@ -253,52 +240,44 @@ export function mountLoadingIsland(
  */
 export function mountIslands(onLateFailure?: (name: string) => void): string[] {
   const failed: string[] = [];
-  const mount = (
-    name: string,
-    view: () => JSX.Element,
-    ids: string[],
-  ): void => {
+  const mount = (name: string, view: () => JSX.Element, ids: string[]): void => {
     if (!mountIsolated(name, view, ids, onLateFailure)) {
       failed.push(name);
     }
   };
-  mount("theme", () => <ThemeToggle />, ["theme-toggle", "theme-popover"]);
+  mount('theme', () => <ThemeToggle />, ['theme-toggle', 'theme-popover']);
   // The URL bar element itself is swapped (main.ts only checks that
   // `#topbar-url` exists and writes the url-pill store, never the element).
-  mount("url-pill", () => <UrlPill />, ["topbar-url"]);
-  mount("offline-banner", () => <OfflineBanner />, ["offline-banner"]);
+  mount('url-pill', () => <UrlPill />, ['topbar-url']);
+  mount('offline-banner', () => <OfflineBanner />, ['offline-banner']);
   // The static auth button stays disabled until this swap (it is none of
   // the loader's click triggers). The popover and the modal render the auth
   // stores, which the eager auth controller has kept since boot.
-  mount("auth-button", () => <AuthButton />, ["auth-button", "user-popover"]);
-  mount("auth-modal", () => <AuthModal />, ["auth-modal-backdrop"]);
+  mount('auth-button', () => <AuthButton />, ['auth-button', 'user-popover']);
+  mount('auth-modal', () => <AuthModal />, ['auth-modal-backdrop']);
   // The static permissions button is enabled, so a click on it before this
   // swap is held back and replayed by the loader (one of its triggers).
-  mount("permissions", () => <PermissionsPopover />, [
-    "permissions-button",
-    "permissions-popover-backdrop",
-    "permissions-popover",
+  mount('permissions', () => <PermissionsPopover />, [
+    'permissions-button',
+    'permissions-popover-backdrop',
+    'permissions-popover',
   ]);
   // Also a loader trigger. The static button is shown or not by the host
   // (setChainsButtonVisible) until this swap; the island reads the store
   // that call also writes.
-  mount("chains", () => <ChainsPopover />, ["chains-button", "chains-popover"]);
+  mount('chains', () => <ChainsPopover />, ['chains-button', 'chains-popover']);
   // Also a loader trigger, and the mobile "More" menu's Settings row
   // forwards its tap to it. The popover renders the settings store the host
   // seeds at boot.
-  mount("settings", () => <SettingsPopover />, [
-    "mode-button",
-    "mode-popover-backdrop",
-    "mode-popover",
-  ]);
+  mount('settings', () => <SettingsPopover />, ['mode-button', 'mode-popover-backdrop', 'mode-popover']);
   // Also a loader trigger. Its rows forward a tap to the buttons above by
   // id at click time, so they reach the live islands; the Chat row follows
   // the chat-panel store, which chat/panel.ts keeps from boot.
-  mount("more", () => <MoreMenu />, ["more-button", "more-popover"]);
+  mount('more', () => <MoreMenu />, ['more-button', 'more-popover']);
   // Not a loader trigger: nothing on it is clickable. The one island that is
   // also an app root (see mountLoadingIsland).
   if (!mountLoadingIsland(onLateFailure)) {
-    failed.push("loading");
+    failed.push('loading');
   }
   return failed;
 }

@@ -9,33 +9,28 @@
 //
 // Rendered by the overlays root (components/overlays/SigningDialog.tsx).
 
-import { ERRORS } from "./errors";
-import { presentModal } from "./overlays/load";
+import { ERRORS } from './errors.js';
+import { presentModal } from './overlays/load.js';
 
 function formatSize(bytes: number): string {
-  return bytes >= 1024
-    ? `${String(Math.round(bytes / 1024))} KB`
-    : `${String(bytes)} B`;
+  return bytes >= 1024 ? `${String(Math.round(bytes / 1024))} KB` : `${String(bytes)} B`;
 }
 
-export async function showPreimageSubmitModal(
-  dataSize: number,
-  signal?: AbortSignal,
-): Promise<void> {
-  const { result } = await presentModal<"cancel" | "allow">(
+export async function showPreimageSubmitModal(dataSize: number, signal?: AbortSignal): Promise<void> {
+  const { result } = await presentModal<'cancel' | 'allow'>(
     {
-      title: "Submit Preimage",
-      fields: [{ label: "Data size", value: formatSize(dataSize) }],
+      title: 'Submit Preimage',
+      fields: [{ label: 'Data size', value: formatSize(dataSize) }],
       buttons: [
-        { label: "Cancel", variant: "cancel", result: "cancel" },
-        { label: "Allow", variant: "primary", result: "allow" },
+        { label: 'Cancel', variant: 'cancel', result: 'cancel' },
+        { label: 'Allow', variant: 'primary', result: 'allow' },
       ],
       dismissOnBackdrop: false,
-      fallbackResult: "cancel",
+      fallbackResult: 'cancel',
     },
     signal,
   );
-  if (result !== "allow") {
+  if (result !== 'allow') {
     throw new Error(ERRORS.PREIMAGE_SUBMIT_DENIED);
   }
 }

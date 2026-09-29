@@ -25,13 +25,13 @@
 // static style string, without spaces), and the offline-banner island shows
 // it. Every other node is still the original block.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-import { Window } from "happy-dom";
-import { beforeAll, describe, expect, it } from "vitest";
-import { renderShellOnServer } from "../../helpers/shell-ssr";
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { Window } from 'happy-dom';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { renderShellOnServer } from '../../helpers/shell-ssr.js';
 
-const FIXTURE_PATH = resolve(import.meta.dirname, "original-shell.html");
+const FIXTURE_PATH = resolve(import.meta.dirname, 'original-shell.html');
 
 const ELEMENT_NODE = 1;
 const TEXT_NODE = 3;
@@ -68,7 +68,7 @@ function normalizeChildren(node: DomNode): NormalizedChild[] {
       continue;
     }
     if (child.nodeType === TEXT_NODE) {
-      const text = (child.textContent ?? "").trim();
+      const text = (child.textContent ?? '').trim();
       if (text) {
         result.push({ text });
       }
@@ -81,7 +81,7 @@ function normalizeChildren(node: DomNode): NormalizedChild[] {
       }
       attrs.sort(([a], [b]) => a.localeCompare(b));
       result.push({
-        tag: (child.tagName ?? "").toLowerCase(),
+        tag: (child.tagName ?? '').toLowerCase(),
         attrs,
         children: normalizeChildren(child),
       });
@@ -96,29 +96,29 @@ function normalizeChildren(node: DomNode): NormalizedChild[] {
  * environment may provide. */
 function normalizeFragment(html: string): NormalizedChild[] {
   const document = new Window().document;
-  const container = document.createElement("div");
+  const container = document.createElement('div');
   container.innerHTML = html;
   return normalizeChildren(container as unknown as DomNode);
 }
 
-describe("Shell prerender fidelity", () => {
+describe('Shell prerender fidelity', () => {
   let rendered: string;
 
   beforeAll(async () => {
     rendered = await renderShellOnServer();
   });
 
-  it("As the prerendered shell, every element, attribute and text node of the original shell block survives, in order", () => {
+  it('As the prerendered shell, every element, attribute and text node of the original shell block survives, in order', () => {
     // Given
-    const fixture = readFileSync(FIXTURE_PATH, "utf8");
+    const fixture = readFileSync(FIXTURE_PATH, 'utf8');
 
     // When / Then
     expect(normalizeFragment(rendered)).toEqual(normalizeFragment(fixture));
   });
 
-  it("As a prerender nothing hydrates, the shell carries no hydration markers and no script", () => {
+  it('As a prerender nothing hydrates, the shell carries no hydration markers and no script', () => {
     // Then
     expect(rendered).not.toMatch(/\s_hk=|data-hk/);
-    expect(rendered).not.toContain("<script");
+    expect(rendered).not.toContain('<script');
   });
 });

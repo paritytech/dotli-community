@@ -1,18 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { config } from "@dotli/eslint-config/vite";
+/// <reference types="node" />
+
+import { defineConfig } from 'eslint/config';
+import { config } from '@dotli/eslint-config/vite';
 
 // The shared config's `no-restricted-syntax` entries. A file override
 // replaces a rule's options rather than merging them, so the shell override
 // below repeats these.
-const sharedRestrictedSyntax = config
-  .map((entry) => entry.rules?.["no-restricted-syntax"])
-  .filter((rule) => rule !== undefined)
-  .at(-1)
-  .slice(1);
+const sharedRule = config
+  .map(entry => entry.rules?.['no-restricted-syntax'])
+  .filter(rule => rule !== undefined)
+  .at(-1);
+const sharedRestrictedSyntax = Array.isArray(sharedRule) ? sharedRule.slice(1) : [];
 
-export default [
+export default defineConfig([
   ...config,
   {
     languageOptions: {
@@ -27,13 +30,13 @@ export default [
     // events: they would never fire once the island is swapped in. The
     // landing page follows the same rule, since it moves island nodes into
     // its own tree.
-    files: ["src/components/shell/**/*.tsx", "src/components/landing/**/*.tsx"],
+    files: ['src/components/shell/**/*.tsx', 'src/components/landing/**/*.tsx'],
     rules: {
-      "no-restricted-syntax": [
-        "error",
+      'no-restricted-syntax': [
+        'error',
         ...sharedRestrictedSyntax,
         {
-          selector: "JSXAttribute[name.name=/^on[A-Z]/]",
+          selector: 'JSXAttribute[name.name=/^on[A-Z]/]',
           message:
             "Solid's delegated events do nothing in a shell island (it renders into a detached container). Add a native listener in a callback ref instead (see components/shell/islands.tsx).",
         },
@@ -44,21 +47,20 @@ export default [
     // Shell.tsx is prerendered into index.html and never runs on the client,
     // so anything reactive in it would be frozen at its build-time state. It
     // may import types only: no components, no signals, no stores.
-    files: ["src/components/shell/Shell.tsx"],
+    files: ['src/components/shell/Shell.tsx'],
     rules: {
-      "@typescript-eslint/no-restricted-imports": [
-        "error",
+      '@typescript-eslint/no-restricted-imports': [
+        'error',
         {
           patterns: [
             {
-              group: ["*"],
+              group: ['*'],
               allowTypeImports: true,
-              message:
-                "Shell.tsx is static markup the client never runs: import types only (see shell.server.tsx).",
+              message: 'Shell.tsx is static markup the client never runs: import types only (see shell.server.tsx).',
             },
           ],
         },
       ],
     },
   },
-];
+]);

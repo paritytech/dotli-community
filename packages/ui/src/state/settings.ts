@@ -8,13 +8,12 @@ import {
   isVerifiedSession,
   type Backend,
   type CacheSettings,
-} from "@dotli/config/mode";
-import {
   getEnabledNetworks,
   getNetwork,
   type Network,
-} from "@dotli/config/network";
-import { createSyncStore, type ReadableStore } from "./create-store";
+} from '@dotli/config';
+
+import { createSyncStore, type ReadableStore } from './create-store.js';
 
 export interface SettingsState {
   backend: Backend;

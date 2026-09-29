@@ -7,9 +7,9 @@
 // its state lives in the url-pill store (state/url-pill.ts).
 
 /** "verified" = the visitor's light client checked it, "trusted" = an RPC provider did. */
-export type ShieldState = "verified" | "trusted";
+export type ShieldState = 'verified' | 'trusted';
 
-export const VERIFICATION_SHIELD_ID = "verification-shield";
-export const VERIFICATION_TOOLTIP_ID = "verification-tooltip";
+export const VERIFICATION_SHIELD_ID = 'verification-shield';
+export const VERIFICATION_TOOLTIP_ID = 'verification-tooltip';
 
-export { setVerificationShieldState } from "./state/url-pill";
+export { setVerificationShieldState } from './state/url-pill.js';

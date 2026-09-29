@@ -6,19 +6,10 @@
 // this renders inside `aside#chat-panel` and reads rooms, bots and messages
 // from storage whenever the chat-panel store says they may have changed.
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  For,
-  onCleanup,
-  onSettled,
-  Show,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics/sentry";
-import { getActiveRootManifest } from "@dotli/shared/active-manifest";
+import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { captureException } from '@dotli/metrics';
+import { getActiveRootManifest } from '@dotli/shared';
 import {
   chatBots,
   chatLatestMessageTimes,
@@ -26,7 +17,7 @@ import {
   chatRooms,
   userPostMessage,
   type ChatMessageRecord,
-} from "../../chat/service";
+} from '../../chat/service.js';
 import {
   backToChatRooms,
   chatPanelStore,
@@ -38,12 +29,12 @@ import {
   openChatRoom,
   setChatComposerError,
   setChatPanelOpen,
-} from "../../state/chat-panel";
-import { useStore } from "../use-store";
-import { ContactIcon } from "./ContactIcon";
-import { contactEntries, type ContactEntry } from "./contacts";
-import { MessageBubble } from "./MessageBubble";
-import { ResizeHandle } from "./ResizeHandle";
+} from '../../state/chat-panel.js';
+import { useStore } from '../use-store.js';
+import { ContactIcon } from './ContactIcon.js';
+import { contactEntries, type ContactEntry } from './contacts.js';
+import { MessageBubble } from './MessageBubble.js';
+import { ResizeHandle } from './ResizeHandle.js';
 
 // Relative bubble timestamps go stale while the panel sits open.
 const TIME_REFRESH_MS = 60_000;
@@ -55,12 +46,12 @@ const CLOSE_SVG =
 const SEND_SVG =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 
-type View = "loading" | "empty" | "list" | "conversation";
+type View = 'loading' | 'empty' | 'list' | 'conversation';
 
 // Within this many px of the end, the reader counts as at the newest message.
 const STICK_THRESHOLD_PX = 24;
 
-const READ_ERROR = "Chat could not be loaded.";
+const READ_ERROR = 'Chat could not be loaded.';
 
 function ContactRow(props: {
   contact: ContactEntry;
@@ -77,16 +68,12 @@ function ContactRow(props: {
         openChatRoom(props.contact.id);
       }}
     >
-      <ContactIcon
-        name={props.contact.name}
-        icon={props.contact.icon}
-        iconClass="chat-room-icon"
-      />
+      <ContactIcon name={props.contact.name} icon={props.contact.icon} iconClass="chat-room-icon" />
       <span class="chat-room-name">{props.contact.name}</span>
       <Show when={props.unread > 0}>
         <span
           class="chat-room-unread"
-          aria-label={`${String(props.unread)} unread message${props.unread === 1 ? "" : "s"}`}
+          aria-label={`${String(props.unread)} unread message${props.unread === 1 ? '' : 's'}`}
         >
           {chatUnreadLabel(props.unread)}
         </span>
@@ -107,13 +94,13 @@ function PanelBody(): JSX.Element {
   // Slices, not the whole store: a width drag, a topbar toggle or the
   // composer-focus flag must not re-run the rows and derivations below.
   const productId = useStore(chatPanelStore, currentChatProductId);
-  const loggedIn = useStore(chatPanelStore, (s) => s.loggedIn);
-  const label = useStore(chatPanelStore, (s) => s.label);
-  const activeRoomId = useStore(chatPanelStore, (s) => s.activeRoomId);
-  const unreadByRoom = useStore(chatPanelStore, (s) => s.unreadByRoom);
-  const roomSeq = useStore(chatPanelStore, (s) => s.roomSeq);
-  const contactsVersion = useStore(chatPanelStore, (s) => s.contactsVersion);
-  const composerError = useStore(chatPanelStore, (s) => s.composerError);
+  const loggedIn = useStore(chatPanelStore, s => s.loggedIn);
+  const label = useStore(chatPanelStore, s => s.label);
+  const activeRoomId = useStore(chatPanelStore, s => s.activeRoomId);
+  const unreadByRoom = useStore(chatPanelStore, s => s.unreadByRoom);
+  const roomSeq = useStore(chatPanelStore, s => s.roomSeq);
+  const contactsVersion = useStore(chatPanelStore, s => s.contactsVersion);
+  const composerError = useStore(chatPanelStore, s => s.composerError);
   const [contacts, setContacts] = createSignal<ContactEntry[] | null>(null);
   const [messages, setMessages] = createSignal<ChatMessageRecord[]>([]);
   // Kept apart so each clears when its own read works, and a failed
@@ -137,17 +124,14 @@ function PanelBody(): JSX.Element {
     clearInterval(timer);
   });
 
-  const failedRead = (
-    error: unknown,
-    setError: (on: boolean) => void,
-  ): void => {
-    captureException(error, { kind: "chat_panel_read_error" });
+  const failedRead = (error: unknown, setError: (on: boolean) => void): void => {
+    captureException(error, { kind: 'chat_panel_read_error' });
     setError(true);
   };
 
   const activeContact = createMemo(() => {
     const id = activeRoomId();
-    return id === null ? undefined : contacts()?.find((c) => c.id === id);
+    return id === null ? undefined : contacts()?.find(c => c.id === id);
   });
 
   // Messages move the list's recency order, but the list is only re-read
@@ -155,10 +139,8 @@ function PanelBody(): JSX.Element {
   // last time the list showed, so reading a conversation re-reads nothing
   // and going back re-reads once, only if messages came in meanwhile.
   const messageCount = createMemo(() => totalSeq(roomSeq()));
-  const listMessageCount = createMemo<number>((previous) =>
-    activeContact() === undefined || previous === undefined
-      ? messageCount()
-      : previous,
+  const listMessageCount = createMemo<number>(previous =>
+    activeContact() === undefined || previous === undefined ? messageCount() : previous,
   );
 
   // Contacts: re-read when the product, the session, the room and bot lists,
@@ -171,7 +153,7 @@ function PanelBody(): JSX.Element {
       ? null
       : `${id}\u0000${String(loggedIn())}\u0000${String(contactsVersion())}\u0000${String(listMessageCount())}`;
   });
-  createEffect(contactsKey, (key) => {
+  createEffect(contactsKey, key => {
     const id = currentChatProductId(chatPanelStore.get());
     if (key === null || id === null) {
       return;
@@ -218,9 +200,9 @@ function PanelBody(): JSX.Element {
     () => {
       const list = contacts();
       const id = activeRoomId();
-      return list !== null && id !== null && !list.some((c) => c.id === id);
+      return list !== null && id !== null && !list.some(c => c.id === id);
     },
-    (stale) => {
+    stale => {
       if (stale) {
         clearActiveChatRoom();
       }
@@ -230,12 +212,12 @@ function PanelBody(): JSX.Element {
   const view = createMemo((): View => {
     const list = contacts();
     if (list === null) {
-      return "loading";
+      return 'loading';
     }
     if (list.length === 0) {
-      return "empty";
+      return 'empty';
     }
-    return activeContact() === undefined ? "list" : "conversation";
+    return activeContact() === undefined ? 'list' : 'conversation';
   });
 
   // Messages of the open room: re-read when that room gets a message (its
@@ -252,7 +234,7 @@ function PanelBody(): JSX.Element {
   // Whether the reader is at the newest message. Only a scroll moves it, so
   // content that grows under a reader at the bottom keeps them there.
   let stuck = true;
-  createEffect(messagesKey, (key) => {
+  createEffect(messagesKey, key => {
     const current = chatPanelStore.get();
     const id = currentChatProductId(current);
     const roomId = current.activeRoomId;
@@ -272,7 +254,7 @@ function PanelBody(): JSX.Element {
     // this same tick, before the effect re-runs (the store moves at once).
     let live = true;
     chatMessages(id, roomId)
-      .then((records) => {
+      .then(records => {
         if (!live || chatPanelStore.get().activeRoomId !== roomId) {
           return;
         }
@@ -311,11 +293,7 @@ function PanelBody(): JSX.Element {
   // image or a web font that loads late, or a reflow; the list's with the
   // hint line or the window.
   onSettled(() => {
-    if (
-      messagesEl === undefined ||
-      threadEl === undefined ||
-      typeof ResizeObserver === "undefined"
-    ) {
+    if (messagesEl === undefined || threadEl === undefined || typeof ResizeObserver === 'undefined') {
       return;
     }
     const resize = new ResizeObserver(stickToBottom);
@@ -326,35 +304,29 @@ function PanelBody(): JSX.Element {
     };
   });
 
-  const title = (): string =>
-    activeContact()?.name ??
-    getActiveRootManifest()?.displayName ??
-    label() ??
-    "Chat";
+  const title = (): string => activeContact()?.name ?? getActiveRootManifest()?.displayName ?? label() ?? 'Chat';
 
   const hint = (): string | null => {
     const v = view();
-    if (contactsError() || (v === "conversation" && messagesError())) {
+    if (contactsError() || (v === 'conversation' && messagesError())) {
       return READ_ERROR;
     }
-    if (v === "empty") {
-      return loggedIn()
-        ? "Waiting for the app to start a chat."
-        : "Log in to chat with this app.";
+    if (v === 'empty') {
+      return loggedIn() ? 'Waiting for the app to start a chat.' : 'Log in to chat with this app.';
     }
-    return v === "conversation" ? composerError() : null;
+    return v === 'conversation' ? composerError() : null;
   };
 
   const submit = async (event: SubmitEvent): Promise<void> => {
     event.preventDefault();
     const current = chatPanelStore.get();
     const productId = currentChatProductId(current);
-    const text = inputEl?.value.trim() ?? "";
-    if (productId === null || current.activeRoomId === null || text === "") {
+    const text = inputEl?.value.trim() ?? '';
+    if (productId === null || current.activeRoomId === null || text === '') {
       return;
     }
     if (inputEl !== undefined) {
-      inputEl.value = "";
+      inputEl.value = '';
     }
     // Sending shows the sent message, even to a reader scrolled up.
     stuck = true;
@@ -363,12 +335,12 @@ function PanelBody(): JSX.Element {
       setChatComposerError(null);
     } catch (error) {
       setChatComposerError(
-        error instanceof Error && error.message.includes("denied")
-          ? "Log in to chat with this app."
-          : "Message saved, but the app could not be reached.",
+        error instanceof Error && error.message.includes('denied')
+          ? 'Log in to chat with this app.'
+          : 'Message saved, but the app could not be reached.',
       );
     }
-    setRefresh((n) => n + 1);
+    setRefresh(n => n + 1);
   };
 
   return (
@@ -380,7 +352,7 @@ function PanelBody(): JSX.Element {
           id="chat-panel-back"
           title="Back to rooms"
           aria-label="Back to rooms"
-          hidden={view() !== "conversation"}
+          hidden={view() !== 'conversation'}
           // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
           innerHTML={BACK_SVG}
           onClick={() => {
@@ -408,11 +380,11 @@ function PanelBody(): JSX.Element {
         id="chat-panel-rooms"
         role="list"
         aria-label="Chat rooms"
-        hidden={view() !== "list"}
+        hidden={view() !== 'list'}
       >
-        <Show when={view() === "list"}>
-          <For each={contacts() ?? []} keyed={(c) => c.id}>
-            {(contact) => {
+        <Show when={view() === 'list'}>
+          <For each={contacts() ?? []} keyed={c => c.id}>
+            {contact => {
               // Rows are keyed by id, so a row's id never changes.
               const id = untrack(() => contact().id);
               onCleanup(() => {
@@ -420,7 +392,7 @@ function PanelBody(): JSX.Element {
               });
               return (
                 <ContactRow
-                  ref={(el) => {
+                  ref={el => {
                     rowEls.set(id, el);
                   }}
                   contact={contact()}
@@ -435,31 +407,29 @@ function PanelBody(): JSX.Element {
         class="chat-panel-messages"
         id="chat-panel-messages"
         aria-live="polite"
-        hidden={view() !== "conversation"}
-        ref={(el) => {
+        hidden={view() !== 'conversation'}
+        ref={el => {
           messagesEl = el;
         }}
-        onScroll={(event) => {
+        onScroll={event => {
           const el = event.currentTarget;
-          stuck =
-            el.scrollHeight - el.scrollTop - el.clientHeight <=
-            STICK_THRESHOLD_PX;
+          stuck = el.scrollHeight - el.scrollTop - el.clientHeight <= STICK_THRESHOLD_PX;
         }}
       >
         <div
           class="chat-panel-thread"
-          ref={(el) => {
+          ref={el => {
             threadEl = el;
           }}
         >
-          <Show when={view() === "conversation"}>
-            <For each={messages()} keyed={(r) => r.seq}>
-              {(record) => (
+          <Show when={view() === 'conversation'}>
+            <For each={messages()} keyed={r => r.seq}>
+              {record => (
                 <MessageBubble
                   record={record()}
                   now={now()}
                   onActionError={() => {
-                    setChatComposerError("The app could not be reached.");
+                    setChatComposerError('The app could not be reached.');
                   }}
                 />
               )}
@@ -468,13 +438,13 @@ function PanelBody(): JSX.Element {
         </div>
       </div>
       <p class="chat-panel-hint" id="chat-panel-hint" hidden={hint() === null}>
-        {hint() ?? ""}
+        {hint() ?? ''}
       </p>
       <form
         class="chat-panel-composer"
         id="chat-panel-composer"
-        hidden={view() !== "conversation"}
-        onSubmit={(event) => {
+        hidden={view() !== 'conversation'}
+        onSubmit={event => {
           void submit(event);
         }}
       >
@@ -485,8 +455,8 @@ function PanelBody(): JSX.Element {
           placeholder="Message"
           autocomplete="off"
           maxlength="4000"
-          disabled={view() !== "conversation"}
-          ref={(el) => {
+          disabled={view() !== 'conversation'}
+          ref={el => {
             inputEl = el;
           }}
         />
@@ -505,7 +475,7 @@ function PanelBody(): JSX.Element {
 }
 
 export function ChatPanel(): JSX.Element {
-  const open = useStore(chatPanelStore, (s) => s.open);
+  const open = useStore(chatPanelStore, s => s.open);
   return (
     <>
       <ResizeHandle />

@@ -1,18 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it } from "vitest";
-import { UrlPill } from "@dotli/ui/components/shell/UrlPill";
+import { afterEach, describe, expect, it } from 'vitest';
+import { UrlPill } from '../../../src/components/shell/UrlPill.js';
 import {
   resetUrlPill,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
   urlPillStore,
-} from "@dotli/ui/state/url-pill";
-import { setVerificationShieldState as setShieldStateReexport } from "@dotli/ui/verification-shield";
-import { renderComponent, resetStores, settle } from "../../helpers/solid";
-import { byId, must } from "../../support";
+} from '../../../src/state/url-pill.js';
+import { setVerificationShieldState as setShieldStateReexport } from '../../../src/verification-shield.js';
+import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
+import { byId, must } from '../../support.js';
 
 // The markup main.ts wrote into `#topbar-url` before the pill became a
 // component (its three `urlBar.innerHTML = ...` writes and
@@ -26,113 +26,97 @@ afterEach(() => {
 });
 
 function urlBar(): HTMLElement {
-  return byId("topbar-url");
+  return byId('topbar-url');
 }
 
 function pill(): HTMLElement | null {
-  return document.getElementById("url-pill");
+  return document.getElementById('url-pill');
 }
 
 /** An element parsed from `html`, to compare with isEqualNode. */
 function parse(html: string): Element {
-  const holder = document.createElement("div");
+  const holder = document.createElement('div');
   holder.innerHTML = html;
-  return must(holder.firstElementChild, "the parsed element");
+  return must(holder.firstElementChild, 'the parsed element');
 }
 
-describe("URL pill", () => {
-  it("As a visitor on the landing page, the URL bar is the empty `#topbar-url` the shell prerenders, hidden by `:empty`", async () => {
+describe('URL pill', () => {
+  it('As a visitor on the landing page, the URL bar is the empty `#topbar-url` the shell prerenders, hidden by `:empty`', async () => {
     // When
     renderComponent(() => <UrlPill />);
     await settle();
 
     // Then
     expect(urlBar().childNodes).toHaveLength(0);
-    expect(urlBar().matches(":empty")).toBe(true);
-    expect(
-      urlBar().isEqualNode(
-        parse(`<div class="topbar-url" id="topbar-url"></div>`),
-      ),
-    ).toBe(true);
+    expect(urlBar().matches(':empty')).toBe(true);
+    expect(urlBar().isEqualNode(parse(`<div class="topbar-url" id="topbar-url"></div>`))).toBe(true);
   });
 
-  it("As a developer on a localhost proxy, the pill shows my host with the terminal icon, as before", async () => {
+  it('As a developer on a localhost proxy, the pill shows my host with the terminal icon, as before', async () => {
     // Given
     renderComponent(() => <UrlPill />);
 
     // When
-    showLocalhostPill("localhost:3000");
+    showLocalhostPill('localhost:3000');
     await settle();
 
     // Then
-    expect(
-      pill()?.isEqualNode(
-        parse(LOCALHOST_PILL.replace("HOST", "localhost:3000")),
-      ),
-    ).toBe(true);
+    expect(pill()?.isEqualNode(parse(LOCALHOST_PILL.replace('HOST', 'localhost:3000')))).toBe(true);
   });
 
-  it("As a visitor of a product, the pill shows its domain and TLD beside the shield, as before", async () => {
+  it('As a visitor of a product, the pill shows its domain and TLD beside the shield, as before', async () => {
     // Given
     renderComponent(() => <UrlPill />);
 
     // When
-    showProductPill("app", ".dot.li");
+    showProductPill('app', '.dot.li');
     await settle();
 
     // Then
-    expect(
-      pill()?.isEqualNode(
-        parse(PRODUCT_PILL.replace("DOMAIN", "app").replace("TLD", ".dot.li")),
-      ),
-    ).toBe(true);
+    expect(pill()?.isEqualNode(parse(PRODUCT_PILL.replace('DOMAIN', 'app').replace('TLD', '.dot.li')))).toBe(true);
   });
 
-  it("As a dotli user, a domain or host containing markup renders as text", async () => {
+  it('As a dotli user, a domain or host containing markup renders as text', async () => {
     // Given
     renderComponent(() => <UrlPill />);
 
     // When
-    showProductPill("<b>x</b>", "<i>y</i>");
+    showProductPill('<b>x</b>', '<i>y</i>');
     await settle();
 
     // Then
-    expect(pill()?.querySelector("b")).toBeNull();
-    expect(pill()?.querySelector("i")).toBeNull();
-    expect(pill()?.querySelector(".dot-domain")?.textContent).toBe("<b>x</b>");
-    expect(pill()?.querySelector(".dot-tld")?.textContent).toBe("<i>y</i>");
+    expect(pill()?.querySelector('b')).toBeNull();
+    expect(pill()?.querySelector('i')).toBeNull();
+    expect(pill()?.querySelector('.dot-domain')?.textContent).toBe('<b>x</b>');
+    expect(pill()?.querySelector('.dot-tld')?.textContent).toBe('<i>y</i>');
 
     // When
-    showLocalhostPill("<b>x</b>");
+    showLocalhostPill('<b>x</b>');
     await settle();
 
     // Then
-    expect(pill()?.querySelector("b")).toBeNull();
-    expect(pill()?.querySelector(".dot-domain")?.textContent).toBe("<b>x</b>");
+    expect(pill()?.querySelector('b')).toBeNull();
+    expect(pill()?.querySelector('.dot-domain')?.textContent).toBe('<b>x</b>');
   });
 
-  it("As a dotli user, a pill written before the component mounts shows on mount", async () => {
+  it('As a dotli user, a pill written before the component mounts shows on mount', async () => {
     // Given: main.ts resolved the product before the islands chunk arrived.
-    showProductPill("app", ".dot.li");
-    setVerificationShieldState("verified");
+    showProductPill('app', '.dot.li');
+    setVerificationShieldState('verified');
 
     // When
     renderComponent(() => <UrlPill />);
     await settle();
 
     // Then
-    expect(pill()?.querySelector(".dot-domain")?.textContent).toBe("app");
-    expect(
-      document
-        .getElementById("verification-shield")
-        ?.classList.contains("verified"),
-    ).toBe(true);
+    expect(pill()?.querySelector('.dot-domain')?.textContent).toBe('app');
+    expect(document.getElementById('verification-shield')?.classList.contains('verified')).toBe(true);
   });
 
-  it("As a dotli user, resetting the pill empties the URL bar again", async () => {
+  it('As a dotli user, resetting the pill empties the URL bar again', async () => {
     // Given
     renderComponent(() => <UrlPill />);
-    showLocalhostPill("localhost:3000");
+    showLocalhostPill('localhost:3000');
     await settle();
 
     // When
@@ -141,36 +125,36 @@ describe("URL pill", () => {
 
     // Then
     expect(urlBar().childNodes).toHaveLength(0);
-    expect(urlPillStore.get()).toEqual({ kind: "none" });
+    expect(urlPillStore.get()).toEqual({ kind: 'none' });
   });
 
-  it("As the host, a shield state set outside a product pill is ignored, and a new product pill starts without one", () => {
+  it('As the host, a shield state set outside a product pill is ignored, and a new product pill starts without one', () => {
     // When
-    setVerificationShieldState("verified");
+    setVerificationShieldState('verified');
 
     // Then
-    expect(urlPillStore.get()).toEqual({ kind: "none" });
+    expect(urlPillStore.get()).toEqual({ kind: 'none' });
 
     // When
-    showLocalhostPill("localhost:3000");
-    setVerificationShieldState("verified");
+    showLocalhostPill('localhost:3000');
+    setVerificationShieldState('verified');
 
     // Then
     expect(urlPillStore.get()).toEqual({
-      kind: "localhost",
-      host: "localhost:3000",
+      kind: 'localhost',
+      host: 'localhost:3000',
     });
 
     // When
-    showProductPill("app", ".dot.li");
-    setShieldStateReexport("trusted");
-    showProductPill("other", ".dot.li");
+    showProductPill('app', '.dot.li');
+    setShieldStateReexport('trusted');
+    showProductPill('other', '.dot.li');
 
     // Then
     expect(urlPillStore.get()).toEqual({
-      kind: "product",
-      domain: "other",
-      tld: ".dot.li",
+      kind: 'product',
+      domain: 'other',
+      tld: '.dot.li',
       shield: null,
     });
   });

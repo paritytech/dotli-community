@@ -9,12 +9,8 @@ import {
   subscribeNetwork,
   type ChainStatus,
   type TransferState,
-} from "../network-monitor";
-import {
-  createSyncStore,
-  registerStoreStateReset,
-  type ReadableStore,
-} from "./create-store";
+} from '../network-monitor.js';
+import { createSyncStore, registerStoreStateReset, type ReadableStore } from './create-store.js';
 
 export interface NetworkState {
   chains: ChainStatus[];
@@ -65,7 +61,7 @@ function read(): NetworkState {
  */
 export const networkStore: ReadableStore<NetworkState> = {
   get: read,
-  subscribe: (listener) => {
+  subscribe: listener => {
     const reader = {};
     readers.add(reader);
     const unsubscribe = network.subscribe(listener);

@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { loadingStore } from "../../state/loading";
-import { useStore } from "../use-store";
+import { createMemo } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { loadingStore } from '../../state/loading.js';
+import { useStore } from '../use-store.js';
 
 /**
  * The loading screen (`#app-loading`), an island (see islands.tsx) swapped in
@@ -18,13 +18,13 @@ export function LoadingScreen(): JSX.Element {
   // One selector per field, so a line is only written when it changes:
   // writing an unchanged live region could make a screen reader announce it
   // again.
-  const progress = useStore(loadingStore, (s) => s.progress);
+  const progress = useStore(loadingStore, s => s.progress);
   const shown = createMemo(() => Math.round(progress()));
-  const statusText = useStore(loadingStore, (s) => s.statusText);
-  const statusOpacity = useStore(loadingStore, (s) => s.statusOpacity);
-  const srText = useStore(loadingStore, (s) => s.srText);
-  const warning = useStore(loadingStore, (s) => s.warning);
-  const dismissing = useStore(loadingStore, (s) => s.phase === "dismissing");
+  const statusText = useStore(loadingStore, s => s.statusText);
+  const statusOpacity = useStore(loadingStore, s => s.statusOpacity);
+  const srText = useStore(loadingStore, s => s.srText);
+  const warning = useStore(loadingStore, s => s.warning);
+  const dismissing = useStore(loadingStore, s => s.phase === 'dismissing');
 
   return (
     <div
@@ -33,21 +33,15 @@ export function LoadingScreen(): JSX.Element {
       style={
         dismissing()
           ? {
-              transition: "opacity 0.3s ease",
-              opacity: "0",
-              "pointer-events": "none",
+              transition: 'opacity 0.3s ease',
+              opacity: '0',
+              'pointer-events': 'none',
             }
           : undefined
       }
     >
       <div class="loading-logo" id="loading-logo">
-        <svg
-          width="120"
-          height="120"
-          viewBox="0 0 256 256"
-          fill="none"
-          xmlns="http://www.w3.org/2000/svg"
-        >
+        <svg width="120" height="120" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
           <path
             class="loading-petal"
             d="M31.0155 57.7181C14.6547 76.7768 14.2233 103.306 30.0862 116.92C45.9492 130.566 72.0667 126.15 88.4607 107.058C104.821 87.9995 105.253 61.4701 89.3899 47.8567C83.1841 42.511 75.3522 39.9543 67.1884 39.9543C54.5113 39.9543 40.9713 46.1302 31.0155 57.7181Z"
@@ -84,11 +78,7 @@ export function LoadingScreen(): JSX.Element {
         aria-valuenow={String(shown())}
       >
         <div class="loading-progress-bar">
-          <div
-            class="loading-progress-fill"
-            id="loading-progress-fill"
-            style={{ width: `${String(progress())}%` }}
-          />
+          <div class="loading-progress-fill" id="loading-progress-fill" style={{ width: `${String(progress())}%` }} />
         </div>
         <span class="loading-progress-pct" id="loading-progress-pct">
           {`${String(shown())}%`}
@@ -98,21 +88,13 @@ export function LoadingScreen(): JSX.Element {
         <div class="loading-status" id="loading-status">
           {/* Typed a character at a time, so hidden from screen readers,
               which get whole sentences from the element below. */}
-          <p
-            id="status"
-            aria-hidden="true"
-            style={{ opacity: String(statusOpacity()) }}
-          >
+          <p id="status" aria-hidden="true" style={{ opacity: String(statusOpacity()) }}>
             {statusText()}
           </p>
           <p class="sr-only" id="status-sr" aria-live="polite">
             {srText()}
           </p>
-          <p
-            class={["loading-warning", { visible: warning() !== null }]}
-            id="loading-warning"
-            role="status"
-          >
+          <p class={['loading-warning', { visible: warning() !== null }]} id="loading-warning" role="status">
             <svg
               class="loading-warning-icon"
               viewBox="0 0 16 16"
@@ -127,16 +109,10 @@ export function LoadingScreen(): JSX.Element {
                 stroke-width="1.4"
                 stroke-linejoin="round"
               />
-              <path
-                d="M8 6v3.6"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.4"
-                stroke-linecap="round"
-              />
+              <path d="M8 6v3.6" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" />
               <circle cx="8" cy="11.8" r="0.85" fill="currentColor" />
             </svg>
-            <span id="loading-warning-text">{warning() ?? ""}</span>
+            <span id="loading-warning-text">{warning() ?? ''}</span>
           </p>
         </div>
       </div>

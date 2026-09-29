@@ -4,20 +4,16 @@
 // Entry of the lazily loaded TrUAPI debug panel. The host imports it
 // dynamically, only in debug mode.
 
-import { flush } from "solid-js";
-import stylesheetUrl from "@dotli/truapi-debug/styles.css?url";
-import {
-  onDotliDebugEvent,
-  type DotliDebugBusEvent,
-} from "@dotli/truapi-debug/dotli-debug-bus";
-import { EventStore } from "@dotli/truapi-debug/event-store";
-import { createResolutionRecorder } from "@dotli/truapi-debug/resolution-view";
-import { mountRoot } from "../../mount/root";
-import { Panel, PANEL_ID } from "./Panel";
+import { flush } from 'solid-js';
+import stylesheetUrl from '@dotli/truapi-debug/styles.css?url';
+import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutionRecorder } from '@dotli/truapi-debug';
 
-const ROOT = "truapi-debug";
+import { mountRoot } from '../../mount/root.js';
+import { Panel, PANEL_ID } from './Panel.js';
+
+const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
-const STYLE_ID = "truapi-debug-styles";
+const STYLE_ID = 'truapi-debug-styles';
 
 export interface SetupOptions {
   /** Hard cap on retained events before oldest are evicted. */
@@ -31,10 +27,8 @@ export interface SetupOptions {
   startCollapsed?: boolean;
 }
 
-function isTruapiDebugEvent(
-  ev: DotliDebugBusEvent,
-): ev is Extract<DotliDebugBusEvent, { kind: "truapi" }> {
-  return "kind" in ev;
+function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
+  return 'kind' in ev;
 }
 
 /** Link the panel stylesheet once per document. */
@@ -42,9 +36,9 @@ function injectStyles(): void {
   if (document.getElementById(STYLE_ID) !== null) {
     return;
   }
-  const link = document.createElement("link");
+  const link = document.createElement('link');
   link.id = STYLE_ID;
-  link.rel = "stylesheet";
+  link.rel = 'stylesheet';
   link.href = stylesheetUrl;
   document.head.appendChild(link);
 }
@@ -76,7 +70,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   });
   const resolution = createResolutionRecorder();
 
-  const container = document.createElement("div");
+  const container = document.createElement('div');
   document.body.appendChild(container);
 
   // Subscribed before the panel mounts so the synchronous early-buffer
@@ -85,7 +79,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   // order, but subscribing first means buffered boot events are already in
   // `store` for the panel's initial snapshot, so they render immediately
   // instead of waiting for the next animation frame.
-  const unsubscribe = onDotliDebugEvent((ev) => {
+  const unsubscribe = onDotliDebugEvent(ev => {
     if (isTruapiDebugEvent(ev)) {
       store.insertTruapi(ev);
     } else {
@@ -101,13 +95,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   const disposeView = mountRoot(
     ROOT,
     container,
-    () => (
-      <Panel
-        store={store}
-        resolution={resolution}
-        startCollapsed={options.startCollapsed ?? false}
-      />
-    ),
+    () => <Panel store={store} resolution={resolution} startCollapsed={options.startCollapsed ?? false} />,
     // A render error, even a late one, tears the panel down instead of
     // leaving it frozen with its timers running.
     { onBroken: unsubscribe, removeContainer: true },

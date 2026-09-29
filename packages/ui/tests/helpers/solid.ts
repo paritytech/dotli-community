@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { flush } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { cleanup, render } from "@solidjs/testing-library";
-import { afterEach } from "vitest";
+import { flush } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { cleanup, render } from '@solidjs/testing-library';
+import { afterEach } from 'vitest';
 
 afterEach(() => {
   cleanup();
@@ -30,7 +30,7 @@ export async function settle(): Promise<void> {
   await Promise.resolve();
 }
 
-export { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-store";
+export { resetAllStoresForTests as resetStores } from '../../src/state/create-store.js';
 
 /**
  * A mouse press on `el`: pointerdown, which is what dismisses a shell
@@ -38,10 +38,10 @@ export { resetAllStoresForTests as resetStores } from "@dotli/ui/state/create-st
  */
 export function pointerPress(el: Element): void {
   el.dispatchEvent(
-    new PointerEvent("pointerdown", {
+    new PointerEvent('pointerdown', {
       bubbles: true,
       cancelable: true,
-      pointerType: "mouse",
+      pointerType: 'mouse',
     }),
   );
   mouseClick(el);
@@ -53,10 +53,10 @@ export function pointerPress(el: Element): void {
  */
 export function pointerPressUnfocusable(el: Element): void {
   el.dispatchEvent(
-    new PointerEvent("pointerdown", {
+    new PointerEvent('pointerdown', {
       bubbles: true,
       cancelable: true,
-      pointerType: "mouse",
+      pointerType: 'mouse',
     }),
   );
   (document.activeElement as HTMLElement | null)?.blur();
@@ -68,7 +68,7 @@ export function pointerPressUnfocusable(el: Element): void {
  * has a `detail` of at least 1.
  */
 export function mouseClick(el: Element): MouseEvent {
-  const click = new MouseEvent("click", {
+  const click = new MouseEvent('click', {
     bubbles: true,
     cancelable: true,
     composed: true,
@@ -84,8 +84,8 @@ export function mouseClick(el: Element): MouseEvent {
  * the browser would make (happy-dom makes none). Returns the keydown.
  */
 export function tabTo(next: HTMLElement): KeyboardEvent {
-  const event = new KeyboardEvent("keydown", {
-    key: "Tab",
+  const event = new KeyboardEvent('keydown', {
+    key: 'Tab',
     bubbles: true,
     cancelable: true,
   });

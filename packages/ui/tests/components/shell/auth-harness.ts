@@ -6,22 +6,18 @@
 // module would load a second Solid), and window event recorders that go away
 // after each test.
 
-import { afterAll, afterEach, beforeAll, vi } from "vitest";
-import { flush } from "solid-js";
-import { closeAuthModal, initAuthController } from "@dotli/ui/auth-controller";
-import {
-  createBlockingModalCoordinator,
-  type BlockingModalCoordinator,
-} from "@dotli/ui/blocking-modal-queue";
-import { resetStores } from "../../helpers/solid";
-import { byId } from "../../support";
+import { afterAll, afterEach, beforeAll, vi } from 'vitest';
+import { flush } from 'solid-js';
+import { closeAuthModal, initAuthController } from '../../../src/auth-controller.js';
+import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../../../src/blocking-modal-queue.js';
+import { resetStores } from '../../helpers/solid.js';
+import { byId } from '../../support.js';
 
 let controllerListeners: Parameters<typeof window.removeEventListener>[] = [];
 let events = new AbortController();
 
 /** The coordinator the controller holds its modal lease through. */
-export const coordinator: BlockingModalCoordinator =
-  createBlockingModalCoordinator();
+export const coordinator: BlockingModalCoordinator = createBlockingModalCoordinator();
 
 /**
  * Start the auth controller for this file, and after each test close the
@@ -29,12 +25,9 @@ export const coordinator: BlockingModalCoordinator =
  */
 export function useAuthController(): void {
   beforeAll(() => {
-    const spy = vi.spyOn(window, "addEventListener");
+    const spy = vi.spyOn(window, 'addEventListener');
     initAuthController(coordinator);
-    controllerListeners = spy.mock.calls.map(([type, listener]) => [
-      type,
-      listener,
-    ]);
+    controllerListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
   });
 
@@ -57,7 +50,7 @@ export function recordEvents(name: string): { details: unknown[] } {
   const seen = { details: [] as unknown[] };
   window.addEventListener(
     name,
-    (event) => {
+    event => {
       seen.details.push((event as CustomEvent).detail);
     },
     { signal: events.signal },
@@ -79,7 +72,7 @@ export function press(
   init: KeyboardEventInit = {},
   target: EventTarget = document.activeElement ?? document,
 ): KeyboardEvent {
-  const event = new KeyboardEvent("keydown", {
+  const event = new KeyboardEvent('keydown', {
     key,
     bubbles: true,
     cancelable: true,

@@ -1,18 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { JSX } from "@solidjs/web";
-import {
-  VERIFICATION_SHIELD_ID,
-  VERIFICATION_TOOLTIP_ID,
-  type ShieldState,
-} from "../../verification-shield";
-import { createPopover } from "./popover";
+import type { JSX } from '@solidjs/web';
+import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
+import { createPopover } from './popover.js';
 
-const TOOLTIP_TITLE = "How was this site loaded?";
+const TOOLTIP_TITLE = 'How was this site loaded?';
 
-const SHIELD_OUTLINE =
-  "M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z";
+const SHIELD_OUTLINE = 'M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z';
 
 // Material "gpp_good" / "gpp_maybe" vocabulary: a check for verified, an
 // exclamation mark for "protected, but take note". Both cut out of one fill.
@@ -24,8 +19,8 @@ const GLYPH_PATHS: Record<ShieldState, string> = {
 // The explainer's copy per state is in the JSX below; the button names the
 // state too, so it is not conveyed by colour alone.
 const BUTTON_LABEL: Record<ShieldState, string> = {
-  verified: "Verified via light client",
-  trusted: "Loaded from a trusted provider",
+  verified: 'Verified via light client',
+  trusted: 'Loaded from a trusted provider',
 };
 
 /**
@@ -44,42 +39,37 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
  * marker comment in the DOM, and the markup matches the pre-Solid shield
  * node for node.
  */
-export function VerificationShield(props: {
-  state: ShieldState | null;
-}): JSX.Element {
+export function VerificationShield(props: { state: ShieldState | null }): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let tooltip: HTMLDivElement | undefined;
   const disclosure = createPopover({
-    mode: "popover",
+    mode: 'popover',
     trigger: () => button,
     surface: () => tooltip,
     closeOnBlur: true,
     // Nothing inside takes focus, so Tab moves on (and closes it).
     trapFocus: false,
   });
-  const label = (): string =>
-    props.state === null
-      ? TOOLTIP_TITLE
-      : `${BUTTON_LABEL[props.state]}. ${TOOLTIP_TITLE}`;
+  const label = (): string => (props.state === null ? TOOLTIP_TITLE : `${BUTTON_LABEL[props.state]}. ${TOOLTIP_TITLE}`);
 
   return (
     <div class="verification-shield-wrap">
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
-          el.addEventListener("click", disclosure.toggle);
+          el.addEventListener('click', disclosure.toggle);
         }}
         type="button"
         id={VERIFICATION_SHIELD_ID}
         class={[
-          "verification-shield",
+          'verification-shield',
           {
-            verified: props.state === "verified",
-            trusted: props.state === "trusted",
+            verified: props.state === 'verified',
+            trusted: props.state === 'trusted',
           },
         ]}
         aria-label={label()}
-        aria-expanded={disclosure.open() ? "true" : "false"}
+        aria-expanded={disclosure.open() ? 'true' : 'false'}
         aria-controls={VERIFICATION_TOOLTIP_ID}
       >
         <svg
@@ -106,20 +96,14 @@ export function VerificationShield(props: {
         </svg>
       </button>
       <div
-        ref={(el) => {
+        ref={el => {
           tooltip = el;
         }}
-        class={["verification-tooltip", { open: disclosure.open() }]}
+        class={['verification-tooltip', { open: disclosure.open() }]}
         id={VERIFICATION_TOOLTIP_ID}
       >
         <div class="verification-tooltip-title">{TOOLTIP_TITLE}</div>
-        <div
-          class={[
-            "verification-tooltip-row",
-            { "is-current": props.state === "verified" },
-          ]}
-          data-state="verified"
-        >
+        <div class={['verification-tooltip-row', { 'is-current': props.state === 'verified' }]} data-state="verified">
           <svg
             class="verification-tooltip-icon is-verified"
             viewBox="0 0 24 24"
@@ -136,18 +120,10 @@ export function VerificationShield(props: {
               <strong class="verification-tooltip-label">Verified</strong>
               <span class="verification-tooltip-current">This site</span>
             </span>
-            <span class="verification-tooltip-desc">
-              More secure, checked by your light client.
-            </span>
+            <span class="verification-tooltip-desc">More secure, checked by your light client.</span>
           </span>
         </div>
-        <div
-          class={[
-            "verification-tooltip-row",
-            { "is-current": props.state === "trusted" },
-          ]}
-          data-state="trusted"
-        >
+        <div class={['verification-tooltip-row', { 'is-current': props.state === 'trusted' }]} data-state="trusted">
           <svg
             class="verification-tooltip-icon is-trusted"
             viewBox="0 0 24 24"
@@ -164,9 +140,7 @@ export function VerificationShield(props: {
               <strong class="verification-tooltip-label">Trusted</strong>
               <span class="verification-tooltip-current">This site</span>
             </span>
-            <span class="verification-tooltip-desc">
-              Served by an external RPC provider.
-            </span>
+            <span class="verification-tooltip-desc">Served by an external RPC provider.</span>
           </span>
         </div>
       </div>

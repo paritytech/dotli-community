@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-const OVERLAY_ROOT_ID = "overlay-root";
+const OVERLAY_ROOT_ID = 'overlay-root';
 
 /**
  * The container for toasts and modals. Created on first use as the last child
@@ -12,7 +12,7 @@ export function ensureOverlayRoot(): HTMLElement {
   if (existing !== null) {
     return existing;
   }
-  const el = document.createElement("div");
+  const el = document.createElement('div');
   el.id = OVERLAY_ROOT_ID;
   document.body.appendChild(el);
   return el;

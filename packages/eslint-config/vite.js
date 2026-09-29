@@ -1,18 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import js from "@eslint/js";
-import eslintConfigPrettier from "eslint-config-prettier";
-import solid from "eslint-plugin-solid";
-import turboPlugin from "eslint-plugin-turbo";
-import tseslint from "typescript-eslint";
+import js from '@eslint/js';
+import eslintConfigPrettier from 'eslint-config-prettier';
+import solid from 'eslint-plugin-solid';
+import turboPlugin from 'eslint-plugin-turbo';
+import tseslint from 'typescript-eslint';
+import { defineConfig } from 'eslint/config';
+
+// eslint-plugin-solid types its rules against the ESLint 8 rule API, which
+// ESLint 10's `Plugin` type rejects. The rules themselves run under ESLint 10.
+const solidPlugin = /** @type {import("eslint").ESLint.Plugin} */ (/** @type {unknown} */ (solid));
 /**
  * ESLint configuration for Vite + TypeScript apps.
  * Extends the base config with strict type-checked rules.
- *
- * @type {import("eslint").Linter.Config[]}
  */
-export const config = [
+export const config = defineConfig([
   js.configs.recommended,
   eslintConfigPrettier,
   ...tseslint.configs.strictTypeChecked,
@@ -22,7 +25,7 @@ export const config = [
       turbo: turboPlugin,
     },
     rules: {
-      "turbo/no-undeclared-env-vars": "warn",
+      'turbo/no-undeclared-env-vars': 'warn',
     },
   },
   {
@@ -33,49 +36,40 @@ export const config = [
       },
     },
     rules: {
-      "@typescript-eslint/no-explicit-any": "error",
-      "@typescript-eslint/no-unsafe-assignment": "error",
-      "@typescript-eslint/no-unsafe-call": "error",
-      "@typescript-eslint/no-unsafe-member-access": "error",
-      "@typescript-eslint/no-unsafe-return": "error",
-      "@typescript-eslint/no-unsafe-argument": "error",
-      "@typescript-eslint/no-floating-promises": "error",
-      "@typescript-eslint/await-thenable": "error",
-      "@typescript-eslint/no-misused-promises": "error",
-      "@typescript-eslint/require-await": "error",
-      "@typescript-eslint/no-unused-vars": [
-        "error",
-        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
-      ],
-      "@typescript-eslint/explicit-function-return-type": [
-        "error",
-        { allowExpressions: true },
-      ],
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
-        { prefer: "type-imports" },
-      ],
-      "@typescript-eslint/no-import-type-side-effects": "error",
-      "@typescript-eslint/strict-boolean-expressions": "error",
-      "@typescript-eslint/switch-exhaustiveness-check": "error",
-      "@typescript-eslint/no-unnecessary-condition": "error",
-      "@typescript-eslint/prefer-nullish-coalescing": "error",
-      "@typescript-eslint/prefer-optional-chain": "error",
-      "@typescript-eslint/no-non-null-assertion": "error",
-      "@typescript-eslint/no-confusing-void-expression": "error",
-      "no-console": ["error", { allow: ["warn", "error"] }],
-      eqeqeq: ["error", "always"],
-      "no-var": "error",
-      "prefer-const": "error",
-      "no-throw-literal": "error",
-      curly: ["error", "all"],
+      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-unsafe-assignment': 'error',
+      '@typescript-eslint/no-unsafe-call': 'error',
+      '@typescript-eslint/no-unsafe-member-access': 'error',
+      '@typescript-eslint/no-unsafe-return': 'error',
+      '@typescript-eslint/no-unsafe-argument': 'error',
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/await-thenable': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/require-await': 'error',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/explicit-function-return-type': ['error', { allowExpressions: true }],
+      '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
+      '@typescript-eslint/no-import-type-side-effects': 'error',
+      '@typescript-eslint/strict-boolean-expressions': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+      '@typescript-eslint/no-unnecessary-condition': 'error',
+      '@typescript-eslint/prefer-nullish-coalescing': 'error',
+      '@typescript-eslint/prefer-optional-chain': 'error',
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      '@typescript-eslint/no-confusing-void-expression': 'error',
+      'no-console': ['error', { allow: ['warn', 'error'] }],
+      eqeqeq: ['error', 'always'],
+      'no-var': 'error',
+      'prefer-const': 'error',
+      'no-throw-literal': 'error',
+      curly: ['error', 'all'],
 
       // Deterministic-path contract rules — see
       // docs/DETERMINISM_AUDIT_2026-04-17.md §3 for rationale. Every
       // pattern here encodes one specific regression class that leaked
       // into the repo before the audit pass.
-      "no-restricted-syntax": [
-        "error",
+      'no-restricted-syntax': [
+        'error',
         {
           // Silent catch bodies. Every `catch` must either rethrow with
           // `{ cause }`, or call `captureException` + `log.error` + emit
@@ -83,9 +77,9 @@ export const config = [
           // the cause entirely. For genuinely-safe silent-swallow cases
           // (e.g. `localStorage` unavailable), use an eslint-disable
           // with a one-line rationale so the exception is reviewed.
-          selector: "CatchClause > BlockStatement[body.length=0]",
+          selector: 'CatchClause > BlockStatement[body.length=0]',
           message:
-            "Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric (see docs/DETERMINISM_AUDIT §3.1).",
+            'Silent catch {} is forbidden. Either rethrow with `{ cause: err }`, or call captureException + log.error and emit an outcome metric (see docs/DETERMINISM_AUDIT §3.1).',
         },
         {
           // Error wrapping via string concatenation with a `.message`
@@ -103,31 +97,51 @@ export const config = [
           // violate the "one name per logical event" schema. Use
           // `m.count(<base>, { outcome: "error" | "timeout" })` instead.
           selector:
-            "ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[id.name=/_(FAILURE|TIMEOUT|RETRY|RETRIES)$/]",
+            'ExportNamedDeclaration > VariableDeclaration > VariableDeclarator[id.name=/_(FAILURE|TIMEOUT|RETRY|RETRIES)$/]',
           message:
-            "Parallel _FAILURE / _TIMEOUT / _RETRY metric constants are forbidden. Use one name + `{ outcome, reason }` (see docs/DETERMINISM_AUDIT §3.4).",
+            'Parallel _FAILURE / _TIMEOUT / _RETRY metric constants are forbidden. Use one name + `{ outcome, reason }` (see docs/DETERMINISM_AUDIT §3.4).',
         },
       ],
+    },
+  },
+  {
+    // Relative imports name the emitted `.js` file, as NodeNext resolution
+    // expects. `allowImportingTsExtensions` stays on only for the files Node
+    // loads directly (below), so tsc alone would not catch a stray `.ts`.
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: '^\\.{1,2}/.*\\.tsx?$',
+              message: 'Import the `.js` path. Only files Node loads directly (vite.config.ts, src/vite.ts) use `.ts`.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['**/vite.config.ts', '**/src/vite.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
     },
   },
   {
     // Only the logging + metrics entry points may call `console.*`
     // directly. Everywhere else must go through `log.*` so DEBUG
     // gating + Sentry breadcrumb wiring applies uniformly.
-    files: ["**/src/**/*.ts", "**/src/**/*.tsx"],
-    ignores: [
-      "**/packages/shared/src/log.ts",
-      "**/packages/metrics/src/**",
-      "**/apps/sandbox/src/app-sw.ts",
-    ],
+    files: ['**/src/**/*.ts', '**/src/**/*.tsx'],
+    ignores: ['**/packages/shared/src/log.ts', '**/packages/metrics/src/**', '**/apps/sandbox/src/app-sw.ts'],
     rules: {
-      "no-console": "error",
+      'no-console': 'error',
     },
   },
   {
-    files: ["tests/**/*.ts"],
+    files: ['tests/**/*.ts'],
     rules: {
-      "no-console": "off",
+      'no-console': 'off',
     },
   },
   {
@@ -136,22 +150,22 @@ export const config = [
     // best-effort Playwright step (`.catch(() => {})` on an optional click or
     // wait). The empty body is the point there, so the rule only adds noise.
     // `src` keeps the rule.
-    files: ["tests/**/*.ts", "tests/**/*.tsx"],
+    files: ['tests/**/*.ts', 'tests/**/*.tsx'],
     rules: {
-      "@typescript-eslint/no-empty-function": "off",
+      '@typescript-eslint/no-empty-function': 'off',
     },
   },
   {
-    ignores: ["dist/**", "node_modules/**", "*.js", "*.cjs"],
+    ignores: ['dist/**', 'node_modules/**'],
   },
   {
-    files: ["**/*.tsx"],
-    plugins: { solid },
+    files: ['**/*.tsx'],
+    plugins: { solid: solidPlugin },
     rules: {
-      ...solid.configs["flat/typescript"].rules,
+      ...solid.configs['flat/typescript'].rules,
       // Components return JSX.Element by inference; annotating every one adds
       // noise without catching anything.
-      "@typescript-eslint/explicit-function-return-type": "off",
+      '@typescript-eslint/explicit-function-return-type': 'off',
     },
   },
-];
+]);

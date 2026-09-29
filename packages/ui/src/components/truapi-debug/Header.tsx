@@ -4,12 +4,12 @@
 // Header bar of the TrUAPI debug panel: title, counts and the pause, clear,
 // export, copy, dock, collapse and close controls.
 
-import { createSignal, flush, onCleanup, Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { DockPosition } from "@dotli/truapi-debug/dock-storage";
-import { exportFilename } from "@dotli/truapi-debug/export";
+import { createSignal, flush, onCleanup, Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { DockPosition } from '@dotli/truapi-debug';
+import { exportFilename } from '@dotli/truapi-debug';
 
-const DEBUG_SESSION_KEY = "dotli:truapi-debug";
+const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
 const COPY_FLASH_MS = 1200;
 
 // Lucide glyphs.
@@ -65,15 +65,7 @@ function DockRightIcon(): JSX.Element {
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
       <line x1="10" y1="2.5" x2="10" y2="13.5" />
-      <rect
-        x="10"
-        y="2.5"
-        width="4.5"
-        height="11"
-        fill="currentColor"
-        fill-opacity="0.4"
-        stroke="none"
-      />
+      <rect x="10" y="2.5" width="4.5" height="11" fill="currentColor" fill-opacity="0.4" stroke="none" />
     </svg>
   );
 }
@@ -93,15 +85,7 @@ function DockBottomIcon(): JSX.Element {
     >
       <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
       <line x1="1.5" y1="10" x2="14.5" y2="10" />
-      <rect
-        x="1.5"
-        y="10"
-        width="13"
-        height="3.5"
-        fill="currentColor"
-        fill-opacity="0.4"
-        stroke="none"
-      />
+      <rect x="1.5" y="10" width="13" height="3.5" fill="currentColor" fill-opacity="0.4" stroke="none" />
     </svg>
   );
 }
@@ -144,9 +128,9 @@ export function Header(props: {
   };
 
   const exportDownload = (): void => {
-    const blob = new Blob([props.exportJson()], { type: "application/json" });
+    const blob = new Blob([props.exportJson()], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const a = document.createElement('a');
     a.href = url;
     a.download = exportFilename(new Date());
     // Attach before clicking and revoke on the next tick — Safari can
@@ -167,15 +151,15 @@ export function Header(props: {
     // (Clipboard API is [SecureContext]-only).
     const clipboard = navigator.clipboard as Clipboard | undefined;
     if (!clipboard) {
-      flashCopy("✕");
+      flashCopy('✕');
       return;
     }
     clipboard.writeText(props.exportJson()).then(
       () => {
-        flashCopy("✓");
+        flashCopy('✓');
       },
       () => {
-        flashCopy("✕");
+        flashCopy('✕');
       },
     );
   };
@@ -184,7 +168,7 @@ export function Header(props: {
     // Exit debug mode entirely: the panel is bound to debug mode, and
     // re-entry is via the host Settings "Open in debug mode" button.
     try {
-      sessionStorage.setItem(DEBUG_SESSION_KEY, "0");
+      sessionStorage.setItem(DEBUG_SESSION_KEY, '0');
       // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in exotic environments; fall through to plain reload.
     } catch {
       /* ignore */
@@ -192,8 +176,7 @@ export function Header(props: {
     window.location.reload();
   };
 
-  const dockLabel = (): string =>
-    props.dock === "right" ? "Dock to bottom" : "Dock to right";
+  const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
 
   return (
     <div class="td-header">
@@ -201,13 +184,13 @@ export function Header(props: {
       <span class="td-counts">{props.counts}</span>
       <span class="td-spacer" />
       <button
-        class={props.paused ? "td-btn td-pause active" : "td-btn td-pause"}
+        class={props.paused ? 'td-btn td-pause active' : 'td-btn td-pause'}
         type="button"
         onClick={() => {
           props.onTogglePause();
         }}
       >
-        {props.paused ? "Resume" : "Pause"}
+        {props.paused ? 'Resume' : 'Pause'}
       </button>
       <button
         class="td-btn td-clear"
@@ -248,7 +231,7 @@ export function Header(props: {
           props.onToggleDock();
         }}
       >
-        {props.dock === "right" ? <DockBottomIcon /> : <DockRightIcon />}
+        {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
       </button>
       <button
         class="td-btn td-btn-icon td-collapse"
@@ -258,14 +241,9 @@ export function Header(props: {
           props.onToggleCollapse();
         }}
       >
-        {props.collapsed ? "▲" : "▼"}
+        {props.collapsed ? '▲' : '▼'}
       </button>
-      <button
-        class="td-close"
-        type="button"
-        title="Hide (Ctrl+Shift+D)"
-        onClick={exitDebugMode}
-      >
+      <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)" onClick={exitDebugMode}>
         ×
       </button>
     </div>

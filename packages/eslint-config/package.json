@@ -2,13 +2,19 @@
   "name": "@dotli/eslint-config",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": false,
   "private": true,
   "license": "AGPL-3.0-only",
   "exports": {
     "./base": "./base.js",
     "./vite": "./vite.js"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
   "devDependencies": {
+    "@dotli/typescript-config": "*",
     "@eslint/js": "^10.0.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-solid": "0.18.0",

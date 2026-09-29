@@ -12,15 +12,15 @@
 // Reuses the characterization suite's stubbing approach (`./panel.test.ts`),
 // which is left untouched; this is a separate, narrowly scoped file.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { loadPanel, type PanelModule } from "./panel-entry";
-import type * as DotliDebugBusModule from "@dotli/truapi-debug/dotli-debug-bus";
-import { query } from "../support";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadPanel, type PanelModule } from './panel-entry.js';
+import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
+import { query } from '../support.js';
 
 type Bus = typeof DotliDebugBusModule;
-type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
+type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
 
-const PANEL_ID = "truapi-debug-panel";
+const PANEL_ID = 'truapi-debug-panel';
 
 let bus: Bus;
 let panelModule: PanelModule;
@@ -46,7 +46,7 @@ beforeEach(async () => {
   document.body.replaceChildren();
   localStorage.clear();
   sessionStorage.clear();
-  bus = await import("@dotli/truapi-debug/dotli-debug-bus");
+  bus = await import('../../../truapi-debug/src/dotli-debug-bus.js');
   panelModule = await loadPanel();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableDotliDebugBuffering();
@@ -72,7 +72,7 @@ function mount(): () => void {
 function panel(): HTMLElement {
   const el = document.getElementById(PANEL_ID);
   if (el === null) {
-    throw new Error("panel is not mounted");
+    throw new Error('panel is not mounted');
   }
   return el;
 }
@@ -82,33 +82,28 @@ function q(selector: string): HTMLElement {
 }
 
 function rows(): HTMLElement[] {
-  return [...panel().querySelectorAll<HTMLElement>(".td-list .td-row")];
+  return [...panel().querySelectorAll<HTMLElement>('.td-list .td-row')];
 }
 
 function rowTags(): string[] {
-  return rows().map((r) => r.querySelector(".td-tag")?.textContent ?? "");
+  return rows().map(r => r.querySelector('.td-tag')?.textContent ?? '');
 }
 
 function counts(): string {
-  return q(".td-counts").textContent;
+  return q('.td-counts').textContent;
 }
 
 function truapi(tag: string, requestId: string): void {
   bus.emitDotliDebugEvent({
-    kind: "truapi",
-    direction: "outgoing",
-    productId: "app.dot",
+    kind: 'truapi',
+    direction: 'outgoing',
+    productId: 'app.dot',
     requestId,
     payload: { tag, value: {} },
   });
 }
 
-function system(
-  layer: string,
-  event: string,
-  flowId: string,
-  payload: Record<string, unknown> = {},
-): void {
+function system(layer: string, event: string, flowId: string, payload: Record<string, unknown> = {}): void {
   bus.emitDotliDebugEvent({
     layer,
     event,
@@ -118,17 +113,17 @@ function system(
   } as unknown as BusEvent);
 }
 
-describe("truapi debug panel: early-buffer replay timing", () => {
-  it("As a dotli developer, buffered boot events are rendered right after setup, before any animation frame", () => {
+describe('truapi debug panel: early-buffer replay timing', () => {
+  it('As a dotli developer, buffered boot events are rendered right after setup, before any animation frame', () => {
     // Given the bus is buffering (beforeEach) and nothing listens yet
-    system("boot", "started", "flow-early", { chainBackend: "smoldot" });
-    truapi("early_request", "early-1");
+    system('boot', 'started', 'flow-early', { chainBackend: 'smoldot' });
+    truapi('early_request', 'early-1');
 
     // When the panel mounts — no `frame()` advance follows
     mount();
 
     // Then the buffered events are already in the first paint
-    expect(rowTags()).toEqual(["boot.started", "early_request"]);
-    expect(counts()).toBe("2 events");
+    expect(rowTags()).toEqual(['boot.started', 'early_request']);
+    expect(counts()).toBe('2 events');
   });
 });

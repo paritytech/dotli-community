@@ -1,11 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store";
+import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 export interface TopbarState {
   visible: boolean;

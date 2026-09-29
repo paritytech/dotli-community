@@ -6,29 +6,23 @@ import type {
   JsonRpcMessage,
   JsonRpcProvider,
   JsonRpcRequest,
-} from "@polkadot-api/json-rpc-provider";
+} from '@polkadot-api/json-rpc-provider';
+import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
+import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
-  ProtocolFatalError,
-  PROTOCOL_ERRORS,
-  ProtocolInitFailedError,
-} from "./errors";
-import type {
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-} from "@dotli/resolver/manifest";
-import { BASE_DOMAIN, type SiteId } from "@dotli/config/config";
-import {
+  BASE_DOMAIN,
+  type SiteId,
   getActiveCoreGatewaySupportedGenesisHashes,
   getActiveGatewaySupportedGenesisHashes,
   getActiveSupportedGenesisHashes,
   getNetwork,
-} from "@dotli/config/network";
-import { getBackend, type Backend } from "@dotli/config/mode";
-import { log } from "@dotli/shared/log";
-import { getResolutionId, m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import type { SmoldotDbChain, SmoldotDbOutcome } from "./messages";
+  getBackend,
+  type Backend,
+} from '@dotli/config';
+
+import { log, serializeError } from '@dotli/shared';
+import { getResolutionId, m, spans as S } from '@dotli/metrics';
+import type { SmoldotDbChain, SmoldotDbOutcome } from './messages.js';
 import {
   isChainDetailPayloadValid,
   isChainSyncPayloadValid,
@@ -39,22 +33,15 @@ import {
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolRequestMethod,
-} from "./messages";
-import {
-  isSharedAuthRequestMethod,
-  isSharedModeRequestMethod,
-} from "./auth-storage";
-import { serializeError } from "@dotli/shared/errors";
-import {
-  DEFAULT_TIMEOUT_MS,
-  METHOD_TIMEOUTS,
-  UNTIMED_METHODS,
-} from "./method-timeouts";
+} from './messages.js';
+import { isSharedAuthRequestMethod, isSharedModeRequestMethod } from './auth-storage.js';
+
+import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
 
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
-  onProgress?: (message: string) => void;
+  onProgress?: ((message: string) => void) | undefined;
 }
 
 interface RemoteChainConnection {
@@ -69,9 +56,7 @@ export interface SharedAuthStorageChange {
   value: string | null;
 }
 
-export type SharedAuthStorageListener = (
-  change: SharedAuthStorageChange,
-) => void;
+export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => void;
 
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
@@ -79,14 +64,10 @@ let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
-const chainSyncListeners = new Set<
-  (event: ProtocolChainSyncEnvelope) => void
->();
+const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
 const netBytesListeners = new Set<(event: ProtocolNetBytesEnvelope) => void>();
-const chainDetailListeners = new Set<
-  (event: ProtocolChainDetailEnvelope) => void
->();
+const chainDetailListeners = new Set<(event: ProtocolChainDetailEnvelope) => void>();
 let listenerBound = false;
 let protocolReady = false;
 interface ReadyWaiter {
@@ -101,20 +82,20 @@ let pendingReadyResolvers: ReadyWaiter[] = [];
  *  `"shared-worker"` and `"direct"` are P2P (smoldot-backed) submodes.
  *  `"rpc"` is the gateway submode: chain calls are bridged over trusted
  *  WSS JSON-RPC instead of smoldot. */
-type ProtocolSubMode = "shared-worker" | "direct" | "rpc";
+type ProtocolSubMode = 'shared-worker' | 'direct' | 'rpc';
 let protocolSubMode: ProtocolSubMode | null = null;
 
 /** Map the user-facing `Backend` to the protocol iframe sub-mode.
  *  The iframe doesn't carry the `smoldot-` / `rpc-gateway` prefix.
  *  That prefix already lives on the chain side of the boundary. */
 function backendToSubMode(backend: Backend): ProtocolSubMode {
-  if (backend === "smoldot-shared-worker") {
-    return "shared-worker";
+  if (backend === 'smoldot-shared-worker') {
+    return 'shared-worker';
   }
-  if (backend === "smoldot-direct") {
-    return "direct";
+  if (backend === 'smoldot-direct') {
+    return 'direct';
   }
-  return "rpc";
+  return 'rpc';
 }
 
 /** When true, ask the protocol iframe to purge its IDB caches before
@@ -124,19 +105,15 @@ let protocolSkipWorkerCache = false;
 /**
  * Set the sub-mode for the protocol iframe.
  */
-export function setProtocolSubMode(
-  mode: ProtocolSubMode,
-  opts: { skipWorkerCache?: boolean } = {},
-): void {
+export function setProtocolSubMode(mode: ProtocolSubMode, opts: { skipWorkerCache?: boolean } = {}): void {
   protocolSubMode = mode;
   protocolSkipWorkerCache = opts.skipWorkerCache === true;
 }
 
 export function getProtocolOrigin(): string {
   const hostname = window.location.hostname;
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-    const port =
-      window.location.port.length > 0 ? window.location.port : "5173";
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+    const port = window.location.port.length > 0 ? window.location.port : '5173';
     return `http://host.localhost:${port}`;
   }
   return `https://host.${BASE_DOMAIN}`;
@@ -153,10 +130,8 @@ const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
  * The host tags its resolution telemetry with this so a cold sync and a warm
  * resume are separate populations rather than one blended average.
  */
-export function getSmoldotDbOutcome(
-  chain: SmoldotDbChain,
-): SmoldotDbOutcome | "unknown" {
-  return smoldotDbOutcomes.get(chain) ?? "unknown";
+export function getSmoldotDbOutcome(chain: SmoldotDbChain): SmoldotDbOutcome | 'unknown' {
+  return smoldotDbOutcomes.get(chain) ?? 'unknown';
 }
 
 function resolveProtocolReady(): void {
@@ -216,19 +191,12 @@ function resetProtocolFrameState(reason?: Error): void {
 }
 
 /** Deliver to every listener, so one that throws cannot silence the rest. */
-function broadcast<T>(
-  listeners: ReadonlySet<(event: T) => void>,
-  event: T,
-  label: string,
-): void {
+function broadcast<T>(listeners: ReadonlySet<(event: T) => void>, event: T, label: string): void {
   for (const listener of listeners) {
     try {
       listener(event);
     } catch (err: unknown) {
-      log.error(
-        `[dot.li protocol] ${label} listener threw:`,
-        err instanceof Error ? err.message : err,
-      );
+      log.error(`[dot.li protocol] ${label} listener threw:`, err instanceof Error ? err.message : err);
     }
   }
 }
@@ -239,7 +207,7 @@ function bindMessageListener(): void {
   }
   listenerBound = true;
 
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     if (!isProtocolEnvelope(event.data)) {
       return;
     }
@@ -249,20 +217,16 @@ function bindMessageListener(): void {
     }
 
     const frameWindow = protocolIframe?.contentWindow;
-    if (
-      frameWindow !== null &&
-      frameWindow !== undefined &&
-      event.source !== frameWindow
-    ) {
+    if (frameWindow !== null && frameWindow !== undefined && event.source !== frameWindow) {
       return;
     }
 
     const msg = event.data;
     switch (msg.kind) {
-      case "progress":
+      case 'progress':
         pendingRequests.get(msg.id)?.onProgress?.(msg.message);
         return;
-      case "response": {
+      case 'response': {
         const pending = pendingRequests.get(msg.id);
         if (!pending) {
           return;
@@ -271,54 +235,48 @@ function bindMessageListener(): void {
         if (msg.ok) {
           pending.resolve(msg.result);
         } else {
-          const err = new Error(msg.error || "Unknown protocol error");
+          const err = new Error(msg.error || 'Unknown protocol error');
           // A bare `"Error"` carries nothing, and would cost us the
           // "crossed the protocol boundary" signal dashboards filter on.
-          err.name =
-            msg.errorName !== undefined && msg.errorName !== "Error"
-              ? msg.errorName
-              : "ProtocolResponseError";
+          err.name = msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError';
           pending.reject(err);
         }
         return;
       }
-      case "chain-sync": {
+      case 'chain-sync': {
         if (!isChainSyncPayloadValid(msg)) {
           return;
         }
-        broadcast(chainSyncListeners, msg, "Chain sync");
+        broadcast(chainSyncListeners, msg, 'Chain sync');
         return;
       }
-      case "chain-detail": {
+      case 'chain-detail': {
         if (!isChainDetailPayloadValid(msg)) {
           return;
         }
-        broadcast(chainDetailListeners, msg, "Chain detail");
+        broadcast(chainDetailListeners, msg, 'Chain detail');
         return;
       }
-      case "net-bytes": {
+      case 'net-bytes': {
         // Cumulative, so a total below the last one is spoofed or corrupt
         // traffic and would feed a negative rate into the network panel.
-        if (
-          !Number.isFinite(msg.received) ||
-          msg.received < lastNetBytesTotal
-        ) {
+        if (!Number.isFinite(msg.received) || msg.received < lastNetBytesTotal) {
           return;
         }
         lastNetBytesTotal = msg.received;
-        broadcast(netBytesListeners, msg, "Net bytes");
+        broadcast(netBytesListeners, msg, 'Net bytes');
         return;
       }
-      case "fatal":
-      case "init-failed": {
+      case 'fatal':
+      case 'init-failed': {
         // Smoldot (or the protocol iframe) has died, either crashed
         // mid-session (`fatal`) or failed to come up at all
         // (`init-failed`). Either way every in-flight request is
         // orphaned: the chain is gone, nothing will ever respond.
-        const kind = msg.kind === "fatal" ? "Fatal" : "Init failed";
+        const kind = msg.kind === 'fatal' ? 'Fatal' : 'Init failed';
         log.error(`[dot.li protocol] ${kind}: ${msg.message}`);
         const err =
-          msg.kind === "fatal"
+          msg.kind === 'fatal'
             ? new ProtocolFatalError(`${kind}: ${msg.message}`)
             : new ProtocolInitFailedError(`${kind}: ${msg.message}`);
 
@@ -342,11 +300,11 @@ function bindMessageListener(): void {
         resetProtocolFrameState(err);
         return;
       }
-      case "chain-message": {
+      case 'chain-message': {
         const conn = chainConnections.get(msg.connectionId);
         if (!conn) {
           log.warn(
-            `[dot.li protocol] chain-message for unknown connectionId: ${msg.connectionId} (known: ${[...chainConnections.keys()].join(", ")})`,
+            `[dot.li protocol] chain-message for unknown connectionId: ${msg.connectionId} (known: ${[...chainConnections.keys()].join(', ')})`,
           );
           return;
         }
@@ -372,16 +330,16 @@ function bindMessageListener(): void {
         }
         return;
       }
-      case "chain-halt":
+      case 'chain-halt':
         chainConnections.delete(msg.connectionId);
         return;
-      case "request":
+      case 'request':
         // Ignore inbound requests on the client side
         return;
-      case "ready":
+      case 'ready':
         resolveProtocolReady();
         return;
-      case "smoldot-db":
+      case 'smoldot-db':
         // `isProtocolEnvelope` validates only namespace and kind, and these
         // values become Sentry tags: gate them so a buggy frame cannot write
         // unbounded tag values through the compile-time-only narrowing.
@@ -389,22 +347,20 @@ function bindMessageListener(): void {
           const chain: string = msg.chain;
           const outcome: string = msg.outcome;
           if (
-            (chain === "relay" || chain === "hub" || chain === "bulletin") &&
-            (outcome === "hit" ||
-              outcome === "miss" ||
-              outcome === "unavailable")
+            (chain === 'relay' || chain === 'hub' || chain === 'bulletin') &&
+            (outcome === 'hit' || outcome === 'miss' || outcome === 'unavailable')
           ) {
             smoldotDbOutcomes.set(chain, outcome);
           }
         }
         return;
-      case "auth-storage-changed": {
+      case 'auth-storage-changed': {
         const change: SharedAuthStorageChange = {
           siteId: msg.siteId,
           key: msg.key,
           value: msg.value,
         };
-        broadcast(sharedAuthListeners, change, "Shared auth");
+        broadcast(sharedAuthListeners, change, 'Shared auth');
         return;
       }
     }
@@ -431,33 +387,28 @@ function createHostIframe(): Promise<void> {
     // rejects the host's pending resolve, so clearing there would strip the
     // tags from exactly the failures they exist to explain.
     smoldotDbOutcomes.clear();
-    const iframe = document.createElement("iframe");
+    const iframe = document.createElement('iframe');
     const params = new URLSearchParams();
     // Fall back to the stored Backend when the async
     // setProtocolSubMode() has not run yet.
-    const mode: ProtocolSubMode =
-      protocolSubMode ?? backendToSubMode(getBackend());
-    params.set("mode", mode);
-    params.set("network", getNetwork());
+    const mode: ProtocolSubMode = protocolSubMode ?? backendToSubMode(getBackend());
+    params.set('mode', mode);
+    params.set('network', getNetwork());
     if (protocolSkipWorkerCache) {
-      params.set("skipWorkerCache", "1");
+      params.set('skipWorkerCache', '1');
     }
     // Carried on the URL rather than posted after load: the iframe boots its
     // own Sentry client and starts emitting before any handshake completes, so
     // an id that arrived by message would miss that first window.
     const resolutionId = getResolutionId();
     if (resolutionId !== null) {
-      params.set("resolutionId", resolutionId);
+      params.set('resolutionId', resolutionId);
     }
     const query = params.toString();
-    iframe.src =
-      query.length > 0
-        ? `${getProtocolOrigin()}?${query}`
-        : getProtocolOrigin();
-    iframe.setAttribute("aria-hidden", "true");
+    iframe.src = query.length > 0 ? `${getProtocolOrigin()}?${query}` : getProtocolOrigin();
+    iframe.setAttribute('aria-hidden', 'true');
     iframe.tabIndex = -1;
-    iframe.style.cssText =
-      "position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;";
+    iframe.style.cssText = 'position:fixed;width:0;height:0;opacity:0;pointer-events:none;border:0;';
 
     const timer = setTimeout(() => {
       cleanup();
@@ -479,12 +430,12 @@ function createHostIframe(): Promise<void> {
 
     function cleanup(): void {
       clearTimeout(timer);
-      iframe.removeEventListener("load", onLoad);
-      iframe.removeEventListener("error", onError);
+      iframe.removeEventListener('load', onLoad);
+      iframe.removeEventListener('error', onError);
     }
 
-    iframe.addEventListener("load", onLoad, { once: true });
-    iframe.addEventListener("error", onError, { once: true });
+    iframe.addEventListener('load', onLoad, { once: true });
+    iframe.addEventListener('error', onError, { once: true });
     document.body.appendChild(iframe);
   });
 }
@@ -505,14 +456,14 @@ async function ensureHostFrame(): Promise<void> {
       await createHostIframe();
     } catch (error: unknown) {
       m.count(S.PROTOCOL_IFRAME_READY, {
-        outcome: "error",
-        phase: "load",
-        reason: error instanceof Error ? error.name : "unknown",
+        outcome: 'error',
+        phase: 'load',
+        reason: error instanceof Error ? error.name : 'unknown',
       });
-      m.breadcrumb("protocol iframe load failed", {
+      m.breadcrumb('protocol iframe load failed', {
         reason: error instanceof Error ? error.message : String(error),
       });
-      log.error("[dot.li protocol] Host iframe load failed:", error);
+      log.error('[dot.li protocol] Host iframe load failed:', error);
       resetProtocolFrameState();
       hostFramePromise = null;
       throw error;
@@ -537,7 +488,7 @@ function waitForProtocolReady(): Promise<void> {
         stopIframe();
         resolve();
       },
-      reject: (err) => {
+      reject: err => {
         clearTimeout(timer);
         stopIframe();
         reject(err);
@@ -545,7 +496,7 @@ function waitForProtocolReady(): Promise<void> {
     };
 
     const timer = setTimeout(() => {
-      pendingReadyResolvers = pendingReadyResolvers.filter((w) => w !== waiter);
+      pendingReadyResolvers = pendingReadyResolvers.filter(w => w !== waiter);
       stopIframe();
       reject(new Error(PROTOCOL_ERRORS.FRAME_READY_TIMEOUT));
     }, IFRAME_READY_TIMEOUT_MS);
@@ -575,14 +526,14 @@ export async function ensureProtocolFrame(): Promise<void> {
       // The cached promise is released so an explicit user action (e.g.
       // "Change settings") can try again.
       m.count(S.PROTOCOL_IFRAME_READY, {
-        phase: "ready",
-        outcome: "error",
-        reason: error instanceof Error ? error.name : "unknown",
+        phase: 'ready',
+        outcome: 'error',
+        reason: error instanceof Error ? error.name : 'unknown',
       });
-      m.breadcrumb("protocol iframe ready wait failed", {
+      m.breadcrumb('protocol iframe ready wait failed', {
         reason: error instanceof Error ? error.message : String(error),
       });
-      log.error("[dot.li protocol] Ready wait failed:", error);
+      log.error('[dot.li protocol] Ready wait failed:', error);
       protocolReadyPromise = null;
       throw error;
     }
@@ -595,8 +546,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
   method: M,
   payload: ProtocolRequestMap[M],
   onProgress?: (message: string) => void,
-  needsProtocolReady = !isSharedAuthRequestMethod(method) &&
-    !isSharedModeRequestMethod(method),
+  needsProtocolReady = !isSharedAuthRequestMethod(method) && !isSharedModeRequestMethod(method),
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
   const frameWindow = protocolIframe?.contentWindow;
@@ -605,12 +555,10 @@ async function postRequest<M extends ProtocolRequestMethod>(
   }
 
   const id = createRequestId();
-  const timeoutMs = UNTIMED_METHODS.has(method)
-    ? null
-    : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
+  const timeoutMs = UNTIMED_METHODS.has(method) ? null : (METHOD_TIMEOUTS[method] ?? DEFAULT_TIMEOUT_MS);
   const envelope: ProtocolRequestEnvelope<M> = {
-    namespace: "dotli:protocol",
-    kind: "request",
+    namespace: 'dotli:protocol',
+    kind: 'request',
     id,
     method,
     payload,
@@ -624,17 +572,13 @@ async function postRequest<M extends ProtocolRequestMethod>(
         ? null
         : setTimeout(() => {
             pendingRequests.delete(id);
-            m.count(S.PROTOCOL_REQUEST, { outcome: "timeout", method });
+            m.count(S.PROTOCOL_REQUEST, { outcome: 'timeout', method });
             stopReq();
-            reject(
-              new Error(
-                `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
-              ),
-            );
+            reject(new Error(`Protocol request "${method}" timed out after ${String(timeoutMs)}ms`));
           }, timeoutMs);
 
     pendingRequests.set(id, {
-      resolve: (value) => {
+      resolve: value => {
         if (timer !== null) {
           clearTimeout(timer);
         }
@@ -655,21 +599,18 @@ async function postRequest<M extends ProtocolRequestMethod>(
 }
 
 export async function warmupProtocol(): Promise<void> {
-  await postRequest("warmup", {});
+  await postRequest('warmup', {});
 }
 
 export async function resolveDotNameRemote(
   label: string,
   onStatus?: (message: string) => void,
 ): Promise<string | null> {
-  return (await postRequest("resolveDotName", { label }, onStatus)) as
-    string | null;
+  return (await postRequest('resolveDotName', { label }, onStatus)) as string | null;
 }
 
-export async function resolveOwnerRemote(
-  label: string,
-): Promise<string | null> {
-  return (await postRequest("resolveOwner", { label })) as string | null;
+export async function resolveOwnerRemote(label: string): Promise<string | null> {
+  return (await postRequest('resolveOwner', { label })) as string | null;
 }
 
 /**
@@ -680,44 +621,31 @@ export async function resolveOwnerRemote(
  */
 export async function resolveExecutableManifestRemote(
   label: string,
-  kind: "app" | "widget" | "worker",
+  kind: 'app' | 'widget' | 'worker',
 ): Promise<ManifestResult<ExecutableManifest>> {
-  return (await postRequest("resolveExecutableManifest", {
+  return (await postRequest('resolveExecutableManifest', {
     label,
     kind,
   })) as ManifestResult<ExecutableManifest>;
 }
 
 /** Remote proxy for the root-manifest reader. */
-export async function resolveRootManifestRemote(
-  label: string,
-): Promise<ManifestResult<RootManifest>> {
-  return (await postRequest("resolveRootManifest", {
+export async function resolveRootManifestRemote(label: string): Promise<ManifestResult<RootManifest>> {
+  return (await postRequest('resolveRootManifest', {
     label,
   })) as ManifestResult<RootManifest>;
 }
 
-export async function readSharedAuthStorage(
-  siteId: SiteId,
-  key: string,
-): Promise<string | null> {
-  return (await postRequest("authStorageRead", { siteId, key })) as
-    string | null;
+export async function readSharedAuthStorage(siteId: SiteId, key: string): Promise<string | null> {
+  return (await postRequest('authStorageRead', { siteId, key })) as string | null;
 }
 
-export async function writeSharedAuthStorage(
-  siteId: SiteId,
-  key: string,
-  value: string,
-): Promise<void> {
-  await postRequest("authStorageWrite", { siteId, key, value });
+export async function writeSharedAuthStorage(siteId: SiteId, key: string, value: string): Promise<void> {
+  await postRequest('authStorageWrite', { siteId, key, value });
 }
 
-export async function clearSharedAuthStorage(
-  siteId: SiteId,
-  key: string,
-): Promise<void> {
-  await postRequest("authStorageClear", { siteId, key });
+export async function clearSharedAuthStorage(siteId: SiteId, key: string): Promise<void> {
+  await postRequest('authStorageClear', { siteId, key });
 }
 
 /**
@@ -726,27 +654,16 @@ export async function clearSharedAuthStorage(
  * registrable root. Reads return `null` when the key has never been
  * written (caller decides the default).
  */
-export async function readSharedModeStorage(
-  siteId: SiteId,
-  key: string,
-): Promise<string | null> {
-  return (await postRequest("modeStorageRead", { siteId, key })) as
-    string | null;
+export async function readSharedModeStorage(siteId: SiteId, key: string): Promise<string | null> {
+  return (await postRequest('modeStorageRead', { siteId, key })) as string | null;
 }
 
-export async function writeSharedModeStorage(
-  siteId: SiteId,
-  key: string,
-  value: string,
-): Promise<void> {
-  await postRequest("modeStorageWrite", { siteId, key, value });
+export async function writeSharedModeStorage(siteId: SiteId, key: string, value: string): Promise<void> {
+  await postRequest('modeStorageWrite', { siteId, key, value });
 }
 
-export async function clearSharedModeStorage(
-  siteId: SiteId,
-  key: string,
-): Promise<void> {
-  await postRequest("modeStorageClear", { siteId, key });
+export async function clearSharedModeStorage(siteId: SiteId, key: string): Promise<void> {
+  await postRequest('modeStorageClear', { siteId, key });
 }
 
 /**
@@ -760,19 +677,14 @@ export async function clearSharedModeStorage(
  * Ensures the host iframe is created so it can relay `BroadcastChannel`
  * notifications from sibling host iframes. The returned function unsubscribes.
  */
-export function subscribeSharedAuthStorage(
-  listener: SharedAuthStorageListener,
-): () => void {
+export function subscribeSharedAuthStorage(listener: SharedAuthStorageListener): () => void {
   sharedAuthListeners.add(listener);
   // Best-effort iframe warm-up so the relay path is live. We intentionally
   // don't await or surface errors. The caller's subscribe contract is
   // synchronous, and the iframe will be lazily (re)created on the next
   // explicit request if this warm-up fails.
   void ensureHostFrame().catch((error: unknown) => {
-    log.warn(
-      "[dot.li protocol] Failed to ensure host frame for shared auth subscription:",
-      error,
-    );
+    log.warn('[dot.li protocol] Failed to ensure host frame for shared auth subscription:', error);
   });
   return () => {
     sharedAuthListeners.delete(listener);
@@ -786,9 +698,7 @@ export function subscribeSharedAuthStorage(
  * validates the envelope, so callers never see spoofable raw messages.
  * Returns an unsubscribe function.
  */
-export function onProtocolChainSync(
-  listener: (event: ProtocolChainSyncEnvelope) => void,
-): () => void {
+export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope) => void): () => void {
   bindMessageListener();
   chainSyncListeners.add(listener);
   return () => {
@@ -797,9 +707,7 @@ export function onProtocolChainSync(
 }
 
 /** Subscribe to per-chain telemetry facts from the light client. */
-export function onProtocolChainDetail(
-  listener: (event: ProtocolChainDetailEnvelope) => void,
-): () => void {
+export function onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvelope) => void): () => void {
   bindMessageListener();
   chainDetailListeners.add(listener);
   return () => {
@@ -808,9 +716,7 @@ export function onProtocolChainDetail(
 }
 
 /** Subscribe to the running byte total of the light client. */
-export function onProtocolNetBytes(
-  listener: (event: ProtocolNetBytesEnvelope) => void,
-): () => void {
+export function onProtocolNetBytes(listener: (event: ProtocolNetBytesEnvelope) => void): () => void {
   bindMessageListener();
   netBytesListeners.add(listener);
   return () => {
@@ -827,9 +733,7 @@ export function onProtocolNetBytes(
  */
 export function isRemoteChainConnectable(genesisHash: string): boolean {
   const supported =
-    getBackend() === "rpc-gateway"
-      ? getActiveCoreGatewaySupportedGenesisHashes()
-      : getActiveSupportedGenesisHashes();
+    getBackend() === 'rpc-gateway' ? getActiveCoreGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
   return supported.has(genesisHash.toLowerCase());
 }
 
@@ -837,32 +741,25 @@ export function isRemoteChainSupported(genesisHash: string): boolean {
   // Advertise only what the *active* backend can actually serve. Gateway mode
   // bridges a curated RPC subset, while smoldot can run any configured chain.
   const supported =
-    getBackend() === "rpc-gateway"
-      ? getActiveGatewaySupportedGenesisHashes()
-      : getActiveSupportedGenesisHashes();
+    getBackend() === 'rpc-gateway' ? getActiveGatewaySupportedGenesisHashes() : getActiveSupportedGenesisHashes();
   return supported.has(genesisHash.toLowerCase());
 }
 
 /**
  * Notification-style requests (no `id`) get `null`, nothing to respond to.
  */
-function buildJsonRpcError(
-  request: JsonRpcRequest,
-  errorMessage: string,
-): JsonRpcMessage | null {
+function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string): JsonRpcMessage | null {
   if (request.id === undefined || request.id === null) {
     return null;
   }
   return {
-    jsonrpc: "2.0",
+    jsonrpc: '2.0',
     id: request.id,
     error: { code: -32603, message: errorMessage },
   };
 }
 
-export function createRemoteChainProvider(
-  genesisHash: string,
-): JsonRpcProvider | null {
+export function createRemoteChainProvider(genesisHash: string): JsonRpcProvider | null {
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
@@ -879,17 +776,14 @@ export function createRemoteChainProvider(
 
     void ensureProtocolFrame()
       .then(async () => {
-        await postRequest("chainConnect", { genesisHash, connectionId });
+        await postRequest('chainConnect', { genesisHash, connectionId });
         remote.connected = true;
         for (const message of remote.pendingMessages) {
-          void postRequest("chainSend", {
+          void postRequest('chainSend', {
             connectionId,
             message: JSON.stringify(message),
           }).catch((error: unknown) => {
-            const errResponse = buildJsonRpcError(
-              message,
-              serializeError(error),
-            );
+            const errResponse = buildJsonRpcError(message, serializeError(error));
             if (errResponse !== null) {
               onMessage(errResponse);
             }
@@ -902,7 +796,7 @@ export function createRemoteChainProvider(
         // pending messages so polkadot-api's client knows the connection
         // died instead of hanging on "Not connected" forever.
         const reason = serializeError(error);
-        log.error("[dot.li protocol] Failed to connect remote chain:", error);
+        log.error('[dot.li protocol] Failed to connect remote chain:', error);
         for (const pending of remote.pendingMessages) {
           const errResponse = buildJsonRpcError(pending, reason);
           if (errResponse !== null) {
@@ -919,10 +813,7 @@ export function createRemoteChainProvider(
         if (!current) {
           // Connection was removed (failed or disconnected).
           // Respond with an error so the caller doesn't hang.
-          const errResponse = buildJsonRpcError(
-            message,
-            "Chain connection is closed",
-          );
+          const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
           if (errResponse !== null) {
             onMessage(errResponse);
           }
@@ -932,12 +823,12 @@ export function createRemoteChainProvider(
           current.pendingMessages.push(message);
           return;
         }
-        void postRequest("chainSend", {
+        void postRequest('chainSend', {
           connectionId,
           message: JSON.stringify(message),
         }).catch((error: unknown) => {
           const reason = serializeError(error);
-          log.error("[dot.li protocol] Remote chain send failed:", error);
+          log.error('[dot.li protocol] Remote chain send failed:', error);
           const errResponse = buildJsonRpcError(message, reason);
           if (errResponse !== null) {
             onMessage(errResponse);
@@ -950,11 +841,9 @@ export function createRemoteChainProvider(
         if (!current) {
           return;
         }
-        void postRequest("chainDisconnect", { connectionId }).catch(
-          (error: unknown) => {
-            log.warn("[dot.li protocol] Remote disconnect failed:", error);
-          },
-        );
+        void postRequest('chainDisconnect', { connectionId }).catch((error: unknown) => {
+          log.warn('[dot.li protocol] Remote disconnect failed:', error);
+        });
       },
     };
   };

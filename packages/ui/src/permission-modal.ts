@@ -1,13 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { withActiveTld } from "@dotli/config/network";
-import {
-  isDevicePermission,
-  type EnforceablePermissionName,
-} from "./permissions";
-import { presentModal } from "./overlays/load";
-import type { ModalButton } from "./state/modals";
+import { withActiveTld } from '@dotli/config';
+import { isDevicePermission, type EnforceablePermissionName } from './permissions.js';
+import { presentModal } from './overlays/load.js';
+import type { ModalButton } from './state/modals.js';
 
 // dot.li Permission request modal
 //
@@ -23,22 +20,19 @@ import type { ModalButton } from "./state/modals";
 //
 // Rendered by the overlays root (components/overlays/SigningDialog.tsx).
 
-export const PERMISSION_DESCRIPTIONS: Record<
-  EnforceablePermissionName,
-  string
-> = {
-  Notifications: "Show in-app and system notifications",
-  Camera: "Access your camera for photo and video capture",
-  Microphone: "Access your microphone for audio input",
-  Location: "Access your location for geolocation services",
-  Bluetooth: "Connect to nearby Bluetooth devices",
-  NFC: "Read and write nearby NFC tags",
-  Clipboard: "Read text and data from your clipboard",
-  Biometrics: "Authenticate with a platform passkey or biometric prompt",
-  IdentityDisclosure: "Share your primary DotNS identity with this app",
-  ChainSubmit: "Sign and submit on-chain transactions on your behalf",
-  PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
-  StatementSubmit: "Submit signed statements to the statement store",
+export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
+  Notifications: 'Show in-app and system notifications',
+  Camera: 'Access your camera for photo and video capture',
+  Microphone: 'Access your microphone for audio input',
+  Location: 'Access your location for geolocation services',
+  Bluetooth: 'Connect to nearby Bluetooth devices',
+  NFC: 'Read and write nearby NFC tags',
+  Clipboard: 'Read text and data from your clipboard',
+  Biometrics: 'Authenticate with a platform passkey or biometric prompt',
+  IdentityDisclosure: 'Share your primary DotNS identity with this app',
+  ChainSubmit: 'Sign and submit on-chain transactions on your behalf',
+  PreimageSubmit: 'Store preimage data on-chain via the Bulletin network',
+  StatementSubmit: 'Submit signed statements to the statement store',
 };
 
 const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
@@ -99,8 +93,7 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
 };
 
-export type PermissionPromptDecision =
-  "granted" | "granted-once" | "denied" | "dismissed";
+export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
 export interface PermissionRequestModalOptions {
   /** Offer "Allow once" alongside "Always allow" and "Deny". */
@@ -118,33 +111,31 @@ export async function showPermissionRequestModal(
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
-    { label: "Deny", variant: "cancel", result: "denied" },
+    { label: 'Deny', variant: 'cancel', result: 'denied' },
     allowOnce
-      ? { label: "Always allow", variant: "secondary", result: "granted" }
-      : { label: "Allow", variant: "primary", result: "granted" },
+      ? { label: 'Always allow', variant: 'secondary', result: 'granted' }
+      : { label: 'Allow', variant: 'primary', result: 'granted' },
   ];
   if (allowOnce) {
     buttons.push({
-      label: "Allow once",
-      variant: "primary",
-      result: "granted-once",
+      label: 'Allow once',
+      variant: 'primary',
+      result: 'granted-once',
     });
   }
   const { result } = await presentModal<PermissionPromptDecision>(
     {
       icon: PERMISSION_ICONS[permission],
-      title: "Permission Request",
+      title: 'Permission Request',
       fields: [
-        { label: "Application", value: withActiveTld(label) },
-        { label: "Permission", value: PERMISSION_DESCRIPTIONS[permission] },
+        { label: 'Application', value: withActiveTld(label) },
+        { label: 'Permission', value: PERMISSION_DESCRIPTIONS[permission] },
       ],
-      ...(isDevicePermission(permission)
-        ? { notice: "Granting this permission will reload the application." }
-        : {}),
+      ...(isDevicePermission(permission) ? { notice: 'Granting this permission will reload the application.' } : {}),
       buttons,
       dismissOnBackdrop: true,
-      dismissResult: "dismissed",
-      fallbackResult: "dismissed",
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
     },
     signal,
   );

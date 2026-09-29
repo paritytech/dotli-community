@@ -7,26 +7,19 @@
 // re-reads them from storage when `contactsVersion` or a room's `roomSeq`
 // moves.
 
-import {
-  CHAT_AVAILABILITY_EVENT,
-  type ChatAvailabilityDetail,
-} from "@dotli/shared/chat-capability";
+import { CHAT_AVAILABILITY_EVENT, type ChatAvailabilityDetail } from '@dotli/shared';
 import {
   CHAT_BOTS_CHANGED_EVENT,
   CHAT_MESSAGE_EVENT,
   CHAT_ROOMS_CHANGED_EVENT,
   type ChatMessageEventDetail,
-} from "../chat/service";
-import { labelToProductId } from "../runtime-config";
-import { getLoggedIn, loggedInStore } from "./auth";
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store";
-import { getTopbarState, topbarStore } from "./topbar";
+} from '../chat/service.js';
+import { labelToProductId } from '../runtime-config.js';
+import { getLoggedIn, loggedInStore } from './auth.js';
+import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
+import { getTopbarState, topbarStore } from './topbar.js';
 
-export const PANEL_WIDTH_KEY = "dotli:chat-panel-width";
+export const PANEL_WIDTH_KEY = 'dotli:chat-panel-width';
 export const MIN_PANEL_WIDTH = 280;
 export const MAX_PANEL_WIDTH = 560;
 export const DEFAULT_PANEL_WIDTH = 360;
@@ -82,9 +75,7 @@ const panel = createSyncStore<ChatPanelState>(INITIAL, {
 });
 export const chatPanelStore: ReadableStore<ChatPanelState> = panel;
 
-export function currentChatProductId(
-  state: ChatPanelState = panel.get(),
-): string | null {
+export function currentChatProductId(state: ChatPanelState = panel.get()): string | null {
   if (state.runtimeProductId !== null) {
     return state.runtimeProductId;
   }
@@ -95,9 +86,7 @@ export function currentChatProductId(
  * Every chat call needs an active session, so a logged-out user gets no chat
  * affordance at all rather than a panel full of denied calls.
  */
-export function chatButtonVisible(
-  state: ChatPanelState = panel.get(),
-): boolean {
+export function chatButtonVisible(state: ChatPanelState = panel.get()): boolean {
   return state.available && state.label !== null && state.loggedIn;
 }
 
@@ -111,7 +100,7 @@ export function totalChatUnread(state: ChatPanelState = panel.get()): number {
 
 /** "3" / "9+" pill text shared by the topbar badge and the room rows. */
 export function chatUnreadLabel(count: number): string {
-  return count > 9 ? "9+" : String(count);
+  return count > 9 ? '9+' : String(count);
 }
 
 function clampWidth(width: number): number {
@@ -133,9 +122,7 @@ function storedPanelWidth(): number {
 
 /** Write, closing the panel if the button just became invisible. */
 function commit(next: ChatPanelState): void {
-  panel.set(
-    next.open && !chatButtonVisible(next) ? { ...next, open: false } : next,
-  );
+  panel.set(next.open && !chatButtonVisible(next) ? { ...next, open: false } : next);
 }
 
 function update(patch: Partial<ChatPanelState>): void {
@@ -213,9 +200,7 @@ export function initChatPanelState(): () => void {
   };
 
   const onProductLoaded = (event: Event): void => {
-    const { label, productId } = (
-      event as CustomEvent<{ label: string; productId?: string }>
-    ).detail;
+    const { label, productId } = (event as CustomEvent<{ label: string; productId?: string }>).detail;
     const state = panel.get();
     const base =
       state.label === label
@@ -250,7 +235,7 @@ export function initChatPanelState(): () => void {
     // (panel closed, or a different room) counts as unread.
     const viewing = state.open && state.activeRoomId === detail.roomId;
     const unreadByRoom =
-      detail.author === "product" && !viewing
+      detail.author === 'product' && !viewing
         ? {
             ...state.unreadByRoom,
             [detail.roomId]: (state.unreadByRoom[detail.roomId] ?? 0) + 1,
@@ -276,8 +261,8 @@ export function initChatPanelState(): () => void {
 
   const listeners: [string, (event: Event) => void][] = [
     [CHAT_AVAILABILITY_EVENT, onAvailability],
-    ["dotli:product-loaded", onProductLoaded],
-    ["dotli:product-error", onProductError],
+    ['dotli:product-loaded', onProductLoaded],
+    ['dotli:product-error', onProductError],
     [CHAT_MESSAGE_EVENT, onMessage],
     [CHAT_ROOMS_CHANGED_EVENT, onContactsChanged],
     [CHAT_BOTS_CHANGED_EVENT, onContactsChanged],
@@ -294,10 +279,7 @@ export function initChatPanelState(): () => void {
     });
   };
   follow();
-  const unsubscribe = [
-    loggedInStore.subscribe(follow),
-    topbarStore.subscribe(follow),
-  ];
+  const unsubscribe = [loggedInStore.subscribe(follow), topbarStore.subscribe(follow)];
   return () => {
     for (const [name, listener] of listeners) {
       window.removeEventListener(name, listener);

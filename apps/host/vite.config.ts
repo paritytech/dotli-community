@@ -1,41 +1,49 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type Plugin, type PluginOption } from "vite";
-import { readFileSync, readdirSync } from "node:fs";
-import { execSync } from "node:child_process";
-import { resolve } from "node:path";
-import solid from "@solidjs/vite-plugin";
-import wasm from "vite-plugin-wasm";
-import { VitePWA } from "vite-plugin-pwa";
-import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases.ts";
-import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin.ts";
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+import { defineConfig, type Plugin, type PluginOption } from 'vite';
+import { readFileSync, readdirSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+import { resolve } from 'node:path';
+import solid from '@solidjs/vite-plugin';
+import wasmPlugin from 'vite-plugin-wasm';
+import { VitePWA } from 'vite-plugin-pwa';
 import {
+  appBuildOptions,
+  rolldownOptions,
   buildInfo,
   readPackageVersion,
-} from "../../packages/config/src/build-info-plugin.ts";
-import { socialMetaTags } from "../../packages/config/src/social-meta-plugin.ts";
-import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin.ts";
+  runtimeNetworkConfigScript,
+  socialMetaTags,
+} from '@dotli/config/vite';
+import { stripAnalytics } from '@dotli/metrics/vite';
+import { prerenderPlugin, SHELL_SERVER_ENTRY } from '@dotli/ui/vite';
+
+// vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
+// NodeNext sees the module object. At runtime the default export is the plugin.
+const wasm = wasmPlugin as unknown as () => Plugin;
 
 // Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
 // git HEAD so Diagnostics shows a real commit identifier in dev too. The
 // literal "dev" is only used when we're not in a git checkout at all (e.g. a
 // tarball).
-if (!process.env.VITE_COMMIT_SHA) {
+if ((process.env['VITE_COMMIT_SHA'] ?? '') === '') {
   try {
-    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
+    process.env['VITE_COMMIT_SHA'] = execSync('git rev-parse HEAD', {
       cwd: import.meta.dirname,
-      stdio: ["ignore", "pipe", "ignore"],
+      stdio: ['ignore', 'pipe', 'ignore'],
     })
       .toString()
       .trim();
+    // eslint-disable-next-line no-restricted-syntax -- no git checkout is a normal build, not an error.
   } catch {
     // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
   }
 }
 
-const OUT_DIR = "dist";
+const OUT_DIR = 'dist';
+const APP_URL = process.env['VITE_APP_URL'] ?? '';
 
 /**
  * Walk every workspace member's `package.json` and collect its direct
@@ -46,10 +54,7 @@ const OUT_DIR = "dist";
  */
 function collectWorkspaceDependencies(): Map<string, Set<string>> {
   const deps = new Map<string, Set<string>>();
-  const roots = [
-    resolve(import.meta.dirname, "../../apps"),
-    resolve(import.meta.dirname, "../../packages"),
-  ];
+  const roots = [resolve(import.meta.dirname, '../../apps'), resolve(import.meta.dirname, '../../packages')];
   for (const root of roots) {
     let dirs: string[];
     try {
@@ -61,9 +66,9 @@ function collectWorkspaceDependencies(): Map<string, Set<string>> {
       const wsDir = resolve(root, dir);
       let pkg: { dependencies?: Record<string, string> };
       try {
-        pkg = JSON.parse(
-          readFileSync(resolve(wsDir, "package.json"), "utf8"),
-        ) as { dependencies?: Record<string, string> };
+        pkg = JSON.parse(readFileSync(resolve(wsDir, 'package.json'), 'utf8')) as {
+          dependencies?: Record<string, string>;
+        };
       } catch {
         continue;
       }
@@ -86,9 +91,7 @@ function collectWorkspaceDependencies(): Map<string, Set<string>> {
  * `node_modules/<name>/package.json`. Ignores transitive dependencies, which
  * would otherwise balloon the version list to 80+ rows.
  */
-function collectDirectScopedDeps(
-  scope: string,
-): { name: string; version: string }[] {
+function collectDirectScopedDeps(scope: string): { name: string; version: string }[] {
   const wsDeps = collectWorkspaceDependencies();
   const result = new Map<string, string>();
   for (const [name, usedBy] of wsDeps) {
@@ -97,37 +100,30 @@ function collectDirectScopedDeps(
     }
     for (const wsDir of usedBy) {
       try {
-        const depPkg = JSON.parse(
-          readFileSync(
-            resolve(wsDir, "node_modules", name, "package.json"),
-            "utf8",
-          ),
-        ) as { version?: string };
-        if (depPkg.version) {
+        const depPkg = JSON.parse(readFileSync(resolve(wsDir, 'node_modules', name, 'package.json'), 'utf8')) as {
+          version?: string;
+        };
+        if (depPkg.version !== undefined && depPkg.version !== '') {
           result.set(name, depPkg.version);
           break;
         }
+        // eslint-disable-next-line no-restricted-syntax -- a missing copy just means the next workspace holds it.
       } catch {
         // Not hoisted into this workspace's node_modules, so try the next one.
       }
     }
   }
-  return [...result]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, version]) => ({ name, version }));
+  return [...result].sort(([a], [b]) => a.localeCompare(b)).map(([name, version]) => ({ name, version }));
 }
 
 function readLightClientVersion(): string {
-  const direct = collectDirectScopedDeps("@parity/truapi-provider");
-  return (
-    direct.find((p) => p.name === "@parity/truapi-provider")?.version ??
-    "unknown"
-  );
+  const direct = collectDirectScopedDeps('@parity/truapi-provider');
+  return direct.find(p => p.name === '@parity/truapi-provider')?.version ?? 'unknown';
 }
 
 function readPolkadotApiVersion(): string {
-  const direct = collectDirectScopedDeps("polkadot-api");
-  return direct.find((p) => p.name === "polkadot-api")?.version ?? "unknown";
+  const direct = collectDirectScopedDeps('polkadot-api');
+  return direct.find(p => p.name === 'polkadot-api')?.version ?? 'unknown';
 }
 
 /**
@@ -135,60 +131,63 @@ function readPolkadotApiVersion(): string {
  * critical chunks on subdomain pages.
  */
 function preloadCriticalAssets(): Plugin {
-  let resolvedBase = "/";
+  let resolvedBase = '/';
   return {
-    name: "preload-critical-assets",
+    name: 'preload-critical-assets',
     configResolved(config) {
       resolvedBase = config.base;
     },
     transformIndexHtml: {
-      order: "post",
+      order: 'post',
       handler(_html, ctx) {
-        if (!ctx.bundle) return [];
+        if (!ctx.bundle) {
+          return [];
+        }
 
         const bundleKeys = Object.keys(ctx.bundle);
-        const findChunk = (pattern: RegExp) =>
-          bundleKeys.find((name) => pattern.test(name));
+        const findChunk = (pattern: RegExp): string | undefined => bundleKeys.find(name => pattern.test(name));
 
         const resolveChunk = findChunk(/^assets\/resolve-.*\.js$/);
         const fetchChunk = findChunk(/^assets\/fetch-.*\.js$/);
         const renderChunk = findChunk(/^assets\/render-.*\.js$/);
         const metadataAsset = findChunk(/^assets\/ah-.*\.scale$/);
 
-        const chunks = [resolveChunk, fetchChunk, renderChunk].filter(Boolean);
-        if (chunks.length === 0) return [];
+        const chunks = [resolveChunk, fetchChunk, renderChunk].filter((c): c is string => c !== undefined);
+        if (chunks.length === 0) {
+          return [];
+        }
 
         const b = resolvedBase;
 
         const fetchPreloads = [metadataAsset]
-          .filter(Boolean)
+          .filter((a): a is string => a !== undefined)
           .map(
-            (a) =>
+            a =>
               `l=document.createElement("link");l.rel="preload";l.as="fetch";l.crossOrigin="anonymous";l.href="${b}${a}";document.head.appendChild(l);`,
           )
-          .join("");
+          .join('');
 
         const preloadStatements = chunks
           .map(
-            (c) =>
+            c =>
               `l=document.createElement("link");l.rel="modulepreload";l.href="${b}${c}";document.head.appendChild(l);`,
           )
-          .join("");
+          .join('');
         const script = [
-          "(function(){",
-          "var h=location.hostname,l;",
+          '(function(){',
+          'var h=location.hostname,l;',
           'if(h==="dot.li"||h==="localhost")return;',
           'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
           fetchPreloads,
           preloadStatements,
-          "})()",
-        ].join("");
+          '})()',
+        ].join('');
 
         return [
           {
-            tag: "script",
+            tag: 'script',
             children: script,
-            injectTo: "head",
+            injectTo: 'head',
           },
         ];
       },
@@ -204,13 +203,13 @@ function preloadCriticalAssets(): Plugin {
  */
 function previewCoepHeaders(): Plugin {
   return {
-    name: "preview-coep-headers",
+    name: 'preview-coep-headers',
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url?.startsWith("/__preview")) {
-          res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-          res.setHeader("Cross-Origin-Embedder-Policy", "credentialless");
-          res.setHeader("Cross-Origin-Opener-Policy", "same-origin");
+        if (req.url?.startsWith('/__preview') === true) {
+          res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+          res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
+          res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
         }
         next();
       });
@@ -224,26 +223,25 @@ function previewCoepHeaders(): Plugin {
  * (preserves source maps for debugging).
  */
 function sentry(): PluginOption {
-  if (process.env.VITE_METRICS !== "true") return false;
-  if (!process.env.SENTRY_AUTH_TOKEN) return false;
+  if (process.env['VITE_METRICS'] !== 'true') {
+    return false;
+  }
+  if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
+    return false;
+  }
   return sentryVitePlugin({
-    org: "paritytech",
-    project: "dotli",
+    org: 'paritytech',
+    project: 'dotli',
     telemetry: false,
-    authToken: process.env.SENTRY_AUTH_TOKEN,
-    release: { name: process.env.VITE_COMMIT_SHA },
-    sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+    authToken: process.env['SENTRY_AUTH_TOKEN'],
+    release: process.env['VITE_COMMIT_SHA'] !== undefined ? { name: process.env['VITE_COMMIT_SHA'] } : {},
+    sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
   });
 }
 
-const PACKAGES = resolve(import.meta.dirname, "../../packages");
-const SANDBOX_CHECKER_SRC = resolve(PACKAGES, "sandbox-checker/src");
-
 export default defineConfig({
-  envDir: resolve(import.meta.dirname, "../.."),
-  base: process.env.VITE_APP_URL
-    ? new URL(process.env.VITE_APP_URL).pathname
-    : "/",
+  envDir: resolve(import.meta.dirname, '../..'),
+  base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   plugins: [
     // `ssr: true` gives the ssr environment Solid's server codegen, which
     // prerenderPlugin (below) needs to render the shell into index.html; a
@@ -254,23 +252,24 @@ export default defineConfig({
     // non-hydratable: the client output is a plain SPA compile, without
     // hydration keys or claim walks, and the prerender carries no `_hk`
     // markers.
+    stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
     solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
-    buildInfo("host"),
+    buildInfo('host'),
     socialMetaTags({
-      title: "Polkadot - The decentralized web, in your browser",
+      title: 'Polkadot - The decentralized web, in your browser',
       description:
-        "A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.",
-      siteName: "Polkadot Web",
-      image: "/icon-512.png",
-      imageAlt: "Polkadot logo",
+        'A decentralized web browser that runs in your browser. Open any Polkadot app with trustless, client-side resolution and no servers in the loop.',
+      siteName: 'Polkadot Web',
+      image: '/icon-512.png',
+      imageAlt: 'Polkadot logo',
     }),
     preloadCriticalAssets(),
     prerenderPlugin({
-      placeholder: "<!--ssr:shell-->",
-      entry: resolve(PACKAGES, "ui/src/components/shell/shell.server.tsx"),
-      exportName: "renderShell",
+      placeholder: '<!--ssr:shell-->',
+      entry: SHELL_SERVER_ENTRY,
+      exportName: 'renderShell',
     }),
     previewCoepHeaders(),
     sentry(),
@@ -281,36 +280,33 @@ export default defineConfig({
     // src/pwa.ts.
     VitePWA({
       injectRegister: false,
-      registerType: "prompt",
-      filename: "host-sw.js",
+      registerType: 'prompt',
+      filename: 'host-sw.js',
       manifest: {
-        name: "Polkadot Web",
-        short_name: "Polkadot Web",
-        description: "Decentralized web browser for Polkadot",
-        theme_color: "#000000",
-        background_color: "#000000",
-        display: "standalone",
-        start_url: "/",
+        name: 'Polkadot Web',
+        short_name: 'Polkadot Web',
+        description: 'Decentralized web browser for Polkadot',
+        theme_color: '#000000',
+        background_color: '#000000',
+        display: 'standalone',
+        start_url: '/',
         icons: [
-          { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-          { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
           {
-            src: "/icon-512.png",
-            sizes: "512x512",
-            type: "image/png",
-            purpose: "any maskable",
+            src: '/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'any maskable',
           },
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,wasm}"],
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
-        globIgnores: [
-          "**/truapi_provider_bg-*.wasm",
-          "**/truapi_verifiable_bg-*.wasm",
-        ],
+        globIgnores: ['**/truapi_provider_bg-*.wasm', '**/truapi_verifiable_bg-*.wasm'],
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.
@@ -320,55 +316,39 @@ export default defineConfig({
         // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
         // reach the browser, and for host_version.json so opening it shows
         // the file rather than the cached shell.
-        navigateFallbackDenylist: [
-          /^\/__preview(\?|$|\/)/,
-          /^\/host_version\.json$/,
-        ],
+        navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
       },
     }),
   ],
-  resolve: {
-    alias: {
-      ...prodNoAnalyticsAliases(process.env.VITE_METRICS !== "true"),
-      "@dotli/config": resolve(PACKAGES, "config/src"),
-      "@dotli/metrics": resolve(PACKAGES, "metrics/src"),
-      "@dotli/shared": resolve(PACKAGES, "shared/src"),
-      "@dotli/storage": resolve(PACKAGES, "storage/src"),
-      "@dotli/resolver": resolve(PACKAGES, "resolver/src"),
-      "@dotli/protocol": resolve(PACKAGES, "protocol/src"),
-      "@dotli/content": resolve(PACKAGES, "content/src"),
-      "@dotli/ui": resolve(PACKAGES, "ui/src"),
-      "@dotli/sandbox-checker": SANDBOX_CHECKER_SRC,
-    },
+  worker: {
+    plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
+    rolldownOptions: rolldownOptions(),
   },
   define: {
-    __BUILD_TARGET__: JSON.stringify("host"),
+    __BUILD_TARGET__: JSON.stringify('host'),
     // Baked once at build time, read lazily at the declaration site so a
     // missing package (shouldn't happen given the monorepo overrides)
     // falls back to empty/"unknown" rather than failing the build.
     __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
     __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
     __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
-    __POLKADOT_API_VERSIONS__: JSON.stringify(
-      collectDirectScopedDeps("@polkadot-api/"),
-    ),
-    __PARITY_TRUAPI_VERSIONS__: JSON.stringify(
-      collectDirectScopedDeps("@parity/truapi"),
-    ),
+    __POLKADOT_API_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@polkadot-api/')),
+    __PARITY_TRUAPI_VERSIONS__: JSON.stringify(collectDirectScopedDeps('@parity/truapi')),
   },
   optimizeDeps: {
-    exclude: ["@polkadot-api/wasm-executor"],
+    exclude: ['@polkadot-api/wasm-executor'],
   },
   build: {
-    target: "esnext",
+    ...appBuildOptions(),
+    target: 'esnext',
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
-    sourcemap: "hidden",
+    sourcemap: 'hidden',
   },
   server: {
     headers: {
-      "Service-Worker-Allowed": "/",
-      "Access-Control-Allow-Origin": "*",
+      'Service-Worker-Allowed': '/',
+      'Access-Control-Allow-Origin': '*',
     },
   },
 });

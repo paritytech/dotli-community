@@ -7,8 +7,7 @@
  */
 
 export type PermissionChange =
-  | { kind: "grant"; label: string; permission: string }
-  | { kind: "device"; label: string; permission: string };
+  { kind: 'grant'; label: string; permission: string } | { kind: 'device'; label: string; permission: string };
 
 /**
  * Dispatch the event the permissions island and bridge listen for:
@@ -17,10 +16,7 @@ export type PermissionChange =
  * always carry `{ label, permission }`.
  */
 export function recordPermissionChange(change: PermissionChange): void {
-  const eventName =
-    change.kind === "grant"
-      ? "dotli:permission-changed"
-      : "dotli:device-permission-changed";
+  const eventName = change.kind === 'grant' ? 'dotli:permission-changed' : 'dotli:device-permission-changed';
   window.dispatchEvent(
     new CustomEvent(eventName, {
       detail: { label: change.label, permission: change.permission },

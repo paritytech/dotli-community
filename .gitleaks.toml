@@ -29,3 +29,11 @@ targetRules = ["generic-api-key"]
 paths = [
   '''packages/ui/tests/fixtures/seity-contacts-v\d+\.json$''',
 ]
+
+[[allowlists]]
+description = "Resolver ABI tests use the placeholder 32-byte slot key 0x1234567890abcdef repeated four times. On one line with `key =` it trips generic-api-key, but it is not a secret."
+targetRules = ["generic-api-key"]
+regexTarget = "line"
+regexes = [
+  '''0x(?:1234567890abcdef){4}''',
+]

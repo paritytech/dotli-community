@@ -8,12 +8,12 @@
 // dependencies and no Solid (the sandbox imports this), kept in the eager
 // bundle.
 
-import { escapeHtml } from "@dotli/shared/html";
-import { getActiveTldSuffix } from "@dotli/config/network";
-import { setProductError } from "./state/product";
-import { disposeAppRoots } from "./mount/app-roots";
+import { escapeHtml } from '@dotli/shared';
+import { getActiveTldSuffix } from '@dotli/config';
+import { setProductError } from './state/product.js';
+import { disposeAppRoots } from './mount/app-roots.js';
 
-const app = document.getElementById("app") ?? document.body;
+const app = document.getElementById('app') ?? document.body;
 
 export interface ErrorAction {
   label: string;
@@ -55,22 +55,18 @@ const WARNING_GLYPH = `<div class="error-page-glyph error-page-glyph--warning" a
 export type ErrorText = string | readonly (string | { strong: string })[];
 
 function renderErrorText(text: ErrorText): string {
-  if (typeof text === "string") {
+  if (typeof text === 'string') {
     return escapeHtml(text);
   }
   return text
-    .map((part) =>
-      typeof part === "string"
-        ? escapeHtml(part)
-        : `<strong>${escapeHtml(part.strong)}</strong>`,
-    )
-    .join("");
+    .map(part => (typeof part === 'string' ? escapeHtml(part) : `<strong>${escapeHtml(part.strong)}</strong>`))
+    .join('');
 }
 
 export interface ErrorPage {
   title: string;
   /** Paragraph below the title. Omit for a title-only screen. */
-  detail?: ErrorText;
+  detail?: ErrorText | undefined;
   /** Things worth checking before retrying, listed under a "Try:" heading. */
   tips?: readonly string[];
   /**
@@ -79,7 +75,7 @@ export interface ErrorPage {
    */
   actions?: readonly ErrorAction[];
   /** Leading glyph. Only the warning interstitial carries one today. */
-  glyph?: "warning";
+  glyph?: 'warning';
 }
 
 /** Render a full-page error state, replacing whatever `#app` holds. */
@@ -90,50 +86,42 @@ export function showErrorPage(page: ErrorPage): void {
   const { title, detail, glyph } = page;
   const tips = page.tips ?? [];
   const actions = page.actions ?? [];
-  const idFor = (i: number): string =>
-    i === 0 ? "error-retry-btn" : `error-retry-btn-${String(i)}`;
-  const declaredPrimary = actions.findIndex((a) => a.primary === true);
+  const idFor = (i: number): string => (i === 0 ? 'error-retry-btn' : `error-retry-btn-${String(i)}`);
+  const declaredPrimary = actions.findIndex(a => a.primary === true);
   const primaryIndex = declaredPrimary === -1 ? 0 : declaredPrimary;
   // Rendered with the primary last so reading order, DOM order and tab order
   // all agree. The id still comes from the array position, so `#error-retry-btn`
   // is the first action whichever one is recommended.
   const rendered = actions
     .map((a, i) => ({ a, i }))
-    .sort(
-      (x, y) => Number(x.i === primaryIndex) - Number(y.i === primaryIndex),
-    );
+    .sort((x, y) => Number(x.i === primaryIndex) - Number(y.i === primaryIndex));
   const renderAction = (a: ErrorAction, i: number): string => {
-    const cls =
-      i === primaryIndex
-        ? "error-page-retry error-page-retry--primary"
-        : "error-page-retry";
+    const cls = i === primaryIndex ? 'error-page-retry error-page-retry--primary' : 'error-page-retry';
     const leading =
-      a.icon === undefined
-        ? ""
-        : `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`;
+      a.icon === undefined ? '' : `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`;
     return `<button class="${cls}" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span></button>`;
   };
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner">
-        ${glyph === "warning" ? WARNING_GLYPH : ""}
+        ${glyph === 'warning' ? WARNING_GLYPH : ''}
         <h1 class="error-page-title" tabindex="-1">${escapeHtml(title)}</h1>
-        ${detail !== undefined ? `<p class="error-page-detail">${renderErrorText(detail)}</p>` : ""}
+        ${detail !== undefined ? `<p class="error-page-detail">${renderErrorText(detail)}</p>` : ''}
         ${
           tips.length === 0
-            ? ""
+            ? ''
             : `<div class="error-page-tips">
           <p class="error-page-tips-label">Try:</p>
-          <ul class="error-page-tips-list">${tips.map((t) => `<li>${escapeHtml(t)}</li>`).join("")}</ul>
+          <ul class="error-page-tips-list">${tips.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul>
         </div>`
         }
-        ${actions.length === 0 ? "" : `<div class="error-page-actions">${rendered.map(({ a, i }) => renderAction(a, i)).join("")}</div>`}
+        ${actions.length === 0 ? '' : `<div class="error-page-actions">${rendered.map(({ a, i }) => renderAction(a, i)).join('')}</div>`}
       </div>
     </div>
   `;
 
   actions.forEach((a, i) => {
-    document.getElementById(idFor(i))?.addEventListener("click", a.onClick);
+    document.getElementById(idFor(i))?.addEventListener('click', a.onClick);
   });
 
   // The button that triggered this render is gone, so focus would otherwise
@@ -141,7 +129,7 @@ export function showErrorPage(page: ErrorPage): void {
   // title both names the new screen and puts the actions next in tab order.
   // Matters most on the failover interstitial, which replaces one error screen
   // with another in place.
-  app.querySelector<HTMLElement>(".error-page-title")?.focus();
+  app.querySelector<HTMLElement>('.error-page-title')?.focus();
 
   setProductError();
 }
@@ -156,15 +144,14 @@ export function showError(
   action?: ErrorAction | ErrorAction[] | (() => void),
   tips: readonly string[] = [],
 ): void {
-  if (typeof action === "function") {
-    action = { label: "Retry", onClick: action };
+  if (typeof action === 'function') {
+    action = { label: 'Retry', onClick: action };
   }
   showErrorPage({
     title,
     detail,
     tips,
-    actions:
-      action === undefined ? [] : Array.isArray(action) ? action : [action],
+    actions: action === undefined ? [] : Array.isArray(action) ? action : [action],
   });
 }
 
