@@ -100,3 +100,21 @@ site is live at `https://<base-domain>`.
   environment's protection rules. It deploys the config from the ref it was
   dispatched on, so `paseo.li` has to be dispatched from a release tag and
   `paseoli.dev` from `main`.
+
+## Checking what is deployed
+
+Every origin serves its own build's `host_version.json` at the root:
+
+```sh
+curl -fsS https://paseo.li/host_version.json
+# {"build":"host","version":"0.7.4","commit":"cd93b956…"}
+```
+
+It is written by the build (`packages/config/src/build-info-plugin.ts`) and
+served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three builds are rsynced separately, so check each origin to cover all of them:
+
+| URL                                      | Build    |
+| ---------------------------------------- | -------- |
+| `https://<base>/host_version.json`       | host     |
+| `https://host.<base>/host_version.json`  | protocol |
+| `https://x.app.<base>/host_version.json` | app      |

@@ -37,6 +37,10 @@ RUN bun install --frozen-lockfile
 # both halves are gated, so neither alone turns it on.
 ENV VITE_NETWORKS=paseo-next-v2,previewnet \
     VITE_RUNTIME_NETWORK_CONFIG=true
+
+# Optional: the commit host_version.json reports. .dockerignore keeps .git out,
+# so without it the build reports "dev".
+ARG VITE_COMMIT_SHA
 RUN bun run build:prod
 
 FROM nginx:alpine

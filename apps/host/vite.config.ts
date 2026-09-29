@@ -4,32 +4,22 @@
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import { defineConfig, type Plugin } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
-import { execSync } from "node:child_process";
 import { resolve } from "node:path";
 import solid from "@solidjs/vite-plugin";
 import wasm from "vite-plugin-wasm";
 import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
+import {
+  buildInfo,
+  ensureCommitSha,
+  readPackageVersion,
+} from "../../packages/config/src/build-info-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
 import { prerenderPlugin } from "../../packages/ui/src/mount/prerender-plugin";
 
-// Local builds don't get `VITE_COMMIT_SHA` injected by CI. Fall back to the
-// git HEAD so Diagnostics shows a real commit identifier in dev too. The
-// literal "dev" is only used when we're not in a git checkout at all (e.g. a
-// tarball).
-if (!process.env.VITE_COMMIT_SHA) {
-  try {
-    process.env.VITE_COMMIT_SHA = execSync("git rev-parse HEAD", {
-      cwd: import.meta.dirname,
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .toString()
-      .trim();
-  } catch {
-    // Not a git checkout, so leave it unset. topbar.ts treats that as "dev".
-  }
-}
+// So Diagnostics shows a real commit in local builds too.
+ensureCommitSha();
 
 const OUT_DIR = "dist";
 
@@ -124,17 +114,6 @@ function readLightClientVersion(): string {
 function readPolkadotApiVersion(): string {
   const direct = collectDirectScopedDeps("polkadot-api");
   return direct.find((p) => p.name === "polkadot-api")?.version ?? "unknown";
-}
-
-function readHostVersion(): string {
-  try {
-    const pkg = JSON.parse(
-      readFileSync(resolve(import.meta.dirname, "package.json"), "utf8"),
-    ) as { version?: string };
-    return pkg.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
 }
 
 /**
@@ -264,6 +243,7 @@ export default defineConfig({
     solid({ ssr: true, solid: { hydratable: false } }),
     wasm(),
     runtimeNetworkConfigScript(),
+    buildInfo("host"),
     socialMetaTags({
       title: "Polkadot - The decentralized web, in your browser",
       description:
@@ -348,7 +328,7 @@ export default defineConfig({
     // Baked once at build time, read lazily at the declaration site so a
     // missing package (shouldn't happen given the monorepo overrides)
     // falls back to empty/"unknown" rather than failing the build.
-    __DOTLI_VERSION__: JSON.stringify(readHostVersion()),
+    __DOTLI_VERSION__: JSON.stringify(readPackageVersion(import.meta.dirname)),
     __LIGHT_CLIENT_VERSION__: JSON.stringify(readLightClientVersion()),
     __POLKADOT_API_VERSION__: JSON.stringify(readPolkadotApiVersion()),
     __POLKADOT_API_VERSIONS__: JSON.stringify(
