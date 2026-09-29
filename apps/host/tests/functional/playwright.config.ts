@@ -4,12 +4,12 @@
 import { defineConfig } from "@playwright/test";
 import { baseConfig, previewServer } from "../playwright.base.config";
 
-// Capped by the IPFS gateway, not CPU: every cold load downloads
-// host-playground's ~14 MB CAR from paseo-bulletin-next-ipfs, and parallel
-// downloads share its throughput. At 4 workers some of them failed outright
-// ("couldn't connect to the trusted provider"); 2 stayed green.
-// FUNCTIONAL_WORKERS=1 reproduces the serial run.
-const WORKERS = Number(process.env.FUNCTIONAL_WORKERS ?? "2");
+// One by default: every cold load downloads host-playground's ~14 MB CAR
+// from paseo-bulletin-next-ipfs, which Cloudflare doesn't cache, so parallel
+// workers only add concurrent downloads to the same bottleneck. On CI,
+// 2 workers took as long as 1 and failed 11 tests when the gateway slowed
+// down. Raise FUNCTIONAL_WORKERS once paritytech/devops#5734 is fixed.
+const WORKERS = Number(process.env.FUNCTIONAL_WORKERS ?? "1");
 
 export default defineConfig({
   ...baseConfig,
