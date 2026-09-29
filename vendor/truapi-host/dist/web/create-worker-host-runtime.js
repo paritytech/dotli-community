@@ -999,9 +999,14 @@ function createWebWorkerHostRuntime(worker, host, options) {
         // Decided here, once. With no attach-later path there is no second piece of
         // state to keep in step with this one.
         const debuggerDial = installDebuggerDial(state, readDebuggerEnablement(options.debugger), options.debuggerIndicator);
+        const timeoutMs = options.initTimeoutMs ?? 30_000;
+        let initPhase = "loading WASM";
+        let cancelInitTimeout = () => { };
         const onInitMessage = (ev) => {
             const msg = ev.data;
             if (msg.kind === "loaded") {
+                initPhase = "initializing the runtime";
+                scheduleInitTimeout();
                 worker.postMessage({
                     kind: "init",
                     logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
@@ -1032,15 +1037,19 @@ function createWebWorkerHostRuntime(worker, host, options) {
             }
         };
         const cleanupInit = () => {
-            clearTimeout(initTimeout);
+            cancelInitTimeout();
             worker.removeEventListener("error", onError);
             worker.removeEventListener("messageerror", onInitMessageError);
             worker.removeEventListener("message", onInitMessage);
         };
-        const timeoutMs = options.initTimeoutMs ?? 30_000;
-        const initTimeout = setTimeout(() => {
-            failInit(new Error(`worker init timed out after ${timeoutMs}ms`));
-        }, timeoutMs);
+        const scheduleInitTimeout = () => {
+            cancelInitTimeout();
+            const timeout = setTimeout(() => {
+                failInit(new Error(`worker init timed out after ${timeoutMs}ms while ${initPhase}`));
+            }, timeoutMs);
+            cancelInitTimeout = () => clearTimeout(timeout);
+        };
+        scheduleInitTimeout();
         worker.addEventListener("error", onError);
         worker.addEventListener("messageerror", onInitMessageError);
         worker.addEventListener("message", onInitMessage);
