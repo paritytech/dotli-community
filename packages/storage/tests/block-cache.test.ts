@@ -10,6 +10,7 @@ import {
   pruneBlockCache,
   putCachedBlock,
 } from "@dotli/storage/block-cache";
+import { getDb } from "@dotli/storage/db";
 
 describe("block cache", () => {
   beforeEach(async () => {
@@ -83,5 +84,36 @@ describe("block cache", () => {
     // Then
     expect(await getCachedBlock("bafyA")).toBeNull();
     expect(await getCachedBlock("bafyB")).toBeNull();
+  });
+
+  it("As a user, a malformed cache entry is a miss rather than a hang", async () => {
+    // Given a `blocks` record whose `bytes` field isn't a `Uint8Array`, with
+    // a matching `block_meta` row so the entry otherwise looks valid — the
+    // shape a corrupted write or a future schema change could leave behind
+    const db = await getDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(["blocks", "block_meta"], "readwrite");
+      tx.objectStore("blocks").put({
+        cid: "bafyMalformed",
+        bytes: "not-bytes",
+      });
+      tx.objectStore("block_meta").put({
+        cid: "bafyMalformed",
+        size: 9,
+        lastUsed: Date.now(),
+      });
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error("setup transaction failed"));
+      };
+    });
+
+    // When
+    const bytes = await getCachedBlock("bafyMalformed");
+
+    // Then
+    expect(bytes).toBeNull();
   });
 });

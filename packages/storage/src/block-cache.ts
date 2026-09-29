@@ -48,8 +48,23 @@ function completion(tx: IDBTransaction): Promise<void> {
   });
 }
 
+// Sentry capture is throttled to once per action per page: a flaky cache is
+// noisy, and every read on a stuck cache would otherwise report identically.
+const reportedActions = new Set<string>();
+
 function report(action: string, err: unknown): void {
+  const name = err instanceof Error ? err.name : undefined;
+  if (name === "QuotaExceededError") {
+    // Expected under storage pressure, not a bug to page on. Still logged
+    // every time so a full cache is visible in the console.
+    log.warn(`[dot.li block-cache] ${action} error:`, err);
+    return;
+  }
   log.error(`[dot.li block-cache] ${action} error:`, err);
+  if (reportedActions.has(action)) {
+    return;
+  }
+  reportedActions.add(action);
   captureException(err, { kind: `block_cache_${action}_error` });
 }
 
@@ -63,19 +78,50 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
     const db = await getDb();
     const tx = db.transaction([BLOCKS, META], "readwrite");
     const request = tx.objectStore(BLOCKS).get(cid);
-    return await new Promise<Uint8Array | null>((resolve, reject) => {
-      request.onsuccess = () => {
-        const entry = request.result as BlockEntry | undefined;
-        if (entry === undefined) {
-          resolve(null);
+    let settled = false;
+    return await new Promise<Uint8Array | null>((resolve) => {
+      // The read and the touch write share one transaction, so a failure in
+      // either reaches this same `tx.onerror`/`onabort`. `settled` tells them
+      // apart: before it, a failure means the read itself never came back, so
+      // the caller sees a miss; after it, the bytes were already handed back
+      // and only the housekeeping write failed, so it's report-only.
+      const settle = (value: Uint8Array | null): void => {
+        if (settled) {
           return;
         }
+        settled = true;
+        resolve(value);
+      };
+      request.onsuccess = () => {
+        const entry = request.result as BlockEntry | undefined;
+        // A record whose `bytes` isn't a `Uint8Array` is corrupt (or from a
+        // future schema). Treat it as a miss instead of touching `.byteLength`
+        // on whatever it actually is.
+        if (entry === undefined || !(entry.bytes instanceof Uint8Array)) {
+          settle(null);
+          return;
+        }
+        settle(entry.bytes);
         // Reading a block is using it, so it outlives blocks nobody asked for.
         tx.objectStore(META).put(meta(cid, entry.bytes.byteLength));
-        resolve(entry.bytes);
       };
       request.onerror = () => {
-        reject(request.error ?? new Error("IDB read error"));
+        report("read", request.error ?? new Error("IDB read error"));
+        settle(null);
+      };
+      tx.onerror = () => {
+        report(
+          settled ? "touch" : "read",
+          tx.error ?? new Error("IDB transaction error"),
+        );
+        settle(null);
+      };
+      tx.onabort = () => {
+        report(
+          settled ? "touch" : "read",
+          tx.error ?? new Error("IDB transaction aborted"),
+        );
+        settle(null);
       };
     });
   } catch (err) {
