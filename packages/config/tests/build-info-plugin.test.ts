@@ -41,7 +41,7 @@ describe("buildInfo", () => {
     }
   });
 
-  it("emits host_version.json with the build, package version and commit", () => {
+  it("emits host_version.json with the build, package version and hash", () => {
     writeFileSync(join(dir, "package.json"), '{"version":"1.2.3"}');
     process.env.VITE_COMMIT_SHA = "abc123";
     const file = emit(dir);
@@ -49,15 +49,15 @@ describe("buildInfo", () => {
     expect(JSON.parse(file.source as string)).toEqual({
       build: "host",
       version: "1.2.3",
-      commit: "abc123",
+      hash: "abc123",
     });
   });
 
-  it("reports dev and 0.0.0 without a commit or a package.json", () => {
+  it("reports dev and 0.0.0 without a hash or a package.json", () => {
     expect(JSON.parse(emit(dir).source as string)).toEqual({
       build: "host",
       version: "0.0.0",
-      commit: "dev",
+      hash: "dev",
     });
   });
 });

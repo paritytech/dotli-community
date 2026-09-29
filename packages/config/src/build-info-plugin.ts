@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Build-time plugin: write the build name, package version and commit to
+// Build-time plugin: write the build name, package version and hash to
 // `host_version.json` at the bundle root, so each origin's deploy can be
 // checked with curl. The root, not /assets/, which nginx caches as immutable.
 
@@ -61,7 +61,7 @@ export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
       const info = {
         build,
         version: readPackageVersion(root),
-        commit: process.env.VITE_COMMIT_SHA ?? "dev",
+        hash: process.env.VITE_COMMIT_SHA ?? "dev",
       };
       this.emitFile({
         type: "asset",

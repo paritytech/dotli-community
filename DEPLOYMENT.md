@@ -107,7 +107,7 @@ Every origin serves its own build's `host_version.json` at the root:
 
 ```sh
 curl -fsS https://paseo.li/host_version.json
-# {"build":"host","version":"0.7.4","commit":"cd93b956…"}
+# {"build":"host","version":"0.7.4","hash":"cd93b956…"}
 ```
 
 It is written by the build (`packages/config/src/build-info-plugin.ts`) and

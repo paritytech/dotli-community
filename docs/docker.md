@@ -70,8 +70,8 @@ The container logs the effective config on startup, which is how you confirm an
 override applied without opening a browser. A config it cannot make sense of
 stops the container rather than starting with the override silently dropped.
 
-Each build's `host_version.json` (see `DEPLOYMENT.md`) takes its commit from the
-optional `--build-arg VITE_COMMIT_SHA=…`. Without it the commit reads `dev`,
+Each build's `host_version.json` (see `DEPLOYMENT.md`) takes its `hash` from the
+optional `--build-arg VITE_COMMIT_SHA=…`. Without it the hash reads `dev`,
 because the build context excludes `.git`.
 
 ## Config schema
