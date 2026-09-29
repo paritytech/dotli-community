@@ -462,6 +462,9 @@ Before deploying it for real use cases, **you are responsible** for:
 - **Securing** your own fork or deployment environment (keys, secrets, network configuration)
 - **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
 
+Secret Scan covers all fetched branch history. `.gitleaks.toml` documents
+the public chain data and throwaway test vectors excluded from credential checks.
+
 For Parity's security disclosure process, and **Bug Bounty** program, feel free to visit: https://parity.io/bug-bounty
 
 ### Reporting a vulnerability
