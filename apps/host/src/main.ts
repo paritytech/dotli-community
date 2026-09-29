@@ -1225,10 +1225,11 @@ async function main(): Promise<void> {
     },
   });
   if (blockCache !== undefined) {
+    // `onSandboxDone` callbacks are drained with `splice(0)` on the first
+    // `done` signal, so this fires once per page load: the summary event
+    // and the prune below run exactly once, after the first sandbox done.
     onSandboxDone(() => {
       const { cache: hits, network: misses } = blocksServed;
-      blocksServed.cache = 0;
-      blocksServed.network = 0;
       if (hits + misses === 0) {
         return;
       }
