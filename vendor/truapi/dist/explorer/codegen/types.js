@@ -3870,6 +3870,39 @@ export const types = [
         ],
     },
     {
+        id: "host-profile-own-status-error",
+        name: "HostProfileOwnStatusError",
+        category: "profile",
+        definition: 'export type HostProfileOwnStatusError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure while querying the signed-in user's profile status.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-own-status-response",
+        name: "HostProfileOwnStatusResponse",
+        category: "profile",
+        definition: "export interface HostProfileOwnStatusResponse {\n  configured: boolean;\n}",
+        description: "Whether the signed-in user currently has a profile disclosed through the\nhost. The reference itself never crosses into the product.",
+        fields: [
+            {
+                name: "configured",
+                type: "boolean",
+                description: "`true` when the host holds a current own-profile reference.",
+            },
+        ],
+    },
+    {
         id: "host-profile-place-contact-avatars-error",
         name: "HostProfilePlaceContactAvatarsError",
         category: "profile",
@@ -3897,8 +3930,8 @@ export const types = [
         id: "host-profile-place-contact-avatars-request",
         name: "HostProfilePlaceContactAvatarsRequest",
         category: "profile",
-        definition: "export interface HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactAvatarSlot>;\n}",
-        description: "Where a chat product draws contact avatars, so the host can draw the\nphoto and mood ring each contact shared over them, on its own layer.\n\nThe product sends geometry only. The host decides which slots it can fill\nand never says which, so the product cannot learn who shared a profile.",
+        definition: "export interface HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  own?: OwnAvatarSlot;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "Where a chat product draws avatars the host fills in: its contacts' and,\noptionally, the signed-in user's own.\n\nv0.2 adds `own` to the v0.1 placement. A v0.1 placement is this one with no\nown slot, which is exactly what v0.1 meant. Both kinds live in one\nplacement so a product never has two placements replacing each other's\noverlay.",
         fields: [
             {
                 name: "surface_width",
@@ -3911,9 +3944,14 @@ export const types = [
                 description: "Height of the drawing surface, in the same units. 1 to 16384.",
             },
             {
+                name: "own",
+                type: "OwnAvatarSlot | undefined",
+                description: "Where the signed-in user's own avatar is drawn, if the product draws\none. The host fills it only when the user has disclosed a profile.",
+            },
+            {
                 name: "slots",
                 type: "Array<ContactAvatarSlot>",
-                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`.",
+                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`, unique across `own` too.",
             },
         ],
     },
@@ -3971,6 +4009,35 @@ export const types = [
                 name: "InvalidReference",
                 type: '{ tag: "InvalidReference"; value?: undefined }',
                 description: "The reference is malformed or names a format this host cannot open.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-own-error",
+        name: "HostProfilePresentOwnError",
+        category: "profile",
+        definition: 'export type HostProfilePresentOwnError =\n  | { tag: "NotConfigured"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure while presenting the signed-in user's profile.",
+        variants: [
+            {
+                name: "NotConfigured",
+                type: '{ tag: "NotConfigured"; value?: undefined }',
+                description: "The signed-in user has not configured a profile.",
+            },
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The host holds a reference it cannot parse.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
             },
             {
                 name: "Unknown",
@@ -4690,6 +4757,30 @@ export const types = [
                 name: "LimitReached",
                 type: '{ tag: "LimitReached"; value?: undefined }',
                 description: "Too many operations are in progress; retry after some complete.",
+            },
+        ],
+    },
+    {
+        id: "own-avatar-slot",
+        name: "OwnAvatarSlot",
+        category: "profile",
+        definition: "export interface OwnAvatarSlot {\n  slot: number;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "Where the product draws the signed-in user's own avatar.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, unique within this placement.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Bounding box of the avatar circle: square, 1 to 1024 units a side.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region the avatar is cut to.",
             },
         ],
     },
@@ -6267,6 +6358,30 @@ export const types = [
                 name: "key",
                 type: "string",
                 description: "Storage key to read.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-profile-place-contact-avatars-request",
+        name: "V01HostProfilePlaceContactAvatarsRequest",
+        category: "profile",
+        definition: "export interface V01HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "Where a chat product draws contact avatars, so the host can draw the\nphoto and mood ring each contact shared over them, on its own layer.\n\nThe product sends geometry only. The host decides which slots it can fill\nand never says which, so the product cannot learn who shared a profile.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Width of the product's drawing surface, in the units of every rect:\nframebuffer pixels for a PolkaVM product, CSS pixels of its viewport\nfor a web product. 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Height of the drawing surface, in the same units. 1 to 16384.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactAvatarSlot>",
+                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`.",
             },
         ],
     },

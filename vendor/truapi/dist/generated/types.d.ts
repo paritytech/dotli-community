@@ -1982,27 +1982,51 @@ export type VersionedHostProfileDiscloseResponse =
     value?: undefined;
 };
 export declare const VersionedHostProfileDiscloseResponse: S.Codec<VersionedHostProfileDiscloseResponse>;
-/** Versioned envelope for [`HostProfilePlaceContactAvatarsError`]. */
-export type VersionedHostProfilePlaceContactAvatarsError = 
+/** Versioned envelope for [`HostProfileOwnStatusError`]. */
+export type VersionedHostProfileOwnStatusError = 
 /** Version 1 payload. */
 {
     tag: "V1";
+    value: HostProfileOwnStatusError;
+};
+export declare const VersionedHostProfileOwnStatusError: S.Codec<VersionedHostProfileOwnStatusError>;
+/** Versioned envelope for [`HostProfileOwnStatusRequest`]. */
+export type VersionedHostProfileOwnStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfileOwnStatusRequest: S.Codec<VersionedHostProfileOwnStatusRequest>;
+/** Versioned envelope for [`HostProfileOwnStatusResponse`]. */
+export type VersionedHostProfileOwnStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileOwnStatusResponse;
+};
+export declare const VersionedHostProfileOwnStatusResponse: S.Codec<VersionedHostProfileOwnStatusResponse>;
+/** Versioned envelope for [`HostProfilePlaceContactAvatarsError`]. */
+export type VersionedHostProfilePlaceContactAvatarsError = 
+/** Version 2 payload. */
+{
+    tag: "V2";
     value: HostProfilePlaceContactAvatarsError;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsError: S.Codec<VersionedHostProfilePlaceContactAvatarsError>;
 /** Versioned envelope for [`HostProfilePlaceContactAvatarsRequest`]. */
 export type VersionedHostProfilePlaceContactAvatarsRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfilePlaceContactAvatarsRequest;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsRequest: S.Codec<VersionedHostProfilePlaceContactAvatarsRequest>;
 /** Versioned envelope for [`HostProfilePlaceContactAvatarsResponse`]. */
 export type VersionedHostProfilePlaceContactAvatarsResponse = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsResponse: S.Codec<VersionedHostProfilePlaceContactAvatarsResponse>;
@@ -2038,6 +2062,30 @@ export type VersionedHostProfilePresentError =
     value: HostProfilePresentError;
 };
 export declare const VersionedHostProfilePresentError: S.Codec<VersionedHostProfilePresentError>;
+/** Versioned envelope for [`HostProfilePresentOwnError`]. */
+export type VersionedHostProfilePresentOwnError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentOwnError;
+};
+export declare const VersionedHostProfilePresentOwnError: S.Codec<VersionedHostProfilePresentOwnError>;
+/** Versioned envelope for [`HostProfilePresentOwnRequest`]. */
+export type VersionedHostProfilePresentOwnRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfilePresentOwnRequest: S.Codec<VersionedHostProfilePresentOwnRequest>;
+/** Versioned envelope for [`HostProfilePresentOwnResponse`]. */
+export type VersionedHostProfilePresentOwnResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostProfilePresentOwnResponse: S.Codec<VersionedHostProfilePresentOwnResponse>;
 /** Versioned envelope for [`HostProfilePresentRequest`]. */
 export type VersionedHostProfilePresentRequest = 
 /** Version 1 payload. */
@@ -2562,6 +2610,16 @@ export type OperationStartedResult =
     value?: undefined;
 };
 export declare const OperationStartedResult: S.Codec<OperationStartedResult>;
+/** Where the product draws the signed-in user's own avatar. */
+export interface OwnAvatarSlot {
+    /** Product-chosen id, unique within this placement. */
+    slot: number;
+    /** Bounding box of the avatar circle: square, 1 to 1024 units a side. */
+    rect: AvatarRect;
+    /** Visible region the avatar is cut to. */
+    clip: AvatarRect;
+}
+export declare const OwnAvatarSlot: S.Codec<OwnAvatarSlot>;
 /**
  * Source for a payment top-up operation.
  *
@@ -4719,6 +4777,30 @@ export interface HostProfileDiscloseRequest {
     reference: string;
 }
 export declare const HostProfileDiscloseRequest: S.Codec<HostProfileDiscloseRequest>;
+/** Failure while querying the signed-in user's profile status. */
+export type HostProfileOwnStatusError = 
+/** No user is signed in. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfileOwnStatusError: S.Codec<HostProfileOwnStatusError>;
+/**
+ * Whether the signed-in user currently has a profile disclosed through the
+ * host. The reference itself never crosses into the product.
+ */
+export interface HostProfileOwnStatusResponse {
+    /** `true` when the host holds a current own-profile reference. */
+    configured: boolean;
+}
+export declare const HostProfileOwnStatusResponse: S.Codec<HostProfileOwnStatusResponse>;
 /** Contact avatar placement failure. Says nothing about any one slot. */
 export type HostProfilePlaceContactAvatarsError = 
 /** This host cannot draw over the product's surface. */
@@ -4746,7 +4828,7 @@ export declare const HostProfilePlaceContactAvatarsError: S.Codec<HostProfilePla
  * The product sends geometry only. The host decides which slots it can fill
  * and never says which, so the product cannot learn who shared a profile.
  */
-export interface HostProfilePlaceContactAvatarsRequest {
+export interface V01HostProfilePlaceContactAvatarsRequest {
     /**
      * Width of the product's drawing surface, in the units of every rect:
      * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
@@ -4761,7 +4843,7 @@ export interface HostProfilePlaceContactAvatarsRequest {
      */
     slots: Array<ContactAvatarSlot>;
 }
-export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
+export declare const V01HostProfilePlaceContactAvatarsRequest: S.Codec<V01HostProfilePlaceContactAvatarsRequest>;
 /** Contact profile presentation failure. */
 export type HostProfilePresentContactError = 
 /** This contact has not shared a profile with the user. */
@@ -4814,6 +4896,31 @@ export type HostProfilePresentError =
     };
 };
 export declare const HostProfilePresentError: S.Codec<HostProfilePresentError>;
+/** Failure while presenting the signed-in user's profile. */
+export type HostProfilePresentOwnError = 
+/** The signed-in user has not configured a profile. */
+{
+    tag: "NotConfigured";
+    value?: undefined;
+}
+/** The host holds a reference it cannot parse. */
+ | {
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostProfilePresentOwnError: S.Codec<HostProfilePresentOwnError>;
 /**
  * Request to show a profile the calling product references in host-owned UI.
  *
@@ -5572,6 +5679,36 @@ export interface V02HostProductDeviceChatResponse {
     richMessages: Array<HostNativeChatRichMessage>;
 }
 export declare const V02HostProductDeviceChatResponse: S.Codec<V02HostProductDeviceChatResponse>;
+/**
+ * Where a chat product draws avatars the host fills in: its contacts' and,
+ * optionally, the signed-in user's own.
+ *
+ * v0.2 adds `own` to the v0.1 placement. A v0.1 placement is this one with no
+ * own slot, which is exactly what v0.1 meant. Both kinds live in one
+ * placement so a product never has two placements replacing each other's
+ * overlay.
+ */
+export interface HostProfilePlaceContactAvatarsRequest {
+    /**
+     * Width of the product's drawing surface, in the units of every rect:
+     * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
+     * for a web product. 1 to 16384.
+     */
+    surfaceWidth: number;
+    /** Height of the drawing surface, in the same units. 1 to 16384. */
+    surfaceHeight: number;
+    /**
+     * Where the signed-in user's own avatar is drawn, if the product draws
+     * one. The host fills it only when the user has disclosed a profile.
+     */
+    own?: OwnAvatarSlot;
+    /**
+     * Replaces the product's previous placement entirely; empty clears it.
+     * At most 64, each with its own `slot`, unique across `own` too.
+     */
+    slots: Array<ContactAvatarSlot>;
+}
+export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
 /** An operation using the calling product's non-exportable Host Chat device. */
 export type HostProductDeviceChatRequest = 
 /** Restore public metadata, pending ciphertext, and private file-transfer progress. */

@@ -400,4 +400,12 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostProfilePlaceContactAvatarsRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload),
     },
+    [W.PROFILE_OWN_STATUS.trait * 256 + W.PROFILE_OWN_STATUS.method]: {
+        0: (payload) => T.VersionedHostProfileOwnStatusRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfileOwnStatusResponse, S.CallError(T.VersionedHostProfileOwnStatusError)).dec(payload),
+    },
+    [W.PROFILE_PRESENT_OWN.trait * 256 + W.PROFILE_PRESENT_OWN.method]: {
+        0: (payload) => T.VersionedHostProfilePresentOwnRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProfilePresentOwnResponse, S.CallError(T.VersionedHostProfilePresentOwnError)).dec(payload),
+    },
 };

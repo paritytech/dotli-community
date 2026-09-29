@@ -443,3 +443,13 @@ export declare const PROFILE_PLACE_CONTACT_AVATARS: {
     readonly method: 4;
     readonly kind: "request";
 };
+export declare const PROFILE_OWN_STATUS: {
+    readonly trait: 69;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const PROFILE_PRESENT_OWN: {
+    readonly trait: 69;
+    readonly method: 6;
+    readonly kind: "request";
+};

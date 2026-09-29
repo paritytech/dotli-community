@@ -454,3 +454,13 @@ export const PROFILE_PLACE_CONTACT_AVATARS = {
     method: 4,
     kind: "request",
 };
+export const PROFILE_OWN_STATUS = {
+    trait: 69,
+    method: 5,
+    kind: "request",
+};
+export const PROFILE_PRESENT_OWN = {
+    trait: 69,
+    method: 6,
+    kind: "request",
+};
