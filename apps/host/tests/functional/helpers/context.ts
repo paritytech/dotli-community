@@ -61,7 +61,6 @@ export async function setupTest(
 
 export async function setupContext(browser: Browser): Promise<BrowserContext> {
   const context = await browser.newContext({
-    storageState: undefined,
     serviceWorkers: "allow",
     permissions: [...BROWSER_PERMISSIONS],
   });
@@ -75,7 +74,7 @@ export async function setupContext(browser: Browser): Promise<BrowserContext> {
     process.stdout.write(`[route:doc] ${req.url()}\n`);
     try {
       const response = await route.fetch();
-      const ct = (response.headers()["content-type"] || "").toLowerCase();
+      const ct = (response.headers()["content-type"] ?? "").toLowerCase();
       const body = await response.text();
       const injected = body.replace(
         /<head(\s[^>]*)?>/i,

@@ -56,7 +56,7 @@ import {
 interface PendingRequest {
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
-  onProgress?: (message: string) => void;
+  onProgress?: ((message: string) => void) | undefined;
 }
 
 interface RemoteChainConnection {

@@ -178,7 +178,7 @@ export async function bootstrapSharedMode(): Promise<void> {
   };
 
   SHARED_KEYS.forEach((key, i) => {
-    const shared = sharedReads[i];
+    const shared = sharedReads[i] ?? null;
     const seed = cache.get(key) ?? null;
 
     // Localhost dev prefers the per-origin seed over the shared store.

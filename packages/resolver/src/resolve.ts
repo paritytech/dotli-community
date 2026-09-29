@@ -57,8 +57,8 @@ const HUB_CHAIN = "Asset Hub Paseo";
 
 /** Shared shape for every resolver read that may have to wait on sync. */
 export interface ResolveOptions {
-  onStatus?: StatusCallback;
-  onPhase?: PhaseCallback;
+  onStatus?: StatusCallback | undefined;
+  onPhase?: PhaseCallback | undefined;
   /** Remaining budget from the caller's request deadline, if it set one. */
   syncTimeoutMs?: number;
 }

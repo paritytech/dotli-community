@@ -59,7 +59,7 @@ describe("assertBlockMatchesCid", () => {
     const bytes = enc("a".repeat(1000));
     const cid = sha256Cid(bytes);
     const flipped = bytes.slice();
-    flipped[500] ^= 0x01;
+    flipped[500] = "a".charCodeAt(0) ^ 0x01;
     expect(() => {
       assertBlockMatchesCid(cid, flipped);
     }).toThrow(/hash mismatch/i);

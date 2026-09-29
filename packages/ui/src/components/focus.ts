@@ -46,11 +46,11 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
   if (ev.shiftKey) {
     if (!inside || active === items[0] || active === surface) {
       ev.preventDefault();
-      items[items.length - 1].focus();
+      items.at(-1)?.focus();
     }
   } else if (!inside || active === items[items.length - 1]) {
     ev.preventDefault();
-    items[0].focus();
+    items[0]?.focus();
   }
 }
 

@@ -47,17 +47,18 @@ export function injectPrerendered(
   rendered: string,
 ): string {
   const parts = html.split(placeholder);
-  if (parts.length === 1) {
+  const [before, after, ...extra] = parts;
+  if (before === undefined || after === undefined) {
     throw new Error(
       `[prerender] placeholder "${placeholder}" not found in index.html`,
     );
   }
-  if (parts.length > 2) {
+  if (extra.length > 0) {
     throw new Error(
       `[prerender] placeholder "${placeholder}" appears ${String(parts.length - 1)} times in index.html; expected exactly once`,
     );
   }
-  return parts[0] + rendered + parts[1];
+  return before + rendered + after;
 }
 
 async function renderWith(

@@ -56,6 +56,7 @@ import {
 } from "../../../src/state/url-pill.js";
 import type * as ThemeToggleModule from "../../../src/components/shell/ThemeToggle.js";
 import { byId, must } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("../../../../metrics/src/sentry.js", () => sentry);
@@ -246,11 +247,12 @@ describe("shell islands", () => {
     expect(failed).toEqual([]);
     for (const [i, id] of THEME_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
-      expect(withoutStoreState(fresh).isEqualNode(before[i].markup)).toBe(true);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
+      expect(withoutStoreState(fresh).isEqualNode(prior.markup)).toBe(true);
     }
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
@@ -443,7 +445,7 @@ describe("shell islands", () => {
     await flushAll();
     const live = THEME_IDS.map((id) => byId(id));
     expect(live[0]).not.toBe(before[0]);
-    live[0].focus();
+    nth(live, 0).focus();
 
     // When
     themeIsland.breakLater?.();
@@ -454,7 +456,7 @@ describe("shell islands", () => {
     for (const [i, id] of THEME_IDS.entries()) {
       expect(byId(id)).toBe(before[i]);
       expect(countById(id)).toBe(1);
-      expect(live[i].isConnected).toBe(false);
+      expect(live[i]?.isConnected).toBe(false);
     }
     expect(document.activeElement).toBe(before[0]);
     expect(themeIsland.disposed).toBe(1);
@@ -706,10 +708,11 @@ describe("shell islands", () => {
     // Then
     for (const [i, id] of AUTH_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
     }
     const liveButton = byId("auth-button");
     expect(liveButton.hasAttribute("disabled")).toBe(false);
@@ -869,10 +872,11 @@ describe("shell islands", () => {
     // Then
     for (const [i, id] of PERMISSIONS_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
     }
     expect(
       normalized(byId("permissions-button")).isEqualNode(
@@ -960,10 +964,11 @@ describe("shell islands", () => {
     // Then
     for (const [i, id] of CHAINS_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
     }
     expect(
       normalized(byId("chains-button")).isEqualNode(
@@ -1032,10 +1037,11 @@ describe("shell islands", () => {
     // Then
     for (const [i, id] of SETTINGS_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
     }
     expect(
       normalized(byId("mode-button")).isEqualNode(
@@ -1093,11 +1099,12 @@ describe("shell islands", () => {
     expect(failed).toEqual([]);
     for (const [i, id] of MORE_IDS.entries()) {
       const fresh = byId(id);
+      const prior = nth(before, i);
       expect(countById(id)).toBe(1);
-      expect(fresh).not.toBe(before[i].el);
-      expect(before[i].el.isConnected).toBe(false);
-      expect(placeOf(fresh)).toEqual(before[i].place);
-      expect(withoutStoreState(fresh).isEqualNode(before[i].markup)).toBe(true);
+      expect(fresh).not.toBe(prior.el);
+      expect(prior.el.isConnected).toBe(false);
+      expect(placeOf(fresh)).toEqual(prior.place);
+      expect(withoutStoreState(fresh).isEqualNode(prior.markup)).toBe(true);
     }
     expect(countById("more-row-chat")).toBe(1);
     expect(byId("more-row-chat").hidden).toBe(true);

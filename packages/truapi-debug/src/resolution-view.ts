@@ -164,13 +164,15 @@ export function buildResolution(
 ): ResolutionModel {
   let bootAt = -1;
   for (let i = events.length - 1; i >= 0; i--) {
-    if (events[i].layer === "boot" && events[i].event === "started") {
+    const ev = events[i];
+    if (ev?.layer === "boot" && ev.event === "started") {
       bootAt = i;
       break;
     }
   }
   const load = bootAt === -1 ? events : events.slice(bootAt);
-  if (load.length === 0) {
+  const first = load[0];
+  if (first === undefined) {
     return {
       flowId: null,
       startedAt: now,
@@ -179,7 +181,7 @@ export function buildResolution(
       summary: emptySummary(),
     };
   }
-  const startedAt = load[0].timestamp;
+  const startedAt = first.timestamp;
   const endedAt = loadEnd(load, now);
   // Chains keep reporting long after the app is on screen. Bounding the window
   // at the moment the load finished keeps this a picture of the resolution
@@ -195,7 +197,7 @@ export function buildResolution(
   }
 
   return {
-    flowId: load[0].flowId,
+    flowId: first.flowId,
     startedAt,
     elapsedMs: Math.max(0, endedAt - startedAt),
     rows: withLatestPeers(buildRows(mine, startedAt, endedAt), mine),
@@ -353,9 +355,8 @@ function buildRows(
     }
     const phase = str(p["phase"]) ?? "unknown";
     const at = Math.max(0, ev.timestamp - startedAt);
-    const previous =
-      row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
-    if (previous !== null) {
+    const previous = row.blocks.at(-1);
+    if (previous !== undefined) {
       previous.endMs = at;
       if (previous.phase === phase) {
         // A warp update: the chain never left the phase, so the block it is
@@ -387,10 +388,10 @@ function buildRows(
 
   const span = Math.max(0, endedAt - startedAt);
   for (const row of byRole.values()) {
-    if (row.blocks.length === 0) {
+    const last = row.blocks.at(-1);
+    if (last === undefined) {
       continue;
     }
-    const last = row.blocks[row.blocks.length - 1];
     last.endMs ??= Math.max(last.startMs, span);
   }
   return CHAIN_ROLES.map((role) => byRole.get(role)).filter(

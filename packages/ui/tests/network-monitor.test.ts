@@ -16,6 +16,7 @@ import {
   type ChainStatus,
 } from "../src/network-monitor.js";
 import { getActiveChainRoles } from "@dotli/config";
+import { nth } from "./helpers/nth.js";
 
 // Mirror of IDLE_GRACE_MS and MAX_BARS in network-monitor.ts.
 const GRACE_MS = 60_000;
@@ -105,22 +106,22 @@ describe("The network monitor tracks blocks", () => {
     const { source, emit } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    const relay = getNetworkStatus()[0];
+    const relay = nth(getNetworkStatus(), 0);
     const genesis = relayGenesis();
 
     // When
     emit(genesis, 100);
 
     // Then
-    expect(getNetworkStatus()[0].bars.length).toBe(0);
-    expect(getNetworkStatus()[0].latest).toBe(100);
+    expect(getNetworkStatus()[0]?.bars.length).toBe(0);
+    expect(getNetworkStatus()[0]?.latest).toBe(100);
 
     // When
     vi.advanceTimersByTime(relay.blockTimeMs);
     emit(genesis, 101);
 
     // Then
-    expect(getNetworkStatus()[0].bars).toEqual([
+    expect(getNetworkStatus()[0]?.bars).toEqual([
       { number: 101, health: "onTime", gapMs: relay.blockTimeMs },
     ]);
   });
@@ -130,12 +131,12 @@ describe("The network monitor tracks blocks", () => {
     const { source, emit } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    const relay = getNetworkStatus()[0];
+    const relay = nth(getNetworkStatus(), 0);
     const genesis = relayGenesis();
     emit(genesis, 100);
     vi.advanceTimersByTime(relay.blockTimeMs);
     emit(genesis, 101);
-    const held = getNetworkStatus()[0].bars;
+    const held = nth(getNetworkStatus(), 0).bars;
 
     // When
     vi.advanceTimersByTime(relay.blockTimeMs);
@@ -144,7 +145,9 @@ describe("The network monitor tracks blocks", () => {
     // Then
     expect(held.map((b) => b.number)).toEqual([101]);
     expect(Object.isFrozen(held)).toBe(true);
-    expect(getNetworkStatus()[0].bars.map((b) => b.number)).toEqual([101, 102]);
+    expect(getNetworkStatus()[0]?.bars.map((b) => b.number)).toEqual([
+      101, 102,
+    ]);
   });
 
   it("As a user on a degraded chain, the bar for a slow block is not green", () => {
@@ -160,7 +163,7 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 2);
 
     // Then
-    expect(getNetworkStatus()[0].bars[0].health).toBe("veryLate");
+    expect(getNetworkStatus()[0]?.bars[0]?.health).toBe("veryLate");
   });
 
   it("As a user with the panel open all day, memory stays bounded", () => {
@@ -177,7 +180,7 @@ describe("The network monitor tracks blocks", () => {
     }
 
     // Then
-    expect(getNetworkStatus()[0].bars.length).toBe(MAX_BARS);
+    expect(getNetworkStatus()[0]?.bars.length).toBe(MAX_BARS);
   });
 
   it("As a user who kept the panel open, more history is retained than a strip can show", () => {
@@ -194,7 +197,7 @@ describe("The network monitor tracks blocks", () => {
     }
 
     // Then
-    expect(getNetworkStatus()[0].bars.length).toBeGreaterThan(36);
+    expect(getNetworkStatus()[0]?.bars.length).toBeGreaterThan(36);
   });
 
   it("As a user on a chain that republishes its head, one block makes one bar", () => {
@@ -215,7 +218,7 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 102);
 
     // Then
-    const bars = getNetworkStatus()[0].bars;
+    const bars = nth(getNetworkStatus(), 0).bars;
     expect(bars.map((b) => b.number)).toEqual([101, 102]);
   });
 
@@ -235,7 +238,7 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 199);
 
     // Then
-    expect(getNetworkStatus()[0].bars.map((b) => b.number)).toEqual([201]);
+    expect(getNetworkStatus()[0]?.bars.map((b) => b.number)).toEqual([201]);
   });
 
   it("As a user reopening the panel quickly, watching never stopped", () => {
@@ -279,7 +282,7 @@ describe("The network monitor tracks blocks", () => {
     startNetworkWatch();
 
     // Then
-    expect(getNetworkStatus()[0].reachable).toBe(false);
+    expect(getNetworkStatus()[0]?.reachable).toBe(false);
   });
 
   it("As a user with the panel open, a new block shows up the moment it lands", () => {
@@ -315,7 +318,7 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 2);
 
     // Then
-    expect(getNetworkStatus()[0].bars[0].gapMs).toBe(15_000);
+    expect(getNetworkStatus()[0]?.bars[0]?.gapMs).toBe(15_000);
   });
 
   it("As a user closing the page, nothing keeps watching the chains", () => {
@@ -539,5 +542,5 @@ describe("The network monitor tracks the phase of each chain", () => {
 
 /** The relay genesis of the active network, which the fake source keys on. */
 function relayGenesis(): string {
-  return getActiveChainRoles()[0].genesis;
+  return nth(getActiveChainRoles(), 0).genesis;
 }

@@ -62,18 +62,20 @@ function stripQueryAndFragment(path: string): string {
 
 export function getMimeTypeResult(path: string): MimeOutcome {
   const cleaned = stripQueryAndFragment(path);
-  const match = /\.([a-z0-9]+)$/i.exec(cleaned);
-  if (match === null) {
+  const ext = /\.([a-z0-9]+)$/i.exec(cleaned)?.[1]?.toLowerCase();
+  if (ext === undefined) {
     if (cleaned.includes(".")) {
       return { kind: "malformed-path", mime: DEFAULT_MIME };
     }
     return { kind: "no-ext", mime: DEFAULT_MIME };
   }
-  const ext = match[1].toLowerCase();
-  if (!Object.prototype.hasOwnProperty.call(MIME_TYPES, ext)) {
+  const mime = Object.prototype.hasOwnProperty.call(MIME_TYPES, ext)
+    ? MIME_TYPES[ext]
+    : undefined;
+  if (mime === undefined) {
     return { kind: "unknown-ext", mime: DEFAULT_MIME, ext };
   }
-  return { kind: "ok", mime: MIME_TYPES[ext], ext };
+  return { kind: "ok", mime, ext };
 }
 
 export function getMimeType(path: string): string {

@@ -43,9 +43,8 @@ const isLocalEnv =
  */
 function configuredBaseDomain(): string | null {
   const enabled =
-    ((import.meta as { env?: Record<string, string | undefined> }).env?.[
-      "VITE_RUNTIME_NETWORK_CONFIG"
-    ] ?? "") === "true";
+    ((import.meta as { env?: Partial<ImportMetaEnv> }).env
+      ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
   if (!enabled) {
     return null;
   }
@@ -83,7 +82,7 @@ function deriveBaseDomain(): string {
       `[dot.li config] Refusing to boot — hostname "${hostname}" doesn't have a two-segment registrable root. Set up a proper DNS entry or run from localhost.`,
     );
   }
-  return `${segments[segments.length - 2]}.${segments[segments.length - 1]}`;
+  return segments.slice(-2).join(".");
 }
 
 export const BASE_DOMAIN = deriveBaseDomain();
@@ -130,11 +129,10 @@ export function isSandboxOrigin(origin: string): boolean {
  *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
  *  When unset, the default Paseo relay chain is reused. */
 export const SS_RELAY_CHAIN: string | undefined =
-  (import.meta.env["VITE_SS_RELAY_CHAIN"] as string | undefined) ?? undefined;
+  import.meta.env.VITE_SS_RELAY_CHAIN ?? undefined;
 
 // Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
-export const DEBUG =
-  (import.meta.env["VITE_APP_DEBUG"] as string | undefined) === "true";
+export const DEBUG = import.meta.env.VITE_APP_DEBUG === "true";
 
 /**
  * Most bytes of content blocks the host keeps between page loads. After each

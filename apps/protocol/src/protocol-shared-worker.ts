@@ -339,6 +339,7 @@ async function handleRequest(
   }
 
   const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+  const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
 
   switch (request.method) {
     case "warmup": {
@@ -369,7 +370,7 @@ async function handleRequest(
             message,
           });
         },
-        syncTimeoutMs,
+        ...syncOptions,
       });
       swLog(
         `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
@@ -387,7 +388,7 @@ async function handleRequest(
     case "resolveOwner": {
       const payload = request.payload as ProtocolRequestMap["resolveOwner"];
       assertString(payload.label, "label");
-      const result = await resolveOwner(payload.label, { syncTimeoutMs });
+      const result = await resolveOwner(payload.label, syncOptions);
       swLog(
         `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
       );
@@ -415,7 +416,7 @@ async function handleRequest(
       const result = await resolveExecutableManifest(
         payload.label,
         payload.kind,
-        { syncTimeoutMs },
+        syncOptions,
       );
       sendToPort(port, {
         namespace: "dotli:protocol",
@@ -431,9 +432,7 @@ async function handleRequest(
       const payload =
         request.payload as ProtocolRequestMap["resolveRootManifest"];
       assertString(payload.label, "label");
-      const result = await resolveRootManifest(payload.label, {
-        syncTimeoutMs,
-      });
+      const result = await resolveRootManifest(payload.label, syncOptions);
       sendToPort(port, {
         namespace: "dotli:protocol",
         kind: "response",
@@ -571,6 +570,9 @@ function cleanStalePorts(): void {
 
 self.addEventListener("connect", (event) => {
   const port = event.ports[0];
+  if (port === undefined) {
+    return;
+  }
 
   // Clean up any stale ports from previous iframe reloads
   cleanStalePorts();
@@ -598,6 +600,7 @@ self.addEventListener("connect", (event) => {
     const { envelope, origin } = relayData;
     void handleRequest(port, envelope, origin).catch((error: unknown) => {
       const msg = serializeError(error);
+      const name = errorName(error);
       swError(`Request ${envelope.method} failed:`, msg);
       sendToPort(port, {
         namespace: "dotli:protocol",
@@ -605,7 +608,7 @@ self.addEventListener("connect", (event) => {
         id: envelope.id,
         ok: false,
         error: msg,
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     });
   });

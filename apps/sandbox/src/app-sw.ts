@@ -71,8 +71,9 @@ self.addEventListener("message", (event: ExtendableMessageEvent) => {
     // to wire up a global listener. If no port was provided (older callers),
     // fall back to source.postMessage.
     const reply = { type: "SW_VERSION", version: __SW_VERSION__ } as const;
-    if (event.ports.length > 0) {
-      event.ports[0].postMessage(reply);
+    const [port] = event.ports;
+    if (port !== undefined) {
+      port.postMessage(reply);
     } else if (event.source) {
       (event.source as Client).postMessage(reply);
     }
@@ -245,10 +246,7 @@ function lookupArchive(
 
 /** Inject the sandbox checker script into HTML, inlined for the SW context. */
 function injectSandboxScript(html: string): string {
-  if (
-    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) ===
-    undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
     return html;
   }
   // Inline the same IIFE as sandbox-checker.ts to avoid importing from main bundle.

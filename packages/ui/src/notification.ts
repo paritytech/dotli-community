@@ -21,7 +21,7 @@ const BELL_SVG =
 export interface NotificationParams {
   text: string;
   label: string;
-  deeplink?: string;
+  deeplink?: string | undefined;
   /** SVG string for the icon. Default: bell. */
   icon?: string;
   /** CSS color for an icon background. Default: inherits from .notif-icon (#0a0a0a). */

@@ -42,6 +42,7 @@ describe("metrics (disabled)", () => {
   it("bind accepts a sentry-like object without error", () => {
     const fake = {
       startSpan: vi.fn(),
+      startInactiveSpan: vi.fn(),
       setMeasurement: vi.fn(),
       metrics: {
         count: vi.fn(),

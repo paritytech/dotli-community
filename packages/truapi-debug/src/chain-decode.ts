@@ -65,22 +65,22 @@ export type ChainOutcome =
 
 export interface ChainAnnotations {
   kind: ChainKind;
-  genesisHash?: string;
+  genesisHash?: string | undefined;
   /** For operation requests: which follow subscription the op targets. */
-  followSubscriptionId?: string;
+  followSubscriptionId?: string | undefined;
   /** Operation-level correlation id. Set by the node for body/storage/call
    *  starts, echoed in their result events, and reused in continue/stop.
    *  Also the tracking id for transaction broadcast/stop. */
-  operationId?: string;
-  blockHash?: string;
+  operationId?: string | undefined;
+  blockHash?: string | undefined;
   /** Only set for `follow-receive`: the ChainHeadEvent variant tag
    *  (`Initialized`, `NewBlock`, `BestBlockChanged`, `Finalized`,
    *  `OperationBodyDone`, `OperationCallDone`, `OperationStorageItems`,
    *  `OperationStorageDone`, `OperationWaitingForContinue`,
    *  `OperationInaccessible`, `OperationError`, `Stop`). */
-  chainEventTag?: string;
+  chainEventTag?: string | undefined;
   outcome?: ChainOutcome;
-  errorMessage?: string;
+  errorMessage?: string | undefined;
 }
 
 type ResultValue<T, E> =

@@ -104,6 +104,7 @@ import { renderComponent, resetStores, settle } from "../../helpers/solid.js";
 import type * as ServiceModule from "../../../src/chat/service.js";
 import type * as ChatPanelModule from "../../../src/state/chat-panel.js";
 import { byId } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const PRODUCT = "chatty.dot";
 
@@ -266,7 +267,8 @@ describe("chat panel, contact reads", () => {
     h.rooms = [room(0)];
     emit("dotli:chat-rooms-changed", { productId: PRODUCT });
     await idle();
-    const [older, newer] = h.held;
+    const older = nth(h.held, 0);
+    const newer = nth(h.held, 1);
     expect(h.held).toHaveLength(2);
     newer();
     await idle();
@@ -413,7 +415,8 @@ describe("chat panel, message reads", () => {
     h.messages.push(text(3));
     message("r0");
     await idle();
-    const [older, newer] = h.held;
+    const older = nth(h.held, 0);
+    const newer = nth(h.held, 1);
     expect(h.held).toHaveLength(2);
     newer();
     await idle();
@@ -449,7 +452,9 @@ describe("chat panel, message reads", () => {
 
     // Then
     expect(document.querySelectorAll(".chat-msg")).toHaveLength(0);
-    expect(rows()[1].querySelector(".chat-room-unread")?.textContent).toBe("1");
+    expect(rows()[1]?.querySelector(".chat-room-unread")?.textContent).toBe(
+      "1",
+    );
   });
 });
 
@@ -554,7 +559,7 @@ describe("chat panel, scrolling", () => {
 
     // When: its tree arrives and makes the list taller.
     height = 1300;
-    h.sinks[0].onUpdate({
+    nth(h.sinks, 0).onUpdate({
       tag: "Text",
       value: {
         modifiers: [],
@@ -729,7 +734,7 @@ describe("chat panel, room order", () => {
   it("As a keyboard user on a room row, a message that moves the row keeps my focus on it", async () => {
     // Given: focus on the oldest room, last in the list.
     await openPanel(5);
-    const last = rows()[4];
+    const last = nth(rows(), 4);
     expect(last.textContent).toContain("Room 0");
     last.focus();
 

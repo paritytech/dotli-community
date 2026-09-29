@@ -36,7 +36,7 @@ export interface StallFacts {
   /** Bytes per second across every network the shell can see, or null. */
   bytesPerSecond: number | null;
   /** The word smoldot itself uses for why it stalled, on `stalled` only. */
-  reason?: string;
+  reason?: string | undefined;
 }
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {

@@ -19,6 +19,7 @@ import {
 } from "@dotli/truapi-debug";
 
 import type { DotliDebugEvent } from "@dotli/truapi-debug";
+import { nth } from "../helpers/nth.js";
 
 function insert(
   store: EventStore,
@@ -30,7 +31,7 @@ function insert(
   store.insertTruapi({
     kind: "truapi",
     direction: "outgoing",
-    productId: productId ?? undefined,
+    ...(productId !== null ? { productId } : {}),
     requestId,
     payload: { tag, value: {} },
   });
@@ -104,7 +105,9 @@ describe("EventStore.anchorOf()", () => {
     const store = new EventStore({ capacity: 2 });
     insert(store, "x_request", "r1");
     insert(store, "x_response", "r1");
-    const [request, response] = store.list();
+    const listed = store.list();
+    const request = nth(listed, 0);
+    const response = nth(listed, 1);
 
     insert(store, "y_request", "r2");
 
@@ -190,8 +193,8 @@ describe("createResolutionRecorder()", () => {
 
     expect(recorder.events()).toBe(full);
     expect(full).toHaveLength(4000);
-    expect(full[0].event).toBe("e2");
-    expect(full[3999].event).toBe("e4001");
+    expect(full[0]?.event).toBe("e2");
+    expect(full[3999]?.event).toBe("e4001");
   });
 
   it("bumps its version on a kept event and on clear only", () => {

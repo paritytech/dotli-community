@@ -120,7 +120,13 @@ export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   const bytes = hexToBytes(slot);
   let carry = offset;
   for (let i = 31; i >= 0 && carry > 0; i--) {
-    const sum = bytes[i] + (carry & 0xff);
+    const byte = bytes[i];
+    if (byte === undefined) {
+      throw new Error(
+        `Storage slot must be 32 bytes, got ${String(bytes.length)}`,
+      );
+    }
+    const sum = byte + (carry & 0xff);
     bytes[i] = sum & 0xff;
     carry = (carry >>> 8) + (sum >>> 8);
   }
@@ -169,6 +175,11 @@ export function decodeBytesSlot(
   }
 
   const lowestByte = slotData[31];
+  if (lowestByte === undefined) {
+    throw new Error(
+      `Storage slot data must be 32 bytes, got ${String(slotData.length)}`,
+    );
+  }
   if ((lowestByte & 1) === 0) {
     // Short bytes: inline storage
     const length = lowestByte / 2;

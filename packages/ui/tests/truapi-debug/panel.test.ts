@@ -18,6 +18,7 @@ import { loadPanel, type PanelModule } from "./panel-entry.js";
 import type * as DotliDebugBusModule from "../../../truapi-debug/src/dotli-debug-bus.js";
 import type * as ProductFrameLayoutModule from "../../src/product-frame-layout.js";
 import { query, must } from "../support.js";
+import { nth } from "../helpers/nth.js";
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus["emitDotliDebugEvent"]>[0];
@@ -135,8 +136,9 @@ function truapi(input: TruapiInput): void {
   bus.emitDotliDebugEvent({
     kind: "truapi",
     direction: input.direction ?? "outgoing",
-    productId:
-      input.productId === null ? undefined : (input.productId ?? "app.dot"),
+    ...(input.productId !== null
+      ? { productId: input.productId ?? "app.dot" }
+      : {}),
     requestId: input.requestId,
     payload: { tag: input.tag, value: input.value ?? {} },
   });
@@ -332,7 +334,7 @@ describe("truapi debug panel: mount and dispose", () => {
     ]);
     const chips = [...root.querySelectorAll<HTMLElement>(".td-product-chip")];
     expect(chips.map((c) => c.textContent)).toEqual(["all"]);
-    expect(chips[0].classList.contains("active")).toBe(true);
+    expect(chips[0]?.classList.contains("active")).toBe(true);
     expect(query(panel(), ".td-tag-input", HTMLInputElement).placeholder).toBe(
       "filter by method…",
     );
@@ -500,7 +502,7 @@ describe("truapi debug panel: event rows", () => {
     frame();
 
     // Then
-    const tag = rows()[0].querySelector(".td-tag");
+    const tag = nth(rows(), 0).querySelector(".td-tag");
     expect(tag?.textContent).toBe("chainHead.follow");
     expect(tag?.className).toBe("td-tag td-tag-req");
   });
@@ -575,7 +577,7 @@ describe("truapi debug panel: header actions", () => {
     // Given
     mount({ capacity: 2 });
     seedMixedTraffic();
-    click(rows()[0]);
+    click(nth(rows(), 0));
     expect(counts()).toBe("2 events (+1 dropped)");
 
     // When
@@ -625,14 +627,14 @@ describe("truapi debug panel: header actions", () => {
 
     // Then
     expect(downloads).toHaveLength(1);
-    expect(downloads[0].href).toBe("blob:dotli-export");
-    expect(downloads[0].download).toMatch(
+    expect(downloads[0]?.href).toBe("blob:dotli-export");
+    expect(downloads[0]?.download).toMatch(
       /^dotli-debug-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.json$/,
     );
-    expect(downloads[0].attached).toBe(true);
+    expect(downloads[0]?.attached).toBe(true);
     expect(document.querySelector("a[download]")).toBeNull();
-    expect(blobs[0].type).toBe("application/json");
-    const exported = JSON.parse(await blobs[0].text()) as {
+    expect(blobs[0]?.type).toBe("application/json");
+    const exported = JSON.parse(await nth(blobs, 0).text()) as {
       meta: Record<string, unknown>;
       events: { tag?: string; event?: string }[];
     };
@@ -673,7 +675,7 @@ describe("truapi debug panel: header actions", () => {
       expect(copy.textContent).toBe("✓");
       expect(copy.disabled).toBe(true);
       expect(writeText).toHaveBeenCalledTimes(1);
-      const exported = JSON.parse(writeText.mock.calls[0][0]) as {
+      const exported = JSON.parse(nth(writeText.mock.calls, 0)[0]) as {
         meta: Record<string, unknown>;
         events: { kind: string }[];
       };
@@ -1158,11 +1160,11 @@ describe("truapi debug panel: selection and detail", () => {
     frame();
 
     // When
-    click(rows()[0]);
+    click(nth(rows(), 0));
 
     // Then
     expect(panel().querySelector("b")).toBeNull();
-    expect(rows()[0].querySelector(".td-summary")?.textContent).toContain(
+    expect(rows()[0]?.querySelector(".td-summary")?.textContent).toContain(
       "<b>bold</b>",
     );
     expect(q(".td-detail .td-detail-pre").textContent).toContain(
@@ -1838,7 +1840,7 @@ describe("truapi debug panel: pending requests", () => {
 
     // Then
     const badge = (): HTMLElement | null =>
-      rows()[0].querySelector<HTMLElement>(".td-pending");
+      nth(rows(), 0).querySelector<HTMLElement>(".td-pending");
     expect(badge()?.hidden).toBe(false);
     expect(badge()?.textContent).toMatch(/^⟳ \d+ms pending$/);
     expect(badge()?.classList.contains("slow")).toBe(false);
@@ -1862,7 +1864,7 @@ describe("truapi debug panel: pending requests", () => {
 
     // Then
     expect(badge()).toBeNull();
-    expect(rows()[1].querySelector(".td-pending")).toBeNull();
+    expect(rows()[1]?.querySelector(".td-pending")).toBeNull();
   });
 });
 

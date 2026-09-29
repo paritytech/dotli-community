@@ -10,6 +10,7 @@ import {
   settleModal,
   type ModalView,
 } from "../../src/state/modals.js";
+import { nth } from "../helpers/nth.js";
 
 type Choice = "yes" | "no" | "dismissed";
 
@@ -36,7 +37,9 @@ describe("modal store", () => {
     // Given
     const first = openModal(view("First"));
     const second = openModal(view("Second"));
-    const [a, b] = modalsStore.get();
+    const entries = modalsStore.get();
+    const a = nth(entries, 0);
+    const b = nth(entries, 1);
 
     // Then
     expect(modalsStore.get().map((e) => e.view.title)).toEqual([
@@ -62,7 +65,7 @@ describe("modal store", () => {
   it("As a dotli integrator, a modal settles only once", async () => {
     // Given
     const outcome = openModal(view("Once"));
-    const [entry] = modalsStore.get();
+    const entry = nth(modalsStore.get(), 0);
 
     // When
     settleModal(entry.id, "yes");

@@ -320,8 +320,7 @@ export async function formatDiagnosticsReport(
 export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
   const version =
     typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : "0.0.0";
-  const sha =
-    (import.meta.env["VITE_COMMIT_SHA"] as string | undefined) ?? "dev";
+  const sha = import.meta.env.VITE_COMMIT_SHA ?? "dev";
 
   const backend = getBackend();
   const network = getNetwork();
@@ -483,18 +482,18 @@ export function shortSha(sha: string): string {
  */
 export function summarizeUserAgent(ua: string): string {
   let browser = "Unknown";
-  const chromeMatch = /(Chrome|CriOS)\/(\d+)/.exec(ua);
-  const firefoxMatch = /Firefox\/(\d+)/.exec(ua);
-  const safariMatch = /Version\/(\d+)[^)]+Safari/.exec(ua);
-  const edgeMatch = /Edg\/(\d+)/.exec(ua);
-  if (edgeMatch) {
-    browser = `Edge ${edgeMatch[1]}`;
-  } else if (firefoxMatch) {
-    browser = `Firefox ${firefoxMatch[1]}`;
-  } else if (chromeMatch) {
-    browser = `Chrome ${chromeMatch[2]}`;
-  } else if (safariMatch) {
-    browser = `Safari ${safariMatch[1]}`;
+  const chromeVersion = /(Chrome|CriOS)\/(\d+)/.exec(ua)?.[2];
+  const firefoxVersion = /Firefox\/(\d+)/.exec(ua)?.[1];
+  const safariVersion = /Version\/(\d+)[^)]+Safari/.exec(ua)?.[1];
+  const edgeVersion = /Edg\/(\d+)/.exec(ua)?.[1];
+  if (edgeVersion !== undefined) {
+    browser = `Edge ${edgeVersion}`;
+  } else if (firefoxVersion !== undefined) {
+    browser = `Firefox ${firefoxVersion}`;
+  } else if (chromeVersion !== undefined) {
+    browser = `Chrome ${chromeVersion}`;
+  } else if (safariVersion !== undefined) {
+    browser = `Safari ${safariVersion}`;
   }
 
   let os = "Unknown";

@@ -201,7 +201,7 @@ describe("MoreMenu", () => {
       expect(byId("more-button").getAttribute("aria-expanded")).toBe("false");
       // Only the forwarded click bubbled to the document, not the row's own.
       expect(outsideClicks).toHaveBeenCalledTimes(1);
-      expect(outsideClicks.mock.calls[0][0].target).toBe(after.el);
+      expect(outsideClicks.mock.calls[0]?.[0].target).toBe(after.el);
     },
   );
 

@@ -243,7 +243,7 @@ export type LoadingStage = (typeof LOADING_STAGES)[number];
  * client is doing, and only a slow load reaches them. List lengths follow how
  * long each step runs, so the long ones do not repeat.
  */
-const STAGE_MESSAGES: Record<LoadingStage, string[]> = {
+const STAGE_MESSAGES: Record<LoadingStage, readonly [string, ...string[]]> = {
   starting: [
     "Reaching out",
     "This page comes from a network, with no one in between",
@@ -408,7 +408,7 @@ export function setLoadingStage(stage: LoadingStage): void {
   openingLine = false;
   const turn = (): void => {
     line = line + 1 >= messages.length ? loopFrom : line + 1;
-    writeStatus(messages[line]);
+    writeStatus(messages[line] ?? messages[0]);
     stageTimer = setTimeout(turn, MESSAGE_ROTATE_MS);
   };
   if (!trackLoadingRoot()) {
@@ -437,12 +437,13 @@ function stopStageMessages(): void {
  * No-ops if the phase is already active or past.
  */
 export function advancePhase(index: number): void {
-  if (index <= currentPhase || index >= phases.length) {
+  const phase = phases[index];
+  if (index <= currentPhase || phase === undefined) {
     return;
   }
   currentPhase = index;
 
-  const { base, target, expectedMs, reportsProgress } = phases[index];
+  const { base, target, expectedMs, reportsProgress } = phase;
   // Each step has to earn the indicator back: the real progress of the previous step
   // percentage says nothing about this one. A step that publishes its own
   // figure holds the indicator at its band base until the figure arrives,
@@ -462,7 +463,7 @@ export function advancePhase(index: number): void {
   // for the last one. A band that reports a real percentage lends nothing,
   // since creeping into it would put the indicator above the figure that step
   // is about to publish.
-  const next = phases[index + 1] as LoadingPhase | undefined;
+  const next = phases[index + 1];
   const lentCeiling =
     next === undefined
       ? CREEP_CEILING
@@ -478,7 +479,7 @@ export function advancePhase(index: number): void {
   // The headline is the stage's, not the phase label's: the label names the
   // step for us, the stage says it in words the visitor can act on. Adjacent
   // phases can share one stage, and re-entering a running stage is a no-op.
-  setLoadingStage(phases[index].stage);
+  setLoadingStage(phase.stage);
 }
 
 /**
@@ -500,7 +501,7 @@ export function nudgePhaseProgress(
     return;
   }
   const phase = phases[currentPhase];
-  if (phase.stage !== stage) {
+  if (phase?.stage !== stage) {
     return;
   }
   const { base, target } = phase;

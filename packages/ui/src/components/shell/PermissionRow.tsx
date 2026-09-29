@@ -92,7 +92,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
       (option) => option === document.activeElement,
     );
     const step = e.key === "ArrowDown" ? 1 : -1;
-    options[(index + step + options.length) % options.length].focus();
+    options[(index + step + options.length) % options.length]?.focus();
   };
 
   return (

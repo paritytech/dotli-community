@@ -118,7 +118,7 @@ type CurrentProduct =
       mode: "iframe";
       label: string;
       url: string;
-      productId?: string;
+      productId?: string | undefined;
     }
   | {
       mode: "subdomain";
@@ -593,7 +593,7 @@ export function requestCoreLogin(
       messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
         tag: "V1",
-        value: { reason },
+        value: reason === undefined ? {} : { reason },
       }),
     },
   });
@@ -698,7 +698,7 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
-  productId?: string;
+  productId?: string | undefined;
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
@@ -767,10 +767,10 @@ async function createHost(args: {
 async function createCoreProvider(
   label: string,
   options: {
-    pairingLabel?: string;
-    pairingDotSuffix?: boolean;
-    pairingHostGlobal?: boolean;
-    productId?: string;
+    pairingLabel?: string | undefined;
+    pairingDotSuffix?: boolean | undefined;
+    pairingHostGlobal?: boolean | undefined;
+    productId?: string | undefined;
   } = {},
 ): Promise<CoreProvider> {
   if (blockingModalCoordinator === null) {
@@ -909,7 +909,7 @@ function disposeLandingAuthHost(): void {
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string } = {},
+  options: { productId?: string | undefined } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId("render");
@@ -988,10 +988,7 @@ export async function renderIframe(
     { once: true },
   );
 
-  if (
-    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) !==
-    undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
     const { mountViolationPanel } =
       await import("./components/sandbox-checker/mount.js");
     if (myRenderGeneration !== renderGeneration) {
@@ -1151,10 +1148,7 @@ export async function renderAppSubdomain(
     { once: true },
   );
 
-  if (
-    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) !==
-    undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
     const { mountViolationPanel } =
       await import("./components/sandbox-checker/mount.js");
     if (myRenderGeneration !== renderGeneration) {

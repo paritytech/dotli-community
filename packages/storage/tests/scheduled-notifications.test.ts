@@ -318,7 +318,9 @@ describe("removeById", () => {
       scheduledAt: future(60_000),
     });
     const [rec] = await listForProduct("acme.dot");
-    expect(rec).toBeDefined();
+    if (rec === undefined) {
+      throw new Error("expected the scheduled record");
+    }
 
     // When removing it by hostId twice
     const first = await removeById(rec.hostId);

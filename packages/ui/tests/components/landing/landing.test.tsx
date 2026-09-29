@@ -11,6 +11,7 @@ import { escapeHtml } from "@dotli/shared";
 import { getActiveTldSuffix, withActiveTld } from "@dotli/config";
 import { mountLandingPage } from "../../helpers/landing.js";
 import { byId, query, must } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("../../../../metrics/src/sentry.js", () => sentry);
@@ -189,7 +190,7 @@ describe("landing page", () => {
 
     // Then
     expect(view.children).toHaveLength(1);
-    expect(shape(view.children[0])).toBe(shape(oldLandingMarkup()));
+    expect(shape(nth(view.children, 0))).toBe(shape(oldLandingMarkup()));
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
@@ -382,7 +383,7 @@ describe("landing page", () => {
     const recent = byId("dotli-recent");
     expect(recent.hidden).toBe(false);
     expect(recent.children).toHaveLength(1);
-    expect(recent.children[0].className).toBe("landing-recent-list");
+    expect(recent.children[0]?.className).toBe("landing-recent-list");
     expect(items().map((item) => item.dataset["label"])).toEqual([
       "alpha",
       "beta",
@@ -390,7 +391,7 @@ describe("landing page", () => {
     expect(items().map(shape)).toEqual(
       ["alpha", "beta"].map((label) => shape(oldPillMarkup(label))),
     );
-    const pill = items()[0].querySelector<HTMLAnchorElement>(
+    const pill = nth(items(), 0).querySelector<HTMLAnchorElement>(
       "a.landing-recent-pill",
     );
     expect(pill?.getAttribute("href")).toBe("http://alpha.localhost:5173");
@@ -398,7 +399,9 @@ describe("landing page", () => {
     expect(
       pill?.querySelector(".landing-recent-label > .landing-tld")?.textContent,
     ).toBe(SUFFIX);
-    const remove = items()[0].querySelector("button.landing-recent-remove");
+    const remove = nth(items(), 0).querySelector(
+      "button.landing-recent-remove",
+    );
     expect(remove?.getAttribute("type")).toBe("button");
     expect(remove?.getAttribute("aria-label")).toBe(
       `Remove alpha${SUFFIX} from recently visited`,
@@ -428,9 +431,9 @@ describe("landing page", () => {
 
     // Then
     expect(document.querySelector("img")).toBeNull();
-    expect(items()[0].dataset["label"]).toBe(hostile);
+    expect(items()[0]?.dataset["label"]).toBe(hostile);
     expect(
-      items()[0].querySelector(".landing-recent-label")?.firstChild
+      items()[0]?.querySelector(".landing-recent-label")?.firstChild
         ?.textContent,
     ).toBe(hostile);
   });
@@ -442,7 +445,9 @@ describe("landing page", () => {
     await settle();
 
     // When
-    const event = click(query(items()[0], ".landing-recent-remove", Element));
+    const event = click(
+      query(nth(items(), 0), ".landing-recent-remove", Element),
+    );
     await settle();
 
     // Then
@@ -452,7 +457,7 @@ describe("landing page", () => {
     expect(byId("dotli-recent").hidden).toBe(false);
 
     // When
-    click(query(items()[0], ".landing-recent-remove svg", Element));
+    click(query(nth(items(), 0), ".landing-recent-remove svg", Element));
     await settle();
 
     // Then
@@ -467,7 +472,8 @@ describe("landing page", () => {
     recents.labels = ["alpha", "beta"];
     mount();
     await settle();
-    const [alpha, beta] = items();
+    const alpha = nth(items(), 0);
+    const beta = nth(items(), 1);
     const alphaPill = query(alpha, ".landing-recent-pill", Element);
 
     // When: a press that moves is a scroll, not a long press.
@@ -543,7 +549,7 @@ describe("landing page", () => {
     page = null;
 
     // Then
-    expect(remove).toHaveBeenCalledWith("pointerdown", added[0][1]);
+    expect(remove).toHaveBeenCalledWith("pointerdown", added[0]?.[1]);
   });
 
   it("As a visitor, the auth and theme controls move from the topbar into the page's corner", async () => {

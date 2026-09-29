@@ -30,13 +30,12 @@ export function createTruapiRuntimeConfig(
     productId,
     host: {
       name: "Polkadot Web",
-      icon: undefined,
-      version:
-        typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : undefined,
+      ...(typeof __DOTLI_VERSION__ === "string"
+        ? { version: __DOTLI_VERSION__ }
+        : {}),
     },
     platform: {
       type: getPlatformType(),
-      version: undefined,
     },
     people: {
       genesisHash: getActiveServicesConfig().people.genesis,

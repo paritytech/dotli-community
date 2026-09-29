@@ -10,6 +10,7 @@ import type * as AuthControllerModule from "../src/auth-controller.js";
 import type * as AuthModalModule from "../src/state/auth-modal.js";
 import type * as AuthModule from "../src/state/auth.js";
 import type * as BlockingModalQueueModule from "../src/blocking-modal-queue.js";
+import { nth } from "./helpers/nth.js";
 
 type Modules = typeof AuthControllerModule &
   typeof AuthModalModule &
@@ -221,7 +222,8 @@ describe("auth controller: blocking-modal lease", () => {
     closeAuthModal({ skipTruapiCancel: true });
     openAuthModal();
     expect(tasks).toHaveLength(2);
-    const [stale, current] = tasks;
+    const stale = nth(tasks, 0);
+    const current = nth(tasks, 1);
 
     expect(stale.disposed()).toBe(true);
 

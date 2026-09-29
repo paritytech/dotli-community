@@ -46,12 +46,13 @@ export function sessionInitials(
 ): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {
-    const parts = fullName.split(" ").filter((part) => part.length > 0);
-    if (parts.length === 1) {
-      return parts[0].slice(0, 2).toUpperCase();
-    }
-    if (parts.length > 1) {
-      return `${parts[0].charAt(0)}${parts[1].charAt(0)}`.toUpperCase();
+    const [first, second] = fullName
+      .split(" ")
+      .filter((part) => part.length > 0);
+    if (first !== undefined) {
+      return second === undefined
+        ? first.slice(0, 2).toUpperCase()
+        : `${first.charAt(0)}${second.charAt(0)}`.toUpperCase();
     }
   }
   const liteName = state.liteUsername;

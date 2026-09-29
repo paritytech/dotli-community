@@ -5,12 +5,20 @@
 
 import { getActiveServicesConfig } from "@dotli/config";
 
+function defaultGateway(): string {
+  const [gateway] = getActiveServicesConfig().bulletin.ipfsGateways;
+  if (gateway === undefined) {
+    throw new Error("No IPFS gateway configured for the active network.");
+  }
+  return gateway;
+}
+
 /**
  * Fetch content from IPFS by CID via HTTP gateway.
  */
 export async function fetchFromIpfs(
   cid: string,
-  gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
+  gateway: string = defaultGateway(),
 ): Promise<{
   data: Uint8Array;
   contentType?: string;
@@ -34,7 +42,7 @@ export async function fetchFromIpfs(
 
   return {
     data: new Uint8Array(arrayBuffer),
-    contentType,
+    ...(contentType !== undefined ? { contentType } : {}),
   };
 }
 
@@ -44,7 +52,7 @@ export async function fetchFromIpfs(
  */
 export async function fetchCarFromIpfs(
   cid: string,
-  gateway: string = getActiveServicesConfig().bulletin.ipfsGateways[0],
+  gateway: string = defaultGateway(),
 ): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 

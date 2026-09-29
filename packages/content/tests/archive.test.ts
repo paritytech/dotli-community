@@ -100,9 +100,9 @@ describe("packArchive", () => {
     };
     const result = packArchive(files);
     expect(result.index).toHaveLength(1);
-    expect(result.index[0].p).toBe("index.html");
-    expect(result.index[0].o).toBe(0);
-    expect(result.index[0].l).toBe(14);
+    expect(result.index[0]?.p).toBe("index.html");
+    expect(result.index[0]?.o).toBe(0);
+    expect(result.index[0]?.l).toBe(14);
     expect(result.packed.byteLength).toBe(14);
   });
 
@@ -137,8 +137,12 @@ describe("packArchive", () => {
     };
     const result = packArchive(files);
     const view = new Uint8Array(result.packed);
+    const [entry] = result.index;
+    if (entry === undefined) {
+      throw new Error("expected an index entry");
+    }
     const extracted = new TextDecoder().decode(
-      view.slice(result.index[0].o, result.index[0].o + result.index[0].l),
+      view.slice(entry.o, entry.o + entry.l),
     );
     expect(extracted).toBe(content);
   });

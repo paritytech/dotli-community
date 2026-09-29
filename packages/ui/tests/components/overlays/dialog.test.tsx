@@ -15,6 +15,7 @@ import {
 } from "../../../src/product-frame-layout.js";
 import { renderComponent, settle } from "../../helpers/solid.js";
 import { query } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 type Choice = "deny" | "allow" | "once" | "dismissed";
 
@@ -220,7 +221,7 @@ describe("signing dialog", () => {
     ];
 
     // When
-    buttons[2].focus();
+    nth(buttons, 2).focus();
     fireEvent.keyDown(document, { key: "Tab" });
 
     // Then

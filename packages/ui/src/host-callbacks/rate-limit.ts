@@ -12,8 +12,10 @@ export function createSubmitRateLimiter(): SubmitRateLimiter {
   return {
     allow() {
       const now = Date.now();
-      while (timestamps.length > 0 && timestamps[0] <= now - SUBMIT_WINDOW_MS) {
+      let oldest = timestamps[0];
+      while (oldest !== undefined && oldest <= now - SUBMIT_WINDOW_MS) {
         timestamps.shift();
+        oldest = timestamps[0];
       }
       if (timestamps.length >= SUBMIT_MAX_PER_WINDOW) {
         return false;

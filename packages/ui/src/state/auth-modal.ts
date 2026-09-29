@@ -22,7 +22,7 @@ export type AuthModalView =
       title: string;
       subtitle: string;
       /** Raw reason kept for bug reports; absent when the copy hides it. */
-      detail?: string;
+      detail?: string | undefined;
     };
 
 /**

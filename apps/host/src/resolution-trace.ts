@@ -54,10 +54,7 @@ export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
 const DEFAULT_SAMPLE_RATE = 0.2;
 
 function sampleRate(): number {
-  const raw = Number(
-    (import.meta.env["VITE_RESOLUTION_SAMPLE_RATE"] as string | undefined) ??
-      "",
-  );
+  const raw = Number(import.meta.env.VITE_RESOLUTION_SAMPLE_RATE ?? "");
   return Number.isFinite(raw) && raw >= 0 && raw <= 1
     ? raw
     : DEFAULT_SAMPLE_RATE;
@@ -433,10 +430,10 @@ function chainAttributes(
       attrs["warp_blocks"] = state.warpAt - state.warpFrom;
     }
   }
-  const peers = state.peers;
-  if (peers !== null && peers.length > 0) {
-    const heights = peers.map((peer) => peer.bestNumber).sort((a, b) => a - b);
-    const median = heights[Math.floor(heights.length / 2)];
+  const peers = state.peers ?? [];
+  const heights = peers.map((peer) => peer.bestNumber).sort((a, b) => a - b);
+  const median = heights[Math.floor(heights.length / 2)];
+  if (median !== undefined) {
     attrs["peers_count"] = peers.length;
     attrs["peers_authority"] = peers.filter(
       (peer) => peer.roles === "AUTHORITY",
@@ -444,15 +441,11 @@ function chainAttributes(
     attrs["peers_best_median"] = median;
     // Peer ids are the public libp2p identities of infrastructure nodes,
     // published in chain specs. They name a remote server, never the visitor.
-    // Peer ids are the public libp2p identities of infrastructure nodes,
-    // published in chain specs. They name a remote server, never the visitor.
     attrs["peers_ids"] = peers
       .map((peer) => peer.peerId)
       .join(",")
       .slice(0, 1000);
     if (state.warpTarget !== null) {
-      // How far behind the peers of the chain were. A lag near zero says the
-      // network was fine and the time went somewhere else.
       // How far behind the peers of the chain were. A lag near zero says the
       // network was fine and the time went somewhere else.
       attrs["peer_best_lag"] = state.warpTarget - median;

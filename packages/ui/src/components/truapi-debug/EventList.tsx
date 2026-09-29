@@ -224,11 +224,12 @@ export function EventList(props: {
           nextIdx =
             currentIdx < 0 ? seqs.length - 1 : Math.max(currentIdx - 1, 0);
         }
-        if (nextIdx === currentIdx) {
+        const nextSeq = seqs[nextIdx];
+        if (nextIdx === currentIdx || nextSeq === undefined) {
           return;
         }
-        props.onSelect(seqs[nextIdx]);
-        rowFor(seqs[nextIdx])?.scrollIntoView({ block: "nearest" });
+        props.onSelect(nextSeq);
+        rowFor(nextSeq)?.scrollIntoView({ block: "nearest" });
       }}
     >
       <For

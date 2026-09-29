@@ -13,7 +13,7 @@ export interface SigningHostConfig {
   basePath: string;
   network: string;
   productId: string;
-  liteUsernamePrefix?: string;
+  liteUsernamePrefix?: string | undefined;
 }
 
 export interface SigningHostExit {

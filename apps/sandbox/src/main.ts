@@ -231,7 +231,7 @@ function querySwVersion(sw: ServiceWorker): Promise<string | null> {
 async function ensureFreshServiceWorker(
   registration: ServiceWorkerRegistration,
 ): Promise<void> {
-  const expected = import.meta.env["VITE_COMMIT_SHA"] as string | undefined;
+  const expected = import.meta.env.VITE_COMMIT_SHA;
   if (expected === undefined || expected === "") {
     return; // dev build, no version to compare against
   }
@@ -385,10 +385,7 @@ async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
  * the checker inline.
  */
 async function maybeInjectSandboxChecker(html: string): Promise<string> {
-  if (
-    (import.meta.env["VITE_SANDBOX_CHECKER"] as string | undefined) ===
-    undefined
-  ) {
+  if (import.meta.env.VITE_SANDBOX_CHECKER === undefined) {
     return html;
   }
   const { injectSandboxChecker } = await loadSandboxChecker();
@@ -426,7 +423,7 @@ async function decryptIfNeeded(
   // Surface the real cause instead of looping infinitely with a misleading
   // "Wrong password" prompt.
   for (;;) {
-    password ??= await showPasswordPrompt({ error });
+    password ??= await showPasswordPrompt(error !== undefined ? { error } : {});
     try {
       const plaintext = await decryptContent(data, password);
       decryptedPasswords.set(cid, password);
@@ -544,7 +541,7 @@ async function purgeSandboxOriginState(): Promise<void> {
     if (document.cookie.length > 0) {
       const expired = "expires=Thu, 01 Jan 1970 00:00:00 GMT";
       for (const entry of document.cookie.split(";")) {
-        const name = entry.split("=")[0].trim();
+        const name = (entry.split("=")[0] ?? "").trim();
         if (name === "") {
           continue;
         }

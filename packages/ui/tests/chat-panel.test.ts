@@ -13,6 +13,7 @@ import type * as TopbarModule from "../src/state/topbar.js";
 import type * as PanelModule from "../src/chat/panel.js";
 import type * as ServiceModule from "../src/chat/service.js";
 import { byId, query } from "./support.js";
+import { nth } from "./helpers/nth.js";
 
 // happy-dom drops a calc() that holds a var(), so the box helper returns plain
 // stand-in values here. product-frame-layout tests cover the inset terms.
@@ -198,16 +199,16 @@ describe("chat panel", () => {
     const items =
       document.querySelectorAll<HTMLButtonElement>(".chat-room-item");
     expect(items).toHaveLength(2);
-    expect(items[1].textContent).toContain("Support");
+    expect(items[1]?.textContent).toContain("Support");
     expect(
-      items[1].querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
+      items[1]?.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
     // A room without an icon falls back to its initial.
     expect(
-      items[0].querySelector(".chat-room-icon-fallback")?.textContent,
+      items[0]?.querySelector(".chat-room-icon-fallback")?.textContent,
     ).toBe("G");
 
-    items[1].click();
+    nth(items, 1).click();
     await settle(() => byId("chat-panel-rooms").hidden === true);
     expect(byId("chat-panel-rooms").hidden).toBe(true);
     expect(byId("chat-panel-title").textContent).toBe("Support");
@@ -356,7 +357,7 @@ describe("chat panel", () => {
     ).toEqual(["First", "Second", "Echo Bot", "Idle"]);
 
     // The bot lists with its registered icon and opens like a room.
-    const botRow = items[2];
+    const botRow = nth(items, 2);
     expect(
       botRow.querySelector<HTMLImageElement>("img.chat-room-icon")?.src,
     ).toBe("data:image/png;base64,AAAA");
@@ -439,11 +440,11 @@ describe("chat panel", () => {
         value: { roomId: "main", messageId, messageType: "poll" },
       };
       expect(renders).toHaveLength(1);
-      expect(renders[0].request).toEqual({ context, payload: "0x0102" });
+      expect(renders[0]?.request).toEqual({ context, payload: "0x0102" });
       expect(byId("chat-panel-messages").textContent).toContain("Loading…");
 
       // The product streams a tree; the cell replaces its content.
-      renders[0].sink.onUpdate({
+      nth(renders, 0).sink.onUpdate({
         tag: "Column",
         value: {
           modifiers: [],
@@ -464,7 +465,6 @@ describe("chat panel", () => {
                 props: {
                   text: "Option A",
                   enabled: true,
-                  loading: undefined,
                   clickAction: "pick:a",
                 },
                 children: [],
@@ -488,7 +488,7 @@ describe("chat panel", () => {
       expect(published).toHaveLength(0);
 
       // A failed render must not leave a partial tree standing.
-      renders[0].sink.onError?.(new Error("render refused"));
+      nth(renders, 0).sink.onError?.(new Error("render refused"));
       await settle(
         () => !byId("chat-panel-messages").textContent.includes("Pick one"),
       );
@@ -567,7 +567,7 @@ describe("chat panel", () => {
     );
     const roomBadges = document.querySelectorAll(".chat-room-unread");
     expect(roomBadges).toHaveLength(1);
-    expect(roomBadges[0].textContent).toBe("2");
+    expect(roomBadges[0]?.textContent).toBe("2");
     const busyRow = [
       ...document.querySelectorAll<HTMLButtonElement>(".chat-room-item"),
     ].find((row) => row.textContent.includes("Busy"));

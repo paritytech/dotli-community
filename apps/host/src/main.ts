@@ -218,7 +218,7 @@ if (!isMobileDevice()) {
       label: "Get Polkadot Desktop",
       text: "Full experience with native performance",
       deeplink:
-        (import.meta.env["VITE_DESKTOP_DOWNLOAD_URL"] as string | undefined) ??
+        import.meta.env.VITE_DESKTOP_DOWNLOAD_URL ??
         "https://polkadot.com/get-started/polkadot-for-desktop",
       icon:
         '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -304,8 +304,10 @@ function parseLocalhostUrl(): string | null {
   if (match === null) {
     return null;
   }
-  const host = match[1];
-  const rest = match[2] || "";
+  const [, host, rest = ""] = match;
+  if (host === undefined) {
+    return null;
+  }
   // Strip every reserved host-URL param so they do not leak into the
   // proxied product. Covers the settings axes and the sandbox contract's
   // host-only signals (`fullReset`, `v`).
@@ -1073,9 +1075,11 @@ async function main(): Promise<void> {
     // so the debug paths enable chat unconditionally for product testing.
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(previewTargetUrl, host, {
-      productId: productIdOverride,
-    });
+    await renderIframe(
+      previewTargetUrl,
+      host,
+      productIdOverride !== undefined ? { productId: productIdOverride } : {},
+    );
     const nextSearch = new URLSearchParams({
       url: previewTargetUrl,
     });
@@ -1110,7 +1114,11 @@ async function main(): Promise<void> {
 
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
-    await renderIframe(localhostUrl, host, { productId: productIdOverride });
+    await renderIframe(
+      localhostUrl,
+      host,
+      productIdOverride !== undefined ? { productId: productIdOverride } : {},
+    );
 
     shieldVerified = true;
     bindTopbarAutoHide();
@@ -1221,7 +1229,7 @@ async function main(): Promise<void> {
     : { get: getCachedBlock, put: putCachedBlock, delete: deleteCachedBlock };
   const blocksServed = { cache: 0, network: 0 };
   listenForSandboxBitswap({
-    blockCache,
+    ...(blockCache !== undefined ? { blockCache } : {}),
     onBlockServed: (from) => {
       blocksServed[from] += 1;
     },
@@ -1660,10 +1668,11 @@ async function main(): Promise<void> {
     const reportSpeed = (): void => {
       const now = performance.now();
       samples.push({ at: now, total: chainBytes });
-      while (samples.length > 1 && now - samples[0].at > SPEED_WINDOW_MS) {
+      let oldest = samples[0] ?? { at: now, total: chainBytes };
+      while (samples.length > 1 && now - oldest.at > SPEED_WINDOW_MS) {
         samples.shift();
+        oldest = samples[0] ?? oldest;
       }
-      const oldest = samples[0];
       const span = now - oldest.at;
       if (span > 0) {
         liveBytesPerSecond = ((chainBytes - oldest.total) / span) * 1000;
@@ -1809,7 +1818,11 @@ async function main(): Promise<void> {
       event: "cid_cache_checked",
       flowId: bootFlowId,
       timestamp: Date.now(),
-      payload: { label, hit: cachedCid !== null, cid: cachedCid ?? undefined },
+      payload: {
+        label,
+        hit: cachedCid !== null,
+        ...(cachedCid !== null ? { cid: cachedCid } : {}),
+      },
     });
     trace.cidCache(cachedCid !== null ? "hit" : "miss");
     if (cachedCid !== null) {

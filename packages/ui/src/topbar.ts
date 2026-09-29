@@ -34,8 +34,7 @@ export function initTopBar(
     "topbar-home",
   ) as HTMLAnchorElement | null;
   if (homeLink !== null) {
-    homeLink.href =
-      (import.meta.env["VITE_APP_URL"] as string | undefined) ?? "/";
+    homeLink.href = import.meta.env.VITE_APP_URL ?? "/";
   }
 
   // Theme preference (the toggle itself is components/shell/ThemeToggle.tsx)

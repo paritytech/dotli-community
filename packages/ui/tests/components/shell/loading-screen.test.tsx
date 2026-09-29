@@ -41,6 +41,7 @@ import { getLoadingState, updateLoading } from "../../../src/state/loading.js";
 import { showErrorPage } from "../../../src/ui.js";
 import { showLanding } from "../../../src/landing/load.js";
 import { byId } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const INDEX_HTML = readFileSync(
   resolve(import.meta.dirname, "../../../../../apps/host/index.html"),
@@ -444,7 +445,7 @@ describe("Loading screen island", () => {
         expect(petal.animation, `${name} petal ${String(i)}`).toMatch(
           /^loading-petal \S+ .*infinite$/,
         );
-        const cycleMs = toMs(petal.animation.split(" ")[1]);
+        const cycleMs = toMs(nth(petal.animation.split(" "), 1));
         const offset = ((petal.delayMs % cycleMs) + cycleMs) % cycleMs;
         expect(offset, `${name} petal ${String(i)}`).toBeCloseTo(
           (i * cycleMs) / 6,

@@ -28,7 +28,7 @@ export function isCarFile(buffer: Uint8Array): boolean {
   let headerLen = 0;
 
   while (offset < buffer.length && offset < 9) {
-    const byte = buffer[offset] as number | undefined;
+    const byte = buffer[offset];
     if (byte === undefined) {
       return false;
     }
@@ -127,23 +127,23 @@ export async function walkUnixFsDag(
   }
 
   /** Bounded-concurrency `Promise.all`. Worker indices preserve input order. */
-  async function runBounded(
-    count: number,
-    work: (i: number) => Promise<void>,
+  async function runBounded<T>(
+    items: readonly T[],
+    work: (item: T, i: number) => Promise<void>,
   ): Promise<void> {
-    if (count === 0) {
+    if (items.length === 0) {
       return;
     }
-    let next = 0;
+    const pending = items.entries();
     const worker = async (): Promise<void> => {
-      while (next < count) {
-        const idx = next++;
-        await work(idx);
+      for (const [idx, item] of pending) {
+        await work(item, idx);
       }
     };
     await Promise.all(
-      Array.from({ length: Math.min(MAX_PARALLEL_BLOCK_FETCHES, count) }, () =>
-        worker(),
+      Array.from(
+        { length: Math.min(MAX_PARALLEL_BLOCK_FETCHES, items.length) },
+        () => worker(),
       ),
     );
   }
@@ -186,8 +186,7 @@ export async function walkUnixFsDag(
         (link): link is typeof link & { Name: string } =>
           link.Name !== undefined && link.Name !== "",
       );
-      await runBounded(entries.length, async (i) => {
-        const link = entries[i];
+      await runBounded(entries, async (link) => {
         await processNode(link.Hash, joinPath(path, link.Name));
       });
       return;
@@ -199,8 +198,8 @@ export async function walkUnixFsDag(
         content = uf?.data ?? new Uint8Array(0);
       } else {
         const chunks = new Array<Uint8Array>(node.Links.length);
-        await runBounded(node.Links.length, async (i) => {
-          chunks[i] = await getChunkData(node.Links[i].Hash);
+        await runBounded(node.Links, async (link, i) => {
+          chunks[i] = await getChunkData(link.Hash);
         });
         content = concatBytes(...chunks);
       }
@@ -245,8 +244,7 @@ export async function parseCarFile(
 ): Promise<ArchiveFiles> {
   const reader = await CarReader.fromBytes(buffer);
   const roots = await reader.getRoots();
-  const rootCid = roots[0] as
-    Awaited<ReturnType<typeof reader.getRoots>>[number] | undefined;
+  const rootCid = roots[0];
 
   if (rootCid === undefined) {
     throw new Error("CAR file has no roots");

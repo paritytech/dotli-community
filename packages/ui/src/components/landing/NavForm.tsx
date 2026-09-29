@@ -49,6 +49,9 @@ function animatePlaceholder(input: HTMLInputElement): () => void {
       return;
     }
     const word = PLACEHOLDER_NAMES[wordIdx];
+    if (word === undefined) {
+      return;
+    }
     if (mode === "typing") {
       charIdx++;
       input.placeholder = word.slice(0, charIdx);

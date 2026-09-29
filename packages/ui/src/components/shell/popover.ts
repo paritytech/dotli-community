@@ -151,10 +151,10 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
     next = ordered.find((item) =>
       item.textContent.trim().toLowerCase().startsWith(letter),
     );
-    if (next === undefined) {
-      return false;
-    }
   } else {
+    return false;
+  }
+  if (next === undefined) {
     return false;
   }
   ev.preventDefault();

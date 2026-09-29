@@ -36,7 +36,7 @@ describe("chat rooms", () => {
 
     const rooms = await listRooms("a.dot");
     expect(rooms).toHaveLength(1);
-    expect(rooms[0].name).toBe("A");
+    expect(rooms[0]?.name).toBe("A");
   });
 });
 
@@ -69,7 +69,7 @@ describe("chat messages", () => {
 
     const messages = await listMessages("order.dot", "main");
     expect(messages.map((m) => m.messageId)).toEqual(["m1", "m3"]);
-    expect(messages[1].author).toBe("user");
+    expect(messages[1]?.author).toBe("user");
   });
 
   it("As a host, the message list caps at the latest `limit` entries", async () => {
@@ -118,8 +118,8 @@ describe("chat bots", () => {
 
     const bots = await listBots("refresh.dot");
     expect(bots).toHaveLength(1);
-    expect(bots[0].name).toBe("Echo v2");
-    expect(bots[0].icon).toBe("https://example.com/icon.png");
+    expect(bots[0]?.name).toBe("Echo v2");
+    expect(bots[0]?.icon).toBe("https://example.com/icon.png");
   });
 
   it("As a host, bots are scoped per product", async () => {
@@ -128,6 +128,6 @@ describe("chat bots", () => {
 
     const bots = await listBots("a.dot");
     expect(bots).toHaveLength(1);
-    expect(bots[0].name).toBe("A");
+    expect(bots[0]?.name).toBe("A");
   });
 });

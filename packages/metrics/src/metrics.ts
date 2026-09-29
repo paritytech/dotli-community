@@ -54,7 +54,7 @@ export type MetricAttributes = {
 
 interface MetricOptions {
   unit?: string;
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 /** The slice of a Sentry span the tracing helpers below drive. */
@@ -75,9 +75,9 @@ interface SentryLike {
   startInactiveSpan: (opts: {
     name: string;
     op?: string;
-    startTime?: number;
+    startTime?: number | undefined;
     parentSpan?: unknown;
-    forceTransaction?: boolean;
+    forceTransaction?: boolean | undefined;
     attributes?: Record<string, SpanValue>;
   }) => SentrySpan;
   setMeasurement: (name: string, value: number, unit: string) => void;
@@ -91,7 +91,7 @@ interface SentryLike {
     category: string;
     message: string;
     level?: string;
-    data?: Record<string, unknown>;
+    data?: Record<string, unknown> | undefined;
   }) => void;
 }
 
@@ -157,8 +157,7 @@ function bind(s: SentryLike): void {
   _unboundWarned = false;
 }
 
-const ENABLED =
-  (import.meta.env["VITE_METRICS"] as string | undefined) === "true";
+const ENABLED = import.meta.env.VITE_METRICS === "true";
 
 // Apps register session-level context (e.g. `dotli_mode`) via `setDefaults()`.
 // Every metric emitted afterwards carries these attributes, so dashboards can

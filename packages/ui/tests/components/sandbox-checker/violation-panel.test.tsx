@@ -83,16 +83,16 @@ describe("sandbox checker violation panel", () => {
     expect(panel().querySelector(".sc-badge")?.textContent).toBe("2");
     const entries = [...panel().querySelectorAll(".sc-entry")];
     expect(entries).toHaveLength(2);
-    expect(entries[0].querySelector(".sc-api")?.textContent).toBe(
+    expect(entries[0]?.querySelector(".sc-api")?.textContent).toBe(
       "localStorage.getItem",
     );
-    expect(entries[0].querySelector(".sc-details")?.textContent).toBe(
+    expect(entries[0]?.querySelector(".sc-details")?.textContent).toBe(
       "key=x n=1",
     );
-    expect(entries[0].querySelector(".sc-time")?.textContent).toBe(
+    expect(entries[0]?.querySelector(".sc-time")?.textContent).toBe(
       new Date(0).toLocaleTimeString(),
     );
-    expect(entries[1].querySelector(".sc-details")).toBeNull();
+    expect(entries[1]?.querySelector(".sc-details")).toBeNull();
   });
 
   it("As a dotli developer, markup in a violation shows as text", async () => {
@@ -315,8 +315,8 @@ describe("sandbox checker violation panel", () => {
     // Then
     const entries = [...panel().querySelectorAll(".sc-entry")];
     expect(entries).toHaveLength(500);
-    expect(entries[0].querySelector(".sc-api")?.textContent).toBe("api100");
-    expect(entries[499].querySelector(".sc-api")?.textContent).toBe("api599");
+    expect(entries[0]?.querySelector(".sc-api")?.textContent).toBe("api100");
+    expect(entries[499]?.querySelector(".sc-api")?.textContent).toBe("api599");
     expect(panel().querySelector(".sc-badge")?.textContent).toBe("600");
   });
 

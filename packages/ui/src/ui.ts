@@ -70,7 +70,7 @@ function renderErrorText(text: ErrorText): string {
 export interface ErrorPage {
   title: string;
   /** Paragraph below the title. Omit for a title-only screen. */
-  detail?: ErrorText;
+  detail?: ErrorText | undefined;
   /** Things worth checking before retrying, listed under a "Try:" heading. */
   tips?: readonly string[];
   /**

@@ -185,7 +185,6 @@ test.describe("Validator regression guards", () => {
   }) => {
     // Given
     const context = await browser.newContext({
-      storageState: undefined,
       serviceWorkers: "allow",
     });
     await context.addInitScript(() => {
@@ -276,7 +275,6 @@ test.describe("Sandbox side-effects from URL contract keys", () => {
   }) => {
     // Given
     const context = await browser.newContext({
-      storageState: undefined,
       serviceWorkers: "allow",
     });
     await context.addInitScript(() => {

@@ -100,11 +100,11 @@ export interface SegmentEntry {
   /** Short label rendered on the box (e.g. "chainHead.body"). */
   label: string;
   /** Secondary text rendered inside the box (block hash, opId tail, etc.). */
-  detail?: string;
+  detail?: string | undefined;
   /** Pending = terminal event not yet observed. Renderer draws dashed bottom. */
   pending: boolean;
   /** If this segment is a chain operation against a follow rail, the rail's index. */
-  linkedRailIdx?: number;
+  linkedRailIdx?: number | undefined;
 }
 
 export interface RailEntry {
@@ -149,9 +149,9 @@ interface WorkingSegment {
   bottomY: number;
   color: string;
   label: string;
-  detail?: string;
+  detail?: string | undefined;
   pending: boolean;
-  linkedRailIdx?: number;
+  linkedRailIdx?: number | undefined;
   startAt: number;
   /** endAt = null for open-ended (pending) segments. */
   endAt: number | null;
@@ -443,7 +443,7 @@ export function computeLayout(
     }
 
     // System group always produces a segment (flow box or singleton pill).
-    if (group.length > 0 && group[0].kind === "system") {
+    if (group[0]?.kind === "system") {
       const seg = systemSegmentForGroup(group as StoredSystemEvent[], seqToY);
       working.push(seg);
       continue;
@@ -480,13 +480,7 @@ export function computeLayout(
   const laneOccupiedUntil: number[] = [];
   const segmentsOut: SegmentEntry[] = [];
   for (const s of working) {
-    let lane = -1;
-    for (let i = 0; i < laneOccupiedUntil.length; i++) {
-      if (laneOccupiedUntil[i] <= s.topY) {
-        lane = i;
-        break;
-      }
-    }
+    let lane = laneOccupiedUntil.findIndex((until) => until <= s.topY);
     if (lane === -1) {
       lane = laneOccupiedUntil.length;
       laneOccupiedUntil.push(0);
@@ -541,10 +535,10 @@ function segmentForGroup(
 ): WorkingSegment | null {
   // Sort by seq (stable order) so "first" / "last" below mean first observed.
   const sorted = [...group].sort((a, b) => a.seq - b.seq);
-  if (sorted.length === 0) {
+  const first = sorted[0];
+  if (first === undefined) {
     return null;
   }
-  const first = sorted[0];
 
   // The timeline only draws boxes for request/response-shaped flows.
   // Subscriptions (anything whose first observed event is `_start`, or
@@ -624,7 +618,7 @@ function segmentForGroup(
       e.tag.endsWith("_stop") ||
       e.tag.endsWith("_interrupt"),
   );
-  const last = sorted[sorted.length - 1];
+  const last = sorted.at(-1) ?? first;
   const label =
     chain === null ? prettyTagLabel(first.tag) : formatChainLabel(chain);
 
@@ -660,7 +654,10 @@ function systemSegmentForGroup(
 ): WorkingSegment {
   const sorted = [...group].sort((a, b) => a.seq - b.seq);
   const first = sorted[0];
-  const last = sorted[sorted.length - 1];
+  if (first === undefined) {
+    throw new Error("systemSegmentForGroup: empty group");
+  }
+  const last = sorted.at(-1) ?? first;
   const pending =
     sorted.length > 1 && !sorted.some((e) => isSystemFlowTerminator(e));
   const label = `${first.layer}.${first.event}`.replace(/_/g, ".");
@@ -771,8 +768,8 @@ function linkRail(
   // Clamp to the buffer: if the original follow-start was evicted we can't
   // resolve. Fall back to the last rail for this (product, genesis) as a
   // best-effort guess, better than nothing for a debug overlay.
-  const rail = rails[ordinal] ?? rails[rails.length - 1];
-  return rail.railIdx;
+  const rail = rails[ordinal] ?? rails.at(-1);
+  return rail?.railIdx;
 }
 
 function followKey(

@@ -14,6 +14,7 @@ import {
 import { renderComponent, settle } from "../../helpers/solid.js";
 import type * as ToastCardModule from "../../../src/components/overlays/ToastCard.js";
 import { query } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 /** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
 const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
@@ -87,7 +88,7 @@ describe("toast stack", () => {
     await mountStack();
 
     // Then
-    const card = cards()[0];
+    const card = nth(cards(), 0);
     expect(card.classList.contains("notif-card")).toBe(true);
     expect(card.classList.contains("notif-enter")).toBe(true);
     expect(card.dataset["id"]).toBe("0");
@@ -138,7 +139,7 @@ describe("toast stack", () => {
 
     // Then
     expect(visibleTitles()).toEqual(["B", "C", "D"]);
-    expect(cards()[0].classList.contains("notif-hidden-card")).toBe(true);
+    expect(cards()[0]?.classList.contains("notif-hidden-card")).toBe(true);
     expect(
       cards()
         .slice(1)
@@ -156,7 +157,7 @@ describe("toast stack", () => {
     // Given
     pushToast(input("A"));
     await mountStack();
-    const card = cards()[0];
+    const card = nth(cards(), 0);
 
     // When
     fireEvent.click(query(card, ".notif-card-close", HTMLButtonElement));
@@ -181,7 +182,7 @@ describe("toast stack", () => {
     await mountStack();
 
     // When
-    dismissToast(ids[0]);
+    dismissToast(nth(ids, 0));
     await settle();
 
     // Then
@@ -288,9 +289,9 @@ describe("toast stack", () => {
     const adds = vi.spyOn(document, "addEventListener");
 
     // When: a toast is dismissed, and it finishes leaving.
-    dismissToast(ids[0]);
+    dismissToast(nth(ids, 0));
     await settle();
-    fireEvent.animationEnd(cards()[0]);
+    fireEvent.animationEnd(nth(cards(), 0));
     await settle();
 
     // Then
@@ -347,7 +348,7 @@ describe("toast stack", () => {
     cardLayoutReads.count = 0;
 
     // When: a visible card starts to leave.
-    dismissToast(ids[7]);
+    dismissToast(nth(ids, 7));
     await settle();
 
     // Then: each card re-read its depth and hidden flag at most once, and
@@ -374,7 +375,10 @@ describe("toast stack", () => {
 
     // When
     fireEvent.click(
-      document.querySelectorAll<HTMLElement>(".notif-cards .notif-text")[1],
+      nth(
+        document.querySelectorAll<HTMLElement>(".notif-cards .notif-text"),
+        1,
+      ),
     );
     await settle();
 

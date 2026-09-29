@@ -251,8 +251,9 @@ function measureContentSize(result: FetchResult): void {
 
 function toFetchResult(files: ArchiveFiles): FetchResult {
   const keys = Object.keys(files);
-  if (keys.length === 1 && keys[0] === "index.html") {
-    return { type: "single", content: files["index.html"] };
+  const index = files["index.html"];
+  if (keys.length === 1 && index !== undefined) {
+    return { type: "single", content: index };
   }
   log.warn(
     `[dot.li] Loaded archive with ${String(keys.length)} file(s):`,

@@ -18,8 +18,8 @@ interface RecordedSpan {
   parent: RecordedSpan | null;
   attributes: Record<string, unknown>;
   ended: boolean;
-  startTime?: number;
-  endTime?: number;
+  startTime?: number | undefined;
+  endTime?: number | undefined;
 }
 
 function fakeSentry(): { spans: RecordedSpan[]; sentry: unknown } {

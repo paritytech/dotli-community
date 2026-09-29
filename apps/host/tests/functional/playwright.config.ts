@@ -31,6 +31,5 @@ export default defineConfig({
       env: { PORT: port },
     };
   }),
-  use: baseConfig.use,
   reporter: [["list"], ["json", { outputFile: "results.json" }]],
 });

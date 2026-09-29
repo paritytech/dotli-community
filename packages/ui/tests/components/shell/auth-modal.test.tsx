@@ -201,7 +201,7 @@ describe("AuthModal markup", () => {
       body: { kind: "canvas", payload: DEEPLINK },
     });
     expect(document.querySelector("#auth-modal-qr canvas")).toBe(
-      qr.toCanvas.mock.calls[0][0],
+      qr.toCanvas.mock.calls[0]?.[0],
     );
   });
 
@@ -699,7 +699,7 @@ describe("AuthModal QR", () => {
       "#auth-modal-qr canvas",
     );
     expect(canvases).toHaveLength(1);
-    expect(canvases[0].dataset["qrPayload"]).toBe("polkadotapp://second");
+    expect(canvases[0]?.dataset["qrPayload"]).toBe("polkadotapp://second");
   });
 
   it("As a user who scanned, then was shown a new code, the first code's late drawing never shows", async () => {

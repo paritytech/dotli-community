@@ -18,6 +18,7 @@ import type * as DotliDebugBusModule from "../../../truapi-debug/src/dotli-debug
 import type * as MountModule from "../../src/components/truapi-debug/mount.js";
 import type * as ProductFrameLayoutModule from "../../src/product-frame-layout.js";
 import { query } from "../support.js";
+import { nth } from "../helpers/nth.js";
 
 const calls = vi.hoisted(() => ({
   matches: 0,
@@ -313,7 +314,7 @@ describe("truapi debug panel work: collapsed and hidden views", () => {
     // Then it catches up once
     expect(q(".td-counts").textContent).toBe("2000 events (+10 dropped)");
     expect(rows()).toHaveLength(2000);
-    expect(rows()[1999].querySelector(".td-pending")).not.toBeNull();
+    expect(nth(rows(), 1999).querySelector(".td-pending")).not.toBeNull();
     expect(calls.matches).toBeLessThanOrEqual(2010);
   });
 
@@ -375,7 +376,7 @@ describe("truapi debug panel work: collapsed and hidden views", () => {
     click(q('.td-tab[data-view="list"]'));
 
     // Then the badges catch up once
-    expect(rows()[1999].querySelector(".td-pending")?.textContent).toMatch(
+    expect(rows()[1999]?.querySelector(".td-pending")?.textContent).toMatch(
       /^⟳ \d+ms pending$/,
     );
     expect(panel().querySelectorAll(".td-pending")).toHaveLength(2000);
@@ -432,7 +433,7 @@ describe("truapi debug panel work: traffic at capacity", () => {
     // Then
     expect(calls.matches).toBe(1);
     expect(calls.formatPending).toBeLessThanOrEqual(2);
-    expect(rows()[1999].querySelector(".td-pending")).not.toBeNull();
+    expect(nth(rows(), 1999).querySelector(".td-pending")).not.toBeNull();
     expect(fanOutWarnings()).toEqual([]);
   });
 
@@ -440,7 +441,7 @@ describe("truapi debug panel work: traffic at capacity", () => {
     // Given
     mount();
     fillWithPendingRequests();
-    const badge = rows()[0].querySelector(".td-pending");
+    const badge = nth(rows(), 0).querySelector(".td-pending");
     warn.mockClear();
 
     // When
@@ -448,7 +449,7 @@ describe("truapi debug panel work: traffic at capacity", () => {
 
     // Then
     expect(badge?.textContent).toBe("⟳ 1.0s pending");
-    expect(rows()[1999].querySelector(".td-pending")?.textContent).toBe(
+    expect(rows()[1999]?.querySelector(".td-pending")?.textContent).toBe(
       "⟳ 1.0s pending",
     );
     expect(fanOutWarnings()).toEqual([]);
@@ -480,22 +481,22 @@ describe("truapi debug panel work: selection", () => {
     resetCalls();
 
     // When
-    click(rows()[500]);
+    click(nth(rows(), 500));
 
     // Then
-    expect(rows()[500].className).toBe("td-row selected");
-    expect(rows()[501].className).toBe("td-row paired");
+    expect(rows()[500]?.className).toBe("td-row selected");
+    expect(rows()[501]?.className).toBe("td-row paired");
     expect(calls.rowClassName).toBeLessThanOrEqual(4);
     expect(fanOutWarnings()).toEqual([]);
 
     // When
     resetCalls();
-    click(rows()[900]);
+    click(nth(rows(), 900));
 
     // Then
-    expect(rows()[500].className).toBe("td-row");
-    expect(rows()[501].className).toBe("td-row");
-    expect(rows()[900].className).toBe("td-row selected");
+    expect(rows()[500]?.className).toBe("td-row");
+    expect(rows()[501]?.className).toBe("td-row");
+    expect(rows()[900]?.className).toBe("td-row selected");
     expect(calls.rowClassName).toBeLessThanOrEqual(4);
   });
 
@@ -503,7 +504,7 @@ describe("truapi debug panel work: selection", () => {
     // Given
     mount();
     fillWithPendingRequests();
-    click(rows()[10]);
+    click(nth(rows(), 10));
     warn.mockClear();
     resetCalls();
 
@@ -513,8 +514,8 @@ describe("truapi debug panel work: selection", () => {
     }
 
     // Then
-    expect(rows()[30].className).toBe("td-row selected");
-    expect(rows()[10].className).toBe("td-row");
+    expect(rows()[30]?.className).toBe("td-row selected");
+    expect(rows()[10]?.className).toBe("td-row");
     expect(calls.rowClassName).toBeLessThanOrEqual(40);
     expect(fanOutWarnings()).toEqual([]);
   });
@@ -527,7 +528,7 @@ describe("truapi debug panel work: filters and detail", () => {
     system("boot", "started", "flow-boot-1");
     truapi("host_sign_request", "a1");
     frame();
-    click(rows()[0]);
+    click(nth(rows(), 0));
     const explanation = query(
       panel(),
       ".td-detail details",
@@ -753,7 +754,7 @@ describe("truapi debug panel work: keyed row state", () => {
       truapi("host_sign_request", `old${String(i)}`);
     }
     frame();
-    click(rows()[0]);
+    click(nth(rows(), 0));
     const subscribed = (): string[] =>
       keyedMaps.flatMap((map) => [...map.subscribedKeys()].map(String));
     expect(subscribed().some((k) => k.includes("old"))).toBe(true);

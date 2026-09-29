@@ -138,8 +138,6 @@ describe("prompt rate limiting across host callbacks", () => {
     // When
     const delivered = notifications.pushNotification({
       text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
     });
 
     // Then

@@ -21,8 +21,8 @@ export type DotliAuthState =
       tag: "Pairing";
       deeplink: string;
       label: string;
-      dotSuffix?: boolean;
-      hostGlobal?: boolean;
+      dotSuffix?: boolean | undefined;
+      hostGlobal?: boolean | undefined;
     }
   | { tag: "Authenticating" }
   | { tag: "Connected"; session: TruapiSessionUiState }
@@ -40,7 +40,10 @@ export function dispatchAuthState(state: DotliAuthState): void {
  */
 export function createAuthStateChanged(
   label: string,
-  options: { dotSuffix?: boolean; hostGlobal?: boolean } = {},
+  options: {
+    dotSuffix?: boolean | undefined;
+    hostGlobal?: boolean | undefined;
+  } = {},
 ): Required<AuthPresenter>["authStateChanged"] {
   return (state: AuthState) => {
     switch (state.tag) {

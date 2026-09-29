@@ -320,13 +320,14 @@ function bindSharedAuthListener(): void {
       });
     } catch (error: unknown) {
       countSharedReject("auth", "validation");
+      const name = errorName(error);
       postToSource(event.source, event.origin, {
         namespace: "dotli:protocol",
         kind: "response",
         id: data.id,
         ok: false,
         error: serializeError(error),
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     }
   });
@@ -944,13 +945,14 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
       })
       .catch((error: unknown) => {
         log.error("[dot.li protocol] Request failed:", error);
+        const name = errorName(error);
         postToSource(event.source, event.origin, {
           namespace: "dotli:protocol",
           kind: "response",
           id: data.id,
           ok: false,
           error: serializeError(error),
-          errorName: errorName(error),
+          ...(name !== undefined ? { errorName: name } : {}),
         });
       });
   });
@@ -1080,13 +1082,14 @@ function bindSharedModeListener(): void {
       });
     } catch (error: unknown) {
       countSharedReject("mode", "validation");
+      const name = errorName(error);
       postToSource(event.source, event.origin, {
         namespace: "dotli:protocol",
         kind: "response",
         id: data.id,
         ok: false,
         error: serializeError(error),
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     }
   });
@@ -1241,6 +1244,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
     }
 
     const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+    const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
 
     switch (request.method) {
       case "warmup": {
@@ -1272,7 +1276,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
               message,
             });
           },
-          syncTimeoutMs,
+          ...syncOptions,
         });
         respond({
           namespace: "dotli:protocol",
@@ -1290,9 +1294,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         }
         const payload = request.payload as ProtocolRequestMap["resolveOwner"];
         assertStr(payload.label, "label");
-        const result = await options.resolveOwner(payload.label, {
-          syncTimeoutMs,
-        });
+        const result = await options.resolveOwner(payload.label, syncOptions);
         respond({
           namespace: "dotli:protocol",
           kind: "response",
@@ -1319,7 +1321,7 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         const result = await options.resolveExecutableManifest(
           payload.label,
           payload.kind,
-          { syncTimeoutMs },
+          syncOptions,
         );
         respond({
           namespace: "dotli:protocol",
@@ -1340,9 +1342,10 @@ function createEngine(options: EngineOptions): ProtocolEngine {
         const payload =
           request.payload as ProtocolRequestMap["resolveRootManifest"];
         assertStr(payload.label, "label");
-        const result = await options.resolveRootManifest(payload.label, {
-          syncTimeoutMs,
-        });
+        const result = await options.resolveRootManifest(
+          payload.label,
+          syncOptions,
+        );
         respond({
           namespace: "dotli:protocol",
           kind: "response",

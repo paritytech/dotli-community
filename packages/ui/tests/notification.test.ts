@@ -38,8 +38,6 @@ describe("notification host callbacks", () => {
     // When
     const response = await pushNotification({
       text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
     });
 
     // Then
@@ -71,8 +69,6 @@ describe("notification host callbacks", () => {
     // When
     await pushNotification({
       text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
     });
 
     // Then
@@ -116,8 +112,6 @@ describe("notification host callbacks", () => {
     // When
     const notification = pushNotification({
       text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
     });
 
     // Then

@@ -90,7 +90,7 @@ function mannWhitneyU(
   let i = 0;
   while (i < combined.length) {
     let j = i;
-    while (j < combined.length && combined[j].v === combined[i].v) {
+    while (j < combined.length && combined[j]?.v === combined[i]?.v) {
       j++;
     }
     const avgRank = (i + 1 + j) / 2; // average rank for ties
@@ -102,8 +102,8 @@ function mannWhitneyU(
 
   // Sum ranks for group a
   let rankSumA = 0;
-  for (let k = 0; k < combined.length; k++) {
-    if (combined[k].group === 0) {
+  for (const [k, { group }] of combined.entries()) {
+    if (group === 0) {
       rankSumA += ranks[k] ?? 0;
     }
   }
@@ -123,7 +123,7 @@ function mannWhitneyU(
   let ti = 0;
   while (ti < combined.length) {
     let tj = ti;
-    while (tj < combined.length && combined[tj].v === combined[ti].v) {
+    while (tj < combined.length && combined[tj]?.v === combined[ti]?.v) {
       tj++;
     }
     if (tj - ti > 1) {
@@ -283,6 +283,9 @@ function standaloneRunMd(label: string, run: RunStats): string {
   for (const phase of allPhases) {
     const name = phase.replace(/^\s+/, "").trim();
     const s = run.phases[phase];
+    if (s === undefined) {
+      continue;
+    }
     lines.push(
       `| ${name} | ${fmt(s.p50)} | ${fmt(s.p95)} | ${fmt(s.p99)} | ${s.cv.toFixed(2)} |`,
     );
@@ -339,20 +342,18 @@ function compareRunsMd(label: string, base: RunStats, last: RunStats): string {
   );
 
   for (const phase of allPhases) {
-    const hasB = phase in base.phases;
-    const hasL = phase in last.phases;
+    const bStat = base.phases[phase];
+    const lStat = last.phases[phase];
     const name = phase.replace(/^\s+/, "").trim();
 
-    if (!hasB || !hasL) {
-      const tag = hasB ? "removed" : "new";
+    if (bStat === undefined || lStat === undefined) {
+      const tag = bStat !== undefined ? "removed" : "new";
       lines.push(
-        `| ${name} | ${hasB ? fmt(base.phases[phase].p50) : "—"} | ${hasL ? fmt(last.phases[phase].p50) : "—"} | ${tag} | — | — | — | — |`,
+        `| ${name} | ${bStat !== undefined ? fmt(bStat.p50) : "—"} | ${lStat !== undefined ? fmt(lStat.p50) : "—"} | ${tag} | — | — | — | — |`,
       );
       continue;
     }
 
-    const bStat = base.phases[phase];
-    const lStat = last.phases[phase];
     const verdict = getVerdict(bStat, lStat);
 
     lines.push(
@@ -397,6 +398,9 @@ function standaloneRun(label: string, run: RunStats, verbose: boolean): void {
 
   for (const phase of allPhases) {
     const s = run.phases[phase];
+    if (s === undefined) {
+      continue;
+    }
     const cv = `${cvColor(s.cv)}${s.cv.toFixed(2)}${R}`;
     console.log(
       `  ${phase.padEnd(22)} ${fmt(s.p50).padStart(9)} ${fmt(s.p95).padStart(9)} ${fmt(s.p99).padStart(9)}  ${cv}`,
@@ -460,19 +464,16 @@ function compareRuns(
   );
 
   for (const phase of allPhases) {
-    const hasB = phase in base.phases;
-    const hasL = phase in last.phases;
+    const bStat = base.phases[phase];
+    const lStat = last.phases[phase];
 
-    if (!hasB || !hasL) {
-      const side = hasB ? "removed" : "new";
+    if (bStat === undefined || lStat === undefined) {
+      const side = bStat !== undefined ? "removed" : "new";
       console.log(
-        `  ${phase.padEnd(22)} ${hasB ? fmt(base.phases[phase].p50).padStart(9) : "—".padStart(9)} ${hasL ? fmt(last.phases[phase].p50).padStart(9) : "—".padStart(9)} ${D}${side.padStart(24)}${R}`,
+        `  ${phase.padEnd(22)} ${bStat !== undefined ? fmt(bStat.p50).padStart(9) : "—".padStart(9)} ${lStat !== undefined ? fmt(lStat.p50).padStart(9) : "—".padStart(9)} ${D}${side.padStart(24)}${R}`,
       );
       continue;
     }
-
-    const bStat = base.phases[phase];
-    const lStat = last.phases[phase];
 
     const p50Delta = fmtDelta(lStat.p50, bStat.p50);
     const p95Delta = fmtDelta(lStat.p95, bStat.p95);

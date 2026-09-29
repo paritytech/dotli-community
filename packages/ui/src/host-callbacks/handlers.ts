@@ -35,9 +35,9 @@ import {
 
 export interface CreateHostCallbacksOptions {
   label: string;
-  pairingLabel?: string;
-  pairingDotSuffix?: boolean;
-  pairingHostGlobal?: boolean;
+  pairingLabel?: string | undefined;
+  pairingDotSuffix?: boolean | undefined;
+  pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
 }
 

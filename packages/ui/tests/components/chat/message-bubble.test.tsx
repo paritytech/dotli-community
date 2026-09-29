@@ -21,6 +21,7 @@ import {
 } from "../../../src/components/chat/contacts.js";
 import { renderComponent, settle } from "../../helpers/solid.js";
 import { query } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const NOW = 1_700_000_000_000;
 
@@ -169,7 +170,7 @@ describe("message bubble", () => {
     ]);
 
     // When
-    fireEvent.click(buttons[0]);
+    fireEvent.click(nth(buttons, 0));
     await settle();
     await Promise.resolve();
 

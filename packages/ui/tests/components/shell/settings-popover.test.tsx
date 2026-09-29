@@ -26,6 +26,7 @@ import {
 import type * as SettingsActionsModule from "../../../src/settings-actions.js";
 import type * as NetworkModule from "../../../../config/src/network.js";
 import { byId, query } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
 vi.mock("../../../src/settings-actions.js", async (importOriginal) => ({
@@ -596,7 +597,7 @@ describe("The settings popover island", () => {
     await drain();
 
     // Then
-    const url = new URL(open.mock.calls[0][0] as string);
+    const url = new URL(nth(open.mock.calls, 0)[0] as string);
     expect(url.searchParams.get("body")).toContain(
       "AssetHub node: wss://live.example",
     );
@@ -614,7 +615,7 @@ describe("The settings popover island", () => {
 
     // Then
     expect(open).toHaveBeenCalledTimes(1);
-    const [href, target, features] = open.mock.calls[0];
+    const [href, target, features] = nth(open.mock.calls, 0);
     const url = new URL(href as string);
     expect(`${url.origin}${url.pathname}`).toBe(
       "https://github.com/paritytech/dotli/issues/new",
@@ -695,7 +696,7 @@ describe("The settings popover island", () => {
       ),
     ).filter((el) => !(el instanceof HTMLInputElement && !el.checked));
     expect(document.activeElement).toBe(focusables[0]);
-    focusables[focusables.length - 1].focus();
+    nth(focusables, focusables.length - 1).focus();
 
     // When
     const tab = press("Tab");
@@ -746,7 +747,7 @@ describe("The settings popover island", () => {
     const controls = byId("mode-popover").querySelectorAll<HTMLElement>(
       "button:not([disabled])",
     );
-    controls[controls.length - 1].focus();
+    nth(controls, controls.length - 1).focus();
     await settle();
     expect(isOpen()).toBe(true);
 
@@ -857,7 +858,7 @@ describe("The settings popover island", () => {
 
     // When: Tab on the last control.
     const controls = tabbables();
-    controls[controls.length - 1].focus();
+    nth(controls, controls.length - 1).focus();
     const tab = press("Tab");
 
     // Then: it wraps to the first.
@@ -894,7 +895,7 @@ describe("The settings popover island", () => {
     expect(byId("mode-popover").hasAttribute("aria-modal")).toBe(false);
     expect(document.body.hasAttribute("data-scroll-locked")).toBe(false);
     const controls = tabbables();
-    controls[controls.length - 1].focus();
+    nth(controls, controls.length - 1).focus();
     expect(press("Tab").defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(controls[0]);
   });
@@ -915,7 +916,7 @@ describe("The settings popover island", () => {
     // Then
     expect(byId("mode-popover").getAttribute("aria-modal")).toBe("true");
     const controls = tabbables();
-    controls[controls.length - 1].focus();
+    nth(controls, controls.length - 1).focus();
     expect(press("Tab").defaultPrevented).toBe(true);
 
     // When: widened while open, then closed and opened.

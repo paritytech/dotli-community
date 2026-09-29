@@ -34,6 +34,7 @@ import { normalized } from "./old-auth-markup.js";
 import { mountMoreMenu, tapMoreRow } from "./more-menu-harness.js";
 import { focusables } from "../../../src/components/focus.js";
 import { byId, must } from "../../support.js";
+import { nth } from "../../helpers/nth.js";
 
 const LABEL = "localhost:3000";
 
@@ -382,7 +383,7 @@ describe("PermissionsPopover", () => {
     const beforeFailure = reads;
 
     // When: the change fails while the popover is open.
-    changes[0](new Error("core down"));
+    nth(changes, 0)(new Error("core down"));
     await settleAll();
 
     // Then
@@ -397,7 +398,7 @@ describe("PermissionsPopover", () => {
     await settleAll();
     expect(isOpen()).toBe(false);
     const afterClose = reads;
-    changes[1](new Error("core down"));
+    nth(changes, 1)(new Error("core down"));
     await settleAll();
 
     // Then: nothing is read until the next open.
@@ -536,7 +537,7 @@ describe("PermissionsPopover", () => {
       ".permissions-popover-select",
     );
     expect(selects.length).toBeGreaterThan(0);
-    selects[selects.length - 1].focus();
+    nth(selects, selects.length - 1).focus();
     await settleAll();
     expect(isOpen()).toBe(true);
 

@@ -22,6 +22,7 @@ import {
 import type * as LoadIslandsModule from "../../src/mount/load-islands.js";
 import type * as AuthModule from "../../src/state/auth.js";
 import { byId, query } from "../support.js";
+import { nth } from "../helpers/nth.js";
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock("../../../metrics/src/sentry.js", () => sentry);
@@ -79,7 +80,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
       await tick();
     }
     settled += 1;
-    return requests[settled - 1];
+    return nth(requests, settled - 1);
   };
   let clicks = 0;
   const clickDetails: number[] = [];

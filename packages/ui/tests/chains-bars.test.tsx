@@ -8,6 +8,7 @@ import { resetNetworkMonitor, setBlockSource } from "../src/network-monitor.js";
 import { startNetworkStore } from "../src/state/network.js";
 import { renderComponent, resetStores, settle } from "./helpers/solid.js";
 import { query } from "./support.js";
+import { nth } from "./helpers/nth.js";
 
 const BAR = ".chains-bar[data-block]";
 
@@ -41,7 +42,7 @@ let stopStore: () => void = () => undefined;
 
 /** Open the panel against a block source the test drives by hand. */
 async function openPanel(): Promise<HTMLElement> {
-  const relay = getActiveChainRoles()[0].genesis;
+  const relay = nth(getActiveChainRoles(), 0).genesis;
   const emitters = new Map<string, (n: number) => void>();
   emit = async (n) => {
     const push = emitters.get(relay);

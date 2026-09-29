@@ -200,9 +200,8 @@ const RUNTIME_GLOBAL_KEY = "__DOTLI_NETWORK__";
  * alone turns it on.
  */
 const RUNTIME_CONFIG_ENABLED =
-  ((import.meta as { env?: Record<string, string | undefined> }).env?.[
-    "VITE_RUNTIME_NETWORK_CONFIG"
-  ] ?? "") === "true";
+  ((import.meta as { env?: Partial<ImportMetaEnv> }).env
+    ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
 
 function readRuntimeConfig(): RuntimeNetworkConfig | null {
   if (!RUNTIME_CONFIG_ENABLED) {
@@ -405,9 +404,8 @@ export function getEnabledNetworks(): Network[] {
       : {
           label: "VITE_NETWORKS",
           entries: (
-            (import.meta as { env?: Record<string, string | undefined> }).env?.[
-              "VITE_NETWORKS"
-            ] ?? ""
+            (import.meta as { env?: Partial<ImportMetaEnv> }).env
+              ?.VITE_NETWORKS ?? ""
           ).split(","),
         };
 
@@ -445,7 +443,11 @@ export function getEnabledNetworks(): Network[] {
 }
 
 export function defaultNetwork(): Network {
-  return getEnabledNetworks()[0];
+  const [first] = getEnabledNetworks();
+  if (first === undefined) {
+    throw new Error("No enabled networks; expected at least one.");
+  }
+  return first;
 }
 let networkOverride: Network | null = null;
 

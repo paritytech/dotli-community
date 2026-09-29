@@ -74,7 +74,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     const reason = blockingModalAbortError(scope.disposeReason);
     for (let index = this.queue.length - 1; index >= 0; index -= 1) {
       const entry = this.queue[index];
-      if (entry.scope !== scope) {
+      if (entry?.scope !== scope) {
         continue;
       }
       this.queue.splice(index, 1);

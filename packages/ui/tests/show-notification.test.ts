@@ -56,8 +56,8 @@ describe("showNotification", () => {
     // Then
     const items = toastsStore.get().items;
     expect(items.map((t) => t.label)).toEqual(["Long"]);
-    expect(items[0].text).toHaveLength(200);
-    expect(items[0].deeplink).toBeUndefined();
+    expect(items[0]?.text).toHaveLength(200);
+    expect(items[0]?.deeplink).toBeUndefined();
   });
 
   it("As a dotli user, a notification leaves after the default delay", () => {

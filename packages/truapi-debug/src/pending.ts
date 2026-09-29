@@ -107,9 +107,11 @@ export class OpenCallTracker {
     this.seen = events;
     const touched = new Set<string>();
     // Events leave only from the head (or all at once on clear), in order.
-    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
-    for (let i = 0; i < prev.length && prev[i].seq < firstSeq; i++) {
-      const ev = prev[i];
+    const firstSeq = events[0]?.seq ?? Infinity;
+    for (const ev of prev) {
+      if (ev.seq >= firstSeq) {
+        break;
+      }
       if (ev.kind !== "truapi") {
         continue;
       }
@@ -132,7 +134,7 @@ export class OpenCallTracker {
     }
     for (let i = firstNewIndex(prev, events); i < events.length; i++) {
       const ev = events[i];
-      if (ev.kind !== "truapi") {
+      if (ev?.kind !== "truapi") {
         continue;
       }
       const key = callKeyOf(ev);

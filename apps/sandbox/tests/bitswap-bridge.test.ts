@@ -54,7 +54,7 @@ describe("sandbox bitswap bridge", () => {
     await settled;
     const aborts = abortMessages(host.posted);
     expect(aborts).toHaveLength(1);
-    expect(aborts[0].ids).toHaveLength(1);
+    expect(aborts[0]?.ids).toHaveLength(1);
   });
 
   it("As a user, a page kept in the back/forward cache is not cancelled behind its back", async () => {

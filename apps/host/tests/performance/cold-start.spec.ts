@@ -139,8 +139,8 @@ function computeStats(rawValues: number[]): PhaseStats {
     mean: Math.round(m),
     stddev: Math.round(sd),
     cv: m > 0 ? Math.round((sd / m) * 100) / 100 : 0,
-    min: sorted[0],
-    max: sorted[sorted.length - 1],
+    min: ss.min(values),
+    max: ss.max(values),
     values,
     discarded,
   };
@@ -390,21 +390,13 @@ function printStatsTable(
   if (totalPhase !== null) {
     let summary = `  p50: ${fmt(totalPhase.p50)}  |  p95: ${fmt(totalPhase.p95)}  |  cv: ${totalPhase.cv.toFixed(2)}`;
 
-    const hasBase =
-      baseStats !== undefined &&
-      baseStats !== null &&
-      "End-to-end" in baseStats.phases;
-    const hasLast =
-      lastStats !== undefined &&
-      lastStats !== null &&
-      "End-to-end" in lastStats.phases;
+    const bp = baseStats?.phases["End-to-end"];
+    const lp = lastStats?.phases["End-to-end"];
 
-    if (hasBase) {
-      const bp = baseStats.phases["End-to-end"];
+    if (bp !== undefined) {
       summary += `  |  vs base p50: ${fmtDelta(totalPhase.p50, bp.p50)}`;
     }
-    if (hasLast) {
-      const lp = lastStats.phases["End-to-end"];
+    if (lp !== undefined) {
       summary += `  |  vs last p50: ${fmtDelta(totalPhase.p50, lp.p50)}`;
     }
 
@@ -472,28 +464,29 @@ function printStatsTable(
   }
   console.log(line);
 
-  const orderedPhases = PHASE_PAIRS.map(([name]) => name).filter(
-    (name) => name in stats.phases,
-  );
-
-  for (const name of orderedPhases) {
+  for (const [name] of PHASE_PAIRS) {
     const s = stats.phases[name];
+    if (s === undefined) {
+      continue;
+    }
     const flag = cvFlag(s.cv);
     const dropped =
       s.discarded > 0 ? ` ${DIM}(-${String(s.discarded)})${RESET}` : "";
     let row = `  ${name.padEnd(22)} ${fmt(s.p50).padStart(9)} ${fmt(s.p95).padStart(9)} ${fmt(s.p99).padStart(9)} ${fmt(s.mean).padStart(9)} ${("±" + fmt(s.stddev)).padStart(9)} ${s.cv.toFixed(2).padStart(5)}${flag}${dropped}`;
 
     if (hasBase) {
-      if (name in baseStats.phases) {
-        row += `  ${fmtDelta(s.p50, baseStats.phases[name].p50).padStart(26)}`;
+      const base = baseStats.phases[name];
+      if (base !== undefined) {
+        row += `  ${fmtDelta(s.p50, base.p50).padStart(26)}`;
       } else {
         row += `  ${"—".padStart(26)}`;
       }
     }
 
     if (hasLast) {
-      if (name in lastStats.phases) {
-        row += `  ${fmtDelta(s.p50, lastStats.phases[name].p50).padStart(26)}`;
+      const last = lastStats.phases[name];
+      if (last !== undefined) {
+        row += `  ${fmtDelta(s.p50, last.p50).padStart(26)}`;
       } else {
         row += `  ${"—".padStart(26)}`;
       }
@@ -520,7 +513,6 @@ async function runColdIteration(
   console.log(`  Cold iteration ${String(index + 1)}/${String(total)}...`);
 
   const context = await browser.newContext({
-    storageState: undefined,
     serviceWorkers: "allow",
   });
   const page = await context.newPage();
@@ -565,7 +557,6 @@ async function runWarmIterations(
   total: number,
 ): Promise<SingleRun[]> {
   const context = await browser.newContext({
-    storageState: undefined,
     serviceWorkers: "allow",
   });
   const page = await context.newPage();
@@ -637,7 +628,6 @@ async function runLukewarmIterations(
     const iterationWork = async (): Promise<SingleRun> => {
       // Fresh context per iteration for independent samples
       const context = await browser.newContext({
-        storageState: undefined,
         serviceWorkers: "allow",
       });
 

@@ -12,7 +12,7 @@ import type { JSX } from "@solidjs/web";
 /** A section heading, with an optional modifier class. */
 export function SectionHeader(props: {
   text: string;
-  modifier?: string;
+  modifier?: string | undefined;
 }): JSX.Element {
   return (
     <div

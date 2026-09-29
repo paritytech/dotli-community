@@ -67,8 +67,7 @@ function readDagTotal(bytes: Uint8Array): number | null {
     const readVarint = (): number => {
       let result = 0;
       let shift = 0;
-      while (i < bytes.length) {
-        const b = bytes[i];
+      for (const b of bytes.subarray(i)) {
         i += 1;
         result += (b & 0x7f) * 2 ** shift;
         if ((b & 0x80) === 0) {

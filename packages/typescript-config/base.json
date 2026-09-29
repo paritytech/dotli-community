@@ -27,5 +27,6 @@
     "noUncheckedIndexedAccess": true,
     "forceConsistentCasingInFileNames": true,
     "isolatedModules": true
-  }
+  },
+  "files": ["./vite-env.d.ts"]
 }

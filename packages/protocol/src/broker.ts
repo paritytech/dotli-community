@@ -675,8 +675,9 @@ class ChainBroker {
       brokerWarn(`← upstream: unparseable message: ${preview} (${reason})`);
       if (typeof message === "string") {
         const idMatch = /"id"\s*:\s*("?)([^",}\s]+)\1/.exec(message);
-        if (idMatch !== null) {
-          const candidates = [idMatch[2]];
+        const matchedId = idMatch?.[2];
+        if (matchedId !== undefined) {
+          const candidates = [matchedId];
           for (const idKey of candidates) {
             const pending = this.pending.get(idKey);
             if (pending !== undefined) {

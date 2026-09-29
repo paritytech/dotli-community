@@ -17,6 +17,9 @@ try {
       continue;
     }
     const [, key, raw] = m;
+    if (key === undefined || raw === undefined) {
+      continue;
+    }
     if ((process.env[key] ?? "") !== "") {
       continue;
     }

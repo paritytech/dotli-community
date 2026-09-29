@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RendererNode } from "@parity/truapi";
 import { CustomMessage } from "../../../src/components/chat/CustomMessage.js";
 import { renderComponent, settle } from "../../helpers/solid.js";
+import { nth } from "../../helpers/nth.js";
 
 interface Sink {
   onUpdate: (node: RendererNode) => void;
@@ -120,7 +121,7 @@ describe("chat custom message", () => {
     expect(container.textContent).toBe("Loading…");
 
     // When
-    service.sinks[0].onUpdate(button("Vote"));
+    nth(service.sinks, 0).onUpdate(button("Vote"));
     await settle();
 
     // Then
@@ -133,11 +134,11 @@ describe("chat custom message", () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    service.sinks[0].onUpdate(button("Vote"));
+    nth(service.sinks, 0).onUpdate(button("Vote"));
     await settle();
 
     // When
-    service.sinks[0].onError(new Error("render failed"));
+    nth(service.sinks, 0).onError(new Error("render failed"));
     await settle();
 
     // Then
@@ -153,7 +154,7 @@ describe("chat custom message", () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    service.sinks[0].onUpdate(button("Vote"));
+    nth(service.sinks, 0).onUpdate(button("Vote"));
     await settle();
 
     // When
@@ -184,7 +185,7 @@ describe("chat custom message", () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    service.sinks[0].onUpdate(field(""));
+    nth(service.sinks, 0).onUpdate(field(""));
     await settle();
     const input = container.querySelector("input");
     if (input === null) {
@@ -194,7 +195,7 @@ describe("chat custom message", () => {
     input.value = "hel";
 
     // When
-    service.sinks[0].onUpdate(field(""));
+    nth(service.sinks, 0).onUpdate(field(""));
     await settle();
 
     // Then
@@ -208,11 +209,11 @@ describe("chat custom message", () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    service.sinks[0].onError(new Error("render failed"));
+    nth(service.sinks, 0).onError(new Error("render failed"));
     await settle();
 
     // When
-    service.sinks[0].onUpdate(button("Retry"));
+    nth(service.sinks, 0).onUpdate(button("Retry"));
     await settle();
 
     // Then

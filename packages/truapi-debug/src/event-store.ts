@@ -202,8 +202,9 @@ export class EventStore {
   /** Lookup by seq. O(N) scan, used only on click/detail paths. */
   getBySeq(seq: EventSeq): StoredEvent | undefined {
     for (let i = this.buf.length - 1; i >= 0; i--) {
-      if (this.buf[i].seq === seq) {
-        return this.buf[i];
+      const ev = this.buf[i];
+      if (ev?.seq === seq) {
+        return ev;
       }
     }
     return undefined;
@@ -275,13 +276,19 @@ export function firstNewIndex(
   let lastSeen: EventSeq;
   if ("lastSeq" in prev) {
     lastSeen = prev.lastSeq;
-  } else if (prev.length === 0) {
-    return 0;
   } else {
-    lastSeen = prev[prev.length - 1].seq;
+    const last = prev.at(-1);
+    if (last === undefined) {
+      return 0;
+    }
+    lastSeen = last.seq;
   }
   let i = next.length;
-  while (i > 0 && next[i - 1].seq > lastSeen) {
+  while (i > 0) {
+    const ev = next[i - 1];
+    if (ev === undefined || ev.seq <= lastSeen) {
+      break;
+    }
     i--;
   }
   return i;

@@ -37,8 +37,10 @@ export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
       order: "post",
       handler(_options, bundle) {
         const hash = createHash("sha256");
-        for (const fileName of Object.keys(bundle).sort()) {
-          const output = bundle[fileName];
+        const outputs = Object.entries(bundle).sort(([a], [b]) =>
+          a < b ? -1 : a > b ? 1 : 0,
+        );
+        for (const [fileName, output] of outputs) {
           hash.update(`${fileName}\0`);
           hash.update(output.type === "chunk" ? output.code : output.source);
           hash.update("\0");

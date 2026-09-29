@@ -110,8 +110,8 @@ function applyAuthState(state: DotliAuthState): void {
 export interface FriendlyAuthError {
   title: string;
   subtitle: string;
-  detail?: string;
-  retryable?: boolean;
+  detail?: string | undefined;
+  retryable?: boolean | undefined;
 }
 
 interface AuthErrorRule {
@@ -259,7 +259,7 @@ export function requestTruapiLogin(reason?: string): void {
 export function openAuthModal(
   reason?: string,
   label?: string,
-  options: { dotSuffix?: boolean } = {},
+  options: { dotSuffix?: boolean | undefined } = {},
 ): boolean {
   if (authModalDisabled) {
     cancelTruapiLogin();

@@ -130,7 +130,7 @@ class ShownCounter {
   ): void {
     this.seqs = shown.map((e) => e.seq);
     this.head = 0;
-    this.lastSeq = events.length > 0 ? events[events.length - 1].seq : -1;
+    this.lastSeq = events.at(-1)?.seq ?? -1;
     this.filters = filters;
   }
 
@@ -138,21 +138,25 @@ class ShownCounter {
     if (filters !== this.filters) {
       this.seed([], [], filters);
     }
-    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
-    while (this.head < this.seqs.length && this.seqs[this.head] < firstSeq) {
+    const firstSeq = events[0]?.seq ?? Infinity;
+    let headSeq = this.seqs[this.head];
+    while (headSeq !== undefined && headSeq < firstSeq) {
       this.head++;
+      headSeq = this.seqs[this.head];
     }
     for (
       let i = firstNewIndex({ lastSeq: this.lastSeq }, events);
       i < events.length;
       i++
     ) {
-      if (matches(events[i], filters)) {
-        this.seqs.push(events[i].seq);
+      const ev = events[i];
+      if (ev !== undefined && matches(ev, filters)) {
+        this.seqs.push(ev.seq);
       }
     }
-    if (events.length > 0) {
-      this.lastSeq = events[events.length - 1].seq;
+    const lastEvent = events.at(-1);
+    if (lastEvent !== undefined) {
+      this.lastSeq = lastEvent.seq;
     }
     if (this.head > 1024) {
       this.seqs = this.seqs.slice(this.head);
@@ -221,15 +225,14 @@ export function Panel(props: {
       return events.filter((e) => matches(e, current));
     }
     // Same filters: drop what left the head, filter only what was appended.
-    const firstSeq = events.length > 0 ? events[0].seq : Infinity;
-    let dropped = 0;
-    while (dropped < prev.length && prev[dropped].seq < firstSeq) {
-      dropped++;
-    }
+    const firstSeq = events[0]?.seq ?? Infinity;
+    const kept = prev.findIndex((e) => e.seq >= firstSeq);
+    const dropped = kept === -1 ? prev.length : kept;
     const added: StoredEvent[] = [];
     for (let i = firstNewIndex(last.events, events); i < events.length; i++) {
-      if (matches(events[i], current)) {
-        added.push(events[i]);
+      const ev = events[i];
+      if (ev !== undefined && matches(ev, current)) {
+        added.push(ev);
       }
     }
     if (dropped === 0 && added.length === 0) {

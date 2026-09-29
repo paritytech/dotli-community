@@ -122,7 +122,7 @@ function randomLiteUsernamePrefix(): string {
   const alphabet = "abcdefghijklmnopqrstuvwxyz";
   let suffix = "";
   for (let i = 0; i < 6; i++) {
-    suffix += alphabet[Math.floor(Math.random() * alphabet.length)];
+    suffix += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   }
   return `dotlitest${suffix}`;
 }

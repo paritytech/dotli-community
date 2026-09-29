@@ -6,6 +6,7 @@ import {
   type CustomActionHandler,
 } from "../../../src/components/chat/CustomNode.js";
 import { renderComponent, settle } from "../../helpers/solid.js";
+import { nth } from "../../helpers/nth.js";
 
 const noAction = (): void => undefined;
 
@@ -101,7 +102,10 @@ describe("chat custom renderer", () => {
     expect(column.style.alignItems).toBe("center");
     expect(column.style.justifyContent).toBe("space-between");
 
-    const [text, row, box] = Array.from(column.children) as HTMLElement[];
+    const children = Array.from(column.children) as HTMLElement[];
+    const text = nth(children, 0);
+    const row = nth(children, 1);
+    const box = nth(children, 2);
     expect(text.className).toBe("chat-custom-text");
     expect(text.textContent).toBe("Poll results");
     expect(text.style.fontSize).toBe("32px");
@@ -114,7 +118,7 @@ describe("chat custom renderer", () => {
     expect(row.style.justifyContent).toBe("flex-end");
     // Spacer renders; Nil renders nothing.
     expect(row.children).toHaveLength(1);
-    expect(row.children[0].className).toBe("chat-custom-spacer");
+    expect(row.children[0]?.className).toBe("chat-custom-spacer");
 
     expect(box.className).toBe("chat-custom-box");
     expect(box.style.minHeight).toBe("40px");
@@ -156,7 +160,6 @@ describe("chat custom renderer", () => {
             text: "Vote",
             variant: "Primary",
             enabled: true,
-            loading: undefined,
             clickAction: "vote:1",
           },
           children: [],
@@ -463,7 +466,7 @@ describe("chat custom renderer, updates", () => {
     await settle();
 
     // Then: the Name field is empty, and nothing I typed reports as a name.
-    const [name] = Array.from(container.querySelectorAll("input"));
+    const name = nth(container.querySelectorAll("input"), 0);
     expect(name.closest(".chat-custom-field")?.textContent).toBe("Name");
     expect(name.value).toBe("");
     expect(document.activeElement).not.toBe(name);
@@ -484,7 +487,7 @@ describe("chat custom renderer, updates", () => {
     const { container } = renderComponent(() => (
       <CustomNode node={node()} onAction={noAction} />
     ));
-    const [name] = Array.from(container.querySelectorAll("input"));
+    const name = nth(container.querySelectorAll("input"), 0);
     name.value = "Alice";
 
     // When: the product removes Name.
@@ -494,8 +497,8 @@ describe("chat custom renderer, updates", () => {
     // Then: Email does not show Name's text.
     const inputs = Array.from(container.querySelectorAll("input"));
     expect(inputs).toHaveLength(1);
-    expect(inputs[0].closest(".chat-custom-field")?.textContent).toBe("Email");
-    expect(inputs[0].value).toBe("");
+    expect(inputs[0]?.closest(".chat-custom-field")?.textContent).toBe("Email");
+    expect(inputs[0]?.value).toBe("");
   });
 
   it("As a product, a button I update keeps its element and reports its current action", async () => {
@@ -679,8 +682,8 @@ describe("chat custom renderer, a text field the product echoes", () => {
     const inputs = Array.from(container.querySelectorAll("input"));
     const labels = Array.from(container.querySelectorAll("label"));
     expect(inputs).toHaveLength(2);
-    expect(inputs[0].id).not.toBe("");
-    expect(inputs[0].id).not.toBe(inputs[1].id);
+    expect(inputs[0]?.id).not.toBe("");
+    expect(inputs[0]?.id).not.toBe(inputs[1]?.id);
     expect(labels.map((label) => label.htmlFor)).toEqual(
       inputs.map((input) => input.id),
     );

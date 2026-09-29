@@ -12,6 +12,7 @@ import {
   scale,
 } from "@parity/truapi";
 import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
+import { nth } from "./helpers/nth.js";
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -293,7 +294,7 @@ describe("bridge render lifecycle", () => {
     await waitForProviderRequests(2);
 
     const secondProvider = makeProvider();
-    mocks.coreProviderDefers[1].resolve(secondProvider);
+    nth(mocks.coreProviderDefers, 1).resolve(secondProvider);
     await second;
 
     // Then
@@ -303,7 +304,7 @@ describe("bridge render lifecycle", () => {
 
     // When
     const firstProvider = makeProvider();
-    mocks.coreProviderDefers[0].resolve(firstProvider);
+    nth(mocks.coreProviderDefers, 0).resolve(firstProvider);
     await first;
 
     // Then
@@ -325,10 +326,10 @@ describe("bridge render lifecycle", () => {
 
     const first = renderIframe("https://first.example/app", "first");
     await waitForProviderRequests(1);
-    mocks.coreProviderDefers[0].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
     await first;
 
-    const firstHost = mocks.iframeHosts[0];
+    const firstHost = nth(mocks.iframeHosts, 0);
     const second = renderIframe("https://second.example/app", "second");
     await waitForProviderRequests(2);
 
@@ -340,7 +341,7 @@ describe("bridge render lifecycle", () => {
     );
 
     // When
-    mocks.coreProviderDefers[1].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
     await second;
 
     // Then
@@ -358,10 +359,10 @@ describe("bridge render lifecycle", () => {
 
     const first = renderAppSubdomain("first-cid", "first");
     await waitForProviderRequests(1);
-    mocks.coreProviderDefers[0].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
     await first;
 
-    const firstHost = mocks.iframeHosts[0];
+    const firstHost = nth(mocks.iframeHosts, 0);
     const second = renderAppSubdomain("second-cid", "first");
     await waitForProviderRequests(2);
 
@@ -370,7 +371,7 @@ describe("bridge render lifecycle", () => {
     expect(firstHost.dispose).not.toHaveBeenCalled();
 
     // When
-    mocks.coreProviderDefers[1].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
     await second;
 
     // Then
@@ -398,9 +399,9 @@ describe("bridge render lifecycle", () => {
       layout.setTopbarLayout({ offset: true, shown: true, transition: "" });
       const rendered = render();
       await waitForProviderRequests(index + 1);
-      mocks.coreProviderDefers[index].resolve(makeProvider());
+      nth(mocks.coreProviderDefers, index).resolve(makeProvider());
       await rendered;
-      const { iframe } = mocks.iframeHosts[index];
+      const { iframe } = nth(mocks.iframeHosts, index);
 
       // Then the frame is placed
       expect(iframe.style.position).toBe("fixed");
@@ -421,11 +422,11 @@ describe("bridge render lifecycle", () => {
       // When
       const render = renderAppSubdomain("cid", "first");
       await waitForProviderRequests(1);
-      mocks.coreProviderDefers[0].resolve(makeProvider());
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
       await render;
 
       // Then
-      const created = mocks.iframeHosts[0];
+      const created = nth(mocks.iframeHosts, 0);
       const iframeUrl = new URL(created.iframeUrl);
       expect(iframeUrl.hostname).toBe("first.app.localhost");
       expect(iframeUrl.pathname).toBe(path);
@@ -439,14 +440,14 @@ describe("bridge render lifecycle", () => {
 
     const render = renderIframe("https://product.example/app", "product");
     await waitForProviderRequests(1);
-    mocks.coreProviderDefers[0].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
     await render;
 
     // When
     window.dispatchEvent(new Event("dotli:truapi-cancel-login"));
 
     // Then
-    expect(mocks.coreRuntimes[0].cancelPairing).toHaveBeenCalledTimes(1);
+    expect(mocks.coreRuntimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
   });
 
   it("As a dotli integrator, the host boots the landing auth core to disconnect a stored session without a product", async () => {
@@ -458,7 +459,7 @@ describe("bridge render lifecycle", () => {
     await waitForProviderRequests(1);
 
     const provider = makeProvider();
-    mocks.coreProviderDefers[0].resolve(provider);
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
     await waitForMockCalls(provider.disconnectSession, 1);
 
     // Then
@@ -537,7 +538,7 @@ describe("bridge app roots", () => {
 
   async function settle(render: Promise<void>, index: number): Promise<void> {
     await waitForProviderRequests(index + 1);
-    mocks.coreProviderDefers[index].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, index).resolve(makeProvider());
     await render;
   }
 
@@ -591,7 +592,7 @@ describe("bridge app roots", () => {
     expect(disposeLoading).toHaveBeenCalledTimes(1);
     // Page first, then loading.
     expect(disposePage.mock.invocationCallOrder[0]).toBeLessThan(
-      disposeLoading.mock.invocationCallOrder[0],
+      nth(disposeLoading.mock.invocationCallOrder, 0),
     );
     const app = document.getElementById("app");
     expect(app?.children).toHaveLength(1);
@@ -630,21 +631,21 @@ describe("bridge app roots", () => {
     window.dispatchEvent(
       new MessageEvent("message", {
         data: { type: "dotli:sandbox-recover" },
-        origin: mocks.iframeHosts[0].allowedOrigin,
+        origin: nth(mocks.iframeHosts, 0).allowedOrigin,
       }),
     );
     await waitForProviderRequests(2);
-    mocks.coreProviderDefers[1].resolve(makeProvider());
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
     await vi.waitFor(() => {
       expect(mocks.iframeHosts).toHaveLength(2);
-      expect(mocks.iframeHosts[1].iframe.isConnected).toBe(true);
-      expect(mocks.iframeHosts[0].dispose).toHaveBeenCalled();
+      expect(mocks.iframeHosts[1]?.iframe.isConnected).toBe(true);
+      expect(mocks.iframeHosts[0]?.dispose).toHaveBeenCalled();
     });
 
     // Then only the new frame is left
     const app = document.getElementById("app");
     expect(app?.children).toHaveLength(1);
-    expect(app?.firstElementChild).toBe(mocks.iframeHosts[1].iframe);
+    expect(app?.firstElementChild).toBe(nth(mocks.iframeHosts, 1).iframe);
   }, 10_000);
 });
 

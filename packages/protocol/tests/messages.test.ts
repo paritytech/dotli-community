@@ -161,7 +161,7 @@ describe("getRequestSyncTimeoutMs", () => {
     id: "test-deadline",
     method: "resolveDotName",
     payload: { label: "chinpokomon" },
-    deadlineMs,
+    ...(deadlineMs !== undefined ? { deadlineMs } : {}),
   });
 
   it("reserves response-delivery time inside the caller's deadline", () => {

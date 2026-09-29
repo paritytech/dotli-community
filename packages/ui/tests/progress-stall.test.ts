@@ -9,6 +9,7 @@ import {
 } from "../src/loading-controller.js";
 import { getLoadingState } from "../src/state/loading.js";
 import { resetAllStoresForTests } from "../src/state/create-store.js";
+import { nth } from "./helpers/nth.js";
 
 // Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;
@@ -57,7 +58,7 @@ describe("The loading bar reports when it stops moving", () => {
 
     // Then
     expect(stalls.length).toBe(1);
-    expect(Math.round(stalls[0])).toBeGreaterThanOrEqual(10);
+    expect(Math.round(nth(stalls, 0))).toBeGreaterThanOrEqual(10);
   });
 
   it("As a user whose load is still moving, I am not warned", () => {
@@ -95,7 +96,7 @@ describe("The loading bar reports when it stops moving", () => {
 
     // Then
     expect(stalls.length).toBe(2);
-    expect(stalls[1]).toBeGreaterThan(stalls[0]);
+    expect(stalls[1]).toBeGreaterThan(nth(stalls, 0));
   });
 
   it("As a user whose load finished, I am never warned about a full bar", () => {
@@ -159,7 +160,7 @@ describe("The loading bar never stands still", () => {
     vi.advanceTimersByTime(10 * 60_000);
 
     // Then
-    expect(shownPercent()).toBeLessThanOrEqual(PHASES[1].target);
+    expect(shownPercent()).toBeLessThanOrEqual(nth(PHASES, 1).target);
   });
 
   it("As a user whose real progress overtakes the creep, the number follows the truth", () => {
