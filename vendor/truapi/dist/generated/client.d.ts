@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "8d44d991647c9aaf";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7e0cfb17584411ff";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -411,11 +411,13 @@ export declare class ProfileClient {
      */
     presentContact(request: T.HostProfilePresentContactRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentContactError>>;
     /**
-     * Tell the host where this product draws chat contacts' avatars, so it
-     * can draw each contact's shared photo and mood ring over them on its own
-     * layer.
+     * Tell the host where this product draws chat contacts' avatars, and
+     * optionally the signed-in user's own, so it can draw each shared photo
+     * and mood ring over them on its own layer.
      *
-     * Each call replaces the product's placement; an empty `slots` clears it.
+     * Each call replaces the product's placement; an empty `slots` and no
+     * `own` clears it. The own slot is filled only while the user has
+     * disclosed a profile, and redrawn when they disclose or retract one.
      * The host draws only for contacts who shared a profile with the user,
      * and keeps the placement current as they share or withdraw one, until
      * the product replaces it or goes away. The answer is the same whoever
@@ -427,11 +429,20 @@ export declare class ProfileClient {
      * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
      * its viewport for a web product. A placement with more than 64 slots, a
      * surface side outside 1 to 16384, an avatar that is not square or is
-     * outside 1 to 1024 a side, or a repeated `slot` is `Unknown`. A host that
-     * cannot draw over the product is `Unsupported`; with no user signed in
-     * the call is `NotConnected`.
+     * outside 1 to 1024 a side, or a `slot` repeated across `own` and `slots`
+     * is `Unknown`. A host that cannot draw over the product is
+     * `Unsupported`; with no user signed in the call is `NotConnected`.
      */
     placeContactAvatars(request: T.HostProfilePlaceContactAvatarsRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePlaceContactAvatarsError>>;
+    /**
+     * Report whether the signed-in user has configured a profile.
+     *
+     * Only the boolean status returns. The profile reference and contents
+     * remain host-owned.
+     */
+    ownStatus(options?: CallOptions): ResultAsync<T.HostProfileOwnStatusResponse, S.CallErrorValue<T.VersionedHostProfileOwnStatusError>>;
+    /** Show the signed-in user's profile in host-owned UI. */
+    presentOwn(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentOwnError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {

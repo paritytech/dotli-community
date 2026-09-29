@@ -2686,27 +2686,51 @@ export type VersionedHostProfileDiscloseResponse =
     value?: undefined;
 };
 export const VersionedHostProfileDiscloseResponse: Codec<VersionedHostProfileDiscloseResponse>;
-/** Versioned envelope for [\`HostProfilePlaceContactAvatarsError\`]. */
-export type VersionedHostProfilePlaceContactAvatarsError = 
+/** Versioned envelope for [\`HostProfileOwnStatusError\`]. */
+export type VersionedHostProfileOwnStatusError = 
 /** Version 1 payload. */
 {
     tag: "V1";
+    value: HostProfileOwnStatusError;
+};
+export const VersionedHostProfileOwnStatusError: Codec<VersionedHostProfileOwnStatusError>;
+/** Versioned envelope for [\`HostProfileOwnStatusRequest\`]. */
+export type VersionedHostProfileOwnStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfileOwnStatusRequest: Codec<VersionedHostProfileOwnStatusRequest>;
+/** Versioned envelope for [\`HostProfileOwnStatusResponse\`]. */
+export type VersionedHostProfileOwnStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfileOwnStatusResponse;
+};
+export const VersionedHostProfileOwnStatusResponse: Codec<VersionedHostProfileOwnStatusResponse>;
+/** Versioned envelope for [\`HostProfilePlaceContactAvatarsError\`]. */
+export type VersionedHostProfilePlaceContactAvatarsError = 
+/** Version 2 payload. */
+{
+    tag: "V2";
     value: HostProfilePlaceContactAvatarsError;
 };
 export const VersionedHostProfilePlaceContactAvatarsError: Codec<VersionedHostProfilePlaceContactAvatarsError>;
 /** Versioned envelope for [\`HostProfilePlaceContactAvatarsRequest\`]. */
 export type VersionedHostProfilePlaceContactAvatarsRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfilePlaceContactAvatarsRequest;
 };
 export const VersionedHostProfilePlaceContactAvatarsRequest: Codec<VersionedHostProfilePlaceContactAvatarsRequest>;
 /** Versioned envelope for [\`HostProfilePlaceContactAvatarsResponse\`]. */
 export type VersionedHostProfilePlaceContactAvatarsResponse = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export const VersionedHostProfilePlaceContactAvatarsResponse: Codec<VersionedHostProfilePlaceContactAvatarsResponse>;
@@ -2742,6 +2766,30 @@ export type VersionedHostProfilePresentError =
     value: HostProfilePresentError;
 };
 export const VersionedHostProfilePresentError: Codec<VersionedHostProfilePresentError>;
+/** Versioned envelope for [\`HostProfilePresentOwnError\`]. */
+export type VersionedHostProfilePresentOwnError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostProfilePresentOwnError;
+};
+export const VersionedHostProfilePresentOwnError: Codec<VersionedHostProfilePresentOwnError>;
+/** Versioned envelope for [\`HostProfilePresentOwnRequest\`]. */
+export type VersionedHostProfilePresentOwnRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfilePresentOwnRequest: Codec<VersionedHostProfilePresentOwnRequest>;
+/** Versioned envelope for [\`HostProfilePresentOwnResponse\`]. */
+export type VersionedHostProfilePresentOwnResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostProfilePresentOwnResponse: Codec<VersionedHostProfilePresentOwnResponse>;
 /** Versioned envelope for [\`HostProfilePresentRequest\`]. */
 export type VersionedHostProfilePresentRequest = 
 /** Version 1 payload. */
@@ -3292,6 +3340,16 @@ export type OperationStartedResult =
     value?: undefined;
 };
 export const OperationStartedResult: Codec<OperationStartedResult>;
+/** Where the product draws the signed-in user's own avatar. */
+export interface OwnAvatarSlot {
+    /** Product-chosen id, unique within this placement. */
+    slot: number;
+    /** Bounding box of the avatar circle: square, 1 to 1024 units a side. */
+    rect: AvatarRect;
+    /** Visible region the avatar is cut to. */
+    clip: AvatarRect;
+}
+export const OwnAvatarSlot: Codec<OwnAvatarSlot>;
 /**
  * Source for a payment top-up operation.
  *
@@ -5571,6 +5629,30 @@ export interface HostProfileDiscloseRequest {
     reference: string;
 }
 export const HostProfileDiscloseRequest: Codec<HostProfileDiscloseRequest>;
+/** Failure while querying the signed-in user's profile status. */
+export type HostProfileOwnStatusError = 
+/** No user is signed in. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfileOwnStatusError: Codec<HostProfileOwnStatusError>;
+/**
+ * Whether the signed-in user currently has a profile disclosed through the
+ * host. The reference itself never crosses into the product.
+ */
+export interface HostProfileOwnStatusResponse {
+    /** \`true\` when the host holds a current own-profile reference. */
+    configured: boolean;
+}
+export const HostProfileOwnStatusResponse: Codec<HostProfileOwnStatusResponse>;
 /** Contact avatar placement failure. Says nothing about any one slot. */
 export type HostProfilePlaceContactAvatarsError = 
 /** This host cannot draw over the product's surface. */
@@ -5598,7 +5680,7 @@ export const HostProfilePlaceContactAvatarsError: Codec<HostProfilePlaceContactA
  * The product sends geometry only. The host decides which slots it can fill
  * and never says which, so the product cannot learn who shared a profile.
  */
-export interface HostProfilePlaceContactAvatarsRequest {
+export interface V01HostProfilePlaceContactAvatarsRequest {
     /**
      * Width of the product's drawing surface, in the units of every rect:
      * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
@@ -5613,7 +5695,7 @@ export interface HostProfilePlaceContactAvatarsRequest {
      */
     slots: Array<ContactAvatarSlot>;
 }
-export const HostProfilePlaceContactAvatarsRequest: Codec<HostProfilePlaceContactAvatarsRequest>;
+export const V01HostProfilePlaceContactAvatarsRequest: Codec<V01HostProfilePlaceContactAvatarsRequest>;
 /** Contact profile presentation failure. */
 export type HostProfilePresentContactError = 
 /** This contact has not shared a profile with the user. */
@@ -5666,6 +5748,31 @@ export type HostProfilePresentError =
     };
 };
 export const HostProfilePresentError: Codec<HostProfilePresentError>;
+/** Failure while presenting the signed-in user's profile. */
+export type HostProfilePresentOwnError = 
+/** The signed-in user has not configured a profile. */
+{
+    tag: "NotConfigured";
+    value?: undefined;
+}
+/** The host holds a reference it cannot parse. */
+ | {
+    tag: "InvalidReference";
+    value?: undefined;
+}
+/** No user is signed in. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** Catch-all. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostProfilePresentOwnError: Codec<HostProfilePresentOwnError>;
 /**
  * Request to show a profile the calling product references in host-owned UI.
  *
@@ -6424,6 +6531,36 @@ export interface V02HostProductDeviceChatResponse {
     richMessages: Array<HostNativeChatRichMessage>;
 }
 export const V02HostProductDeviceChatResponse: Codec<V02HostProductDeviceChatResponse>;
+/**
+ * Where a chat product draws avatars the host fills in: its contacts' and,
+ * optionally, the signed-in user's own.
+ *
+ * v0.2 adds \`own\` to the v0.1 placement. A v0.1 placement is this one with no
+ * own slot, which is exactly what v0.1 meant. Both kinds live in one
+ * placement so a product never has two placements replacing each other's
+ * overlay.
+ */
+export interface HostProfilePlaceContactAvatarsRequest {
+    /**
+     * Width of the product's drawing surface, in the units of every rect:
+     * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
+     * for a web product. 1 to 16384.
+     */
+    surfaceWidth: number;
+    /** Height of the drawing surface, in the same units. 1 to 16384. */
+    surfaceHeight: number;
+    /**
+     * Where the signed-in user's own avatar is drawn, if the product draws
+     * one. The host fills it only when the user has disclosed a profile.
+     */
+    own?: OwnAvatarSlot;
+    /**
+     * Replaces the product's previous placement entirely; empty clears it.
+     * At most 64, each with its own \`slot\`, unique across \`own\` too.
+     */
+    slots: Array<ContactAvatarSlot>;
+}
+export const HostProfilePlaceContactAvatarsRequest: Codec<HostProfilePlaceContactAvatarsRequest>;
 /** An operation using the calling product's non-exportable Host Chat device. */
 export type HostProductDeviceChatRequest = 
 /** Restore public metadata, pending ciphertext, and private file-transfer progress. */
@@ -6812,6 +6949,9 @@ export import VersionedHostProductDeviceChatResponse = T.VersionedHostProductDev
 export import VersionedHostProfileDiscloseError = T.VersionedHostProfileDiscloseError;
 export import VersionedHostProfileDiscloseRequest = T.VersionedHostProfileDiscloseRequest;
 export import VersionedHostProfileDiscloseResponse = T.VersionedHostProfileDiscloseResponse;
+export import VersionedHostProfileOwnStatusError = T.VersionedHostProfileOwnStatusError;
+export import VersionedHostProfileOwnStatusRequest = T.VersionedHostProfileOwnStatusRequest;
+export import VersionedHostProfileOwnStatusResponse = T.VersionedHostProfileOwnStatusResponse;
 export import VersionedHostProfilePlaceContactAvatarsError = T.VersionedHostProfilePlaceContactAvatarsError;
 export import VersionedHostProfilePlaceContactAvatarsRequest = T.VersionedHostProfilePlaceContactAvatarsRequest;
 export import VersionedHostProfilePlaceContactAvatarsResponse = T.VersionedHostProfilePlaceContactAvatarsResponse;
@@ -6819,6 +6959,9 @@ export import VersionedHostProfilePresentContactError = T.VersionedHostProfilePr
 export import VersionedHostProfilePresentContactRequest = T.VersionedHostProfilePresentContactRequest;
 export import VersionedHostProfilePresentContactResponse = T.VersionedHostProfilePresentContactResponse;
 export import VersionedHostProfilePresentError = T.VersionedHostProfilePresentError;
+export import VersionedHostProfilePresentOwnError = T.VersionedHostProfilePresentOwnError;
+export import VersionedHostProfilePresentOwnRequest = T.VersionedHostProfilePresentOwnRequest;
+export import VersionedHostProfilePresentOwnResponse = T.VersionedHostProfilePresentOwnResponse;
 export import VersionedHostProfilePresentRequest = T.VersionedHostProfilePresentRequest;
 export import VersionedHostProfilePresentResponse = T.VersionedHostProfilePresentResponse;
 export import VersionedHostProfileRetractError = T.VersionedHostProfileRetractError;
@@ -6870,6 +7013,7 @@ export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
 export import OperationStartedResult = T.OperationStartedResult;
+export import OwnAvatarSlot = T.OwnAvatarSlot;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
 export import PreimageSubmitError = T.PreimageSubmitError;
@@ -7074,11 +7218,14 @@ export import HostPocketRemoveCardError = T.HostPocketRemoveCardError;
 export import HostPocketRemoveCardRequest = T.HostPocketRemoveCardRequest;
 export import HostProfileDiscloseError = T.HostProfileDiscloseError;
 export import HostProfileDiscloseRequest = T.HostProfileDiscloseRequest;
+export import HostProfileOwnStatusError = T.HostProfileOwnStatusError;
+export import HostProfileOwnStatusResponse = T.HostProfileOwnStatusResponse;
 export import HostProfilePlaceContactAvatarsError = T.HostProfilePlaceContactAvatarsError;
-export import HostProfilePlaceContactAvatarsRequest = T.HostProfilePlaceContactAvatarsRequest;
+export import V01HostProfilePlaceContactAvatarsRequest = T.V01HostProfilePlaceContactAvatarsRequest;
 export import HostProfilePresentContactError = T.HostProfilePresentContactError;
 export import HostProfilePresentContactRequest = T.HostProfilePresentContactRequest;
 export import HostProfilePresentError = T.HostProfilePresentError;
+export import HostProfilePresentOwnError = T.HostProfilePresentOwnError;
 export import HostProfilePresentRequest = T.HostProfilePresentRequest;
 export import HostProfileRetractError = T.HostProfileRetractError;
 export import HostPushNotificationCancelRequest = T.HostPushNotificationCancelRequest;
@@ -7141,6 +7288,7 @@ export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
 export import HostProductDeviceChatError = T.HostProductDeviceChatError;
 export import V02HostProductDeviceChatRequest = T.V02HostProductDeviceChatRequest;
 export import V02HostProductDeviceChatResponse = T.V02HostProductDeviceChatResponse;
+export import HostProfilePlaceContactAvatarsRequest = T.HostProfilePlaceContactAvatarsRequest;
 export import HostProductDeviceChatRequest = T.HostProductDeviceChatRequest;
 export import HostProductDeviceChatResponse = T.HostProductDeviceChatResponse;
 export import VerticalAlignment = T.VerticalAlignment;
@@ -7600,7 +7748,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "8d44d991647c9aaf";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7e0cfb17584411ff";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -8003,11 +8151,13 @@ export declare class ProfileClient {
      */
     presentContact(request: T.HostProfilePresentContactRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentContactError>>;
     /**
-     * Tell the host where this product draws chat contacts' avatars, so it
-     * can draw each contact's shared photo and mood ring over them on its own
-     * layer.
+     * Tell the host where this product draws chat contacts' avatars, and
+     * optionally the signed-in user's own, so it can draw each shared photo
+     * and mood ring over them on its own layer.
      *
-     * Each call replaces the product's placement; an empty \`slots\` clears it.
+     * Each call replaces the product's placement; an empty \`slots\` and no
+     * \`own\` clears it. The own slot is filled only while the user has
+     * disclosed a profile, and redrawn when they disclose or retract one.
      * The host draws only for contacts who shared a profile with the user,
      * and keeps the placement current as they share or withdraw one, until
      * the product replaces it or goes away. The answer is the same whoever
@@ -8019,11 +8169,20 @@ export declare class ProfileClient {
      * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
      * its viewport for a web product. A placement with more than 64 slots, a
      * surface side outside 1 to 16384, an avatar that is not square or is
-     * outside 1 to 1024 a side, or a repeated \`slot\` is \`Unknown\`. A host that
-     * cannot draw over the product is \`Unsupported\`; with no user signed in
-     * the call is \`NotConnected\`.
+     * outside 1 to 1024 a side, or a \`slot\` repeated across \`own\` and \`slots\`
+     * is \`Unknown\`. A host that cannot draw over the product is
+     * \`Unsupported\`; with no user signed in the call is \`NotConnected\`.
      */
     placeContactAvatars(request: T.HostProfilePlaceContactAvatarsRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePlaceContactAvatarsError>>;
+    /**
+     * Report whether the signed-in user has configured a profile.
+     *
+     * Only the boolean status returns. The profile reference and contents
+     * remain host-owned.
+     */
+    ownStatus(options?: CallOptions): ResultAsync<T.HostProfileOwnStatusResponse, S.CallErrorValue<T.VersionedHostProfileOwnStatusError>>;
+    /** Show the signed-in user's profile in host-owned UI. */
+    presentOwn(options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostProfilePresentOwnError>>;
 }
 /** Product-rendered bodies and the actions triggered inside them. */
 export declare class RendererClient {

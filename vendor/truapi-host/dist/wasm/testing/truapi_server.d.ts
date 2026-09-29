@@ -437,12 +437,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setGrantAllowancesUnchecked: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_9594: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9652: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9605: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9663: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_4408: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4401: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4405: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_9476: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9486: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

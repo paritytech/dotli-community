@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "8d44d991647c9aaf";
+export const TRUAPI_WIRE_SCHEMA_HASH = "7e0cfb17584411ff";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -1222,11 +1222,13 @@ export class ProfileClient {
         });
     }
     /**
-     * Tell the host where this product draws chat contacts' avatars, so it
-     * can draw each contact's shared photo and mood ring over them on its own
-     * layer.
+     * Tell the host where this product draws chat contacts' avatars, and
+     * optionally the signed-in user's own, so it can draw each shared photo
+     * and mood ring over them on its own layer.
      *
-     * Each call replaces the product's placement; an empty `slots` clears it.
+     * Each call replaces the product's placement; an empty `slots` and no
+     * `own` clears it. The own slot is filled only while the user has
+     * disclosed a profile, and redrawn when they disclose or retract one.
      * The host draws only for contacts who shared a profile with the user,
      * and keeps the placement current as they share or withdraw one, until
      * the product replaces it or goes away. The answer is the same whoever
@@ -1238,17 +1240,46 @@ export class ProfileClient {
      * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
      * its viewport for a web product. A placement with more than 64 slots, a
      * surface side outside 1 to 16384, an avatar that is not square or is
-     * outside 1 to 1024 a side, or a repeated `slot` is `Unknown`. A host that
-     * cannot draw over the product is `Unsupported`; with no user signed in
-     * the call is `NotConnected`.
+     * outside 1 to 1024 a side, or a `slot` repeated across `own` and `slots`
+     * is `Unknown`. A host that cannot draw over the product is
+     * `Unsupported`; with no user signed in the call is `NotConnected`.
      */
     placeContactAvatars(request, options) {
         return this.#transport.request({
             ids: W.PROFILE_PLACE_CONTACT_AVATARS,
-            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V2", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Report whether the signed-in user has configured a profile.
+     *
+     * Only the boolean status returns. The profile reference and contents
+     * remain host-owned.
+     */
+    ownStatus(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_OWN_STATUS,
+            payload: T.VersionedHostProfileOwnStatusRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileOwnStatusResponse, S.CallError(T.VersionedHostProfileOwnStatusError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Show the signed-in user's profile in host-owned UI. */
+    presentOwn(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT_OWN,
+            payload: T.VersionedHostProfilePresentOwnRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentOwnResponse, S.CallError(T.VersionedHostProfilePresentOwnError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
