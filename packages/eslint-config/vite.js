@@ -111,6 +111,31 @@ export const config = [
     },
   },
   {
+    // Relative imports name the emitted `.js` file, as NodeNext resolution
+    // expects. `allowImportingTsExtensions` stays on only for the files Node
+    // loads directly (below), so tsc alone would not catch a stray `.ts`.
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              regex: "^\\.{1,2}/.*\\.tsx?$",
+              message:
+                "Import the `.js` path. Only files Node loads directly (vite.config.ts, src/vite.ts) use `.ts`.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/vite.config.ts", "**/src/vite.ts"],
+    rules: {
+      "no-restricted-imports": "off",
+    },
+  },
+  {
     // Only the logging + metrics entry points may call `console.*`
     // directly. Everywhere else must go through `log.*` so DEBUG
     // gating + Sentry breadcrumb wiring applies uniformly.
