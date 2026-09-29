@@ -278,12 +278,14 @@ Local development uses wildcard subdomains:
 
 The product E2E suite loads the source checkout through dotli's localhost
 proxy. CI pins [host-playground](https://github.com/paritytech/host-playground)
-to `63ba2274648c39ed2431b7548dcd93d50862ea9e`, installs its frozen dependency
+to `66e0458891fa2999929e7f3e5363cacbe2eaa478`, installs its frozen dependency
 lock, and links its TrUAPI consumers to this repository's installed `@parity/truapi` with
 `bun scripts/link-truapi-local.ts --product-vendor`. This runs the existing
 product behavior checks against the pinned SDK rather than the independently
 deployed `host-playground.dot`, whose older client uses an incompatible wire
 codec. The product still calls the real host; no SDK responses are mocked.
+The pinned fixture requests bare host patterns for `Remote` permissions;
+scheme-bearing URLs are intentionally rejected by the core before prompting.
 
 Local runs expect the product at `../../../host-playground` relative to this
 repository by default. The signing host must match `upstreamRevision` in
