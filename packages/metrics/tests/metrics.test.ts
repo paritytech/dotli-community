@@ -1,45 +1,45 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, vi } from "vitest";
-import { m } from "../src/metrics.js";
+import { describe, it, expect, vi } from 'vitest';
+import { m } from '../src/metrics.js';
 
-describe("metrics (disabled)", () => {
+describe('metrics (disabled)', () => {
   it("has enabled = false when VITE_METRICS is not 'true'", () => {
     expect(m.enabled).toBe(false);
   });
 
-  it("span runs the function without instrumentation", () => {
+  it('span runs the function without instrumentation', () => {
     const fn = vi.fn(() => 42);
-    const result = m.span("test.span", fn);
+    const result = m.span('test.span', fn);
     expect(result).toBe(42);
     expect(fn).toHaveBeenCalledOnce();
   });
 
-  it("span runs async functions without instrumentation", async () => {
-    const fn = vi.fn(() => Promise.resolve("ok"));
-    const result = await m.span("test.async", fn);
-    expect(result).toBe("ok");
+  it('span runs async functions without instrumentation', async () => {
+    const fn = vi.fn(() => Promise.resolve('ok'));
+    const result = await m.span('test.async', fn);
+    expect(result).toBe('ok');
     expect(fn).toHaveBeenCalledOnce();
   });
 
-  it("timer returns a stop function that returns 0", () => {
-    const stop = m.timer("test.timer");
-    expect(typeof stop).toBe("function");
+  it('timer returns a stop function that returns 0', () => {
+    const stop = m.timer('test.timer');
+    expect(typeof stop).toBe('function');
     expect(stop()).toBe(0);
   });
 
-  it("count, measure, distribution, gauge, tag, breadcrumb are no-ops", () => {
+  it('count, measure, distribution, gauge, tag, breadcrumb are no-ops', () => {
     // Should not throw
-    m.count("test.count");
-    m.measure("test.measure", 100);
-    m.distribution("test.dist", 50);
-    m.gauge("test.gauge", 1);
-    m.tag("key", "value");
-    m.breadcrumb("test message");
+    m.count('test.count');
+    m.measure('test.measure', 100);
+    m.distribution('test.dist', 50);
+    m.gauge('test.gauge', 1);
+    m.tag('key', 'value');
+    m.breadcrumb('test message');
   });
 
-  it("bind accepts a sentry-like object without error", () => {
+  it('bind accepts a sentry-like object without error', () => {
     const fake = {
       startSpan: vi.fn(),
       startInactiveSpan: vi.fn(),
@@ -54,44 +54,43 @@ describe("metrics (disabled)", () => {
     };
     m.bind(fake);
     // Still disabled: bind doesn't enable metrics
-    m.count("test");
+    m.count('test');
     expect(fake.metrics.count).not.toHaveBeenCalled();
   });
 });
 
-describe("resolution id", () => {
-  it("As the protocol client, I read back the id the host minted", async () => {
+describe('resolution id', () => {
+  it('As the protocol client, I read back the id the host minted', async () => {
     // Given
-    const { setResolutionId, getResolutionId } =
-      await import("../src/metrics.js");
+    const { setResolutionId, getResolutionId } = await import('../src/metrics.js');
 
     // When
-    setResolutionId("f1e2d3c4-b5a6-4778-8899-aabbccddeeff");
+    setResolutionId('f1e2d3c4-b5a6-4778-8899-aabbccddeeff');
 
     // Then the host can thread it onto the iframe URLs it builds.
-    expect(getResolutionId()).toBe("f1e2d3c4-b5a6-4778-8899-aabbccddeeff");
+    expect(getResolutionId()).toBe('f1e2d3c4-b5a6-4778-8899-aabbccddeeff');
   });
 
-  it("As a maintainer, a realm that boots before the host mints an id reports none rather than a fabricated one", async () => {
+  it('As a maintainer, a realm that boots before the host mints an id reports none rather than a fabricated one', async () => {
     // Given a fresh module, as a realm gets on boot.
     vi.resetModules();
-    const { getResolutionId } = await import("../src/metrics.js");
+    const { getResolutionId } = await import('../src/metrics.js');
 
     // Then
     expect(getResolutionId()).toBeNull();
   });
 
-  it("As a maintainer, a metrics-stripped build still carries the id so the URLs line up", async () => {
+  it('As a maintainer, a metrics-stripped build still carries the id so the URLs line up', async () => {
     // Given the no-op twin that replaces the real module when VITE_METRICS
     // is unset. It drops the Sentry tagging but must not drop propagation,
     // or the sandbox and protocol URLs would differ between builds.
     vi.resetModules();
-    const noop = await import("../src/metrics.noop.js");
+    const noop = await import('../src/metrics.noop.js');
 
     // When
-    noop.setResolutionId("boot-1234-abcdef");
+    noop.setResolutionId('boot-1234-abcdef');
 
     // Then
-    expect(noop.getResolutionId()).toBe("boot-1234-abcdef");
+    expect(noop.getResolutionId()).toBe('boot-1234-abcdef');
   });
 });

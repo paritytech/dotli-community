@@ -10,24 +10,21 @@
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
 
-import { bytesToHex } from "@parity/truapi/scale";
-import type {
-  JsonRpcRequest,
-  JsonRpcProvider,
-} from "@polkadot-api/json-rpc-provider";
-import type { ChainProvider } from "@parity/truapi-host";
-import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
-import { getBackend } from "@dotli/config";
-import { createChainBrokerManager } from "@dotli/protocol";
+import { bytesToHex } from '@parity/truapi/scale';
+import type { JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { ChainProvider } from '@parity/truapi-host';
+import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
+import { getBackend } from '@dotli/config';
+import { createChainBrokerManager } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
   createCoreRpcChainProvider,
   isCoreRpcChainSupported,
-} from "@dotli/resolver";
+} from '@dotli/resolver';
 
-import { log } from "@dotli/shared";
-import { ERRORS } from "../errors.js";
+import { log } from '@dotli/shared';
+import { ERRORS } from '../errors.js';
 
 // `createSmoldotChainProvider` returns wrappers around singleton smoldot
 // chains. Every wrapper drains the same response queue, so independent core
@@ -36,24 +33,19 @@ import { ERRORS } from "../errors.js";
 const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  const id = record["id"];
+  const id = record['id'];
   return (
-    record["jsonrpc"] === "2.0" &&
-    typeof record["method"] === "string" &&
-    (id === undefined ||
-      id === null ||
-      typeof id === "string" ||
-      typeof id === "number")
+    record['jsonrpc'] === '2.0' &&
+    typeof record['method'] === 'string' &&
+    (id === undefined || id === null || typeof id === 'string' || typeof id === 'number')
   );
 }
 
-function toConnection(
-  provider: JsonRpcProvider<unknown> | null,
-): PlatformJsonRpcConnection {
+function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRpcConnection {
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -97,7 +89,7 @@ function toConnection(
               yield response;
             }
           }
-          await new Promise<void>((resolve) => {
+          await new Promise<void>(resolve => {
             wake = resolve;
           });
         }
@@ -109,18 +101,16 @@ function toConnection(
   };
 }
 
-export function createChainConnect(): ChainProvider["connect"] {
-  return (genesisHashBytes) => {
+export function createChainConnect(): ChainProvider['connect'] {
+  return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
-    if (backend === "rpc-gateway") {
+    if (backend === 'rpc-gateway') {
       // This callback is shared by product-forwarded calls and core-owned
       // Bulletin operations. `featureSupported` is the dApp advertisement;
       // this seam cannot enforce that advertised subset.
       if (!isCoreRpcChainSupported(genesisHash)) {
-        log.warn(
-          `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,
-        );
+        log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
       const connection = toConnection(createCoreRpcChainProvider(genesisHash));
@@ -128,13 +118,9 @@ export function createChainConnect(): ChainProvider["connect"] {
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
-      log.warn(
-        `[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`,
-      );
+      log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(
-      toConnection(smoldotChainBroker.getLocalProvider(genesisHash)),
-    );
+    return Promise.resolve(toConnection(smoldotChainBroker.getLocalProvider(genesisHash)));
   };
 }

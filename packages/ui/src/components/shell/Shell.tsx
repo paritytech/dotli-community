@@ -22,7 +22,7 @@
 // comment never reaches the DOM, and the fidelity test's contract is that
 // comments aren't part of it either.
 
-import type { JSX } from "@solidjs/web";
+import type { JSX } from '@solidjs/web';
 
 export function Shell(): JSX.Element {
   return (
@@ -31,13 +31,7 @@ export function Shell(): JSX.Element {
       <div id="topbar" role="banner" aria-label="dot.li browser bar">
         <a class="topbar-left" id="topbar-home" href="/">
           <div class="topbar-logo">
-            <svg
-              width="16"
-              height="18"
-              viewBox="0 0 16 18"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-            >
+            <svg width="16" height="18" viewBox="0 0 16 18" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path
                 d="M9.9873 14.1348C10.8273 14.1348 11.462 14.3911 11.6113 14.8604C11.8447 15.6051 10.7691 16.609 9.20801 17.1016C7.64706 17.5964 6.1908 17.3912 5.95508 16.6465C5.7363 15.9482 6.6685 15.0218 8.07227 14.5029L8.3584 14.4023C8.93466 14.2203 9.49501 14.1348 9.9873 14.1348ZM2.23828 9.9248C2.99193 9.9248 3.82268 10.226 4.52734 10.8213C5.85738 11.9442 6.23288 13.6886 5.36719 14.7158C4.50142 15.7428 2.71861 15.6629 1.38867 14.54C0.100568 13.4522 -0.291878 11.7823 0.47168 10.7451L0.551758 10.6465C0.957761 10.1634 1.5687 9.92482 2.23828 9.9248ZM15.1748 9.47949C15.2096 9.4795 15.2397 9.48415 15.2676 9.49805C15.6409 9.67081 15.4174 10.9618 14.7617 12.3789C14.1085 13.7956 13.2732 14.8041 12.8975 14.6318C12.5218 14.4591 12.7481 13.168 13.4014 11.751C14.0057 10.4413 14.7665 9.47949 15.1748 9.47949ZM3.42578 2.46387C3.9998 2.46387 4.55096 2.64366 4.9873 3.01953C6.10236 3.97675 6.07202 5.84169 4.92188 7.18164C3.76917 8.52404 1.93275 8.83452 0.817383 7.875C-0.297896 6.91782 -0.267461 5.05292 0.882812 3.71289C1.58276 2.8982 2.5345 2.46396 3.42578 2.46387ZM13.1631 2.80957C13.6391 2.80957 14.4071 3.79925 14.9531 5.15332C15.5458 6.62173 15.6526 7.96206 15.1953 8.14648C14.7355 8.33003 13.8845 7.29114 13.292 5.82324C12.6993 4.35719 12.5892 3.01463 13.0488 2.83008C13.0861 2.8161 13.1235 2.8096 13.1631 2.80957ZM7.82422 0C8.30483 0 8.83683 0.0896562 9.37109 0.276367C10.9576 0.829603 11.9799 2.02888 11.6582 2.95801C11.3362 3.88718 9.78886 4.19295 8.20215 3.63965C6.61582 3.08633 5.5943 1.88706 5.91602 0.958008C6.12834 0.341726 6.87931 6.04412e-05 7.82422 0Z"
                 fill="#ffffff"
@@ -128,12 +122,7 @@ export function Shell(): JSX.Element {
             </svg>
             <span class="chat-unread-badge" id="chat-unread-badge" hidden />
           </button>
-          <button
-            id="permissions-button"
-            class="topbar-btn"
-            title="Permissions"
-            aria-label="Permissions"
-          >
+          <button id="permissions-button" class="topbar-btn" title="Permissions" aria-label="Permissions">
             <svg
               width="12"
               height="12"
@@ -207,12 +196,7 @@ export function Shell(): JSX.Element {
               <line x1="12" y1="17" x2="12" y2="21" />
             </svg>
           </button>
-          <div
-            class="more-popover theme-popover"
-            id="theme-popover"
-            role="menu"
-            aria-label="Theme"
-          >
+          <div class="more-popover theme-popover" id="theme-popover" role="menu" aria-label="Theme">
             <button
               class="more-row theme-popover-option"
               role="menuitemradio"
@@ -347,12 +331,7 @@ export function Shell(): JSX.Element {
             </span>
           </button>
           <div class="more-popover" id="more-popover">
-            <button
-              class="more-row"
-              id="more-row-chat"
-              data-target="chat-button"
-              hidden
-            >
+            <button class="more-row" id="more-row-chat" data-target="chat-button" hidden>
               <svg
                 width="14"
                 height="14"
@@ -452,12 +431,7 @@ export function Shell(): JSX.Element {
               <span>Settings</span>
             </button>
           </div>
-          <button
-            id="mode-button"
-            class="topbar-btn"
-            title="Settings"
-            aria-label="Settings"
-          >
+          <button id="mode-button" class="topbar-btn" title="Settings" aria-label="Settings">
             <svg
               width="12"
               height="12"
@@ -478,19 +452,19 @@ export function Shell(): JSX.Element {
           role="status"
           aria-live="polite"
           style={{
-            position: "absolute",
-            top: "100%",
-            left: "0",
-            right: "0",
-            "z-index": "999",
-            background: "#b45309",
-            color: "#fff",
-            "font-size": "0.75rem",
-            "font-weight": "500",
-            "text-align": "center",
-            padding: "4px 12px",
-            "letter-spacing": "0.02em",
-            display: "none",
+            position: 'absolute',
+            top: '100%',
+            left: '0',
+            right: '0',
+            'z-index': '999',
+            background: '#b45309',
+            color: '#fff',
+            'font-size': '0.75rem',
+            'font-weight': '500',
+            'text-align': 'center',
+            padding: '4px 12px',
+            'letter-spacing': '0.02em',
+            display: 'none',
           }}
         >
           You are offline
@@ -513,13 +487,7 @@ export function Shell(): JSX.Element {
           <div class="auth-modal-qr" id="auth-modal-qr">
             <div class="spinner" />
           </div>
-          <a
-            class="auth-modal-get-app"
-            id="auth-modal-get-app"
-            target="_blank"
-            rel="noopener noreferrer"
-            hidden
-          >
+          <a class="auth-modal-get-app" id="auth-modal-get-app" target="_blank" rel="noopener noreferrer" hidden>
             Don't have the app? Get Polkadot Mobile
           </a>
           <button class="auth-modal-close" id="auth-modal-close">
@@ -561,10 +529,7 @@ export function Shell(): JSX.Element {
 
       {/* Permissions Popover + backdrop (same pattern as settings menu:
           blocks clicks under the popover + dismisses it when clicked) */}
-      <div
-        class="permissions-popover-backdrop"
-        id="permissions-popover-backdrop"
-      />
+      <div class="permissions-popover-backdrop" id="permissions-popover-backdrop" />
       <div class="permissions-popover" id="permissions-popover">
         <div class="permissions-popover-header">Permissions</div>
         <div class="permissions-popover-list" id="permissions-popover-list" />

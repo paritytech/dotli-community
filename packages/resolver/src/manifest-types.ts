@@ -13,10 +13,9 @@
 // Validators are handwritten so the resolver package stays free of a
 // schema library at runtime.
 
-export type IconFormat = "jpeg" | "png";
+export type IconFormat = 'jpeg' | 'png';
 
-export type AppVersion =
-  readonly [number, number, number] | readonly [number, number, number, string];
+export type AppVersion = readonly [number, number, number] | readonly [number, number, number, string];
 
 export interface Icon {
   cid: string;
@@ -36,7 +35,7 @@ interface CommonExecutableFields {
 }
 
 export interface AppManifest extends CommonExecutableFields {
-  kind: "app";
+  kind: 'app';
 }
 
 export interface WidgetDimensions {
@@ -45,7 +44,7 @@ export interface WidgetDimensions {
 }
 
 export interface WidgetManifest extends CommonExecutableFields {
-  kind: "widget";
+  kind: 'widget';
   description?: string;
   dimensions: WidgetDimensions;
 }
@@ -56,13 +55,13 @@ export interface WorkerIncludes {
 }
 
 export interface WorkerManifest extends CommonExecutableFields {
-  kind: "worker";
+  kind: 'worker';
   entrypoint: string;
   includes: WorkerIncludes;
 }
 
 export type ExecutableManifest = AppManifest | WidgetManifest | WorkerManifest;
-export type ExecutableKind = ExecutableManifest["kind"];
+export type ExecutableKind = ExecutableManifest['kind'];
 
 export interface ValidationOk<T> {
   ok: true;
@@ -74,14 +73,14 @@ export interface ValidationErr {
 }
 export type ValidationResult<T> = ValidationOk<T> | ValidationErr;
 
-const ICON_FORMATS: readonly IconFormat[] = ["jpeg", "png"];
+const ICON_FORMATS: readonly IconFormat[] = ['jpeg', 'png'];
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isNonEmptyString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0;
+  return typeof value === 'string' && value.length > 0;
 }
 
 function isAppVersion(value: unknown): value is AppVersion {
@@ -91,193 +90,144 @@ function isAppVersion(value: unknown): value is AppVersion {
   if (value.length !== 3 && value.length !== 4) {
     return false;
   }
-  if (
-    !value
-      .slice(0, 3)
-      .every((n) => typeof n === "number" && Number.isFinite(n) && n >= 0)
-  ) {
+  if (!value.slice(0, 3).every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0)) {
     return false;
   }
-  if (value.length === 4 && typeof value[3] !== "string") {
+  if (value.length === 4 && typeof value[3] !== 'string') {
     return false;
   }
   return true;
 }
 
-function validateWidgetFields(
-  input: Record<string, unknown>,
-  p: string,
-): string[] {
+function validateWidgetFields(input: Record<string, unknown>, p: string): string[] {
   const errors: string[] = [];
-  if (
-    "description" in input &&
-    input["description"] !== undefined &&
-    typeof input["description"] !== "string"
-  ) {
+  if ('description' in input && input['description'] !== undefined && typeof input['description'] !== 'string') {
     errors.push(`${p}description must be a string when present`);
   }
-  if (!isPlainObject(input["dimensions"])) {
+  if (!isPlainObject(input['dimensions'])) {
     errors.push(`${p}dimensions must be an object`);
     return errors;
   }
-  const dims = input["dimensions"];
+  const dims = input['dimensions'];
   if (
-    !Array.isArray(dims["height"]) ||
-    dims["height"].length === 0 ||
-    !dims["height"].every(
-      (h) => typeof h === "number" && Number.isInteger(h) && h > 0,
-    )
+    !Array.isArray(dims['height']) ||
+    dims['height'].length === 0 ||
+    !dims['height'].every(h => typeof h === 'number' && Number.isInteger(h) && h > 0)
   ) {
-    errors.push(
-      `${p}dimensions.height must be a non-empty array of positive integers`,
-    );
+    errors.push(`${p}dimensions.height must be a non-empty array of positive integers`);
   }
   if (
-    "width" in dims &&
-    dims["width"] !== undefined &&
-    !(
-      typeof dims["width"] === "number" &&
-      Number.isInteger(dims["width"]) &&
-      dims["width"] > 0
-    )
+    'width' in dims &&
+    dims['width'] !== undefined &&
+    !(typeof dims['width'] === 'number' && Number.isInteger(dims['width']) && dims['width'] > 0)
   ) {
     errors.push(`${p}dimensions.width must be a positive integer when present`);
   }
   return errors;
 }
 
-function validateWorkerFields(
-  input: Record<string, unknown>,
-  p: string,
-): string[] {
+function validateWorkerFields(input: Record<string, unknown>, p: string): string[] {
   const errors: string[] = [];
-  if (!isNonEmptyString(input["entrypoint"])) {
+  if (!isNonEmptyString(input['entrypoint'])) {
     errors.push(`${p}entrypoint must be a non-empty string`);
-  } else if (
-    input["entrypoint"].startsWith("/") ||
-    input["entrypoint"].split("/").includes("..")
-  ) {
+  } else if (input['entrypoint'].startsWith('/') || input['entrypoint'].split('/').includes('..')) {
     errors.push(`${p}entrypoint must be a relative path with no '..' segments`);
   }
-  if (!isPlainObject(input["includes"])) {
+  if (!isPlainObject(input['includes'])) {
     errors.push(`${p}includes must be an object`);
     return errors;
   }
-  const inc = input["includes"];
-  if (typeof inc["chat"] !== "boolean") {
+  const inc = input['includes'];
+  if (typeof inc['chat'] !== 'boolean') {
     errors.push(`${p}includes.chat must be a boolean`);
   }
-  if (typeof inc["pocket"] !== "boolean") {
+  if (typeof inc['pocket'] !== 'boolean') {
     errors.push(`${p}includes.pocket must be a boolean`);
   }
-  if (inc["chat"] === false && inc["pocket"] === false) {
+  if (inc['chat'] === false && inc['pocket'] === false) {
     errors.push(`${p}includes must have at least one of chat / pocket = true`);
   }
   return errors;
 }
 
 /** Parse and validate a JSON string against the `RootManifest` schema. */
-export function parseRootManifest(
-  json: string,
-): ValidationResult<RootManifest> {
+export function parseRootManifest(json: string): ValidationResult<RootManifest> {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
   } catch (err) {
     return {
       ok: false,
-      errors: [
-        `root manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-      ],
+      errors: [`root manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
     };
   }
   return validateRootManifest(raw);
 }
 
 /** Parse and validate a JSON string against the `ExecutableManifest` schema. */
-export function parseExecutableManifest(
-  json: string,
-): ValidationResult<ExecutableManifest> {
+export function parseExecutableManifest(json: string): ValidationResult<ExecutableManifest> {
   let raw: unknown;
   try {
     raw = JSON.parse(json);
   } catch (err) {
     return {
       ok: false,
-      errors: [
-        `executable manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
-      ],
+      errors: [`executable manifest is not valid JSON: ${err instanceof Error ? err.message : String(err)}`],
     };
   }
   return validateExecutableManifest(raw);
 }
 
-export function validateRootManifest(
-  input: unknown,
-): ValidationResult<RootManifest> {
+export function validateRootManifest(input: unknown): ValidationResult<RootManifest> {
   const errors: string[] = [];
   if (!isPlainObject(input)) {
-    return { ok: false, errors: ["root manifest must be an object"] };
+    return { ok: false, errors: ['root manifest must be an object'] };
   }
-  if (input["$v"] !== 1) {
-    errors.push(
-      `root manifest $v must be 1 (got ${JSON.stringify(input["$v"])})`,
-    );
+  if (input['$v'] !== 1) {
+    errors.push(`root manifest $v must be 1 (got ${JSON.stringify(input['$v'])})`);
   }
-  if (!isNonEmptyString(input["displayName"])) {
-    errors.push("root manifest displayName must be a non-empty string");
+  if (!isNonEmptyString(input['displayName'])) {
+    errors.push('root manifest displayName must be a non-empty string');
   }
-  if (typeof input["description"] !== "string") {
-    errors.push("root manifest description must be a string");
+  if (typeof input['description'] !== 'string') {
+    errors.push('root manifest description must be a string');
   }
-  if (!isPlainObject(input["icon"])) {
-    errors.push("root manifest icon must be an object");
+  if (!isPlainObject(input['icon'])) {
+    errors.push('root manifest icon must be an object');
   } else {
-    if (!isNonEmptyString(input["icon"]["cid"])) {
-      errors.push("root manifest icon.cid must be a non-empty string");
+    if (!isNonEmptyString(input['icon']['cid'])) {
+      errors.push('root manifest icon.cid must be a non-empty string');
     }
-    if (!ICON_FORMATS.includes(input["icon"]["format"] as IconFormat)) {
+    if (!ICON_FORMATS.includes(input['icon']['format'] as IconFormat)) {
       errors.push(
-        `root manifest icon.format must be one of ${ICON_FORMATS.join(", ")} (got ${JSON.stringify(input["icon"]["format"])})`,
+        `root manifest icon.format must be one of ${ICON_FORMATS.join(', ')} (got ${JSON.stringify(input['icon']['format'])})`,
       );
     }
   }
-  return errors.length === 0
-    ? { ok: true, value: input as unknown as RootManifest }
-    : { ok: false, errors };
+  return errors.length === 0 ? { ok: true, value: input as unknown as RootManifest } : { ok: false, errors };
 }
 
-export function validateExecutableManifest(
-  input: unknown,
-): ValidationResult<ExecutableManifest> {
+export function validateExecutableManifest(input: unknown): ValidationResult<ExecutableManifest> {
   const errors: string[] = [];
   if (!isPlainObject(input)) {
-    return { ok: false, errors: ["executable manifest must be an object"] };
+    return { ok: false, errors: ['executable manifest must be an object'] };
   }
-  if (input["$v"] !== 1) {
-    errors.push(
-      `executable manifest $v must be 1 (got ${JSON.stringify(input["$v"])})`,
-    );
+  if (input['$v'] !== 1) {
+    errors.push(`executable manifest $v must be 1 (got ${JSON.stringify(input['$v'])})`);
   }
-  if (!isAppVersion(input["appVersion"])) {
-    errors.push(
-      "executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]",
-    );
+  if (!isAppVersion(input['appVersion'])) {
+    errors.push('executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]');
   }
-  const kind = input["kind"];
-  const p = "executable manifest ";
-  if (kind === "app") {
+  const kind = input['kind'];
+  const p = 'executable manifest ';
+  if (kind === 'app') {
     // App has no kind-specific fields beyond the common ones.
-  } else if (kind === "widget") {
+  } else if (kind === 'widget') {
     errors.push(...validateWidgetFields(input, p));
-  } else if (kind === "worker") {
+  } else if (kind === 'worker') {
     errors.push(...validateWorkerFields(input, p));
   } else {
-    errors.push(
-      `${p}kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`,
-    );
+    errors.push(`${p}kind must be one of app, widget, worker (got ${JSON.stringify(kind)})`);
   }
-  return errors.length === 0
-    ? { ok: true, value: input as unknown as ExecutableManifest }
-    : { ok: false, errors };
+  return errors.length === 0 ? { ok: true, value: input as unknown as ExecutableManifest } : { ok: false, errors };
 }

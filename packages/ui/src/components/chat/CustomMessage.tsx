@@ -9,15 +9,12 @@
 // nobody is looking at. The observer starts the subscription when the
 // cell scrolls in and drops it when it leaves, like the desktop host.
 
-import { createSignal, onCleanup, onSettled, Show, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { HexString, RenderContext, RendererNode } from "@parity/truapi";
-import { bytesToHex } from "@parity/truapi/scale";
-import {
-  renderCustomMessage,
-  userTriggerRendererAction,
-} from "../../chat/service.js";
-import { CustomNode } from "./CustomNode.js";
+import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { HexString, RenderContext, RendererNode } from '@parity/truapi';
+import { bytesToHex } from '@parity/truapi/scale';
+import { renderCustomMessage, userTriggerRendererAction } from '../../chat/service.js';
+import { CustomNode } from './CustomNode.js';
 
 export interface CustomMessageProps {
   productId: string;
@@ -32,16 +29,14 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   // A message's identity never changes for its row, so read it once.
   const mount = untrack(() => ({ ...props }));
   const [tree, setTree] = createSignal<RendererNode>();
-  const [placeholder, setPlaceholder] = createSignal<string | undefined>(
-    "Loading…",
-  );
+  const [placeholder, setPlaceholder] = createSignal<string | undefined>('Loading…');
   let root: HTMLDivElement | undefined;
   let disposed = false;
 
   // The same context names the body on the render request and on every
   // action fired inside it, so the product can pair the two.
   const context: RenderContext = {
-    tag: "ChatMessage",
+    tag: 'ChatMessage',
     value: {
       roomId: mount.roomId,
       messageId: mount.messageId,
@@ -53,10 +48,10 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
     userTriggerRendererAction(mount.productId, {
       context,
       actionId,
-      payload: payload === undefined ? "0x" : bytesToHex(payload),
+      payload: payload === undefined ? '0x' : bytesToHex(payload),
     }).catch(() => {
       if (!disposed) {
-        setPlaceholder("The app could not be reached.");
+        setPlaceholder('The app could not be reached.');
       }
     });
   };
@@ -71,7 +66,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
       mount.productId,
       { context, payload: mount.payload },
       {
-        onUpdate: (node) => {
+        onUpdate: node => {
           if (disposed) {
             return;
           }
@@ -82,7 +77,7 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
         // stand as final; replace it with a neutral fallback.
         onError: () => {
           if (!disposed) {
-            setPlaceholder("This message can’t be shown right now.");
+            setPlaceholder('This message can’t be shown right now.');
           }
         },
       },
@@ -98,11 +93,11 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
 
   let observer: IntersectionObserver | null = null;
   onSettled(() => {
-    if (typeof IntersectionObserver === "undefined" || root === undefined) {
+    if (typeof IntersectionObserver === 'undefined' || root === undefined) {
       startRender();
       return;
     }
-    observer = new IntersectionObserver((entries) => {
+    observer = new IntersectionObserver(entries => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
           startRender();
@@ -122,19 +117,15 @@ export function CustomMessage(props: CustomMessageProps): JSX.Element {
   return (
     <div
       class="chat-custom-root"
-      ref={(el) => {
+      ref={el => {
         root = el;
       }}
     >
       <Show
         when={placeholder()}
-        fallback={
-          <Show when={tree()}>
-            {(node) => <CustomNode node={node()} onAction={onAction} />}
-          </Show>
-        }
+        fallback={<Show when={tree()}>{node => <CustomNode node={node()} onAction={onAction} />}</Show>}
       >
-        {(text) => <span class="chat-custom-placeholder">{text()}</span>}
+        {text => <span class="chat-custom-placeholder">{text()}</span>}
       </Show>
     </div>
   );

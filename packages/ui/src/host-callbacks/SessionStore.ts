@@ -1,24 +1,20 @@
-import { SITE_ID } from "@dotli/config";
-import { bytesToHex, hexToBytes } from "@parity/truapi/scale";
-import { encodeCoreStorageKey } from "@parity/truapi-host";
-import type {
-  CoreStorage,
-  CoreStorageKey,
-  SessionUiInfo,
-} from "@parity/truapi-host";
+import { SITE_ID } from '@dotli/config';
+import { bytesToHex, hexToBytes } from '@parity/truapi/scale';
+import { encodeCoreStorageKey } from '@parity/truapi-host';
+import type { CoreStorage, CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import {
   SHARED_CORE_SESSION_KEY,
   clearSharedAuthStorage,
   readSharedAuthStorage,
   subscribeSharedAuthStorage,
   writeSharedAuthStorage,
-} from "@dotli/protocol";
+} from '@dotli/protocol';
 
-import { log } from "@dotli/shared";
-import { dispatchAuthState } from "./AuthState.js";
+import { log } from '@dotli/shared';
+import { dispatchAuthState } from './AuthState.js';
 
-const LOCAL_CHANGE_EVENT = "dotli:truapi-session-store-changed";
-const CORE_LOCAL_STORAGE_PREFIX = "dotli:core:";
+const LOCAL_CHANGE_EVENT = 'dotli:truapi-session-store-changed';
+const CORE_LOCAL_STORAGE_PREFIX = 'dotli:core:';
 
 // JSON cache of the last connected UI state the core reported via
 // `authStateChanged`. Lives in shared auth storage next to the opaque
@@ -46,41 +42,29 @@ export function toSessionUiState(info: SessionUiInfo): TruapiSessionUiState {
   return {
     connected: true,
     publicKey: info.publicKey,
-    ...(info.identityAccountId !== undefined
-      ? { identityAccountId: info.identityAccountId }
-      : {}),
-    ...(info.liteUsername !== undefined
-      ? { liteUsername: info.liteUsername }
-      : {}),
-    ...(info.fullUsername !== undefined
-      ? { fullUsername: info.fullUsername }
-      : {}),
+    ...(info.identityAccountId !== undefined ? { identityAccountId: info.identityAccountId } : {}),
+    ...(info.liteUsername !== undefined ? { liteUsername: info.liteUsername } : {}),
+    ...(info.fullUsername !== undefined ? { fullUsername: info.fullUsername } : {}),
     ...(primaryUsername !== undefined ? { primaryUsername } : {}),
   };
 }
 
 /** Persist (or clear, when disconnected) the boot-rehydration UI-state
  * cache next to the opaque session blob. Best-effort. */
-export async function writeUiStateCache(
-  detail: TruapiSessionUiState,
-): Promise<void> {
+export async function writeUiStateCache(detail: TruapiSessionUiState): Promise<void> {
   try {
     if (detail.connected) {
-      await writeSharedAuthStorage(
-        SITE_ID,
-        UI_STATE_CACHE_KEY,
-        JSON.stringify(detail),
-      );
+      await writeSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY, JSON.stringify(detail));
     } else {
       await clearSharedAuthStorage(SITE_ID, UI_STATE_CACHE_KEY);
     }
   } catch (err) {
-    log.warn("[dot.li] session UI cache write failed:", err);
+    log.warn('[dot.li] session UI cache write failed:', err);
   }
 }
 
 function isOptionalString(value: unknown): value is string | undefined {
-  return value === undefined || typeof value === "string";
+  return value === undefined || typeof value === 'string';
 }
 
 /** Validate a parsed UI-state cache blob field by field. The cache is
@@ -88,37 +72,27 @@ function isOptionalString(value: unknown): value is string | undefined {
  * version or partially corrupted, so a malformed blob degrades to null
  * (bare connected state) rather than being cast into the typed shape. */
 function parseUiStateCache(parsed: unknown): TruapiSessionUiState | null {
-  if (typeof parsed !== "object" || parsed === null) {
+  if (typeof parsed !== 'object' || parsed === null) {
     return null;
   }
   const state = parsed as Record<string, unknown>;
   if (
-    state["connected"] !== true ||
-    !isOptionalString(state["publicKey"]) ||
-    !isOptionalString(state["identityAccountId"]) ||
-    !isOptionalString(state["liteUsername"]) ||
-    !isOptionalString(state["fullUsername"]) ||
-    !isOptionalString(state["primaryUsername"])
+    state['connected'] !== true ||
+    !isOptionalString(state['publicKey']) ||
+    !isOptionalString(state['identityAccountId']) ||
+    !isOptionalString(state['liteUsername']) ||
+    !isOptionalString(state['fullUsername']) ||
+    !isOptionalString(state['primaryUsername'])
   ) {
     return null;
   }
   return {
     connected: true,
-    ...(state["publicKey"] !== undefined
-      ? { publicKey: state["publicKey"] }
-      : {}),
-    ...(state["identityAccountId"] !== undefined
-      ? { identityAccountId: state["identityAccountId"] }
-      : {}),
-    ...(state["liteUsername"] !== undefined
-      ? { liteUsername: state["liteUsername"] }
-      : {}),
-    ...(state["fullUsername"] !== undefined
-      ? { fullUsername: state["fullUsername"] }
-      : {}),
-    ...(state["primaryUsername"] !== undefined
-      ? { primaryUsername: state["primaryUsername"] }
-      : {}),
+    ...(state['publicKey'] !== undefined ? { publicKey: state['publicKey'] } : {}),
+    ...(state['identityAccountId'] !== undefined ? { identityAccountId: state['identityAccountId'] } : {}),
+    ...(state['liteUsername'] !== undefined ? { liteUsername: state['liteUsername'] } : {}),
+    ...(state['fullUsername'] !== undefined ? { fullUsername: state['fullUsername'] } : {}),
+    ...(state['primaryUsername'] !== undefined ? { primaryUsername: state['primaryUsername'] } : {}),
   };
 }
 
@@ -148,11 +122,11 @@ export function emitPersistedSessionUiState(): void {
     } catch {
       return;
     }
-    if (raw === null || raw === "") {
+    if (raw === null || raw === '') {
       return;
     }
     dispatchAuthState({
-      tag: "Connected",
+      tag: 'Connected',
       session: (await readUiStateCache()) ?? { connected: true },
     });
   })();
@@ -172,30 +146,25 @@ export function createSessionStoreAdapters(): CoreStorage {
   };
 }
 
-async function readCoreStorageValue(
-  key: CoreStorageKey,
-): Promise<Uint8Array | undefined> {
-  if (key.tag === "AuthSession") {
+async function readCoreStorageValue(key: CoreStorageKey): Promise<Uint8Array | undefined> {
+  if (key.tag === 'AuthSession') {
     let raw: string | null;
     try {
       raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     } catch (err) {
-      log.warn("[dot.li] shared auth session read failed:", err);
+      log.warn('[dot.li] shared auth session read failed:', err);
       return undefined;
     }
-    if (raw === null || raw === "") {
+    if (raw === null || raw === '') {
       return undefined;
     }
-    return decodeStoredBytes(raw, "shared auth session");
+    return decodeStoredBytes(raw, 'shared auth session');
   }
   const raw = localStorage.getItem(coreLocalStorageKey(key));
   return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
 }
 
-function decodeStoredBytes(
-  raw: string,
-  description: string,
-): Uint8Array | undefined {
+function decodeStoredBytes(raw: string, description: string): Uint8Array | undefined {
   try {
     return hexToBytes(raw);
   } catch (err) {
@@ -204,27 +173,17 @@ function decodeStoredBytes(
   }
 }
 
-async function writeCoreStorageValue(
-  key: CoreStorageKey,
-  value: Uint8Array,
-): Promise<void> {
-  if (key.tag === "AuthSession") {
-    await writeSharedAuthStorage(
-      SITE_ID,
-      SHARED_CORE_SESSION_KEY,
-      bytesToHex(value),
-    );
+async function writeCoreStorageValue(key: CoreStorageKey, value: Uint8Array): Promise<void> {
+  if (key.tag === 'AuthSession') {
+    await writeSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY, bytesToHex(value));
     emitLocalChange();
     return;
   }
-  localStorage.setItem(
-    coreLocalStorageKey(key),
-    await encodeCoreStorageValue(key, value),
-  );
+  localStorage.setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, value));
 }
 
 async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
-  if (key.tag === "AuthSession") {
+  if (key.tag === 'AuthSession') {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
     emitLocalChange();
@@ -235,81 +194,62 @@ async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
 
 function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
-    case "PairingDeviceIdentity":
+    case 'PairingDeviceIdentity':
       return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
-    case "PermissionAuthorization":
-      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
-    case "AllowanceKeys":
+    case 'PermissionAuthorization':
+      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${hexNoPrefix(encodeCoreStorageKey(key))}`;
+    case 'AllowanceKeys':
       return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
-    case "AutoSigningKey":
-      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
+    case 'AutoSigningKey':
+      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     // Wallet-bound capabilities for the active pairing: one slot, unlike the
     // legacy per-product `AutoSigningKey` above.
-    case "AutoSigningKeys":
+    case 'AutoSigningKeys':
       return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
     // Keyed by root public key so several rings can coexist. The snapshot is
     // public, so it is not treated as secret material below.
-    case "RingVrfRegistry":
-      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
-    case "StatementRenewalTargets":
+    case 'RingVrfRegistry':
+      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(encodeCoreStorageKey(key))}`;
+    case 'StatementRenewalTargets':
       return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
-    case "LastProcessedPairingStatement":
+    case 'LastProcessedPairingStatement':
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
-    case "AuthSession":
+    case 'AuthSession':
       return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
     // Peers address this device by the public counterpart, so the slot name
     // must not move with the session.
-    case "DeviceEncryptionKey":
+    case 'DeviceEncryptionKey':
       return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
     // Keyed by session and product together: pairing again re-asks the
     // Account Holder, so one session's answer must not be read back for
     // another.
-    case "ProductSubtree":
-      return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
+    case 'ProductSubtree':
+      return `${CORE_LOCAL_STORAGE_PREFIX}product-subtree:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     // The ledger bounds replays for one wallet and peer pair, so the whole
     // triple has to discriminate the slot.
-    case "SsoResponderRequestLedger":
-      return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
+    case 'SsoResponderRequestLedger':
+      return `${CORE_LOCAL_STORAGE_PREFIX}sso-responder-ledger:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     // Public manifest JSON cached per product, so one product's revoked
     // grant expires without touching the others.
-    case "ProductManifest":
+    case 'ProductManifest':
       return `${CORE_LOCAL_STORAGE_PREFIX}product-manifest:${key.value.productId}`;
   }
 }
 
 function storesSecretMaterial(key: CoreStorageKey): boolean {
   return (
-    key.tag === "AllowanceKeys" ||
-    key.tag === "AutoSigningKey" ||
-    key.tag === "AutoSigningKeys" ||
-    key.tag === "DeviceEncryptionKey"
+    key.tag === 'AllowanceKeys' ||
+    key.tag === 'AutoSigningKey' ||
+    key.tag === 'AutoSigningKeys' ||
+    key.tag === 'DeviceEncryptionKey'
   );
 }
 
-async function encodeCoreStorageValue(
-  key: CoreStorageKey,
-  value: Uint8Array,
-): Promise<string> {
+async function encodeCoreStorageValue(key: CoreStorageKey, value: Uint8Array): Promise<string> {
   if (storesSecretMaterial(key)) {
-    const nonce = crypto.getRandomValues(
-      new Uint8Array(CORE_SECRET_NONCE_LENGTH),
-    );
+    const nonce = crypto.getRandomValues(new Uint8Array(CORE_SECRET_NONCE_LENGTH));
     const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: nonce },
-        await coreSecretStorageKey(),
-        new Uint8Array(value),
-      ),
+      await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, await coreSecretStorageKey(), new Uint8Array(value)),
     );
     const stored = new Uint8Array(nonce.length + ciphertext.length);
     stored.set(nonce);
@@ -319,10 +259,7 @@ async function encodeCoreStorageValue(
   return bytesToHex(value);
 }
 
-async function decodeCoreStorageValue(
-  key: CoreStorageKey,
-  raw: string,
-): Promise<Uint8Array | undefined> {
+async function decodeCoreStorageValue(key: CoreStorageKey, raw: string): Promise<Uint8Array | undefined> {
   if (!storesSecretMaterial(key)) {
     return decodeStoredBytes(raw, `core storage ${key.tag}`);
   }
@@ -335,23 +272,17 @@ async function decodeCoreStorageValue(
       return undefined;
     }
     log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
-    localStorage.setItem(
-      coreLocalStorageKey(key),
-      await encodeCoreStorageValue(key, bytes),
-    );
+    localStorage.setItem(coreLocalStorageKey(key), await encodeCoreStorageValue(key, bytes));
     return bytes;
   }
-  const bytes = decodeStoredBytes(
-    raw.slice(ENCRYPTED_VALUE_PREFIX.length),
-    `core storage ${key.tag}`,
-  );
+  const bytes = decodeStoredBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length), `core storage ${key.tag}`);
   if (bytes === undefined) {
     return undefined;
   }
   try {
     return new Uint8Array(
       await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
+        { name: 'AES-GCM', iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
         await coreSecretStorageKey(),
         bytes.slice(CORE_SECRET_NONCE_LENGTH),
       ),
@@ -370,16 +301,16 @@ async function decodeCoreStorageValue(
 // Marks a slot as holding the encrypted format. Legacy plaintext slots are
 // bare hex, so the prefix cleanly separates "must decrypt" from "migrate":
 // a decrypt failure never falls back to treating ciphertext as plaintext.
-const ENCRYPTED_VALUE_PREFIX = "enc1:";
+const ENCRYPTED_VALUE_PREFIX = 'enc1:';
 
 // Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
 // stored as the ciphertext prefix: GCM security collapses if a (key, nonce)
 // pair is ever reused.
 const CORE_SECRET_NONCE_LENGTH = 12;
 
-const KEY_DB_NAME = "dotli-core";
-const KEY_DB_STORE = "keys";
-const CORE_SECRET_KEY_ID = "allowance-keys";
+const KEY_DB_NAME = 'dotli-core';
+const KEY_DB_STORE = 'keys';
+const CORE_SECRET_KEY_ID = 'allowance-keys';
 
 let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
 
@@ -393,20 +324,14 @@ let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
  */
 function coreSecretStorageKey(): Promise<CryptoKey> {
   coreSecretKeyPromise ??= loadOrCreateCoreSecretKey().catch((err: unknown) => {
-    log.warn(
-      "[dot.li] falling back to a session-ephemeral core-secret storage key:",
-      err,
-    );
+    log.warn('[dot.li] falling back to a session-ephemeral core-secret storage key:', err);
     return generateCoreSecretKey();
   });
   return coreSecretKeyPromise;
 }
 
 function generateCoreSecretKey(): Promise<CryptoKey> {
-  return crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, [
-    "encrypt",
-    "decrypt",
-  ]);
+  return crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
 }
 
 async function loadOrCreateCoreSecretKey(): Promise<CryptoKey> {
@@ -444,42 +369,39 @@ function openKeyDb(): Promise<IDBDatabase> {
       resolve(request.result);
     };
     request.onerror = () => {
-      reject(request.error ?? new Error("indexedDB open failed"));
+      reject(request.error ?? new Error('indexedDB open failed'));
     };
   });
 }
 
 function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
   return new Promise((resolve, reject) => {
-    const request = db
-      .transaction(KEY_DB_STORE)
-      .objectStore(KEY_DB_STORE)
-      .get(CORE_SECRET_KEY_ID);
+    const request = db.transaction(KEY_DB_STORE).objectStore(KEY_DB_STORE).get(CORE_SECRET_KEY_ID);
     request.onsuccess = () => {
       const value: unknown = request.result;
       resolve(isCryptoKey(value) ? value : undefined);
     };
     request.onerror = () => {
-      reject(request.error ?? new Error("indexedDB get failed"));
+      reject(request.error ?? new Error('indexedDB get failed'));
     };
   });
 }
 
 function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(KEY_DB_STORE, "readwrite");
+    const tx = db.transaction(KEY_DB_STORE, 'readwrite');
     tx.objectStore(KEY_DB_STORE).add(key, CORE_SECRET_KEY_ID);
     tx.oncomplete = () => {
       resolve();
     };
     tx.onerror = () => {
-      reject(tx.error ?? new Error("indexedDB add failed"));
+      reject(tx.error ?? new Error('indexedDB add failed'));
     };
     // A commit-time abort (e.g. QuotaExceededError) fires only `abort`;
     // without this the promise never settles and, being memoized, would
     // hang every allowance read/write for the session.
     tx.onabort = () => {
-      reject(tx.error ?? new Error("indexedDB add aborted"));
+      reject(tx.error ?? new Error('indexedDB add aborted'));
     };
   });
 }
@@ -487,11 +409,7 @@ function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
 /** `instanceof CryptoKey` is unreliable across realms (and the global is
  * missing under happy-dom), so validate the stored record structurally. */
 function isCryptoKey(value: unknown): value is CryptoKey {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as CryptoKey).type === "secret"
-  );
+  return typeof value === 'object' && value !== null && (value as CryptoKey).type === 'secret';
 }
 
 function hexNoPrefix(bytes: Uint8Array): string {
@@ -503,7 +421,7 @@ export function onStoredSessionChanged(listener: () => void): () => void {
     listener();
   };
   window.addEventListener(LOCAL_CHANGE_EVENT, onLocalChange);
-  const unsubscribeShared = subscribeSharedAuthStorage((change) => {
+  const unsubscribeShared = subscribeSharedAuthStorage(change => {
     if (change.siteId === SITE_ID && change.key === SHARED_CORE_SESSION_KEY) {
       listener();
     }

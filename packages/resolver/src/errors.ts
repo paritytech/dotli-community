@@ -19,10 +19,7 @@
  * downstream filters.
  */
 export type ResolverErrorName =
-  | "PartialStorageReadError"
-  | "UnsupportedContenthashCodecError"
-  | "ContenthashDecodeError"
-  | "NetworkSyncTimeoutError";
+  'PartialStorageReadError' | 'UnsupportedContenthashCodecError' | 'ContenthashDecodeError' | 'NetworkSyncTimeoutError';
 
 /**
  * Base type for every error the resolver package throws.
@@ -43,7 +40,7 @@ export abstract class ResolverError extends Error {
  * result decodes as "name not found" and masks the actual fault.
  */
 export class PartialStorageReadError extends ResolverError {
-  override readonly name = "PartialStorageReadError" as const;
+  override readonly name = 'PartialStorageReadError' as const;
   readonly contractAddress: string;
   readonly slotIndex: number;
   readonly slotsExpected: number;
@@ -55,8 +52,7 @@ export class PartialStorageReadError extends ResolverError {
     slotsExpected: number,
     context: { mappingKind: string; innerKey?: string },
   ) {
-    const innerKeyPart =
-      context.innerKey !== undefined ? `, key=${context.innerKey}` : "";
+    const innerKeyPart = context.innerKey !== undefined ? `, key=${context.innerKey}` : '';
     super(
       `Partial storage read at slot ${String(slotIndex)}/${String(slotsExpected)} for ${context.mappingKind} (contract=${contractAddress}${innerKeyPart})`,
     );
@@ -75,14 +71,12 @@ export class PartialStorageReadError extends ResolverError {
  * surfaces a dedicated error instead of conflating with "no record set".
  */
 export class UnsupportedContenthashCodecError extends ResolverError {
-  override readonly name = "UnsupportedContenthashCodecError" as const;
+  override readonly name = 'UnsupportedContenthashCodecError' as const;
   readonly domain: string;
   readonly codec: string | null;
 
   constructor(domain: string, codec: string | null) {
-    super(
-      `Domain "${domain}" has a non-IPFS contenthash (codec=${codec ?? "unknown"})`,
-    );
+    super(`Domain "${domain}" has a non-IPFS contenthash (codec=${codec ?? 'unknown'})`);
     this.domain = domain;
     this.codec = codec;
   }
@@ -95,7 +89,7 @@ export class UnsupportedContenthashCodecError extends ResolverError {
  * decoder failure is preserved via `cause` so the stack trace survives.
  */
 export class ContenthashDecodeError extends ResolverError {
-  override readonly name = "ContenthashDecodeError" as const;
+  override readonly name = 'ContenthashDecodeError' as const;
   readonly domain: string;
 
   constructor(domain: string, cause: unknown) {
@@ -116,14 +110,12 @@ export class ContenthashDecodeError extends ResolverError {
  * loading screen.
  */
 export class NetworkSyncTimeoutError extends ResolverError {
-  override readonly name = "NetworkSyncTimeoutError" as const;
+  override readonly name = 'NetworkSyncTimeoutError' as const;
   readonly chain: string;
   readonly timeoutMs: number;
 
   constructor(chain: string, timeoutMs: number) {
-    super(
-      `Sync to ${chain} timed out after ${(timeoutMs / 1000).toFixed(0)}s. Unable to reach peers.`,
-    );
+    super(`Sync to ${chain} timed out after ${(timeoutMs / 1000).toFixed(0)}s. Unable to reach peers.`);
     this.chain = chain;
     this.timeoutMs = timeoutMs;
   }

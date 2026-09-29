@@ -2,32 +2,37 @@
 
 ### How to Test
 
-- **Unit and functional tests** live next to the file they test, named after it (e.g. `permissions.test.ts` alongside `permissions.ts`).
-- **Functional tests** live under `apps/host/tests/functional/` (resolution, loading, performance specs driven in-process against the preview server).
-- **E2E tests** live under `apps/host/tests/e2e/` (`truapi.spec.ts` exercises the full truapi surface against a real `host-playground.dot` build).
-- **Tests are user stories.** Name each test as a user story: `As a <role>, I <action> and <outcome>` for behaviour, or `As a <role>, <observable property>` for invariants.
-- **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to separate setup, action, and assertions.
+- **Unit and functional tests** live next to the file they test, named after it (e.g. `permissions.test.ts` alongside
+  `permissions.ts`).
+- **Functional tests** live under `apps/host/tests/functional/` (resolution, loading, performance specs driven
+  in-process against the preview server).
+- **E2E tests** live under `apps/host/tests/e2e/` (`truapi.spec.ts` exercises the full truapi surface against a real
+  `host-playground.dot` build).
+- **Tests are user stories.** Name each test as a user story: `As a <role>, I <action> and <outcome>` for behaviour, or
+  `As a <role>, <observable property>` for invariants.
+- **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to
+  separate setup, action, and assertions.
 
 ```ts
-test("As a user using per-product smoldot, the host must only spawn one instance of the light client", async ({
+test('As a user using per-product smoldot, the host must only spawn one instance of the light client', async ({
   page,
 }) => {
   // Given
-  await setBackend(page, "smoldot-direct");
-  await mockProtocolIframe(page, successfulResolveResponse("bafyfake..."));
+  await setBackend(page, 'smoldot-direct');
+  await mockProtocolIframe(page, successfulResolveResponse('bafyfake...'));
   const workerUrls: string[] = [];
-  page.on("worker", (w) => {
+  page.on('worker', w => {
     workerUrls.push(w.url());
   });
 
   // When
-  await page.goto(HOST_URL, { waitUntil: "domcontentloaded" });
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(5_000);
 
   // Then
   const hostShellOrigin = `http://${DOMAIN}.localhost:${PORT}`;
   const hostShellSmoldotWorkers = workerUrls.filter(
-    (url) => url.startsWith(hostShellOrigin) && url.includes("smoldot_worker"),
+    url => url.startsWith(hostShellOrigin) && url.includes('smoldot_worker'),
   );
   expect(hostShellSmoldotWorkers).toEqual([]);
 });
@@ -35,11 +40,15 @@ test("As a user using per-product smoldot, the host must only spawn one instance
 
 ### Package boundaries
 
-Each workspace package exposes one entry, `src/index.ts`, listed as `"."` in its `exports`. Other packages import only from there (`import { log } from "@dotli/shared"`). Every other module under `src/` is private to its package.
+Each workspace package exposes one entry, `src/index.ts`, listed as `"."` in its `exports`. Other packages import only
+from there (`import { log } from "@dotli/shared"`). Every other module under `src/` is private to its package.
 
-- Inside a package, import relative paths with the `.js` extension (`./state/topbar.js`), as NodeNext resolution requires. ESLint rejects a `.ts` extension.
-- A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`, typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
-- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. CSS is exported as `./styles.css`.
+- Inside a package, import relative paths with the `.js` extension (`./state/topbar.js`), as NodeNext resolution
+  requires. ESLint rejects a `.ts` extension.
+- A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`,
+  typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
+- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. CSS is
+  exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
 
 ### How to Document
@@ -48,15 +57,25 @@ Good documentation starts with a single, clear sentence. Everything else comes a
 
 #### Principles
 
-1. **Lead with one sentence.** The first line of any doc comment should explain _what_ the thing does, not _how_. Additional context goes after a blank line.
-2. **Don't restate the code.** If the function signature already tells the story, don't repeat it in prose. Document _why_, not _what_.
+1. **Lead with one sentence.** The first line of any doc comment should explain _what_ the thing does, not _how_.
+   Additional context goes after a blank line.
+2. **Don't restate the code.** If the function signature already tells the story, don't repeat it in prose. Document
+   _why_, not _what_.
 3. **Use examples.** A short usage example is worth more than a paragraph of explanation.
-4. **Link to related items.** Help readers navigate. Reference related functions, types, or modules directly rather than describing them.
-5. **Think about context.** If you're explaining too many foreign concepts to document one function, the API design may need work.
-6. **No code section separators.** Don't use `// -----------` or similar decorative dividers to split sections within a file. Let the code structure speak for itself.
-7. **No em-dashes, semicolons, prose-conjunction `+`, or Unicode arrows (`→`, `←`, `↔`).** Rewrite the sentence. Two short sentences read better than one long one with a dash, and arrows belong in diagrams (where `->` is fine if it's a real arrow, not a stand-in for "becomes" or "then").
-8. **No external spec citations in code comments.** Don't write "per RFC 0001" or "see EIP-137" inside a comment. Explain the rule itself. If a reader needs the spec, the commit message and the PR description are the right place. Code comments stand alone.
-9. **No "on-chain" in prose.** Say "network" or "remote" instead. The host already knows the data sits on a chain. Calling it "the network value" reads naturally; "the on-chain value" reads as crypto jargon.
+4. **Link to related items.** Help readers navigate. Reference related functions, types, or modules directly rather than
+   describing them.
+5. **Think about context.** If you're explaining too many foreign concepts to document one function, the API design may
+   need work.
+6. **No code section separators.** Don't use `// -----------` or similar decorative dividers to split sections within a
+   file. Let the code structure speak for itself.
+7. **No em-dashes, semicolons, prose-conjunction `+`, or Unicode arrows (`→`, `←`, `↔`).** Rewrite the sentence. Two
+   short sentences read better than one long one with a dash, and arrows belong in diagrams (where `->` is fine if it's
+   a real arrow, not a stand-in for "becomes" or "then").
+8. **No external spec citations in code comments.** Don't write "per RFC 0001" or "see EIP-137" inside a comment.
+   Explain the rule itself. If a reader needs the spec, the commit message and the PR description are the right place.
+   Code comments stand alone.
+9. **No "on-chain" in prose.** Say "network" or "remote" instead. The host already knows the data sits on a chain.
+   Calling it "the network value" reads naturally; "the on-chain value" reads as crypto jargon.
 
 #### TypeScript
 

@@ -17,9 +17,9 @@
 // with `resolution-trace.ts`: that one samples a fraction of loads and keeps
 // only aggregates, where a debug panel has to show every load in full.
 
-import { escapeHtml } from "@dotli/shared";
-import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from "@dotli/config";
-import type { DotliDebugEvent } from "./dotli-debug-types.js";
+import { escapeHtml } from '@dotli/shared';
+import { CHAIN_ROLE_LABELS, CHAIN_ROLES, type ChainRole } from '@dotli/config';
+import type { DotliDebugEvent } from './dotli-debug-types.js';
 
 /** One phase a chain sat in. `endMs` is null while it is still sitting there. */
 export interface ResolutionBlock {
@@ -41,14 +41,14 @@ export interface ResolutionRow {
   warpAt: number | null;
   warpTarget: number | null;
   /** Whether the light client resumed this chain from its stored database. */
-  dbCache: "hit" | "miss" | null;
+  dbCache: 'hit' | 'miss' | null;
 }
 
-export type CacheResult = "hit" | "miss" | "skipped" | null;
+export type CacheResult = 'hit' | 'miss' | 'skipped' | null;
 
 export interface ResolutionSummary {
-  backend: "smoldot" | "rpc-gateway" | null;
-  outcome: "running" | "resolved" | "empty" | "failed";
+  backend: 'smoldot' | 'rpc-gateway' | null;
+  outcome: 'running' | 'resolved' | 'empty' | 'failed';
   failureReason: string | null;
   label: string | null;
   cid: string | null;
@@ -73,14 +73,7 @@ export interface ResolutionModel {
 }
 
 /** Layers the view reads. Everything else belongs to the Timeline. */
-const KEPT_LAYERS = new Set([
-  "boot",
-  "resolve",
-  "render",
-  "chain",
-  "sandbox",
-  "failover",
-]);
+const KEPT_LAYERS = new Set(['boot', 'resolve', 'render', 'chain', 'sandbox', 'failover']);
 
 /**
  * Retained copy of the events the view needs.
@@ -133,18 +126,18 @@ export function createResolutionRecorder(): ResolutionRecorder {
 }
 
 /** Phases with a colour of their own; anything else falls back to neutral. */
-const PHASE_CLASSES = new Set(["connecting", "syncing", "ready", "stalled"]);
+const PHASE_CLASSES = new Set(['connecting', 'syncing', 'ready', 'stalled']);
 
 function payloadOf(ev: DotliDebugEvent): Record<string, unknown> {
   return ev.payload;
 }
 
 function str(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
+  return typeof v === 'string' ? v : null;
 }
 
 function num(v: unknown): number | null {
-  return typeof v === "number" && Number.isFinite(v) ? v : null;
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
 }
 
 /**
@@ -158,14 +151,11 @@ function num(v: unknown): number | null {
  * Pure: `now` is passed in so the open block of an in-flight load can be drawn to
  * the current moment without the builder reaching for a clock.
  */
-export function buildResolution(
-  events: readonly DotliDebugEvent[],
-  now: number,
-): ResolutionModel {
+export function buildResolution(events: readonly DotliDebugEvent[], now: number): ResolutionModel {
   let bootAt = -1;
   for (let i = events.length - 1; i >= 0; i--) {
     const ev = events[i];
-    if (ev?.layer === "boot" && ev.event === "started") {
+    if (ev?.layer === 'boot' && ev.event === 'started') {
       bootAt = i;
       break;
     }
@@ -186,14 +176,14 @@ export function buildResolution(
   // Chains keep reporting long after the app is on screen. Bounding the window
   // at the moment the load finished keeps this a picture of the resolution
   // rather than a chart that grows for as long as the tab stays open.
-  const mine = load.filter((e) => e.timestamp <= endedAt);
+  const mine = load.filter(e => e.timestamp <= endedAt);
   const summary = buildSummary(mine, startedAt);
   // The product being on screen ends the load, whatever the resolve events
   // said. A resolution served from cache emits no `resolve:completed`, and a
   // recorder that started mid-load may not hold one. Without this the view
   // sits on "still running" for ever with its bars animating.
-  if (summary.outcome === "running" && isFinished(mine)) {
-    summary.outcome = summary.cid === null ? "empty" : "resolved";
+  if (summary.outcome === 'running' && isFinished(mine)) {
+    summary.outcome = summary.cid === null ? 'empty' : 'resolved';
   }
 
   return {
@@ -213,18 +203,15 @@ export function buildResolution(
  * than only the ones riding phase changes. Events after the window are the
  * network panel to report: this view freezes once the resolution is over.
  */
-function withLatestPeers(
-  rows: ResolutionRow[],
-  load: readonly DotliDebugEvent[],
-): ResolutionRow[] {
+function withLatestPeers(rows: ResolutionRow[], load: readonly DotliDebugEvent[]): ResolutionRow[] {
   const best = new Map<string, number>();
   for (const ev of load) {
-    if (ev.layer !== "chain" || ev.event !== "peers") {
+    if (ev.layer !== 'chain' || ev.event !== 'peers') {
       continue;
     }
     const p = payloadOf(ev);
-    const chain = str(p["chain"]);
-    const peers = num(p["peers"]);
+    const chain = str(p['chain']);
+    const peers = num(p['peers']);
     if (chain === null || peers === null) {
       continue;
     }
@@ -242,12 +229,10 @@ function withLatestPeers(
 /** Whether anything in the window says the product reached the screen. */
 function isFinished(mine: readonly DotliDebugEvent[]): boolean {
   return mine.some(
-    (ev) =>
-      (ev.layer === "render" && ev.event === "iframe_ready") ||
-      (ev.layer === "boot" &&
-        (ev.event === "ready" || ev.event === "failed")) ||
-      (ev.layer === "resolve" &&
-        (ev.event === "completed" || ev.event === "failed")),
+    ev =>
+      (ev.layer === 'render' && ev.event === 'iframe_ready') ||
+      (ev.layer === 'boot' && (ev.event === 'ready' || ev.event === 'failed')) ||
+      (ev.layer === 'resolve' && (ev.event === 'completed' || ev.event === 'failed')),
   );
 }
 
@@ -261,18 +246,16 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   let lastSandbox = 0;
   for (const ev of load) {
     if (
-      (ev.layer === "render" && ev.event === "iframe_ready") ||
-      (ev.layer === "boot" &&
-        (ev.event === "ready" || ev.event === "failed")) ||
-      (ev.layer === "resolve" &&
-        (ev.event === "completed" || ev.event === "failed"))
+      (ev.layer === 'render' && ev.event === 'iframe_ready') ||
+      (ev.layer === 'boot' && (ev.event === 'ready' || ev.event === 'failed')) ||
+      (ev.layer === 'resolve' && (ev.event === 'completed' || ev.event === 'failed'))
     ) {
       last = Math.max(last, ev.timestamp);
     }
-    if (ev.layer === "chain" && ev.event === "phase") {
+    if (ev.layer === 'chain' && ev.event === 'phase') {
       lastChainPhase = Math.max(lastChainPhase, ev.timestamp);
     }
-    if (ev.layer === "sandbox") {
+    if (ev.layer === 'sandbox') {
       lastSandbox = Math.max(lastSandbox, ev.timestamp);
     }
   }
@@ -288,11 +271,7 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
   // resolution, and following it would grow the chart for as long as the tab
   // stays open.
   const grace = last + LOAD_END_GRACE_MS;
-  return Math.max(
-    last,
-    Math.min(lastChainPhase, grace),
-    Math.min(lastSandbox, grace),
-  );
+  return Math.max(last, Math.min(lastChainPhase, grace), Math.min(lastSandbox, grace));
 }
 
 // How long after the paint a chain phase or sandbox report may still extend
@@ -300,11 +279,7 @@ function loadEnd(load: readonly DotliDebugEvent[], now: number): number {
 // short enough that the view settles and never moves again.
 const LOAD_END_GRACE_MS = 30_000;
 
-function buildRows(
-  mine: readonly DotliDebugEvent[],
-  startedAt: number,
-  endedAt: number,
-): ResolutionRow[] {
+function buildRows(mine: readonly DotliDebugEvent[], startedAt: number, endedAt: number): ResolutionRow[] {
   const byRole = new Map<ChainRole, ResolutionRow>();
   for (const role of CHAIN_ROLES) {
     byRole.set(role, {
@@ -321,39 +296,34 @@ function buildRows(
   }
 
   for (const ev of mine) {
-    if (ev.layer !== "chain") {
+    if (ev.layer !== 'chain') {
       continue;
     }
-    if (
-      ev.event !== "phase" &&
-      ev.event !== "peers" &&
-      ev.event !== "dbcache"
-    ) {
+    if (ev.event !== 'phase' && ev.event !== 'peers' && ev.event !== 'dbcache') {
       continue;
     }
     const p = payloadOf(ev);
-    const role = CHAIN_ROLES.find((r) => r === str(p["chain"]));
+    const role = CHAIN_ROLES.find(r => r === str(p['chain']));
     const row = role === undefined ? undefined : byRole.get(role);
     if (row === undefined) {
       continue;
     }
-    if (ev.event === "dbcache") {
-      const cache = str(p["dbCache"]);
-      if (cache === "hit" || cache === "miss") {
+    if (ev.event === 'dbcache') {
+      const cache = str(p['dbCache']);
+      if (cache === 'hit' || cache === 'miss') {
         // First answer wins, matching the resolver-side latch.
         row.dbCache ??= cache;
       }
       continue;
     }
-    if (ev.event === "peers") {
+    if (ev.event === 'peers') {
       // A peer change never opens a block of its own: the chain is still in
       // whatever phase it was already drawing.
-      const open =
-        row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
-      notePeers(row, num(p["peers"]), open?.phase ?? "unknown");
+      const open = row.blocks.length === 0 ? null : row.blocks[row.blocks.length - 1];
+      notePeers(row, num(p['peers']), open?.phase ?? 'unknown');
       continue;
     }
-    const phase = str(p["phase"]) ?? "unknown";
+    const phase = str(p['phase']) ?? 'unknown';
     const at = Math.max(0, ev.timestamp - startedAt);
     const previous = row.blocks.at(-1);
     if (previous !== undefined) {
@@ -362,9 +332,9 @@ function buildRows(
         // A warp update: the chain never left the phase, so the block it is
         // already drawing simply keeps running rather than being cut in two.
         previous.endMs = null;
-        notePeers(row, num(p["peers"]), phase);
-        row.warpAt = num(p["warpAt"]) ?? row.warpAt;
-        row.warpTarget = num(p["warpTarget"]) ?? row.warpTarget;
+        notePeers(row, num(p['peers']), phase);
+        row.warpAt = num(p['warpAt']) ?? row.warpAt;
+        row.warpTarget = num(p['warpTarget']) ?? row.warpTarget;
         continue;
       }
     }
@@ -372,11 +342,11 @@ function buildRows(
       phase,
       startMs: at,
       endMs: null,
-      reason: str(p["reason"]),
+      reason: str(p['reason']),
     });
-    notePeers(row, num(p["peers"]), phase);
-    row.warpAt = num(p["warpAt"]) ?? row.warpAt;
-    row.warpTarget = num(p["warpTarget"]) ?? row.warpTarget;
+    notePeers(row, num(p['peers']), phase);
+    row.warpAt = num(p['warpAt']) ?? row.warpAt;
+    row.warpTarget = num(p['warpTarget']) ?? row.warpTarget;
   }
 
   for (const row of byRole.values()) {
@@ -394,23 +364,17 @@ function buildRows(
     }
     last.endMs ??= Math.max(last.startMs, span);
   }
-  return CHAIN_ROLES.map((role) => byRole.get(role)).filter(
-    (row): row is ResolutionRow => row !== undefined,
-  );
+  return CHAIN_ROLES.map(role => byRole.get(role)).filter((row): row is ResolutionRow => row !== undefined);
 }
 
 /** Records a peer sample against the phase it arrived in. */
-function notePeers(
-  row: ResolutionRow,
-  peers: number | null,
-  phase: string,
-): void {
+function notePeers(row: ResolutionRow, peers: number | null, phase: string): void {
   if (peers === null) {
     return;
   }
   row.peers = peers;
   row.peersMax = Math.max(row.peersMax ?? 0, peers);
-  if (phase === "ready") {
+  if (phase === 'ready') {
     // Best seen while usable, not the newest. A chain reports `ready` with no
     // peers and gains them a moment later, and it also drops peers long after
     // the load finished. Neither should make the row read "0 peers".
@@ -421,7 +385,7 @@ function notePeers(
 function emptySummary(): ResolutionSummary {
   return {
     backend: null,
-    outcome: "running",
+    outcome: 'running',
     failureReason: null,
     label: null,
     cid: null,
@@ -438,10 +402,7 @@ function emptySummary(): ResolutionSummary {
   };
 }
 
-function buildSummary(
-  mine: readonly DotliDebugEvent[],
-  startedAt: number,
-): ResolutionSummary {
+function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): ResolutionSummary {
   const summary = emptySummary();
 
   let previousBytes: { at: number; total: number } | null = null;
@@ -454,94 +415,93 @@ function buildSummary(
     const p = payloadOf(ev);
     const key = `${ev.layer}:${ev.event}`;
     switch (key) {
-      case "resolve:started": {
-        const source = str(p["source"]);
-        if (source === "smoldot" || source === "rpc-gateway") {
+      case 'resolve:started': {
+        const source = str(p['source']);
+        if (source === 'smoldot' || source === 'rpc-gateway') {
           summary.backend = source;
         }
-        summary.label = str(p["label"]) ?? summary.label;
+        summary.label = str(p['label']) ?? summary.label;
         break;
       }
-      case "resolve:completed": {
-        const source = str(p["source"]);
-        if (source === "smoldot" || source === "rpc-gateway") {
+      case 'resolve:completed': {
+        const source = str(p['source']);
+        if (source === 'smoldot' || source === 'rpc-gateway') {
           summary.backend = source;
         }
-        summary.label = str(p["label"]) ?? summary.label;
-        summary.cid = str(p["cid"]);
-        summary.resolveMs = num(p["durationMs"]);
-        summary.outcome = summary.cid === null ? "empty" : "resolved";
+        summary.label = str(p['label']) ?? summary.label;
+        summary.cid = str(p['cid']);
+        summary.resolveMs = num(p['durationMs']);
+        summary.outcome = summary.cid === null ? 'empty' : 'resolved';
         break;
       }
-      case "resolve:failed":
-        summary.outcome = "failed";
-        summary.failureReason = str(p["reason"]);
-        summary.label = str(p["label"]) ?? summary.label;
+      case 'resolve:failed':
+        summary.outcome = 'failed';
+        summary.failureReason = str(p['reason']);
+        summary.label = str(p['label']) ?? summary.label;
         break;
-      case "boot:failed":
-        summary.outcome = "failed";
-        summary.failureReason = str(p["reason"]);
+      case 'boot:failed':
+        summary.outcome = 'failed';
+        summary.failureReason = str(p['reason']);
         break;
-      case "render:iframe_ready":
+      case 'render:iframe_ready':
         summary.renderedMs = Math.max(0, ev.timestamp - startedAt);
         break;
-      case "boot:ready":
+      case 'boot:ready':
         // Fallback for a load whose render event never reached the recorder.
         // `??=` so the render event, which is the more precise mark, wins.
         summary.renderedMs ??= Math.max(0, ev.timestamp - startedAt);
         break;
-      case "boot:started": {
+      case 'boot:started': {
         // The authoritative backend for the load. `resolve:started` also
         // carries one, but a load served from the CID cache never emits a
         // resolve event at all, and without this the gateway rows rendered as
         // four chains that "never started" when no light client had ever run.
-        const backend = str(p["chainBackend"]);
-        if (backend === "rpc-gateway") {
-          summary.backend = "rpc-gateway";
-        } else if (backend?.startsWith("smoldot") === true) {
-          summary.backend = "smoldot";
+        const backend = str(p['chainBackend']);
+        if (backend === 'rpc-gateway') {
+          summary.backend = 'rpc-gateway';
+        } else if (backend?.startsWith('smoldot') === true) {
+          summary.backend = 'smoldot';
         }
         // A cache the user turned off never reports a result. Seed the fields
         // here so the panel says so instead of "not reported", which reads as
         // a missing instrumentation hook.
-        if (p["skipCidCache"] === true) {
-          summary.cidCache = "skipped";
+        if (p['skipCidCache'] === true) {
+          summary.cidCache = 'skipped';
         }
-        if (p["skipArchiveCache"] === true) {
-          summary.archiveCache = "skipped";
+        if (p['skipArchiveCache'] === true) {
+          summary.archiveCache = 'skipped';
         }
         break;
       }
-      case "boot:cid_cache_checked":
-        summary.cidCache = p["hit"] === true ? "hit" : "miss";
+      case 'boot:cid_cache_checked':
+        summary.cidCache = p['hit'] === true ? 'hit' : 'miss';
         // A cache hit resolves the name without a `resolve:completed` event.
         // `??=` so a later real resolve still wins if both somehow appear.
-        if (p["hit"] === true) {
-          summary.cid ??= str(p["cid"]);
-          summary.label ??= str(p["label"]);
+        if (p['hit'] === true) {
+          summary.cid ??= str(p['cid']);
+          summary.label ??= str(p['label']);
           // The moment the CID was known, which is what "resolved in" means on
           // this path. Without it the field read "—" beside outcome "resolved".
           summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
         }
         break;
-      case "boot:block_cache":
-        summary.archiveCache =
-          num(p["misses"]) === 0 && (num(p["hits"]) ?? 0) > 0 ? "hit" : "miss";
+      case 'boot:block_cache':
+        summary.archiveCache = num(p['misses']) === 0 && (num(p['hits']) ?? 0) > 0 ? 'hit' : 'miss';
         break;
-      case "sandbox:document_written":
-        summary.appBytes = num(p["bytes"]);
-        summary.appFileCount = num(p["fileCount"]);
+      case 'sandbox:document_written':
+        summary.appBytes = num(p['bytes']);
+        summary.appFileCount = num(p['fileCount']);
         paintedMs = Math.max(0, ev.timestamp - startedAt);
         break;
-      case "failover:chain_backend": {
-        const to = str(p["to"]);
-        if (to === "smoldot" || to === "rpc-gateway") {
+      case 'failover:chain_backend': {
+        const to = str(p['to']);
+        if (to === 'smoldot' || to === 'rpc-gateway') {
           summary.backend = to;
         }
         break;
       }
-      case "chain:bytes": {
-        const total = num(p["received"]);
+      case 'chain:bytes': {
+        const total = num(p['received']);
         if (total === null) {
           break;
         }
@@ -553,10 +513,7 @@ function buildSummary(
           const seconds = (ev.timestamp - previousBytes.at) / 1000;
           if (seconds > 0) {
             const rate = (total - previousBytes.total) / seconds;
-            summary.peakBytesPerSecond = Math.max(
-              summary.peakBytesPerSecond ?? 0,
-              rate,
-            );
+            summary.peakBytesPerSecond = Math.max(summary.peakBytesPerSecond ?? 0, rate);
           }
         }
         previousBytes = { at: ev.timestamp, total };
@@ -578,18 +535,15 @@ function buildSummary(
 }
 
 export function buildResolutionContainer(): { container: HTMLDivElement } {
-  const container = document.createElement("div");
-  container.className = "td-res";
+  const container = document.createElement('div');
+  container.className = 'td-res';
   return { container };
 }
 
 /** How many labels the time axis carries. */
 const AXIS_TICKS = 5;
 
-export function renderResolution(
-  container: HTMLDivElement,
-  model: ResolutionModel,
-): void {
+export function renderResolution(container: HTMLDivElement, model: ResolutionModel): void {
   if (model.flowId === null) {
     container.innerHTML = `<div class="td-res-empty">No page load recorded yet. Reload the page with the panel open.</div>`;
     return;
@@ -626,71 +580,71 @@ function summaryFacts(model: ResolutionModel): Fact[] {
   const s = model.summary;
   return [
     {
-      key: "name",
-      value: s.label ?? "—",
-      hint: "The .dot name this page load resolved.",
+      key: 'name',
+      value: s.label ?? '—',
+      hint: 'The .dot name this page load resolved.',
     },
     {
-      key: "outcome",
-      value: "",
+      key: 'outcome',
+      value: '',
       valueHtml: outcomeText(s),
-      hint: "How far the load got. \u201cResolved\u201d means a content id was found for the name. That alone does not mean the app rendered. Read \u201capp on screen\u201d for that.",
+      hint: 'How far the load got. \u201cResolved\u201d means a content id was found for the name. That alone does not mean the app rendered. Read \u201capp on screen\u201d for that.',
     },
     {
-      key: "network transport",
-      value: "",
+      key: 'network transport',
+      value: '',
       valueHtml: transportText(s),
-      hint: "How this load reached the chain. The smoldot light client verifies blocks itself. The RPC gateway trusts a remote node to answer honestly.",
+      hint: 'How this load reached the chain. The smoldot light client verifies blocks itself. The RPC gateway trusts a remote node to answer honestly.',
     },
     {
-      key: "elapsed",
+      key: 'elapsed',
       value: formatMs(model.elapsedMs),
-      hint: "The duration of the whole load, from the host starting up to the app being on screen.",
+      hint: 'The duration of the whole load, from the host starting up to the app being on screen.',
     },
     {
-      key: "resolved in",
-      value: s.resolveMs === null ? "—" : formatMs(s.resolveMs),
-      hint: "How long it took to turn the name into a content id. On a cache hit this is the moment the stored id was read, not a chain lookup.",
+      key: 'resolved in',
+      value: s.resolveMs === null ? '—' : formatMs(s.resolveMs),
+      hint: 'How long it took to turn the name into a content id. On a cache hit this is the moment the stored id was read, not a chain lookup.',
     },
     {
-      key: "app on screen",
-      value: s.renderedMs === null ? "—" : formatMs(s.renderedMs),
-      hint: "When the sandbox wrote the app document. This is the app actually visible, not the iframe being created, which happens seconds earlier on a cold load.",
+      key: 'app on screen',
+      value: s.renderedMs === null ? '—' : formatMs(s.renderedMs),
+      hint: 'When the sandbox wrote the app document. This is the app actually visible, not the iframe being created, which happens seconds earlier on a cold load.',
     },
     {
-      key: "first byte",
-      value: s.firstByteMs === null ? "—" : formatMs(s.firstByteMs),
-      hint: "Roughly when data first moved. The byte counter is sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.",
+      key: 'first byte',
+      value: s.firstByteMs === null ? '—' : formatMs(s.firstByteMs),
+      hint: 'Roughly when data first moved. The byte counter is sampled about once a second, so treat this as an upper bound. Everything before it is finding peers and opening connections.',
     },
     {
-      key: "downloaded during connection",
-      value: s.totalBytes === null ? "—" : formatBytes(s.totalBytes),
-      hint: "Every byte the light client pulled off the network, counted from boot until the app frame was attached.",
+      key: 'downloaded during connection',
+      value: s.totalBytes === null ? '—' : formatBytes(s.totalBytes),
+      hint: 'Every byte the light client pulled off the network, counted from boot until the app frame was attached.',
     },
     {
-      key: "app size",
+      key: 'app size',
       value: appSizeText(s),
       hint: "How big the app is once unpacked, and how many files it came in. Its blocks came over the connections the light client already holds, or straight from blocks the host's block cache already had.",
     },
     {
-      key: "average speed",
+      key: 'average speed',
       value: formatRate(s.avgBytesPerSecond),
-      hint: "The bytes downloaded during connection divided by the time they took to arrive. The wait before any data moved is included, so it reads lower than the real link speed.",
+      hint: 'The bytes downloaded during connection divided by the time they took to arrive. The wait before any data moved is included, so it reads lower than the real link speed.',
     },
     {
-      key: "peak speed",
+      key: 'peak speed',
       value: formatRate(s.peakBytesPerSecond),
-      hint: "The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.",
+      hint: 'The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.',
     },
     {
-      key: "CID cache",
-      value: "",
+      key: 'CID cache',
+      value: '',
       valueHtml: cacheText(s.cidCache),
-      hint: "Whether the content id for this name was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.",
+      hint: 'Whether the content id for this name was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.',
     },
     {
-      key: "archive cache",
-      value: "",
+      key: 'archive cache',
+      value: '',
       valueHtml: cacheText(s.archiveCache),
       hint: "Whether the blocks the app needed were already in the host's block cache, so nothing had to be fetched from the network. \u201cSkipped\u201d means the cache is turned off in settings.",
     },
@@ -700,34 +654,34 @@ function summaryFacts(model: ResolutionModel): Fact[] {
 function renderSummary(model: ResolutionModel): string {
   const cards = summaryFacts(model)
     .map(
-      (fact) =>
+      fact =>
         `<div class="td-res-fact"><dt>${escapeHtml(fact.key)}` +
         `<span class="td-res-info" data-tooltip="${escapeHtml(fact.hint)}" data-tooltip-prose aria-hidden="true">i</span>` +
         `</dt><dd>${fact.valueHtml ?? escapeHtml(fact.value)}</dd></div>`,
     )
-    .join("");
+    .join('');
   return `<dl class="td-res-summary">${cards}</dl>`;
 }
 
 function outcomeText(s: ResolutionSummary): string {
   switch (s.outcome) {
-    case "running":
+    case 'running':
       return `<span class="td-res-outcome is-running">still running</span>`;
-    case "resolved":
+    case 'resolved':
       return `<span class="td-res-outcome is-ok">resolved</span>`;
-    case "empty":
+    case 'empty':
       return `<span class="td-res-outcome is-warn">no content set</span>`;
-    case "failed":
-      return `<span class="td-res-outcome is-bad" data-tooltip="${escapeHtml(s.failureReason ?? "no reason reported")}" data-tooltip-prose>failed</span>`;
+    case 'failed':
+      return `<span class="td-res-outcome is-bad" data-tooltip="${escapeHtml(s.failureReason ?? 'no reason reported')}" data-tooltip-prose>failed</span>`;
   }
 }
 
 function transportText(s: ResolutionSummary): string {
   switch (s.backend) {
-    case "smoldot":
-      return "smoldot light client";
-    case "rpc-gateway":
-      return "RPC gateway";
+    case 'smoldot':
+      return 'smoldot light client';
+    case 'rpc-gateway':
+      return 'RPC gateway';
     case null:
       return `<span class="td-res-dim">not reported</span>`;
   }
@@ -735,42 +689,40 @@ function transportText(s: ResolutionSummary): string {
 
 function appSizeText(s: ResolutionSummary): string {
   if (s.appBytes === null) {
-    return "—";
+    return '—';
   }
   const files = s.appFileCount;
   if (files === null) {
     return formatBytes(s.appBytes);
   }
-  return `${formatBytes(s.appBytes)} in ${String(files)} file${files === 1 ? "" : "s"}`;
+  return `${formatBytes(s.appBytes)} in ${String(files)} file${files === 1 ? '' : 's'}`;
 }
 
 function cacheText(result: CacheResult): string {
   if (result === null) {
     return `<span class="td-res-dim">not reported</span>`;
   }
-  if (result === "hit") {
+  if (result === 'hit') {
     return `<span class="td-res-outcome is-ok">hit</span>`;
   }
-  if (result === "skipped") {
+  if (result === 'skipped') {
     return `<span class="td-res-dim">skipped (turned off)</span>`;
   }
   return `<span class="td-res-dim">miss</span>`;
 }
 
 function renderChart(model: ResolutionModel): string {
-  if (model.summary.backend === "rpc-gateway") {
-    return "";
+  if (model.summary.backend === 'rpc-gateway') {
+    return '';
   }
   const span = Math.max(1, model.elapsedMs);
   const axis = Array.from({ length: AXIS_TICKS + 1 }, (_, i) => {
     const at = (span * i) / AXIS_TICKS;
     const pct = (i / AXIS_TICKS) * 100;
     return `<span class="td-res-tick" style="left:${pct.toFixed(3)}%">${formatMs(at)}</span>`;
-  }).join("");
+  }).join('');
 
-  const rows = model.rows
-    .map((row) => renderRow(row, span, model.summary.outcome === "running"))
-    .join("");
+  const rows = model.rows.map(row => renderRow(row, span, model.summary.outcome === 'running')).join('');
 
   return (
     `<div class="td-res-chart">` +
@@ -798,19 +750,19 @@ function renderRow(row: ResolutionRow, span: number, running: boolean): string {
       const open = running && i === last;
       const title = [
         `${b.phase} for ${formatMs(end - b.startMs)}`,
-        `from ${formatMs(b.startMs)} to ${open ? "now" : formatMs(end)}`,
+        `from ${formatMs(b.startMs)} to ${open ? 'now' : formatMs(end)}`,
         b.reason,
       ]
         .filter((line): line is string => line !== null)
-        .join("\n");
+        .join('\n');
       return (
-        `<div class="td-res-block is-${escapeHtml(phaseClass(b.phase))}${open ? " is-open" : ""}"` +
+        `<div class="td-res-block is-${escapeHtml(phaseClass(b.phase))}${open ? ' is-open' : ''}"` +
         ` style="left:${left.toFixed(3)}%;width:${width.toFixed(3)}%"` +
         ` title="${escapeHtml(title)}">` +
         `<span class="td-res-block-label">${escapeHtml(b.phase)}</span></div>`
       );
     })
-    .join("");
+    .join('');
   return (
     `<div class="td-res-row">${name}` +
     `<div class="td-res-track">${blocks}</div>` +
@@ -821,7 +773,7 @@ function renderRow(row: ResolutionRow, span: number, running: boolean): string {
 function rowMeta(row: ResolutionRow): string {
   const parts: string[] = [];
   if (row.peers !== null) {
-    parts.push(`${String(row.peers)} peer${row.peers === 1 ? "" : "s"}`);
+    parts.push(`${String(row.peers)} peer${row.peers === 1 ? '' : 's'}`);
   }
   if (row.warpAt !== null && row.warpTarget !== null) {
     parts.push(`warped to ${String(row.warpAt)} of ${String(row.warpTarget)}`);
@@ -829,11 +781,11 @@ function rowMeta(row: ResolutionRow): string {
   if (row.dbCache !== null) {
     parts.push(`db ${row.dbCache}`);
   }
-  return parts.join(" · ");
+  return parts.join(' · ');
 }
 
 function phaseClass(phase: string): string {
-  return PHASE_CLASSES.has(phase) ? phase : "unknown";
+  return PHASE_CLASSES.has(phase) ? phase : 'unknown';
 }
 
 function formatMs(ms: number): string {
@@ -855,7 +807,7 @@ function formatBytes(bytes: number): string {
 
 function formatRate(bytesPerSecond: number | null): string {
   if (bytesPerSecond === null) {
-    return "—";
+    return '—';
   }
   return `${formatBytes(bytesPerSecond)}/s`;
 }

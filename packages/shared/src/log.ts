@@ -19,9 +19,9 @@
 // `metrics.setDefaults` so logs and metrics agree on which mode/provider
 // was active.
 
-import { DEBUG } from "@dotli/config";
+import { DEBUG } from '@dotli/config';
 
-export type LogLevel = "debug" | "info" | "warn" | "error";
+export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 export interface LogSink {
   /**
@@ -29,12 +29,7 @@ export interface LogSink {
    * decides whether to forward to Sentry, console, etc. Sinks must not
    * throw. Failures here are silent.
    */
-  emit: (
-    level: LogLevel,
-    message: string,
-    attrs?: Record<string, unknown>,
-    args?: unknown[],
-  ) => void;
+  emit: (level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]) => void;
 }
 
 let sink: LogSink | null = null;
@@ -48,12 +43,7 @@ export function bindLogSink(next: LogSink): void {
   sink = next;
 }
 
-function safeEmit(
-  level: LogLevel,
-  message: string,
-  attrs?: Record<string, unknown>,
-  args?: unknown[],
-): void {
+function safeEmit(level: LogLevel, message: string, attrs?: Record<string, unknown>, args?: unknown[]): void {
   const s = sink;
   if (s === null) {
     return;
@@ -87,13 +77,13 @@ function createLogger(scope: Record<string, unknown>): BoundLogger {
       if (DEBUG) {
         console.warn(...args);
       }
-      safeEmit("warn", stringifyArgs(args), scope, args);
+      safeEmit('warn', stringifyArgs(args), scope, args);
     },
     error: (...args: unknown[]) => {
       if (DEBUG) {
         console.error(...args);
       }
-      safeEmit("error", stringifyArgs(args), scope, args);
+      safeEmit('error', stringifyArgs(args), scope, args);
     },
     event: (name: string, attrs?: Record<string, unknown>) => {
       const merged = attrs === undefined ? scope : { ...scope, ...attrs };
@@ -101,40 +91,37 @@ function createLogger(scope: Record<string, unknown>): BoundLogger {
         // eslint-disable-next-line no-console -- intentional info channel
         console.info(`[event] ${name}`, merged);
       }
-      safeEmit("info", name, merged);
+      safeEmit('info', name, merged);
     },
-    child: (extra: Record<string, unknown>) =>
-      createLogger({ ...scope, ...extra }),
+    child: (extra: Record<string, unknown>) => createLogger({ ...scope, ...extra }),
   };
 }
 
 function stringifyArgs(args: unknown[]): string {
   if (args.length === 0) {
-    return "";
+    return '';
   }
   if (args.length === 1) {
     const a = args[0];
-    return typeof a === "string" ? a : safeToString(a);
+    return typeof a === 'string' ? a : safeToString(a);
   }
-  return args
-    .map((a) => (typeof a === "string" ? a : safeToString(a)))
-    .join(" ");
+  return args.map(a => (typeof a === 'string' ? a : safeToString(a))).join(' ');
 }
 
 function safeToString(v: unknown): string {
   if (v === null) {
-    return "null";
+    return 'null';
   }
   if (v === undefined) {
-    return "undefined";
+    return 'undefined';
   }
   if (v instanceof Error) {
-    return v.message || v.name || "Error";
+    return v.message || v.name || 'Error';
   }
-  if (typeof v === "object") {
+  if (typeof v === 'object') {
     try {
       const json = JSON.stringify(v);
-      if (typeof json === "string") {
+      if (typeof json === 'string') {
         return json;
       }
       return Object.prototype.toString.call(v);
@@ -142,16 +129,16 @@ function safeToString(v: unknown): string {
       return Object.prototype.toString.call(v);
     }
   }
-  if (typeof v === "symbol") {
+  if (typeof v === 'symbol') {
     return v.toString();
   }
-  if (typeof v === "function") {
-    return v.name ? `[function ${v.name}]` : "[function]";
+  if (typeof v === 'function') {
+    return v.name ? `[function ${v.name}]` : '[function]';
   }
-  if (typeof v === "bigint") {
+  if (typeof v === 'bigint') {
     return v.toString();
   }
-  if (typeof v === "number" || typeof v === "boolean") {
+  if (typeof v === 'number' || typeof v === 'boolean') {
     return v.toString();
   }
   return Object.prototype.toString.call(v);

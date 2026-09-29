@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onCleanup } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { topbarStore } from "../../state/topbar.js";
-import { useStore } from "../use-store.js";
+import { createSignal, onCleanup } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { topbarStore } from '../../state/topbar.js';
+import { useStore } from '../use-store.js';
 
 /**
  * The topbar's offline banner (`#offline-banner`), a shell island (see
@@ -24,11 +24,11 @@ export function OfflineBanner(): JSX.Element {
   const update = (): void => {
     setOnline(navigator.onLine);
   };
-  window.addEventListener("online", update);
-  window.addEventListener("offline", update);
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
   onCleanup(() => {
-    window.removeEventListener("online", update);
-    window.removeEventListener("offline", update);
+    window.removeEventListener('online', update);
+    window.removeEventListener('offline', update);
   });
 
   return (
@@ -37,19 +37,19 @@ export function OfflineBanner(): JSX.Element {
       role="status"
       aria-live="polite"
       style={{
-        position: "absolute",
-        top: "100%",
-        left: "0",
-        right: "0",
-        "z-index": "999",
-        background: "#b45309",
-        color: "#fff",
-        "font-size": "0.75rem",
-        "font-weight": "500",
-        "text-align": "center",
-        padding: "4px 12px",
-        "letter-spacing": "0.02em",
-        display: !online() && topbar().visible ? "block" : "none",
+        position: 'absolute',
+        top: '100%',
+        left: '0',
+        right: '0',
+        'z-index': '999',
+        background: '#b45309',
+        color: '#fff',
+        'font-size': '0.75rem',
+        'font-weight': '500',
+        'text-align': 'center',
+        padding: '4px 12px',
+        'letter-spacing': '0.02em',
+        display: !online() && topbar().visible ? 'block' : 'none',
       }}
     >
       You are offline

@@ -1,14 +1,4 @@
 {
-  "extends": [
-    "@dotli/typescript-config/base.json",
-    "@dotli/typescript-config/solid.json"
-  ],
-  "include": [
-    "src",
-    "tests",
-    "vite.config.ts",
-    "vitest.config.ts",
-    "eslint.config.js",
-    "sentry-check.ts"
-  ]
+  "extends": ["@dotli/typescript-config/base.json", "@dotli/typescript-config/solid.json"],
+  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "eslint.config.js", "sentry-check.ts"]
 }

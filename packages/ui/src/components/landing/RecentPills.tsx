@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, onCleanup, Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { getActiveTldSuffix } from "@dotli/config";
-import { forgetRecentLabel, loadRecentLabels } from "../../recent-labels.js";
-import { dotUrl } from "./dot-url.js";
+import { createSignal, For, onCleanup, Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { getActiveTldSuffix } from '@dotli/config';
+import { forgetRecentLabel, loadRecentLabels } from '../../recent-labels.js';
+import { dotUrl } from './dot-url.js';
 
 // Touch has no hover, so a long press on a pill reveals its remove button
 // instead of navigating.
@@ -25,26 +25,24 @@ export function RecentPills(): JSX.Element {
   const [revealed, setRevealed] = createSignal<string | null>(null);
   let container: HTMLDivElement | undefined;
 
-  void loadRecentLabels().then((loaded) => {
+  void loadRecentLabels().then(loaded => {
     setLabels(loaded);
   });
 
   const itemOf = (target: EventTarget | null): HTMLElement | null =>
-    target instanceof Element
-      ? target.closest<HTMLElement>(".landing-recent-item")
-      : null;
+    target instanceof Element ? target.closest<HTMLElement>('.landing-recent-item') : null;
 
   // Native listeners, like the shell's islands (components/shell/islands.tsx).
   const onClick = (e: MouseEvent): void => {
     const item = itemOf(e.target);
-    const label = item?.dataset["label"];
+    const label = item?.dataset['label'];
     if (item === null || label === undefined) {
       return;
     }
-    if ((e.target as Element).closest(".landing-recent-remove") !== null) {
+    if ((e.target as Element).closest('.landing-recent-remove') !== null) {
       e.preventDefault();
       void forgetRecentLabel(label);
-      setLabels((all) => all.filter((l) => l !== label));
+      setLabels(all => all.filter(l => l !== label));
       return;
     }
     // A long press revealed the remove button, so swallow the tap that ends it
@@ -62,7 +60,7 @@ export function RecentPills(): JSX.Element {
     }
   };
   const onTouchStart = (e: Event): void => {
-    const label = itemOf(e.target)?.dataset["label"];
+    const label = itemOf(e.target)?.dataset['label'];
     if (label === undefined || revealed() === label) {
       return;
     }
@@ -79,21 +77,21 @@ export function RecentPills(): JSX.Element {
       setRevealed(null);
     }
   };
-  document.addEventListener("pointerdown", onDocumentPointerDown);
+  document.addEventListener('pointerdown', onDocumentPointerDown);
   onCleanup(() => {
-    document.removeEventListener("pointerdown", onDocumentPointerDown);
+    document.removeEventListener('pointerdown', onDocumentPointerDown);
     cancelPress();
   });
 
   return (
     <div
-      ref={(el) => {
+      ref={el => {
         container = el;
-        el.addEventListener("click", onClick);
-        el.addEventListener("touchstart", onTouchStart, { passive: true });
-        el.addEventListener("touchmove", cancelPress, { passive: true });
-        el.addEventListener("touchend", cancelPress, { passive: true });
-        el.addEventListener("touchcancel", cancelPress, { passive: true });
+        el.addEventListener('click', onClick);
+        el.addEventListener('touchstart', onTouchStart, { passive: true });
+        el.addEventListener('touchmove', cancelPress, { passive: true });
+        el.addEventListener('touchend', cancelPress, { passive: true });
+        el.addEventListener('touchcancel', cancelPress, { passive: true });
       }}
       id="dotli-recent"
       class="landing-recent"
@@ -102,11 +100,11 @@ export function RecentPills(): JSX.Element {
       <Show when={labels().length > 0}>
         <div class="landing-recent-list">
           <For each={labels()}>
-            {(label) => (
+            {label => (
               <span
                 class={{
-                  "landing-recent-item": true,
-                  "is-removable": revealed() === label,
+                  'landing-recent-item': true,
+                  'is-removable': revealed() === label,
                 }}
                 data-label={label}
               >

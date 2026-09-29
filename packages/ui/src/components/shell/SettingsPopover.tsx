@@ -1,38 +1,30 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, createSignal, For, Show, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import {
-  BACKEND_LABELS,
-  type Backend,
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  type Network,
-} from "@dotli/config";
+import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
-import { applyAndReset, type ModeDraft } from "../../settings-actions.js";
-import { settingsStore, type SettingsState } from "../../state/settings.js";
-import { useStore } from "../use-store.js";
-import { Diagnostics } from "./Diagnostics.js";
-import { createPopover } from "./popover.js";
-import { CacheToggle, RadioRow, SectionHeader } from "./SettingsRows.js";
+import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
+import { settingsStore, type SettingsState } from '../../state/settings.js';
+import { useStore } from '../use-store.js';
+import { Diagnostics } from './Diagnostics.js';
+import { createPopover } from './popover.js';
+import { CacheToggle, RadioRow, SectionHeader } from './SettingsRows.js';
 
 const SETTINGS_ICON_PATH =
-  "M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z";
+  'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
 
 /**
  * Where the popover becomes a full-screen sheet: the breakpoint of
  * `.mode-popover` in styles/topbar.css.
  */
-const SHEET_QUERY = "(max-width: 560px)";
+const SHEET_QUERY = '(max-width: 560px)';
 
 const CHAIN_CHOICES: [Backend, string][] = [
-  [
-    "smoldot-direct",
-    "Verified in your browser, separate per tab (recommended)",
-  ],
-  ["smoldot-shared-worker", "Verified in your browser, shared across tabs"],
-  ["rpc-gateway", "Fetched from trusted servers, fastest but less private"],
+  ['smoldot-direct', 'Verified in your browser, separate per tab (recommended)'],
+  ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
+  ['rpc-gateway', 'Fetched from trusted servers, fastest but less private'],
 ];
 
 /**
@@ -47,8 +39,8 @@ function SheetHeader(props: { close: () => void }): JSX.Element {
     <div class="mode-popover-sheet-header">
       <span class="mode-popover-sheet-title">Settings</span>
       <button
-        ref={(el) => {
-          el.addEventListener("click", props.close);
+        ref={el => {
+          el.addEventListener('click', props.close);
         }}
         class="mode-popover-sheet-close"
         aria-label="Close settings"
@@ -115,8 +107,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   };
 
   const networks = saved.enabledNetworks;
-  const unavailable = (value: Backend): boolean =>
-    value === "smoldot-shared-worker" && !saved.sharedWorkerAvailable;
+  const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
 
   return (
     <>
@@ -130,14 +121,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               <SectionHeader text="Network" />
               <div role="radiogroup" aria-label="Network">
                 <For each={networks}>
-                  {(value) => (
+                  {value => (
                     <RadioRow
                       name="dotli-network"
                       value={value}
                       label={NETWORK_NAME_TO_SERVICES_CONFIG[value].label}
-                      description={
-                        NETWORK_NAME_TO_SERVICES_CONFIG[value].description
-                      }
+                      description={NETWORK_NAME_TO_SERVICES_CONFIG[value].description}
                       selected={network() === value}
                       choose={() => {
                         setNetwork(value);
@@ -153,9 +142,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               must line up with Diagnostics opposite. */}
           <SectionHeader
             text="Network Transport"
-            modifier={
-              networks.length > 1 ? "mode-popover-section--spaced" : undefined
-            }
+            modifier={networks.length > 1 ? 'mode-popover-section--spaced' : undefined}
           />
           <div role="radiogroup" aria-label="Network Transport">
             <For each={CHAIN_CHOICES}>
@@ -164,11 +151,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
                   name="dotli-backend"
                   value={value}
                   label={BACKEND_LABELS[value]}
-                  description={
-                    unavailable(value)
-                      ? "Unavailable in this browser or private window"
-                      : description
-                  }
+                  description={unavailable(value) ? 'Unavailable in this browser or private window' : description}
                   selected={chain() === value}
                   disabled={unavailable(value)}
                   choose={() => {
@@ -182,15 +165,15 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           <CacheToggle
             label="dotNS cache"
             checked={!persisted.cache.skipCidCache}
-            update={(enabled) => {
-              setCache((c) => ({ ...c, skipCidCache: !enabled }));
+            update={enabled => {
+              setCache(c => ({ ...c, skipCidCache: !enabled }));
             }}
           />
           <CacheToggle
             label="Archive cache"
             checked={!persisted.cache.skipArchiveCache}
-            update={(enabled) => {
-              setCache((c) => ({ ...c, skipArchiveCache: !enabled }));
+            update={enabled => {
+              setCache(c => ({ ...c, skipArchiveCache: !enabled }));
             }}
           />
           {/* Worker cache: when off, the protocol iframe purges its IDB
@@ -200,8 +183,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           <CacheToggle
             label="Worker cache"
             checked={!persisted.cache.skipWorkerCache}
-            update={(enabled) => {
-              setCache((c) => ({ ...c, skipWorkerCache: !enabled }));
+            update={enabled => {
+              setCache(c => ({ ...c, skipWorkerCache: !enabled }));
             }}
           />
           {/* Manual "clear everything" escape hatch, through the same
@@ -209,14 +192,14 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               toggle a setting back and forth just to wipe state. */}
           <div class="mode-cache-row mode-clear-all-row">
             <button
-              ref={(el) => {
-                el.addEventListener("click", clearAll);
+              ref={el => {
+                el.addEventListener('click', clearAll);
               }}
               class="mode-clear-btn"
               title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
               disabled={clearing()}
             >
-              {clearing() ? "Clearing…" : "Clear all caches"}
+              {clearing() ? 'Clearing…' : 'Clear all caches'}
             </button>
           </div>
         </div>
@@ -232,19 +215,19 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <div class="mode-popover-divider" />
         <div class="mode-cache-row mode-apply-row">
           <button
-            ref={(el) => {
-              el.addEventListener("click", apply);
+            ref={el => {
+              el.addEventListener('click', apply);
             }}
-            class={`mode-clear-btn${dirty() ? " mode-apply-dirty" : ""}`}
+            class={`mode-clear-btn${dirty() ? ' mode-apply-dirty' : ''}`}
             disabled={!dirty() || applying()}
           >
-            {applying() ? "Resetting…" : "Save & Apply"}
+            {applying() ? 'Resetting…' : 'Save & Apply'}
           </button>
         </div>
         {/* Applying reloads the app. Backend and network changes keep
             caches warm; only caches the user turns off get cleared. Shown
             only while the draft is dirty so the idle popover isn't noisy. */}
-        <p class={`mode-apply-warning${dirty() ? " visible" : ""}`}>
+        <p class={`mode-apply-warning${dirty() ? ' visible' : ''}`}>
           Applying reloads the app. Caches you turn off are cleared.
         </p>
       </div>
@@ -291,7 +274,7 @@ export function SettingsPopover(): JSX.Element {
   const [sheet, setSheet] = createSignal(false);
   const surface = createPopover({
     // Asked as it opens, after the click below set `sheet`.
-    mode: () => (untrack(sheet) ? "dialog" : "popover"),
+    mode: () => (untrack(sheet) ? 'dialog' : 'popover'),
     trigger: () => button,
     surface: () => popover,
   });
@@ -306,26 +289,22 @@ export function SettingsPopover(): JSX.Element {
   return (
     <>
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
-          el.addEventListener("click", () => {
+          el.addEventListener('click', () => {
             if (!untrack(surface.open)) {
-              setOpening((n) => n + 1);
+              setOpening(n => n + 1);
               setSheet(window.matchMedia(SHEET_QUERY).matches);
             }
             surface.toggle();
           });
         }}
         id="mode-button"
-        class={
-          settings()?.verified === false
-            ? "topbar-btn gateway-mode"
-            : "topbar-btn"
-        }
+        class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
         title="Settings"
         aria-label="Settings"
         aria-haspopup="dialog"
-        aria-expanded={surface.open() ? "true" : "false"}
+        aria-expanded={surface.open() ? 'true' : 'false'}
         aria-controls="mode-popover"
       >
         <svg
@@ -344,21 +323,21 @@ export function SettingsPopover(): JSX.Element {
       </button>
       {/* Blocks clicks under the popover and dismisses it when clicked. */}
       <div
-        ref={(el) => {
-          el.addEventListener("click", close);
+        ref={el => {
+          el.addEventListener('click', close);
         }}
-        class={`mode-popover-backdrop${surface.open() ? " open" : ""}`}
+        class={`mode-popover-backdrop${surface.open() ? ' open' : ''}`}
         id="mode-popover-backdrop"
       />
       <div
-        ref={(el) => {
+        ref={el => {
           popover = el;
         }}
-        class={`mode-popover${surface.open() ? " open" : ""}`}
+        class={`mode-popover${surface.open() ? ' open' : ''}`}
         id="mode-popover"
         role="dialog"
         aria-label="Settings"
-        aria-modal={surface.open() && sheet() ? "true" : undefined}
+        aria-modal={surface.open() && sheet() ? 'true' : undefined}
         tabindex="-1"
       >
         <div class="mode-popover-content" id="mode-popover-content">

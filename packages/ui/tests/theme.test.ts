@@ -1,15 +1,15 @@
-import { beforeEach, describe, expect, it } from "vitest";
-import { createThemeSubscribe } from "../src/host-callbacks/Theme.js";
-import { yielded } from "./support.js";
+import { beforeEach, describe, expect, it } from 'vitest';
+import { createThemeSubscribe } from '../src/host-callbacks/Theme.js';
+import { yielded } from './support.js';
 
-describe("theme host callbacks", () => {
+describe('theme host callbacks', () => {
   beforeEach(() => {
-    document.documentElement.removeAttribute("data-theme");
+    document.documentElement.removeAttribute('data-theme');
   });
 
-  it("As a dotli integrator, the host emits the current theme immediately", async () => {
+  it('As a dotli integrator, the host emits the current theme immediately', async () => {
     // Given
-    document.documentElement.setAttribute("data-theme", "light");
+    document.documentElement.setAttribute('data-theme', 'light');
     const subscribeTheme = createThemeSubscribe();
 
     // When
@@ -21,14 +21,14 @@ describe("theme host callbacks", () => {
     expect(first.done).toBe(false);
     expect(yielded(first).isOk()).toBe(true);
     expect(yielded(first)._unsafeUnwrap()).toEqual({
-      name: { tag: "Default" },
-      variant: "Light",
+      name: { tag: 'Default' },
+      variant: 'Light',
     });
   });
 
-  it("As a dotli integrator, the host emits theme changes until unsubscribed", async () => {
+  it('As a dotli integrator, the host emits theme changes until unsubscribed', async () => {
     // Given
-    document.documentElement.setAttribute("data-theme", "dark");
+    document.documentElement.setAttribute('data-theme', 'dark');
     const subscribeTheme = createThemeSubscribe();
 
     const iterator = subscribeTheme()[Symbol.asyncIterator]();
@@ -36,8 +36,8 @@ describe("theme host callbacks", () => {
     const next = iterator.next();
 
     // When
-    document.documentElement.setAttribute("data-theme", "light");
-    window.dispatchEvent(new Event("dotli:theme-changed"));
+    document.documentElement.setAttribute('data-theme', 'light');
+    window.dispatchEvent(new Event('dotli:theme-changed'));
     const changed = await next;
 
     await iterator.return?.();
@@ -47,14 +47,14 @@ describe("theme host callbacks", () => {
     expect(first.done).toBe(false);
     expect(yielded(first).isOk()).toBe(true);
     expect(yielded(first)._unsafeUnwrap()).toEqual({
-      name: { tag: "Default" },
-      variant: "Dark",
+      name: { tag: 'Default' },
+      variant: 'Dark',
     });
     expect(changed.done).toBe(false);
     expect(yielded(changed).isOk()).toBe(true);
     expect(yielded(changed)._unsafeUnwrap()).toEqual({
-      name: { tag: "Default" },
-      variant: "Light",
+      name: { tag: 'Default' },
+      variant: 'Light',
     });
     expect(afterReturn.done).toBe(true);
   });

@@ -8,11 +8,11 @@
 //
 // Events are never mutated after insertion.
 
-import type { DotliDebugEvent } from "./dotli-debug-types.js";
+import type { DotliDebugEvent } from './dotli-debug-types.js';
 
 export interface TruapiDebugMessageEvent {
-  kind: "truapi";
-  direction: "incoming" | "outgoing";
+  kind: 'truapi';
+  direction: 'incoming' | 'outgoing';
   productId?: string;
   requestId: string;
   payload: { tag: string; value: unknown };
@@ -22,10 +22,10 @@ export interface TruapiDebugMessageEvent {
 export type EventSeq = number;
 
 export interface StoredTruapiEvent {
-  kind: "truapi";
+  kind: 'truapi';
   seq: EventSeq;
   receivedAt: number;
-  direction: TruapiDebugMessageEvent["direction"];
+  direction: TruapiDebugMessageEvent['direction'];
   productId: string | undefined;
   /** Correlation key for TrUAPI groups (request/response, subscription). */
   requestId: string;
@@ -34,10 +34,10 @@ export interface StoredTruapiEvent {
 }
 
 export interface StoredSystemEvent {
-  kind: "system";
+  kind: 'system';
   seq: EventSeq;
   receivedAt: number;
-  source: "dotli";
+  source: 'dotli';
   layer: string;
   event: string;
   /** Correlation key for multi-event system flows (one flow = one box). */
@@ -49,7 +49,7 @@ export type StoredEvent = StoredTruapiEvent | StoredSystemEvent;
 
 /** Stable key used for grouping: `requestId` for truapi, `flowId` for system. */
 export function correlationKeyOf(ev: StoredEvent): string {
-  return ev.kind === "truapi" ? ev.requestId : ev.flowId;
+  return ev.kind === 'truapi' ? ev.requestId : ev.flowId;
 }
 
 export interface EventStoreConfig {
@@ -110,7 +110,7 @@ export class EventStore {
       return;
     }
     const stored: StoredTruapiEvent = {
-      kind: "truapi",
+      kind: 'truapi',
       seq: this.nextSeq++,
       receivedAt: Date.now(),
       direction: ev.direction,
@@ -128,10 +128,10 @@ export class EventStore {
       return;
     }
     const stored: StoredSystemEvent = {
-      kind: "system",
+      kind: 'system',
       seq: this.nextSeq++,
       receivedAt: ev.timestamp,
-      source: "dotli",
+      source: 'dotli',
       layer: ev.layer,
       event: ev.event,
       flowId: ev.flowId,
@@ -166,7 +166,7 @@ export class EventStore {
   }
 
   private countProduct(ev: StoredEvent, delta: 1 | -1): void {
-    if (ev.kind !== "truapi") {
+    if (ev.kind !== 'truapi') {
       return;
     }
     const next = (this.productCounts.get(ev.productId) ?? 0) + delta;
@@ -274,7 +274,7 @@ export function firstNewIndex(
   next: readonly StoredEvent[],
 ): number {
   let lastSeen: EventSeq;
-  if ("lastSeq" in prev) {
+  if ('lastSeq' in prev) {
     lastSeen = prev.lastSeq;
   } else {
     const last = prev.at(-1);

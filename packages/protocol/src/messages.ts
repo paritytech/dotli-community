@@ -1,9 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ChainKey, ChainPeer, ChainSyncKind } from "@dotli/resolver";
+import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
 // Leaf import: the `config` barrel reads `self.location` at module load.
-import { TIMEOUTS } from "@dotli/config";
+import { TIMEOUTS } from '@dotli/config';
 
 export interface ProtocolRequestMap {
   warmup: Record<string, never>;
@@ -11,7 +11,7 @@ export interface ProtocolRequestMap {
   resolveOwner: { label: string };
   resolveExecutableManifest: {
     label: string;
-    kind: "app" | "widget" | "worker";
+    kind: 'app' | 'widget' | 'worker';
   };
   resolveRootManifest: { label: string };
   authStorageRead: { siteId: string; key: string };
@@ -27,11 +27,9 @@ export interface ProtocolRequestMap {
 
 export type ProtocolRequestMethod = keyof ProtocolRequestMap;
 
-export interface ProtocolRequestEnvelope<
-  M extends ProtocolRequestMethod = ProtocolRequestMethod,
-> {
-  namespace: "dotli:protocol";
-  kind: "request";
+export interface ProtocolRequestEnvelope<M extends ProtocolRequestMethod = ProtocolRequestMethod> {
+  namespace: 'dotli:protocol';
+  kind: 'request';
   id: string;
   method: M;
   payload: ProtocolRequestMap[M];
@@ -52,41 +50,31 @@ export interface ProtocolRequestEnvelope<
  * receive a finite, positive number or `undefined`, so they branch on presence
  * alone.
  */
-export function getRequestSyncTimeoutMs(
-  request: ProtocolRequestEnvelope,
-): number | undefined {
-  if (
-    typeof request.deadlineMs !== "number" ||
-    !Number.isFinite(request.deadlineMs)
-  ) {
+export function getRequestSyncTimeoutMs(request: ProtocolRequestEnvelope): number | undefined {
+  if (typeof request.deadlineMs !== 'number' || !Number.isFinite(request.deadlineMs)) {
     return undefined;
   }
-  return Math.max(
-    1,
-    Math.floor(
-      request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE,
-    ),
-  );
+  return Math.max(1, Math.floor(request.deadlineMs - Date.now() - TIMEOUTS.RESPONSE_DELIVERY_GRACE));
 }
 
 export interface ProtocolProgressEnvelope {
-  namespace: "dotli:protocol";
-  kind: "progress";
+  namespace: 'dotli:protocol';
+  kind: 'progress';
   id: string;
   message: string;
 }
 
 export interface ProtocolResponseEnvelope {
-  namespace: "dotli:protocol";
-  kind: "response";
+  namespace: 'dotli:protocol';
+  kind: 'response';
   id: string;
   ok: true;
   result: unknown;
 }
 
 export interface ProtocolErrorEnvelope {
-  namespace: "dotli:protocol";
-  kind: "response";
+  namespace: 'dotli:protocol';
+  kind: 'response';
   id: string;
   ok: false;
   /** Human-readable description of the failure, from `serializeError`. */
@@ -101,21 +89,21 @@ export interface ProtocolErrorEnvelope {
 }
 
 export interface ProtocolChainMessageEnvelope {
-  namespace: "dotli:protocol";
-  kind: "chain-message";
+  namespace: 'dotli:protocol';
+  kind: 'chain-message';
   connectionId: string;
   message: string;
 }
 
 export interface ProtocolChainHaltEnvelope {
-  namespace: "dotli:protocol";
-  kind: "chain-halt";
+  namespace: 'dotli:protocol';
+  kind: 'chain-halt';
   connectionId: string;
 }
 
 export interface ProtocolReadyEnvelope {
-  namespace: "dotli:protocol";
-  kind: "ready";
+  namespace: 'dotli:protocol';
+  kind: 'ready';
 }
 
 /**
@@ -130,12 +118,12 @@ export interface ProtocolReadyEnvelope {
  * The blobs live in the protocol origin's IndexedDB, which the host origin
  * cannot read, so these messages are the host's only view of them.
  */
-export type SmoldotDbChain = "relay" | "hub" | "bulletin";
-export type SmoldotDbOutcome = "hit" | "miss" | "unavailable";
+export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
+export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
 
 export interface ProtocolSmoldotDbEnvelope {
-  namespace: "dotli:protocol";
-  kind: "smoldot-db";
+  namespace: 'dotli:protocol';
+  kind: 'smoldot-db';
   chain: SmoldotDbChain;
   outcome: SmoldotDbOutcome;
 }
@@ -147,8 +135,8 @@ export interface ProtocolSmoldotDbEnvelope {
  * pending requests on receipt instead of waiting for a per-request timeout.
  */
 export interface ProtocolFatalEnvelope {
-  namespace: "dotli:protocol";
-  kind: "fatal";
+  namespace: 'dotli:protocol';
+  kind: 'fatal';
   message: string;
 }
 
@@ -160,8 +148,8 @@ export interface ProtocolFatalEnvelope {
  * `kind: "fatal"`: reject everything pending, then block new work.
  */
 export interface ProtocolInitFailedEnvelope {
-  namespace: "dotli:protocol";
-  kind: "init-failed";
+  namespace: 'dotli:protocol';
+  kind: 'init-failed';
   message: string;
 }
 
@@ -172,8 +160,8 @@ export interface ProtocolInitFailedEnvelope {
  * the detail line under it. Stops arriving once the chain is ready.
  */
 export interface ProtocolChainSyncEnvelope {
-  namespace: "dotli:protocol";
-  kind: "chain-sync";
+  namespace: 'dotli:protocol';
+  kind: 'chain-sync';
   chain: ChainKey;
   syncKind: ChainSyncKind;
   reason?: string;
@@ -193,10 +181,10 @@ export interface ProtocolChainSyncEnvelope {
  * these. Folding them in would make every UI subscriber filter them out.
  */
 export interface ProtocolChainDetailEnvelope {
-  namespace: "dotli:protocol";
-  kind: "chain-detail";
+  namespace: 'dotli:protocol';
+  kind: 'chain-detail';
   chain: ChainKey;
-  dbCache?: "hit" | "miss";
+  dbCache?: 'hit' | 'miss';
   peers?: ChainPeer[];
 }
 
@@ -207,8 +195,8 @@ export interface ProtocolChainDetailEnvelope {
  * host can pick whatever averaging window it wants.
  */
 export interface ProtocolNetBytesEnvelope {
-  namespace: "dotli:protocol";
-  kind: "net-bytes";
+  namespace: 'dotli:protocol';
+  kind: 'net-bytes';
   received: number;
 }
 
@@ -218,8 +206,8 @@ export interface ProtocolNetBytesEnvelope {
 // `subscribeSharedAuthStorage` and `apps/protocol/src/main.ts`'s
 // BroadcastChannel relay.
 export interface ProtocolAuthStorageChangedEnvelope {
-  namespace: "dotli:protocol";
-  kind: "auth-storage-changed";
+  namespace: 'dotli:protocol';
+  kind: 'auth-storage-changed';
   siteId: string;
   key: string;
   value: string | null;
@@ -242,19 +230,19 @@ export type ProtocolEnvelope =
   | ProtocolAuthStorageChangedEnvelope;
 
 const VALID_KINDS = new Set([
-  "request",
-  "response",
-  "progress",
-  "chain-message",
-  "chain-halt",
-  "ready",
-  "smoldot-db",
-  "fatal",
-  "init-failed",
-  "chain-sync",
-  "chain-detail",
-  "net-bytes",
-  "auth-storage-changed",
+  'request',
+  'response',
+  'progress',
+  'chain-message',
+  'chain-halt',
+  'ready',
+  'smoldot-db',
+  'fatal',
+  'init-failed',
+  'chain-sync',
+  'chain-detail',
+  'net-bytes',
+  'auth-storage-changed',
 ]);
 
 // postMessage data is untrusted and the envelope type alone cannot reject a
@@ -271,7 +259,7 @@ const VALID_KINDS = new Set([
 /** Every chain the envelope accepts. Exhaustive against `ChainKey`. */
 export const ENVELOPE_CHAIN_KEYS = Object.keys({
   relay: true,
-  "asset-hub": true,
+  'asset-hub': true,
   bulletin: true,
   people: true,
 } satisfies Record<ChainKey, true>) as ChainKey[];
@@ -293,7 +281,7 @@ const CHAIN_KEY_VALUES = new Set<string>(ENVELOPE_CHAIN_KEYS);
 // Typed wider than the union on purpose. This validates a postMessage payload,
 // where the declared type is a claim the sender makes rather than a fact, so a
 // narrowing comparison would be compiled away as dead.
-const CACHE_RESULT_VALUES = new Set<string>(["hit", "miss"]);
+const CACHE_RESULT_VALUES = new Set<string>(['hit', 'miss']);
 const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
 
 /**
@@ -303,17 +291,13 @@ const SYNC_KIND_VALUES = new Set<string>(ENVELOPE_SYNC_KINDS);
  * and any block height that is not a finite positive number, since those
  * drive the bar and would render as NaN.
  */
-export function isChainSyncPayloadValid(
-  msg: ProtocolChainSyncEnvelope,
-): boolean {
+export function isChainSyncPayloadValid(msg: ProtocolChainSyncEnvelope): boolean {
   if (!CHAIN_KEY_VALUES.has(msg.chain) || !SYNC_KIND_VALUES.has(msg.syncKind)) {
     return false;
   }
   if (
-    msg.syncKind === "peers" &&
-    (!Number.isInteger(msg.peers) ||
-      (msg.peers ?? -1) < 0 ||
-      (msg.peers ?? 0) > 10_000)
+    msg.syncKind === 'peers' &&
+    (!Number.isInteger(msg.peers) || (msg.peers ?? -1) < 0 || (msg.peers ?? 0) > 10_000)
   ) {
     return false;
   }
@@ -331,9 +315,7 @@ const MAX_PEER_ID_LENGTH = 128;
 const MAX_PEERS = 50;
 
 /** Whether a `chain-detail` envelope carries values worth recording. */
-export function isChainDetailPayloadValid(
-  msg: ProtocolChainDetailEnvelope,
-): boolean {
+export function isChainDetailPayloadValid(msg: ProtocolChainDetailEnvelope): boolean {
   if (!CHAIN_KEY_VALUES.has(msg.chain)) {
     return false;
   }
@@ -347,11 +329,11 @@ export function isChainDetailPayloadValid(
     return false;
   }
   return msg.peers.every(
-    (peer) =>
-      typeof peer.peerId === "string" &&
+    peer =>
+      typeof peer.peerId === 'string' &&
       peer.peerId.length > 0 &&
       peer.peerId.length <= MAX_PEER_ID_LENGTH &&
-      typeof peer.roles === "string" &&
+      typeof peer.roles === 'string' &&
       peer.roles.length <= MAX_PEER_ID_LENGTH &&
       Number.isFinite(peer.bestNumber) &&
       peer.bestNumber >= 0,
@@ -359,16 +341,9 @@ export function isChainDetailPayloadValid(
 }
 
 export function isProtocolEnvelope(value: unknown): value is ProtocolEnvelope {
-  if (
-    typeof value !== "object" ||
-    value === null ||
-    !("namespace" in value) ||
-    !("kind" in value)
-  ) {
+  if (typeof value !== 'object' || value === null || !('namespace' in value) || !('kind' in value)) {
     return false;
   }
   const obj = value as { namespace?: unknown; kind?: unknown };
-  return (
-    obj.namespace === "dotli:protocol" && VALID_KINDS.has(obj.kind as string)
-  );
+  return obj.namespace === 'dotli:protocol' && VALID_KINDS.has(obj.kind as string);
 }

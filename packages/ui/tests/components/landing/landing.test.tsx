@@ -5,22 +5,22 @@
 // mounts it: the name form, the typing placeholder, the recently visited
 // pills, and the auth and theme controls it moves into its corner.
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { flush } from "solid-js";
-import { escapeHtml } from "@dotli/shared";
-import { getActiveTldSuffix, withActiveTld } from "@dotli/config";
-import { mountLandingPage } from "../../helpers/landing.js";
-import { byId, query, must } from "../../support.js";
-import { nth } from "../../helpers/nth.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { flush } from 'solid-js';
+import { escapeHtml } from '@dotli/shared';
+import { getActiveTldSuffix, withActiveTld } from '@dotli/config';
+import { mountLandingPage } from '../../helpers/landing.js';
+import { byId, query, must } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("../../../../metrics/src/sentry.js", () => sentry);
+vi.mock('../../../../metrics/src/sentry.js', () => sentry);
 
 const recents = vi.hoisted(() => ({
   labels: [] as string[],
   forget: vi.fn(() => Promise.resolve()),
 }));
-vi.mock("../../../src/recent-labels.js", () => ({
+vi.mock('../../../src/recent-labels.js', () => ({
   loadRecentLabels: () => Promise.resolve([...recents.labels]),
   forgetRecentLabel: recents.forget,
 }));
@@ -33,7 +33,7 @@ const SUFFIX = getActiveTldSuffix();
  * placeholder had already replaced the placeholder with "browse".
  */
 function oldLandingMarkup(): Element {
-  const template = document.createElement("template");
+  const template = document.createElement('template');
   template.innerHTML = `
     <div class="landing">
       <div class="landing-auth" id="landing-auth"></div>
@@ -48,7 +48,7 @@ function oldLandingMarkup(): Element {
         <p class="landing-subtitle">The decentralized web, in your browser.</p>
         <form id="dotli-nav-form" class="landing-nav-form" autocomplete="off">
           <div class="landing-search-bar" id="dotli-nav-bar">
-            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="${escapeHtml(withActiveTld("browse"))}" spellcheck="false" autocomplete="off" aria-label="Search a ${escapeHtml(SUFFIX)} name" aria-describedby="dotli-nav-error" />
+            <input id="dotli-nav-input" class="landing-search-input" type="text" placeholder="${escapeHtml(withActiveTld('browse'))}" spellcheck="false" autocomplete="off" aria-label="Search a ${escapeHtml(SUFFIX)} name" aria-describedby="dotli-nav-error" />
             <span class="landing-dot-label">${escapeHtml(SUFFIX)}</span>
             <button type="submit" class="landing-go-btn" aria-label="Go">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
@@ -61,11 +61,8 @@ function oldLandingMarkup(): Element {
       </div>
     </div>
   `;
-  const landing = must(
-    template.content.firstElementChild,
-    "the landing markup",
-  );
-  query(landing, "#dotli-nav-input", HTMLInputElement).placeholder = "browse";
+  const landing = must(template.content.firstElementChild, 'the landing markup');
+  query(landing, '#dotli-nav-input', HTMLInputElement).placeholder = 'browse';
   return landing;
 }
 
@@ -75,7 +72,7 @@ function oldLandingMarkup(): Element {
  */
 function oldPillMarkup(label: string): Element {
   const safe = escapeHtml(label);
-  const template = document.createElement("template");
+  const template = document.createElement('template');
   template.innerHTML = `<span class="landing-recent-item" data-label="${safe}">
         <a href="${escapeHtml(`http://${label}.localhost:5173`)}" class="landing-recent-pill">
           <span class="landing-recent-label">${safe}<span class="landing-tld">${escapeHtml(SUFFIX)}</span></span>
@@ -84,7 +81,7 @@ function oldPillMarkup(label: string): Element {
           <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/></svg>
         </button>
       </span>`;
-  return must(template.content.firstElementChild, "the recent item markup");
+  return must(template.content.firstElementChild, 'the recent item markup');
 }
 
 /**
@@ -94,19 +91,19 @@ function oldPillMarkup(label: string): Element {
  */
 function shape(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) {
-    return (node.textContent ?? "").trim();
+    return (node.textContent ?? '').trim();
   }
   if (!(node instanceof Element)) {
-    return "";
+    return '';
   }
   const attrs = [...node.attributes]
-    .map((a) => `${a.name}="${a.value}"`)
+    .map(a => `${a.name}="${a.value}"`)
     .sort()
-    .join(" ");
+    .join(' ');
   const children = [...node.childNodes]
     .map(shape)
-    .filter((s) => s !== "")
-    .join("");
+    .filter(s => s !== '')
+    .join('');
   return `<${node.tagName.toLowerCase()} ${attrs}>${children}</>`;
 }
 
@@ -127,19 +124,19 @@ async function settle(): Promise<void> {
 }
 
 function type(value: string): void {
-  const input = byId("dotli-nav-input", HTMLInputElement);
+  const input = byId('dotli-nav-input', HTMLInputElement);
   input.value = value;
-  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event('input', { bubbles: true }));
 }
 
 function submit(): Event {
-  const event = new Event("submit", { bubbles: true, cancelable: true });
-  byId("dotli-nav-form").dispatchEvent(event);
+  const event = new Event('submit', { bubbles: true, cancelable: true });
+  byId('dotli-nav-form').dispatchEvent(event);
   return event;
 }
 
 function items(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>(".landing-recent-item")];
+  return [...document.querySelectorAll<HTMLElement>('.landing-recent-item')];
 }
 
 function touch(target: Element, kind: string): void {
@@ -147,43 +144,43 @@ function touch(target: Element, kind: string): void {
 }
 
 function click(target: Element): MouseEvent {
-  const event = new MouseEvent("click", { bubbles: true, cancelable: true });
+  const event = new MouseEvent('click', { bubbles: true, cancelable: true });
   target.dispatchEvent(event);
   return event;
 }
 
 beforeEach(() => {
-  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
   reducedMotion = false;
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: query === "(prefers-reduced-motion: reduce)" && reducedMotion,
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query === '(prefers-reduced-motion: reduce)' && reducedMotion,
     media: query,
     addEventListener: () => {},
     removeEventListener: () => {},
   }));
-  vi.stubGlobal("location", {
-    hostname: "localhost",
-    protocol: "http:",
-    port: "5173",
-    href: "http://localhost:5173/",
+  vi.stubGlobal('location', {
+    hostname: 'localhost',
+    protocol: 'http:',
+    port: '5173',
+    href: 'http://localhost:5173/',
   });
   recents.labels = [];
   recents.forget.mockClear();
   sentry.captureException.mockClear();
-  document.body.innerHTML = "";
+  document.body.innerHTML = '';
 });
 
 afterEach(() => {
   page?.dispose();
   page = null;
-  document.body.innerHTML = "";
+  document.body.innerHTML = '';
   vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 
-describe("landing page", () => {
-  it("As a visitor, the landing page has the same markup as before", async () => {
+describe('landing page', () => {
+  it('As a visitor, the landing page has the same markup as before', async () => {
     // When
     const { view } = mount();
     await settle();
@@ -194,7 +191,7 @@ describe("landing page", () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("As a visitor, nothing is focused when the page loads, so a screen reader starts at the top and no keyboard pops up", async () => {
+  it('As a visitor, nothing is focused when the page loads, so a screen reader starts at the top and no keyboard pops up', async () => {
     // When
     mount();
     await settle();
@@ -203,44 +200,38 @@ describe("landing page", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("As a visitor who types an invalid name, I see why inline and stay on the page, and the error clears when I type again", async () => {
+  it('As a visitor who types an invalid name, I see why inline and stay on the page, and the error clears when I type again', async () => {
     // Given
     mount();
     await settle();
 
     // When
-    type("Bad Name");
+    type('Bad Name');
     const event = submit();
     await settle();
 
     // Then
-    const input = byId("dotli-nav-input", HTMLInputElement);
-    const error = byId("dotli-nav-error");
+    const input = byId('dotli-nav-input', HTMLInputElement);
+    const error = byId('dotli-nav-error');
     expect(event.defaultPrevented).toBe(true);
     expect(error.hidden).toBe(false);
-    expect(error.textContent).toBe(
-      "Names can only contain a-z, 0-9 and hyphens",
-    );
-    expect(input.getAttribute("aria-invalid")).toBe("true");
-    expect(
-      byId("dotli-nav-bar").classList.contains("landing-search-bar--error"),
-    ).toBe(true);
+    expect(error.textContent).toBe('Names can only contain a-z, 0-9 and hyphens');
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+    expect(byId('dotli-nav-bar').classList.contains('landing-search-bar--error')).toBe(true);
     expect(document.activeElement).toBe(input);
-    expect(window.location.href).toBe("http://localhost:5173/");
+    expect(window.location.href).toBe('http://localhost:5173/');
 
     // When
-    type("bad");
+    type('bad');
     await settle();
 
     // Then
     expect(error.hidden).toBe(true);
-    expect(input.hasAttribute("aria-invalid")).toBe(false);
-    expect(
-      byId("dotli-nav-bar").classList.contains("landing-search-bar--error"),
-    ).toBe(false);
+    expect(input.hasAttribute('aria-invalid')).toBe(false);
+    expect(byId('dotli-nav-bar').classList.contains('landing-search-bar--error')).toBe(false);
   });
 
-  it("As a visitor who submits nothing, I am asked for a name", async () => {
+  it('As a visitor who submits nothing, I am asked for a name', async () => {
     // Given
     mount();
     await settle();
@@ -250,10 +241,10 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    expect(byId("dotli-nav-error").textContent).toBe("Enter a name to browse");
+    expect(byId('dotli-nav-error').textContent).toBe('Enter a name to browse');
   });
 
-  it("As a visitor who types a valid name, with or without the TLD, I am taken to its site", async () => {
+  it('As a visitor who types a valid name, with or without the TLD, I am taken to its site', async () => {
     // Given
     mount();
     await settle();
@@ -263,18 +254,18 @@ describe("landing page", () => {
     submit();
 
     // Then
-    expect(window.location.href).toBe("http://mark3t.localhost:5173");
-    expect(byId("dotli-nav-error").hidden).toBe(true);
+    expect(window.location.href).toBe('http://mark3t.localhost:5173');
+    expect(byId('dotli-nav-error').hidden).toBe(true);
   });
 
-  it("As a visitor on the live site, a valid name takes me to its subdomain of the base domain", async () => {
+  it('As a visitor on the live site, a valid name takes me to its subdomain of the base domain', async () => {
     // Given
-    vi.stubGlobal("location", { hostname: "dot.li", href: "https://dot.li/" });
+    vi.stubGlobal('location', { hostname: 'dot.li', href: 'https://dot.li/' });
     mount();
     await settle();
 
     // When
-    type("playground");
+    type('playground');
     submit();
 
     // Then
@@ -283,22 +274,20 @@ describe("landing page", () => {
 
   it("As a visitor, the input's first placeholder is the first example name, without the suffix", async () => {
     // Given: what the input showed each time the typing placeholder wrote it.
-    const descriptor = Object.getOwnPropertyDescriptor(
-      HTMLInputElement.prototype,
-      "placeholder",
-    );
+    const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'placeholder');
     if (descriptor?.set === undefined) {
-      throw new Error("expected a placeholder setter");
+      throw new Error('expected a placeholder setter');
     }
     // eslint-disable-next-line @typescript-eslint/unbound-method -- the native setter is called with the input as its receiver below.
     const setter = descriptor.set;
     const shown: (string | null)[] = [];
-    const spy = vi
-      .spyOn(HTMLInputElement.prototype, "placeholder", "set")
-      .mockImplementation(function (this: HTMLInputElement, value: string) {
-        shown.push(this.getAttribute("placeholder"));
-        setter.call(this, value);
-      });
+    const spy = vi.spyOn(HTMLInputElement.prototype, 'placeholder', 'set').mockImplementation(function (
+      this: HTMLInputElement,
+      value: string,
+    ) {
+      shown.push(this.getAttribute('placeholder'));
+      setter.call(this, value);
+    });
 
     // When
     mount();
@@ -307,42 +296,40 @@ describe("landing page", () => {
 
     // Then: the suffix never showed in the input; it is the label beside it.
     expect(shown.length).toBeGreaterThan(0);
-    expect(shown[0]).toBe("browse");
-    expect(byId("dotli-nav-input", HTMLInputElement).placeholder).toBe(
-      "browse",
-    );
+    expect(shown[0]).toBe('browse');
+    expect(byId('dotli-nav-input', HTMLInputElement).placeholder).toBe('browse');
   });
 
-  it("As a visitor, the placeholder types example names in turn, pauses while I type, and stops when the page goes", async () => {
+  it('As a visitor, the placeholder types example names in turn, pauses while I type, and stops when the page goes', async () => {
     // Given
     mount();
     await settle();
-    const input = byId("dotli-nav-input", HTMLInputElement);
-    expect(input.placeholder).toBe("browse");
+    const input = byId('dotli-nav-input', HTMLInputElement);
+    expect(input.placeholder).toBe('browse');
 
     // When: the hold ends, then one character is erased.
     vi.advanceTimersByTime(1400);
     vi.advanceTimersByTime(45);
 
     // Then
-    expect(input.placeholder).toBe("brows");
+    expect(input.placeholder).toBe('brows');
 
     // When: the rest is erased and the next name typed.
     vi.advanceTimersByTime(45 * 5 + 95 * 6);
 
     // Then
-    expect(input.placeholder).toBe("mark3t");
+    expect(input.placeholder).toBe('mark3t');
 
     // When: the visitor types, the cycle pauses.
-    type("x");
+    type('x');
     vi.advanceTimersByTime(10_000);
 
     // Then
-    expect(input.placeholder).toBe("mark3t");
+    expect(input.placeholder).toBe('mark3t');
     expect(vi.getTimerCount()).toBe(0);
 
     // When: clearing the input resumes it.
-    type("");
+    type('');
     vi.advanceTimersByTime(95);
 
     // Then
@@ -356,7 +343,7 @@ describe("landing page", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("As a visitor who prefers reduced motion, the placeholder shows one name and stays still", async () => {
+  it('As a visitor who prefers reduced motion, the placeholder shows one name and stays still', async () => {
     // Given
     reducedMotion = true;
 
@@ -365,62 +352,47 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    expect(byId("dotli-nav-input", HTMLInputElement).placeholder).toBe(
-      "browse",
-    );
+    expect(byId('dotli-nav-input', HTMLInputElement).placeholder).toBe('browse');
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("As a returning visitor, my recently visited names show as pills linking to their sites", async () => {
+  it('As a returning visitor, my recently visited names show as pills linking to their sites', async () => {
     // Given
-    recents.labels = ["alpha", "beta"];
+    recents.labels = ['alpha', 'beta'];
 
     // When
     mount();
     await settle();
 
     // Then
-    const recent = byId("dotli-recent");
+    const recent = byId('dotli-recent');
     expect(recent.hidden).toBe(false);
     expect(recent.children).toHaveLength(1);
-    expect(recent.children[0]?.className).toBe("landing-recent-list");
-    expect(items().map((item) => item.dataset["label"])).toEqual([
-      "alpha",
-      "beta",
-    ]);
-    expect(items().map(shape)).toEqual(
-      ["alpha", "beta"].map((label) => shape(oldPillMarkup(label))),
-    );
-    const pill = nth(items(), 0).querySelector<HTMLAnchorElement>(
-      "a.landing-recent-pill",
-    );
-    expect(pill?.getAttribute("href")).toBe("http://alpha.localhost:5173");
+    expect(recent.children[0]?.className).toBe('landing-recent-list');
+    expect(items().map(item => item.dataset['label'])).toEqual(['alpha', 'beta']);
+    expect(items().map(shape)).toEqual(['alpha', 'beta'].map(label => shape(oldPillMarkup(label))));
+    const pill = nth(items(), 0).querySelector<HTMLAnchorElement>('a.landing-recent-pill');
+    expect(pill?.getAttribute('href')).toBe('http://alpha.localhost:5173');
     expect(pill?.textContent).toBe(`alpha${SUFFIX}`);
-    expect(
-      pill?.querySelector(".landing-recent-label > .landing-tld")?.textContent,
-    ).toBe(SUFFIX);
-    const remove = nth(items(), 0).querySelector(
-      "button.landing-recent-remove",
-    );
-    expect(remove?.getAttribute("type")).toBe("button");
-    expect(remove?.getAttribute("aria-label")).toBe(
-      `Remove alpha${SUFFIX} from recently visited`,
-    );
-    expect(remove?.getAttribute("title")).toBe("Remove");
-    expect(remove?.querySelectorAll("svg line")).toHaveLength(2);
+    expect(pill?.querySelector('.landing-recent-label > .landing-tld')?.textContent).toBe(SUFFIX);
+    const remove = nth(items(), 0).querySelector('button.landing-recent-remove');
+    expect(remove?.getAttribute('type')).toBe('button');
+    expect(remove?.getAttribute('aria-label')).toBe(`Remove alpha${SUFFIX} from recently visited`);
+    expect(remove?.getAttribute('title')).toBe('Remove');
+    expect(remove?.querySelectorAll('svg line')).toHaveLength(2);
   });
 
-  it("As a visitor with no recently visited names, no recents row shows", async () => {
+  it('As a visitor with no recently visited names, no recents row shows', async () => {
     // When
     mount();
     await settle();
 
     // Then
-    expect(byId("dotli-recent").hidden).toBe(true);
-    expect(byId("dotli-recent").children).toHaveLength(0);
+    expect(byId('dotli-recent').hidden).toBe(true);
+    expect(byId('dotli-recent').children).toHaveLength(0);
   });
 
-  it("As a visitor, a recent name that holds markup shows as text", async () => {
+  it('As a visitor, a recent name that holds markup shows as text', async () => {
     // Given
     const hostile = `<img src=x onerror="alert(1)">`;
     recents.labels = [hostile];
@@ -430,118 +402,113 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    expect(document.querySelector("img")).toBeNull();
-    expect(items()[0]?.dataset["label"]).toBe(hostile);
-    expect(
-      items()[0]?.querySelector(".landing-recent-label")?.firstChild
-        ?.textContent,
-    ).toBe(hostile);
+    expect(document.querySelector('img')).toBeNull();
+    expect(items()[0]?.dataset['label']).toBe(hostile);
+    expect(items()[0]?.querySelector('.landing-recent-label')?.firstChild?.textContent).toBe(hostile);
   });
 
-  it("As a returning visitor, the remove button forgets a name, and the row goes once none is left", async () => {
+  it('As a returning visitor, the remove button forgets a name, and the row goes once none is left', async () => {
     // Given
-    recents.labels = ["alpha", "beta"];
+    recents.labels = ['alpha', 'beta'];
     mount();
     await settle();
 
     // When
-    const event = click(
-      query(nth(items(), 0), ".landing-recent-remove", Element),
-    );
+    const event = click(query(nth(items(), 0), '.landing-recent-remove', Element));
     await settle();
 
     // Then
     expect(event.defaultPrevented).toBe(true);
-    expect(recents.forget).toHaveBeenCalledWith("alpha");
-    expect(items().map((item) => item.dataset["label"])).toEqual(["beta"]);
-    expect(byId("dotli-recent").hidden).toBe(false);
+    expect(recents.forget).toHaveBeenCalledWith('alpha');
+    expect(items().map(item => item.dataset['label'])).toEqual(['beta']);
+    expect(byId('dotli-recent').hidden).toBe(false);
 
     // When
-    click(query(nth(items(), 0), ".landing-recent-remove svg", Element));
+    click(query(nth(items(), 0), '.landing-recent-remove svg', Element));
     await settle();
 
     // Then
-    expect(recents.forget).toHaveBeenLastCalledWith("beta");
+    expect(recents.forget).toHaveBeenLastCalledWith('beta');
     expect(items()).toHaveLength(0);
-    expect(byId("dotli-recent").hidden).toBe(true);
-    expect(byId("dotli-recent").children).toHaveLength(0);
+    expect(byId('dotli-recent').hidden).toBe(true);
+    expect(byId('dotli-recent').children).toHaveLength(0);
   });
 
-  it("As a touch visitor, a long press on a pill reveals its remove button instead of navigating, and a tap elsewhere hides it", async () => {
+  it('As a touch visitor, a long press on a pill reveals its remove button instead of navigating, and a tap elsewhere hides it', async () => {
     // Given
-    recents.labels = ["alpha", "beta"];
+    recents.labels = ['alpha', 'beta'];
     mount();
     await settle();
     const alpha = nth(items(), 0);
     const beta = nth(items(), 1);
-    const alphaPill = query(alpha, ".landing-recent-pill", Element);
+    const alphaPill = query(alpha, '.landing-recent-pill', Element);
 
     // When: a press that moves is a scroll, not a long press.
-    touch(alphaPill, "touchstart");
+    touch(alphaPill, 'touchstart');
     vi.advanceTimersByTime(200);
-    touch(alphaPill, "touchmove");
+    touch(alphaPill, 'touchmove');
     vi.advanceTimersByTime(1000);
     await settle();
 
     // Then
-    expect(alpha.classList.contains("is-removable")).toBe(false);
+    expect(alpha.classList.contains('is-removable')).toBe(false);
 
     // When
-    touch(alphaPill, "touchstart");
+    touch(alphaPill, 'touchstart');
     vi.advanceTimersByTime(449);
     await settle();
 
     // Then
-    expect(alpha.classList.contains("is-removable")).toBe(false);
+    expect(alpha.classList.contains('is-removable')).toBe(false);
 
     // When
     vi.advanceTimersByTime(1);
     await settle();
 
     // Then
-    expect(alpha.classList.contains("is-removable")).toBe(true);
+    expect(alpha.classList.contains('is-removable')).toBe(true);
 
     // When: the tap that ends the press does not navigate.
-    touch(alphaPill, "touchend");
+    touch(alphaPill, 'touchend');
     const tap = click(alphaPill);
 
     // Then
     expect(tap.defaultPrevented).toBe(true);
 
     // When: a long press on another pill moves the reveal there.
-    const betaPill = query(beta, ".landing-recent-pill", Element);
-    touch(betaPill, "touchstart");
+    const betaPill = query(beta, '.landing-recent-pill', Element);
+    touch(betaPill, 'touchstart');
     vi.advanceTimersByTime(450);
     await settle();
 
     // Then
-    expect(alpha.classList.contains("is-removable")).toBe(false);
-    expect(beta.classList.contains("is-removable")).toBe(true);
+    expect(alpha.classList.contains('is-removable')).toBe(false);
+    expect(beta.classList.contains('is-removable')).toBe(true);
 
     // When: a tap inside the recents keeps it.
-    beta.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    beta.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await settle();
 
     // Then
-    expect(beta.classList.contains("is-removable")).toBe(true);
+    expect(beta.classList.contains('is-removable')).toBe(true);
 
     // When: a tap anywhere else hides it.
-    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
     await settle();
 
     // Then
-    expect(beta.classList.contains("is-removable")).toBe(false);
+    expect(beta.classList.contains('is-removable')).toBe(false);
     expect(click(betaPill).defaultPrevented).toBe(false);
   });
 
   it("As a visitor, the page's document listener goes with it", async () => {
     // Given
-    const add = vi.spyOn(document, "addEventListener");
-    const remove = vi.spyOn(document, "removeEventListener");
-    recents.labels = ["alpha"];
+    const add = vi.spyOn(document, 'addEventListener');
+    const remove = vi.spyOn(document, 'removeEventListener');
+    recents.labels = ['alpha'];
     mount();
     await settle();
-    const added = add.mock.calls.filter(([type]) => type === "pointerdown");
+    const added = add.mock.calls.filter(([type]) => type === 'pointerdown');
     expect(added).toHaveLength(1);
 
     // When
@@ -549,27 +516,25 @@ describe("landing page", () => {
     page = null;
 
     // Then
-    expect(remove).toHaveBeenCalledWith("pointerdown", added[0]?.[1]);
+    expect(remove).toHaveBeenCalledWith('pointerdown', added[0]?.[1]);
   });
 
   it("As a visitor, the auth and theme controls move from the topbar into the page's corner", async () => {
     // Given
     document.body.innerHTML = `<div id="topbar"><button id="auth-button"></button><button id="theme-toggle"></button><div id="theme-popover"></div></div>`;
-    const nodes = ["auth-button", "theme-toggle", "theme-popover"].map((id) =>
-      byId(id),
-    );
+    const nodes = ['auth-button', 'theme-toggle', 'theme-popover'].map(id => byId(id));
 
     // When
     mount();
     await settle();
 
     // Then
-    const corner = byId("landing-auth");
+    const corner = byId('landing-auth');
     expect([...corner.children]).toEqual(nodes);
-    expect(byId("topbar").children).toHaveLength(0);
+    expect(byId('topbar').children).toHaveLength(0);
   });
 
-  it("As a visitor, a page without the auth button leaves the theme controls where they are, as before", async () => {
+  it('As a visitor, a page without the auth button leaves the theme controls where they are, as before', async () => {
     // Given
     document.body.innerHTML = `<div id="topbar"><button id="theme-toggle"></button><div id="theme-popover"></div></div>`;
 
@@ -578,7 +543,7 @@ describe("landing page", () => {
     await settle();
 
     // Then
-    expect(byId("landing-auth").children).toHaveLength(0);
-    expect(byId("topbar").children).toHaveLength(2);
+    expect(byId('landing-auth').children).toHaveLength(0);
+    expect(byId('topbar').children).toHaveLength(2);
   });
 });

@@ -12,15 +12,11 @@
 // inclusion, so arrivals are burstier than authoring, but arrival is what this
 // session actually has and so it is what an honest indicator should show.
 
-import {
-  getActiveChainRoles,
-  type ActiveChainRole,
-  type ChainRole,
-} from "@dotli/config";
-import { log } from "@dotli/shared";
+import { getActiveChainRoles, type ActiveChainRole, type ChainRole } from '@dotli/config';
+import { log } from '@dotli/shared';
 
 /** How the arrival of a single block compares to what the chain promises. */
-export type BlockHealth = "onTime" | "late" | "veryLate";
+export type BlockHealth = 'onTime' | 'late' | 'veryLate';
 
 export interface BlockBar {
   readonly number: number;
@@ -76,9 +72,9 @@ const IDLE_GRACE_MS = 60_000;
 /** Late past 1.5x the promised time, very late past 3x. */
 export function classifyGap(gapMs: number, blockTimeMs: number): BlockHealth {
   if (gapMs <= blockTimeMs * 1.5) {
-    return "onTime";
+    return 'onTime';
   }
-  return gapMs <= blockTimeMs * 3 ? "late" : "veryLate";
+  return gapMs <= blockTimeMs * 3 ? 'late' : 'veryLate';
 }
 
 interface ChainState {
@@ -102,7 +98,7 @@ interface ChainState {
  * Mirrors `LifecyclePhase` from `lifecycle_unstable_follow`, plus `stalled`,
  * which the watchdog reports alongside the phase rather than instead of it.
  */
-export type ChainPhase = "connecting" | "syncing" | "ready" | "stalled";
+export type ChainPhase = 'connecting' | 'syncing' | 'ready' | 'stalled';
 
 export interface TransferState {
   /** Bytes per second across every chain socket, over a short window. */
@@ -119,10 +115,7 @@ export interface BlockSource {
    * Subscribe to the best block of one chain. Calls back with a block number each
    * time the head changes. Returns an unsubscribe.
    */
-  subscribe: (
-    genesis: string,
-    onBlock: (blockNumber: number) => void,
-  ) => () => void;
+  subscribe: (genesis: string, onBlock: (blockNumber: number) => void) => () => void;
   /** Whether the active backend can reach this chain at all. */
   isReachable: (genesis: string) => boolean;
 }
@@ -188,7 +181,7 @@ function attach(state: ChainState): void {
     return;
   }
   try {
-    state.unsubscribe = source.subscribe(state.role.genesis, (blockNumber) => {
+    state.unsubscribe = source.subscribe(state.role.genesis, blockNumber => {
       recordBlock(state, blockNumber);
     });
   } catch (err: unknown) {
@@ -279,10 +272,7 @@ export function startNetworkWatch(): void {
   }
   if (!watching) {
     chains = new Map(
-      getActiveChainRoles().map((role) => [
-        role.role,
-        { role, bars: [], latest: null, lastAt: null, unsubscribe: null },
-      ]),
+      getActiveChainRoles().map(role => [role.role, { role, bars: [], latest: null, lastAt: null, unsubscribe: null }]),
     );
     watching = true;
   }
@@ -331,14 +321,14 @@ export function getNetworkStatus(): ChainStatus[] {
   const now = Date.now();
   const roles = watching
     ? [...chains.values()]
-    : getActiveChainRoles().map((role) => ({
+    : getActiveChainRoles().map(role => ({
         role,
         bars: [] as BlockBar[],
         latest: null,
         lastAt: null,
         unsubscribe: null,
       }));
-  return roles.map((state) => ({
+  return roles.map(state => ({
     role: state.role.role,
     label: state.role.label,
     // A frozen copy: the monitor pushes and shifts its own array in place,
@@ -347,9 +337,7 @@ export function getNetworkStatus(): ChainStatus[] {
     latest: state.latest,
     sinceLast: state.lastAt === null ? null : now - state.lastAt,
     blockTimeMs: state.role.blockTimeMs,
-    reachable:
-      state.role.hasEndpoint &&
-      (source?.isReachable(state.role.genesis) ?? false),
+    reachable: state.role.hasEndpoint && (source?.isReachable(state.role.genesis) ?? false),
     peers: peerCounts.get(state.role.role) ?? null,
     phase: phases.get(state.role.role) ?? null,
   }));

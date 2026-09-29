@@ -7,16 +7,16 @@
 
 /** What a browser can focus (hidden and inert elements aside). */
 export const FOCUSABLE =
-  "a[href],area[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),iframe,summary,[tabindex],[contenteditable]";
+  'a[href],area[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),iframe,summary,[tabindex],[contenteditable]';
 
 const TABBABLE = [
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "a[href]",
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  'a[href]',
   '[tabindex]:not([tabindex="-1"])',
-].join(", ");
+].join(', ');
 
 /** The controls inside `root` that Tab reaches, in order. */
 export function focusables(root: HTMLElement): HTMLElement[] {
@@ -24,12 +24,11 @@ export function focusables(root: HTMLElement): HTMLElement[] {
     .filter(
       // Match native tab order: unchecked radios are reached with arrow keys
       // inside their group, not with Tab.
-      (el) =>
-        !(el instanceof HTMLInputElement && el.type === "radio" && !el.checked),
+      el => !(el instanceof HTMLInputElement && el.type === 'radio' && !el.checked),
     )
     .filter(
       // Skip controls CSS hides, like the sheet close button on desktop.
-      (el) => typeof el.checkVisibility !== "function" || el.checkVisibility(),
+      el => typeof el.checkVisibility !== 'function' || el.checkVisibility(),
     );
 }
 
@@ -55,9 +54,7 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
 }
 
 /** Focus the first element that takes focus; whether one did. */
-export function focusFirst(
-  candidates: Iterable<HTMLElement | SVGElement>,
-): boolean {
+export function focusFirst(candidates: Iterable<HTMLElement | SVGElement>): boolean {
   for (const el of candidates) {
     el.focus();
     if (document.activeElement === el) {
@@ -75,11 +72,9 @@ export function focusFirst(
  */
 export function focusInto(
   surface: HTMLElement,
-  candidates: HTMLElement[] = focusables(surface).filter(
-    (el) => !(el instanceof HTMLAnchorElement),
-  ),
+  candidates: HTMLElement[] = focusables(surface).filter(el => !(el instanceof HTMLAnchorElement)),
 ): void {
-  if (!focusFirst(candidates) && surface.hasAttribute("tabindex")) {
+  if (!focusFirst(candidates) && surface.hasAttribute('tabindex')) {
     surface.focus();
   }
 }
@@ -98,7 +93,7 @@ let scrollLocks = 0;
  */
 export function lockScroll(): () => void {
   scrollLocks += 1;
-  document.body.setAttribute("data-scroll-locked", "");
+  document.body.setAttribute('data-scroll-locked', '');
   let locked = true;
   return () => {
     if (!locked) {
@@ -107,7 +102,7 @@ export function lockScroll(): () => void {
     locked = false;
     scrollLocks -= 1;
     if (scrollLocks === 0) {
-      document.body.removeAttribute("data-scroll-locked");
+      document.body.removeAttribute('data-scroll-locked');
     }
   };
 }

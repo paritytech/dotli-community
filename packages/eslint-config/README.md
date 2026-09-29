@@ -1,7 +1,7 @@
 # `@dotli/eslint-config`
 
-Shared ESLint flat configurations used across the dot.li monorepo. Internal,
-workspace-only package (`private`); not published to npm.
+Shared ESLint flat configurations used across the dot.li monorepo. Internal, workspace-only package (`private`); not
+published to npm.
 
 ## Exports
 
@@ -15,10 +15,9 @@ workspace-only package (`private`); not published to npm.
 Each package re-exports one of these from its own `eslint.config.js`:
 
 ```js
-import { config } from "@dotli/eslint-config/vite";
+import { config } from '@dotli/eslint-config/vite';
 
 export default config;
 ```
 
-Both entries export a flat-config array (`Linter.Config[]`) and require ESLint 9+
-(`eslint.config.js`).
+Both entries export a flat-config array (`Linter.Config[]`) and require ESLint 9+ (`eslint.config.js`).

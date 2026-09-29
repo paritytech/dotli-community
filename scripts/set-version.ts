@@ -27,17 +27,11 @@
 //
 // Exit codes: 0 on success, 1 on a --check mismatch or any error.
 
-import {
-  readFileSync,
-  writeFileSync,
-  readdirSync,
-  existsSync,
-  statSync,
-} from "node:fs";
-import { join, dirname, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { join, dirname, relative } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // SemVer core with optional prerelease/build metadata, tolerant of a leading "v".
 const SEMVER = /^v?(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?)$/;
@@ -53,35 +47,32 @@ function normalizeVersion(raw: string): string {
 /** Resolve the target version from a CLI arg or CI env, or null if absent. */
 function resolveTargetVersion(positional: string | undefined): string | null {
   // An empty variable counts as unset, as CI can export one without a value.
-  const set = (value: string | undefined): string | undefined =>
-    value === "" ? undefined : value;
-  const ref = process.env["GITHUB_REF"];
+  const set = (value: string | undefined): string | undefined => (value === '' ? undefined : value);
+  const ref = process.env['GITHUB_REF'];
   const fromEnv =
-    set(process.env["RELEASE_TAG"]) ??
-    set(process.env["GITHUB_REF_NAME"]) ??
-    (ref?.startsWith("refs/tags/") === true
-      ? ref.slice("refs/tags/".length)
-      : undefined);
+    set(process.env['RELEASE_TAG']) ??
+    set(process.env['GITHUB_REF_NAME']) ??
+    (ref?.startsWith('refs/tags/') === true ? ref.slice('refs/tags/'.length) : undefined);
   const raw = positional ?? fromEnv;
-  return raw === undefined || raw === "" ? null : normalizeVersion(raw);
+  return raw === undefined || raw === '' ? null : normalizeVersion(raw);
 }
 
 /** Every workspace package.json (from the root `workspaces` globs) plus the root. */
 function findPackageJsons(): string[] {
-  const rootPkgPath = join(REPO_ROOT, "package.json");
-  const rootPkg = JSON.parse(readFileSync(rootPkgPath, "utf8")) as {
+  const rootPkgPath = join(REPO_ROOT, 'package.json');
+  const rootPkg = JSON.parse(readFileSync(rootPkgPath, 'utf8')) as {
     workspaces?: string[];
   };
   const out = [rootPkgPath];
   for (const glob of rootPkg.workspaces ?? []) {
     // The repo only uses the `dir/*` form; expand it one level deep.
-    const base = glob.endsWith("/*") ? glob.slice(0, -2) : glob;
+    const base = glob.endsWith('/*') ? glob.slice(0, -2) : glob;
     const baseDir = join(REPO_ROOT, base);
     if (!existsSync(baseDir)) {
       continue;
     }
     for (const entry of readdirSync(baseDir)) {
-      const pkgPath = join(baseDir, entry, "package.json");
+      const pkgPath = join(baseDir, entry, 'package.json');
       if (existsSync(pkgPath) && statSync(pkgPath).isFile()) {
         out.push(pkgPath);
       }
@@ -91,10 +82,10 @@ function findPackageJsons(): string[] {
 }
 
 function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-const rel = (p: string): string => relative(REPO_ROOT, p) || "package.json";
+const rel = (p: string): string => relative(REPO_ROOT, p) || 'package.json';
 
 interface PkgVersion {
   file: string;
@@ -106,9 +97,9 @@ interface PkgVersion {
 function readVersionedPackages(): PkgVersion[] {
   const result: PkgVersion[] = [];
   for (const file of findPackageJsons()) {
-    const text = readFileSync(file, "utf8");
+    const text = readFileSync(file, 'utf8');
     const pkg = JSON.parse(text) as { version?: unknown };
-    if (typeof pkg.version === "string") {
+    if (typeof pkg.version === 'string') {
       result.push({ file, version: pkg.version, text });
     }
   }
@@ -129,10 +120,10 @@ function runCheck(packages: PkgVersion[], target: string | null): void {
   // With no explicit target, "in sync" means every package shares one version.
   const reference = target ?? packages[0]?.version ?? null;
   if (reference === null) {
-    console.error("No package.json with a version field found.");
+    console.error('No package.json with a version field found.');
     process.exit(1);
   }
-  const mismatches = packages.filter((p) => p.version !== reference);
+  const mismatches = packages.filter(p => p.version !== reference);
   for (const p of mismatches) {
     console.error(`✗ ${rel(p.file)}: ${p.version} (expected ${reference})`);
   }
@@ -143,9 +134,7 @@ function runCheck(packages: PkgVersion[], target: string | null): void {
     );
     process.exit(1);
   }
-  console.log(
-    `All ${String(packages.length)} package versions are ${reference}.`,
-  );
+  console.log(`All ${String(packages.length)} package versions are ${reference}.`);
 }
 
 function runSet(packages: PkgVersion[], target: string): void {
@@ -167,8 +156,8 @@ function runSet(packages: PkgVersion[], target: string): void {
 
 function main(): void {
   const args = process.argv.slice(2);
-  const check = args.includes("--check");
-  const positional = args.find((a) => !a.startsWith("-"));
+  const check = args.includes('--check');
+  const positional = args.find(a => !a.startsWith('-'));
   const target = resolveTargetVersion(positional);
   const packages = readVersionedPackages();
 
@@ -178,8 +167,8 @@ function main(): void {
   }
   if (target === null) {
     throw new Error(
-      "No version given. Pass one (e.g. `node scripts/set-version.ts 0.6.1`) " +
-        "or set RELEASE_TAG / GITHUB_REF_NAME.",
+      'No version given. Pass one (e.g. `node scripts/set-version.ts 0.6.1`) ' +
+        'or set RELEASE_TAG / GITHUB_REF_NAME.',
     );
   }
   runSet(packages, target);

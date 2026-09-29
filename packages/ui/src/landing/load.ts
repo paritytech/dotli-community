@@ -5,24 +5,20 @@
 // carry it. Everything here is Solid-free: it prepares `#app` and imports the
 // chunk dynamically.
 
-import { captureException } from "@dotli/metrics";
-import { disposeAppRoot } from "../mount/app-roots.js";
-import { showError } from "../ui.js";
+import { captureException } from '@dotli/metrics';
+import { disposeAppRoot } from '../mount/app-roots.js';
+import { showError } from '../ui.js';
 
 let showing: Promise<void> | null = null;
 
 /** The host's "reload" error page, for a landing page that cannot show. */
 function showBroken(): void {
-  showError(
-    "Something went wrong on our side",
-    "This page didn't load properly. Reloading usually fixes it.",
-    {
-      label: "Reload",
-      onClick: () => {
-        window.location.reload();
-      },
+  showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
+    label: 'Reload',
+    onClick: () => {
+      window.location.reload();
     },
-  );
+  });
 }
 
 /**
@@ -33,26 +29,26 @@ function showBroken(): void {
  * Never rejects.
  */
 export function showLanding(): Promise<void> {
-  showing ??= import("../components/landing/mount.js")
+  showing ??= import('../components/landing/mount.js')
     .then(({ mountLanding }) => {
-      const app = document.getElementById("app") ?? document.body;
-      const topbar = document.getElementById("topbar");
+      const app = document.getElementById('app') ?? document.body;
+      const topbar = document.getElementById('topbar');
       if (topbar) {
-        topbar.style.display = "none";
+        topbar.style.display = 'none';
       }
-      app.style.marginTop = "0";
-      app.style.minHeight = "100dvh";
+      app.style.marginTop = '0';
+      app.style.minHeight = '100dvh';
       // The landing page replaces the loading screen, island and all.
-      disposeAppRoot("loading");
-      const view = document.createElement("div");
-      view.id = "app-view";
+      disposeAppRoot('loading');
+      const view = document.createElement('div');
+      view.id = 'app-view';
       // Whatever else `#app` holds goes too, as when the page was written
       // over it.
       app.replaceChildren(view);
       mountLanding(view, showBroken);
     })
     .catch((err: unknown) => {
-      captureException(err, { kind: "landing_load_error" });
+      captureException(err, { kind: 'landing_load_error' });
       showBroken();
     });
   return showing;

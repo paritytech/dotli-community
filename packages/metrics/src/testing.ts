@@ -17,10 +17,10 @@
 //   // ... run code under test ...
 //   expectMetric(harness, "smoldot.presync", { outcome: "error" });
 
-import { expect } from "vitest";
+import { expect } from 'vitest';
 
 export interface RecordedMetric {
-  kind: "count" | "distribution" | "gauge";
+  kind: 'count' | 'distribution' | 'gauge';
   name: string;
   value: number;
   attributes: Record<string, string>;
@@ -70,37 +70,25 @@ export function installMetricsHarness(): MetricsHarness {
       /* no-op */
     },
     metrics: {
-      count: (
-        name: string,
-        value = 1,
-        opts?: { attributes?: Record<string, string> },
-      ): void => {
+      count: (name: string, value = 1, opts?: { attributes?: Record<string, string> }): void => {
         metrics.push({
-          kind: "count",
+          kind: 'count',
           name,
           value,
           attributes: opts?.attributes ?? {},
         });
       },
-      distribution: (
-        name: string,
-        value: number,
-        opts?: { attributes?: Record<string, string> },
-      ): void => {
+      distribution: (name: string, value: number, opts?: { attributes?: Record<string, string> }): void => {
         metrics.push({
-          kind: "distribution",
+          kind: 'distribution',
           name,
           value,
           attributes: opts?.attributes ?? {},
         });
       },
-      gauge: (
-        name: string,
-        value: number,
-        opts?: { attributes?: Record<string, string> },
-      ): void => {
+      gauge: (name: string, value: number, opts?: { attributes?: Record<string, string> }): void => {
         metrics.push({
-          kind: "gauge",
+          kind: 'gauge',
           name,
           value,
           attributes: opts?.attributes ?? {},
@@ -115,14 +103,14 @@ export function installMetricsHarness(): MetricsHarness {
     },
   };
 
-  (globalThis as Record<string, unknown>)["__SENTRY_HUB__"] = stub;
+  (globalThis as Record<string, unknown>)['__SENTRY_HUB__'] = stub;
 
   return {
     metrics,
     breadcrumbs,
     tags,
     restore(): void {
-      delete (globalThis as Record<string, unknown>)["__SENTRY_HUB__"];
+      delete (globalThis as Record<string, unknown>)['__SENTRY_HUB__'];
     },
   };
 }
@@ -140,21 +128,15 @@ export function expectMetric(
 ): void {
   // Metrics are emitted with the `"dotli."` prefix. Callers pass the
   // suffix for readability (matches the `S.*` constants in spans.ts).
-  const fullName = name.startsWith("dotli.") ? name : `dotli.${name}`;
+  const fullName = name.startsWith('dotli.') ? name : `dotli.${name}`;
   const match = harness.metrics.find(
-    (m) =>
-      m.name === fullName &&
-      Object.entries(attributes).every(
-        ([k, v]) => v === undefined || m.attributes[k] === v,
-      ),
+    m => m.name === fullName && Object.entries(attributes).every(([k, v]) => v === undefined || m.attributes[k] === v),
   );
   if (match === undefined) {
-    const available = harness.metrics.map(
-      (m) => `${m.name} ${JSON.stringify(m.attributes)}`,
-    );
+    const available = harness.metrics.map(m => `${m.name} ${JSON.stringify(m.attributes)}`);
     expect(
       match,
-      `expected metric ${fullName} with ${JSON.stringify(attributes)}; captured: ${available.join(" | ")}`,
+      `expected metric ${fullName} with ${JSON.stringify(attributes)}; captured: ${available.join(' | ')}`,
     ).toBeDefined();
   }
 }
@@ -165,18 +147,10 @@ export function expectMetric(
  * The predicate form keeps the helper flexible: tests can match on
  * category, level, message substring, or any subset of `data` fields.
  */
-export function expectSentryBreadcrumb(
-  harness: MetricsHarness,
-  predicate: (b: RecordedBreadcrumb) => boolean,
-): void {
+export function expectSentryBreadcrumb(harness: MetricsHarness, predicate: (b: RecordedBreadcrumb) => boolean): void {
   const match = harness.breadcrumbs.find(predicate);
   if (match === undefined) {
-    const available = harness.breadcrumbs.map(
-      (b) => `${b.category}/${b.level ?? "info"}: ${b.message}`,
-    );
-    expect(
-      match,
-      `expected a matching Sentry breadcrumb; captured: ${available.join(" | ")}`,
-    ).toBeDefined();
+    const available = harness.breadcrumbs.map(b => `${b.category}/${b.level ?? 'info'}: ${b.message}`);
+    expect(match, `expected a matching Sentry breadcrumb; captured: ${available.join(' | ')}`).toBeDefined();
   }
 }

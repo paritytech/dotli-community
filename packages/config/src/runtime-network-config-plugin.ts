@@ -13,10 +13,10 @@
 //
 // Imported by the three vite configs through `@dotli/config/vite`.
 
-import type { Plugin } from "vite";
+import type { Plugin } from 'vite';
 
 /** Path nginx serves from the container's generated config. */
-const SCRIPT_SRC = "/dotli-network.js";
+const SCRIPT_SRC = '/dotli-network.js';
 
 /**
  * The script body, from `$DOTLI_NETWORK` — the same variable the container
@@ -29,13 +29,13 @@ const SCRIPT_SRC = "/dotli-network.js";
  * with HTML that the browser then tries to execute as JavaScript.
  */
 export function runtimeNetworkConfigScriptBody(): string {
-  const raw = process.env["DOTLI_NETWORK"]?.trim();
-  const config = raw === undefined || raw === "" ? "{}" : raw;
+  const raw = process.env['DOTLI_NETWORK']?.trim();
+  const config = raw === undefined || raw === '' ? '{}' : raw;
   // Parsed only to fail early on a typo; the original text is what gets served.
   try {
     JSON.parse(config);
   } catch (err) {
-    throw new Error("DOTLI_NETWORK is not valid JSON", { cause: err });
+    throw new Error('DOTLI_NETWORK is not valid JSON', { cause: err });
   }
   return `window.__DOTLI_NETWORK__ = ${config};\n`;
 }
@@ -49,18 +49,18 @@ export function runtimeNetworkConfigScriptBody(): string {
  * synchronous — the same trick the apps already use to pre-open IndexedDB.
  */
 export function runtimeNetworkConfigScript(): Plugin {
-  const enabled = process.env["VITE_RUNTIME_NETWORK_CONFIG"] === "true";
+  const enabled = process.env['VITE_RUNTIME_NETWORK_CONFIG'] === 'true';
   return {
-    name: "dotli-runtime-network-config",
+    name: 'dotli-runtime-network-config',
     transformIndexHtml() {
       if (!enabled) {
         return [];
       }
       return [
         {
-          tag: "script",
+          tag: 'script',
           attrs: { src: SCRIPT_SRC },
-          injectTo: "head-prepend" as const,
+          injectTo: 'head-prepend' as const,
         },
       ];
     },
@@ -72,12 +72,12 @@ export function runtimeNetworkConfigScript(): Plugin {
         return;
       }
       server.middlewares.use((req, res, next) => {
-        if (req.url?.split("?")[0] !== SCRIPT_SRC) {
+        if (req.url?.split('?')[0] !== SCRIPT_SRC) {
           next();
           return;
         }
-        res.setHeader("Content-Type", "application/javascript");
-        res.setHeader("Cache-Control", "no-store");
+        res.setHeader('Content-Type', 'application/javascript');
+        res.setHeader('Cache-Control', 'no-store');
         res.end(runtimeNetworkConfigScriptBody());
       });
     },

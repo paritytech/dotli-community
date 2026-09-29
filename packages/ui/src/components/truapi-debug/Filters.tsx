@@ -5,23 +5,19 @@
 // product chips and the include / exclude queries. Semantics live in
 // `@dotli/truapi-debug/filters`; this component only edits the state.
 
-import { For } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import {
-  compileQuery,
-  type DirectionFilter,
-  type FilterState,
-} from "@dotli/truapi-debug";
+import { For } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { compileQuery, type DirectionFilter, type FilterState } from '@dotli/truapi-debug';
 
 const DIRECTIONS: readonly { dir: DirectionFilter; label: string }[] = [
-  { dir: "both", label: "both" },
-  { dir: "outgoing", label: "▶ out" },
-  { dir: "incoming", label: "◀ in" },
+  { dir: 'both', label: 'both' },
+  { dir: 'outgoing', label: '▶ out' },
+  { dir: 'incoming', label: '◀ in' },
 ];
 
 /** Stable key per product chip; `undefined` is the events without an id. */
 function productKey(p: string | undefined): string {
-  return p ?? "__anon";
+  return p ?? '__anon';
 }
 
 export function Filters(props: {
@@ -34,10 +30,8 @@ export function Filters(props: {
     props.onChange({ ...props.filters, ...patch });
   };
 
-  const chipClass = (base: string, active: boolean): string =>
-    active ? `${base} active` : base;
-  const inputClass = (base: string, query: string): string =>
-    compileQuery(query).invalid ? `${base} invalid` : base;
+  const chipClass = (base: string, active: boolean): string => (active ? `${base} active` : base);
+  const inputClass = (base: string, query: string): string => (compileQuery(query).invalid ? `${base} invalid` : base);
 
   return (
     <div class="td-filters">
@@ -49,10 +43,10 @@ export function Filters(props: {
             class="td-kind"
             data-kind="truapi"
             checked={props.filters.showTruapi}
-            onChange={(e) => {
+            onChange={e => {
               update({ showTruapi: e.currentTarget.checked });
             }}
-          />{" "}
+          />{' '}
           TrUAPI
         </label>
         <label class="td-kind-check">
@@ -61,22 +55,19 @@ export function Filters(props: {
             class="td-kind"
             data-kind="system"
             checked={props.filters.showSystem}
-            onChange={(e) => {
+            onChange={e => {
               update({ showSystem: e.currentTarget.checked });
             }}
-          />{" "}
+          />{' '}
           System
         </label>
       </div>
       <div class="td-filter-group td-dir-group">
         <span class="td-filter-label">dir</span>
         <For each={DIRECTIONS}>
-          {(entry) => (
+          {entry => (
             <button
-              class={chipClass(
-                "td-chip td-dir",
-                props.filters.direction === entry.dir,
-              )}
+              class={chipClass('td-chip td-dir', props.filters.direction === entry.dir)}
               data-dir={entry.dir}
               onClick={() => {
                 update({ direction: entry.dir });
@@ -91,10 +82,7 @@ export function Filters(props: {
         <span class="td-filter-label">product</span>
         <div class="td-product-chips">
           <button
-            class={chipClass(
-              "td-chip td-product-chip",
-              props.filters.product === undefined,
-            )}
+            class={chipClass('td-chip td-product-chip', props.filters.product === undefined)}
             data-product="__all"
             onClick={() => {
               update({ product: undefined });
@@ -105,18 +93,15 @@ export function Filters(props: {
           {/* Keyed by product, so traffic from a known product keeps every
               chip node and an in-flight click on one is never dropped. */}
           <For each={props.products} keyed={productKey}>
-            {(product) => (
+            {product => (
               <button
-                class={chipClass(
-                  "td-chip td-product-chip",
-                  props.filters.product === (product() ?? null),
-                )}
+                class={chipClass('td-chip td-product-chip', props.filters.product === (product() ?? null))}
                 data-product={productKey(product())}
                 onClick={() => {
                   update({ product: product() ?? null });
                 }}
               >
-                {product() ?? "(no id)"}
+                {product() ?? '(no id)'}
               </button>
             )}
           </For>
@@ -125,13 +110,13 @@ export function Filters(props: {
       <div class="td-filter-group">
         <span class="td-filter-label">include</span>
         <input
-          class={inputClass("td-input td-tag-input", props.filters.tagQuery)}
+          class={inputClass('td-input td-tag-input', props.filters.tagQuery)}
           type="search"
           placeholder="filter by method…"
           title="substring or /regex/"
           spellcheck="false"
           autocomplete="off"
-          onInput={(e) => {
+          onInput={e => {
             update({ tagQuery: e.currentTarget.value });
           }}
         />
@@ -139,16 +124,13 @@ export function Filters(props: {
       <div class="td-filter-group">
         <span class="td-filter-label">exclude</span>
         <input
-          class={inputClass(
-            "td-input td-exclude-input",
-            props.filters.excludeQuery,
-          )}
+          class={inputClass('td-input td-exclude-input', props.filters.excludeQuery)}
           type="search"
           placeholder="hide by method…"
           title="substring or /regex/"
           spellcheck="false"
           autocomplete="off"
-          onInput={(e) => {
+          onInput={e => {
             update({ excludeQuery: e.currentTarget.value });
           }}
         />

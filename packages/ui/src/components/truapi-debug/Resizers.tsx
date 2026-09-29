@@ -10,10 +10,10 @@
 // writes: nothing on the move path reads layout, so a drag never forces a
 // synchronous reflow, and the product frame is refitted once per frame.
 
-import { onCleanup, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { DockPosition } from "@dotli/truapi-debug";
-import { startDrag } from "../drag.js";
+import { onCleanup, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { DockPosition } from '@dotli/truapi-debug';
+import { startDrag } from '../drag.js';
 
 /** Events list / top pane: filter chips and tabs need room. */
 const MIN_PRIMARY_PX = 220;
@@ -52,19 +52,13 @@ export function ResizeHandle(props: {
       return;
     }
     let clamped: number;
-    if (props.dock === "right") {
+    if (props.dock === 'right') {
       const newWidth = window.innerWidth - e.clientX;
-      clamped = Math.max(
-        MIN_RIGHT_WIDTH_PX,
-        Math.min(newWidth, window.innerWidth * MAX_VIEWPORT_SHARE),
-      );
+      clamped = Math.max(MIN_RIGHT_WIDTH_PX, Math.min(newWidth, window.innerWidth * MAX_VIEWPORT_SHARE));
       panel.style.width = `${String(clamped)}px`;
     } else {
       const newHeight = window.innerHeight - e.clientY;
-      clamped = Math.max(
-        MIN_BOTTOM_HEIGHT_PX,
-        Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE),
-      );
+      clamped = Math.max(MIN_BOTTOM_HEIGHT_PX, Math.min(newHeight, window.innerHeight * MAX_VIEWPORT_SHARE));
       panel.style.height = `${String(clamped)}px`;
     }
     // The size is already known: hand it over rather than read it back.
@@ -83,10 +77,10 @@ export function ResizeHandle(props: {
       class="td-resize-handle"
       role="separator"
       aria-orientation="horizontal"
-      ref={(el) => {
+      ref={el => {
         handle = el;
       }}
-      onPointerDown={(e) => {
+      onPointerDown={e => {
         if (!props.collapsed && handle !== undefined) {
           stopDrag = startDrag(handle, e, { move });
         }
@@ -101,10 +95,7 @@ export function ResizeHandle(props: {
  * on the panel element. Clamped to keep either side from collapsing so far
  * that its controls become unusable. Double-click restores the default.
  */
-export function BodySplitter(props: {
-  panel: () => HTMLElement | undefined;
-  dock: DockPosition;
-}): JSX.Element {
+export function BodySplitter(props: { panel: () => HTMLElement | undefined; dock: DockPosition }): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let splitter: HTMLDivElement | undefined;
   let stopDrag: (() => void) | undefined;
@@ -120,22 +111,16 @@ export function BodySplitter(props: {
     if (panel === undefined) {
       return;
     }
-    if (props.dock === "right") {
+    if (props.dock === 'right') {
       const relY = e.clientY - body.top;
-      const maxTop = Math.max(
-        MIN_PRIMARY_PX,
-        body.height - MIN_SECONDARY_PX - SPLITTER_PX,
-      );
+      const maxTop = Math.max(MIN_PRIMARY_PX, body.height - MIN_SECONDARY_PX - SPLITTER_PX);
       const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relY, maxTop));
-      panel.style.setProperty("--td-top-height", `${String(clamped)}px`);
+      panel.style.setProperty('--td-top-height', `${String(clamped)}px`);
     } else {
       const relX = e.clientX - body.left;
-      const maxLeft = Math.max(
-        MIN_PRIMARY_PX,
-        body.width - MIN_SECONDARY_PX - SPLITTER_PX,
-      );
+      const maxLeft = Math.max(MIN_PRIMARY_PX, body.width - MIN_SECONDARY_PX - SPLITTER_PX);
       const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relX, maxLeft));
-      panel.style.setProperty("--td-left-width", `${String(clamped)}px`);
+      panel.style.setProperty('--td-left-width', `${String(clamped)}px`);
     }
   };
 
@@ -146,29 +131,29 @@ export function BodySplitter(props: {
       aria-orientation="vertical"
       tabindex="-1"
       title="Drag to resize"
-      ref={(el) => {
+      ref={el => {
         splitter = el;
       }}
-      onPointerDown={(e) => {
+      onPointerDown={e => {
         const el = splitter;
         const body = el?.parentElement?.getBoundingClientRect();
         if (el === undefined || body === undefined) {
           return;
         }
-        el.classList.add("dragging");
+        el.classList.add('dragging');
         stopDrag = startDrag(el, e, {
-          move: (m) => {
+          move: m => {
             move(m, body);
           },
           end: () => {
-            el.classList.remove("dragging");
+            el.classList.remove('dragging');
           },
         });
       }}
       onDblClick={() => {
         const panel = panelEl();
-        panel?.style.removeProperty("--td-left-width");
-        panel?.style.removeProperty("--td-top-height");
+        panel?.style.removeProperty('--td-left-width');
+        panel?.style.removeProperty('--td-top-height');
       }}
     />
   );

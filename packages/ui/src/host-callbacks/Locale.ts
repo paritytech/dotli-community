@@ -1,6 +1,6 @@
-import type { LocaleHost } from "@parity/truapi-host";
-import type { HostLocaleSubscribeItem } from "@parity/truapi";
-import { createResultStream } from "./result-stream.js";
+import type { LocaleHost } from '@parity/truapi-host';
+import type { HostLocaleSubscribeItem } from '@parity/truapi';
+import { createResultStream } from './result-stream.js';
 
 // dotli presents English chrome and has no language setting of its own, so the
 // visitor's browser preference is the only real signal a product can localize
@@ -9,15 +9,15 @@ function currentLocale(): HostLocaleSubscribeItem {
   return { languageTag: navigator.language };
 }
 
-export function createLocaleSubscribe(): Required<LocaleHost>["subscribeLocale"] {
+export function createLocaleSubscribe(): Required<LocaleHost>['subscribeLocale'] {
   return () =>
-    createResultStream<HostLocaleSubscribeItem>([currentLocale()], (push) => {
+    createResultStream<HostLocaleSubscribeItem>([currentLocale()], push => {
       const onLanguageChanged = (): void => {
         push(currentLocale());
       };
-      window.addEventListener("languagechange", onLanguageChanged);
+      window.addEventListener('languagechange', onLanguageChanged);
       return () => {
-        window.removeEventListener("languagechange", onLanguageChanged);
+        window.removeEventListener('languagechange', onLanguageChanged);
       };
     });
 }

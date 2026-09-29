@@ -5,9 +5,9 @@
 // piece. None of these wait for a chain: they stop at what the shell renders
 // by itself. End-to-end resolution lives in resolution.spec.ts.
 
-import { expect } from "@playwright/test";
-import { PORT } from "../env.js";
-import { test } from "./helpers/shared-mode-reset.js";
+import { expect } from '@playwright/test';
+import { PORT } from '../env.js';
+import { test } from './helpers/shared-mode-reset.js';
 
 const LANDING_URL = `http://localhost:${PORT}/`;
 const LABEL_URL = `http://browse.localhost:${PORT}/`;
@@ -15,14 +15,11 @@ const LABEL_URL = `http://browse.localhost:${PORT}/`;
 // not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
 
-test.describe("Shell UI smoke", () => {
-  test("As a returning user, the landing page shows my recent sites as pills", async ({
-    page,
-    request,
-  }) => {
+test.describe('Shell UI smoke', () => {
+  test('As a returning user, the landing page shows my recent sites as pills', async ({ page, request }) => {
     // Given
     const put = await request.put(`${SHARED_STORE}dotli_recent`, {
-      data: JSON.stringify(["browse", "playground"]),
+      data: JSON.stringify(['browse', 'playground']),
     });
     expect(put.ok()).toBe(true);
 
@@ -30,21 +27,19 @@ test.describe("Shell UI smoke", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    await expect(page.locator("#dotli-nav-form")).toBeVisible();
-    const pills = page.locator("#dotli-recent .landing-recent-pill");
+    await expect(page.locator('#dotli-nav-form')).toBeVisible();
+    const pills = page.locator('#dotli-recent .landing-recent-pill');
     await expect(pills).toHaveCount(2);
-    await expect(pills.first()).toHaveAttribute("href", /browse/);
+    await expect(pills.first()).toHaveAttribute('href', /browse/);
   });
 
-  test("As a user, submitting a name on the landing page takes me to that site", async ({
-    page,
-  }) => {
+  test('As a user, submitting a name on the landing page takes me to that site', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
 
     // When
-    await page.locator("#dotli-nav-input").fill("browse");
-    await page.locator("#dotli-nav-input").press("Enter");
+    await page.locator('#dotli-nav-input').fill('browse');
+    await page.locator('#dotli-nav-input').press('Enter');
 
     // Then
     await expect(page).toHaveURL(/\/\/browse\./);
@@ -55,12 +50,12 @@ test.describe("Shell UI smoke", () => {
   }) => {
     // Given
     const problems: string[] = [];
-    page.on("console", (message) => {
-      if (message.type() === "error" || message.type() === "warning") {
+    page.on('console', message => {
+      if (message.type() === 'error' || message.type() === 'warning') {
         problems.push(message.text());
       }
     });
-    page.on("pageerror", (err) => {
+    page.on('pageerror', err => {
       problems.push(err.message);
     });
 
@@ -70,69 +65,57 @@ test.describe("Shell UI smoke", () => {
     // Then: the islands chunk replaced the static markup. The static theme
     // button is titled "Theme"; only the live island names the preference,
     // and only the live More button announces its menu.
-    await expect(page.locator("#theme-toggle")).toHaveAttribute(
-      "title",
-      /^Theme: /,
-    );
-    await expect(page.locator("#more-button")).toHaveAttribute(
-      "aria-haspopup",
-      "menu",
-    );
-    await expect(page.locator("#theme-toggle")).toHaveCount(1);
-    expect(
-      problems.filter((text) => /solid|island|hydrat/i.test(text)),
-    ).toEqual([]);
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', /^Theme: /);
+    await expect(page.locator('#more-button')).toHaveAttribute('aria-haspopup', 'menu');
+    await expect(page.locator('#theme-toggle')).toHaveCount(1);
+    expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
 
     // When
-    await page.locator("#auth-button").click();
+    await page.locator('#auth-button').click();
 
     // Then
-    await expect(page.locator("#auth-modal-backdrop")).toHaveClass(/\bopen\b/);
-    await expect(page.locator("#auth-modal-title")).toBeVisible();
+    await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#auth-modal-title')).toBeVisible();
   });
 
-  test("As a user, I can open the login QR modal and close it again", async ({
-    page,
-  }) => {
+  test('As a user, I can open the login QR modal and close it again', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
-    const backdrop = page.locator("#auth-modal-backdrop");
+    const backdrop = page.locator('#auth-modal-backdrop');
 
     // When
-    await page.locator("#auth-button").click();
+    await page.locator('#auth-button').click();
 
     // Then
     await expect(backdrop).toHaveClass(/\bopen\b/);
-    await expect(page.locator("#auth-modal-title")).toBeVisible();
+    await expect(page.locator('#auth-modal-title')).toBeVisible();
 
     // When
-    await page.locator("#auth-modal-close").click();
+    await page.locator('#auth-modal-close').click();
 
     // Then
     await expect(backdrop).not.toHaveClass(/\bopen\b/);
   });
 
-  test("As a user, the theme I pick applies at once and survives a reload", async ({
-    page,
-  }) => {
+  test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
 
     // When
-    await page.locator("#theme-toggle").click();
-    await expect(page.locator("#theme-popover")).toBeVisible();
+    await page.locator('#theme-toggle').click();
+    await expect(page.locator('#theme-popover')).toBeVisible();
     await page.locator('[data-theme-option="dark"]').click();
 
     // Then
-    const html = page.locator("html");
-    await expect(html).toHaveAttribute("data-theme", "dark");
-    await expect(html).toHaveAttribute("data-theme-pref", "dark");
+    const html = page.locator('html');
+    await expect(html).toHaveAttribute('data-theme', 'dark');
+    await expect(html).toHaveAttribute('data-theme-pref', 'dark');
 
     // When
     await page.reload();
 
     // Then
-    await expect(html).toHaveAttribute("data-theme", "dark");
+    await expect(html).toHaveAttribute('data-theme', 'dark');
   });
 
   test("As a user who loses the connection, I see an offline banner that goes away when I'm back", async ({
@@ -141,15 +124,15 @@ test.describe("Shell UI smoke", () => {
   }) => {
     // Given
     await page.goto(LABEL_URL);
-    await expect(page.locator("#topbar")).toBeVisible();
-    const banner = page.locator("#offline-banner");
+    await expect(page.locator('#topbar')).toBeVisible();
+    const banner = page.locator('#offline-banner');
 
     // When
     await context.setOffline(true);
 
     // Then
     await expect(banner).toBeVisible();
-    await expect(banner).toHaveText("You are offline");
+    await expect(banner).toHaveText('You are offline');
 
     // When
     await context.setOffline(false);
@@ -158,31 +141,25 @@ test.describe("Shell UI smoke", () => {
     await expect(banner).toBeHidden();
   });
 
-  test("As a desktop user, I see a toast I can dismiss", async ({ page }) => {
+  test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
-    const card = page.locator(".notif-card", {
-      has: page.locator(".notif-title", { hasText: "Get Polkadot Desktop" }),
+    const card = page.locator('.notif-card', {
+      has: page.locator('.notif-title', { hasText: 'Get Polkadot Desktop' }),
     });
 
     // Then
     await expect(card).toBeVisible();
 
     // When
-    await card.locator(".notif-card-close").click();
+    await card.locator('.notif-card-close').click();
 
     // Then
     await expect(card).toHaveCount(0);
-    expect(
-      await page.evaluate(() =>
-        localStorage.getItem("desktop-banner-dismissed"),
-      ),
-    ).toBe("1");
+    expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
   });
 
-  test("As a user with JavaScript disabled, the prerendered shell still shows the topbar", async ({
-    browser,
-  }) => {
+  test('As a user with JavaScript disabled, the prerendered shell still shows the topbar', async ({ browser }) => {
     // Given
     // The topbar is hidden on the landing page by JS (topbar-autohide.ts),
     // so with JS off it stays present instead: this proves the shell is
@@ -194,13 +171,10 @@ test.describe("Shell UI smoke", () => {
     await page.goto(LANDING_URL);
 
     // Then
-    await expect(page.locator("#topbar")).toBeAttached();
-    await expect(page.locator("#auth-button")).toBeAttached();
+    await expect(page.locator('#topbar')).toBeAttached();
+    await expect(page.locator('#auth-button')).toBeAttached();
     // The islands' static markup, which no script replaced.
-    await expect(page.locator("#theme-toggle")).toHaveAttribute(
-      "title",
-      "Theme",
-    );
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme');
 
     await context.close();
   });

@@ -5,16 +5,12 @@
 //
 // Parses IPFS CAR (Content-Addressable aRchive) files into a file map.
 
-import { CarReader } from "@ipld/car";
-import * as dagPb from "@ipld/dag-pb";
-import { UnixFS } from "ipfs-unixfs";
-import type { CID } from "multiformats/cid";
-import { concatBytes } from "@noble/hashes/utils.js";
-import {
-  assertBlockMatchesCid,
-  assertSameContentId,
-  verifyingBlockSource,
-} from "./verify.js";
+import { CarReader } from '@ipld/car';
+import * as dagPb from '@ipld/dag-pb';
+import { UnixFS } from 'ipfs-unixfs';
+import type { CID } from 'multiformats/cid';
+import { concatBytes } from '@noble/hashes/utils.js';
+import { assertBlockMatchesCid, assertSameContentId, verifyingBlockSource } from './verify.js';
 
 export type ArchiveFiles = Record<string, Uint8Array>;
 
@@ -100,10 +96,7 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
  *     root shard is visible, so directories with more than ~256 entries
  *     will appear truncated.
  */
-export async function walkUnixFsDag(
-  rootCid: CID,
-  blockSource: BlockSource,
-): Promise<ArchiveFiles> {
+export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
 
   /** Read the raw data bytes from a chunk CID (used for multi-block files). */
@@ -116,21 +109,14 @@ export async function walkUnixFsDag(
 
     if (cid.code === DAG_PB) {
       const node = dagPb.decode(bytes);
-      return node.Data
-        ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0))
-        : new Uint8Array(0);
+      return node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
     }
 
-    throw new Error(
-      `Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`,
-    );
+    throw new Error(`Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`);
   }
 
   /** Bounded-concurrency `Promise.all`. Worker indices preserve input order. */
-  async function runBounded<T>(
-    items: readonly T[],
-    work: (item: T, i: number) => Promise<void>,
-  ): Promise<void> {
+  async function runBounded<T>(items: readonly T[], work: (item: T, i: number) => Promise<void>): Promise<void> {
     if (items.length === 0) {
       return;
     }
@@ -140,18 +126,13 @@ export async function walkUnixFsDag(
         await work(item, idx);
       }
     };
-    await Promise.all(
-      Array.from(
-        { length: Math.min(MAX_PARALLEL_BLOCK_FETCHES, items.length) },
-        () => worker(),
-      ),
-    );
+    await Promise.all(Array.from({ length: Math.min(MAX_PARALLEL_BLOCK_FETCHES, items.length) }, () => worker()));
   }
 
   /** Recursively walk a DAG node, collecting files into `files`. */
   async function processNode(cid: CID, path: string): Promise<void> {
     const bytes = await blockSource(cid);
-    const isRoot = path === "";
+    const isRoot = path === '';
 
     // Raw codec: bytes ARE the file content. Exception at the root: if
     // the bytes start with the CAR header, the user packed the whole site
@@ -165,28 +146,24 @@ export async function walkUnixFsDag(
         }
         return;
       }
-      files[path || "index.html"] = bytes;
+      files[path || 'index.html'] = bytes;
       return;
     }
 
     if (cid.code !== DAG_PB) {
-      throw new Error(
-        `Unsupported codec 0x${cid.code.toString(16)} at path="${path}" (${cid.toString()})`,
-      );
+      throw new Error(`Unsupported codec 0x${cid.code.toString(16)} at path="${path}" (${cid.toString()})`);
     }
 
     const node = dagPb.decode(bytes);
     const uf = node.Data ? UnixFS.unmarshal(node.Data) : null;
-    const isDirectory =
-      uf?.type === "directory" || uf?.type === "hamt-sharded-directory";
-    const isFile = !uf || uf.type === "file" || uf.type === "raw";
+    const isDirectory = uf?.type === 'directory' || uf?.type === 'hamt-sharded-directory';
+    const isFile = !uf || uf.type === 'file' || uf.type === 'raw';
 
     if (isDirectory) {
       const entries = node.Links.filter(
-        (link): link is typeof link & { Name: string } =>
-          link.Name !== undefined && link.Name !== "",
+        (link): link is typeof link & { Name: string } => link.Name !== undefined && link.Name !== '',
       );
-      await runBounded(entries, async (link) => {
+      await runBounded(entries, async link => {
         await processNode(link.Hash, joinPath(path, link.Name));
       });
       return;
@@ -213,19 +190,17 @@ export async function walkUnixFsDag(
           files[p] = data;
         }
       } else {
-        files[path || "index.html"] = content;
+        files[path || 'index.html'] = content;
       }
       return;
     }
 
     // UnixFS classified the node as something else (symlink, metadata).
     // Fail loud rather than guess at how to render it.
-    throw new Error(
-      `Unsupported UnixFS node type "${uf.type}" at path="${path}"`,
-    );
+    throw new Error(`Unsupported UnixFS node type "${uf.type}" at path="${path}"`);
   }
 
-  await processNode(rootCid, "");
+  await processNode(rootCid, '');
   return files;
 }
 
@@ -238,16 +213,13 @@ export async function walkUnixFsDag(
  * content. Omit it only when the bytes are already trusted to address
  * themselves correctly (e.g. a CAR re-packed under a smoldot-verified CID).
  */
-export async function parseCarFile(
-  buffer: Uint8Array,
-  expectedRoot?: CID,
-): Promise<ArchiveFiles> {
+export async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Promise<ArchiveFiles> {
   const reader = await CarReader.fromBytes(buffer);
   const roots = await reader.getRoots();
   const rootCid = roots[0];
 
   if (rootCid === undefined) {
-    throw new Error("CAR file has no roots");
+    throw new Error('CAR file has no roots');
   }
 
   if (expectedRoot !== undefined) {
@@ -274,17 +246,14 @@ export async function parseCarFile(
  * the CAR root must match, and every block is hash-verified (or, for a
  * non-CAR single block, the bytes themselves are hash-verified).
  */
-export async function parseIpfsResponse(
-  buffer: Uint8Array,
-  expectedRoot?: CID,
-): Promise<ArchiveFiles> {
+export async function parseIpfsResponse(buffer: Uint8Array, expectedRoot?: CID): Promise<ArchiveFiles> {
   if (isCarFile(buffer)) {
     return parseCarFile(buffer, expectedRoot);
   }
   if (expectedRoot !== undefined) {
     assertBlockMatchesCid(expectedRoot, buffer);
   }
-  return { "index.html": buffer };
+  return { 'index.html': buffer };
 }
 
 export interface PackedArchive {

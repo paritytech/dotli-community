@@ -5,12 +5,8 @@
 // countdown pauses while the tab is hidden or the stack is expanded and
 // resumes from what was left. The overlays root renders this store.
 
-import { captureException } from "@dotli/metrics";
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store.js";
+import { captureException } from '@dotli/metrics';
+import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 export interface ToastAction {
   label: string;
@@ -62,17 +58,12 @@ let nextId = 0;
 let visibilityBound = false;
 
 function shouldPause(): boolean {
-  return toasts.get().expanded || document.visibilityState !== "visible";
+  return toasts.get().expanded || document.visibilityState !== 'visible';
 }
 
 function start(id: number): void {
   const timer = timers.get(id);
-  if (
-    timer === undefined ||
-    timer.remaining <= 0 ||
-    timer.handle !== undefined ||
-    shouldPause()
-  ) {
+  if (timer === undefined || timer.remaining <= 0 || timer.handle !== undefined || shouldPause()) {
     return;
   }
   timer.startedAt = Date.now();
@@ -89,10 +80,7 @@ function pause(id: number): void {
   }
   clearTimeout(timer.handle);
   timer.handle = undefined;
-  timer.remaining = Math.max(
-    0,
-    timer.remaining - (Date.now() - timer.startedAt),
-  );
+  timer.remaining = Math.max(0, timer.remaining - (Date.now() - timer.startedAt));
 }
 
 function pauseAll(): void {
@@ -115,8 +103,8 @@ function bindVisibility(): void {
     return;
   }
   visibilityBound = true;
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
       resumeAll();
     } else {
       pauseAll();
@@ -132,7 +120,7 @@ function finishTimer(id: number): void {
   try {
     timer?.onDismiss?.();
   } catch (err) {
-    captureException(err, { kind: "toast_on_dismiss_error" });
+    captureException(err, { kind: 'toast_on_dismiss_error' });
   }
 }
 
@@ -170,25 +158,25 @@ export function pushToast(input: ToastInput): number {
 /** Start a toast's exit: run onDismiss and mark it leaving. */
 export function dismissToast(id: number): void {
   const state = toasts.get();
-  const entry = state.items.find((t) => t.id === id);
+  const entry = state.items.find(t => t.id === id);
   if (entry === undefined || entry.leaving) {
     return;
   }
   finishTimer(id);
   toasts.set({
     ...state,
-    items: state.items.map((t) => (t.id === id ? { ...t, leaving: true } : t)),
+    items: state.items.map(t => (t.id === id ? { ...t, leaving: true } : t)),
   });
 }
 
 /** Drop a toast once its exit animation has finished. */
 export function removeToast(id: number): void {
   const state = toasts.get();
-  if (!state.items.some((t) => t.id === id)) {
+  if (!state.items.some(t => t.id === id)) {
     return;
   }
   timers.delete(id);
-  const items = state.items.filter((t) => t.id !== id);
+  const items = state.items.filter(t => t.id !== id);
   const collapse = state.expanded && items.length <= 1;
   toasts.set({ items, expanded: collapse ? false : state.expanded });
   if (collapse) {
@@ -198,7 +186,7 @@ export function removeToast(id: number): void {
 
 export function dismissAllToasts(): void {
   const state = toasts.get();
-  const active = state.items.filter((t) => !t.leaving);
+  const active = state.items.filter(t => !t.leaving);
   if (active.length === 0) {
     return;
   }
@@ -208,7 +196,7 @@ export function dismissAllToasts(): void {
   }
   toasts.set({
     ...state,
-    items: state.items.map((t) => (t.leaving ? t : { ...t, leaving: true })),
+    items: state.items.map(t => (t.leaving ? t : { ...t, leaving: true })),
   });
 }
 

@@ -16,9 +16,9 @@
 //
 // Imported by apps/host/vite.config.ts through `@dotli/ui/vite`.
 
-import { existsSync } from "node:fs";
-import { basename } from "node:path";
-import { createServer, type Plugin, type ViteDevServer } from "vite";
+import { existsSync } from 'node:fs';
+import { basename } from 'node:path';
+import { createServer, type Plugin, type ViteDevServer } from 'vite';
 
 export interface PrerenderOptions {
   /** Marker in the HTML replaced by the rendered markup, e.g. `<!--ssr:shell-->`. */
@@ -41,17 +41,11 @@ export interface PrerenderOptions {
  * inserted verbatim. Throws if the placeholder is missing or appears more than
  * once.
  */
-export function injectPrerendered(
-  html: string,
-  placeholder: string,
-  rendered: string,
-): string {
+export function injectPrerendered(html: string, placeholder: string, rendered: string): string {
   const parts = html.split(placeholder);
   const [before, after, ...extra] = parts;
   if (before === undefined || after === undefined) {
-    throw new Error(
-      `[prerender] placeholder "${placeholder}" not found in index.html`,
-    );
+    throw new Error(`[prerender] placeholder "${placeholder}" not found in index.html`);
   }
   if (extra.length > 0) {
     throw new Error(
@@ -61,24 +55,17 @@ export function injectPrerendered(
   return before + rendered + after;
 }
 
-async function renderWith(
-  server: ViteDevServer,
-  options: PrerenderOptions,
-): Promise<string> {
+async function renderWith(server: ViteDevServer, options: PrerenderOptions): Promise<string> {
   const mod = await server.ssrLoadModule(options.entry);
   const render: unknown = mod[options.exportName];
-  if (typeof render !== "function") {
-    throw new Error(
-      `[prerender] ${options.entry} has no function export "${options.exportName}"`,
-    );
+  if (typeof render !== 'function') {
+    throw new Error(`[prerender] ${options.entry} has no function export "${options.exportName}"`);
   }
   const rendered: unknown = await (render as () => unknown)();
-  if (typeof rendered !== "string") {
-    throw new Error(
-      `[prerender] ${options.exportName}() in ${options.entry} did not return a string`,
-    );
+  if (typeof rendered !== 'string') {
+    throw new Error(`[prerender] ${options.exportName}() in ${options.entry} did not return a string`);
   }
-  if (rendered.trim() === "") {
+  if (rendered.trim() === '') {
     throw new Error(
       `[prerender] ${options.exportName}() in ${options.entry} returned an empty string; shipping an empty shell must never be silent`,
     );
@@ -97,8 +84,8 @@ async function renderWith(
  */
 function disableClientDepsOptimizer(): Plugin {
   return {
-    name: "dotli-prerender-no-deps-optimizer",
-    enforce: "post",
+    name: 'dotli-prerender-no-deps-optimizer',
+    enforce: 'post',
     config(config) {
       config.optimizeDeps = {
         ...config.optimizeDeps,
@@ -117,19 +104,19 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
   let buildServerConfig: Parameters<typeof createServer>[0] | undefined;
 
   return {
-    name: "dotli-prerender",
+    name: 'dotli-prerender',
     configResolved(config) {
       if (!existsSync(options.entry)) {
         throw new Error(`[prerender] entry not found: ${options.entry}`);
       }
-      if (config.command === "build") {
+      if (config.command === 'build') {
         if (config.configFile === undefined) {
           // Without a config file, the inner server below would start with
           // only `disableClientDepsOptimizer()` in its plugin list: no
           // solid(), no aliases. It would "succeed" at rendering something,
           // silently wrong, rather than fail loudly.
           throw new Error(
-            "[prerender] no configFile resolved for this build; the inner SSR render server needs it to load the same plugins (solid(), aliases, ...) as the build itself",
+            '[prerender] no configFile resolved for this build; the inner SSR render server needs it to load the same plugins (solid(), aliases, ...) as the build itself',
           );
         }
         // The same config file (plugins, aliases, defines) and mode as this
@@ -140,8 +127,8 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
           configFile: config.configFile,
           root: config.root,
           mode: config.mode,
-          logLevel: "warn",
-          appType: "custom",
+          logLevel: 'warn',
+          appType: 'custom',
           server: { middlewareMode: true, hmr: false, ws: false, watch: null },
           plugins: [disableClientDepsOptimizer()],
         };
@@ -149,9 +136,9 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
     },
     transformIndexHtml: {
       // After Vite's own HTML processing, so the markup lands verbatim.
-      order: "post",
+      order: 'post',
       async handler(html, ctx) {
-        if (basename(ctx.filename) !== (options.filter ?? "index.html")) {
+        if (basename(ctx.filename) !== (options.filter ?? 'index.html')) {
           return html;
         }
         let rendered: string;
@@ -159,7 +146,7 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
           rendered = await renderWith(ctx.server, options);
         } else {
           if (!buildServerConfig) {
-            throw new Error("[prerender] no dev server and not a build");
+            throw new Error('[prerender] no dev server and not a build');
           }
           const server = await createServer(buildServerConfig);
           try {
@@ -170,10 +157,7 @@ export function prerenderPlugin(options: PrerenderOptions): Plugin {
             } catch (closeError) {
               // The render error is the one worth surfacing; a close
               // failure on top of it would otherwise silently replace it.
-              console.error(
-                "[prerender] server.close() also failed after a render error",
-                closeError,
-              );
+              console.error('[prerender] server.close() also failed after a render error', closeError);
             }
             throw renderError;
           }

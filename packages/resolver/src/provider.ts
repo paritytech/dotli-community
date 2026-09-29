@@ -10,28 +10,20 @@
 // chain specs, relay topology, and statement-store placement. Gateway (`rpc`)
 // mode dials public nodes through `./rpc-chain.ts` instead.
 
-import type { JsonRpcMessage } from "@polkadot-api/json-rpc-provider";
-import type { JsonRpcProvider } from "polkadot-api";
-import {
-  getActiveServicesConfig,
-  getActiveSupportedGenesisHashes,
-} from "@dotli/config";
-import { m, spans as S } from "@dotli/metrics";
-import { log } from "@dotli/shared";
+import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcProvider } from 'polkadot-api';
+import { getActiveServicesConfig, getActiveSupportedGenesisHashes } from '@dotli/config';
+import { m, spans as S } from '@dotli/metrics';
+import { log } from '@dotli/shared';
 import init, {
   ChainProviderBuilder,
   setLogLevel,
   type ChainProviderHandle,
   type Connection,
-} from "@parity/truapi-provider";
-import wasmUrl from "@parity/truapi-provider/truapi_provider_bg.wasm?url";
-import { createSmoldotDb } from "./smoldot-db.js";
-import {
-  attachChainSync,
-  chainKeyForGenesis,
-  reportDbCache,
-  type ChainSyncTap,
-} from "./chain-sync.js";
+} from '@parity/truapi-provider';
+import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
+import { createSmoldotDb } from './smoldot-db.js';
+import { attachChainSync, chainKeyForGenesis, reportDbCache, type ChainSyncTap } from './chain-sync.js';
 
 // One provider per host process: every connection shares the single embedded
 // light client.
@@ -39,27 +31,25 @@ let handlePromise: Promise<ChainProviderHandle> | null = null;
 
 function isLocalHost(): boolean {
   const host = globalThis.location.hostname;
-  return (
-    host === "localhost" || host.endsWith(".localhost") || host === "127.0.0.1"
-  );
+  return host === 'localhost' || host.endsWith('.localhost') || host === '127.0.0.1';
 }
 
 // Falls back to "" in contexts that lack `sessionStorage`, such as the shared
 // worker, so callers can read a flag without guarding each access.
 function sessionFlag(key: string): string {
   const store = (globalThis as { sessionStorage?: Storage }).sessionStorage;
-  return store === undefined ? "" : (store.getItem(key) ?? "");
+  return store === undefined ? '' : (store.getItem(key) ?? '');
 }
 
 // Console verbosity for the embedded provider and smoldot. A `sessionStorage`
 // override wins. Otherwise localhost defaults to `info` so the light client is
 // observable out of the box, and deployed origins stay silent.
 function providerLogLevel(): string {
-  const override = sessionFlag("dotli:truapi-provider-log");
-  if (override !== "") {
+  const override = sessionFlag('dotli:truapi-provider-log');
+  if (override !== '') {
     return override;
   }
-  return isLocalHost() ? "info" : "off";
+  return isLocalHost() ? 'info' : 'off';
 }
 
 const HEARTBEAT_DEFAULT_MS = 60_000;
@@ -68,10 +58,8 @@ const HEARTBEAT_DEFAULT_MS = 60_000;
 // Tests set it high so only the startup emission lands inside the run, which is
 // what makes the emitted count exact rather than a function of wall-clock.
 function heartbeatIntervalMs(): number {
-  const override = Number(sessionFlag("dotli:smoldot-heartbeat-ms"));
-  return Number.isFinite(override) && override > 0
-    ? override
-    : HEARTBEAT_DEFAULT_MS;
+  const override = Number(sessionFlag('dotli:smoldot-heartbeat-ms'));
+  return Number.isFinite(override) && override > 0 ? override : HEARTBEAT_DEFAULT_MS;
 }
 
 /**
@@ -87,9 +75,7 @@ function heartbeatIntervalMs(): number {
  * as the context does and nothing runs when a tab or worker is killed, so a
  * stop function exists for tests rather than for production shutdown.
  */
-export function startLightClientHeartbeat(
-  intervalMs: number = heartbeatIntervalMs(),
-): () => void {
+export function startLightClientHeartbeat(intervalMs: number = heartbeatIntervalMs()): () => void {
   // A metrics-stripped build drops every gauge on the floor, and the timer on
   // its own is not free: a pending interval is a live task that can keep an
   // otherwise idle SharedWorker from being reclaimed.
@@ -130,13 +116,13 @@ function getHandle(): Promise<ChainProviderHandle> {
       // failure, because the store contract says "cannot answer" must reject
       // rather than read as "nothing stored".
       const observed: typeof store = {
-        load: async (genesisHash) => {
+        load: async genesisHash => {
           try {
             const blob = await store.load(genesisHash);
-            markSmoldotDb(genesisHash, blob !== null ? "hit" : "miss");
+            markSmoldotDb(genesisHash, blob !== null ? 'hit' : 'miss');
             return blob;
           } catch (error) {
-            markSmoldotDb(genesisHash, "unavailable");
+            markSmoldotDb(genesisHash, 'unavailable');
             throw error;
           }
         },
@@ -149,7 +135,7 @@ function getHandle(): Promise<ChainProviderHandle> {
     // than to callers. One context means one client means one emitter, whether
     // that context is the SharedWorker serving every tab or a per-tab iframe.
     startLightClientHeartbeat();
-    log.warn("[dot.li provider] truapi-provider ready (embedded smoldot wasm)");
+    log.warn('[dot.li provider] truapi-provider ready (embedded smoldot wasm)');
     return handle;
   })().catch((error: unknown) => {
     // Clear the cached promise so the next call retries instead of handing the
@@ -209,12 +195,9 @@ function markFatal(message: string): void {
 // not answer, kept distinct from "miss" so a storage outage does not read as
 // ordinary cold starts. People is deliberately not reported: nothing the
 // page waits on depends on its warm state.
-export type SmoldotDbChain = "relay" | "hub" | "bulletin";
-export type SmoldotDbOutcome = "hit" | "miss" | "unavailable";
-type SmoldotDbListener = (
-  chain: SmoldotDbChain,
-  outcome: SmoldotDbOutcome,
-) => void;
+export type SmoldotDbChain = 'relay' | 'hub' | 'bulletin';
+export type SmoldotDbOutcome = 'hit' | 'miss' | 'unavailable';
+type SmoldotDbListener = (chain: SmoldotDbChain, outcome: SmoldotDbOutcome) => void;
 const smoldotDbOutcomes = new Map<SmoldotDbChain, SmoldotDbOutcome>();
 const smoldotDbListeners = new Set<SmoldotDbListener>();
 
@@ -222,13 +205,13 @@ function chainRole(genesisHash: string): SmoldotDbChain | null {
   const services = getActiveServicesConfig();
   const key = genesisHash.toLowerCase();
   if (key === services.relay.genesis.toLowerCase()) {
-    return "relay";
+    return 'relay';
   }
   if (key === services.assethub.genesis.toLowerCase()) {
-    return "hub";
+    return 'hub';
   }
   if (key === services.bulletin.genesis.toLowerCase()) {
-    return "bulletin";
+    return 'bulletin';
   }
   return null;
 }
@@ -269,10 +252,7 @@ export function isChainSupported(genesisHash: string): boolean {
   return getActiveSupportedGenesisHashes().has(genesisHash.toLowerCase());
 }
 
-async function resumeFromStore(
-  handle: ChainProviderHandle,
-  key: string,
-): Promise<void> {
+async function resumeFromStore(handle: ChainProviderHandle, key: string): Promise<void> {
   try {
     const warm = await handle.loadDatabase(key);
     reportDbCache(key, warm);
@@ -297,16 +277,14 @@ async function resumeFromStore(
  * so messages are stringified on send and parsed on receipt. Messages sent
  * before the async connect resolves are queued and flushed in order.
  */
-export function createChainProvider(
-  genesisHash: string,
-): JsonRpcProvider | null {
+export function createChainProvider(genesisHash: string): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
   if (!isChainSupported(key)) {
     log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
     return null;
   }
 
-  return (onMessage) => {
+  return onMessage => {
     // Object-held so control-flow analysis doesn't narrow the flag across the
     // connect await (`disconnect` can flip it at any time).
     const state: {
@@ -349,7 +327,7 @@ export function createChainProvider(
             ? null
             : attachChainSync(
                 chain,
-                (raw) => {
+                raw => {
                   candidate.send(raw);
                 },
                 () => handle.lifecycle(key),
@@ -374,9 +352,7 @@ export function createChainProvider(
           onMessage(parsed);
         }
       } catch (error) {
-        markFatal(
-          `chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
       }
     })();
 

@@ -6,27 +6,25 @@
 // deploy can be checked with curl. The root, not /assets/, which nginx caches
 // as immutable.
 
-import type { Plugin } from "vite";
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import type { Plugin } from 'vite';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 export function readPackageVersion(dir: string): string {
   try {
-    const pkg = JSON.parse(
-      readFileSync(resolve(dir, "package.json"), "utf8"),
-    ) as { version?: string };
-    return pkg.version ?? "0.0.0";
+    const pkg = JSON.parse(readFileSync(resolve(dir, 'package.json'), 'utf8')) as { version?: string };
+    return pkg.version ?? '0.0.0';
   } catch {
-    return "0.0.0";
+    return '0.0.0';
   }
 }
 
-export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
-  let root = "";
+export function buildInfo(build: 'host' | 'app' | 'protocol'): Plugin {
+  let root = '';
   return {
-    name: "dotli-build-info",
-    apply: "build",
+    name: 'dotli-build-info',
+    apply: 'build',
     configResolved(config) {
       root = config.root;
     },
@@ -34,25 +32,23 @@ export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
     // covers the final bytes. Files outside the bundle are not part of it: the
     // copied public/ dir and the service workers, written after it.
     generateBundle: {
-      order: "post",
+      order: 'post',
       handler(_options, bundle) {
-        const hash = createHash("sha256");
-        const outputs = Object.entries(bundle).sort(([a], [b]) =>
-          a < b ? -1 : a > b ? 1 : 0,
-        );
+        const hash = createHash('sha256');
+        const outputs = Object.entries(bundle).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
         for (const [fileName, output] of outputs) {
           hash.update(`${fileName}\0`);
-          hash.update(output.type === "chunk" ? output.code : output.source);
-          hash.update("\0");
+          hash.update(output.type === 'chunk' ? output.code : output.source);
+          hash.update('\0');
         }
         const info = {
           build,
           version: readPackageVersion(root),
-          hash: hash.digest("hex"),
+          hash: hash.digest('hex'),
         };
         this.emitFile({
-          type: "asset",
-          fileName: "host_version.json",
+          type: 'asset',
+          fileName: 'host_version.json',
           source: `${JSON.stringify(info)}\n`,
         });
       },

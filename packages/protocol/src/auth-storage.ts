@@ -1,42 +1,28 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { BASE_DOMAIN, SITE_ID, type SiteId } from "@dotli/config";
-import type { ProtocolRequestMethod } from "./messages.js";
+import { BASE_DOMAIN, SITE_ID, type SiteId } from '@dotli/config';
+import type { ProtocolRequestMethod } from './messages.js';
 
-export type SharedAuthRequestMethod =
-  "authStorageRead" | "authStorageWrite" | "authStorageClear";
+export type SharedAuthRequestMethod = 'authStorageRead' | 'authStorageWrite' | 'authStorageClear';
 
-export type SharedModeRequestMethod =
-  "modeStorageRead" | "modeStorageWrite" | "modeStorageClear";
+export type SharedModeRequestMethod = 'modeStorageRead' | 'modeStorageWrite' | 'modeStorageClear';
 
-export const SHARED_CORE_SESSION_KEY = "session";
+export const SHARED_CORE_SESSION_KEY = 'session';
 
 // Both the shared-auth and shared-mode stores accept the same key shape, an
 // alphanumeric token with dots, underscores, colons and dashes. Keep the
 // regex shared so the validation contract is one thing. A future store
 // needing a different shape should get its own constant.
 const SHARED_STORAGE_KEY_PATTERN = /^[A-Za-z0-9._:-]+$/;
-const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>([
-  "authStorageRead",
-  "authStorageWrite",
-  "authStorageClear",
-]);
-const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>([
-  "modeStorageRead",
-  "modeStorageWrite",
-  "modeStorageClear",
-]);
+const SHARED_AUTH_METHODS = new Set<ProtocolRequestMethod>(['authStorageRead', 'authStorageWrite', 'authStorageClear']);
+const SHARED_MODE_METHODS = new Set<ProtocolRequestMethod>(['modeStorageRead', 'modeStorageWrite', 'modeStorageClear']);
 
-export function isSharedAuthRequestMethod(
-  method: ProtocolRequestMethod,
-): method is SharedAuthRequestMethod {
+export function isSharedAuthRequestMethod(method: ProtocolRequestMethod): method is SharedAuthRequestMethod {
   return SHARED_AUTH_METHODS.has(method);
 }
 
-export function isSharedModeRequestMethod(
-  method: ProtocolRequestMethod,
-): method is SharedModeRequestMethod {
+export function isSharedModeRequestMethod(method: ProtocolRequestMethod): method is SharedModeRequestMethod {
   return SHARED_MODE_METHODS.has(method);
 }
 
@@ -92,13 +78,11 @@ export function isSharedAuthOriginAllowed(origin: string): boolean {
     const url = new URL(origin);
     const { hostname, protocol } = url;
 
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return (
-        hostname !== "app.localhost" && !hostname.endsWith(".app.localhost")
-      );
+    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+      return hostname !== 'app.localhost' && !hostname.endsWith('.app.localhost');
     }
 
-    if (protocol !== "https:") {
+    if (protocol !== 'https:') {
       return false;
     }
 

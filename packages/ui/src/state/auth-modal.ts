@@ -1,22 +1,18 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createSyncStore,
-  shallowEqual,
-  type ReadableStore,
-} from "./create-store.js";
+import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
  * What the modal body shows. `error` carries the raw failure `message` plus
  * the user-facing copy derived from it, and whether a retry can help.
  */
 export type AuthModalView =
-  | { kind: "spinner" }
-  | { kind: "pairing"; payload: string }
-  | { kind: "authenticating" }
+  | { kind: 'spinner' }
+  | { kind: 'pairing'; payload: string }
+  | { kind: 'authenticating' }
   | {
-      kind: "error";
+      kind: 'error';
       message: string;
       retry: boolean;
       title: string;
@@ -41,16 +37,13 @@ const INITIAL: AuthModalState = {
   open: false,
   productLabel: null,
   reason: null,
-  view: { kind: "spinner" },
+  view: { kind: 'spinner' },
 };
 
 /** Shallow, with the view compared one level deeper: it is rebuilt per write. */
 function sameAuthModal(a: AuthModalState, b: AuthModalState): boolean {
   return (
-    a.open === b.open &&
-    a.productLabel === b.productLabel &&
-    a.reason === b.reason &&
-    shallowEqual(a.view, b.view)
+    a.open === b.open && a.productLabel === b.productLabel && a.reason === b.reason && shallowEqual(a.view, b.view)
   );
 }
 

@@ -6,22 +6,13 @@
 // appendSectionHeader, buildRadioRow, renderCacheToggle and renderInfoRow
 // built.
 
-import { createSignal, onCleanup, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { createSignal, onCleanup, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 
 /** A section heading, with an optional modifier class. */
-export function SectionHeader(props: {
-  text: string;
-  modifier?: string | undefined;
-}): JSX.Element {
+export function SectionHeader(props: { text: string; modifier?: string | undefined }): JSX.Element {
   return (
-    <div
-      class={
-        props.modifier === undefined
-          ? "mode-popover-section"
-          : `mode-popover-section ${props.modifier}`
-      }
-    >
+    <div class={props.modifier === undefined ? 'mode-popover-section' : `mode-popover-section ${props.modifier}`}>
       {props.text}
     </div>
   );
@@ -43,12 +34,10 @@ export function RadioRow(props: {
 }): JSX.Element {
   const disabled = (): boolean => props.disabled === true;
   return (
-    <label
-      class={`mode-radio-row${props.selected ? " selected" : ""}${disabled() ? " disabled" : ""}`}
-    >
+    <label class={`mode-radio-row${props.selected ? ' selected' : ''}${disabled() ? ' disabled' : ''}`}>
       <input
-        ref={(el) => {
-          el.addEventListener("change", () => {
+        ref={el => {
+          el.addEventListener('change', () => {
             props.choose();
             el.focus();
           });
@@ -83,8 +72,8 @@ export function CacheToggle(props: {
     <div class="mode-cache-row">
       <span class="mode-cache-label">{props.label}</span>
       <button
-        ref={(el) => {
-          el.addEventListener("click", () => {
+        ref={el => {
+          el.addEventListener('click', () => {
             const next = !untrack(on);
             setOn(next);
             props.update(next);
@@ -92,8 +81,8 @@ export function CacheToggle(props: {
         }}
         role="switch"
         aria-label={props.label}
-        class={`permissions-popover-toggle ${on() ? "on" : ""}`}
-        aria-checked={on() ? "true" : "false"}
+        class={`permissions-popover-toggle ${on() ? 'on' : ''}`}
+        aria-checked={on() ? 'true' : 'false'}
       >
         <span class="permissions-toggle-track">
           <span class="permissions-toggle-knob" />
@@ -110,11 +99,7 @@ const COPIED_MS = 1000;
  * A diagnostics label and value. A copyable row copies its value on click
  * (unless it is empty, "…" or "n/a") and reads "Copied" for a second.
  */
-export function InfoRow(props: {
-  label: string;
-  value: string;
-  copyable?: boolean;
-}): JSX.Element {
+export function InfoRow(props: { label: string; value: string; copyable?: boolean }): JSX.Element {
   const [copied, setCopied] = createSignal(false);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
   onCleanup(() => {
@@ -123,13 +108,13 @@ export function InfoRow(props: {
   const copyable = untrack(() => props.copyable === true);
   return (
     <div
-      ref={(el) => {
+      ref={el => {
         if (!copyable) {
           return;
         }
-        el.addEventListener("click", () => {
+        el.addEventListener('click', () => {
           const value = untrack(() => props.value);
-          if (value === "" || value === "…" || value === "n/a") {
+          if (value === '' || value === '…' || value === 'n/a') {
             return;
           }
           void navigator.clipboard.writeText(value).then(() => {
@@ -142,13 +127,11 @@ export function InfoRow(props: {
           });
         });
       }}
-      class={`mode-endpoint-row mode-info-row${copyable ? " mode-info-row-copyable" : ""}${copied() ? " copied" : ""}`}
+      class={`mode-endpoint-row mode-info-row${copyable ? ' mode-info-row-copyable' : ''}${copied() ? ' copied' : ''}`}
       title={copyable ? `Click to copy ${props.label}` : undefined}
     >
       <span class="mode-endpoint-label">{props.label}</span>
-      <code class="mode-endpoint-value">
-        {copied() ? "Copied" : props.value}
-      </code>
+      <code class="mode-endpoint-value">{copied() ? 'Copied' : props.value}</code>
     </div>
   );
 }

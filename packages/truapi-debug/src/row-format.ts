@@ -10,14 +10,10 @@
 // `escapeHtml`-guarding every field before it reaches the DOM; callers
 // that render via JSX get automatic text escaping instead.
 
-import {
-  decodeChainAnnotations,
-  formatChainLabel,
-  type ChainAnnotations,
-} from "./chain-decode.js";
-import type { StoredSystemEvent, StoredTruapiEvent } from "./event-store.js";
-import { formatPayloadSummary } from "./format.js";
-import { summariseSystemEvent } from "./system-summary.js";
+import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
+import type { StoredSystemEvent, StoredTruapiEvent } from './event-store.js';
+import { formatPayloadSummary } from './format.js';
+import { summariseSystemEvent } from './system-summary.js';
 
 /**
  * Compact summary rendered in the list row for a decoded chain message.
@@ -35,17 +31,17 @@ export function chainSummary(ann: ChainAnnotations): string {
   if (ann.blockHash !== undefined) {
     parts.push(`blk ${shortHex(ann.blockHash)}`);
   }
-  if (ann.outcome === "error") {
-    parts.push(`err: ${ann.errorMessage ?? "?"}`);
-  } else if (ann.outcome === "limit-reached") {
-    parts.push("limit-reached");
+  if (ann.outcome === 'error') {
+    parts.push(`err: ${ann.errorMessage ?? '?'}`);
+  } else if (ann.outcome === 'limit-reached') {
+    parts.push('limit-reached');
   }
-  return parts.join(" · ");
+  return parts.join(' · ');
 }
 
 /** Trim a 0x-prefixed hash or a long id down to a glance-friendly token. */
 export function shortHex(v: string): string {
-  if (v.startsWith("0x") && v.length > 12) {
+  if (v.startsWith('0x') && v.length > 12) {
     return `${v.slice(0, 8)}…${v.slice(-4)}`;
   }
   if (v.length > 10) {
@@ -65,29 +61,20 @@ export function ridColor(rid: string): string {
 }
 
 export function tagClass(tag: string): string {
-  if (
-    tag.endsWith("_request") ||
-    tag.endsWith("_start") ||
-    tag.endsWith("_submit")
-  ) {
-    return "td-tag td-tag-req";
+  if (tag.endsWith('_request') || tag.endsWith('_start') || tag.endsWith('_submit')) {
+    return 'td-tag td-tag-req';
   }
-  if (tag.endsWith("_response")) {
-    return "td-tag td-tag-res";
+  if (tag.endsWith('_response')) {
+    return 'td-tag td-tag-res';
   }
-  if (
-    tag.endsWith("_receive") ||
-    tag.endsWith("_interrupt") ||
-    tag.endsWith("_stop") ||
-    tag.endsWith("_subscribe")
-  ) {
-    return "td-tag td-tag-sub";
+  if (tag.endsWith('_receive') || tag.endsWith('_interrupt') || tag.endsWith('_stop') || tag.endsWith('_subscribe')) {
+    return 'td-tag td-tag-sub';
   }
-  return "td-tag";
+  return 'td-tag';
 }
 
 export interface TruapiRowData {
-  direction: StoredTruapiEvent["direction"];
+  direction: StoredTruapiEvent['direction'];
   productId: string | undefined;
   requestId: string;
   ridShort: string;
@@ -103,14 +90,10 @@ export interface TruapiRowData {
  * decoded chain label/summary plus the badge inputs. Markup assembly
  * (with `escapeHtml`) is the caller's job.
  */
-export function truapiRowData(
-  ev: StoredTruapiEvent,
-  pendingKey: string | null,
-): TruapiRowData {
+export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
   const chain = decodeChainAnnotations(ev.tag, ev.payload);
   const displayTag = chain === null ? ev.tag : formatChainLabel(chain);
-  const summary =
-    chain === null ? formatPayloadSummary(ev.payload) : chainSummary(chain);
+  const summary = chain === null ? formatPayloadSummary(ev.payload) : chainSummary(chain);
   return {
     direction: ev.direction,
     productId: ev.productId,
@@ -126,7 +109,7 @@ export function truapiRowData(
 
 export interface SystemRowData {
   layer: string;
-  source: StoredSystemEvent["source"];
+  source: StoredSystemEvent['source'];
   flowId: string;
   flowIdShort: string;
   ridColor: string;
@@ -151,20 +134,16 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
  * Class attribute of a list row. Order is part of the markup contract:
  * td-row, selected, paired, system.
  */
-export function rowClassName(
-  selected: boolean,
-  paired: boolean,
-  system: boolean,
-): string {
-  let out = "td-row";
+export function rowClassName(selected: boolean, paired: boolean, system: boolean): string {
+  let out = 'td-row';
   if (selected) {
-    out += " selected";
+    out += ' selected';
   }
   if (paired) {
-    out += " paired";
+    out += ' paired';
   }
   if (system) {
-    out += " system";
+    out += ' system';
   }
   return out;
 }

@@ -11,11 +11,11 @@
 // (storage broken, surface to user). The legacy `getCachedCid` remains
 // for incremental migration but collapses both into `null`.
 
-import { getDb } from "./db.js";
-import { m, captureException, spans as S } from "@dotli/metrics";
-import { isValidDotLabel, log } from "@dotli/shared";
+import { getDb } from './db.js';
+import { m, captureException, spans as S } from '@dotli/metrics';
+import { isValidDotLabel, log } from '@dotli/shared';
 
-const STORE = "cids";
+const STORE = 'cids';
 
 interface CidEntry {
   label: string;
@@ -23,40 +23,31 @@ interface CidEntry {
   timestamp: number;
 }
 
-export type CidCacheResult =
-  | { kind: "hit"; cid: string }
-  | { kind: "miss" }
-  | { kind: "error"; cause: unknown };
+export type CidCacheResult = { kind: 'hit'; cid: string } | { kind: 'miss' } | { kind: 'error'; cause: unknown };
 
-export async function getCachedCidResult(
-  label: string,
-): Promise<CidCacheResult> {
+export async function getCachedCidResult(label: string): Promise<CidCacheResult> {
   const stop = m.timer(S.CACHE_READ_LATENCY);
   try {
     const db = await getDb();
-    return await new Promise<CidCacheResult>((resolve) => {
-      const tx = db.transaction(STORE, "readonly");
+    return await new Promise<CidCacheResult>(resolve => {
+      const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(label);
       req.onsuccess = () => {
         const entry = req.result as CidEntry | undefined;
         stop();
-        resolve(
-          entry === undefined
-            ? { kind: "miss" }
-            : { kind: "hit", cid: entry.cid },
-        );
+        resolve(entry === undefined ? { kind: 'miss' } : { kind: 'hit', cid: entry.cid });
       };
       req.onerror = () => {
         stop();
         resolve({
-          kind: "error",
-          cause: req.error ?? new Error("IDB read error"),
+          kind: 'error',
+          cause: req.error ?? new Error('IDB read error'),
         });
       };
     });
   } catch (cause) {
     stop();
-    return { kind: "error", cause };
+    return { kind: 'error', cause };
   }
 }
 
@@ -68,15 +59,15 @@ export async function getCachedCidResult(
  */
 export async function getCachedCid(label: string): Promise<string | null> {
   const result = await getCachedCidResult(label);
-  if (result.kind === "error") {
-    log.error("[dot.li cid-cache] read error:", result.cause);
-    captureException(result.cause, { kind: "cid_cache_read_error" });
+  if (result.kind === 'error') {
+    log.error('[dot.li cid-cache] read error:', result.cause);
+    captureException(result.cause, { kind: 'cid_cache_read_error' });
     return null;
   }
-  return result.kind === "hit" ? result.cid : null;
+  return result.kind === 'hit' ? result.cid : null;
 }
 
-export const RECENT_KEY = "dotli_recent";
+export const RECENT_KEY = 'dotli_recent';
 const MAX_RECENT = 8;
 
 /**
@@ -86,7 +77,7 @@ const MAX_RECENT = 8;
  * which holds the same list under the shared-mode store.
  */
 export function parseRecentLabels(raw: string | null): string[] {
-  if (raw === null || raw === "") {
+  if (raw === null || raw === '') {
     return [];
   }
   try {
@@ -94,9 +85,7 @@ export function parseRecentLabels(raw: string | null): string[] {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed
-      .filter((l): l is string => typeof l === "string" && isValidDotLabel(l))
-      .slice(0, MAX_RECENT);
+    return parsed.filter((l): l is string => typeof l === 'string' && isValidDotLabel(l)).slice(0, MAX_RECENT);
   } catch {
     return [];
   }
@@ -108,7 +97,7 @@ export function serializeRecentLabels(labels: string[]): string {
 
 /** Put `label` at the front of `labels`, deduplicated and length-capped. */
 export function withRecentLabel(labels: string[], label: string): string[] {
-  return [label, ...labels.filter((l) => l !== label)].slice(0, MAX_RECENT);
+  return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
 }
 
 /** Read this origin's recent list. The shared store is authoritative. */
@@ -139,7 +128,7 @@ export function removeRecentLabel(label: string): void {
   if (!recent.includes(label)) {
     return;
   }
-  writeRecentLabels(recent.filter((l) => l !== label));
+  writeRecentLabels(recent.filter(l => l !== label));
 }
 
 export function writeRecentLabels(labels: string[]): void {
@@ -155,7 +144,7 @@ export async function setCachedCid(label: string, cid: string): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getDb();
-    const tx = db.transaction(STORE, "readwrite");
+    const tx = db.transaction(STORE, 'readwrite');
     const entry: CidEntry = {
       label,
       cid,
@@ -165,8 +154,8 @@ export async function setCachedCid(label: string, cid: string): Promise<void> {
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li cid-cache] write error:", err);
-    captureException(err, { kind: "cid_cache_write_error" });
+    log.error('[dot.li cid-cache] write error:', err);
+    captureException(err, { kind: 'cid_cache_write_error' });
   }
 }
 
@@ -181,21 +170,21 @@ export async function clearCidCache(): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getDb();
-    const tx = db.transaction(STORE, "readwrite");
+    const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).clear();
     await new Promise<void>((resolve, reject) => {
       tx.oncomplete = () => {
         resolve();
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("IDB clear error"));
+        reject(tx.error ?? new Error('IDB clear error'));
       };
     });
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li cid-cache] clear error:", err);
-    captureException(err, { kind: "cid_cache_clear_error" });
+    log.error('[dot.li cid-cache] clear error:', err);
+    captureException(err, { kind: 'cid_cache_clear_error' });
   }
 }
 
@@ -204,18 +193,17 @@ export async function evictCachedCid(label: string): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getDb();
-    const tx = db.transaction(STORE, "readwrite");
+    const tx = db.transaction(STORE, 'readwrite');
     tx.objectStore(STORE).delete(label);
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li cid-cache] evict error:", err);
-    captureException(err, { kind: "cid_cache_evict_error" });
+    log.error('[dot.li cid-cache] evict error:', err);
+    captureException(err, { kind: 'cid_cache_evict_error' });
   }
 }
 
-export type RevalidateOutcome =
-  { kind: "match" } | { kind: "update"; cid: string } | { kind: "cleared" };
+export type RevalidateOutcome = { kind: 'match' } | { kind: 'update'; cid: string } | { kind: 'cleared' };
 
 /** Reconcile a freshly-resolved CID against the served one: write, evict, or noop. */
 export async function recordRevalidateOutcome(
@@ -226,13 +214,13 @@ export async function recordRevalidateOutcome(
   if (freshCid === null) {
     await evictCachedCid(label);
     m.count(S.CACHE_REVALIDATE_CLEARED);
-    return { kind: "cleared" };
+    return { kind: 'cleared' };
   }
   await setCachedCid(label, freshCid);
   if (freshCid === servedCid) {
     m.count(S.CACHE_REVALIDATE_MATCH);
-    return { kind: "match" };
+    return { kind: 'match' };
   }
   m.count(S.CACHE_REVALIDATE_UPDATE);
-  return { kind: "update", cid: freshCid };
+  return { kind: 'update', cid: freshCid };
 }

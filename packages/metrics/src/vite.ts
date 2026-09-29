@@ -5,4 +5,4 @@
 // the `.ts` specifiers. Kept apart from the `@dotli/metrics` barrel so no
 // browser bundle reaches it.
 
-export { stripAnalytics } from "./strip-analytics-plugin.ts";
+export { stripAnalytics } from './strip-analytics-plugin.ts';

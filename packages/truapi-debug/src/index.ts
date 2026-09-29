@@ -4,24 +4,15 @@
 // Public API of @dotli/truapi-debug. Other workspace packages import only from here.
 // Every other module under src/ is private to the package.
 
-export {
-  formatLatency,
-  formatTime,
-  renderGroupDetail,
-  renderSingleDetail,
-} from "./detail-html.js";
-export {
-  readStoredDock,
-  writeStoredDock,
-  type DockPosition,
-} from "./dock-storage.js";
+export { formatLatency, formatTime, renderGroupDetail, renderSingleDetail } from './detail-html.js';
+export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export {
   emitDotliDebugEvent,
   hasDotliDebugListeners,
   onDotliDebugEvent,
   type DotliDebugBusEvent,
-} from "./dotli-debug-bus.js";
-export { type DotliDebugEvent } from "./dotli-debug-types.js";
+} from './dotli-debug-bus.js';
+export { type DotliDebugEvent } from './dotli-debug-types.js';
 export {
   EventStore,
   correlationKeyOf,
@@ -31,35 +22,18 @@ export {
   type StoredSystemEvent,
   type StoredTruapiEvent,
   type TruapiDebugMessageEvent,
-} from "./event-store.js";
-export { buildExport, exportFilename, type ExportMeta } from "./export.js";
-export {
-  compileQuery,
-  initialFilterState,
-  matches,
-  type DirectionFilter,
-  type FilterState,
-} from "./filters.js";
-export { panelDockInset } from "./iframe-layout.js";
-export {
-  OpenCallTracker,
-  SLOW_AFTER_MS,
-  formatPending,
-  openCalls,
-  pendingKeyOf,
-} from "./pending.js";
+} from './event-store.js';
+export { buildExport, exportFilename, type ExportMeta } from './export.js';
+export { compileQuery, initialFilterState, matches, type DirectionFilter, type FilterState } from './filters.js';
+export { panelDockInset } from './iframe-layout.js';
+export { OpenCallTracker, SLOW_AFTER_MS, formatPending, openCalls, pendingKeyOf } from './pending.js';
 export {
   buildResolution,
   buildResolutionContainer,
   createResolutionRecorder,
   renderResolution,
   type ResolutionRecorder,
-} from "./resolution-view.js";
-export { rowClassName, systemRowData, truapiRowData } from "./row-format.js";
-export {
-  applyTimelineSelection,
-  buildTimelineContainer,
-  renderSwimlanes,
-  resolveTimelineClick,
-} from "./timeline.js";
-export { loadDotliDebugBus, type DotliDebugBusModule } from "./lazy.js";
+} from './resolution-view.js';
+export { rowClassName, systemRowData, truapiRowData } from './row-format.js';
+export { applyTimelineSelection, buildTimelineContainer, renderSwimlanes, resolveTimelineClick } from './timeline.js';
+export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';

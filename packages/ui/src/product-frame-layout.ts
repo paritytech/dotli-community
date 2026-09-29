@@ -13,10 +13,10 @@
  * insets.
  */
 
-import { productIframeBox } from "./product-iframe-box.js";
+import { productIframeBox } from './product-iframe-box.js';
 
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
-const SAFE_TOP = "var(--safe-top, 0px)";
+const TOPBAR_HEIGHT = 'var(--topbar-height, 56px)';
+const SAFE_TOP = 'var(--safe-top, 0px)';
 
 export interface TopbarLayout {
   /** The frame's layout box starts below the bar, with no transform. */
@@ -34,7 +34,7 @@ export interface DockInset {
 }
 
 /** The panels that can dock over the frame, at the same time. */
-export type DockSource = "debug" | "sandbox-checker";
+export type DockSource = 'debug' | 'sandbox-checker';
 
 interface LayoutState {
   frame: HTMLIFrameElement | null;
@@ -50,7 +50,7 @@ function initialState(): LayoutState {
     frame: null,
     topbarOffset: true,
     topbarShown: true,
-    transition: "",
+    transition: '',
     chatWidth: 0,
     docks: {},
   };
@@ -64,8 +64,8 @@ function write(): void {
     return;
   }
   let box;
-  let transform = "";
-  let transition = "";
+  let transform = '';
+  let transition = '';
   if (!state.topbarOffset) {
     // Tracking the auto-hiding bar: the box keeps its hidden-bar size and a
     // transform follows the bar, so the product document never relayouts.
@@ -75,13 +75,11 @@ function write(): void {
     box = productIframeBox({ topbarOffset: false });
     transition = state.transition;
     // --topbar-height already includes the top inset, so shift by the rest.
-    transform = state.topbarShown
-      ? `translateY(calc(${TOPBAR_HEIGHT} - ${SAFE_TOP}))`
-      : "translateY(0)";
+    transform = state.topbarShown ? `translateY(calc(${TOPBAR_HEIGHT} - ${SAFE_TOP}))` : 'translateY(0)';
   } else {
     // A page without the bar has nothing to clear but the top inset.
     box = productIframeBox({
-      topbarOffset: document.getElementById("topbar") !== null,
+      topbarOffset: document.getElementById('topbar') !== null,
     });
   }
   // Docks at the same edge stack, so their insets add up.
@@ -92,17 +90,16 @@ function write(): void {
     bottom += dock.bottom;
   }
   Object.assign(frame.style, {
-    position: "fixed",
+    position: 'fixed',
     top: box.top,
     left: box.left,
     width: right === 0 ? box.width : `calc(${box.width} - ${String(right)}px)`,
-    height:
-      bottom === 0 ? box.height : `calc(${box.height} - ${String(bottom)}px)`,
+    height: bottom === 0 ? box.height : `calc(${box.height} - ${String(bottom)}px)`,
     transform,
     transition,
-    border: "none",
-    margin: "0",
-    padding: "0",
+    border: 'none',
+    margin: '0',
+    padding: '0',
   });
 }
 

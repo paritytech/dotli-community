@@ -15,23 +15,21 @@ import {
   NetworkName,
   isValidNetwork,
   type Network,
-} from "../../../packages/config/src/network.js";
+} from '../../../packages/config/src/network.js';
 
-export const DOMAIN = process.env["DOMAIN"] ?? "host-playground";
+export const DOMAIN = process.env['DOMAIN'] ?? 'host-playground';
 /**
  * Preview-server port for this worker. The functional config starts one server
  * per worker (5173, 5174, …) so parallel tests never share the server's
  * in-memory mode-sync store or metrics buffer; `TEST_PARALLEL_INDEX` picks
  * this worker's one. Outside a worker it is unset and this is 5173.
  */
-export const PORT =
-  process.env["PORT"] ??
-  String(5173 + Number(process.env["TEST_PARALLEL_INDEX"] ?? "0"));
-export const TIMEOUT_MS = parseInt(process.env["TIMEOUT_MS"] ?? "45000", 10);
+export const PORT = process.env['PORT'] ?? String(5173 + Number(process.env['TEST_PARALLEL_INDEX'] ?? '0'));
+export const TIMEOUT_MS = parseInt(process.env['TIMEOUT_MS'] ?? '45000', 10);
 
 /** Network under test. Must match the first entry of the build's VITE_NETWORKS. */
 export const NETWORK: Network = (() => {
-  const raw = process.env["NETWORK"] ?? NetworkName.PASEO;
+  const raw = process.env['NETWORK'] ?? NetworkName.PASEO;
   if (!isValidNetwork(raw)) {
     throw new Error(`NETWORK is not a known network: ${JSON.stringify(raw)}`);
   }

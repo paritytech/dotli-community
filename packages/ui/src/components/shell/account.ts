@@ -4,10 +4,10 @@
 // What the auth button's badge and the user popover show about the logged-in
 // account; both live in the one auth island.
 
-import { createMemo, type Accessor } from "solid-js";
-import type { TruapiSessionUiState } from "../../host-callbacks/SessionStore.js";
-import { authStore, loggedInStore } from "../../state/auth.js";
-import { useStore } from "../use-store.js";
+import { createMemo, type Accessor } from 'solid-js';
+import type { TruapiSessionUiState } from '../../host-callbacks/SessionStore.js';
+import { authStore, loggedInStore } from '../../state/auth.js';
+import { useStore } from '../use-store.js';
 
 export interface Account {
   /** True from `Connected` until `Disconnected` (loggedInStore). */
@@ -27,11 +27,11 @@ export interface Account {
 export function useAccount(): Account {
   const auth = useStore(authStore);
   const loggedIn = useStore(loggedInStore);
-  const last = createMemo<TruapiSessionUiState | undefined>((prev) => {
+  const last = createMemo<TruapiSessionUiState | undefined>(prev => {
     const state = auth();
-    return state.tag === "Connected" ? state.session : prev;
+    return state.tag === 'Connected' ? state.session : prev;
   });
-  const connected = createMemo(() => auth().tag === "Connected");
+  const connected = createMemo(() => auth().tag === 'Connected');
   return {
     loggedIn,
     session: () => last() ?? (loggedIn() ? { connected: true } : undefined),
@@ -41,14 +41,10 @@ export function useAccount(): Account {
 
 // A session can install without any username (the account has no dotNS record
 // on this network), so initials only come from real names, never account hex.
-export function sessionInitials(
-  state: TruapiSessionUiState,
-): string | undefined {
+export function sessionInitials(state: TruapiSessionUiState): string | undefined {
   const fullName = state.fullUsername;
   if (fullName !== undefined && fullName.length > 0) {
-    const [first, second] = fullName
-      .split(" ")
-      .filter((part) => part.length > 0);
+    const [first, second] = fullName.split(' ').filter(part => part.length > 0);
     if (first !== undefined) {
       return second === undefined
         ? first.slice(0, 2).toUpperCase()
@@ -63,15 +59,11 @@ export function sessionInitials(
 }
 
 /** The session's username, if it has one. */
-export function sessionUsername(
-  state: TruapiSessionUiState,
-): string | undefined {
+export function sessionUsername(state: TruapiSessionUiState): string | undefined {
   return state.primaryUsername ?? state.fullUsername ?? state.liteUsername;
 }
 
-export function shortenAccount(
-  account: string | undefined,
-): string | undefined {
+export function shortenAccount(account: string | undefined): string | undefined {
   if (account === undefined || account.length < 12) {
     return undefined;
   }

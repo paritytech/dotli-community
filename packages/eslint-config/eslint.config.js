@@ -3,8 +3,8 @@
 
 /// <reference types="node" />
 
-import { defineConfig } from "eslint/config";
-import { config } from "./vite.js";
+import { defineConfig } from 'eslint/config';
+import { config } from './vite.js';
 
 export default defineConfig([
   ...config,

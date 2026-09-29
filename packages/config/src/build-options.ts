@@ -15,7 +15,7 @@
 // side effects) are safe for this codebase: nothing reads a layout property
 // such as `offsetHeight` for its effect.
 
-import type { BuildEnvironmentOptions, Rolldown, TerserOptions } from "vite";
+import type { BuildEnvironmentOptions, Rolldown, TerserOptions } from 'vite';
 
 const TERSER_OPTIONS: TerserOptions = {
   ecma: 2020,
@@ -38,10 +38,7 @@ const OXC_MINIFY: Rolldown.MinifyOptions = {
   codegen: { removeWhitespace: true },
 };
 
-type WorkerRolldownOptions = Omit<
-  Rolldown.RolldownOptions,
-  "plugins" | "input" | "onwarn" | "preserveEntrySignatures"
->;
+type WorkerRolldownOptions = Omit<Rolldown.RolldownOptions, 'plugins' | 'input' | 'onwarn' | 'preserveEntrySignatures'>;
 
 /**
  * Rolldown options for app and worker bundles. The workspace packages are
@@ -50,9 +47,7 @@ type WorkerRolldownOptions = Omit<
  * that another importer loads lazily pins that module into the barrel
  * importer's chunk.
  */
-export function rolldownOptions(
-  output: Rolldown.OutputOptions = {},
-): WorkerRolldownOptions {
+export function rolldownOptions(output: Rolldown.OutputOptions = {}): WorkerRolldownOptions {
   return {
     experimental: { lazyBarrel: true },
     treeshake: {
@@ -64,11 +59,9 @@ export function rolldownOptions(
 }
 
 /** `build` options for an app bundle; spread first, then set the rest. */
-export function appBuildOptions(
-  output: Rolldown.OutputOptions = {},
-): BuildEnvironmentOptions {
+export function appBuildOptions(output: Rolldown.OutputOptions = {}): BuildEnvironmentOptions {
   return {
-    minify: "terser",
+    minify: 'terser',
     terserOptions: TERSER_OPTIONS,
     rolldownOptions: rolldownOptions(output),
   };

@@ -3,8 +3,8 @@
 
 /// <reference types="node" />
 
-import { defineConfig } from "eslint/config";
-import { config } from "@dotli/eslint-config/vite";
+import { defineConfig } from 'eslint/config';
+import { config } from '@dotli/eslint-config/vite';
 
 export default defineConfig([
   ...config,
@@ -21,10 +21,10 @@ export default defineConfig([
     // which reach `playwright test` straight from the shell, never through a
     // turbo task, so turbo has no cache to key on them. The Vitest unit tests,
     // which run under the turbo `test` task, keep the rule.
-    files: ["tests/**/*.ts"],
-    ignores: ["tests/unit/**"],
+    files: ['tests/**/*.ts'],
+    ignores: ['tests/unit/**'],
     rules: {
-      "turbo/no-undeclared-env-vars": "off",
+      'turbo/no-undeclared-env-vars': 'off',
     },
   },
 ]);

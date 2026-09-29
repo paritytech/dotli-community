@@ -1,48 +1,32 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { MockInstance } from "vitest";
-import { flush } from "solid-js";
-import type {
-  BlockBar,
-  ChainStatus,
-  TransferState,
-} from "../../../src/network-monitor.js";
-import { ChainsPopover } from "../../../src/components/shell/ChainsPopover.js";
-import { mountRoot } from "../../../src/mount/root.js";
-import { startNetworkStore } from "../../../src/state/network.js";
-import { setProductLoaded } from "../../../src/state/product.js";
-import {
-  recordChainsButtonVisible,
-  setBlockingModalActive,
-} from "../../../src/state/topbar.js";
-import {
-  pointerPress,
-  pointerPressUnfocusable,
-  renderComponent,
-  resetStores,
-  tabTo,
-} from "../../helpers/solid.js";
-import { normalized } from "./old-auth-markup.js";
-import { oldChainsButton, oldChainsPopover } from "./old-chains-markup.js";
-import type * as ChainsFormatModule from "../../../src/components/shell/chains-format.js";
-import { focusables } from "../../../src/components/focus.js";
-import { byId, query } from "../../support.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
+import { flush } from 'solid-js';
+import type { BlockBar, ChainStatus, TransferState } from '../../../src/network-monitor.js';
+import { ChainsPopover } from '../../../src/components/shell/ChainsPopover.js';
+import { mountRoot } from '../../../src/mount/root.js';
+import { startNetworkStore } from '../../../src/state/network.js';
+import { setProductLoaded } from '../../../src/state/product.js';
+import { recordChainsButtonVisible, setBlockingModalActive } from '../../../src/state/topbar.js';
+import { pointerPress, pointerPressUnfocusable, renderComponent, resetStores, tabTo } from '../../helpers/solid.js';
+import { normalized } from './old-auth-markup.js';
+import { oldChainsButton, oldChainsPopover } from './old-chains-markup.js';
+import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
+import { focusables } from '../../../src/components/focus.js';
+import { byId, query } from '../../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("../../../../metrics/src/sentry.js", () => sentry);
+vi.mock('../../../../metrics/src/sentry.js', () => sentry);
 
 /** The verdict, counted as the popover computes it. */
 const format = vi.hoisted(() => ({ describeLiveNetwork: vi.fn() }));
-vi.mock(
-  "../../../src/components/shell/chains-format.js",
-  async (importOriginal) => {
-    const actual = await importOriginal<typeof ChainsFormatModule>();
-    format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
-    return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
-  },
-);
+vi.mock('../../../src/components/shell/chains-format.js', async importOriginal => {
+  const actual = await importOriginal<typeof ChainsFormatModule>();
+  format.describeLiveNetwork.mockImplementation(actual.describeLiveNetwork);
+  return { ...actual, describeLiveNetwork: format.describeLiveNetwork };
+});
 
 /** The network monitor, as a test drives it. */
 const monitor = vi.hoisted(() => {
@@ -60,7 +44,7 @@ const monitor = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../../src/network-monitor.js", () => ({
+vi.mock('../../../src/network-monitor.js', () => ({
   subscribeNetwork: (l: () => void) => {
     monitor.listeners.add(l);
     return () => monitor.listeners.delete(l);
@@ -83,8 +67,8 @@ const NO_TRANSFER: TransferState = {
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
   return {
-    role: "relay",
-    label: "Relay chain",
+    role: 'relay',
+    label: 'Relay chain',
     bars: [],
     latest: null,
     sinceLast: null,
@@ -99,7 +83,7 @@ function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
 function bars(from: number, count: number, gapMs = 6000): BlockBar[] {
   return Array.from({ length: count }, (_, i) => ({
     number: from + i,
-    health: gapMs > 18_000 ? "veryLate" : gapMs > 9000 ? "late" : "onTime",
+    health: gapMs > 18_000 ? 'veryLate' : gapMs > 9000 ? 'late' : 'onTime',
     gapMs,
   }));
 }
@@ -134,7 +118,7 @@ afterEach(() => {
   resetStores();
   vi.useRealTimers();
   vi.restoreAllMocks();
-  document.body.innerHTML = "";
+  document.body.innerHTML = '';
 });
 
 async function settle(): Promise<void> {
@@ -144,12 +128,12 @@ async function settle(): Promise<void> {
 }
 
 function isOpen(): boolean {
-  return byId("chains-popover").classList.contains("open");
+  return byId('chains-popover').classList.contains('open');
 }
 
 function press(key: string): void {
   (document.activeElement ?? document.body).dispatchEvent(
-    new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+    new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }),
   );
 }
 
@@ -167,31 +151,25 @@ async function renderPopover(): Promise<void> {
 }
 
 async function openPopover(): Promise<void> {
-  byId("chains-button").click();
+  byId('chains-button').click();
   await settle();
   expect(isOpen()).toBe(true);
 }
 
 function waitingText(): string | null | undefined {
-  return document.querySelector(".chains-bars-waiting")?.textContent;
+  return document.querySelector('.chains-bars-waiting')?.textContent;
 }
 
-describe("The network popover island", () => {
-  it("As a dotli user, the closed button and popover match what the topbar rendered", async () => {
+describe('The network popover island', () => {
+  it('As a dotli user, the closed button and popover match what the topbar rendered', async () => {
     // When
     await renderPopover();
 
     // Then
     expect(
-      normalized(byId("chains-button")).isEqualNode(
-        normalized(oldChainsButton({ open: false, visible: false })),
-      ),
+      normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: false }))),
     ).toBe(true);
-    expect(
-      normalized(byId("chains-popover")).isEqualNode(
-        normalized(oldChainsPopover({ open: false })),
-      ),
-    ).toBe(true);
+    expect(normalized(byId('chains-popover')).isEqualNode(normalized(oldChainsPopover({ open: false })))).toBe(true);
   });
 
   const statuses: {
@@ -201,22 +179,19 @@ describe("The network popover island", () => {
     productLoaded?: boolean;
   }[] = [
     {
-      name: "starting, with no chain reachable",
-      chains: [
-        chain({ reachable: false }),
-        chain({ role: "assethub", label: "Asset Hub", reachable: false }),
-      ],
+      name: 'starting, with no chain reachable',
+      chains: [chain({ reachable: false }), chain({ role: 'assethub', label: 'Asset Hub', reachable: false })],
     },
     {
-      name: "connecting, before any block or phase",
-      chains: [chain(), chain({ role: "assethub", label: "Asset Hub" })],
+      name: 'connecting, before any block or phase',
+      chains: [chain(), chain({ role: 'assethub', label: 'Asset Hub' })],
       transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 },
     },
     {
-      name: "connecting, a chain syncing and one without an endpoint",
+      name: 'connecting, a chain syncing and one without an endpoint',
       chains: [
-        chain({ phase: "syncing", peers: 1 }),
-        chain({ role: "people", label: "People", reachable: false, peers: 3 }),
+        chain({ phase: 'syncing', peers: 1 }),
+        chain({ role: 'people', label: 'People', reachable: false, peers: 3 }),
       ],
       transfer: {
         bytesPerSecond: 2_500_000,
@@ -225,45 +200,41 @@ describe("The network popover island", () => {
       },
     },
     {
-      name: "one of two ready, the other counting down to its next block",
+      name: 'one of two ready, the other counting down to its next block',
       chains: [
         chain({ latest: 10, sinceLast: 1500, peers: 4 }),
         chain({
-          role: "assethub",
-          label: "Asset Hub",
+          role: 'assethub',
+          label: 'Asset Hub',
           latest: 20,
           bars: bars(18, 3),
           sinceLast: 1000,
           peers: 8,
         }),
-        chain({ role: "people", label: "People" }),
+        chain({ role: 'people', label: 'People' }),
       ],
       transfer: { bytesPerSecond: 40_000, fetched: null, total: null },
     },
     {
-      name: "waiting on overdue chains, one of them due any moment",
+      name: 'waiting on overdue chains, one of them due any moment',
       chains: [
         chain({ latest: 10, sinceLast: 19_000 }),
         chain({
-          role: "assethub",
-          label: "Asset Hub",
+          role: 'assethub',
+          label: 'Asset Hub',
           latest: 20,
-          bars: [
-            ...bars(18, 2),
-            ...bars(20, 1, 12_000),
-            ...bars(21, 1, 30_000),
-          ],
+          bars: [...bars(18, 2), ...bars(20, 1, 12_000), ...bars(21, 1, 30_000)],
           sinceLast: 20_000,
         }),
       ],
     },
     {
-      name: "a good connection, after the product loaded",
+      name: 'a good connection, after the product loaded',
       chains: [
         chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
         chain({
-          role: "assethub",
-          label: "Asset Hub",
+          role: 'assethub',
+          label: 'Asset Hub',
           latest: 20,
           bars: bars(18, 3, 4000),
           sinceLast: 200,
@@ -282,7 +253,7 @@ describe("The network popover island", () => {
       monitor.transfer = status.transfer ?? NO_TRANSFER;
       notify();
       if (status.productLoaded === true) {
-        setProductLoaded("app.dot", "app.dot");
+        setProductLoaded('app.dot', 'app.dot');
       }
       await renderPopover();
 
@@ -291,12 +262,10 @@ describe("The network popover island", () => {
 
       // Then
       expect(
-        normalized(byId("chains-button")).isEqualNode(
-          normalized(oldChainsButton({ open: true, visible: false })),
-        ),
+        normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: true, visible: false }))),
       ).toBe(true);
       expect(
-        normalized(byId("chains-popover")).isEqualNode(
+        normalized(byId('chains-popover')).isEqualNode(
           normalized(
             oldChainsPopover({
               open: true,
@@ -310,7 +279,7 @@ describe("The network popover island", () => {
     });
   }
 
-  it("As a dotli user, opening it starts watching the chains and closing it lets the watch lapse", async () => {
+  it('As a dotli user, opening it starts watching the chains and closing it lets the watch lapse', async () => {
     // Given
     await renderPopover();
 
@@ -322,7 +291,7 @@ describe("The network popover island", () => {
     expect(monitor.stopNetworkWatch).not.toHaveBeenCalled();
 
     // When
-    byId("chains-button").click();
+    byId('chains-button').click();
     await settle();
 
     // Then
@@ -330,62 +299,52 @@ describe("The network popover island", () => {
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user watching, bars and peers follow the network store", async () => {
+  it('As a dotli user watching, bars and peers follow the network store', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 0 })];
     notify();
     await renderPopover();
     await openPopover();
-    expect(document.querySelectorAll(".chains-bar[data-block]")).toHaveLength(
-      0,
-    );
+    expect(document.querySelectorAll('.chains-bar[data-block]')).toHaveLength(0);
 
     // When
-    monitor.status = [
-      chain({ latest: 12, bars: bars(11, 2), sinceLast: 0, peers: 2 }),
-    ];
+    monitor.status = [chain({ latest: 12, bars: bars(11, 2), sinceLast: 0, peers: 2 })];
     notify();
     await settle();
 
     // Then
-    expect(
-      [
-        ...document.querySelectorAll<HTMLElement>(".chains-bar[data-block]"),
-      ].map((m) => m.dataset["block"]),
-    ).toEqual(["11", "12"]);
-    expect(document.querySelector(".chains-group-peers")?.textContent).toBe(
-      "2 peers",
+    expect([...document.querySelectorAll<HTMLElement>('.chains-bar[data-block]')].map(m => m.dataset['block'])).toEqual(
+      ['11', '12'],
     );
-    expect(document.querySelector(".chains-status")?.textContent).toBe(
-      "Your connection is good",
-    );
+    expect(document.querySelector('.chains-group-peers')?.textContent).toBe('2 peers');
+    expect(document.querySelector('.chains-status')?.textContent).toBe('Your connection is good');
   });
 
-  it("As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and stops when it closes", async () => {
+  it('As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and stops when it closes', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
     await renderPopover();
     await openPopover();
-    expect(waitingText()).toBe("next block in about 5s");
+    expect(waitingText()).toBe('next block in about 5s');
 
     // When
     vi.advanceTimersByTime(1000);
     await settle();
 
     // Then
-    expect(waitingText()).toBe("next block in about 4s");
+    expect(waitingText()).toBe('next block in about 4s');
     expect(vi.getTimerCount()).toBe(1);
 
     // When
-    byId("chains-button").click();
+    byId('chains-button').click();
     await settle();
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("As a dotli user, the countdown stops when the island unmounts while open", async () => {
+  it('As a dotli user, the countdown stops when the island unmounts while open', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
@@ -404,26 +363,24 @@ describe("The network popover island", () => {
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user, a render error while open is reported, closes the popover and stops the countdown and the watch", async () => {
+  it('As a dotli user, a render error while open is reported, closes the popover and stops the countdown and the watch', async () => {
     // Given: the island in its root, as islands.tsx mounts it.
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
-    const container = document.createElement("div");
+    const container = document.createElement('div');
     document.body.appendChild(container);
-    cleanups.push(
-      mountRoot("island:chains-test", container, () => <ChainsPopover />),
-    );
+    cleanups.push(mountRoot('island:chains-test', container, () => <ChainsPopover />));
     await settle();
-    byId("chains-button").click();
+    byId('chains-button').click();
     await settle();
     expect(isOpen()).toBe(true);
     expect(vi.getTimerCount()).toBe(1);
 
     // When: rendering the next network state throws.
     monitor.status = [
-      Object.defineProperty(chain({ latest: 11, sinceLast: 0 }), "label", {
+      Object.defineProperty(chain({ latest: 11, sinceLast: 0 }), 'label', {
         get: () => {
-          throw new Error("the island broke");
+          throw new Error('the island broke');
         },
       }),
     ];
@@ -433,7 +390,7 @@ describe("The network popover island", () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      root: "island:chains",
+      root: 'island:chains',
     });
     expect(vi.getTimerCount()).toBe(0);
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
@@ -442,38 +399,33 @@ describe("The network popover island", () => {
     // When: the next open, once the state renders again.
     monitor.status = [chain({ latest: 11, sinceLast: 0 })];
     notify();
-    byId("chains-button").click();
+    byId('chains-button').click();
     await settle();
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(document.querySelector(".chains-group-label")?.textContent).toBe(
-      "Relay chain",
-    );
+    expect(document.querySelector('.chains-group-label')?.textContent).toBe('Relay chain');
     expect(vi.getTimerCount()).toBe(1);
   });
 
-  it("As a visitor watching the product download, the transfer footer empties once the product has loaded", async () => {
+  it('As a visitor watching the product download, the transfer footer empties once the product has loaded', async () => {
     // Given
     monitor.transfer = { bytesPerSecond: 2048, fetched: 1024, total: 4096 };
     notify();
     await renderPopover();
     await openPopover();
-    const rows = (): string[] =>
-      [...document.querySelectorAll(".chains-transfer-row")].map(
-        (row) => row.textContent,
-      );
-    expect(rows()).toEqual(["Speed2 kB/s", "Downloading1 kB / 4 kB"]);
+    const rows = (): string[] => [...document.querySelectorAll('.chains-transfer-row')].map(row => row.textContent);
+    expect(rows()).toEqual(['Speed2 kB/s', 'Downloading1 kB / 4 kB']);
 
     // When
-    setProductLoaded("app.dot", "app.dot");
+    setProductLoaded('app.dot', 'app.dot');
     await settle();
 
     // Then
-    expect(rows()).toEqual(["", ""]);
+    expect(rows()).toEqual(['', '']);
   });
 
-  it("As a keyboard user, opening it focuses the popover and Escape closes it, handing focus back to the button", async () => {
+  it('As a keyboard user, opening it focuses the popover and Escape closes it, handing focus back to the button', async () => {
     // Given
     await renderPopover();
 
@@ -481,51 +433,51 @@ describe("The network popover island", () => {
     await openPopover();
 
     // Then
-    expect(document.activeElement).toBe(byId("chains-popover"));
-    expect(byId("chains-button").getAttribute("aria-expanded")).toBe("true");
+    expect(document.activeElement).toBe(byId('chains-popover'));
+    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('true');
 
     // When
-    press("Escape");
+    press('Escape');
     await settle();
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(byId("chains-button").getAttribute("aria-expanded")).toBe("false");
-    expect(document.activeElement).toBe(byId("chains-button"));
+    expect(byId('chains-button').getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(byId('chains-button'));
   });
 
-  it("As a screen-reader user, the button announces the dialog it opens and whether it is open", async () => {
+  it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
     // Given
     await renderPopover();
-    const button = byId("chains-button");
-    const popover = byId("chains-popover");
+    const button = byId('chains-button');
+    const popover = byId('chains-popover');
 
     // Then
-    expect(popover.getAttribute("role")).toBe("dialog");
-    expect(popover.getAttribute("aria-label")).toBe("Network");
-    expect(button.getAttribute("aria-haspopup")).toBe("dialog");
-    expect(button.getAttribute("aria-controls")).toBe("chains-popover");
-    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Network');
+    expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+    expect(button.getAttribute('aria-controls')).toBe('chains-popover');
+    expect(button.getAttribute('aria-expanded')).toBe('false');
 
     // When
     await openPopover();
 
     // Then
-    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(button.getAttribute('aria-expanded')).toBe('true');
   });
 
-  it("As a keyboard user, Tab stays inside the popover and it stays open", async () => {
+  it('As a keyboard user, Tab stays inside the popover and it stays open', async () => {
     // Given
     await renderPopover();
-    byId("chains-button").focus();
+    byId('chains-button').focus();
     await openPopover();
-    const popover = byId("chains-popover");
+    const popover = byId('chains-popover');
     expect(popover.contains(document.activeElement)).toBe(true);
     const controls = focusables(popover);
     controls.at(-1)?.focus();
 
     // When
-    const tab = tabTo(byId("outside"));
+    const tab = tabTo(byId('outside'));
     await settle();
 
     // Then: focus loops back into the popover.
@@ -534,10 +486,10 @@ describe("The network popover island", () => {
     expect(document.activeElement).toBe(controls[0] ?? popover);
   });
 
-  it("As a dotli user, a press outside closes it without handing focus back to the button", async () => {
+  it('As a dotli user, a press outside closes it without handing focus back to the button', async () => {
     // Given
     await renderPopover();
-    byId("chains-button").focus();
+    byId('chains-button').focus();
     await openPopover();
 
     // When: the press lands on nothing that takes focus.
@@ -549,27 +501,27 @@ describe("The network popover island", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("As a dotli user, a click outside closes it, and a click inside does not", async () => {
+  it('As a dotli user, a click outside closes it, and a click inside does not', async () => {
     // Given
     await renderPopover();
     await openPopover();
 
     // When
-    query(document, ".chains-tips").click();
+    query(document, '.chains-tips').click();
     await settle();
 
     // Then
     expect(isOpen()).toBe(true);
 
     // When
-    pointerPress(byId("outside"));
+    pointerPress(byId('outside'));
     await settle();
 
     // Then
     expect(isOpen()).toBe(false);
   });
 
-  it("As a dotli user, a blocking modal coming up closes it, stopping the countdown and the network watch", async () => {
+  it('As a dotli user, a blocking modal coming up closes it, stopping the countdown and the network watch', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
@@ -588,7 +540,7 @@ describe("The network popover island", () => {
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
   });
 
-  it("As a visitor, the button shows once the product is on screen, whether that came before or after the mount", async () => {
+  it('As a visitor, the button shows once the product is on screen, whether that came before or after the mount', async () => {
     // Given: revealed before the island mounted.
     recordChainsButtonVisible(true);
 
@@ -597,9 +549,7 @@ describe("The network popover island", () => {
 
     // Then
     expect(
-      normalized(byId("chains-button")).isEqualNode(
-        normalized(oldChainsButton({ open: false, visible: true })),
-      ),
+      normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: true }))),
     ).toBe(true);
 
     // When
@@ -607,11 +557,11 @@ describe("The network popover island", () => {
     await settle();
 
     // Then
-    expect(byId("chains-button").classList.contains("visible")).toBe(false);
+    expect(byId('chains-button').classList.contains('visible')).toBe(false);
   });
 });
 
-describe("The network popover island, on network updates", () => {
+describe('The network popover island, on network updates', () => {
   /** A stand-in ResizeObserver whose callbacks a test fires. */
   let resizeCallbacks: (() => void)[] = [];
   /** The width the bar strips lay out at. */
@@ -621,7 +571,7 @@ describe("The network popover island, on network updates", () => {
     resizeCallbacks = [];
     stripWidth = 0;
     vi.stubGlobal(
-      "ResizeObserver",
+      'ResizeObserver',
       class {
         private readonly callback: () => void;
         constructor(callback: () => void) {
@@ -632,9 +582,7 @@ describe("The network popover island, on network updates", () => {
         }
         unobserve(): void {}
         disconnect(): void {
-          resizeCallbacks = resizeCallbacks.filter(
-            (cb) => cb !== this.callback,
-          );
+          resizeCallbacks = resizeCallbacks.filter(cb => cb !== this.callback);
         }
       },
     );
@@ -646,26 +594,26 @@ describe("The network popover island, on network updates", () => {
 
   /** Strips lay out `stripWidth` wide; 4px bars with 4px gaps. */
   function spyStripLayout(): {
-    rects: MockInstance<HTMLElement["getBoundingClientRect"]>;
+    rects: MockInstance<HTMLElement['getBoundingClientRect']>;
     styles: MockInstance<typeof window.getComputedStyle>;
   } {
-    const rects = vi
-      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
-      .mockImplementation(function (this: HTMLElement) {
-        const width = this.classList.contains("chains-bars") ? stripWidth : 0;
-        return { width, height: 0 } as DOMRect;
-      });
-    const styles = vi.spyOn(window, "getComputedStyle");
+    const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const width = this.classList.contains('chains-bars') ? stripWidth : 0;
+      return { width, height: 0 } as DOMRect;
+    });
+    const styles = vi.spyOn(window, 'getComputedStyle');
     return { rects, styles };
   }
 
   function shownBlocks(): string[] {
-    return [
-      ...document.querySelectorAll<HTMLElement>(".chains-bar[data-block]"),
-    ].map((bar) => bar.dataset["block"] ?? "");
+    return [...document.querySelectorAll<HTMLElement>('.chains-bar[data-block]')].map(
+      bar => bar.dataset['block'] ?? '',
+    );
   }
 
-  it("As a dotli user watching the download, updates that land no block read no layout", async () => {
+  it('As a dotli user watching the download, updates that land no block read no layout', async () => {
     // Given
     stripWidth = 76;
     const strip = bars(1, 10);
@@ -693,7 +641,7 @@ describe("The network popover island, on network updates", () => {
     expect(shownBlocks()).toHaveLength(10);
   });
 
-  it("As a dotli user, the strip shows the bars that fit as it opens, and more once it widens", async () => {
+  it('As a dotli user, the strip shows the bars that fit as it opens, and more once it widens', async () => {
     // Given: 20 bars; the strip fits 10 of them.
     spyStripLayout();
     stripWidth = 76;
@@ -705,9 +653,7 @@ describe("The network popover island, on network updates", () => {
     await openPopover();
 
     // Then
-    expect(shownBlocks()).toEqual(
-      Array.from({ length: 10 }, (_, i) => String(11 + i)),
-    );
+    expect(shownBlocks()).toEqual(Array.from({ length: 10 }, (_, i) => String(11 + i)));
 
     // When: the panel widens to fit all 20, with no network update.
     stripWidth = 156;
@@ -718,22 +664,18 @@ describe("The network popover island, on network updates", () => {
 
     // Then: the older bars are revealed, not slid in as new blocks.
     expect(shownBlocks()).toHaveLength(20);
-    expect(document.querySelectorAll(".chains-bar.is-new")).toHaveLength(0);
+    expect(document.querySelectorAll('.chains-bar.is-new')).toHaveLength(0);
   });
 
-  it("As a dotli user watching a chain between blocks, the countdown is computed once per tick", async () => {
+  it('As a dotli user watching a chain between blocks, the countdown is computed once per tick', async () => {
     // Given
     let reads = 0;
-    const pending = Object.defineProperty(
-      chain({ latest: 10, sinceLast: 1000 }),
-      "blockTimeMs",
-      {
-        get: () => {
-          reads += 1;
-          return 6000;
-        },
+    const pending = Object.defineProperty(chain({ latest: 10, sinceLast: 1000 }), 'blockTimeMs', {
+      get: () => {
+        reads += 1;
+        return 6000;
       },
-    );
+    });
     monitor.status = [pending];
     notify();
     await renderPopover();
@@ -746,10 +688,10 @@ describe("The network popover island, on network updates", () => {
 
     // Then: one computation reads the block time twice.
     expect(reads).toBe(2);
-    expect(waitingText()).toBe("next block in about 5s");
+    expect(waitingText()).toBe('next block in about 5s');
   });
 
-  it("As a dotli user, the verdict is worked out once per network update", async () => {
+  it('As a dotli user, the verdict is worked out once per network update', async () => {
     // Given
     monitor.status = [chain({ latest: 10, bars: bars(1, 10), sinceLast: 0 })];
     notify();
@@ -764,12 +706,10 @@ describe("The network popover island, on network updates", () => {
 
     // Then
     expect(format.describeLiveNetwork).toHaveBeenCalledTimes(1);
-    expect(document.querySelector(".chains-status")?.textContent).toBe(
-      "Your connection is good",
-    );
+    expect(document.querySelector('.chains-status')?.textContent).toBe('Your connection is good');
   });
 
-  it("As a dotli user, the countdown ticker stops once no chain is waiting for its first block", async () => {
+  it('As a dotli user, the countdown ticker stops once no chain is waiting for its first block', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
@@ -784,10 +724,10 @@ describe("The network popover island, on network updates", () => {
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
-    expect(shownBlocks()).toEqual(["11"]);
+    expect(shownBlocks()).toEqual(['11']);
   });
 
-  it("As a dotli user opening it with every chain showing bars, no countdown ticker runs", async () => {
+  it('As a dotli user opening it with every chain showing bars, no countdown ticker runs', async () => {
     // Given
     monitor.status = [chain({ latest: 10, bars: bars(1, 10), sinceLast: 0 })];
     notify();

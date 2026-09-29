@@ -10,9 +10,9 @@
 // `import.meta.url` (web `URL` only, no Node APIs, so this typechecks under
 // the metrics package's browser-target tsconfig).
 
-import type { Plugin } from "vite";
+import type { Plugin } from 'vite';
 
-const METRICS_SRC = new URL(".", import.meta.url).pathname;
+const METRICS_SRC = new URL('.', import.meta.url).pathname;
 
 const SENTRY_SDK_NOOP = `${METRICS_SRC}sentry-sdk.noop.ts`;
 const NOOP_BY_FILE = new Map([
@@ -25,10 +25,10 @@ export function stripAnalytics(strip: boolean): Plugin | false {
     return false;
   }
   return {
-    name: "dotli-strip-analytics",
-    enforce: "pre",
+    name: 'dotli-strip-analytics',
+    enforce: 'pre',
     async resolveId(source, importer, options) {
-      if (source === "@sentry/browser") {
+      if (source === '@sentry/browser') {
         return SENTRY_SDK_NOOP;
       }
       const resolved = await this.resolve(source, importer, {

@@ -6,15 +6,13 @@
 // so index.ts stays pure re-exports, which rolldown's lazy barrel
 // optimization needs to leave unused re-exports out of an importer's chunk.
 
-import type * as BridgeNamespace from "./bridge.js";
-import type * as SharedModeNamespace from "./shared-mode.js";
-import type * as TruapiDebugMountNamespace from "./components/truapi-debug/mount.js";
+import type * as BridgeNamespace from './bridge.js';
+import type * as SharedModeNamespace from './shared-mode.js';
+import type * as TruapiDebugMountNamespace from './components/truapi-debug/mount.js';
 
 export type BridgeModule = typeof BridgeNamespace;
-export const loadBridge = (): Promise<BridgeModule> => import("./bridge.js");
+export const loadBridge = (): Promise<BridgeModule> => import('./bridge.js');
 export type TruapiDebugMountModule = typeof TruapiDebugMountNamespace;
-export const loadTruapiDebugMount = (): Promise<TruapiDebugMountModule> =>
-  import("./components/truapi-debug/mount.js");
+export const loadTruapiDebugMount = (): Promise<TruapiDebugMountModule> => import('./components/truapi-debug/mount.js');
 export type SharedModeModule = typeof SharedModeNamespace;
-export const loadSharedMode = (): Promise<SharedModeModule> =>
-  import("./shared-mode.js");
+export const loadSharedMode = (): Promise<SharedModeModule> => import('./shared-mode.js');

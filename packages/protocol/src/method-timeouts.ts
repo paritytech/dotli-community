@@ -9,7 +9,7 @@
  * module load.
  */
 
-import type { ProtocolRequestMethod } from "./messages.js";
+import type { ProtocolRequestMethod } from './messages.js';
 
 export const DEFAULT_TIMEOUT_MS = 30_000;
 
@@ -21,8 +21,7 @@ export const DEFAULT_TIMEOUT_MS = 30_000;
  * settings" affordance. Waiting longer than 5 min is fine. Silently
  * killing the request is not.
  */
-export const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> =
-  new Set<ProtocolRequestMethod>(["warmup"]);
+export const UNTIMED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequestMethod>(['warmup']);
 
 /**
  * Budget per method, in ms.

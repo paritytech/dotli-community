@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   classifyGap,
   endNetworkWatch,
@@ -14,9 +14,9 @@ import {
   subscribeNetwork,
   type BlockSource,
   type ChainStatus,
-} from "../src/network-monitor.js";
-import { getActiveChainRoles } from "@dotli/config";
-import { nth } from "./helpers/nth.js";
+} from '../src/network-monitor.js';
+import { getActiveChainRoles } from '@dotli/config';
+import { nth } from './helpers/nth.js';
 
 // Mirror of IDLE_GRACE_MS and MAX_BARS in network-monitor.ts.
 const GRACE_MS = 60_000;
@@ -34,7 +34,7 @@ function fakeSource(unreachable: string[] = []): {
   let live = 0;
   return {
     source: {
-      isReachable: (genesis) => !unreachable.includes(genesis),
+      isReachable: genesis => !unreachable.includes(genesis),
       subscribe: (genesis, onBlock) => {
         emitters.set(genesis, onBlock);
         live += 1;
@@ -51,33 +51,33 @@ function fakeSource(unreachable: string[] = []): {
   };
 }
 
-describe("Block arrival colouring works", () => {
-  it("As a user, a block inside the expected time reads healthy", () => {
-    expect(classifyGap(6000, 6000)).toBe("onTime");
-    expect(classifyGap(9000, 6000)).toBe("onTime");
+describe('Block arrival colouring works', () => {
+  it('As a user, a block inside the expected time reads healthy', () => {
+    expect(classifyGap(6000, 6000)).toBe('onTime');
+    expect(classifyGap(9000, 6000)).toBe('onTime');
   });
 
-  it("As a user, a block that is somewhat overdue reads as a warning", () => {
-    expect(classifyGap(9001, 6000)).toBe("late");
-    expect(classifyGap(18_000, 6000)).toBe("late");
+  it('As a user, a block that is somewhat overdue reads as a warning', () => {
+    expect(classifyGap(9001, 6000)).toBe('late');
+    expect(classifyGap(18_000, 6000)).toBe('late');
   });
 
-  it("As a user, a badly overdue block reads as a problem", () => {
-    expect(classifyGap(18_001, 6000)).toBe("veryLate");
+  it('As a user, a badly overdue block reads as a problem', () => {
+    expect(classifyGap(18_001, 6000)).toBe('veryLate');
   });
 
-  it("As a user on a 2s chain, the same gap is judged more harshly than on a 6s chain", () => {
+  it('As a user on a 2s chain, the same gap is judged more harshly than on a 6s chain', () => {
     // Given
     const gap = 6000;
 
     // Then
-    expect(classifyGap(gap, 6000)).toBe("onTime");
-    expect(classifyGap(gap, 2000)).toBe("late");
-    expect(classifyGap(gap + 1, 2000)).toBe("veryLate");
+    expect(classifyGap(gap, 6000)).toBe('onTime');
+    expect(classifyGap(gap, 2000)).toBe('late');
+    expect(classifyGap(gap + 1, 2000)).toBe('veryLate');
   });
 });
 
-describe("The network monitor tracks blocks", () => {
+describe('The network monitor tracks blocks', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
@@ -88,7 +88,7 @@ describe("The network monitor tracks blocks", () => {
     vi.useRealTimers();
   });
 
-  it("As a user opening the panel, every chain of my network is listed", () => {
+  it('As a user opening the panel, every chain of my network is listed', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
@@ -97,11 +97,11 @@ describe("The network monitor tracks blocks", () => {
     startNetworkWatch();
 
     // Then
-    const labels = getNetworkStatus().map((c) => c.label);
-    expect(labels).toEqual(["Relay", "Hub", "Storage", "Identity"]);
+    const labels = getNetworkStatus().map(c => c.label);
+    expect(labels).toEqual(['Relay', 'Hub', 'Storage', 'Identity']);
   });
 
-  it("As a user watching a chain, the first block anchors and later ones get bars", () => {
+  it('As a user watching a chain, the first block anchors and later ones get bars', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -121,12 +121,10 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 101);
 
     // Then
-    expect(getNetworkStatus()[0]?.bars).toEqual([
-      { number: 101, health: "onTime", gapMs: relay.blockTimeMs },
-    ]);
+    expect(getNetworkStatus()[0]?.bars).toEqual([{ number: 101, health: 'onTime', gapMs: relay.blockTimeMs }]);
   });
 
-  it("As a reader holding a snapshot, later blocks do not change its bars", () => {
+  it('As a reader holding a snapshot, later blocks do not change its bars', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -143,14 +141,12 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 102);
 
     // Then
-    expect(held.map((b) => b.number)).toEqual([101]);
+    expect(held.map(b => b.number)).toEqual([101]);
     expect(Object.isFrozen(held)).toBe(true);
-    expect(getNetworkStatus()[0]?.bars.map((b) => b.number)).toEqual([
-      101, 102,
-    ]);
+    expect(getNetworkStatus()[0]?.bars.map(b => b.number)).toEqual([101, 102]);
   });
 
-  it("As a user on a degraded chain, the bar for a slow block is not green", () => {
+  it('As a user on a degraded chain, the bar for a slow block is not green', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -163,10 +159,10 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 2);
 
     // Then
-    expect(getNetworkStatus()[0]?.bars[0]?.health).toBe("veryLate");
+    expect(getNetworkStatus()[0]?.bars[0]?.health).toBe('veryLate');
   });
 
-  it("As a user with the panel open all day, memory stays bounded", () => {
+  it('As a user with the panel open all day, memory stays bounded', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -183,7 +179,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0]?.bars.length).toBe(MAX_BARS);
   });
 
-  it("As a user who kept the panel open, more history is retained than a strip can show", () => {
+  it('As a user who kept the panel open, more history is retained than a strip can show', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -200,7 +196,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0]?.bars.length).toBeGreaterThan(36);
   });
 
-  it("As a user on a chain that republishes its head, one block makes one bar", () => {
+  it('As a user on a chain that republishes its head, one block makes one bar', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -219,10 +215,10 @@ describe("The network monitor tracks blocks", () => {
 
     // Then
     const bars = nth(getNetworkStatus(), 0).bars;
-    expect(bars.map((b) => b.number)).toEqual([101, 102]);
+    expect(bars.map(b => b.number)).toEqual([101, 102]);
   });
 
-  it("As a user whose chain reorgs to an earlier block, the strip does not go backwards", () => {
+  it('As a user whose chain reorgs to an earlier block, the strip does not go backwards', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -238,10 +234,10 @@ describe("The network monitor tracks blocks", () => {
     emit(genesis, 199);
 
     // Then
-    expect(getNetworkStatus()[0]?.bars.map((b) => b.number)).toEqual([201]);
+    expect(getNetworkStatus()[0]?.bars.map(b => b.number)).toEqual([201]);
   });
 
-  it("As a user reopening the panel quickly, watching never stopped", () => {
+  it('As a user reopening the panel quickly, watching never stopped', () => {
     // Given
     const { source, liveCount } = fakeSource();
     setBlockSource(source);
@@ -258,7 +254,7 @@ describe("The network monitor tracks blocks", () => {
     expect(liveCount()).toBe(before);
   });
 
-  it("As a user who closed the panel and walked away, nothing is left watching", () => {
+  it('As a user who closed the panel and walked away, nothing is left watching', () => {
     // Given
     const { source, liveCount } = fakeSource();
     setBlockSource(source);
@@ -273,7 +269,7 @@ describe("The network monitor tracks blocks", () => {
     expect(liveCount()).toBe(0);
   });
 
-  it("As a user on a network missing an endpoint, that chain is marked unreachable", () => {
+  it('As a user on a network missing an endpoint, that chain is marked unreachable', () => {
     // Given
     const { source } = fakeSource([relayGenesis()]);
     setBlockSource(source);
@@ -285,7 +281,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0]?.reachable).toBe(false);
   });
 
-  it("As a user with the panel open, a new block shows up the moment it lands", () => {
+  it('As a user with the panel open, a new block shows up the moment it lands', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -305,7 +301,7 @@ describe("The network monitor tracks blocks", () => {
     expect(calls).toBe(1);
   });
 
-  it("As a user hovering a bar, the gap that produced it is recorded", () => {
+  it('As a user hovering a bar, the gap that produced it is recorded', () => {
     // Given
     const { source, emit } = fakeSource();
     setBlockSource(source);
@@ -321,7 +317,7 @@ describe("The network monitor tracks blocks", () => {
     expect(getNetworkStatus()[0]?.bars[0]?.gapMs).toBe(15_000);
   });
 
-  it("As a user closing the page, nothing keeps watching the chains", () => {
+  it('As a user closing the page, nothing keeps watching the chains', () => {
     // Given
     const { source, liveCount } = fakeSource();
     setBlockSource(source);
@@ -335,7 +331,7 @@ describe("The network monitor tracks blocks", () => {
   });
 });
 
-describe("The network monitor tracks peers", () => {
+describe('The network monitor tracks peers', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
@@ -346,7 +342,7 @@ describe("The network monitor tracks peers", () => {
     vi.useRealTimers();
   });
 
-  it("As a user opening the panel before any sample, no chain claims a peer count", () => {
+  it('As a user opening the panel before any sample, no chain claims a peer count', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
@@ -355,32 +351,27 @@ describe("The network monitor tracks peers", () => {
     startNetworkWatch();
 
     // Then
-    expect(getNetworkStatus().map((c) => c.peers)).toEqual([
-      null,
-      null,
-      null,
-      null,
-    ]);
+    expect(getNetworkStatus().map(c => c.peers)).toEqual([null, null, null, null]);
   });
 
-  it("As a user watching the panel, each chain reports the peers it actually holds", () => {
+  it('As a user watching the panel, each chain reports the peers it actually holds', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
 
     // When
-    recordPeerCount("relay", 7);
-    recordPeerCount("assethub", 3);
+    recordPeerCount('relay', 7);
+    recordPeerCount('assethub', 3);
 
     // Then
-    const byRole = new Map(getNetworkStatus().map((c) => [c.role, c.peers]));
-    expect(byRole.get("relay")).toBe(7);
-    expect(byRole.get("assethub")).toBe(3);
-    expect(byRole.get("people")).toBeNull();
+    const byRole = new Map(getNetworkStatus().map(c => [c.role, c.peers]));
+    expect(byRole.get('relay')).toBe(7);
+    expect(byRole.get('assethub')).toBe(3);
+    expect(byRole.get('people')).toBeNull();
   });
 
-  it("As a user, the panel repaints when a peer count changes and stays quiet when it repeats", () => {
+  it('As a user, the panel repaints when a peer count changes and stays quiet when it repeats', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
@@ -391,20 +382,20 @@ describe("The network monitor tracks peers", () => {
     });
 
     // When
-    recordPeerCount("relay", 4);
-    recordPeerCount("relay", 4);
-    recordPeerCount("relay", 5);
+    recordPeerCount('relay', 4);
+    recordPeerCount('relay', 4);
+    recordPeerCount('relay', 5);
 
     // Then
     expect(woken).toBe(2);
   });
 
-  it("As a user who closed the panel and reopened it, the peer count survived", () => {
+  it('As a user who closed the panel and reopened it, the peer count survived', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    recordPeerCount("relay", 6);
+    recordPeerCount('relay', 6);
 
     // When
     stopNetworkWatch();
@@ -412,12 +403,12 @@ describe("The network monitor tracks peers", () => {
     startNetworkWatch();
 
     // Then
-    const relay = getNetworkStatus().find((c) => c.role === "relay");
+    const relay = getNetworkStatus().find(c => c.role === 'relay');
     expect(relay?.peers).toBe(6);
   });
 });
 
-describe("The network monitor tracks the connection", () => {
+describe('The network monitor tracks the connection', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
@@ -428,7 +419,7 @@ describe("The network monitor tracks the connection", () => {
     vi.useRealTimers();
   });
 
-  it("As a user opening the panel before anything moves, nothing is claimed about the connection", () => {
+  it('As a user opening the panel before anything moves, nothing is claimed about the connection', () => {
     // Given
     expect(getTransfer()).toEqual({
       bytesPerSecond: null,
@@ -437,7 +428,7 @@ describe("The network monitor tracks the connection", () => {
     });
   });
 
-  it("As a user watching a download, the speed and the progress each survive an update to the other", () => {
+  it('As a user watching a download, the speed and the progress each survive an update to the other', () => {
     // Given
     recordTransfer({ bytesPerSecond: 962_560 });
     recordTransfer({ fetched: 6_400_000, total: 14_600_000 });
@@ -453,7 +444,7 @@ describe("The network monitor tracks the connection", () => {
     });
   });
 
-  it("As a user, the panel repaints when the transfer changes and stays quiet when it repeats", () => {
+  it('As a user, the panel repaints when the transfer changes and stays quiet when it repeats', () => {
     // Given
     let woken = 0;
     subscribeNetwork(() => {
@@ -469,7 +460,7 @@ describe("The network monitor tracks the connection", () => {
     expect(woken).toBe(2);
   });
 
-  it("As a user on a load that declared no size, no progress is invented", () => {
+  it('As a user on a load that declared no size, no progress is invented', () => {
     // Given
     recordTransfer({ fetched: 900_000, total: null });
 
@@ -478,7 +469,7 @@ describe("The network monitor tracks the connection", () => {
   });
 });
 
-describe("The network monitor tracks the phase of each chain", () => {
+describe('The network monitor tracks the phase of each chain', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetNetworkMonitor();
@@ -489,7 +480,7 @@ describe("The network monitor tracks the phase of each chain", () => {
     vi.useRealTimers();
   });
 
-  it("As a user opening the panel before the light client speaks, no phase is claimed", () => {
+  it('As a user opening the panel before the light client speaks, no phase is claimed', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
@@ -498,32 +489,26 @@ describe("The network monitor tracks the phase of each chain", () => {
     startNetworkWatch();
 
     // Then
-    expect(getNetworkStatus().map((c) => c.phase)).toEqual([
-      null,
-      null,
-      null,
-      null,
-    ]);
+    expect(getNetworkStatus().map(c => c.phase)).toEqual([null, null, null, null]);
   });
 
-  it("As a user watching a chain come up, the panel follows it through to ready", () => {
+  it('As a user watching a chain come up, the panel follows it through to ready', () => {
     // Given
     const { source } = fakeSource();
     setBlockSource(source);
     startNetworkWatch();
-    const relay = (): ChainStatus | undefined =>
-      getNetworkStatus().find((c) => c.role === "relay");
+    const relay = (): ChainStatus | undefined => getNetworkStatus().find(c => c.role === 'relay');
 
     // When
-    recordChainPhase("relay", "connecting");
-    expect(relay()?.phase).toBe("connecting");
-    recordChainPhase("relay", "syncing");
-    expect(relay()?.phase).toBe("syncing");
-    recordChainPhase("relay", "ready");
-    expect(relay()?.phase).toBe("ready");
+    recordChainPhase('relay', 'connecting');
+    expect(relay()?.phase).toBe('connecting');
+    recordChainPhase('relay', 'syncing');
+    expect(relay()?.phase).toBe('syncing');
+    recordChainPhase('relay', 'ready');
+    expect(relay()?.phase).toBe('ready');
   });
 
-  it("As a user, the panel repaints when a chain phase changes and stays quiet when it repeats", () => {
+  it('As a user, the panel repaints when a chain phase changes and stays quiet when it repeats', () => {
     // Given
     let woken = 0;
     subscribeNetwork(() => {
@@ -531,9 +516,9 @@ describe("The network monitor tracks the phase of each chain", () => {
     });
 
     // When
-    recordChainPhase("assethub", "connecting");
-    recordChainPhase("assethub", "connecting");
-    recordChainPhase("assethub", "ready");
+    recordChainPhase('assethub', 'connecting');
+    recordChainPhase('assethub', 'connecting');
+    recordChainPhase('assethub', 'ready');
 
     // Then
     expect(woken).toBe(2);

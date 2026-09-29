@@ -4,10 +4,10 @@
 // Shared dialog shell: backdrop, dialog semantics, initial focus, a Tab trap,
 // Escape, and focus restored on close.
 
-import { onCleanup, onSettled } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { currentProductFrame } from "../../product-frame-layout.js";
-import { containTab } from "../focus.js";
+import { onCleanup, onSettled } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { currentProductFrame } from '../../product-frame-layout.js';
+import { containTab } from '../focus.js';
 
 export interface DialogProps {
   titleId: string;
@@ -32,7 +32,7 @@ function restoreTargetNow(): HTMLElement | null {
   if (!(active instanceof HTMLElement)) {
     return null;
   }
-  const outer = active.closest(".signing-modal");
+  const outer = active.closest('.signing-modal');
   if (outer !== null && restoreTargets.has(outer)) {
     return restoreTargets.get(outer) ?? null;
   }
@@ -62,13 +62,13 @@ export function Dialog(props: DialogProps): JSX.Element {
   const previouslyFocused = restoreTargetNow();
 
   const onKeyDown = (event: KeyboardEvent): void => {
-    if (event.key === "Escape") {
+    if (event.key === 'Escape') {
       event.preventDefault();
       // Handled in the capture phase, ahead of any other document Escape
       // handler (e.g. a host page's own shortcut), so it never also fires.
       event.stopPropagation();
       props.onDismiss();
-    } else if (event.key === "Tab") {
+    } else if (event.key === 'Tab') {
       containTab(event, dialog);
     }
   };
@@ -76,19 +76,19 @@ export function Dialog(props: DialogProps): JSX.Element {
   onSettled(() => {
     (props.initialFocus?.() ?? dialog).focus();
   });
-  document.addEventListener("keydown", onKeyDown, true);
+  document.addEventListener('keydown', onKeyDown, true);
   onCleanup(() => {
-    document.removeEventListener("keydown", onKeyDown, true);
+    document.removeEventListener('keydown', onKeyDown, true);
     restoreFocus(previouslyFocused);
   });
 
   return (
     <div
       class="signing-modal-backdrop"
-      ref={(el) => {
+      ref={el => {
         backdrop = el;
       }}
-      onClick={(event) => {
+      onClick={event => {
         if (event.target === backdrop) {
           props.onDismiss();
         }
@@ -96,7 +96,7 @@ export function Dialog(props: DialogProps): JSX.Element {
     >
       <div
         class="signing-modal"
-        ref={(el) => {
+        ref={el => {
           dialog = el;
           restoreTargets.set(el, previouslyFocused);
         }}

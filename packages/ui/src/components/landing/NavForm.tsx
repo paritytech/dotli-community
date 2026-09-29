@@ -1,29 +1,26 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onCleanup, onSettled } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { getActiveTldSuffix } from "@dotli/config";
-import { validateDotLabel, type DotLabelResult } from "@dotli/shared";
-import { dotUrl } from "./dot-url.js";
+import { createSignal, onCleanup, onSettled } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { getActiveTldSuffix } from '@dotli/config';
+import { validateDotLabel, type DotLabelResult } from '@dotli/shared';
+import { dotUrl } from './dot-url.js';
 
-const PLACEHOLDER_NAMES = ["browse", "mark3t", "playground"] as const;
+const PLACEHOLDER_NAMES = ['browse', 'mark3t', 'playground'] as const;
 
 const PLACEHOLDER_TYPE_MS = 95;
 const PLACEHOLDER_ERASE_MS = 45;
 const PLACEHOLDER_HOLD_MS = 1400;
 
-const NAME_ERROR_COPY: Record<
-  Exclude<DotLabelResult, { ok: true }>["reason"],
-  string
-> = {
-  empty: "Enter a name to browse",
-  "too-long": "Names can be at most 63 characters",
-  uppercase: "Names can only contain a-z, 0-9 and hyphens",
-  "leading-hyphen": "Names can't start or end with a hyphen",
-  "trailing-hyphen": "Names can't start or end with a hyphen",
-  "invalid-char": "Names can only contain a-z, 0-9 and hyphens",
-  "non-ascii": "Names can only contain a-z, 0-9 and hyphens",
+const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], string> = {
+  empty: 'Enter a name to browse',
+  'too-long': 'Names can be at most 63 characters',
+  uppercase: 'Names can only contain a-z, 0-9 and hyphens',
+  'leading-hyphen': "Names can't start or end with a hyphen",
+  'trailing-hyphen': "Names can't start or end with a hyphen",
+  'invalid-char': 'Names can only contain a-z, 0-9 and hyphens',
+  'non-ascii': 'Names can only contain a-z, 0-9 and hyphens',
 };
 
 /**
@@ -33,36 +30,36 @@ const NAME_ERROR_COPY: Record<
  */
 function animatePlaceholder(input: HTMLInputElement): () => void {
   input.placeholder = PLACEHOLDER_NAMES[0];
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
     return () => undefined;
   }
   let wordIdx = 0;
   let charIdx: number = PLACEHOLDER_NAMES[0].length;
-  let mode: "typing" | "holding" | "erasing" = "holding";
+  let mode: 'typing' | 'holding' | 'erasing' = 'holding';
   let timer: ReturnType<typeof setTimeout> | null = null;
   const schedule = (delayMs: number): void => {
     timer = setTimeout(tick, delayMs);
   };
   const tick = (): void => {
     timer = null;
-    if (input.value !== "") {
+    if (input.value !== '') {
       return;
     }
     const word = PLACEHOLDER_NAMES[wordIdx];
     if (word === undefined) {
       return;
     }
-    if (mode === "typing") {
+    if (mode === 'typing') {
       charIdx++;
       input.placeholder = word.slice(0, charIdx);
       if (charIdx >= word.length) {
-        mode = "holding";
+        mode = 'holding';
         schedule(PLACEHOLDER_HOLD_MS);
       } else {
         schedule(PLACEHOLDER_TYPE_MS);
       }
-    } else if (mode === "holding") {
-      mode = "erasing";
+    } else if (mode === 'holding') {
+      mode = 'erasing';
       schedule(PLACEHOLDER_ERASE_MS);
     } else {
       charIdx--;
@@ -70,7 +67,7 @@ function animatePlaceholder(input: HTMLInputElement): () => void {
       if (charIdx <= 0) {
         wordIdx = (wordIdx + 1) % PLACEHOLDER_NAMES.length;
         charIdx = 0;
-        mode = "typing";
+        mode = 'typing';
         schedule(PLACEHOLDER_TYPE_MS);
       } else {
         schedule(PLACEHOLDER_ERASE_MS);
@@ -80,14 +77,14 @@ function animatePlaceholder(input: HTMLInputElement): () => void {
   // Resume the cycle when the visitor clears the input. Pause is implicit:
   // tick returns without rescheduling while the input has a value.
   const resume = (): void => {
-    if (input.value === "" && timer === null) {
+    if (input.value === '' && timer === null) {
       schedule(PLACEHOLDER_TYPE_MS);
     }
   };
-  input.addEventListener("input", resume);
+  input.addEventListener('input', resume);
   schedule(PLACEHOLDER_HOLD_MS);
   return () => {
-    input.removeEventListener("input", resume);
+    input.removeEventListener('input', resume);
     if (timer !== null) {
       clearTimeout(timer);
       timer = null;
@@ -105,7 +102,7 @@ export function NavForm(): JSX.Element {
   const suffix = getActiveTldSuffix();
   let input: HTMLInputElement | undefined;
   const [invalid, setInvalid] = createSignal(false);
-  const [message, setMessage] = createSignal("");
+  const [message, setMessage] = createSignal('');
 
   let stopPlaceholder: (() => void) | undefined;
   onSettled(() => {
@@ -127,9 +124,7 @@ export function NavForm(): JSX.Element {
     // and `validateDotLabel` rejects any dot: a name typed with the suffix
     // has to lose it here.
     const typed = input.value.trim().toLowerCase();
-    const name = typed.endsWith(suffix)
-      ? typed.slice(0, -suffix.length)
-      : typed;
+    const name = typed.endsWith(suffix) ? typed.slice(0, -suffix.length) : typed;
     const result = validateDotLabel(name);
     if (!result.ok) {
       setMessage(NAME_ERROR_COPY[result.reason]);
@@ -144,8 +139,8 @@ export function NavForm(): JSX.Element {
 
   return (
     <form
-      ref={(el) => {
-        el.addEventListener("submit", onSubmit);
+      ref={el => {
+        el.addEventListener('submit', onSubmit);
       }}
       id="dotli-nav-form"
       class="landing-nav-form"
@@ -153,15 +148,15 @@ export function NavForm(): JSX.Element {
     >
       <div
         class={{
-          "landing-search-bar": true,
-          "landing-search-bar--error": invalid(),
+          'landing-search-bar': true,
+          'landing-search-bar--error': invalid(),
         }}
         id="dotli-nav-bar"
       >
         <input
-          ref={(el) => {
+          ref={el => {
             input = el;
-            el.addEventListener("input", () => {
+            el.addEventListener('input', () => {
               setInvalid(false);
             });
           }}
@@ -173,7 +168,7 @@ export function NavForm(): JSX.Element {
           autocomplete="off"
           aria-label={`Search a ${suffix} name`}
           aria-describedby="dotli-nav-error"
-          aria-invalid={invalid() ? "true" : undefined}
+          aria-invalid={invalid() ? 'true' : undefined}
         />
         <span class="landing-dot-label">{suffix}</span>
         <button type="submit" class="landing-go-btn" aria-label="Go">
@@ -192,12 +187,7 @@ export function NavForm(): JSX.Element {
           </svg>
         </button>
       </div>
-      <p
-        id="dotli-nav-error"
-        class="landing-nav-error"
-        role="alert"
-        hidden={!invalid()}
-      >
+      <p id="dotli-nav-error" class="landing-nav-error" role="alert" hidden={!invalid()}>
         {message()}
       </p>
     </form>

@@ -23,10 +23,10 @@ import {
   serializeRecentLabels,
   withRecentLabel,
   writeRecentLabels,
-} from "@dotli/storage";
-import { isValidDotLabel, log } from "@dotli/shared";
+} from '@dotli/storage';
+import { isValidDotLabel, log } from '@dotli/shared';
 
-import { getSharedChannel } from "./shared-mode.js";
+import { getSharedChannel } from './shared-mode.js';
 
 /**
  * Read the shared list, falling back to this origin's mirror.
@@ -40,24 +40,16 @@ export async function loadRecentLabels(): Promise<string[]> {
   try {
     raw = await channel.read(RECENT_KEY);
   } catch (err: unknown) {
-    log.warn(
-      "[dot.li recent] Shared read failed; using per-origin mirror:",
-      err instanceof Error ? err.message : err,
-    );
+    log.warn('[dot.li recent] Shared read failed; using per-origin mirror:', err instanceof Error ? err.message : err);
     return getRecentLabels();
   }
 
   if (raw === null) {
     const mirror = getRecentLabels();
     if (mirror.length > 0) {
-      void channel
-        .write(RECENT_KEY, serializeRecentLabels(mirror))
-        .catch((err: unknown) => {
-          log.warn(
-            "[dot.li recent] Migration write failed:",
-            err instanceof Error ? err.message : err,
-          );
-        });
+      void channel.write(RECENT_KEY, serializeRecentLabels(mirror)).catch((err: unknown) => {
+        log.warn('[dot.li recent] Migration write failed:', err instanceof Error ? err.message : err);
+      });
     }
     return mirror;
   }
@@ -73,17 +65,15 @@ export async function recordRecentLabel(label: string): Promise<void> {
   if (!isValidDotLabel(label)) {
     return;
   }
-  await updateRecentLabels((labels) => withRecentLabel(labels, label));
+  await updateRecentLabels(labels => withRecentLabel(labels, label));
 }
 
 /** Drop a label, both from the shared store and this origin's mirror. */
 export async function forgetRecentLabel(label: string): Promise<void> {
-  await updateRecentLabels((labels) => labels.filter((l) => l !== label));
+  await updateRecentLabels(labels => labels.filter(l => l !== label));
 }
 
-async function updateRecentLabels(
-  next: (labels: string[]) => string[],
-): Promise<void> {
+async function updateRecentLabels(next: (labels: string[]) => string[]): Promise<void> {
   const channel = getSharedChannel();
   let current: string[];
   try {
@@ -98,9 +88,6 @@ async function updateRecentLabels(
   try {
     await channel.write(RECENT_KEY, serializeRecentLabels(updated));
   } catch (err: unknown) {
-    log.warn(
-      "[dot.li recent] Shared write failed:",
-      err instanceof Error ? err.message : err,
-    );
+    log.warn('[dot.li recent] Shared write failed:', err instanceof Error ? err.message : err);
   }
 }

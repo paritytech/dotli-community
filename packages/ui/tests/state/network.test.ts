@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { resetStores } from "../helpers/solid.js";
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { resetStores } from '../helpers/solid.js';
 
 const monitor = vi.hoisted(() => {
   const listeners = new Set<() => void>();
@@ -14,7 +14,7 @@ const monitor = vi.hoisted(() => {
   };
 });
 
-vi.mock("../../src/network-monitor.js", () => ({
+vi.mock('../../src/network-monitor.js', () => ({
   subscribeNetwork: (l: () => void) => {
     monitor.listeners.add(l);
     return () => monitor.listeners.delete(l);
@@ -29,11 +29,11 @@ vi.mock("../../src/network-monitor.js", () => ({
   },
 }));
 
-describe("network store", () => {
+describe('network store', () => {
   afterEach(() => {
     resetStores();
     monitor.listeners.clear();
-    Object.defineProperty(monitor, "status", {
+    Object.defineProperty(monitor, 'status', {
       configurable: true,
       writable: true,
       value: [],
@@ -41,12 +41,11 @@ describe("network store", () => {
     monitor.watching = false;
   });
 
-  it("As the chains popover, the store mirrors the monitor on every change after start", async () => {
+  it('As the chains popover, the store mirrors the monitor on every change after start', async () => {
     // Given
-    const { getNetworkState, startNetworkStore } =
-      await import("../../src/state/network.js");
+    const { getNetworkState, startNetworkStore } = await import('../../src/state/network.js');
     const stop = startNetworkStore();
-    monitor.status = [{ role: "relay", label: "Relay" }];
+    monitor.status = [{ role: 'relay', label: 'Relay' }];
 
     // When
     for (const l of monitor.listeners) {
@@ -54,21 +53,18 @@ describe("network store", () => {
     }
 
     // Then
-    expect(getNetworkState().chains).toEqual([
-      { role: "relay", label: "Relay" },
-    ]);
+    expect(getNetworkState().chains).toEqual([{ role: 'relay', label: 'Relay' }]);
     stop();
     expect(monitor.listeners.size).toBe(0);
   });
 
-  it("As the host with no reader subscribed, monitor changes build no snapshot until one is read", async () => {
+  it('As the host with no reader subscribed, monitor changes build no snapshot until one is read', async () => {
     // Given
-    const { getNetworkState, networkStore, startNetworkStore } =
-      await import("../../src/state/network.js");
+    const { getNetworkState, networkStore, startNetworkStore } = await import('../../src/state/network.js');
     let reads = 0;
     const stop = startNetworkStore();
-    const status = [{ role: "relay", label: "Relay" }];
-    Object.defineProperty(monitor, "status", {
+    const status = [{ role: 'relay', label: 'Relay' }];
+    Object.defineProperty(monitor, 'status', {
       configurable: true,
       get: () => {
         reads += 1;
@@ -107,9 +103,9 @@ describe("network store", () => {
     stop();
   });
 
-  it("As the host, the store does nothing until started", async () => {
+  it('As the host, the store does nothing until started', async () => {
     // Given
-    const { getNetworkState } = await import("../../src/state/network.js");
+    const { getNetworkState } = await import('../../src/state/network.js');
 
     // Then
     expect(getNetworkState().chains).toEqual([]);
@@ -117,10 +113,9 @@ describe("network store", () => {
   });
   it("As the chains popover, watching starts the monitor's watch and re-reads it at once, and the stop ends the watch", async () => {
     // Given
-    const { getNetworkState, startNetworkStore, watchNetwork } =
-      await import("../../src/state/network.js");
+    const { getNetworkState, startNetworkStore, watchNetwork } = await import('../../src/state/network.js');
     const stopStore = startNetworkStore();
-    monitor.status = [{ role: "relay", label: "Relay", reachable: true }];
+    monitor.status = [{ role: 'relay', label: 'Relay', reachable: true }];
 
     // When: no notification comes with the watch starting.
     const before = Date.now();
@@ -128,9 +123,7 @@ describe("network store", () => {
 
     // Then
     expect(monitor.watching).toBe(true);
-    expect(getNetworkState().chains).toEqual([
-      { role: "relay", label: "Relay", reachable: true },
-    ]);
+    expect(getNetworkState().chains).toEqual([{ role: 'relay', label: 'Relay', reachable: true }]);
     expect(getNetworkState().readAt).toBeGreaterThanOrEqual(before);
 
     // When
@@ -141,13 +134,12 @@ describe("network store", () => {
     stopStore();
   });
 
-  it("As a test, resetting the stores forgets a reader left subscribed, so changes build no snapshot again", async () => {
+  it('As a test, resetting the stores forgets a reader left subscribed, so changes build no snapshot again', async () => {
     // Given: a reader that is never unsubscribed.
-    const { networkStore, startNetworkStore } =
-      await import("../../src/state/network.js");
+    const { networkStore, startNetworkStore } = await import('../../src/state/network.js');
     networkStore.subscribe(() => undefined);
     let reads = 0;
-    Object.defineProperty(monitor, "status", {
+    Object.defineProperty(monitor, 'status', {
       configurable: true,
       get: () => {
         reads += 1;
@@ -168,12 +160,11 @@ describe("network store", () => {
     stop();
   });
 
-  it("As a test, resetting the stores drops a stale mark, so the next read gets the reset value", async () => {
+  it('As a test, resetting the stores drops a stale mark, so the next read gets the reset value', async () => {
     // Given: a change with nobody subscribed marks the store stale.
-    const { networkStore, startNetworkStore } =
-      await import("../../src/state/network.js");
+    const { networkStore, startNetworkStore } = await import('../../src/state/network.js');
     const stop = startNetworkStore();
-    monitor.status = [{ role: "relay", label: "Relay" }];
+    monitor.status = [{ role: 'relay', label: 'Relay' }];
     for (const l of monitor.listeners) {
       l();
     }

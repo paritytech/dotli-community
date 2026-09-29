@@ -8,10 +8,10 @@
 //   node scripts/eager-path-size.ts apps/host/dist
 //   → {"files":["assets/index-….js",…],"raw":…,"gz":…,"br":…}
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { spawnSync } from "node:child_process";
-import { brotliCompressSync } from "node:zlib";
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { brotliCompressSync } from 'node:zlib';
 
 // gzip goes through the `gzip` CLI, not zlib.gzipSync: the CI budgets and
 // docs/perf/solid-migration-baseline.md were both measured with the CLI,
@@ -26,7 +26,7 @@ import { brotliCompressSync } from "node:zlib";
 // few bytes to a few hundred in total, which is small against the budgets'
 // headroom.
 function gzipCliSize(filePath: string): number {
-  const result = spawnSync("gzip", ["-c", filePath]);
+  const result = spawnSync('gzip', ['-c', filePath]);
   if (result.error) {
     throw new Error(`gzip CLI failed: ${result.error.message}`);
   }
@@ -39,23 +39,20 @@ function gzipCliSize(filePath: string): number {
 const TAG = /<(script|link)\b([^>]*)>/gi;
 
 function attr(attrs: string, name: string): string | null {
-  const match = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, "i").exec(attrs);
+  const match = new RegExp(`\\b${name}\\s*=\\s*"([^"]*)"`, 'i').exec(attrs);
   return match?.[1] ?? null;
 }
 
 export function eagerChunkPaths(html: string): string[] {
   const paths: string[] = [];
   let hasEntry = false;
-  for (const [, tag = "", attrs = ""] of html.matchAll(TAG)) {
+  for (const [, tag = '', attrs = ''] of html.matchAll(TAG)) {
     let path: string | null = null;
-    if (tag.toLowerCase() === "script" && attr(attrs, "type") === "module") {
-      path = attr(attrs, "src");
+    if (tag.toLowerCase() === 'script' && attr(attrs, 'type') === 'module') {
+      path = attr(attrs, 'src');
       hasEntry ||= path !== null;
-    } else if (
-      tag.toLowerCase() === "link" &&
-      attr(attrs, "rel") === "modulepreload"
-    ) {
-      path = attr(attrs, "href");
+    } else if (tag.toLowerCase() === 'link' && attr(attrs, 'rel') === 'modulepreload') {
+      path = attr(attrs, 'href');
     }
     if (path !== null && !paths.includes(path)) {
       paths.push(path);
@@ -73,8 +70,8 @@ export function measureEagerPath(distDir: string): {
   gz: number;
   br: number;
 } {
-  const html = readFileSync(join(distDir, "index.html"), "utf8");
-  const files = eagerChunkPaths(html).map((p) => p.replace(/^\.?\//, ""));
+  const html = readFileSync(join(distDir, 'index.html'), 'utf8');
+  const files = eagerChunkPaths(html).map(p => p.replace(/^\.?\//, ''));
   let raw = 0;
   let gz = 0;
   let br = 0;
@@ -91,7 +88,7 @@ export function measureEagerPath(distDir: string): {
 if (import.meta.main) {
   const distDir = process.argv[2];
   if (distDir === undefined) {
-    console.error("usage: node scripts/eager-path-size.ts <distDir>");
+    console.error('usage: node scripts/eager-path-size.ts <distDir>');
     process.exit(1);
   }
   try {

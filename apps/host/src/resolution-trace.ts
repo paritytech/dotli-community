@@ -13,18 +13,18 @@
 // never finishes is the one worth looking at, and a tree assembled at the end
 // is exactly the tree such a load never produces.
 
-import type { ChainKey, ChainPeer, ChainSyncKind } from "@dotli/resolver";
-import type { ChainPhase } from "@dotli/ui";
-import { m, type SpanHandle, type SpanValue } from "@dotli/metrics";
-import { getLoadingState } from "@dotli/ui";
+import type { ChainKey, ChainPeer, ChainSyncKind } from '@dotli/resolver';
+import type { ChainPhase } from '@dotli/ui';
+import { m, type SpanHandle, type SpanValue } from '@dotli/metrics';
+import { getLoadingState } from '@dotli/ui';
 
 /** How a resolution ended. `abandoned` means the tab left before it did. */
-export type ResolutionOutcome = "rendered" | "error" | "abandoned";
+export type ResolutionOutcome = 'rendered' | 'error' | 'abandoned';
 
-export type CacheResult = "hit" | "miss";
+export type CacheResult = 'hit' | 'miss';
 
 /** The phases a chain moves through, as the light client reports them. */
-type Phase = "connecting" | "syncing" | "ready";
+type Phase = 'connecting' | 'syncing' | 'ready';
 
 /**
  * Which phase each sync milestone lands a chain in.
@@ -35,11 +35,11 @@ type Phase = "connecting" | "syncing" | "ready";
  * its own never rewrites where the chain says it is.
  */
 export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
-  connecting: "connecting",
-  warpSyncProgress: "syncing",
-  warpSyncFinished: "ready",
-  bootstrapComplete: "ready",
-  stalled: "stalled",
+  connecting: 'connecting',
+  warpSyncProgress: 'syncing',
+  warpSyncFinished: 'ready',
+  bootstrapComplete: 'ready',
+  stalled: 'stalled',
 };
 
 /**
@@ -54,10 +54,8 @@ export const PHASE_BY_MILESTONE: Partial<Record<ChainSyncKind, ChainPhase>> = {
 const DEFAULT_SAMPLE_RATE = 0.2;
 
 function sampleRate(): number {
-  const raw = Number(import.meta.env.VITE_RESOLUTION_SAMPLE_RATE ?? "");
-  return Number.isFinite(raw) && raw >= 0 && raw <= 1
-    ? raw
-    : DEFAULT_SAMPLE_RATE;
+  const raw = Number(import.meta.env.VITE_RESOLUTION_SAMPLE_RATE ?? '');
+  return Number.isFinite(raw) && raw >= 0 && raw <= 1 ? raw : DEFAULT_SAMPLE_RATE;
 }
 
 /**
@@ -118,11 +116,7 @@ export interface ResolutionTrace {
   /** A milestone from the light client. */
   chainSync: (event: ChainSyncFacts) => void;
   /** A telemetry-only fact about one chain. */
-  chainDetail: (event: {
-    chain: ChainKey;
-    dbCache?: CacheResult;
-    peers?: ChainPeer[];
-  }) => void;
+  chainDetail: (event: { chain: ChainKey; dbCache?: CacheResult; peers?: ChainPeer[] }) => void;
   /** Cumulative bytes the light client has pulled off the network. */
   bytes: (received: number) => void;
   /** Archive download progress, from the sandbox reports. */
@@ -146,9 +140,7 @@ export interface ResolutionTraceOptions {
  * Safe to call when metrics are stripped: every span handle is inert and the
  * bookkeeping below costs a few numbers.
  */
-export function startResolutionTrace(
-  opts: ResolutionTraceOptions,
-): ResolutionTrace {
+export function startResolutionTrace(opts: ResolutionTraceOptions): ResolutionTrace {
   // Sentry wants wall-clock, the rest of the host measures with the monotonic
   // clock. Both are captured once here so every span time is the monotonic
   // delta projected onto the wall clock, and a system clock that steps mid-load
@@ -160,7 +152,7 @@ export function startResolutionTrace(
 
   const sampled = sampleFor();
 
-  const root = m.open("resolution", {
+  const root = m.open('resolution', {
     root: true,
     startTime: epochStart,
     attributes: {
@@ -179,9 +171,7 @@ export function startResolutionTrace(
       // The chain span opens when the chain is first heard from, not at boot:
       // Bulletin is created only once the content phase starts, and a span
       // opened earlier would claim it was idle rather than absent.
-      state.span = sampled
-        ? root.child(`chain.${key}`, { startTime: at() })
-        : null;
+      state.span = sampled ? root.child(`chain.${key}`, { startTime: at() }) : null;
       chains.set(key, state);
     }
     return state;
@@ -205,9 +195,7 @@ export function startResolutionTrace(
   let cid: string | null = null;
   let cidCacheResult: CacheResult | null = null;
   let nameResolvedMs: number | null = null;
-  let nameSpan: SpanHandle | null = sampled
-    ? root.child("name_resolution", { startTime: epochStart })
-    : null;
+  let nameSpan: SpanHandle | null = sampled ? root.child('name_resolution', { startTime: epochStart }) : null;
   let contentSpan: SpanHandle | null = null;
   let finished = false;
 
@@ -220,14 +208,11 @@ export function startResolutionTrace(
     // Named in full rather than just the phase: `child` does not inherit the
     // name of the parent, so four chains would otherwise all report `dotli.ready`
     // and only be separable by walking to their parent.
-    state.phaseSpan =
-      state.span === null
-        ? null
-        : state.span.child(`chain.${key}.${phase}`, { startTime: at() });
+    state.phaseSpan = state.span === null ? null : state.span.child(`chain.${key}.${phase}`, { startTime: at() });
   };
 
   const trace: ResolutionTrace = {
-    chainSync: (event) => {
+    chainSync: event => {
       if (finished) {
         return;
       }
@@ -235,45 +220,45 @@ export function startResolutionTrace(
       const phase = PHASE_BY_MILESTONE[event.syncKind];
       // Stalls are recorded as attributes below, not as phase spans: a stall
       // interrupts a phase rather than being one the chain moves through.
-      if (phase !== undefined && phase !== "stalled") {
+      if (phase !== undefined && phase !== 'stalled') {
         enterPhase(event.chain, state, phase);
       }
       switch (event.syncKind) {
-        case "peers":
-          if (typeof event.peers === "number") {
+        case 'peers':
+          if (typeof event.peers === 'number') {
             state.peersMax = Math.max(state.peersMax, event.peers);
           }
           break;
-        case "firstPeer":
+        case 'firstPeer':
           state.firstPeerMs ??= sinceStart();
           break;
-        case "bootstrapComplete":
+        case 'bootstrapComplete':
           state.readyMs ??= sinceStart();
           break;
-        case "stalled":
+        case 'stalled':
           state.stallCount += 1;
           if (event.reason !== undefined) {
             state.stallReasons.add(event.reason);
           }
           break;
-        case "warpSyncProgress":
-          if (typeof event.at === "number") {
+        case 'warpSyncProgress':
+          if (typeof event.at === 'number') {
             state.warpFrom ??= event.at;
             state.warpAt = event.at;
           }
-          if (typeof event.target === "number") {
+          if (typeof event.target === 'number') {
             state.warpTarget = event.target;
           }
           break;
-        case "connecting":
-        case "recovered":
-        case "warpSyncFinished":
+        case 'connecting':
+        case 'recovered':
+        case 'warpSyncFinished':
           // Fully handled by the phase mapping above.
           break;
       }
     },
 
-    chainDetail: (event) => {
+    chainDetail: event => {
       if (finished) {
         return;
       }
@@ -287,7 +272,7 @@ export function startResolutionTrace(
       }
     },
 
-    bytes: (received) => {
+    bytes: received => {
       if (finished || !Number.isFinite(received) || received < lastBytes) {
         return;
       }
@@ -310,28 +295,26 @@ export function startResolutionTrace(
         return;
       }
       sampleBar();
-      contentSpan ??= sampled
-        ? root.child("content_fetch", { startTime: at() })
-        : null;
+      contentSpan ??= sampled ? root.child('content_fetch', { startTime: at() }) : null;
       contentBytes = fetched;
       contentTotal = total;
     },
 
-    nameResolved: (resolved) => {
+    nameResolved: resolved => {
       if (finished) {
         return;
       }
       cid = resolved;
       nameResolvedMs ??= sinceStart();
       nameSpan?.setAttributes({
-        cid: resolved ?? "none",
+        cid: resolved ?? 'none',
         duration_ms: nameResolvedMs,
       });
       nameSpan?.end(at());
       nameSpan = null;
     },
 
-    cidCache: (result) => {
+    cidCache: result => {
       cidCacheResult = result;
     },
 
@@ -362,15 +345,11 @@ export function startResolutionTrace(
         avg_bytes_per_second: totalMs > 0 ? (bytesTotal / totalMs) * 1000 : 0,
         peak_bytes_per_second: peakBytesPerSecond,
         bar_at_render: lastBarPercent ?? readBarPercent(),
-        tab_visible: document.visibilityState === "visible",
+        tab_visible: document.visibilityState === 'visible',
         ...(cid !== null ? { cid } : {}),
         ...(cidCacheResult !== null ? { cid_cache: cidCacheResult } : {}),
-        ...(nameResolvedMs !== null
-          ? { name_resolution_ms: nameResolvedMs }
-          : {}),
-        ...(failureReason !== undefined
-          ? { failure_reason: failureReason.slice(0, 200) }
-          : {}),
+        ...(nameResolvedMs !== null ? { name_resolution_ms: nameResolvedMs } : {}),
+        ...(failureReason !== undefined ? { failure_reason: failureReason.slice(0, 200) } : {}),
         // Flattened onto the root as well as the chain spans, so an unsampled
         // load still answers "which chain was slow" without any children.
         ...chainSummary(chains),
@@ -382,8 +361,8 @@ export function startResolutionTrace(
   // A load that never finishes is the one worth having. Without this the tab
   // closes mid-resolution and the root span is never sent at all, so the
   // failures are exactly the traces Sentry never sees.
-  window.addEventListener("pagehide", () => {
-    trace.finish("abandoned");
+  window.addEventListener('pagehide', () => {
+    trace.finish('abandoned');
   });
 
   return trace;
@@ -399,65 +378,58 @@ function readBarPercent(): number {
   return getLoadingState().progress;
 }
 
-function chainAttributes(
-  key: ChainKey,
-  state: ChainState,
-): Record<string, SpanValue> {
+function chainAttributes(key: ChainKey, state: ChainState): Record<string, SpanValue> {
   const attrs: Record<string, SpanValue> = {
     chain: key,
     peers_max: state.peersMax,
     stall_count: state.stallCount,
   };
   if (state.dbCache !== null) {
-    attrs["db_cache"] = state.dbCache;
+    attrs['db_cache'] = state.dbCache;
   }
   if (state.firstPeerMs !== null) {
-    attrs["time_to_first_peer_ms"] = state.firstPeerMs;
+    attrs['time_to_first_peer_ms'] = state.firstPeerMs;
   }
   if (state.readyMs !== null) {
-    attrs["time_to_ready_ms"] = state.readyMs;
+    attrs['time_to_ready_ms'] = state.readyMs;
   }
   if (state.stallReasons.size > 0) {
-    attrs["stall_reasons"] = [...state.stallReasons].join(",");
+    attrs['stall_reasons'] = [...state.stallReasons].join(',');
   }
   if (state.warpTarget !== null) {
-    attrs["warp_target"] = state.warpTarget;
+    attrs['warp_target'] = state.warpTarget;
     if (state.warpAt !== null) {
-      attrs["warp_at"] = state.warpAt;
+      attrs['warp_at'] = state.warpAt;
     }
     if (state.warpFrom !== null && state.warpAt !== null) {
-      attrs["warp_from"] = state.warpFrom;
-      attrs["warp_blocks"] = state.warpAt - state.warpFrom;
+      attrs['warp_from'] = state.warpFrom;
+      attrs['warp_blocks'] = state.warpAt - state.warpFrom;
     }
   }
   const peers = state.peers ?? [];
-  const heights = peers.map((peer) => peer.bestNumber).sort((a, b) => a - b);
+  const heights = peers.map(peer => peer.bestNumber).sort((a, b) => a - b);
   const median = heights[Math.floor(heights.length / 2)];
   if (median !== undefined) {
-    attrs["peers_count"] = peers.length;
-    attrs["peers_authority"] = peers.filter(
-      (peer) => peer.roles === "AUTHORITY",
-    ).length;
-    attrs["peers_best_median"] = median;
+    attrs['peers_count'] = peers.length;
+    attrs['peers_authority'] = peers.filter(peer => peer.roles === 'AUTHORITY').length;
+    attrs['peers_best_median'] = median;
     // Peer ids are the public libp2p identities of infrastructure nodes,
     // published in chain specs. They name a remote server, never the visitor.
-    attrs["peers_ids"] = peers
-      .map((peer) => peer.peerId)
-      .join(",")
+    attrs['peers_ids'] = peers
+      .map(peer => peer.peerId)
+      .join(',')
       .slice(0, 1000);
     if (state.warpTarget !== null) {
       // How far behind the peers of the chain were. A lag near zero says the
       // network was fine and the time went somewhere else.
-      attrs["peer_best_lag"] = state.warpTarget - median;
+      attrs['peer_best_lag'] = state.warpTarget - median;
     }
   }
   return attrs;
 }
 
 /** Per-chain timings flattened for the root, so an unsampled load still has them. */
-function chainSummary(
-  chains: ReadonlyMap<ChainKey, ChainState>,
-): Record<string, SpanValue> {
+function chainSummary(chains: ReadonlyMap<ChainKey, ChainState>): Record<string, SpanValue> {
   const out: Record<string, SpanValue> = {};
   for (const [key, state] of chains) {
     if (state.readyMs !== null) {

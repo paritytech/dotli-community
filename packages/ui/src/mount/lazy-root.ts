@@ -4,7 +4,7 @@
 // A root whose chunk loads on first use. Solid-free: the loaders that use it
 // sit on startup paths and only import their chunk dynamically.
 
-import { captureException } from "@dotli/metrics";
+import { captureException } from '@dotli/metrics';
 
 /** How long an idle prefetch waits for the browser to go idle. */
 const PREFETCH_TIMEOUT_MS = 2000;
@@ -33,11 +33,7 @@ export interface LazyRootOptions {
   onFailure: () => void;
 }
 
-export function createLazyRoot({
-  load,
-  errorKind,
-  onFailure,
-}: LazyRootOptions): LazyRoot {
+export function createLazyRoot({ load, errorKind, onFailure }: LazyRootOptions): LazyRoot {
   let loading: Promise<void> | null = null;
   const fail = (): void => {
     loading = null;
@@ -57,7 +53,7 @@ export function createLazyRoot({
       const run = (): void => {
         void ensure();
       };
-      if (typeof window.requestIdleCallback === "function") {
+      if (typeof window.requestIdleCallback === 'function') {
         window.requestIdleCallback(run, { timeout: PREFETCH_TIMEOUT_MS });
       } else {
         setTimeout(run, PREFETCH_TIMEOUT_MS);

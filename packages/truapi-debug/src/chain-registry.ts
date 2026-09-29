@@ -12,15 +12,15 @@
 // The registry is lowercase-keyed so inputs with mixed case (e.g. from
 // payloads) resolve without extra normalisation at every call site.
 
-import { NETWORK_NAME_TO_SERVICES_CONFIG } from "@dotli/config";
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 
 function buildRegistry(): ReadonlyMap<string, string> {
   const out = new Map<string, string>();
   for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
-    out.set(cfg.relay.genesis.toLowerCase(), "Paseo");
-    out.set(cfg.assethub.genesis.toLowerCase(), "Paseo Asset Hub");
-    out.set(cfg.bulletin.genesis.toLowerCase(), "Paseo Bulletin");
-    out.set(cfg.people.genesis.toLowerCase(), "Paseo People");
+    out.set(cfg.relay.genesis.toLowerCase(), 'Paseo');
+    out.set(cfg.assethub.genesis.toLowerCase(), 'Paseo Asset Hub');
+    out.set(cfg.bulletin.genesis.toLowerCase(), 'Paseo Bulletin');
+    out.set(cfg.people.genesis.toLowerCase(), 'Paseo People');
   }
   return out;
 }
@@ -45,7 +45,7 @@ export function formatChainDisplay(genesisHash: string): string {
   if (name !== null) {
     return name;
   }
-  if (genesisHash.startsWith("0x") && genesisHash.length > 12) {
+  if (genesisHash.startsWith('0x') && genesisHash.length > 12) {
     return `${genesisHash.slice(0, 8)}…${genesisHash.slice(-4)}`;
   }
   return genesisHash;

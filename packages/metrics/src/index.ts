@@ -4,16 +4,6 @@
 // Public API of @dotli/metrics. Other workspace packages import only from here.
 // Every other module under src/ is private to the package.
 
-export {
-  getResolutionId,
-  m,
-  setResolutionId,
-  type SpanHandle,
-  type SpanValue,
-} from "./metrics.js";
-export {
-  captureException,
-  initSentry,
-  installGlobalErrorHandlers,
-} from "./sentry.js";
-export * as spans from "./spans.js";
+export { getResolutionId, m, setResolutionId, type SpanHandle, type SpanValue } from './metrics.js';
+export { captureException, initSentry, installGlobalErrorHandlers } from './sentry.js';
+export * as spans from './spans.js';

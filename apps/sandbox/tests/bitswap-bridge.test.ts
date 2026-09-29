@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { requestBitswapBlock } from "../src/bitswap-bridge.js";
+import { requestBitswapBlock } from '../src/bitswap-bridge.js';
 
 /**
  * Drives the host side of the relay: captures what the bridge posts to its
@@ -8,7 +8,7 @@ import { requestBitswapBlock } from "../src/bitswap-bridge.js";
  */
 function hostSide(): { posted: unknown[] } {
   const posted: unknown[] = [];
-  vi.spyOn(window, "parent", "get").mockReturnValue({
+  vi.spyOn(window, 'parent', 'get').mockReturnValue({
     postMessage: (message: unknown) => {
       posted.push(message);
     },
@@ -22,29 +22,27 @@ function hostSide(): { posted: unknown[] } {
  * handler's guard to see anything.
  */
 function pagehide(persisted: boolean): void {
-  const event = new Event("pagehide");
-  Object.defineProperty(event, "persisted", { value: persisted });
+  const event = new Event('pagehide');
+  Object.defineProperty(event, 'persisted', { value: persisted });
   window.dispatchEvent(event);
 }
 
 function abortMessages(posted: unknown[]): { ids: string[] }[] {
   return posted.filter(
     (m): m is { type: string; ids: string[] } =>
-      typeof m === "object" &&
-      m !== null &&
-      (m as { type?: unknown }).type === "dotli:bitswap-abort",
+      typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'dotli:bitswap-abort',
   );
 }
 
-describe("sandbox bitswap bridge", () => {
+describe('sandbox bitswap bridge', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
   });
 
-  it("As a user, leaving the page tells the host to stop fetching for it", async () => {
+  it('As a user, leaving the page tells the host to stop fetching for it', async () => {
     // Given a block request the host has not answered
     const host = hostSide();
-    const pending = requestBitswapBlock("bafyX");
+    const pending = requestBitswapBlock('bafyX');
     const settled = expect(pending).rejects.toThrow(/aborted/);
 
     // When the frame goes away for good
@@ -57,10 +55,10 @@ describe("sandbox bitswap bridge", () => {
     expect(aborts[0]?.ids).toHaveLength(1);
   });
 
-  it("As a user, a page kept in the back/forward cache is not cancelled behind its back", async () => {
+  it('As a user, a page kept in the back/forward cache is not cancelled behind its back', async () => {
     // Given a block request still open as the page is frozen rather than closed
     const host = hostSide();
-    const pending = requestBitswapBlock("bafyY");
+    const pending = requestBitswapBlock('bafyY');
     let settledEarly = false;
     void pending.catch(() => {
       settledEarly = true;
@@ -76,10 +74,10 @@ describe("sandbox bitswap bridge", () => {
     expect(settledEarly).toBe(false);
   });
 
-  it("As a user, a torn-down fetch rejects rather than hanging the frame", async () => {
+  it('As a user, a torn-down fetch rejects rather than hanging the frame', async () => {
     // Given an open request
     hostSide();
-    const pending = requestBitswapBlock("bafyZ");
+    const pending = requestBitswapBlock('bafyZ');
 
     // When the frame is torn down
     pagehide(false);
@@ -89,7 +87,7 @@ describe("sandbox bitswap bridge", () => {
     await expect(pending).rejects.toThrow(/aborted/);
   });
 
-  it("As an operator, a teardown with nothing in flight stays silent", async () => {
+  it('As an operator, a teardown with nothing in flight stays silent', async () => {
     // Given no outstanding requests
     const host = hostSide();
 

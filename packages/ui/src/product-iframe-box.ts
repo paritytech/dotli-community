@@ -15,11 +15,11 @@
  * the tokens, so a stylesheet that has not applied yet must not break layout.
  */
 
-const SAFE_TOP = "var(--safe-top, 0px)";
-const SAFE_BOTTOM = "var(--safe-bottom, 0px)";
-const SAFE_LEFT = "var(--safe-left, 0px)";
-const SAFE_RIGHT = "var(--safe-right, 0px)";
-const TOPBAR_HEIGHT = "var(--topbar-height, 56px)";
+const SAFE_TOP = 'var(--safe-top, 0px)';
+const SAFE_BOTTOM = 'var(--safe-bottom, 0px)';
+const SAFE_LEFT = 'var(--safe-left, 0px)';
+const SAFE_RIGHT = 'var(--safe-right, 0px)';
+const TOPBAR_HEIGHT = 'var(--topbar-height, 56px)';
 
 export interface ProductIframeBox {
   top: string;
@@ -29,9 +29,7 @@ export interface ProductIframeBox {
 }
 
 /** Build the product iframe's box, reserving the space it must not cover. */
-export function productIframeBox(opts: {
-  topbarOffset: boolean;
-}): ProductIframeBox {
+export function productIframeBox(opts: { topbarOffset: boolean }): ProductIframeBox {
   // `--topbar-height` already includes the top inset, so one term covers both.
   const top = opts.topbarOffset ? TOPBAR_HEIGHT : SAFE_TOP;
   return {

@@ -1,23 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { isResponse } from "@polkadot-api/json-rpc-provider";
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-} from "@polkadot-api/json-rpc-provider";
-import { hexToBytes } from "@noble/hashes/utils.js";
-import {
-  createRemoteChainProvider,
-  isRemoteChainSupported,
-} from "@dotli/protocol";
-import {
-  isSandboxOrigin,
-  getBackend,
-  getActiveServicesConfig,
-} from "@dotli/config";
+import { isResponse } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import { hexToBytes } from '@noble/hashes/utils.js';
+import { createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
+import { isSandboxOrigin, getBackend, getActiveServicesConfig } from '@dotli/config';
 
-import { log, serializeError } from "@dotli/shared";
+import { log, serializeError } from '@dotli/shared';
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
 // the retryable pair. Anything else, including an invalid CID, falls to the
@@ -136,7 +126,7 @@ function noteBlock(bytes: Uint8Array): void {
 }
 /** Marks a local abort. A numeric code could collide: JSON-RPC reserves only
  *  -32768..-32000, so the rest of the space belongs to the chain. */
-const ABORT_ERROR_NAME = "AbortError";
+const ABORT_ERROR_NAME = 'AbortError';
 
 const PER_CALL_TIMEOUT_MS = 60_000;
 const TOTAL_BUDGET_MS = 180_000;
@@ -167,15 +157,13 @@ function ensureConnection(): JsonRpcConnection {
   const bulletinGenesis = getActiveServicesConfig().bulletin.genesis;
   const provider = createRemoteChainProvider(bulletinGenesis);
   if (provider === null) {
-    throw new Error(
-      `Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`,
-    );
+    throw new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`);
   }
   connection = provider((message: JsonRpcMessage) => {
     if (!isResponse(message)) {
       return;
     }
-    if (typeof message.id !== "number") {
+    if (typeof message.id !== 'number') {
       return;
     }
     const entry = pending.get(message.id);
@@ -183,27 +171,21 @@ function ensureConnection(): JsonRpcConnection {
       return;
     }
     pending.delete(message.id);
-    if ("error" in message) {
-      const err = new Error(
-        `bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`,
-      );
+    if ('error' in message) {
+      const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
       (err as { code?: number }).code = message.error.code;
       entry.reject(err);
       return;
     }
-    if (typeof message.result !== "string") {
-      entry.reject(
-        new Error(
-          `bitswap_v1_get: expected hex string result, got ${typeof message.result}`,
-        ),
-      );
+    if (typeof message.result !== 'string') {
+      entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
       return;
     }
     // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
     // transferred zero-copy via postMessage instead of cloning an 8 MB
     // hex string and re-parsing on the other side.
     const hex = message.result;
-    const stripped = hex.startsWith("0x") ? hex.slice(2) : hex;
+    const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
     entry.resolve(hexToBytes(stripped));
   });
   return connection;
@@ -212,7 +194,7 @@ function ensureConnection(): JsonRpcConnection {
 function errorCode(err: unknown): number | null {
   if (err instanceof Error) {
     const code = (err as { code?: unknown }).code;
-    if (typeof code === "number") {
+    if (typeof code === 'number') {
       return code;
     }
   }
@@ -229,18 +211,18 @@ function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     // `addEventListener` never fires on a signal that is already aborted.
     if (signal?.aborted === true) {
-      reject(new Error("aborted"));
+      reject(new Error('aborted'));
       return;
     }
     const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
+      signal?.removeEventListener('abort', onAbort);
       resolve();
     }, ms);
     function onAbort(): void {
       clearTimeout(timer);
-      reject(new Error("aborted"));
+      reject(new Error('aborted'));
     }
-    signal?.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
   });
 }
 
@@ -251,10 +233,7 @@ function sleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
  * retrying call can now run for the full budget, so without one an abandoned
  * caller leaves it firing into a light client nobody is listening to.
  */
-export async function bitswapGet(
-  cid: string,
-  signal?: AbortSignal,
-): Promise<Uint8Array> {
+export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uint8Array> {
   const deadline = Date.now() + TOTAL_BUDGET_MS;
   let discoveryAttempts = 0;
   let transientAttempts = 0;
@@ -315,11 +294,7 @@ export async function bitswapGet(
   }
 }
 
-function sendOnce(
-  cid: string,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<Uint8Array> {
+function sendOnce(cid: string, timeoutMs: number, signal?: AbortSignal): Promise<Uint8Array> {
   const id = nextId++;
   const conn = ensureConnection();
   return new Promise<Uint8Array>((resolve, reject) => {
@@ -335,12 +310,10 @@ function sendOnce(
     const cleanup = (): void => {
       clearTimeout(timer);
       pending.delete(id);
-      signal?.removeEventListener("abort", onAbort);
+      signal?.removeEventListener('abort', onAbort);
     };
     const timer = setTimeout(() => {
-      const err = new Error(
-        `bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`,
-      );
+      const err = new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`);
       (err as { code?: number }).code = ERR_FAIL_RETRY;
       cleanup();
       reject(err);
@@ -352,74 +325,72 @@ function sendOnce(
       cleanup();
       reject(abortError(cid));
     }
-    signal?.addEventListener("abort", onAbort, { once: true });
+    signal?.addEventListener('abort', onAbort, { once: true });
     pending.set(id, {
-      resolve: (bytes) => {
+      resolve: bytes => {
         cleanup();
         resolve(bytes);
       },
-      reject: (err) => {
+      reject: err => {
         cleanup();
         reject(err);
       },
     });
     conn.send({
-      jsonrpc: "2.0",
+      jsonrpc: '2.0',
       id,
-      method: "bitswap_v1_get",
+      method: 'bitswap_v1_get',
       params: [cid],
     });
   });
 }
 
 interface BitswapGetMessage {
-  type: "dotli:bitswap-get";
+  type: 'dotli:bitswap-get';
   id: string;
   cid: string;
 }
 
 interface BitswapAbortMessage {
-  type: "dotli:bitswap-abort";
+  type: 'dotli:bitswap-abort';
   ids: string[];
 }
 
 interface BitswapResultOk {
-  type: "dotli:bitswap-result";
+  type: 'dotli:bitswap-result';
   id: string;
   ok: true;
   bytes: Uint8Array;
 }
 
 interface BitswapResultErr {
-  type: "dotli:bitswap-result";
+  type: 'dotli:bitswap-result';
   id: string;
   ok: false;
   error: string;
 }
 
 function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const obj = value as Record<string, unknown>;
   return (
-    obj["type"] === "dotli:bitswap-get" &&
-    typeof obj["id"] === "string" &&
-    typeof obj["cid"] === "string" &&
-    obj["id"].length > 0 &&
-    obj["cid"].length > 0
+    obj['type'] === 'dotli:bitswap-get' &&
+    typeof obj['id'] === 'string' &&
+    typeof obj['cid'] === 'string' &&
+    obj['id'].length > 0 &&
+    obj['cid'].length > 0
   );
 }
 
 function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const obj = value as Record<string, unknown>;
   return (
-    obj["type"] === "dotli:bitswap-abort" &&
-    Array.isArray(obj["ids"]) &&
-    obj["ids"].every((id) => typeof id === "string")
+    obj['type'] === 'dotli:bitswap-abort' && Array.isArray(obj['ids']) && obj['ids'].every(id => typeof id === 'string')
   );
 }
 
@@ -441,43 +412,36 @@ export interface SandboxBitswapOptions {
   /** Answer repeat requests from here. Leave it out to always use the network. */
   blockCache?: BlockCache;
   /** Called once for every block sent to a sandbox, with where it came from. */
-  onBlockServed?: (from: "cache" | "network") => void;
+  onBlockServed?: (from: 'cache' | 'network') => void;
 }
 
 interface ServedBlock {
   bytes: Uint8Array;
-  from: "cache" | "network";
+  from: 'cache' | 'network';
 }
 
 async function blockMatches(cid: string, bytes: Uint8Array): Promise<boolean> {
   let blockMatchesCid: (cid: string, bytes: Uint8Array) => boolean;
   try {
-    ({ blockMatchesCid } = await import("./verify.js"));
+    ({ blockMatchesCid } = await import('./verify.js'));
   } catch (err) {
     // Fail closed: a verifier we couldn't even load can't vouch for this
     // block. The caller treats `false` as "not verified" either way, so a
     // cached block falls back to the network and a freshly fetched one is
     // served but never cached.
-    log.warn(
-      `[dot.li bitswap-relay] verifier import failed for ${cid}: ${serializeError(err)}`,
-    );
+    log.warn(`[dot.li bitswap-relay] verifier import failed for ${cid}: ${serializeError(err)}`);
     return false;
   }
   return blockMatchesCid(cid, bytes);
 }
 
 /** The cached block for `cid` if it is still the block that CID names. */
-async function readCachedBlock(
-  cache: BlockCache,
-  cid: string,
-): Promise<Uint8Array | null> {
+async function readCachedBlock(cache: BlockCache, cid: string): Promise<Uint8Array | null> {
   let bytes: Uint8Array | null;
   try {
     bytes = await cache.get(cid);
   } catch (err) {
-    log.warn(
-      `[dot.li bitswap-relay] block cache read failed for ${cid}: ${serializeError(err)}`,
-    );
+    log.warn(`[dot.li bitswap-relay] block cache read failed for ${cid}: ${serializeError(err)}`);
     return null;
   }
   if (bytes === null) {
@@ -488,22 +452,16 @@ async function readCachedBlock(
   }
   // Corrupted on disk. Drop it so the network copy takes its place.
   void cache.delete(cid).catch((err: unknown) => {
-    log.warn(
-      `[dot.li bitswap-relay] block cache delete failed: ${serializeError(err)}`,
-    );
+    log.warn(`[dot.li bitswap-relay] block cache delete failed: ${serializeError(err)}`);
   });
   return null;
 }
 
-async function serveBlock(
-  cid: string,
-  signal: AbortSignal,
-  cache: BlockCache | undefined,
-): Promise<ServedBlock> {
+async function serveBlock(cid: string, signal: AbortSignal, cache: BlockCache | undefined): Promise<ServedBlock> {
   if (cache !== undefined) {
     const cached = await readCachedBlock(cache, cid);
     if (cached !== null) {
-      return { bytes: cached, from: "cache" };
+      return { bytes: cached, from: 'cache' };
     }
   }
   const bytes = await bitswapGet(cid, signal);
@@ -511,12 +469,10 @@ async function serveBlock(
     // The reply transfers `bytes.buffer` to the sandbox, which detaches it
     // before the IndexedDB write gets to clone it, so keep a copy.
     void cache.put(cid, bytes.slice()).catch((err: unknown) => {
-      log.warn(
-        `[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`,
-      );
+      log.warn(`[dot.li bitswap-relay] block cache write failed: ${serializeError(err)}`);
     });
   }
-  return { bytes, from: "network" };
+  return { bytes, from: 'network' };
 }
 
 /**
@@ -542,25 +498,17 @@ let relayInstalled = false;
  * Idempotent. Call once at host startup. Returns a function that removes the
  * relay again.
  */
-export function listenForSandboxBitswap(
-  options: SandboxBitswapOptions = {},
-): () => void {
+export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): () => void {
   if (relayInstalled) {
     return () => {
       /* the first caller owns the relay */
     };
   }
   relayInstalled = true;
-  if (getBackend() === "rpc-gateway") {
-    log.warn(
-      "[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.",
-    );
-  } else if (
-    !isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)
-  ) {
-    log.warn(
-      "[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.",
-    );
+  if (getBackend() === 'rpc-gateway') {
+    log.warn('[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.');
+  } else if (!isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)) {
+    log.warn('[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.');
   }
   const onMessage = (event: MessageEvent): void => {
     const data: unknown = event.data;
@@ -587,9 +535,7 @@ export function listenForSandboxBitswap(
       return;
     }
     if (!isSandboxOrigin(event.origin)) {
-      log.warn(
-        `[dot.li bitswap-relay] Rejected bitswap-get from non-sandbox origin: ${event.origin}`,
-      );
+      log.warn(`[dot.li bitswap-relay] Rejected bitswap-get from non-sandbox origin: ${event.origin}`);
       return;
     }
     const source = event.source;
@@ -618,7 +564,7 @@ export function listenForSandboxBitswap(
         noteBlock(bytes);
         options.onBlockServed?.(from);
         const reply: BitswapResultOk = {
-          type: "dotli:bitswap-result",
+          type: 'dotli:bitswap-result',
           id: data.id,
           ok: true,
           bytes,
@@ -633,7 +579,7 @@ export function listenForSandboxBitswap(
       })
       .catch((err: unknown) => {
         const reply: BitswapResultErr = {
-          type: "dotli:bitswap-result",
+          type: 'dotli:bitswap-result',
           id: data.id,
           ok: false,
           error: serializeError(err),
@@ -641,9 +587,9 @@ export function listenForSandboxBitswap(
         source.postMessage(reply, { targetOrigin: event.origin });
       });
   };
-  window.addEventListener("message", onMessage);
+  window.addEventListener('message', onMessage);
   return () => {
-    window.removeEventListener("message", onMessage);
+    window.removeEventListener('message', onMessage);
     relayInstalled = false;
   };
 }

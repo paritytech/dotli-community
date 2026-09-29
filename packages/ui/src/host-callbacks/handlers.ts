@@ -7,31 +7,28 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { RequiredHostCallbacks } from "@parity/truapi-host";
-import { createNavigateTo } from "./OpenUrl.js";
-import { createNotificationAdapters } from "./PushNotification.js";
-import { createPromptPermission } from "./PromptPermission.js";
+import type { RequiredHostCallbacks } from '@parity/truapi-host';
+import { createNavigateTo } from './OpenUrl.js';
+import { createNotificationAdapters } from './PushNotification.js';
+import { createPromptPermission } from './PromptPermission.js';
 import {
   createLocalStorageRead,
   createLocalStorageWrite,
   createLocalStorageClear,
   createLocalStorageSubscribe,
-} from "./LocalStorage.js";
-import { createProductOperations } from "./ProductOperations.js";
-import { createPreimageAdapters } from "./Preimage.js";
-import { createChainConnect } from "./Chain.js";
-import { createFeatureSupported } from "./FeatureSupported.js";
-import { createSupportedChains } from "./SupportedChains.js";
-import { createThemeSubscribe } from "./Theme.js";
-import { createLocaleSubscribe } from "./Locale.js";
-import { createAuthStateChanged } from "./AuthState.js";
-import { createChatPlatform } from "./Chat.js";
-import { createSessionStoreAdapters } from "./SessionStore.js";
-import { createUserConfirmationAdapters } from "./UserConfirmation.js";
-import {
-  createBlockingModalScope,
-  type BlockingModalScope,
-} from "../blocking-modal-queue.js";
+} from './LocalStorage.js';
+import { createProductOperations } from './ProductOperations.js';
+import { createPreimageAdapters } from './Preimage.js';
+import { createChainConnect } from './Chain.js';
+import { createFeatureSupported } from './FeatureSupported.js';
+import { createSupportedChains } from './SupportedChains.js';
+import { createThemeSubscribe } from './Theme.js';
+import { createLocaleSubscribe } from './Locale.js';
+import { createAuthStateChanged } from './AuthState.js';
+import { createChatPlatform } from './Chat.js';
+import { createSessionStoreAdapters } from './SessionStore.js';
+import { createUserConfirmationAdapters } from './UserConfirmation.js';
+import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
 
 export interface CreateHostCallbacksOptions {
   label: string;
@@ -41,9 +38,7 @@ export interface CreateHostCallbacksOptions {
   blockingModalScope?: BlockingModalScope;
 }
 
-export function createHostCallbacks(
-  options: CreateHostCallbacksOptions,
-): RequiredHostCallbacks {
+export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
   const {
     label,
     pairingLabel,

@@ -19,16 +19,14 @@
 // shell. The panel chunk itself is still dynamically imported, so
 // the heavy UI code stays out of the eager bundle.
 
-import { createNanoEvents } from "nanoevents";
+import { createNanoEvents } from 'nanoevents';
 
-import type { DotliDebugEvent } from "./dotli-debug-types.js";
-import type { TruapiDebugMessageEvent } from "./event-store.js";
+import type { DotliDebugEvent } from './dotli-debug-types.js';
+import type { TruapiDebugMessageEvent } from './event-store.js';
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
-let bus: ReturnType<
-  typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>
-> | null = null;
+let bus: ReturnType<typeof createNanoEvents<{ event: (e: DotliDebugBusEvent) => void }>> | null = null;
 let listenerCount = 0;
 
 /**
@@ -70,7 +68,7 @@ export function emitDotliDebugEvent(event: DotliDebugBusEvent): void {
     return;
   }
   if (listenerCount > 0) {
-    bus.emit("event", event);
+    bus.emit('event', event);
     return;
   }
   if (bufferingEnabled) {
@@ -95,15 +93,13 @@ export function hasDotliDebugListeners(): boolean {
  * buffering is then switched off for the rest of the session (this
  * is a catch-up mechanism, not a persistent replay log).
  */
-export function onDotliDebugEvent(
-  callback: (event: DotliDebugBusEvent) => void,
-): () => void {
+export function onDotliDebugEvent(callback: (event: DotliDebugBusEvent) => void): () => void {
   if (bus === null) {
     return noopUnsubscribe;
   }
   const wasCold = listenerCount === 0;
   listenerCount++;
-  const unsub = bus.on("event", callback);
+  const unsub = bus.on('event', callback);
   if (wasCold && bufferedEvents.length > 0) {
     const replay = bufferedEvents;
     bufferedEvents = [];

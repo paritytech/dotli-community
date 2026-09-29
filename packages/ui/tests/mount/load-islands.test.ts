@@ -5,29 +5,18 @@
 // whose arrival each test controls. The real chunk is covered by
 // tests/components/shell/islands.test.tsx.
 
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-  type MockInstance,
-} from "vitest";
-import type { BlockingModalCoordinator } from "../../src/blocking-modal-queue.js";
-import {
-  mountMoreMenu,
-  tapMoreRow,
-} from "../components/shell/more-menu-harness.js";
-import type * as LoadIslandsModule from "../../src/mount/load-islands.js";
-import type * as AuthModule from "../../src/state/auth.js";
-import { byId, query } from "../support.js";
-import { nth } from "../helpers/nth.js";
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
+import type { BlockingModalCoordinator } from '../../src/blocking-modal-queue.js';
+import { mountMoreMenu, tapMoreRow } from '../components/shell/more-menu-harness.js';
+import type * as LoadIslandsModule from '../../src/mount/load-islands.js';
+import type * as AuthModule from '../../src/state/auth.js';
+import { byId, query } from '../support.js';
+import { nth } from '../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("../../../metrics/src/sentry.js", () => sentry);
+vi.mock('../../../metrics/src/sentry.js', () => sentry);
 
-const ISLANDS_CHUNK = "../../src/components/shell/islands.js";
+const ISLANDS_CHUNK = '../../src/components/shell/islands.js';
 
 interface Chunk {
   /** The pending import of the chunk finishes loading. */
@@ -53,7 +42,7 @@ interface Chunk {
 
 /** Lets pending I/O and promise callbacks run. */
 function tick(): Promise<void> {
-  return new Promise((resolve) => setImmediate(resolve));
+  return new Promise(resolve => setImmediate(resolve));
 }
 
 interface StubOptions {
@@ -92,45 +81,45 @@ function stubChunk(options: StubOptions = {}): Chunk {
     if (options.mountError !== undefined) {
       throw options.mountError;
     }
-    const fresh = document.createElement("button");
-    fresh.id = "theme-toggle";
-    fresh.addEventListener("click", (ev) => {
+    const fresh = document.createElement('button');
+    fresh.id = 'theme-toggle';
+    fresh.addEventListener('click', ev => {
       clicks += 1;
       clickDetails.push(ev.detail);
     });
-    document.getElementById("theme-toggle")?.replaceWith(fresh);
-    const permissions = document.createElement("button");
-    permissions.id = "permissions-button";
-    permissions.addEventListener("click", () => {
+    document.getElementById('theme-toggle')?.replaceWith(fresh);
+    const permissions = document.createElement('button');
+    permissions.id = 'permissions-button';
+    permissions.addEventListener('click', () => {
       permissionsClicks += 1;
     });
-    document.getElementById("permissions-button")?.replaceWith(permissions);
-    const chains = document.createElement("button");
-    chains.id = "chains-button";
-    chains.addEventListener("click", () => {
+    document.getElementById('permissions-button')?.replaceWith(permissions);
+    const chains = document.createElement('button');
+    chains.id = 'chains-button';
+    chains.addEventListener('click', () => {
       chainsClicks += 1;
     });
-    document.getElementById("chains-button")?.replaceWith(chains);
-    const settings = document.createElement("button");
-    settings.id = "mode-button";
-    settings.addEventListener("click", () => {
+    document.getElementById('chains-button')?.replaceWith(chains);
+    const settings = document.createElement('button');
+    settings.id = 'mode-button';
+    settings.addEventListener('click', () => {
       settingsClicks += 1;
     });
-    document.getElementById("mode-button")?.replaceWith(settings);
-    const more = document.createElement("button");
-    more.id = "more-button";
-    more.addEventListener("click", () => {
+    document.getElementById('mode-button')?.replaceWith(settings);
+    const more = document.createElement('button');
+    more.id = 'more-button';
+    more.addEventListener('click', () => {
       moreClicks += 1;
     });
-    document.getElementById("more-button")?.replaceWith(more);
+    document.getElementById('more-button')?.replaceWith(more);
     const failed = [...(options.failedIslands ?? [])];
     if (options.bannerIslandFails === true) {
-      failed.push("offline-banner");
+      failed.push('offline-banner');
     } else {
-      const banner = document.createElement("div");
-      banner.id = "offline-banner";
-      banner.style.display = "none";
-      document.getElementById("offline-banner")?.replaceWith(banner);
+      const banner = document.createElement('div');
+      banner.id = 'offline-banner';
+      banner.style.display = 'none';
+      document.getElementById('offline-banner')?.replaceWith(banner);
     }
     return failed;
   });
@@ -145,7 +134,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
       (await nextRequest()).resolve();
       await tick();
     },
-    fail: async (err) => {
+    fail: async err => {
       (await nextRequest()).reject(err);
       await tick();
     },
@@ -161,7 +150,7 @@ function stubChunk(options: StubOptions = {}): Chunk {
 }
 
 async function loadLoader(): Promise<typeof LoadIslandsModule> {
-  return import("../../src/mount/load-islands.js");
+  return import('../../src/mount/load-islands.js');
 }
 
 /**
@@ -175,26 +164,21 @@ async function initAuth(): Promise<{
   loginRequests: () => number;
   cancels: () => number;
 }> {
-  const [
-    { initAuthController },
-    { createBlockingModalCoordinator },
-    modal,
-    { setAuthState },
-  ] = await Promise.all([
-    import("../../src/auth-controller.js"),
-    import("../../src/blocking-modal-queue.js"),
-    import("../../src/state/auth-modal.js"),
-    import("../../src/state/auth.js"),
+  const [{ initAuthController }, { createBlockingModalCoordinator }, modal, { setAuthState }] = await Promise.all([
+    import('../../src/auth-controller.js'),
+    import('../../src/blocking-modal-queue.js'),
+    import('../../src/state/auth-modal.js'),
+    import('../../src/state/auth.js'),
   ]);
   recordAuthState = setAuthState;
   const coordinator = createBlockingModalCoordinator();
   initAuthController(coordinator);
   let loginRequests = 0;
   let cancels = 0;
-  window.addEventListener("dotli:truapi-login-request", () => {
+  window.addEventListener('dotli:truapi-login-request', () => {
     loginRequests += 1;
   });
-  window.addEventListener("dotli:truapi-cancel-login", () => {
+  window.addEventListener('dotli:truapi-cancel-login', () => {
     cancels += 1;
   });
   return {
@@ -207,27 +191,25 @@ async function initAuth(): Promise<{
 
 function requestLogin(): void {
   window.dispatchEvent(
-    new CustomEvent("dotli:request-login", {
-      detail: { reason: "Sign the transfer", label: "localhost:3000" },
+    new CustomEvent('dotli:request-login', {
+      detail: { reason: 'Sign the transfer', label: 'localhost:3000' },
     }),
   );
 }
 
 /** The auth store of the controller initAuth wired. */
-let recordAuthState: (typeof AuthModule)["setAuthState"];
+let recordAuthState: (typeof AuthModule)['setAuthState'];
 
 function corePairing(): void {
   recordAuthState({
-    tag: "Pairing",
-    deeplink: "polkadotapp://pair?handshake=test",
-    label: "localhost:3000",
+    tag: 'Pairing',
+    deeplink: 'polkadotapp://pair?handshake=test',
+    label: 'localhost:3000',
   });
 }
 
 /** Whether a blocking prompt enqueued now runs (rather than waiting). */
-async function blockingPromptRuns(
-  coordinator: BlockingModalCoordinator,
-): Promise<boolean> {
+async function blockingPromptRuns(coordinator: BlockingModalCoordinator): Promise<boolean> {
   const scope = coordinator.createScope();
   let ran = false;
   // Disposing a still-queued prompt rejects it.
@@ -246,7 +228,7 @@ async function blockingPromptRuns(
  * key); returns the dispatched event.
  */
 function click(target: Element, detail = 0): MouseEvent {
-  const event = new MouseEvent("click", {
+  const event = new MouseEvent('click', {
     bubbles: true,
     cancelable: true,
     detail,
@@ -255,13 +237,13 @@ function click(target: Element, detail = 0): MouseEvent {
   return event;
 }
 
-let windowListeners: MockInstance<Window["addEventListener"]>;
+let windowListeners: MockInstance<Window['addEventListener']>;
 let unmountMore: (() => void) | null = null;
 
 beforeEach(() => {
   vi.resetModules();
   // Recorded so afterEach can remove what the offline fallback adds.
-  windowListeners = vi.spyOn(window, "addEventListener");
+  windowListeners = vi.spyOn(window, 'addEventListener');
   document.body.innerHTML = [
     '<button id="theme-toggle" class="topbar-btn"><svg><path d="M0 0"/></svg></button>',
     '<div id="theme-popover" class="more-popover theme-popover"></div>',
@@ -272,7 +254,7 @@ beforeEach(() => {
     '<button id="more-button" class="topbar-btn topbar-more-btn"><span class="hamburger"></span></button>',
     '<div class="more-popover" id="more-popover"></div>',
     '<div id="offline-banner" role="status" aria-live="polite" style="position:absolute;display:none">You are offline</div>',
-  ].join("");
+  ].join('');
 });
 
 afterEach(() => {
@@ -287,16 +269,16 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("ensureIslands", () => {
-  it("As a dotli user, clicks on the theme button before the islands mount open it once, after they do", async () => {
+describe('ensureIslands', () => {
+  it('As a dotli user, clicks on the theme button before the islands mount open it once, after they do', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When: clicked twice, once on the icon inside the button.
-    const first = click(byId("theme-toggle").querySelector("path") as Element);
-    const second = click(byId("theme-toggle"));
+    const first = click(byId('theme-toggle').querySelector('path') as Element);
+    const second = click(byId('theme-toggle'));
     await chunk.arrive();
     await loading;
 
@@ -307,17 +289,15 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(1);
   });
 
-  it("As a dotli user, clicks on the permissions button before the islands mount open it once, after they do", async () => {
+  it('As a dotli user, clicks on the permissions button before the islands mount open it once, after they do', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When: clicked twice, once on the icon inside the button.
-    const first = click(
-      byId("permissions-button").querySelector("rect") as Element,
-    );
-    const second = click(byId("permissions-button"));
+    const first = click(byId('permissions-button').querySelector('rect') as Element);
+    const second = click(byId('permissions-button'));
     await chunk.arrive();
     await loading;
 
@@ -328,24 +308,22 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(0);
 
     // When: after the mount, clicks reach the island directly.
-    const after = click(byId("permissions-button"));
+    const after = click(byId('permissions-button'));
 
     // Then
     expect(after.defaultPrevented).toBe(false);
     expect(chunk.permissionsClicks()).toBe(2);
   });
 
-  it("As a dotli user, clicks on the network button before the islands mount open it once, after they do", async () => {
+  it('As a dotli user, clicks on the network button before the islands mount open it once, after they do', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When: clicked twice, once on the globe inside the button.
-    const first = click(
-      byId("chains-button").querySelector("circle") as Element,
-    );
-    const second = click(byId("chains-button"));
+    const first = click(byId('chains-button').querySelector('circle') as Element);
+    const second = click(byId('chains-button'));
     await chunk.arrive();
     await loading;
 
@@ -357,22 +335,22 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(0);
 
     // When: after the mount, clicks reach the island directly.
-    const after = click(byId("chains-button"));
+    const after = click(byId('chains-button'));
 
     // Then
     expect(after.defaultPrevented).toBe(false);
     expect(chunk.chainsClicks()).toBe(2);
   });
 
-  it("As a dotli user, clicks on the settings button before the islands mount open it once, after they do", async () => {
+  it('As a dotli user, clicks on the settings button before the islands mount open it once, after they do', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When: clicked twice, once on the icon inside the button.
-    const first = click(byId("mode-button").querySelector("circle") as Element);
-    const second = click(byId("mode-button"));
+    const first = click(byId('mode-button').querySelector('circle') as Element);
+    const second = click(byId('mode-button'));
     await chunk.arrive();
     await loading;
 
@@ -385,22 +363,22 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(0);
 
     // When: after the mount, clicks reach the island directly.
-    const after = click(byId("mode-button"));
+    const after = click(byId('mode-button'));
 
     // Then
     expect(after.defaultPrevented).toBe(false);
     expect(chunk.settingsClicks()).toBe(2);
   });
 
-  it("As a dotli user, clicks on the More button before the islands mount open it once, after they do", async () => {
+  it('As a dotli user, clicks on the More button before the islands mount open it once, after they do', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When: clicked twice, once on the icon inside the button.
-    const first = click(query(byId("more-button"), ".hamburger", Element));
-    const second = click(byId("more-button"));
+    const first = click(query(byId('more-button'), '.hamburger', Element));
+    const second = click(byId('more-button'));
     await chunk.arrive();
     await loading;
 
@@ -412,7 +390,7 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(0);
 
     // When: after the mount, clicks reach the island directly.
-    const after = click(byId("more-button"));
+    const after = click(byId('more-button'));
 
     // Then
     expect(after.defaultPrevented).toBe(false);
@@ -428,7 +406,7 @@ describe("ensureIslands", () => {
     const loading = ensureIslands();
 
     // When
-    await tapMoreRow("mode-button");
+    await tapMoreRow('mode-button');
     await chunk.arrive();
     await loading;
 
@@ -436,7 +414,7 @@ describe("ensureIslands", () => {
     expect(chunk.settingsClicks()).toBe(1);
 
     // When: the same row after the mount.
-    await tapMoreRow("mode-button");
+    await tapMoreRow('mode-button');
 
     // Then
     expect(chunk.settingsClicks()).toBe(2);
@@ -450,7 +428,7 @@ describe("ensureIslands", () => {
     const loading = ensureIslands();
 
     // When
-    await tapMoreRow("permissions-button");
+    await tapMoreRow('permissions-button');
     await chunk.arrive();
     await loading;
 
@@ -458,26 +436,18 @@ describe("ensureIslands", () => {
     expect(chunk.permissionsClicks()).toBe(1);
 
     // When: the same row after the mount.
-    await tapMoreRow("permissions-button");
+    await tapMoreRow('permissions-button');
 
     // Then
     expect(chunk.permissionsClicks()).toBe(2);
   });
 
   it.each([
-    ["theme, then settings", ["theme-toggle", "mode-button"], "mode-button"],
-    [
-      "theme, settings, then theme again",
-      ["theme-toggle", "mode-button", "theme-toggle"],
-      "theme-toggle",
-    ],
-    [
-      "More, then permissions",
-      ["more-button", "permissions-button"],
-      "permissions-button",
-    ],
+    ['theme, then settings', ['theme-toggle', 'mode-button'], 'mode-button'],
+    ['theme, settings, then theme again', ['theme-toggle', 'mode-button', 'theme-toggle'], 'theme-toggle'],
+    ['More, then permissions', ['more-button', 'permissions-button'], 'permissions-button'],
   ])(
-    "As a dotli user who clicked several buttons before the islands mount (%s), only the last one opens, so two surfaces never open at once",
+    'As a dotli user who clicked several buttons before the islands mount (%s), only the last one opens, so two surfaces never open at once',
     async (_order, clicked, last) => {
       // Given
       const chunk = stubChunk();
@@ -493,11 +463,11 @@ describe("ensureIslands", () => {
 
       // Then
       const received: Record<string, number> = {
-        "theme-toggle": chunk.islandClicks(),
-        "mode-button": chunk.settingsClicks(),
-        "more-button": chunk.moreClicks(),
-        "permissions-button": chunk.permissionsClicks(),
-        "chains-button": chunk.chainsClicks(),
+        'theme-toggle': chunk.islandClicks(),
+        'mode-button': chunk.settingsClicks(),
+        'more-button': chunk.moreClicks(),
+        'permissions-button': chunk.permissionsClicks(),
+        'chains-button': chunk.chainsClicks(),
       };
       for (const [id, count] of Object.entries(received)) {
         expect(count, id).toBe(id === last ? 1 : 0);
@@ -506,7 +476,7 @@ describe("ensureIslands", () => {
   );
 
   it.each([
-    ["a mouse click", 1],
+    ['a mouse click', 1],
     ["a key's click", 0],
   ])(
     "As a dotli user, the replayed click keeps the held one's detail (%s), so a menu opens as that click would have opened it",
@@ -517,7 +487,7 @@ describe("ensureIslands", () => {
       const loading = ensureIslands();
 
       // When
-      click(byId("theme-toggle"), detail);
+      click(byId('theme-toggle'), detail);
       await chunk.arrive();
       await loading;
 
@@ -526,17 +496,17 @@ describe("ensureIslands", () => {
     },
   );
 
-  it("As a dotli user, clicks elsewhere before the mount, and every click after it, pass through untouched", async () => {
+  it('As a dotli user, clicks elsewhere before the mount, and every click after it, pass through untouched', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When
-    const elsewhere = click(byId("other"));
+    const elsewhere = click(byId('other'));
     await chunk.arrive();
     await loading;
-    const after = click(byId("theme-toggle"));
+    const after = click(byId('theme-toggle'));
 
     // Then
     expect(elsewhere.defaultPrevented).toBe(false);
@@ -544,7 +514,7 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(1);
   });
 
-  it("As the host, calling it again reuses the one load and mounts the islands once", async () => {
+  it('As the host, calling it again reuses the one load and mounts the islands once', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
@@ -561,16 +531,16 @@ describe("ensureIslands", () => {
     expect(chunk.mountIslands).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user, when the islands chunk cannot load, it is not retried: the static shell stays, the failure is reported once, nothing is replayed and clicks are no longer held back", async () => {
+  it('As a dotli user, when the islands chunk cannot load, it is not retried: the static shell stays, the failure is reported once, nothing is replayed and clicks are no longer held back', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const staticButton = byId("theme-toggle");
+    const staticButton = byId('theme-toggle');
     const staticClicks = vi.fn();
-    staticButton.addEventListener("click", staticClicks);
+    staticButton.addEventListener('click', staticClicks);
     const loading = ensureIslands();
     click(staticButton);
-    const err = new Error("chunk failed");
+    const err = new Error('chunk failed');
 
     // When
     await chunk.fail(err);
@@ -579,11 +549,10 @@ describe("ensureIslands", () => {
     await expect(loading).resolves.toBeUndefined();
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     // Vitest wraps a mock factory's error; the chunk's is its cause.
-    expect(sentry.captureException).toHaveBeenCalledWith(
-      expect.objectContaining({ cause: err }),
-      { kind: "islands_load_error" },
-    );
-    expect(byId("theme-toggle")).toBe(staticButton);
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ cause: err }), {
+      kind: 'islands_load_error',
+    });
+    expect(byId('theme-toggle')).toBe(staticButton);
     // The held-back click still reached the button once; no replay follows.
     expect(staticClicks).toHaveBeenCalledTimes(1);
 
@@ -607,7 +576,7 @@ describe("ensureIslands", () => {
     const loading = ensureIslands();
 
     // When
-    await tapMoreRow("theme-toggle");
+    await tapMoreRow('theme-toggle');
     await chunk.arrive();
     await loading;
 
@@ -615,20 +584,20 @@ describe("ensureIslands", () => {
     expect(chunk.islandClicks()).toBe(1);
 
     // When: the same row after the mount.
-    await tapMoreRow("theme-toggle");
+    await tapMoreRow('theme-toggle');
 
     // Then
     expect(chunk.islandClicks()).toBe(2);
   });
 
-  it("As a dotli user, when mounting the islands throws, it is reported as a mount failure, nothing is replayed and clicks are no longer held back", async () => {
+  it('As a dotli user, when mounting the islands throws, it is reported as a mount failure, nothing is replayed and clicks are no longer held back', async () => {
     // Given
-    const err = new Error("mount failed");
+    const err = new Error('mount failed');
     const chunk = stubChunk({ mountError: err });
     const { ensureIslands } = await loadLoader();
-    const staticButton = byId("theme-toggle");
+    const staticButton = byId('theme-toggle');
     const staticClicks = vi.fn();
-    staticButton.addEventListener("click", staticClicks);
+    staticButton.addEventListener('click', staticClicks);
     const loading = ensureIslands();
     click(staticButton);
 
@@ -639,7 +608,7 @@ describe("ensureIslands", () => {
     await expect(loading).resolves.toBeUndefined();
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(err, {
-      kind: "islands_mount_error",
+      kind: 'islands_mount_error',
     });
     expect(staticClicks).toHaveBeenCalledTimes(1);
 
@@ -651,103 +620,103 @@ describe("ensureIslands", () => {
     expect(staticClicks).toHaveBeenCalledTimes(2);
   });
 
-  it("As a user who is offline when the page boots, so the islands chunk cannot load, I still see the static offline banner, and it follows the connection and the topbar", async () => {
+  it('As a user who is offline when the page boots, so the islands chunk cannot load, I still see the static offline banner, and it follows the connection and the topbar', async () => {
     // Given
     let online = false;
-    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     // The loader's instance of the store (modules are reset per test).
-    const { setTopbarVisible } = await import("../../src/state/topbar.js");
-    const staticBanner = byId("offline-banner");
+    const { setTopbarVisible } = await import('../../src/state/topbar.js');
+    const staticBanner = byId('offline-banner');
     const loading = ensureIslands();
 
     // When
-    await chunk.fail(new Error("offline"));
+    await chunk.fail(new Error('offline'));
     await loading;
 
     // Then
-    expect(byId("offline-banner")).toBe(staticBanner);
-    expect(staticBanner.style.display).toBe("block");
-    expect(staticBanner.style.position).toBe("absolute");
+    expect(byId('offline-banner')).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe('block');
+    expect(staticBanner.style.position).toBe('absolute');
 
     // When
     online = true;
-    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event('online'));
 
     // Then
-    expect(staticBanner.style.display).toBe("none");
+    expect(staticBanner.style.display).toBe('none');
 
     // When
     online = false;
-    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event('offline'));
 
     // Then
-    expect(staticBanner.style.display).toBe("block");
+    expect(staticBanner.style.display).toBe('block');
 
     // When
     setTopbarVisible(false);
 
     // Then
-    expect(staticBanner.style.display).toBe("none");
+    expect(staticBanner.style.display).toBe('none');
 
     // When
     setTopbarVisible(true);
 
     // Then
-    expect(staticBanner.style.display).toBe("block");
+    expect(staticBanner.style.display).toBe('block');
   });
 
-  it("As a dotli user online whose islands chunk cannot load, the static offline banner stays hidden until the connection drops", async () => {
+  it('As a dotli user online whose islands chunk cannot load, the static offline banner stays hidden until the connection drops', async () => {
     // Given
     let online = true;
-    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const loading = ensureIslands();
 
     // When
-    await chunk.fail(new Error("chunk failed"));
+    await chunk.fail(new Error('chunk failed'));
     await loading;
 
     // Then
-    expect(byId("offline-banner").style.display).toBe("none");
+    expect(byId('offline-banner').style.display).toBe('none');
 
     // When
     online = false;
-    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event('offline'));
 
     // Then
-    expect(byId("offline-banner").style.display).toBe("block");
+    expect(byId('offline-banner').style.display).toBe('block');
   });
 
   it("As a dotli user, when the islands mount, the offline banner is the island's alone: the loader does not touch it", async () => {
     // Given
-    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const staticBanner = byId("offline-banner");
+    const staticBanner = byId('offline-banner');
     const loading = ensureIslands();
 
     // When
     await chunk.arrive();
     await loading;
-    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event('offline'));
 
     // Then: the stand-in banner island is hidden, and only the loader could
     // show either banner.
-    expect(byId("offline-banner")).not.toBe(staticBanner);
-    expect(byId("offline-banner").style.display).toBe("none");
-    expect(staticBanner.style.display).toBe("none");
+    expect(byId('offline-banner')).not.toBe(staticBanner);
+    expect(byId('offline-banner').style.display).toBe('none');
+    expect(staticBanner.style.display).toBe('none');
   });
 
-  it("As a user offline, when the banner island alone fails to mount, I still see the static offline banner", async () => {
+  it('As a user offline, when the banner island alone fails to mount, I still see the static offline banner', async () => {
     // Given
     let online = false;
-    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
     const chunk = stubChunk({ bannerIslandFails: true });
     const { ensureIslands } = await loadLoader();
-    const staticBanner = byId("offline-banner");
+    const staticBanner = byId('offline-banner');
     const loading = ensureIslands();
 
     // When
@@ -757,24 +726,24 @@ describe("ensureIslands", () => {
     // Then: the other islands mounted; the static banner follows the
     // connection.
     expect(chunk.islandClicks()).toBe(0);
-    expect(byId("theme-toggle").isConnected).toBe(true);
-    expect(byId("offline-banner")).toBe(staticBanner);
-    expect(staticBanner.style.display).toBe("block");
+    expect(byId('theme-toggle').isConnected).toBe(true);
+    expect(byId('offline-banner')).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe('block');
 
     // When
     online = true;
-    window.dispatchEvent(new Event("online"));
+    window.dispatchEvent(new Event('online'));
 
     // Then
-    expect(staticBanner.style.display).toBe("none");
+    expect(staticBanner.style.display).toBe('none');
   });
 
-  it("As a user offline, when mounting the islands throws, I still see the static offline banner", async () => {
+  it('As a user offline, when mounting the islands throws, I still see the static offline banner', async () => {
     // Given
-    vi.spyOn(navigator, "onLine", "get").mockReturnValue(false);
-    const chunk = stubChunk({ mountError: new Error("mount failed") });
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    const chunk = stubChunk({ mountError: new Error('mount failed') });
     const { ensureIslands } = await loadLoader();
-    const staticBanner = byId("offline-banner");
+    const staticBanner = byId('offline-banner');
     const loading = ensureIslands();
 
     // When
@@ -782,13 +751,13 @@ describe("ensureIslands", () => {
     await loading;
 
     // Then
-    expect(byId("offline-banner")).toBe(staticBanner);
-    expect(staticBanner.style.display).toBe("block");
+    expect(byId('offline-banner')).toBe(staticBanner);
+    expect(staticBanner.style.display).toBe('block');
   });
 });
 
-describe("ensureIslands and the auth modal", () => {
-  it("As a product, when the islands chunk cannot load while my login waits on the invisible modal, the login is cancelled and my next blocking prompt proceeds", async () => {
+describe('ensureIslands and the auth modal', () => {
+  it('As a product, when the islands chunk cannot load while my login waits on the invisible modal, the login is cancelled and my next blocking prompt proceeds', async () => {
     // Given: a login holds the blocking-modal lease before the chunk arrives,
     // and a permission prompt queues behind it.
     const chunk = stubChunk();
@@ -804,7 +773,7 @@ describe("ensureIslands and the auth modal", () => {
     });
 
     // When
-    await chunk.fail(new Error("chunk failed"));
+    await chunk.fail(new Error('chunk failed'));
     await loading;
     await queued;
 
@@ -815,13 +784,13 @@ describe("ensureIslands and the auth modal", () => {
     prompt.dispose();
   });
 
-  it("As a product, after the islands chunk failed to load, a new login is cancelled instead of taking the blocking-modal lease", async () => {
+  it('As a product, after the islands chunk failed to load, a new login is cancelled instead of taking the blocking-modal lease', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
     const auth = await initAuth();
     const loading = ensureIslands();
-    await chunk.fail(new Error("chunk failed"));
+    await chunk.fail(new Error('chunk failed'));
     await loading;
 
     // When: a direct login request.
@@ -842,9 +811,9 @@ describe("ensureIslands and the auth modal", () => {
     expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
   });
 
-  it("As a product, when mounting the islands throws, a pending login is cancelled and later logins do not take the lease", async () => {
+  it('As a product, when mounting the islands throws, a pending login is cancelled and later logins do not take the lease', async () => {
     // Given
-    const chunk = stubChunk({ mountError: new Error("mount failed") });
+    const chunk = stubChunk({ mountError: new Error('mount failed') });
     const { ensureIslands } = await loadLoader();
     const auth = await initAuth();
     const loading = ensureIslands();
@@ -867,9 +836,9 @@ describe("ensureIslands and the auth modal", () => {
     expect(auth.cancels()).toBe(2);
   });
 
-  it("As a product, when only the auth-modal island fails to mount, a pending login is cancelled, my next prompt proceeds and later logins are cancelled", async () => {
+  it('As a product, when only the auth-modal island fails to mount, a pending login is cancelled, my next prompt proceeds and later logins are cancelled', async () => {
     // Given
-    const chunk = stubChunk({ failedIslands: ["auth-modal"] });
+    const chunk = stubChunk({ failedIslands: ['auth-modal'] });
     const { ensureIslands } = await loadLoader();
     const auth = await initAuth();
     const loading = ensureIslands();
@@ -881,7 +850,7 @@ describe("ensureIslands and the auth modal", () => {
     await loading;
 
     // Then: the other islands mounted.
-    expect(byId("offline-banner").style.display).toBe("none");
+    expect(byId('offline-banner').style.display).toBe('none');
     expect(auth.modalOpen()).toBe(false);
     expect(auth.cancels()).toBe(1);
     expect(await blockingPromptRuns(auth.coordinator)).toBe(true);
@@ -898,7 +867,7 @@ describe("ensureIslands and the auth modal", () => {
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("As a product, when the auth-modal island fails after it mounted, my pending login is cancelled and later logins are cancelled", async () => {
+  it('As a product, when the auth-modal island fails after it mounted, my pending login is cancelled and later logins are cancelled', async () => {
     // Given
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
@@ -908,18 +877,16 @@ describe("ensureIslands and the auth modal", () => {
     await loading;
     requestLogin();
     expect(auth.modalOpen()).toBe(true);
-    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [
-      (name: string) => void,
-    ];
+    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [(name: string) => void];
 
     // When
-    onLateFailure("theme");
+    onLateFailure('theme');
 
     // Then: another island failing leaves the login alone.
     expect(auth.modalOpen()).toBe(true);
 
     // When
-    onLateFailure("auth-modal");
+    onLateFailure('auth-modal');
 
     // Then
     expect(auth.modalOpen()).toBe(false);
@@ -934,34 +901,32 @@ describe("ensureIslands and the auth modal", () => {
     expect(auth.loginRequests()).toBe(1);
   });
 
-  it("As a user offline, when the banner island fails after it mounted and its static banner is back, the static banner follows the connection", async () => {
+  it('As a user offline, when the banner island fails after it mounted and its static banner is back, the static banner follows the connection', async () => {
     // Given
     let online = true;
-    vi.spyOn(navigator, "onLine", "get").mockImplementation(() => online);
+    vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
     const chunk = stubChunk();
     const { ensureIslands } = await loadLoader();
-    const staticBanner = byId("offline-banner");
+    const staticBanner = byId('offline-banner');
     const loading = ensureIslands();
     await chunk.arrive();
     await loading;
-    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [
-      (name: string) => void,
-    ];
+    const [onLateFailure] = chunk.mountIslands.mock.calls[0] as [(name: string) => void];
 
     // When: the islands chunk puts the static banner back, as it does for a
     // late render error, and reports it.
-    byId("offline-banner").replaceWith(staticBanner);
-    onLateFailure("offline-banner");
+    byId('offline-banner').replaceWith(staticBanner);
+    onLateFailure('offline-banner');
     online = false;
-    window.dispatchEvent(new Event("offline"));
+    window.dispatchEvent(new Event('offline'));
 
     // Then
-    expect(staticBanner.style.display).toBe("block");
+    expect(staticBanner.style.display).toBe('block');
   });
 
-  it("As a product, when the auth-modal island mounts, even if another island fails, my login keeps its modal and lease", async () => {
+  it('As a product, when the auth-modal island mounts, even if another island fails, my login keeps its modal and lease', async () => {
     // Given
-    const chunk = stubChunk({ failedIslands: ["theme"] });
+    const chunk = stubChunk({ failedIslands: ['theme'] });
     const { ensureIslands } = await loadLoader();
     const auth = await initAuth();
     const loading = ensureIslands();

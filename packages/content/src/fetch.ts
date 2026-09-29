@@ -12,10 +12,10 @@
 //
 // UnixFS walking lives in `archive.ts`, driven by an injected `BlockSource`.
 
-import { dur, log } from "@dotli/shared";
+import { dur, log } from '@dotli/shared';
 
-import { m, spans as S } from "@dotli/metrics";
-import { CID } from "multiformats/cid";
+import { m, spans as S } from '@dotli/metrics';
+import { CID } from 'multiformats/cid';
 
 export type StatusCallback = (status: string) => void;
 
@@ -26,15 +26,9 @@ export type StatusCallback = (status: string) => void;
  */
 export type BitswapBlockSource = (cid: string) => Promise<Uint8Array>;
 
-import {
-  isCarFile,
-  parseIpfsResponse,
-  walkUnixFsDag,
-  type ArchiveFiles,
-  type BlockSource,
-} from "./archive.js";
-import { fetchFromIpfs, fetchCarFromIpfs } from "./ipfs.js";
-import { assertBlockMatchesCid, rootVerifyingBlockSource } from "./verify.js";
+import { isCarFile, parseIpfsResponse, walkUnixFsDag, type ArchiveFiles, type BlockSource } from './archive.js';
+import { fetchFromIpfs, fetchCarFromIpfs } from './ipfs.js';
+import { assertBlockMatchesCid, rootVerifyingBlockSource } from './verify.js';
 
 // CID codec constants
 const CODEC_DAG_PB = 0x70;
@@ -60,7 +54,7 @@ async function fetchViaBitswapRpc(
     const stopRpc = m.timer(S.CONTENT_BITSWAP_RPC);
     try {
       const bytes = await blockSource(cid.toString());
-      m.count(S.CONTENT_BITSWAP_RPC, { outcome: "ok" });
+      m.count(S.CONTENT_BITSWAP_RPC, { outcome: 'ok' });
       return bytes;
     } catch (err) {
       m.count(S.CONTENT_BITSWAP_RPC, {
@@ -80,7 +74,7 @@ async function fetchViaBitswapRpc(
   const rootVerifyingSource = rootVerifyingBlockSource(rootCid, tracedSource);
 
   if (rootCid.code === CODEC_RAW) {
-    onStatus?.("Fetching block via bitswap...");
+    onStatus?.('Fetching block via bitswap...');
     const bytes = await rootVerifyingSource(rootCid);
     if (isCarFile(bytes)) {
       // Some uploaders pack a CAR archive under a raw-codec CID. Honor that
@@ -91,40 +85,36 @@ async function fetchViaBitswapRpc(
       return toFetchResult(files);
     }
     m.count(S.CONTENT_BITSWAP_BLOCKS, { count: String(blockCount) });
-    return { type: "single", content: bytes };
+    return { type: 'single', content: bytes };
   }
 
   if (rootCid.code === CODEC_DAG_PB) {
-    onStatus?.("Walking dag-pb via bitswap...");
+    onStatus?.('Walking dag-pb via bitswap...');
     const files = await walkUnixFsDag(rootCid, rootVerifyingSource);
     m.count(S.CONTENT_BITSWAP_BLOCKS, { count: String(blockCount) });
     return toFetchResult(files);
   }
 
-  throw new Error(
-    `bitswap-rpc: unsupported root CID codec 0x${rootCid.code.toString(16)} (${cidString})`,
-  );
+  throw new Error(`bitswap-rpc: unsupported root CID codec 0x${rootCid.code.toString(16)} (${cidString})`);
 }
 
-function classifyBitswapError(
-  err: unknown,
-): "not-found" | "invalid-cid" | "timeout" | "aborted" | "error" {
+function classifyBitswapError(err: unknown): 'not-found' | 'invalid-cid' | 'timeout' | 'aborted' | 'error' {
   if (err instanceof Error) {
     const msg = err.message;
-    if (msg.includes("not found")) {
-      return "not-found";
+    if (msg.includes('not found')) {
+      return 'not-found';
     }
-    if (msg.includes("invalid CID")) {
-      return "invalid-cid";
+    if (msg.includes('invalid CID')) {
+      return 'invalid-cid';
     }
-    if (msg.includes("timed out")) {
-      return "timeout";
+    if (msg.includes('timed out')) {
+      return 'timeout';
     }
-    if (msg.includes("aborted")) {
-      return "aborted";
+    if (msg.includes('aborted')) {
+      return 'aborted';
     }
   }
-  return "error";
+  return 'error';
 }
 
 /**
@@ -137,50 +127,41 @@ function classifyBitswapError(
  * Any other codec is a hard failure and we don't guess. Any transport
  * failure surfaces with the original cause.
  */
-async function fetchViaGateway(
-  cidString: string,
-  onStatus?: StatusCallback,
-): Promise<FetchResult> {
+async function fetchViaGateway(cidString: string, onStatus?: StatusCallback): Promise<FetchResult> {
   const stopGw = m.timer(S.CONTENT_GATEWAY);
   try {
     const cid = CID.parse(cidString);
     if (cid.code === CODEC_DAG_PB) {
-      onStatus?.("Fetching archive from IPFS gateway...");
+      onStatus?.('Fetching archive from IPFS gateway...');
       log.warn(`[dot.li fetch] Gateway: requesting CAR (codec dag-pb)...`);
       const gatewayStart = performance.now();
       const carBuffer = await fetchCarFromIpfs(cidString);
       log.warn(
         `[dot.li fetch] Gateway CAR: fetched ${String(Math.round(carBuffer.length / 1024))} KB in ${dur(gatewayStart)}`,
       );
-      onStatus?.("Parsing content...");
+      onStatus?.('Parsing content...');
       // Untrusted transport: bind the CAR to the on-chain CID — its declared
       // root must match `cid` and every block is hash-verified.
       const files = await parseIpfsResponse(carBuffer, cid);
       return toFetchResult(files);
     }
     if (cid.code === CODEC_RAW) {
-      onStatus?.("Fetching content via IPFS gateway...");
+      onStatus?.('Fetching content via IPFS gateway...');
       log.warn(`[dot.li fetch] Gateway: plain GET (codec raw)...`);
       const gatewayStart = performance.now();
       const { data } = await fetchFromIpfs(cidString);
-      log.warn(
-        `[dot.li fetch] Gateway: fetched ${String(Math.round(data.length / 1024))} KB in ${dur(gatewayStart)}`,
-      );
+      log.warn(`[dot.li fetch] Gateway: fetched ${String(Math.round(data.length / 1024))} KB in ${dur(gatewayStart)}`);
       // Untrusted transport: the bytes must hash to the requested raw CID.
       assertBlockMatchesCid(cid, data);
-      return { type: "single", content: data };
+      return { type: 'single', content: data };
     }
-    throw new Error(
-      `Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`,
-    );
+    throw new Error(`Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`);
   } finally {
     stopGw();
   }
 }
 
-export type FetchResult =
-  | { type: "single"; content: Uint8Array }
-  | { type: "archive"; files: ArchiveFiles };
+export type FetchResult = { type: 'single'; content: Uint8Array } | { type: 'archive'; files: ArchiveFiles };
 
 /**
  * Fetch content by CID using the specified mode.
@@ -200,35 +181,28 @@ export async function fetchArchive(
     bitswapBlockSource?: BitswapBlockSource;
   },
 ): Promise<FetchResult> {
-  performance.mark("dotli:fetch:start");
+  performance.mark('dotli:fetch:start');
   const stopFetch = m.timer(S.CONTENT_FETCH);
   const blockSource = options?.bitswapBlockSource;
-  const method =
-    blockSource !== undefined
-      ? "bitswap-rpc"
-      : options?.useGateway === true
-        ? "gateway"
-        : null;
+  const method = blockSource !== undefined ? 'bitswap-rpc' : options?.useGateway === true ? 'gateway' : null;
   if (method === null) {
     stopFetch();
-    throw new Error(
-      "fetchArchive requires either `bitswapBlockSource` or `useGateway: true`",
-    );
+    throw new Error('fetchArchive requires either `bitswapBlockSource` or `useGateway: true`');
   }
-  m.tag("content_method", method);
+  m.tag('content_method', method);
 
   try {
     const result =
       blockSource !== undefined
         ? await fetchViaBitswapRpc(cidString, blockSource, onStatus)
         : await fetchViaGateway(cidString, onStatus);
-    performance.mark("dotli:fetch:end");
+    performance.mark('dotli:fetch:end');
     log.warn(`[dot.li fetch] Content fetched via ${method}`);
     measureContentSize(result);
     stopFetch();
     return result;
   } catch (err) {
-    performance.mark("dotli:fetch:end");
+    performance.mark('dotli:fetch:end');
     stopFetch();
     if (err instanceof Error) {
       log.error(`[dot.li fetch] ${method} failed: ${err.message}`);
@@ -238,26 +212,20 @@ export async function fetchArchive(
 }
 
 function measureContentSize(result: FetchResult): void {
-  if (result.type === "single") {
-    m.distribution(S.CONTENT_SIZE, result.content.length, "byte");
+  if (result.type === 'single') {
+    m.distribution(S.CONTENT_SIZE, result.content.length, 'byte');
   } else {
-    const totalSize = Object.values(result.files).reduce(
-      (sum, buf) => sum + buf.length,
-      0,
-    );
-    m.distribution(S.CONTENT_SIZE, totalSize, "byte");
+    const totalSize = Object.values(result.files).reduce((sum, buf) => sum + buf.length, 0);
+    m.distribution(S.CONTENT_SIZE, totalSize, 'byte');
   }
 }
 
 function toFetchResult(files: ArchiveFiles): FetchResult {
   const keys = Object.keys(files);
-  const index = files["index.html"];
+  const index = files['index.html'];
   if (keys.length === 1 && index !== undefined) {
-    return { type: "single", content: index };
+    return { type: 'single', content: index };
   }
-  log.warn(
-    `[dot.li] Loaded archive with ${String(keys.length)} file(s):`,
-    keys,
-  );
-  return { type: "archive", files };
+  log.warn(`[dot.li] Loaded archive with ${String(keys.length)} file(s):`, keys);
+  return { type: 'archive', files };
 }

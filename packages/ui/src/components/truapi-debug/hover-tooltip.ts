@@ -35,32 +35,21 @@ export function wireHoverTooltips(
   let panelRect: DOMRect | null = null;
   let size: { width: number; height: number } | null = null;
 
-  const showAt = (
-    el: Element,
-    text: string,
-    clientX: number,
-    clientY: number,
-  ): void => {
+  const showAt = (el: Element, text: string, clientX: number, clientY: number): void => {
     const tooltip = tooltipEl();
     const panel = panelEl();
     if (tooltip === undefined || panel === undefined) {
       return;
     }
-    const fresh =
-      el !== shownFor ||
-      panelRect === null ||
-      !tooltip.classList.contains("visible");
+    const fresh = el !== shownFor || panelRect === null || !tooltip.classList.contains('visible');
     if (fresh) {
       // Measured before any write, so this read finds layout clean.
       panelRect = panel.getBoundingClientRect();
     }
     if (fresh || tooltip.textContent !== text) {
       tooltip.textContent = text;
-      tooltip.classList.toggle(
-        "is-prose",
-        el.hasAttribute("data-tooltip-prose"),
-      );
-      tooltip.classList.add("visible");
+      tooltip.classList.toggle('is-prose', el.hasAttribute('data-tooltip-prose'));
+      tooltip.classList.add('visible');
       size = null;
     }
     shownFor = el;
@@ -76,7 +65,7 @@ export function wireHoverTooltips(
       // Measured at the panel's left edge: a prose tooltip wraps to the room
       // right of its `left`, so measured near the right edge it would come
       // out narrow and tall, and the clamp below would under-correct.
-      tooltip.style.left = "0px";
+      tooltip.style.left = '0px';
       const measured = tooltip.getBoundingClientRect();
       size = { width: measured.width, height: measured.height };
     }
@@ -99,45 +88,45 @@ export function wireHoverTooltips(
     }
   };
   const hide = (): void => {
-    tooltipEl()?.classList.remove("visible");
+    tooltipEl()?.classList.remove('visible');
   };
   const onPointerOver = (e: PointerEvent): void => {
     const target = e.target as Element | null;
-    const el = target?.closest("[data-tooltip]");
+    const el = target?.closest('[data-tooltip]');
     if (el === null || el === undefined) {
       return;
     }
-    const text = el.getAttribute("data-tooltip");
+    const text = el.getAttribute('data-tooltip');
     if (text === null) {
       return;
     }
     showAt(el, text, e.clientX, e.clientY);
   };
   const onPointerMove = (e: PointerEvent): void => {
-    if (tooltipEl()?.classList.contains("visible") !== true) {
+    if (tooltipEl()?.classList.contains('visible') !== true) {
       return;
     }
     const target = e.target as Element | null;
-    const el = target?.closest("[data-tooltip]");
+    const el = target?.closest('[data-tooltip]');
     if (el === null || el === undefined) {
       hide();
       return;
     }
-    const text = el.getAttribute("data-tooltip");
+    const text = el.getAttribute('data-tooltip');
     if (text === null) {
       hide();
       return;
     }
     showAt(el, text, e.clientX, e.clientY);
   };
-  root.addEventListener("pointerover", onPointerOver);
-  root.addEventListener("pointermove", onPointerMove);
-  root.addEventListener("pointerleave", hide);
-  root.addEventListener("scroll", hide, { passive: true });
+  root.addEventListener('pointerover', onPointerOver);
+  root.addEventListener('pointermove', onPointerMove);
+  root.addEventListener('pointerleave', hide);
+  root.addEventListener('scroll', hide, { passive: true });
   return () => {
-    root.removeEventListener("pointerover", onPointerOver);
-    root.removeEventListener("pointermove", onPointerMove);
-    root.removeEventListener("pointerleave", hide);
-    root.removeEventListener("scroll", hide);
+    root.removeEventListener('pointerover', onPointerOver);
+    root.removeEventListener('pointermove', onPointerMove);
+    root.removeEventListener('pointerleave', hide);
+    root.removeEventListener('scroll', hide);
   };
 }

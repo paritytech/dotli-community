@@ -8,16 +8,16 @@
 // owns the container and decides when to redraw; it never rebuilds the SVG
 // itself. A click flips the selection in place rather than redrawing.
 
-import { createEffect, onCleanup, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { EventSeq, StoredEvent } from "@dotli/truapi-debug";
+import { createEffect, onCleanup, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { EventSeq, StoredEvent } from '@dotli/truapi-debug';
 import {
   applyTimelineSelection,
   buildTimelineContainer,
   renderSwimlanes,
   resolveTimelineClick,
-} from "@dotli/truapi-debug";
-import { wireHoverTooltips } from "./hover-tooltip.js";
+} from '@dotli/truapi-debug';
+import { wireHoverTooltips } from './hover-tooltip.js';
 
 export function TimelineView(props: {
   active: boolean;
@@ -32,8 +32,8 @@ export function TimelineView(props: {
 
   createEffect(
     () => props.active,
-    (active) => {
-      container.classList.toggle("hidden", !active);
+    active => {
+      container.classList.toggle('hidden', !active);
     },
   );
 
@@ -44,7 +44,7 @@ export function TimelineView(props: {
   // not by redrawing.
   createEffect(
     () => (props.active ? props.events : null),
-    (events) => {
+    events => {
       if (events !== null) {
         renderSwimlanes(
           container,
@@ -64,14 +64,14 @@ export function TimelineView(props: {
     applyTimelineSelection(container, props.selectedSeq, seq);
     props.onSelect(seq);
   };
-  container.addEventListener("click", onClick);
+  container.addEventListener('click', onClick);
   const unwireTooltips = wireHoverTooltips(
     container,
     untrack(() => props.tooltip),
     untrack(() => props.panel),
   );
   onCleanup(() => {
-    container.removeEventListener("click", onClick);
+    container.removeEventListener('click', onClick);
     unwireTooltips();
   });
 

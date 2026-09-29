@@ -9,15 +9,8 @@
 // A browser drops a click whose target node is replaced between pointerdown
 // and click, so rows must never be rebuilt under streaming traffic.
 
-import {
-  createEffect,
-  createSignal,
-  flush,
-  For,
-  Show,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { createEffect, createSignal, flush, For, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import {
   formatLatency,
   formatTime,
@@ -34,9 +27,9 @@ import {
   rowClassName,
   systemRowData,
   truapiRowData,
-} from "@dotli/truapi-debug";
+} from '@dotli/truapi-debug';
 
-import { createKeyedSignals, type KeyedSignals } from "./keyed-signals.js";
+import { createKeyedSignals, type KeyedSignals } from './keyed-signals.js';
 
 /** A pending badge counts up with the clock rather than with traffic, and a
  *  host that has stalled is precisely one that has stopped emitting events,
@@ -116,7 +109,7 @@ export function EventList(props: {
   const [tickedAt, setTickedAt] = createSignal(0);
   createEffect(
     () => props.active && !props.collapsed,
-    (live) => {
+    live => {
       if (!live) {
         return;
       }
@@ -147,7 +140,7 @@ export function EventList(props: {
             now: Math.max(props.refreshedAt, tickedAt()),
           }
         : null,
-    (input) => {
+    input => {
       if (input === null) {
         wasLive = false;
         return;
@@ -177,21 +170,20 @@ export function EventList(props: {
   const ctx: RowContext = { selectedSeq, selectedKey, waiting };
 
   const rowFor = (seq: EventSeq): HTMLElement | null =>
-    list?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`) ??
-    null;
+    list?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`) ?? null;
 
   return (
     <div
-      class={props.active ? "td-list" : "td-list hidden"}
+      class={props.active ? 'td-list' : 'td-list hidden'}
       role="list"
       tabindex="0"
-      ref={(el) => {
+      ref={el => {
         list = el;
         props.listRef(el);
       }}
-      onClick={(e) => {
-        const row = (e.target as HTMLElement).closest<HTMLElement>(".td-row");
-        const seqAttr = row?.dataset["seq"];
+      onClick={e => {
+        const row = (e.target as HTMLElement).closest<HTMLElement>('.td-row');
+        const seqAttr = row?.dataset['seq'];
         if (seqAttr === undefined) {
           return;
         }
@@ -201,13 +193,13 @@ export function EventList(props: {
         list?.focus({ preventScroll: true });
         props.onSelect(Number(seqAttr));
       }}
-      onKeyDown={(e) => {
+      onKeyDown={e => {
         // Only while the list itself has focus (tabindex=0), so typing in the
         // filter inputs and browser shortcuts are left alone.
-        if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
+        if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
           return;
         }
-        const seqs = props.events.map((ev) => ev.seq);
+        const seqs = props.events.map(ev => ev.seq);
         if (seqs.length === 0) {
           return;
         }
@@ -215,31 +207,27 @@ export function EventList(props: {
         const selected = props.selection;
         const currentIdx = selected === null ? -1 : seqs.indexOf(selected.seq);
         let nextIdx: number;
-        if (e.key === "ArrowDown") {
+        if (e.key === 'ArrowDown') {
           // From nothing, the first row; otherwise the next, clamped to the last.
-          nextIdx =
-            currentIdx < 0 ? 0 : Math.min(currentIdx + 1, seqs.length - 1);
+          nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, seqs.length - 1);
         } else {
           // From nothing, the last row; otherwise the previous, clamped to the first.
-          nextIdx =
-            currentIdx < 0 ? seqs.length - 1 : Math.max(currentIdx - 1, 0);
+          nextIdx = currentIdx < 0 ? seqs.length - 1 : Math.max(currentIdx - 1, 0);
         }
         const nextSeq = seqs[nextIdx];
         if (nextIdx === currentIdx || nextSeq === undefined) {
           return;
         }
         props.onSelect(nextSeq);
-        rowFor(nextSeq)?.scrollIntoView({ block: "nearest" });
+        rowFor(nextSeq)?.scrollIntoView({ block: 'nearest' });
       }}
     >
       <For
         each={props.events}
-        keyed={(ev) => ev.seq}
-        fallback={
-          <div class="td-empty">No events match the current filter.</div>
-        }
+        keyed={ev => ev.seq}
+        fallback={<div class="td-empty">No events match the current filter.</div>}
       >
-        {(ev) => renderRow(untrack(ev), props.store, ctx)}
+        {ev => renderRow(untrack(ev), props.store, ctx)}
       </For>
     </div>
   );
@@ -253,35 +241,23 @@ export function EventList(props: {
  * instance gets its own refresh wrapper, and the list would then track one
  * source per row (a HUGE_FAN_IN diagnostic at the 2000-event capacity).
  */
-function renderRow(
-  ev: StoredEvent,
-  store: EventStore,
-  ctx: RowContext,
-): JSX.Element {
+function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Element {
   const key = correlationKeyOf(ev);
   // Measured against the group's first event as it stood at insert time, so
   // a row drawn after that event was evicted shows the same latency.
   const anchor = store.anchorOf(ev);
-  const latency =
-    anchor !== undefined
-      ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}`
-      : null;
+  const latency = anchor !== undefined ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}` : null;
 
   const rowClass = (): string => {
     const isSelected = ctx.selectedSeq.read(ev.seq) === true;
     const isPaired = !isSelected && ctx.selectedKey.read(key) === true;
-    return rowClassName(isSelected, isPaired, ev.kind === "system");
+    return rowClassName(isSelected, isPaired, ev.kind === 'system');
   };
 
   return (
-    <div
-      class={rowClass()}
-      data-seq={String(ev.seq)}
-      data-rid={key}
-      role="listitem"
-    >
+    <div class={rowClass()} data-seq={String(ev.seq)} data-rid={key} role="listitem">
       <span class="td-time">{formatTime(ev.receivedAt)}</span>
-      {ev.kind === "truapi" ? (
+      {ev.kind === 'truapi' ? (
         <TruapiCells event={ev} latency={latency} ctx={ctx} />
       ) : (
         <SystemCells event={ev} latency={latency} />
@@ -293,9 +269,9 @@ function renderRow(
 function Latency(props: { text: string | null }): JSX.Element {
   return (
     <Show when={props.text}>
-      {(text) => (
+      {text => (
         <>
-          {" "}
+          {' '}
           <span class="td-latency">{text()}</span>
         </>
       )}
@@ -303,26 +279,17 @@ function Latency(props: { text: string | null }): JSX.Element {
   );
 }
 
-function TruapiCells(props: {
-  event: StoredTruapiEvent;
-  latency: string | null;
-  ctx: RowContext;
-}): JSX.Element {
+function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; ctx: RowContext }): JSX.Element {
   const ev = untrack(() => props.event);
   const ctx = untrack(() => props.ctx);
   const data = truapiRowData(ev, pendingKeyOf(ev));
   const pendingKey = data.pendingKey;
   /** Reads this row's own entry only. */
-  const waiting = (): number | undefined =>
-    pendingKey === null ? undefined : ctx.waiting.read(pendingKey);
+  const waiting = (): number | undefined => (pendingKey === null ? undefined : ctx.waiting.read(pendingKey));
 
   return (
     <>
-      {data.direction === "outgoing" ? (
-        <span class="td-arrow-out">▶</span>
-      ) : (
-        <span class="td-arrow-in">◀</span>
-      )}
+      {data.direction === 'outgoing' ? <span class="td-arrow-out">▶</span> : <span class="td-arrow-in">◀</span>}
       {data.productId === undefined ? (
         <span class="td-product anon">(no id)</span>
       ) : (
@@ -330,11 +297,7 @@ function TruapiCells(props: {
           {data.productId}
         </span>
       )}
-      <span
-        class="td-rid"
-        style={{ color: data.ridColor }}
-        title={`requestId: ${data.requestId}`}
-      >
+      <span class="td-rid" style={{ color: data.ridColor }} title={`requestId: ${data.requestId}`}>
         {data.ridShort}
       </span>
       <span class="td-tag-and-summary">
@@ -343,42 +306,26 @@ function TruapiCells(props: {
         {/* Present until the reply lands, counting up on the clock. */}
         <Show when={waiting() !== undefined}>
           <span
-            class={
-              (waiting() ?? 0) >= SLOW_AFTER_MS
-                ? "td-pending slow"
-                : "td-pending"
-            }
-            data-pending-key={pendingKey ?? ""}
+            class={(waiting() ?? 0) >= SLOW_AFTER_MS ? 'td-pending slow' : 'td-pending'}
+            data-pending-key={pendingKey ?? ''}
           >
             {`⟳ ${formatPending(waiting() ?? 0)} pending`}
           </span>
         </Show>
-        {data.summary !== "" ? (
-          <span class="td-summary">{data.summary}</span>
-        ) : null}
+        {data.summary !== '' ? <span class="td-summary">{data.summary}</span> : null}
       </span>
     </>
   );
 }
 
-function SystemCells(props: {
-  event: StoredSystemEvent;
-  latency: string | null;
-}): JSX.Element {
+function SystemCells(props: { event: StoredSystemEvent; latency: string | null }): JSX.Element {
   const data = systemRowData(untrack(() => props.event));
   return (
     <>
-      <span
-        class={`td-layer-badge td-layer-${data.layer}`}
-        title={`source: ${data.source}`}
-      >
+      <span class={`td-layer-badge td-layer-${data.layer}`} title={`source: ${data.source}`}>
         {data.layer}
       </span>
-      <span
-        class="td-rid"
-        style={{ color: data.ridColor }}
-        title={`flowId: ${data.flowId}`}
-      >
+      <span class="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
         {data.flowIdShort}
       </span>
       <span class="td-tag-and-summary">

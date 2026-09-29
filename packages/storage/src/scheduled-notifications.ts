@@ -15,15 +15,12 @@
  * a stable, unique `perProductId` for TrUAPI notification callbacks.
  */
 
-import { getDb } from "./db.js";
-import {
-  SCHEDULED_NOTIFICATIONS_MAX_AGE_MS,
-  SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP,
-} from "@dotli/config";
+import { getDb } from './db.js';
+import { SCHEDULED_NOTIFICATIONS_MAX_AGE_MS, SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP } from '@dotli/config';
 
-const RECORD_STORE = "scheduled_notifications";
-const COUNTER_STORE = "notification_counters";
-const BY_PRODUCT_ID = "byProductId";
+const RECORD_STORE = 'scheduled_notifications';
+const COUNTER_STORE = 'notification_counters';
+const BY_PRODUCT_ID = 'byProductId';
 
 export interface ScheduledNotificationRecord {
   hostId: number;
@@ -43,8 +40,7 @@ export interface ScheduleRequest {
   scheduledAt: number;
 }
 
-export type ScheduleResult =
-  { ok: true; id: number } | { ok: false; error: "ScheduleLimitReached" };
+export type ScheduleResult = { ok: true; id: number } | { ok: false; error: 'ScheduleLimitReached' };
 
 interface CounterEntry {
   productId: string;
@@ -59,8 +55,8 @@ interface CounterEntry {
  */
 export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction([RECORD_STORE, COUNTER_STORE], "readwrite");
+    void getDb().then(db => {
+      const tx = db.transaction([RECORD_STORE, COUNTER_STORE], 'readwrite');
       const records = tx.objectStore(RECORD_STORE);
       const counters = tx.objectStore(COUNTER_STORE);
       const byProduct = records.index(BY_PRODUCT_ID);
@@ -70,7 +66,7 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
       const countReq = byProduct.count(IDBKeyRange.only(req.productId));
       countReq.onsuccess = () => {
         if (countReq.result >= SCHEDULED_NOTIFICATIONS_PER_PRODUCT_CAP) {
-          result = { ok: false, error: "ScheduleLimitReached" };
+          result = { ok: false, error: 'ScheduleLimitReached' };
           tx.abort();
           return;
         }
@@ -103,7 +99,7 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
         if (result) {
           resolve(result);
         } else {
-          reject(new Error("schedule tx completed without a result"));
+          reject(new Error('schedule tx completed without a result'));
         }
       };
       tx.onerror = () => {
@@ -112,14 +108,14 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
         if (result?.ok === false) {
           resolve(result);
         } else {
-          reject(tx.error ?? new Error("schedule tx errored"));
+          reject(tx.error ?? new Error('schedule tx errored'));
         }
       };
       tx.onabort = () => {
         if (result?.ok === false) {
           resolve(result);
         } else {
-          reject(tx.error ?? new Error("schedule tx aborted"));
+          reject(tx.error ?? new Error('schedule tx aborted'));
         }
       };
     }, reject);
@@ -132,8 +128,8 @@ export function schedule(req: ScheduleRequest): Promise<ScheduleResult> {
  */
 export function allocateId(productId: string): Promise<number> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(COUNTER_STORE, "readwrite");
+    void getDb().then(db => {
+      const tx = db.transaction(COUNTER_STORE, 'readwrite');
       const counters = tx.objectStore(COUNTER_STORE);
       let allocated = 0;
 
@@ -148,7 +144,7 @@ export function allocateId(productId: string): Promise<number> {
         resolve(allocated);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("allocateId tx errored"));
+        reject(tx.error ?? new Error('allocateId tx errored'));
       };
     }, reject);
   });
@@ -159,13 +155,10 @@ export function allocateId(productId: string): Promise<number> {
  * such (productId, perProductId) pair existed (already fired or never
  * scheduled).
  */
-export function cancel(
-  productId: string,
-  perProductId: number,
-): Promise<boolean> {
+export function cancel(productId: string, perProductId: number): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(RECORD_STORE, "readwrite");
+    void getDb().then(db => {
+      const tx = db.transaction(RECORD_STORE, 'readwrite');
       const records = tx.objectStore(RECORD_STORE);
       const byProduct = records.index(BY_PRODUCT_ID);
       let deleted = false;
@@ -189,7 +182,7 @@ export function cancel(
         resolve(deleted);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("cancel tx errored"));
+        reject(tx.error ?? new Error('cancel tx errored'));
       };
     }, reject);
   });
@@ -197,8 +190,8 @@ export function cancel(
 
 export function removeById(hostId: number): Promise<boolean> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(RECORD_STORE, "readwrite");
+    void getDb().then(db => {
+      const tx = db.transaction(RECORD_STORE, 'readwrite');
       const records = tx.objectStore(RECORD_STORE);
       let existed = false;
 
@@ -214,7 +207,7 @@ export function removeById(hostId: number): Promise<boolean> {
         resolve(existed);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("removeById tx errored"));
+        reject(tx.error ?? new Error('removeById tx errored'));
       };
     }, reject);
   });
@@ -222,8 +215,8 @@ export function removeById(hostId: number): Promise<boolean> {
 
 export function listAll(): Promise<ScheduledNotificationRecord[]> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(RECORD_STORE, "readonly");
+    void getDb().then(db => {
+      const tx = db.transaction(RECORD_STORE, 'readonly');
       const out: ScheduledNotificationRecord[] = [];
 
       const cursorReq = tx.objectStore(RECORD_STORE).openCursor();
@@ -240,18 +233,16 @@ export function listAll(): Promise<ScheduledNotificationRecord[]> {
         resolve(out);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("listAll tx errored"));
+        reject(tx.error ?? new Error('listAll tx errored'));
       };
     }, reject);
   });
 }
 
-export function listForProduct(
-  productId: string,
-): Promise<ScheduledNotificationRecord[]> {
+export function listForProduct(productId: string): Promise<ScheduledNotificationRecord[]> {
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(RECORD_STORE, "readonly");
+    void getDb().then(db => {
+      const tx = db.transaction(RECORD_STORE, 'readonly');
       const byProduct = tx.objectStore(RECORD_STORE).index(BY_PRODUCT_ID);
       const out: ScheduledNotificationRecord[] = [];
 
@@ -269,7 +260,7 @@ export function listForProduct(
         resolve(out);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("listForProduct tx errored"));
+        reject(tx.error ?? new Error('listForProduct tx errored'));
       };
     }, reject);
   });
@@ -279,16 +270,13 @@ export function listForProduct(
  * Delete every record whose `scheduledAt` is older than `now - maxAgeMs`.
  * Returns the number of records removed.
  */
-export function removeStale(
-  now: number,
-  maxAgeMs: number = SCHEDULED_NOTIFICATIONS_MAX_AGE_MS,
-): Promise<number> {
+export function removeStale(now: number, maxAgeMs: number = SCHEDULED_NOTIFICATIONS_MAX_AGE_MS): Promise<number> {
   const cutoff = now - maxAgeMs;
   return new Promise((resolve, reject) => {
-    void getDb().then((db) => {
-      const tx = db.transaction(RECORD_STORE, "readwrite");
+    void getDb().then(db => {
+      const tx = db.transaction(RECORD_STORE, 'readwrite');
       const records = tx.objectStore(RECORD_STORE);
-      const idx = records.index("byScheduledAt");
+      const idx = records.index('byScheduledAt');
       let removed = 0;
 
       const cursorReq = idx.openCursor(IDBKeyRange.upperBound(cutoff, true));
@@ -306,7 +294,7 @@ export function removeStale(
         resolve(removed);
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("removeStale tx errored"));
+        reject(tx.error ?? new Error('removeStale tx errored'));
       };
     }, reject);
   });

@@ -5,30 +5,30 @@
  * Permission fixtures.
  */
 
-import type { BrowserContext } from "@playwright/test";
-import { DOMAIN } from "../../env.js";
+import type { BrowserContext } from '@playwright/test';
+import { DOMAIN } from '../../env.js';
 
 export const BROWSER_PERMISSIONS = [
-  "camera",
-  "microphone",
-  "geolocation",
-  "notifications",
-  "clipboard-read",
-  "clipboard-write",
+  'camera',
+  'microphone',
+  'geolocation',
+  'notifications',
+  'clipboard-read',
+  'clipboard-write',
 ] as const;
 
 const DOTLI_PERMISSIONS = [
-  "Notifications",
-  "Camera",
-  "Microphone",
-  "Location",
-  "Bluetooth",
-  "NFC",
-  "Clipboard",
-  "Biometrics",
-  "ChainSubmit",
-  "PreimageSubmit",
-  "StatementSubmit",
+  'Notifications',
+  'Camera',
+  'Microphone',
+  'Location',
+  'Bluetooth',
+  'NFC',
+  'Clipboard',
+  'Biometrics',
+  'ChainSubmit',
+  'PreimageSubmit',
+  'StatementSubmit',
 ] as const;
 
 export async function seedPermissions(context: BrowserContext): Promise<void> {
@@ -37,14 +37,11 @@ export async function seedPermissions(context: BrowserContext): Promise<void> {
       try {
         const granted: Record<string, string> = {};
         for (const p of perms) {
-          granted[p] = "allow";
+          granted[p] = 'allow';
         }
-        localStorage.setItem(
-          `dotli:permissions:${domain}`,
-          JSON.stringify(granted),
-        );
+        localStorage.setItem(`dotli:permissions:${domain}`, JSON.stringify(granted));
       } catch (err) {
-        console.warn("[seedPermissions] localStorage seed failed", err);
+        console.warn('[seedPermissions] localStorage seed failed', err);
       }
     },
     { domain: DOMAIN, perms: DOTLI_PERMISSIONS },

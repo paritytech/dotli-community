@@ -4,8 +4,8 @@
 // Network Configuration
 
 export const NetworkName = {
-  PASEO: "paseo-next-v2",
-  PREVIEWNET: "previewnet",
+  PASEO: 'paseo-next-v2',
+  PREVIEWNET: 'previewnet',
 } as const;
 
 export type NetworkName = (typeof NetworkName)[keyof typeof NetworkName];
@@ -58,81 +58,70 @@ export interface ServicesConfig {
 
 const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PASEO]: {
-    label: "Paseo",
-    description: "Paseo Next Network",
+    label: 'Paseo',
+    description: 'Paseo Next Network',
     relay: {
-      genesis:
-        "0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd",
+      genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
       rpcs: [
-        "wss://paseo-rpc.n.dwellir.com",
-        "wss://paseo.dotters.network",
-        "wss://paseo.ibp.network",
-        "wss://paseo.rpc.amforc.com",
+        'wss://paseo-rpc.n.dwellir.com',
+        'wss://paseo.dotters.network',
+        'wss://paseo.ibp.network',
+        'wss://paseo.rpc.amforc.com',
       ],
       blockTimeMs: 6000,
     },
     assethub: {
-      genesis:
-        "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a",
-      rpcs: ["wss://paseo-asset-hub-next-rpc.polkadot.io"],
+      genesis: '0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a',
+      rpcs: ['wss://paseo-asset-hub-next-rpc.polkadot.io'],
       blockTimeMs: 2000,
     },
     bulletin: {
-      genesis:
-        "0x8cfe6717dc4becfda2e13c488a1e2061ff2dfee96e7d031157f72d36716c0a22",
-      rpcs: ["wss://paseo-bulletin-next-rpc.polkadot.io"],
+      genesis: '0x8cfe6717dc4becfda2e13c488a1e2061ff2dfee96e7d031157f72d36716c0a22',
+      rpcs: ['wss://paseo-bulletin-next-rpc.polkadot.io'],
       blockTimeMs: 6000,
-      ipfsGateways: ["https://paseo-bulletin-next-ipfs.polkadot.io"],
+      ipfsGateways: ['https://paseo-bulletin-next-ipfs.polkadot.io'],
     },
     people: {
-      genesis:
-        "0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48",
-      rpcs: ["wss://paseo-people-next-system-rpc.polkadot.io"],
+      genesis: '0x4a2b5b737de1da59e209b0000a876ec2fa20035dc34fd292a848da32d255ad48',
+      rpcs: ['wss://paseo-people-next-system-rpc.polkadot.io'],
       blockTimeMs: 2000,
     },
     dotns: {
-      DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
-      DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
+      DOTNS_REGISTRY: '0xf34054fd76BbF85f216cf9908226D5f0A72E50CA',
+      DOTNS_CONTENT_RESOLVER: '0x7F74D7CD50f5a834270E2ad395a01b01891AB37d',
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      TLD: "paseo",
+      TLD: 'paseo',
     },
   },
   [NetworkName.PREVIEWNET]: {
-    label: "Previewnet",
-    description: "Product Preview Network",
+    label: 'Previewnet',
+    description: 'Product Preview Network',
     relay: {
-      genesis:
-        "0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e",
-      rpcs: [
-        "wss://previewnet.substrate.dev/relay/alice",
-        "wss://previewnet.substrate.dev/relay/bob",
-      ],
+      genesis: '0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e',
+      rpcs: ['wss://previewnet.substrate.dev/relay/alice', 'wss://previewnet.substrate.dev/relay/bob'],
       blockTimeMs: 6000,
     },
     assethub: {
-      genesis:
-        "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe",
-      rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
+      genesis: '0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe',
+      rpcs: ['wss://previewnet.substrate.dev/asset-hub'],
       blockTimeMs: 2000,
     },
     bulletin: {
-      genesis:
-        "0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d",
-      rpcs: ["wss://previewnet.substrate.dev/bulletin"],
+      genesis: '0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d',
+      rpcs: ['wss://previewnet.substrate.dev/bulletin'],
       blockTimeMs: 6000,
-      ipfsGateways: ["https://previewnet.substrate.dev"],
+      ipfsGateways: ['https://previewnet.substrate.dev'],
     },
     people: {
-      genesis:
-        "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218",
-      rpcs: ["wss://previewnet.substrate.dev/people"],
+      genesis: '0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218',
+      rpcs: ['wss://previewnet.substrate.dev/people'],
       blockTimeMs: 2000,
     },
     dotns: {
-      DOTNS_REGISTRY: "0xf34054fd76BbF85f216cf9908226D5f0A72E50CA",
-      DOTNS_CONTENT_RESOLVER: "0x7F74D7CD50f5a834270E2ad395a01b01891AB37d",
+      DOTNS_REGISTRY: '0xf34054fd76BbF85f216cf9908226D5f0A72E50CA',
+      DOTNS_CONTENT_RESOLVER: '0x7F74D7CD50f5a834270E2ad395a01b01891AB37d',
       STORAGE_SLOTS: { REGISTRY_RECORDS: 0, CONTENTHASH: 0, TEXT_RECORDS: 1 },
-      TLD: "testnet",
+      TLD: 'testnet',
     },
   },
 };
@@ -190,7 +179,7 @@ export interface RuntimeNetworkConfig {
   readonly baseDomain?: string;
 }
 
-const RUNTIME_GLOBAL_KEY = "__DOTLI_NETWORK__";
+const RUNTIME_GLOBAL_KEY = '__DOTLI_NETWORK__';
 
 /**
  * Whether this build accepts runtime config at all. **Off unless explicitly
@@ -200,8 +189,7 @@ const RUNTIME_GLOBAL_KEY = "__DOTLI_NETWORK__";
  * alone turns it on.
  */
 const RUNTIME_CONFIG_ENABLED =
-  ((import.meta as { env?: Partial<ImportMetaEnv> }).env
-    ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
+  ((import.meta as { env?: Partial<ImportMetaEnv> }).env?.VITE_RUNTIME_NETWORK_CONFIG ?? '') === 'true';
 
 function readRuntimeConfig(): RuntimeNetworkConfig | null {
   if (!RUNTIME_CONFIG_ENABLED) {
@@ -211,27 +199,21 @@ function readRuntimeConfig(): RuntimeNetworkConfig | null {
   if (raw === undefined || raw === null) {
     return null;
   }
-  if (typeof raw !== "object" || Array.isArray(raw)) {
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
     throw new Error(
-      `globalThis.${RUNTIME_GLOBAL_KEY} must be an object, got ${
-        Array.isArray(raw) ? "an array" : typeof raw
-      }.`,
+      `globalThis.${RUNTIME_GLOBAL_KEY} must be an object, got ${Array.isArray(raw) ? 'an array' : typeof raw}.`,
     );
   }
   return raw;
 }
 
 /** Reject anything outside `allowed`, naming the valid fields. */
-function checkFields(
-  patch: Record<string, unknown>,
-  allowed: readonly string[],
-  path: string,
-): void {
+function checkFields(patch: Record<string, unknown>, allowed: readonly string[], path: string): void {
   for (const key of Object.keys(patch)) {
     if (!allowed.includes(key)) {
       throw new Error(
         `${path}.${key} is not overridable. Valid fields: ${allowed.join(
-          ", ",
+          ', ',
         )}. genesis and dotns are deliberately fixed at build time.`,
       );
     }
@@ -239,32 +221,23 @@ function checkFields(
 }
 
 function asObject(value: unknown, path: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     throw new Error(
-      `${path} must be an object, got ${
-        value === null
-          ? "null"
-          : Array.isArray(value)
-            ? "an array"
-            : typeof value
-      }.`,
+      `${path} must be an object, got ${value === null ? 'null' : Array.isArray(value) ? 'an array' : typeof value}.`,
     );
   }
   return value as Record<string, unknown>;
 }
 
 function asStrings(value: unknown, path: string): readonly string[] {
-  if (
-    !Array.isArray(value) ||
-    value.some((entry) => typeof entry !== "string")
-  ) {
+  if (!Array.isArray(value) || value.some(entry => typeof entry !== 'string')) {
     throw new Error(`${path} must be an array of strings.`);
   }
   return value as readonly string[];
 }
 
 function asString(value: unknown, path: string): string {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     throw new Error(`${path} must be a string.`);
   }
   return value;
@@ -276,79 +249,44 @@ function asString(value: unknown, path: string): string {
 // note `genesis` and `blockTimeMs` are copied from the built-in and never read
 // from the patch.
 
-function mergeChain(
-  base: ChainService,
-  patch: unknown,
-  path: string,
-): ChainService {
+function mergeChain(base: ChainService, patch: unknown, path: string): ChainService {
   const p = asObject(patch, path);
-  checkFields(p, ["rpcs"], path);
+  checkFields(p, ['rpcs'], path);
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
-    rpcs:
-      p["rpcs"] === undefined
-        ? base.rpcs
-        : asStrings(p["rpcs"], `${path}.rpcs`),
+    rpcs: p['rpcs'] === undefined ? base.rpcs : asStrings(p['rpcs'], `${path}.rpcs`),
   };
 }
 
-function mergeBulletin(
-  base: BulletinService,
-  patch: unknown,
-  path: string,
-): BulletinService {
+function mergeBulletin(base: BulletinService, patch: unknown, path: string): BulletinService {
   const p = asObject(patch, path);
-  checkFields(p, ["rpcs", "ipfsGateways"], path);
+  checkFields(p, ['rpcs', 'ipfsGateways'], path);
   return {
     genesis: base.genesis,
     blockTimeMs: base.blockTimeMs,
-    rpcs:
-      p["rpcs"] === undefined
-        ? base.rpcs
-        : asStrings(p["rpcs"], `${path}.rpcs`),
+    rpcs: p['rpcs'] === undefined ? base.rpcs : asStrings(p['rpcs'], `${path}.rpcs`),
     ipfsGateways:
-      p["ipfsGateways"] === undefined
-        ? base.ipfsGateways
-        : asStrings(p["ipfsGateways"], `${path}.ipfsGateways`),
+      p['ipfsGateways'] === undefined ? base.ipfsGateways : asStrings(p['ipfsGateways'], `${path}.ipfsGateways`),
   };
 }
 
-function mergeNetwork(
-  base: ServicesConfig,
-  patch: unknown,
-  path: string,
-): ServicesConfig {
+function mergeNetwork(base: ServicesConfig, patch: unknown, path: string): ServicesConfig {
   const p = asObject(patch, path);
-  checkFields(p, ["label", "relay", "assethub", "bulletin", "people"], path);
+  checkFields(p, ['label', 'relay', 'assethub', 'bulletin', 'people'], path);
   return {
     ...base,
-    label:
-      p["label"] === undefined
-        ? base.label
-        : asString(p["label"], `${path}.label`),
-    relay:
-      p["relay"] === undefined
-        ? base.relay
-        : mergeChain(base.relay, p["relay"], `${path}.relay`),
+    label: p['label'] === undefined ? base.label : asString(p['label'], `${path}.label`),
+    relay: p['relay'] === undefined ? base.relay : mergeChain(base.relay, p['relay'], `${path}.relay`),
     assethub:
-      p["assethub"] === undefined
-        ? base.assethub
-        : mergeChain(base.assethub, p["assethub"], `${path}.assethub`),
+      p['assethub'] === undefined ? base.assethub : mergeChain(base.assethub, p['assethub'], `${path}.assethub`),
     bulletin:
-      p["bulletin"] === undefined
-        ? base.bulletin
-        : mergeBulletin(base.bulletin, p["bulletin"], `${path}.bulletin`),
-    people:
-      p["people"] === undefined
-        ? base.people
-        : mergeChain(base.people, p["people"], `${path}.people`),
+      p['bulletin'] === undefined ? base.bulletin : mergeBulletin(base.bulletin, p['bulletin'], `${path}.bulletin`),
+    people: p['people'] === undefined ? base.people : mergeChain(base.people, p['people'], `${path}.people`),
   };
 }
 
-function applyNetworkOverrides(
-  base: Record<NetworkName, ServicesConfig>,
-): Record<NetworkName, ServicesConfig> {
+function applyNetworkOverrides(base: Record<NetworkName, ServicesConfig>): Record<NetworkName, ServicesConfig> {
   const patches = readRuntimeConfig()?.networks;
   if (patches === undefined) {
     return base;
@@ -360,10 +298,8 @@ function applyNetworkOverrides(
     // key, and `in` would accept it as a known network.
     if (!Object.prototype.hasOwnProperty.call(base, name)) {
       throw new Error(
-        `${label} targets unknown network "${name}". Valid values: ${Object.keys(
-          base,
-        ).join(
-          ", ",
+        `${label} targets unknown network "${name}". Valid values: ${Object.keys(base).join(
+          ', ',
         )}. Overrides patch existing networks; they cannot add new ones.`,
       );
     }
@@ -374,17 +310,12 @@ function applyNetworkOverrides(
 }
 
 /** Built-in networks with any runtime endpoint overrides applied. */
-export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<
-  NetworkName,
-  ServicesConfig
-> = applyNetworkOverrides(BUILTIN_NETWORK_SERVICES);
+export const NETWORK_NAME_TO_SERVICES_CONFIG: Record<NetworkName, ServicesConfig> =
+  applyNetworkOverrides(BUILTIN_NETWORK_SERVICES);
 
-export const NETWORK_KEY = "dotli:network";
+export const NETWORK_KEY = 'dotli:network';
 
-const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([
-  NetworkName.PASEO,
-  NetworkName.PREVIEWNET,
-]);
+const VALID_NETWORKS: ReadonlySet<string> = new Set<Network>([NetworkName.PASEO, NetworkName.PREVIEWNET]);
 
 /**
  * Networks this deployment offers in the selector.
@@ -402,14 +333,11 @@ export function getEnabledNetworks(): Network[] {
           entries: runtimeEnabled,
         }
       : {
-          label: "VITE_NETWORKS",
-          entries: (
-            (import.meta as { env?: Partial<ImportMetaEnv> }).env
-              ?.VITE_NETWORKS ?? ""
-          ).split(","),
+          label: 'VITE_NETWORKS',
+          entries: ((import.meta as { env?: Partial<ImportMetaEnv> }).env?.VITE_NETWORKS ?? '').split(','),
         };
 
-  if (runtimeEnabled === undefined && source.entries.join("").trim() === "") {
+  if (runtimeEnabled === undefined && source.entries.join('').trim() === '') {
     throw new Error(
       'VITE_NETWORKS is not set. The deployment must declare a comma-separated list of networks (e.g. "paseo-next-v2,previewnet").',
     );
@@ -419,14 +347,12 @@ export function getEnabledNetworks(): Network[] {
   const parsed: Network[] = [];
   for (const entry of source.entries) {
     const trimmed = entry.trim();
-    if (trimmed === "") {
+    if (trimmed === '') {
       continue;
     }
     if (!isValidNetwork(trimmed)) {
       throw new Error(
-        `${source.label} contains an unknown network "${trimmed}". Valid values: ${[
-          ...VALID_NETWORKS,
-        ].join(", ")}.`,
+        `${source.label} contains an unknown network "${trimmed}". Valid values: ${[...VALID_NETWORKS].join(', ')}.`,
       );
     }
     if (!seen.has(trimmed)) {
@@ -435,9 +361,7 @@ export function getEnabledNetworks(): Network[] {
     }
   }
   if (parsed.length === 0) {
-    throw new Error(
-      `${source.label} is empty after parsing. Provide at least one valid network.`,
-    );
+    throw new Error(`${source.label} is empty after parsing. Provide at least one valid network.`);
   }
   return parsed;
 }
@@ -445,7 +369,7 @@ export function getEnabledNetworks(): Network[] {
 export function defaultNetwork(): Network {
   const [first] = getEnabledNetworks();
   if (first === undefined) {
-    throw new Error("No enabled networks; expected at least one.");
+    throw new Error('No enabled networks; expected at least one.');
   }
   return first;
 }
@@ -516,12 +440,7 @@ export function getActiveServicesConfig(): ServicesConfig {
 export function getActiveSupportedGenesisHashes(): Set<string> {
   const cfg = getActiveServicesConfig();
   return new Set(
-    [
-      cfg.relay.genesis,
-      cfg.assethub.genesis,
-      cfg.bulletin.genesis,
-      cfg.people.genesis,
-    ].map((h) => h.toLowerCase()),
+    [cfg.relay.genesis, cfg.assethub.genesis, cfg.bulletin.genesis, cfg.people.genesis].map(h => h.toLowerCase()),
   );
 }
 
@@ -534,15 +453,15 @@ export function getActiveSupportedGenesisHashes(): Set<string> {
  * the resolver `ChainKey`. Config cannot import the resolver, so
  * `ChainKey` deliberately stays out of here.
  */
-export const CHAIN_ROLES = ["relay", "assethub", "bulletin", "people"] as const;
+export const CHAIN_ROLES = ['relay', 'assethub', 'bulletin', 'people'] as const;
 export type ChainRole = (typeof CHAIN_ROLES)[number];
 
 /** What the visitor is told each chain is for. */
 export const CHAIN_ROLE_LABELS: Record<ChainRole, string> = {
-  relay: "Relay",
-  assethub: "Hub",
-  bulletin: "Storage",
-  people: "Identity",
+  relay: 'Relay',
+  assethub: 'Hub',
+  bulletin: 'Storage',
+  people: 'Identity',
 };
 
 export interface ActiveChainRole {
@@ -557,7 +476,7 @@ export interface ActiveChainRole {
 /** Every chain of the active network, in the order a visitor should read them. */
 export function getActiveChainRoles(): ActiveChainRole[] {
   const cfg = getActiveServicesConfig();
-  return CHAIN_ROLES.map((role) => {
+  return CHAIN_ROLES.map(role => {
     const service = cfg[role];
     return {
       role,
@@ -573,9 +492,7 @@ export function getActiveChainRoles(): ActiveChainRole[] {
 export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
   const key = genesisHash.toLowerCase();
   const cfg = getActiveServicesConfig();
-  return (
-    CHAIN_ROLES.find((role) => cfg[role].genesis.toLowerCase() === key) ?? null
-  );
+  return CHAIN_ROLES.find(role => cfg[role].genesis.toLowerCase() === key) ?? null;
 }
 
 /**
@@ -591,25 +508,21 @@ export function chainRoleForGenesis(genesisHash: string): ChainRole | null {
  */
 export function getActiveGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
-  return [cfg.relay, cfg.assethub, cfg.people].filter((c) => c.rpcs.length > 0);
+  return [cfg.relay, cfg.assethub, cfg.people].filter(c => c.rpcs.length > 0);
 }
 
 /** Genesis hashes (lowercased) advertised to dApps in RPC-gateway mode. */
 export function getActiveGatewaySupportedGenesisHashes(): Set<string> {
-  return new Set(getActiveGatewayChains().map((c) => c.genesis.toLowerCase()));
+  return new Set(getActiveGatewayChains().map(c => c.genesis.toLowerCase()));
 }
 
 /** Genesis hashes (lowercased) the core gateway seam can serve. */
 export function getActiveCoreGatewaySupportedGenesisHashes(): Set<string> {
-  return new Set(
-    getActiveCoreGatewayChains().map((c) => c.genesis.toLowerCase()),
-  );
+  return new Set(getActiveCoreGatewayChains().map(c => c.genesis.toLowerCase()));
 }
 
 /** Gateway chains accepted by the shared Rust-core connection callback. */
 export function getActiveCoreGatewayChains(): ChainService[] {
   const cfg = getActiveServicesConfig();
-  return [...getActiveGatewayChains(), cfg.bulletin].filter(
-    (chain) => chain.rpcs.length > 0,
-  );
+  return [...getActiveGatewayChains(), cfg.bulletin].filter(chain => chain.rpcs.length > 0);
 }

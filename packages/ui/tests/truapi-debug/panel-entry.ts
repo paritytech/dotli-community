@@ -6,12 +6,9 @@
 // import; every test goes through `loadPanel()`.
 
 export interface PanelModule {
-  setupTruapiDebugPanel: (options?: {
-    capacity?: number;
-    startCollapsed?: boolean;
-  }) => () => void;
+  setupTruapiDebugPanel: (options?: { capacity?: number; startCollapsed?: boolean }) => () => void;
 }
 
 export function loadPanel(): Promise<PanelModule> {
-  return import("../../src/components/truapi-debug/mount.js");
+  return import('../../src/components/truapi-debug/mount.js');
 }

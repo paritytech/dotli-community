@@ -1,13 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For, Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type {
-  ALL_PERMISSIONS,
-  EnforceablePermissionName,
-  PermissionStatus,
-} from "../../permissions.js";
+import { For, Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { ALL_PERMISSIONS, EnforceablePermissionName, PermissionStatus } from '../../permissions.js';
 
 /** Trusted host SVG for each permission row's icon. */
 export const PERM_ICONS: Readonly<Record<string, string>> = {
@@ -39,12 +35,12 @@ export const PERM_ICONS: Readonly<Record<string, string>> = {
 };
 
 const STATUS_LABELS: Record<PermissionStatus, string> = {
-  ask: "Ask (Default)",
-  granted: "Allowed",
-  denied: "Denied",
+  ask: 'Ask (Default)',
+  granted: 'Allowed',
+  denied: 'Denied',
 };
 
-const STATUS_ORDER: readonly PermissionStatus[] = ["ask", "granted", "denied"];
+const STATUS_ORDER: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
 
 export interface PermissionRowProps {
   perm: (typeof ALL_PERMISSIONS)[number];
@@ -69,8 +65,7 @@ export interface PermissionRowProps {
  */
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
   const nameId = (): string => `permissions-popover-name-${props.perm.name}`;
-  const statusId = (): string =>
-    `permissions-popover-status-${props.perm.name}`;
+  const statusId = (): string => `permissions-popover-status-${props.perm.name}`;
 
   // Clicks stop here so the document-level closers (the popover's and the
   // open dropdown's) do not see them, as topbar.ts did.
@@ -80,18 +75,14 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
   };
 
   const onMenuKeyDown = (e: KeyboardEvent): void => {
-    if (e.key !== "ArrowDown" && e.key !== "ArrowUp") {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
       return;
     }
     e.preventDefault();
     const menu = e.currentTarget as HTMLElement;
-    const options = Array.from(
-      menu.querySelectorAll<HTMLButtonElement>('[role="option"]'),
-    );
-    const index = options.findIndex(
-      (option) => option === document.activeElement,
-    );
-    const step = e.key === "ArrowDown" ? 1 : -1;
+    const options = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role="option"]'));
+    const index = options.findIndex(option => option === document.activeElement);
+    const step = e.key === 'ArrowDown' ? 1 : -1;
     options[(index + step + options.length) % options.length]?.focus();
   };
 
@@ -100,21 +91,21 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
       <span
         class="permissions-popover-icon"
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-        innerHTML={PERM_ICONS[props.perm.name] ?? ""}
+        innerHTML={PERM_ICONS[props.perm.name] ?? ''}
       />
       <span class="permissions-popover-name" id={nameId()}>
         {props.perm.label}
       </span>
       <div class="permissions-popover-select-wrap">
         <button
-          ref={(el) => {
-            el.addEventListener("click", onTriggerClick);
+          ref={el => {
+            el.addEventListener('click', onTriggerClick);
           }}
           type="button"
           class="permissions-popover-select"
           id={`permissions-popover-select-${props.perm.name}`}
           aria-haspopup="listbox"
-          aria-expanded={props.open ? "true" : "false"}
+          aria-expanded={props.open ? 'true' : 'false'}
           // "<permission> <status>", so screen readers announce which
           // permission this select changes, not just its current value.
           aria-labelledby={`${nameId()} ${statusId()}`}
@@ -137,8 +128,8 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
         </button>
         <Show when={props.open}>
           <div
-            ref={(el) => {
-              el.addEventListener("keydown", onMenuKeyDown);
+            ref={el => {
+              el.addEventListener('keydown', onMenuKeyDown);
               props.menuRef(el);
             }}
             class="permissions-popover-menu"
@@ -146,31 +137,23 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
             aria-label={`${props.perm.label} permission`}
           >
             <For each={STATUS_ORDER}>
-              {(status) => (
+              {status => (
                 <button
-                  ref={(el) => {
-                    el.addEventListener("click", (e) => {
+                  ref={el => {
+                    el.addEventListener('click', e => {
                       e.stopPropagation();
                       props.choose(props.perm.name, status);
                     });
                   }}
                   type="button"
-                  class={[
-                    "permissions-popover-menu-item",
-                    { selected: status === props.status },
-                  ]}
+                  class={['permissions-popover-menu-item', { selected: status === props.status }]}
                   role="option"
-                  aria-selected={status === props.status ? "true" : "false"}
+                  aria-selected={status === props.status ? 'true' : 'false'}
                 >
                   <span>{STATUS_LABELS[status]}</span>
                   <Show when={status === props.status}>
                     <span class="permissions-popover-menu-check">
-                      <svg
-                        viewBox="0 0 12 10"
-                        width="12"
-                        height="10"
-                        aria-hidden="true"
-                      >
+                      <svg viewBox="0 0 12 10" width="12" height="10" aria-hidden="true">
                         <path
                           d="M1 5l3.5 3.5L11 1.5"
                           fill="none"

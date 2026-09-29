@@ -12,32 +12,30 @@
  * Env overrides: PORT, COMBO_TIMEOUT_MS.
  */
 
-import { expect, type Page } from "@playwright/test";
+import { expect, type Page } from '@playwright/test';
 import {
   assertNoContractKeys,
   getProductFrame,
   getProductLocation,
   waitForSandboxErrorPage,
-} from "../product-frame.js";
-import { test } from "./helpers/shared-mode-reset.js";
-import { seedBackend as seedChainBackend } from "./fixtures/settings.js";
-import { PORT } from "../env.js";
+} from '../product-frame.js';
+import { test } from './helpers/shared-mode-reset.js';
+import { seedBackend as seedChainBackend } from './fixtures/settings.js';
+import { PORT } from '../env.js';
 
-const LABEL = "host-playground";
-const TIMEOUT_MS = parseInt(process.env["COMBO_TIMEOUT_MS"] ?? "45000", 10);
+const LABEL = 'host-playground';
+const TIMEOUT_MS = parseInt(process.env['COMBO_TIMEOUT_MS'] ?? '45000', 10);
 
 const HOST_BY_LABEL = `http://${LABEL}.localhost:${PORT}`;
 
 // Navigation behaviour is the same for every backend, so we pin
 // `rpc-gateway` (fastest/least-flaky) to keep the suite deterministic.
 async function seedBackend(page: Page): Promise<void> {
-  await seedChainBackend(page, "rpc-gateway");
+  await seedChainBackend(page, 'rpc-gateway');
 }
 
-test.describe("URL parameters are forwarded into the product", () => {
-  test("when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product", async ({
-    page,
-  }) => {
+test.describe('URL parameters are forwarded into the product', () => {
+  test('when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product', async ({ page }) => {
     // Given
     await seedBackend(page);
 
@@ -47,12 +45,12 @@ test.describe("URL parameters are forwarded into the product", () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.pathname).toBe("/foo");
-    expect(loc.search).toBe("?a=b");
-    expect(loc.hash).toBe("#h");
+    expect(loc.pathname).toBe('/foo');
+    expect(loc.search).toBe('?a=b');
+    expect(loc.hash).toBe('#h');
   });
 
-  test("when I open http://<label>.dot.li/foo%20bar, the percent-encoding survives into the product pathname", async ({
+  test('when I open http://<label>.dot.li/foo%20bar, the percent-encoding survives into the product pathname', async ({
     page,
   }) => {
     // Given
@@ -64,12 +62,10 @@ test.describe("URL parameters are forwarded into the product", () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.pathname).toBe("/foo%20bar");
+    expect(loc.pathname).toBe('/foo%20bar');
   });
 
-  test("when I open http://<label>.dot.li/?a=1&a=2, both values reach the product", async ({
-    page,
-  }) => {
+  test('when I open http://<label>.dot.li/?a=1&a=2, both values reach the product', async ({ page }) => {
     // Given
     await seedBackend(page);
 
@@ -79,12 +75,10 @@ test.describe("URL parameters are forwarded into the product", () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(new URLSearchParams(loc.search).getAll("a")).toEqual(["1", "2"]);
+    expect(new URLSearchParams(loc.search).getAll('a')).toEqual(['1', '2']);
   });
 
-  test("when I open http://<label>.dot.li/?a=, the empty query value reaches the product", async ({
-    page,
-  }) => {
+  test('when I open http://<label>.dot.li/?a=, the empty query value reaches the product', async ({ page }) => {
     // Given
     await seedBackend(page);
 
@@ -94,15 +88,15 @@ test.describe("URL parameters are forwarded into the product", () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.search).toBe("?a=");
+    expect(loc.search).toBe('?a=');
   });
 });
 
-test.describe("Host URL bar preserves the entered URL after render", () => {
+test.describe('Host URL bar preserves the entered URL after render', () => {
   // `applyUrlSettings` canonicalises the URL on every load so non-default
   // settings axes (rpc-gateway here) get re-inserted. Assert the user's
   // own params survive, not that canonicalisation is a no-op.
-  test("after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h", async ({
+  test('after the product renders from http://<label>.dot.li/foo?a=b#h, the URL bar still shows /foo?a=b#h', async ({
     page,
   }) => {
     // Given
@@ -114,16 +108,14 @@ test.describe("Host URL bar preserves the entered URL after render", () => {
 
     // Then
     const url = new URL(page.url());
-    expect(url.pathname).toBe("/foo");
-    expect(url.searchParams.get("a")).toBe("b");
-    expect(url.hash).toBe("#h");
+    expect(url.pathname).toBe('/foo');
+    expect(url.searchParams.get('a')).toBe('b');
+    expect(url.hash).toBe('#h');
   });
 });
 
-test.describe("Reloading the page preserves the URL", () => {
-  test("when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload", async ({
-    page,
-  }) => {
+test.describe('Reloading the page preserves the URL', () => {
+  test('when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload', async ({ page }) => {
     // Given
     await seedBackend(page);
     await page.goto(`${HOST_BY_LABEL}/foo?a=b`);
@@ -135,13 +127,13 @@ test.describe("Reloading the page preserves the URL", () => {
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.pathname).toBe("/foo");
-    expect(loc.search).toBe("?a=b");
-    expect(new URL(page.url()).pathname).toBe("/foo");
+    expect(loc.pathname).toBe('/foo');
+    expect(loc.search).toBe('?a=b');
+    expect(new URL(page.url()).pathname).toBe('/foo');
   });
 });
 
-test.describe("Sandbox URL hygiene: host contract keys never reach the product", () => {
+test.describe('Sandbox URL hygiene: host contract keys never reach the product', () => {
   test("with a cold cache, when the product loads, the host contract keys are not visible in the product's URL", async ({
     page,
   }) => {
@@ -154,7 +146,7 @@ test.describe("Sandbox URL hygiene: host contract keys never reach the product",
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.search).toBe("?a=b");
+    expect(loc.search).toBe('?a=b');
     assertNoContractKeys(loc.search);
   });
 
@@ -174,21 +166,21 @@ test.describe("Sandbox URL hygiene: host contract keys never reach the product",
     // Then
     const product = await getProductFrame(page, TIMEOUT_MS);
     const loc = await getProductLocation(product);
-    expect(loc.search).toBe("?a=b");
+    expect(loc.search).toBe('?a=b');
     assertNoContractKeys(loc.search);
   });
 });
 
-test.describe("Validator regression guards", () => {
-  test("when the sandbox receives an unknown chainBackend value, the sandbox renders an error page instead of guessing a default", async ({
+test.describe('Validator regression guards', () => {
+  test('when the sandbox receives an unknown chainBackend value, the sandbox renders an error page instead of guessing a default', async ({
     browser,
   }) => {
     // Given
     const context = await browser.newContext({
-      serviceWorkers: "allow",
+      serviceWorkers: 'allow',
     });
     await context.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "rpc-gateway");
+      localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
     });
     // Inject a bogus contract value into the sandbox frame's URL BEFORE its
     // main.ts runs. `route.continue({ url })` only changes the fetch URL.
@@ -198,12 +190,12 @@ test.describe("Validator regression guards", () => {
     // history.replaceState here is the only reliable way to corrupt the
     // sandbox URL the validator actually reads.
     await context.addInitScript(() => {
-      if (!window.location.host.includes(".app.localhost")) {
+      if (!window.location.host.includes('.app.localhost')) {
         return;
       }
       const u = new URL(window.location.href);
-      u.searchParams.set("chainBackend", "bogus");
-      history.replaceState(null, "", u.toString());
+      u.searchParams.set('chainBackend', 'bogus');
+      history.replaceState(null, '', u.toString());
     });
     const page = await context.newPage();
 
@@ -213,14 +205,14 @@ test.describe("Validator regression guards", () => {
 
       // Then
       const reason = await waitForSandboxErrorPage(page, TIMEOUT_MS);
-      expect(reason).toContain("chainBackend");
-      expect(reason).toContain("bogus");
+      expect(reason).toContain('chainBackend');
+      expect(reason).toContain('bogus');
     } finally {
       await context.close();
     }
   });
 
-  test("when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator", async ({
+  test('when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator', async ({
     page,
   }) => {
     // Given
@@ -234,15 +226,13 @@ test.describe("Validator regression guards", () => {
     // The pre-PR validator would have rejected `ref` as an unknown contract
     // key and rendered the error page. Assert no error page is showing.
     const errorVisible = await page
-      .locator(".error-page-title")
+      .locator('.error-page-title')
       .first()
       .isVisible()
       .catch(() => false);
-    expect(errorVisible, "unexpected error page for user query key").toBe(
-      false,
-    );
+    expect(errorVisible, 'unexpected error page for user query key').toBe(false);
     const loc = await getProductLocation(product);
-    expect(new URLSearchParams(loc.search).get("ref")).toBe("42");
+    expect(new URLSearchParams(loc.search).get('ref')).toBe('42');
     assertNoContractKeys(loc.search);
   });
 
@@ -264,21 +254,21 @@ test.describe("Validator regression guards", () => {
     // the user's `?chainBackend=foo` vanishes silently from the product's URL.
     // Pinning this so a future "passthrough user contract keys" change can't
     // land without revisiting the question.
-    expect(new URLSearchParams(loc.search).has("chainBackend")).toBe(false);
+    expect(new URLSearchParams(loc.search).has('chainBackend')).toBe(false);
     assertNoContractKeys(loc.search);
   });
 });
 
-test.describe("Sandbox side-effects from URL contract keys", () => {
-  test("when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads", async ({
+test.describe('Sandbox side-effects from URL contract keys', () => {
+  test('when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads', async ({
     browser,
   }) => {
     // Given
     const context = await browser.newContext({
-      serviceWorkers: "allow",
+      serviceWorkers: 'allow',
     });
     await context.addInitScript(() => {
-      localStorage.setItem("dotli:chain-backend", "rpc-gateway");
+      localStorage.setItem('dotli:chain-backend', 'rpc-gateway');
     });
     const page = await context.newPage();
 
@@ -290,26 +280,26 @@ test.describe("Sandbox side-effects from URL contract keys", () => {
       await page.goto(`${HOST_BY_LABEL}/`);
       let product = await getProductFrame(page, TIMEOUT_MS);
 
-      const PURGE_MARKER_DB = "__nav-spec-fullreset-marker";
+      const PURGE_MARKER_DB = '__nav-spec-fullreset-marker';
       await product.evaluate(async (dbName: string) => {
         await new Promise<void>((resolve, reject) => {
           const req = indexedDB.open(dbName, 1);
           req.onupgradeneeded = () => {
-            req.result.createObjectStore("k");
+            req.result.createObjectStore('k');
           };
           req.onsuccess = () => {
-            const tx = req.result.transaction("k", "readwrite");
-            tx.objectStore("k").put("alive", "marker");
+            const tx = req.result.transaction('k', 'readwrite');
+            tx.objectStore('k').put('alive', 'marker');
             tx.oncomplete = () => {
               req.result.close();
               resolve();
             };
             tx.onerror = () => {
-              reject(tx.error ?? new Error("marker write failed"));
+              reject(tx.error ?? new Error('marker write failed'));
             };
           };
           req.onerror = () => {
-            reject(req.error ?? new Error("marker db open failed"));
+            reject(req.error ?? new Error('marker db open failed'));
           };
         });
       }, PURGE_MARKER_DB);
@@ -325,9 +315,7 @@ test.describe("Sandbox side-effects from URL contract keys", () => {
       // Then
       const dbNames = await product.evaluate(async () => {
         const dbs = await indexedDB.databases();
-        return dbs
-          .map((d) => d.name)
-          .filter((n): n is string => typeof n === "string");
+        return dbs.map(d => d.name).filter((n): n is string => typeof n === 'string');
       });
       expect(dbNames).not.toContain(PURGE_MARKER_DB);
       // The contract key must not leak into the product's URL either.

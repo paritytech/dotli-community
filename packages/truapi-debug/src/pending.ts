@@ -14,11 +14,7 @@
 // a transaction, which is where the host actually stalls. Host lifecycle
 // events are short-lived and already grouped in the timeline.
 
-import {
-  firstNewIndex,
-  type StoredEvent,
-  type StoredTruapiEvent,
-} from "./event-store.js";
+import { firstNewIndex, type StoredEvent, type StoredTruapiEvent } from './event-store.js';
 
 /** Requests outstanding for longer than this are called out rather than just
  *  counted, so a hung call is findable without reading every row. */
@@ -29,7 +25,7 @@ export const SLOW_AFTER_MS = 3000;
  * product, so two products in the same tab can both be on `p:1`.
  */
 export function callKeyOf(ev: StoredTruapiEvent): string {
-  return `${ev.productId ?? "dotli"}::${ev.requestId}`;
+  return `${ev.productId ?? 'dotli'}::${ev.requestId}`;
 }
 
 /**
@@ -41,7 +37,7 @@ export function callKeyOf(ev: StoredTruapiEvent): string {
  * initiated the call while the suffix does not.
  */
 export function pendingKeyOf(ev: StoredEvent): string | null {
-  if (ev.kind !== "truapi" || !ev.tag.endsWith("_request")) {
+  if (ev.kind !== 'truapi' || !ev.tag.endsWith('_request')) {
     return null;
   }
   return callKeyOf(ev);
@@ -56,11 +52,11 @@ export function openCalls(events: readonly StoredEvent[]): Map<string, number> {
   const answered = new Set<string>();
 
   for (const ev of events) {
-    if (ev.kind !== "truapi") {
+    if (ev.kind !== 'truapi') {
       continue;
     }
     const key = callKeyOf(ev);
-    if (ev.tag.endsWith("_response")) {
+    if (ev.tag.endsWith('_response')) {
       answered.add(key);
     } else if (!requestedAt.has(key)) {
       requestedAt.set(key, ev.receivedAt);
@@ -112,12 +108,12 @@ export class OpenCallTracker {
       if (ev.seq >= firstSeq) {
         break;
       }
-      if (ev.kind !== "truapi") {
+      if (ev.kind !== 'truapi') {
         continue;
       }
       const key = callKeyOf(ev);
       touched.add(key);
-      if (ev.tag.endsWith("_response")) {
+      if (ev.tag.endsWith('_response')) {
         const left = (this.replies.get(key) ?? 1) - 1;
         if (left > 0) {
           this.replies.set(key, left);
@@ -134,12 +130,12 @@ export class OpenCallTracker {
     }
     for (let i = firstNewIndex(prev, events); i < events.length; i++) {
       const ev = events[i];
-      if (ev?.kind !== "truapi") {
+      if (ev?.kind !== 'truapi') {
         continue;
       }
       const key = callKeyOf(ev);
       touched.add(key);
-      if (ev.tag.endsWith("_response")) {
+      if (ev.tag.endsWith('_response')) {
         this.replies.set(key, (this.replies.get(key) ?? 0) + 1);
       } else {
         const times = this.requests.get(key);
@@ -152,9 +148,7 @@ export class OpenCallTracker {
     }
     const changed = new Set<string>();
     for (const key of touched) {
-      const since = this.replies.has(key)
-        ? undefined
-        : this.requests.get(key)?.[0];
+      const since = this.replies.has(key) ? undefined : this.requests.get(key)?.[0];
       if (since === this.openByKey.get(key)) {
         continue;
       }

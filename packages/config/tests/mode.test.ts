@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   BACKEND_KEY,
   configureModeStorage,
@@ -9,18 +9,18 @@ import {
   getBackend,
   isSharedWorkerAvailable,
   type ModeStorage,
-} from "../src/mode.js";
+} from '../src/mode.js';
 
 function makeMemoryStorage(): ModeStorage & {
   dump: () => Record<string, string>;
 } {
   const map = new Map<string, string>();
   return {
-    getItem: (key) => map.get(key) ?? null,
+    getItem: key => map.get(key) ?? null,
     setItem: (key, value) => {
       map.set(key, value);
     },
-    removeItem: (key) => {
+    removeItem: key => {
       map.delete(key);
     },
     dump: () => Object.fromEntries(map),
@@ -30,7 +30,7 @@ function makeMemoryStorage(): ModeStorage & {
 const globalAny = globalThis as { SharedWorker?: unknown };
 
 function installSharedWorker(): () => void {
-  const hadPrior = "SharedWorker" in globalAny;
+  const hadPrior = 'SharedWorker' in globalAny;
   const prior = globalAny.SharedWorker;
   globalAny.SharedWorker = class {
     readonly port: unknown = null;
@@ -45,7 +45,7 @@ function installSharedWorker(): () => void {
 }
 
 function ensureNoSharedWorker(): () => void {
-  const hadPrior = "SharedWorker" in globalAny;
+  const hadPrior = 'SharedWorker' in globalAny;
   const prior = globalAny.SharedWorker;
   if (hadPrior) {
     delete globalAny.SharedWorker;
@@ -57,8 +57,8 @@ function ensureNoSharedWorker(): () => void {
   };
 }
 
-describe("isSharedWorkerAvailable", () => {
-  it("returns true when SharedWorker is defined", () => {
+describe('isSharedWorkerAvailable', () => {
+  it('returns true when SharedWorker is defined', () => {
     const restore = installSharedWorker();
     try {
       expect(isSharedWorkerAvailable()).toBe(true);
@@ -67,7 +67,7 @@ describe("isSharedWorkerAvailable", () => {
     }
   });
 
-  it("returns false when SharedWorker is undefined", () => {
+  it('returns false when SharedWorker is undefined', () => {
     const restore = ensureNoSharedWorker();
     try {
       expect(isSharedWorkerAvailable()).toBe(false);
@@ -77,27 +77,27 @@ describe("isSharedWorkerAvailable", () => {
   });
 });
 
-describe("defaultBackend", () => {
-  it("returns smoldot-direct even when SharedWorker is available", () => {
+describe('defaultBackend', () => {
+  it('returns smoldot-direct even when SharedWorker is available', () => {
     const restore = installSharedWorker();
     try {
-      expect(defaultBackend()).toBe("smoldot-direct");
+      expect(defaultBackend()).toBe('smoldot-direct');
     } finally {
       restore();
     }
   });
 
-  it("returns smoldot-direct when SharedWorker is missing", () => {
+  it('returns smoldot-direct when SharedWorker is missing', () => {
     const restore = ensureNoSharedWorker();
     try {
-      expect(defaultBackend()).toBe("smoldot-direct");
+      expect(defaultBackend()).toBe('smoldot-direct');
     } finally {
       restore();
     }
   });
 });
 
-describe("getBackend", () => {
+describe('getBackend', () => {
   let storage: ReturnType<typeof makeMemoryStorage>;
 
   beforeEach(() => {
@@ -113,54 +113,54 @@ describe("getBackend", () => {
     });
   });
 
-  it("seeds smoldot-direct on first visit even when SharedWorker is supported", () => {
+  it('seeds smoldot-direct on first visit even when SharedWorker is supported', () => {
     const restore = installSharedWorker();
     try {
-      expect(getBackend()).toBe("smoldot-direct");
-      expect(storage.dump()[BACKEND_KEY]).toBe("smoldot-direct");
+      expect(getBackend()).toBe('smoldot-direct');
+      expect(storage.dump()[BACKEND_KEY]).toBe('smoldot-direct');
     } finally {
       restore();
     }
   });
 
-  it("seeds smoldot-direct on first visit when SharedWorker is missing", () => {
+  it('seeds smoldot-direct on first visit when SharedWorker is missing', () => {
     const restore = ensureNoSharedWorker();
     try {
-      expect(getBackend()).toBe("smoldot-direct");
-      expect(storage.dump()[BACKEND_KEY]).toBe("smoldot-direct");
+      expect(getBackend()).toBe('smoldot-direct');
+      expect(storage.dump()[BACKEND_KEY]).toBe('smoldot-direct');
     } finally {
       restore();
     }
   });
 
-  it("downgrades persisted smoldot-shared-worker and clears the key when unsupported", () => {
-    storage.setItem(BACKEND_KEY, "smoldot-shared-worker");
+  it('downgrades persisted smoldot-shared-worker and clears the key when unsupported', () => {
+    storage.setItem(BACKEND_KEY, 'smoldot-shared-worker');
     const restore = ensureNoSharedWorker();
     try {
-      expect(getBackend()).toBe("smoldot-direct");
+      expect(getBackend()).toBe('smoldot-direct');
       expect(storage.dump()[BACKEND_KEY]).toBeUndefined();
     } finally {
       restore();
     }
   });
 
-  it("keeps persisted smoldot-direct untouched even when SharedWorker is available", () => {
-    storage.setItem(BACKEND_KEY, "smoldot-direct");
+  it('keeps persisted smoldot-direct untouched even when SharedWorker is available', () => {
+    storage.setItem(BACKEND_KEY, 'smoldot-direct');
     const restore = installSharedWorker();
     try {
-      expect(getBackend()).toBe("smoldot-direct");
-      expect(storage.dump()[BACKEND_KEY]).toBe("smoldot-direct");
+      expect(getBackend()).toBe('smoldot-direct');
+      expect(storage.dump()[BACKEND_KEY]).toBe('smoldot-direct');
     } finally {
       restore();
     }
   });
 
-  it("keeps persisted smoldot-shared-worker untouched when supported", () => {
-    storage.setItem(BACKEND_KEY, "smoldot-shared-worker");
+  it('keeps persisted smoldot-shared-worker untouched when supported', () => {
+    storage.setItem(BACKEND_KEY, 'smoldot-shared-worker');
     const restore = installSharedWorker();
     try {
-      expect(getBackend()).toBe("smoldot-shared-worker");
-      expect(storage.dump()[BACKEND_KEY]).toBe("smoldot-shared-worker");
+      expect(getBackend()).toBe('smoldot-shared-worker');
+      expect(storage.dump()[BACKEND_KEY]).toBe('smoldot-shared-worker');
     } finally {
       restore();
     }

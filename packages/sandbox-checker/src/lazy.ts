@@ -6,8 +6,7 @@
 // so index.ts stays pure re-exports, which rolldown's lazy barrel
 // optimization needs to leave unused re-exports out of an importer's chunk.
 
-import type * as SandboxCheckerNamespace from "./sandbox-checker.js";
+import type * as SandboxCheckerNamespace from './sandbox-checker.js';
 
 export type SandboxCheckerModule = typeof SandboxCheckerNamespace;
-export const loadSandboxChecker = (): Promise<SandboxCheckerModule> =>
-  import("./sandbox-checker.js");
+export const loadSandboxChecker = (): Promise<SandboxCheckerModule> => import('./sandbox-checker.js');

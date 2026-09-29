@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Show } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { urlPillStore, type UrlPillState } from "../../state/url-pill.js";
-import { useStore } from "../use-store.js";
-import { VerificationShield } from "./VerificationShield.js";
+import { Show } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { urlPillStore, type UrlPillState } from '../../state/url-pill.js';
+import { useStore } from '../use-store.js';
+import { VerificationShield } from './VerificationShield.js';
 
-type Pill<K extends UrlPillState["kind"]> = Extract<UrlPillState, { kind: K }>;
+type Pill<K extends UrlPillState['kind']> = Extract<UrlPillState, { kind: K }>;
 
 /**
  * The topbar's URL bar (`#topbar-url`), a shell island (see islands.tsx):
@@ -23,13 +23,13 @@ type Pill<K extends UrlPillState["kind"]> = Extract<UrlPillState, { kind: K }>;
  */
 export function UrlPill(): JSX.Element {
   const state = useStore(urlPillStore);
-  const localhost = (): Pill<"localhost"> | undefined => {
+  const localhost = (): Pill<'localhost'> | undefined => {
     const s = state();
-    return s.kind === "localhost" ? s : undefined;
+    return s.kind === 'localhost' ? s : undefined;
   };
-  const product = (): Pill<"product"> | undefined => {
+  const product = (): Pill<'product'> | undefined => {
     const s = state();
-    return s.kind === "product" ? s : undefined;
+    return s.kind === 'product' ? s : undefined;
   };
 
   return (
@@ -38,7 +38,7 @@ export function UrlPill(): JSX.Element {
         when={localhost()}
         fallback={
           <Show when={product()}>
-            {(pill) => (
+            {pill => (
               <div class="topbar-url-pill" id="url-pill">
                 <VerificationShield state={pill().shield} />
                 <span class="topbar-url-text">
@@ -50,7 +50,7 @@ export function UrlPill(): JSX.Element {
           </Show>
         }
       >
-        {(pill) => (
+        {pill => (
           <div class="topbar-url-pill localhost-pill" id="url-pill">
             <svg
               class="localhost-icon"

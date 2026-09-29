@@ -1,33 +1,22 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  Match,
-  Show,
-  Switch,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { isMobileDevice, log } from "@dotli/shared";
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { isMobileDevice, log } from '@dotli/shared';
 
-import { closeAuthModal, retryLogin } from "../../auth-controller.js";
-import {
-  authModalStore,
-  getAuthModalState,
-  type AuthModalView,
-} from "../../state/auth-modal.js";
-import { shallowEqual } from "../../state/create-store.js";
-import { useStore } from "../use-store.js";
-import { createPopover } from "./popover.js";
+import { closeAuthModal, retryLogin } from '../../auth-controller.js';
+import { authModalStore, getAuthModalState, type AuthModalView } from '../../state/auth-modal.js';
+import { shallowEqual } from '../../state/create-store.js';
+import { useStore } from '../use-store.js';
+import { createPopover } from './popover.js';
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
-const POLKADOT_MOBILE_DOWNLOAD_URL = "https://docs.polkadot.com/apps/";
+const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 
-const SCAN_HINT = "Scan with Polkadot Mobile to connect";
+const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
 
-type ErrorView = Extract<AuthModalView, { kind: "error" }>;
+type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 
 /** A drawn QR code, for the payload it encodes. */
 interface DrawnQr {
@@ -36,7 +25,7 @@ interface DrawnQr {
 }
 
 function authButton(): HTMLElement | undefined {
-  return document.getElementById("auth-button") ?? undefined;
+  return document.getElementById('auth-button') ?? undefined;
 }
 
 function Spinner(): JSX.Element {
@@ -63,13 +52,13 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
       </div>
       <div class="auth-modal-pending-title">{props.view.title}</div>
       <div class="auth-modal-pending-subtitle">{props.view.subtitle}</div>
-      <Show when={(props.view.detail ?? "").length > 0}>
+      <Show when={(props.view.detail ?? '').length > 0}>
         <p class="auth-modal-error">{props.view.detail}</p>
       </Show>
       <Show when={props.view.retry}>
         <button
-          ref={(el) => {
-            el.addEventListener("click", () => {
+          ref={el => {
+            el.addEventListener('click', () => {
               props.retry();
             });
           }}
@@ -125,14 +114,14 @@ export function AuthModal(): JSX.Element {
   );
   const pairingPayload = createMemo((): string | null => {
     const v = view();
-    return v?.kind === "pairing" ? v.payload : null;
+    return v?.kind === 'pairing' ? v.payload : null;
   });
 
   // The phone's "Show QR instead": the QR's hint replaces the deeplink's
   // until the next presentation. Login progress keeps whichever is up.
   const [qrShown, setQrShown] = createSignal(false);
-  createEffect(view, (v) => {
-    if (v?.kind !== "authenticating") {
+  createEffect(view, v => {
+    if (v?.kind !== 'authenticating') {
       setQrShown(false);
     }
   });
@@ -143,19 +132,19 @@ export function AuthModal(): JSX.Element {
   // Last payload wins: each code starts a drawing whose result is dropped
   // once the payload is no longer on show.
   const [drawn, setDrawn] = createSignal<DrawnQr | null>(null);
-  createEffect(pairingPayload, (payload) => {
+  createEffect(pairingPayload, payload => {
     if (payload === null) {
       return;
     }
     let current = true;
-    const canvas = document.createElement("canvas");
-    canvas.dataset["qrPayload"] = payload;
-    void import("qrcode")
-      .then((QRCode) =>
+    const canvas = document.createElement('canvas');
+    canvas.dataset['qrPayload'] = payload;
+    void import('qrcode')
+      .then(QRCode =>
         QRCode.default.toCanvas(canvas, payload, {
           width: 200,
           margin: 2,
-          color: { dark: "#000000", light: "#ffffff" },
+          color: { dark: '#000000', light: '#ffffff' },
         }),
       )
       .then(() => {
@@ -167,7 +156,7 @@ export function AuthModal(): JSX.Element {
         }
       })
       .catch((err: unknown) => {
-        log.error("[dot.li] QR render failed:", err);
+        log.error('[dot.li] QR render failed:', err);
       });
     return () => {
       current = false;
@@ -179,7 +168,7 @@ export function AuthModal(): JSX.Element {
   };
 
   const dialog = createPopover({
-    mode: "dialog",
+    mode: 'dialog',
     trigger: authButton,
     surface: () => backdrop,
     closeOnBlockingModal: false,
@@ -193,7 +182,7 @@ export function AuthModal(): JSX.Element {
     },
   });
   // The dialog follows the store.
-  createEffect(open, (isOpen) => {
+  createEffect(open, isOpen => {
     if (!isOpen || backdrop?.isConnected !== false) {
       dialog.setOpen(isOpen);
       return;
@@ -211,17 +200,17 @@ export function AuthModal(): JSX.Element {
   const hint = (): string =>
     mobile && !qrShown()
       ? // Mobile leads with the deeplink button.
-        "Sign in with the Polkadot app on this device"
+        'Sign in with the Polkadot app on this device'
       : SCAN_HINT;
   // Desktop users scan with a phone that already has the app, so the install
   // link only helps on the phone itself, and not once pairing is past the QR.
   const getAppHidden = (): boolean => {
     const kind = state().view.kind;
-    return !mobile || kind === "authenticating" || kind === "error";
+    return !mobile || kind === 'authenticating' || kind === 'error';
   };
   const errorView = (): ErrorView | undefined => {
     const v = view();
-    return v?.kind === "error" ? v : undefined;
+    return v?.kind === 'error' ? v : undefined;
   };
 
   const retry = (): void => {
@@ -241,11 +230,11 @@ export function AuthModal(): JSX.Element {
 
   return (
     <div
-      ref={(el) => {
+      ref={el => {
         backdrop = el;
-        el.addEventListener("click", onBackdropClick);
+        el.addEventListener('click', onBackdropClick);
       }}
-      class={["auth-modal-backdrop", { open: open() }]}
+      class={['auth-modal-backdrop', { open: open() }]}
       id="auth-modal-backdrop"
       role="dialog"
       aria-modal="true"
@@ -254,43 +243,30 @@ export function AuthModal(): JSX.Element {
     >
       <div class="auth-modal">
         <h2 id="auth-modal-title">
-          <Show
-            when={state().productLabel}
-            fallback="Login with Polkadot Mobile"
-          >
-            {(label) => (
+          <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
+            {label => (
               <>
-                {label()} is asking you{" "}
-                <span class="auth-modal-title-nowrap">to sign in</span>
+                {label()} is asking you <span class="auth-modal-title-nowrap">to sign in</span>
               </>
             )}
           </Show>
         </h2>
-        <p
-          class="auth-modal-reason"
-          id="auth-modal-reason"
-          hidden={state().reason === null}
-        >
-          {state().reason ?? ""}
+        <p class="auth-modal-reason" id="auth-modal-reason" hidden={state().reason === null}>
+          {state().reason ?? ''}
         </p>
         <p id="auth-modal-hint">{hint()}</p>
-        <div
-          class={["auth-modal-qr", { "auth-modal-qr-mobile": mobileLayout() }]}
-          id="auth-modal-qr"
-        >
+        <div class={['auth-modal-qr', { 'auth-modal-qr-mobile': mobileLayout() }]} id="auth-modal-qr">
           <Switch>
-            <Match when={view()?.kind === "authenticating"}>
+            <Match when={view()?.kind === 'authenticating'}>
               <div class="attesting">
                 <Spinner />
                 <p>Logging in...</p>
               </div>
             </Match>
-            <Match when={errorView()}>
-              {(v) => <ErrorBody view={v()} retry={retry} />}
-            </Match>
+            <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
             <Match when={view() !== null}>
               <Show when={qr()} fallback={<Spinner />}>
-                {(drawnQr) =>
+                {drawnQr =>
                   mobile ? (
                     <MobileQr
                       qr={drawnQr()}
@@ -318,8 +294,8 @@ export function AuthModal(): JSX.Element {
           Don't have the app? Get Polkadot Mobile
         </a>
         <button
-          ref={(el) => {
-            el.addEventListener("click", () => {
+          ref={el => {
+            el.addEventListener('click', () => {
               closeAuthModal();
             });
           }}
@@ -339,31 +315,21 @@ export function AuthModal(): JSX.Element {
  * device. Once shown, the QR goes on top and the deeplink below it, demoted
  * to a link.
  */
-function MobileQr(props: {
-  qr: DrawnQr;
-  shown: boolean;
-  reveal: () => void;
-}): JSX.Element {
+function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): JSX.Element {
   const qrLink = (
     <a href={props.qr.payload} class="auth-modal-qr-link" hidden={!props.shown}>
       {props.qr.canvas}
     </a>
   );
   const openApp = (
-    <a
-      href={props.qr.payload}
-      class={[
-        "auth-modal-open-app",
-        { "auth-modal-open-app-link": props.shown },
-      ]}
-    >
+    <a href={props.qr.payload} class={['auth-modal-open-app', { 'auth-modal-open-app-link': props.shown }]}>
       Login With Polkadot App
     </a>
   );
   const toggle = (
     <button
-      ref={(el) => {
-        el.addEventListener("click", props.reveal);
+      ref={el => {
+        el.addEventListener('click', props.reveal);
       }}
       type="button"
       class="auth-modal-qr-toggle"
@@ -372,7 +338,5 @@ function MobileQr(props: {
       Show QR instead
     </button>
   );
-  return (
-    <>{props.shown ? [toggle, qrLink, openApp] : [openApp, toggle, qrLink]}</>
-  );
+  return <>{props.shown ? [toggle, qrLink, openApp] : [openApp, toggle, qrLink]}</>;
 }

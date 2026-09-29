@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
-import type { ReadableStore } from "../state/create-store.js";
+import { createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
+import type { ReadableStore } from '../state/create-store.js';
 
 /**
  * Read a store from a component. Returns a Solid accessor that follows the
@@ -34,13 +34,10 @@ export function useStore<T, S>(
   equals?: (prev: S, next: S) => boolean,
 ): Accessor<S> {
   if (!getOwner()) {
-    throw new Error(
-      "useStore must be called inside a component or reactive owner",
-    );
+    throw new Error('useStore must be called inside a component or reactive owner');
   }
 
-  const read = (): S =>
-    select === undefined ? (store.get() as unknown as S) : select(store.get());
+  const read = (): S => (select === undefined ? (store.get() as unknown as S) : select(store.get()));
 
   // Value form, not a compute function: in Solid 2 a function first argument
   // makes a derived signal. Stores never hold functions.

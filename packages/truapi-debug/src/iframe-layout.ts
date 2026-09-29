@@ -9,7 +9,7 @@
 // `packages/ui/src/components/truapi-debug/`, so it must not import
 // `@dotli/ui` or `solid-js`.
 
-import type { DockPosition } from "./dock-storage.js";
+import type { DockPosition } from './dock-storage.js';
 
 /** A collapsed panel is its 32px header bar. */
 const COLLAPSED_HEIGHT_PX = 32;
@@ -28,7 +28,7 @@ export function panelDockInset(input: DockInsetInput): {
   right: number;
   bottom: number;
 } {
-  if (input.dock === "right") {
+  if (input.dock === 'right') {
     // When collapsed, the header bar overlays the top-right corner of the
     // frame rather than reserving a full-height column. Mirrors how the
     // bottom-dock collapse overlays only the bottom 32px.

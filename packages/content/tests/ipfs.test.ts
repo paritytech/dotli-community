@@ -1,29 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { fetchFromIpfs, fetchCarFromIpfs } from "../src/ipfs.js";
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { fetchFromIpfs, fetchCarFromIpfs } from '../src/ipfs.js';
 
-const CID = "bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
-const GATEWAY = "https://gw.example";
+const CID = 'bafkreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
+const GATEWAY = 'https://gw.example';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
   fetchMock = vi.fn();
-  vi.stubGlobal("fetch", fetchMock);
+  vi.stubGlobal('fetch', fetchMock);
 });
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("fetchFromIpfs", () => {
-  it("As the gateway fetcher, I fetch a raw block requesting format=raw with the ipld.raw Accept header so a content-negotiating gateway cannot mutate it", async () => {
+describe('fetchFromIpfs', () => {
+  it('As the gateway fetcher, I fetch a raw block requesting format=raw with the ipld.raw Accept header so a content-negotiating gateway cannot mutate it', async () => {
     // Given a gateway that returns some block bytes
-    fetchMock.mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
-    );
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
 
     // When it fetches the block
     await fetchFromIpfs(CID, GATEWAY);
@@ -33,17 +31,17 @@ describe("fetchFromIpfs", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `${GATEWAY}/ipfs/${CID}?format=raw`,
       expect.objectContaining({
-        headers: { Accept: "application/vnd.ipld.raw" },
+        headers: { Accept: 'application/vnd.ipld.raw' },
       }),
     );
   });
 
-  it("As the gateway fetcher, I fetch a raw block and return its bytes and content type", async () => {
+  it('As the gateway fetcher, I fetch a raw block and return its bytes and content type', async () => {
     // Given a gateway that returns raw bytes with a content type
     fetchMock.mockResolvedValue(
       new Response(new Uint8Array([0xde, 0xad, 0xbe, 0xef]), {
         status: 200,
-        headers: { "content-type": "application/vnd.ipld.raw" },
+        headers: { 'content-type': 'application/vnd.ipld.raw' },
       }),
     );
 
@@ -52,10 +50,10 @@ describe("fetchFromIpfs", () => {
 
     // Then it gets the response bytes and content type back
     expect(Array.from(data)).toEqual([0xde, 0xad, 0xbe, 0xef]);
-    expect(contentType).toBe("application/vnd.ipld.raw");
+    expect(contentType).toBe('application/vnd.ipld.raw');
   });
 
-  it("As the gateway fetcher, I fetch a raw block and a non-ok gateway response fails loudly", async () => {
+  it('As the gateway fetcher, I fetch a raw block and a non-ok gateway response fails loudly', async () => {
     // Given a gateway that returns an error status
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
@@ -65,12 +63,10 @@ describe("fetchFromIpfs", () => {
   });
 });
 
-describe("fetchCarFromIpfs", () => {
-  it("As the gateway fetcher, I fetch a dag-pb archive requesting format=car with the ipld.car Accept header", async () => {
+describe('fetchCarFromIpfs', () => {
+  it('As the gateway fetcher, I fetch a dag-pb archive requesting format=car with the ipld.car Accept header', async () => {
     // Given a gateway that returns some archive bytes
-    fetchMock.mockResolvedValue(
-      new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
-    );
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([1, 2, 3]), { status: 200 }));
 
     // When it fetches the archive
     await fetchCarFromIpfs(CID, GATEWAY);
@@ -80,16 +76,14 @@ describe("fetchCarFromIpfs", () => {
     expect(fetchMock).toHaveBeenCalledWith(
       `${GATEWAY}/ipfs/${CID}?format=car`,
       expect.objectContaining({
-        headers: { Accept: "application/vnd.ipld.car" },
+        headers: { Accept: 'application/vnd.ipld.car' },
       }),
     );
   });
 
-  it("As the gateway fetcher, I fetch a CAR archive and return its raw bytes", async () => {
+  it('As the gateway fetcher, I fetch a CAR archive and return its raw bytes', async () => {
     // Given a gateway that returns CAR bytes
-    fetchMock.mockResolvedValue(
-      new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }),
-    );
+    fetchMock.mockResolvedValue(new Response(new Uint8Array([0xca, 0xfe]), { status: 200 }));
 
     // When it fetches the archive
     const data = await fetchCarFromIpfs(CID, GATEWAY);
@@ -98,7 +92,7 @@ describe("fetchCarFromIpfs", () => {
     expect(Array.from(data)).toEqual([0xca, 0xfe]);
   });
 
-  it("As the gateway fetcher, I fetch a CAR archive and a non-ok gateway response fails loudly", async () => {
+  it('As the gateway fetcher, I fetch a CAR archive and a non-ok gateway response fails loudly', async () => {
     // Given a gateway that returns an error status
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 

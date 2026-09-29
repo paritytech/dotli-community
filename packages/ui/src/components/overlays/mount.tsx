@@ -3,10 +3,10 @@
 
 // Entry of the lazily loaded overlays chunk. Only overlays/load.ts imports it.
 
-import { ensureOverlayRoot } from "../../mount/overlay-root.js";
-import { mountRoot } from "../../mount/root.js";
-import { ModalOutlet } from "./ModalOutlet.js";
-import { ToastStack } from "./ToastStack.js";
+import { ensureOverlayRoot } from '../../mount/overlay-root.js';
+import { mountRoot } from '../../mount/root.js';
+import { ModalOutlet } from './ModalOutlet.js';
+import { ToastStack } from './ToastStack.js';
 
 /**
  * Mount the toast and modal trees as the "overlays" root. `onBroken` runs
@@ -15,7 +15,7 @@ import { ToastStack } from "./ToastStack.js";
  */
 export function mountOverlays(onBroken: () => void): () => void {
   return mountRoot(
-    "overlays",
+    'overlays',
     ensureOverlayRoot(),
     () => (
       <>

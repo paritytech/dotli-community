@@ -6,23 +6,14 @@
 // not prompt or re-check: a second check would find a consumed "Allow once"
 // gone and prompt the user again.
 
-import type { Notifications } from "@parity/truapi-host";
-import { log } from "@dotli/shared";
-import {
-  cancelNotification,
-  scheduleNotification,
-} from "../scheduled-notifications.js";
-import { showNotification } from "../notification.js";
-import { ERRORS } from "../errors.js";
+import type { Notifications } from '@parity/truapi-host';
+import { log } from '@dotli/shared';
+import { cancelNotification, scheduleNotification } from '../scheduled-notifications.js';
+import { showNotification } from '../notification.js';
+import { ERRORS } from '../errors.js';
 
-export function createNotificationAdapters(
-  label: string,
-): Required<Notifications> {
-  const pushNotification: Required<Notifications>["pushNotification"] = async ({
-    text,
-    deeplink,
-    scheduledAt,
-  }) => {
+export function createNotificationAdapters(label: string): Required<Notifications> {
+  const pushNotification: Required<Notifications>['pushNotification'] = async ({ text, deeplink, scheduledAt }) => {
     log.warn(`[${label}] Push notification:`, {
       text,
       deeplink,
@@ -46,10 +37,9 @@ export function createNotificationAdapters(
     return { id: result.id };
   };
 
-  const cancelPushNotification: Required<Notifications>["cancelNotification"] =
-    async (id) => {
-      await cancelNotification(label, id);
-    };
+  const cancelPushNotification: Required<Notifications>['cancelNotification'] = async id => {
+    await cancelNotification(label, id);
+  };
 
   return { pushNotification, cancelNotification: cancelPushNotification };
 }

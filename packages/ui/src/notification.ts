@@ -8,7 +8,7 @@
 // hidden or the stack is expanded. Optionally fires the browser Notification
 // API when the tab is hidden; that part does not depend on the overlays.
 
-import { presentToast } from "./overlays/load.js";
+import { presentToast } from './overlays/load.js';
 
 /** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;
@@ -41,24 +41,20 @@ function sanitizeText(raw: string): string {
 }
 
 function validateDeeplink(dl: string | undefined): string | undefined {
-  if (dl === undefined || dl === "") {
+  if (dl === undefined || dl === '') {
     return undefined;
   }
   try {
     const u = new URL(dl);
-    return u.protocol === "https:" || u.protocol === "http:" ? dl : undefined;
+    return u.protocol === 'https:' || u.protocol === 'http:' ? dl : undefined;
   } catch {
     return undefined;
   }
 }
 
 // Browser Notification, used as a supplement when the tab is hidden.
-function fireBrowserNotification(
-  text: string,
-  deeplink: string | undefined,
-  label: string,
-): void {
-  if (!("Notification" in window)) {
+function fireBrowserNotification(text: string, deeplink: string | undefined, label: string): void {
+  if (!('Notification' in window)) {
     return;
   }
 
@@ -66,8 +62,8 @@ function fireBrowserNotification(
     const n = new Notification(label, { body: text });
     n.onclick = () => {
       window.focus();
-      if (deeplink !== undefined && deeplink !== "") {
-        window.open(deeplink, "_blank");
+      if (deeplink !== undefined && deeplink !== '') {
+        window.open(deeplink, '_blank');
       }
     };
     setTimeout(() => {
@@ -75,11 +71,11 @@ function fireBrowserNotification(
     }, 5000);
   };
 
-  if (Notification.permission === "granted") {
+  if (Notification.permission === 'granted') {
     show();
-  } else if (Notification.permission !== "denied") {
-    void Notification.requestPermission().then((p) => {
-      if (p === "granted") {
+  } else if (Notification.permission !== 'denied') {
+    void Notification.requestPermission().then(p => {
+      if (p === 'granted') {
         show();
       }
     });
@@ -99,17 +95,14 @@ export function showNotification(params: NotificationParams): void {
     icon: params.icon ?? BELL_SVG,
     dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
     ...(deeplink === undefined ? {} : { deeplink }),
-    ...(params.iconBackground === undefined || params.iconBackground === ""
+    ...(params.iconBackground === undefined || params.iconBackground === ''
       ? {}
       : { iconBackground: params.iconBackground }),
     ...(params.onDismiss === undefined ? {} : { onDismiss: params.onDismiss }),
     ...(params.action === undefined ? {} : { action: params.action }),
   });
 
-  if (
-    (params.browserNotification ?? true) &&
-    document.visibilityState !== "visible"
-  ) {
+  if ((params.browserNotification ?? true) && document.visibilityState !== 'visible') {
     fireBrowserNotification(text, deeplink, params.label);
   }
 }

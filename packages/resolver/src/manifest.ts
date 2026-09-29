@@ -13,22 +13,22 @@
 // resolver's cached client, so both the smoldot and gateway paths can
 // share the same code.
 
-import { log } from "@dotli/shared";
-import { m, spans as S } from "@dotli/metrics";
-import type { DotnsContracts } from "@dotli/config";
-import { namehash } from "./abi.js";
-import { readNestedMappingString } from "./access-raw-storage.js";
-import type { Api } from "./api.js";
+import { log } from '@dotli/shared';
+import { m, spans as S } from '@dotli/metrics';
+import type { DotnsContracts } from '@dotli/config';
+import { namehash } from './abi.js';
+import { readNestedMappingString } from './access-raw-storage.js';
+import type { Api } from './api.js';
 import {
   parseExecutableManifest,
   parseRootManifest,
   type ExecutableKind,
   type ExecutableManifest,
   type RootManifest,
-} from "./manifest-types.js";
+} from './manifest-types.js';
 
-export const ROOT_MANIFEST_KEY = "manifest";
-export const EXECUTABLE_MANIFEST_KEY = "executable";
+export const ROOT_MANIFEST_KEY = 'manifest';
+export const EXECUTABLE_MANIFEST_KEY = 'executable';
 
 /**
  * Discriminated result so callers can tell "no manifest set" apart from
@@ -36,10 +36,10 @@ export const EXECUTABLE_MANIFEST_KEY = "executable";
  *  used for legacy contenthash reads.
  */
 export type ManifestResult<T> =
-  | { kind: "ok"; value: T }
-  | { kind: "empty" }
-  | { kind: "unsupported"; reason: string }
-  | { kind: "invalid"; errors: string[] };
+  | { kind: 'ok'; value: T }
+  | { kind: 'empty' }
+  | { kind: 'unsupported'; reason: string }
+  | { kind: 'invalid'; errors: string[] };
 
 /**
  * Read the root manifest at `<label>.<tld>` text-record key `"manifest"`.
@@ -56,7 +56,7 @@ export async function readRootManifest(
 ): Promise<ManifestResult<RootManifest>> {
   const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
-    return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
+    return { kind: 'unsupported', reason: 'TEXT_RECORDS slot not configured' };
   }
   return readManifestText(
     api,
@@ -64,7 +64,7 @@ export async function readRootManifest(
     namehash(`${label}.${dotns.TLD}`),
     ROOT_MANIFEST_KEY,
     slot,
-    "root",
+    'root',
     parseRootManifest,
   );
 }
@@ -85,7 +85,7 @@ export async function readExecutableManifest(
 ): Promise<ManifestResult<ExecutableManifest>> {
   const slot = dotns.STORAGE_SLOTS.TEXT_RECORDS;
   if (slot === undefined) {
-    return { kind: "unsupported", reason: "TEXT_RECORDS slot not configured" };
+    return { kind: 'unsupported', reason: 'TEXT_RECORDS slot not configured' };
   }
   const result = await readManifestText(
     api,
@@ -96,9 +96,9 @@ export async function readExecutableManifest(
     kind,
     parseExecutableManifest,
   );
-  if (result.kind === "ok" && result.value.kind !== kind) {
+  if (result.kind === 'ok' && result.value.kind !== kind) {
     return {
-      kind: "invalid",
+      kind: 'invalid',
       errors: [
         `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.${dotns.TLD}'`,
       ],
@@ -114,9 +114,7 @@ async function readManifestText<T>(
   key: string,
   textRecordsSlot: number,
   metricKind: string,
-  parse: (
-    json: string,
-  ) => { ok: true; value: T } | { ok: false; errors: string[] },
+  parse: (json: string) => { ok: true; value: T } | { ok: false; errors: string[] },
 ): Promise<ManifestResult<T>> {
   const t0 = performance.now();
   log.warn(
@@ -124,20 +122,12 @@ async function readManifestText<T>(
   );
   let raw: string | null;
   try {
-    raw = await readNestedMappingString(
-      api,
-      dotns.DOTNS_CONTENT_RESOLVER,
-      node,
-      key,
-      textRecordsSlot,
-    );
+    raw = await readNestedMappingString(api, dotns.DOTNS_CONTENT_RESOLVER, node, key, textRecordsSlot);
   } catch (err) {
-    m.distribution(
-      S.RESOLVE_MANIFEST_READ,
-      performance.now() - t0,
-      "millisecond",
-      { kind: metricKind, outcome: "error" },
-    );
+    m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
+      kind: metricKind,
+      outcome: 'error',
+    });
     log.warn(
       `[dot.li resolve] manifest read failed kind=${metricKind} key=${key}: ${err instanceof Error ? err.message : String(err)}`,
     );
@@ -147,31 +137,21 @@ async function readManifestText<T>(
     log.warn(
       `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> empty (${(performance.now() - t0).toFixed(0)}ms)`,
     );
-    m.distribution(
-      S.RESOLVE_MANIFEST_READ,
-      performance.now() - t0,
-      "millisecond",
-      { kind: metricKind, outcome: "empty" },
-    );
-    return { kind: "empty" };
+    m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
+      kind: metricKind,
+      outcome: 'empty',
+    });
+    return { kind: 'empty' };
   }
   log.warn(
-    `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> ${String(raw.length)} bytes (${(performance.now() - t0).toFixed(0)}ms): ${raw.slice(0, 200)}${raw.length > 200 ? "…" : ""}`,
+    `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> ${String(raw.length)} bytes (${(performance.now() - t0).toFixed(0)}ms): ${raw.slice(0, 200)}${raw.length > 200 ? '…' : ''}`,
   );
   const parsed = parse(raw);
-  m.distribution(
-    S.RESOLVE_MANIFEST_READ,
-    performance.now() - t0,
-    "millisecond",
-    { kind: metricKind, outcome: parsed.ok ? "ok" : "invalid" },
-  );
-  return parsed.ok
-    ? { kind: "ok", value: parsed.value }
-    : { kind: "invalid", errors: parsed.errors };
+  m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
+    kind: metricKind,
+    outcome: parsed.ok ? 'ok' : 'invalid',
+  });
+  return parsed.ok ? { kind: 'ok', value: parsed.value } : { kind: 'invalid', errors: parsed.errors };
 }
 
-export type {
-  ExecutableKind,
-  ExecutableManifest,
-  RootManifest,
-} from "./manifest-types.js";
+export type { ExecutableKind, ExecutableManifest, RootManifest } from './manifest-types.js';

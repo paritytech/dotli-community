@@ -3,12 +3,12 @@
 
 // IPFS gateway utilities.
 
-import { getActiveServicesConfig } from "@dotli/config";
+import { getActiveServicesConfig } from '@dotli/config';
 
 function defaultGateway(): string {
   const [gateway] = getActiveServicesConfig().bulletin.ipfsGateways;
   if (gateway === undefined) {
-    throw new Error("No IPFS gateway configured for the active network.");
+    throw new Error('No IPFS gateway configured for the active network.');
   }
   return gateway;
 }
@@ -28,16 +28,14 @@ export async function fetchFromIpfs(
   const url = `${gateway}/ipfs/${cid}?format=raw`;
 
   const response = await fetch(url, {
-    headers: { Accept: "application/vnd.ipld.raw" },
+    headers: { Accept: 'application/vnd.ipld.raw' },
   });
 
   if (!response.ok) {
-    throw new Error(
-      `IPFS fetch failed: HTTP ${String(response.status)} ${response.statusText}`,
-    );
+    throw new Error(`IPFS fetch failed: HTTP ${String(response.status)} ${response.statusText}`);
   }
 
-  const contentType = response.headers.get("content-type") ?? undefined;
+  const contentType = response.headers.get('content-type') ?? undefined;
   const arrayBuffer = await response.arrayBuffer();
 
   return {
@@ -50,20 +48,15 @@ export async function fetchFromIpfs(
  * Fetch content as CAR archive from the IPFS gateway.
  * The gateway's ?format=car returns the entire directory tree in one response.
  */
-export async function fetchCarFromIpfs(
-  cid: string,
-  gateway: string = defaultGateway(),
-): Promise<Uint8Array> {
+export async function fetchCarFromIpfs(cid: string, gateway: string = defaultGateway()): Promise<Uint8Array> {
   const url = `${gateway}/ipfs/${cid}?format=car`;
 
   const response = await fetch(url, {
-    headers: { Accept: "application/vnd.ipld.car" },
+    headers: { Accept: 'application/vnd.ipld.car' },
   });
 
   if (!response.ok) {
-    throw new Error(
-      `IPFS CAR fetch failed: HTTP ${String(response.status)} ${response.statusText}`,
-    );
+    throw new Error(`IPFS CAR fetch failed: HTTP ${String(response.status)} ${response.statusText}`);
   }
 
   return new Uint8Array(await response.arrayBuffer());

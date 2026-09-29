@@ -8,10 +8,10 @@
 // from apps/host/index.html, which it removes when the loading root is
 // disposed before the island has taken the screen over.
 
-import { isSandboxOrigin, withActiveTld } from "@dotli/config";
+import { isSandboxOrigin, withActiveTld } from '@dotli/config';
 
-import { disposeAppRoot, registerAppRoot } from "./mount/app-roots.js";
-import { getLoadingState, updateLoading } from "./state/loading.js";
+import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
+import { getLoadingState, updateLoading } from './state/loading.js';
 
 // Phase-based loading indicator.
 //
@@ -163,10 +163,7 @@ function startProgressCrawl(): void {
     // Whatever owns the indicator, the number still has to move. Nudge it just
     // past the next whole number, never beyond the band the current step owns.
     if (Date.now() - lastShownAt >= PROGRESS_FLOOR_MS) {
-      const ceiling = Math.min(
-        phaseReportsProgress ? targetProgress : creepCeiling,
-        CREEP_CEILING,
-      );
+      const ceiling = Math.min(phaseReportsProgress ? targetProgress : creepCeiling, CREEP_CEILING);
       const next = Math.min(Math.floor(currentProgress) + 1, ceiling);
       if (next > currentProgress) {
         setProgress(next, true);
@@ -211,7 +208,7 @@ export function initPhases(phaseList: LoadingPhase[]): void {
   // Not on the first `advancePhase`, which lands seconds later once the
   // protocol frame is up. The markup already shows this stage's opening line,
   // so the rotation clock has to start from when that line became visible.
-  setLoadingStage("starting");
+  setLoadingStage('starting');
 }
 
 // How often the line turns over. Most of this window is the turnover
@@ -219,21 +216,14 @@ export function initPhases(phaseList: LoadingPhase[]): void {
 const MESSAGE_ROTATE_MS = 9_000;
 
 /** Placeholder swapped for the domain being loaded when a message is shown. */
-const DOMAIN_TOKEN = "{domain}";
+const DOMAIN_TOKEN = '{domain}';
 
 function prefersReducedMotion(): boolean {
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
 /** The steps a load moves through, in the order they happen. */
-export const LOADING_STAGES = [
-  "starting",
-  "relay",
-  "assetHub",
-  "resolving",
-  "content",
-  "preparing",
-] as const;
+export const LOADING_STAGES = ['starting', 'relay', 'assetHub', 'resolving', 'content', 'preparing'] as const;
 export type LoadingStage = (typeof LOADING_STAGES)[number];
 
 /**
@@ -245,48 +235,39 @@ export type LoadingStage = (typeof LOADING_STAGES)[number];
  */
 const STAGE_MESSAGES: Record<LoadingStage, readonly [string, ...string[]]> = {
   starting: [
-    "Reaching out",
-    "This page comes from a network, with no one in between",
-    "That takes a few seconds the first time",
+    'Reaching out',
+    'This page comes from a network, with no one in between',
+    'That takes a few seconds the first time',
   ],
   relay: [
-    "Connecting to Polkadot",
-    "Looking for other computers to talk to",
-    "Your browser does the checking itself, not a server",
+    'Connecting to Polkadot',
+    'Looking for other computers to talk to',
+    'Your browser does the checking itself, not a server',
   ],
   assetHub: [
     `Looking up ${DOMAIN_TOKEN}`,
-    "Catching up on the newest blocks",
-    "The network itself decides where this name points",
-    "This is the slow part, and it is faster next time",
+    'Catching up on the newest blocks',
+    'The network itself decides where this name points',
+    'This is the slow part, and it is faster next time',
   ],
-  resolving: [
-    "Found it",
-    "Reading where the name points",
-    "The network proved this answer, so it cannot be faked",
-  ],
+  resolving: ['Found it', 'Reading where the name points', 'The network proved this answer, so it cannot be faked'],
   content: [
-    "Downloading the app",
-    "The files come from many computers at once",
-    "The more of them are nearby, the faster this goes",
-    "Every piece is checked against its fingerprint as it lands",
-    "No single computer holds the app, so no one can take it down",
-    "Bigger apps take longer the first time",
-    "Your browser keeps a copy, so the next visit is quick",
+    'Downloading the app',
+    'The files come from many computers at once',
+    'The more of them are nearby, the faster this goes',
+    'Every piece is checked against its fingerprint as it lands',
+    'No single computer holds the app, so no one can take it down',
+    'Bigger apps take longer the first time',
+    'Your browser keeps a copy, so the next visit is quick',
   ],
-  preparing: [
-    "Got everything",
-    "Unpacking the files",
-    "Handing over to the app",
-    "Almost there",
-  ],
+  preparing: ['Got everything', 'Unpacking the files', 'Handing over to the app', 'Almost there'],
 };
 
 let stageTimer: ReturnType<typeof setTimeout> | null = null;
 let currentStageIndex = -1;
 /** True until the first stage turn, which the markup already painted. */
 let openingLine = true;
-let loadingDomain = "";
+let loadingDomain = '';
 
 /** Name the domain being loaded, for the messages that mention it. */
 export function setLoadingDomain(domain: string): void {
@@ -319,10 +300,7 @@ function cancelTyping(): void {
 function writeStatus(message: string): void {
   // Falls back to "the name" when no domain has been set, which is the
   // preview and local-target paths where there is no dotNS name to show.
-  const next = message.replace(
-    DOMAIN_TOKEN,
-    loadingDomain === "" ? "the name" : withActiveTld(loadingDomain),
-  );
+  const next = message.replace(DOMAIN_TOKEN, loadingDomain === '' ? 'the name' : withActiveTld(loadingDomain));
   // Screen readers get the whole sentence once, from an element the typing
   // never touches.
   updateLoading({ srText: next });
@@ -402,9 +380,7 @@ export function setLoadingStage(stage: LoadingStage): void {
   // The opening line has been on screen since the page painted, so its turn
   // is due relative to that, not to whenever this ran. Later turns get the
   // full interval.
-  const firstDelay = openingLine
-    ? Math.max(500, MESSAGE_ROTATE_MS - performance.now())
-    : MESSAGE_ROTATE_MS;
+  const firstDelay = openingLine ? Math.max(500, MESSAGE_ROTATE_MS - performance.now()) : MESSAGE_ROTATE_MS;
   openingLine = false;
   const turn = (): void => {
     line = line + 1 >= messages.length ? loopFrom : line + 1;
@@ -457,23 +433,15 @@ export function advancePhase(index: number): void {
   // duration: each tick advances a constant slice sized to cross from
   // `base` to `target` in `expectedMs`. This is what makes the bar move
   // steadily through a long sync instead of stalling near the top.
-  crawlStep =
-    ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
+  crawlStep = ((target - base) * CRAWL_TICK_MS) / Math.max(expectedMs, CRAWL_TICK_MS);
   // Headroom for a band that overruns: the space of the next band, or the ceiling
   // for the last one. A band that reports a real percentage lends nothing,
   // since creeping into it would put the indicator above the figure that step
   // is about to publish.
   const next = phases[index + 1];
-  const lentCeiling =
-    next === undefined
-      ? CREEP_CEILING
-      : next.reportsProgress === true
-        ? next.base
-        : next.target;
+  const lentCeiling = next === undefined ? CREEP_CEILING : next.reportsProgress === true ? next.base : next.target;
   creepCeiling = Math.min(lentCeiling, CREEP_CEILING);
-  creepStep =
-    (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) /
-    Math.max(CREEP_MS, CRAWL_TICK_MS);
+  creepStep = (Math.max(creepCeiling - target, 0) * CRAWL_TICK_MS) / Math.max(CREEP_MS, CRAWL_TICK_MS);
   startProgressCrawl();
 
   // The headline is the stage's, not the phase label's: the label names the
@@ -493,10 +461,7 @@ export function advancePhase(index: number): void {
  * band it does not own. Without it the relay warp fraction arriving mid-sync
  * would both move the Asset Hub band and freeze its crawl.
  */
-export function nudgePhaseProgress(
-  fraction: number,
-  stage: LoadingStage,
-): void {
+export function nudgePhaseProgress(fraction: number, stage: LoadingStage): void {
   if (!Number.isFinite(fraction) || currentPhase < 0) {
     return;
   }
@@ -544,7 +509,7 @@ let loadingRootLive = false;
 
 /** The static screen apps/host/index.html paints. */
 function removeStaticScreen(): void {
-  document.getElementById("app-loading")?.remove();
+  document.getElementById('app-loading')?.remove();
 }
 
 /**
@@ -567,18 +532,18 @@ let disposeScreen: () => void = removeStaticScreen;
  * error page) must not start a timer that no root would ever stop.
  */
 function trackLoadingRoot(): boolean {
-  if (getLoadingState().phase === "gone") {
+  if (getLoadingState().phase === 'gone') {
     return false;
   }
   if (loadingRootLive) {
     return true;
   }
   loadingRootLive = true;
-  registerAppRoot("loading", () => {
+  registerAppRoot('loading', () => {
     loadingRootLive = false;
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
-    updateLoading({ phase: "gone" });
+    updateLoading({ phase: 'gone' });
     // Back to the static fallback, so the island is never disposed twice.
     const dispose = disposeScreen;
     disposeScreen = removeStaticScreen;
@@ -601,7 +566,7 @@ export function adoptLoadingScreen(dispose: () => void): void {
 // timer starts. Whatever replaces it first (the landing page, a preview or
 // local-target frame, an error page shown before the phases start) then
 // removes it.
-if (typeof document !== "undefined" && document.getElementById("app-loading")) {
+if (typeof document !== 'undefined' && document.getElementById('app-loading')) {
   trackLoadingRoot();
 }
 
@@ -623,17 +588,17 @@ export function dismissLoading(): void {
   completeProgress();
   stopProgressWatch();
   stopStageMessages();
-  if (getLoadingState().phase !== "active") {
+  if (getLoadingState().phase !== 'active') {
     return;
   }
   // The fade is a 0.3s opacity transition, so the screen goes once it ends,
   // with its root. Tracked first, so there is a root to dispose even for a
   // screen whose load never started a timer.
   trackLoadingRoot();
-  updateLoading({ phase: "dismissing" });
+  updateLoading({ phase: 'dismissing' });
   setTimeout(() => {
-    if (getLoadingState().phase === "dismissing") {
-      disposeAppRoot("loading");
+    if (getLoadingState().phase === 'dismissing') {
+      disposeAppRoot('loading');
     }
   }, 300);
 }
@@ -657,17 +622,13 @@ export function onSandboxDone(cb: () => void): void {
 }
 
 export function listenForSandboxStatus(): void {
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     // Cheap shape check first — `message` fires for all postMessage traffic
     // (bridge, bitswap relay, extensions); only parse the origin once a message
     // is actually a loading-status candidate. The origin gate still runs before
     // any side effect. Mirrors `listenForSandboxBitswap`'s check ordering.
     const data = event.data as Record<string, unknown> | null;
-    if (
-      data === null ||
-      typeof data !== "object" ||
-      data["type"] !== "dotli:loading-status"
-    ) {
+    if (data === null || typeof data !== 'object' || data['type'] !== 'dotli:loading-status') {
       return;
     }
     if (!isSandboxOrigin(event.origin)) {
@@ -676,7 +637,7 @@ export function listenForSandboxStatus(): void {
     // The progress prose the sandbox writes is written for a developer reading
     // the console, so it is left there. The stage messages narrate this step
     // to the user, and `done` is the part the loading screen acts on.
-    if (data["done"] === true) {
+    if (data['done'] === true) {
       dismissLoading();
       for (const cb of sandboxDoneCallbacks.splice(0)) {
         cb();

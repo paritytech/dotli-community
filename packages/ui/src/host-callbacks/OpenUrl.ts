@@ -5,10 +5,10 @@
 // Product targets take over the current tab as on the mobile hosts, so a
 // handoff between products reads as one experience. Websites open apart.
 
-import type { Navigation } from "@parity/truapi-host";
-import { isLocalhost, BASE_DOMAIN, getActiveTldSuffix } from "@dotli/config";
+import type { Navigation } from '@parity/truapi-host';
+import { isLocalhost, BASE_DOMAIN, getActiveTldSuffix } from '@dotli/config';
 
-import { dotNsUrl } from "@dotli/shared";
+import { dotNsUrl } from '@dotli/shared';
 
 // Only ever called behind `isDotDomain`, so the suffix is always present.
 function identifierToLabel(identifier: string): string {
@@ -16,7 +16,7 @@ function identifierToLabel(identifier: string): string {
 }
 
 function buildDotTargetUrl(label: string, pathname: string): string {
-  const suffix = pathname ? "/" + pathname : "";
+  const suffix = pathname ? '/' + pathname : '';
   if (isLocalhost) {
     return `http://${label}.localhost:${window.location.port}${suffix}`;
   }
@@ -30,30 +30,23 @@ function getHostOrigin(): string {
   return `${window.location.protocol}//${BASE_DOMAIN}`;
 }
 
-export function createNavigateTo(): Navigation["navigateTo"] {
-  return (url) => {
+export function createNavigateTo(): Navigation['navigateTo'] {
+  return url => {
     const dotUrl = dotNsUrl.parseDotNsDomain(url);
 
     if (dotUrl && dotNsUrl.isDotDomain(dotUrl.identifier)) {
-      window.location.assign(
-        buildDotTargetUrl(
-          identifierToLabel(dotUrl.identifier),
-          dotUrl.pathname,
-        ),
-      );
+      window.location.assign(buildDotTargetUrl(identifierToLabel(dotUrl.identifier), dotUrl.pathname));
       return Promise.resolve(undefined);
     }
 
     const localhostUrl = dotNsUrl.parseLocalhostUrl(url);
     if (localhostUrl) {
-      const suffix = localhostUrl.pathname ? "/" + localhostUrl.pathname : "";
-      window.location.assign(
-        `${getHostOrigin()}/${localhostUrl.host}${suffix}`,
-      );
+      const suffix = localhostUrl.pathname ? '/' + localhostUrl.pathname : '';
+      window.location.assign(`${getHostOrigin()}/${localhostUrl.host}${suffix}`);
       return Promise.resolve(undefined);
     }
 
-    window.open(url, "_blank", "noopener");
+    window.open(url, '_blank', 'noopener');
     return Promise.resolve(undefined);
   };
 }

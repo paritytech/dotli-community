@@ -9,7 +9,7 @@
  * Components read a store through the `useStore` helper in `components/`.
  */
 
-import { captureException } from "@dotli/metrics";
+import { captureException } from '@dotli/metrics';
 
 export interface ReadableStore<T> {
   /** Latest written value, immediately. */
@@ -58,8 +58,8 @@ export function shallowEqual<T>(a: T, b: T): boolean {
     return true;
   }
   if (
-    typeof a !== "object" ||
-    typeof b !== "object" ||
+    typeof a !== 'object' ||
+    typeof b !== 'object' ||
     a === null ||
     b === null ||
     Array.isArray(a) !== Array.isArray(b)
@@ -73,10 +73,7 @@ export function shallowEqual<T>(a: T, b: T): boolean {
     return false;
   }
   for (const key of keys) {
-    if (
-      !Object.prototype.hasOwnProperty.call(right, key) ||
-      !Object.is(left[key], right[key])
-    ) {
+    if (!Object.prototype.hasOwnProperty.call(right, key) || !Object.is(left[key], right[key])) {
       return false;
     }
   }
@@ -85,10 +82,7 @@ export function shallowEqual<T>(a: T, b: T): boolean {
 
 const registry = new Set<() => void>();
 
-export function createSyncStore<T>(
-  initial: T,
-  options: SyncStoreOptions<T> = {},
-): SyncStore<T> {
+export function createSyncStore<T>(initial: T, options: SyncStoreOptions<T> = {}): SyncStore<T> {
   let current = initial;
   const listeners = new Set<() => void>();
   const equals = options.equals ?? Object.is;
@@ -105,7 +99,7 @@ export function createSyncStore<T>(
         listener();
       } catch (err) {
         // A broken UI listener must not stop the producer's event dispatch.
-        captureException(err, { kind: "store_listener_error" });
+        captureException(err, { kind: 'store_listener_error' });
       }
     }
   };

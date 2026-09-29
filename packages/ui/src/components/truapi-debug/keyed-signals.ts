@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, getOwner, onCleanup, type Accessor } from "solid-js";
+import { createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
 
 /**
  * A map of values, each with its own signal, so a reader of one key re-runs
@@ -56,7 +56,7 @@ export function createKeyedSignals<K, V>(): KeyedSignals<K, V> {
         );
         node = {
           get,
-          set: (value) => {
+          set: value => {
             set(() => value);
           },
           readers: 0,

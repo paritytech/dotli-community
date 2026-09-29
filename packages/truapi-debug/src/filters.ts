@@ -9,9 +9,9 @@
 // match against the TrUAPI method tag for truapi events and against the
 // `layer:event` string for system events.
 
-import type { StoredEvent } from "./event-store.js";
+import type { StoredEvent } from './event-store.js';
 
-export type DirectionFilter = "both" | "incoming" | "outgoing";
+export type DirectionFilter = 'both' | 'incoming' | 'outgoing';
 
 export interface FilterState {
   direction: DirectionFilter;
@@ -32,10 +32,10 @@ export interface FilterState {
 
 export function initialFilterState(): FilterState {
   return {
-    direction: "both",
+    direction: 'both',
     product: undefined,
-    tagQuery: "",
-    excludeQuery: "",
+    tagQuery: '',
+    excludeQuery: '',
     showTruapi: true,
     showSystem: true,
   };
@@ -68,24 +68,24 @@ export function compileQuery(raw: string): CompiledQuery {
 
 function compile(raw: string): CompiledQuery {
   const q = raw.trim();
-  if (q.length > 1 && q.startsWith("/") && q.endsWith("/")) {
+  if (q.length > 1 && q.startsWith('/') && q.endsWith('/')) {
     try {
-      const re = new RegExp(q.slice(1, -1), "i");
-      return { test: (h) => re.test(h), invalid: false };
+      const re = new RegExp(q.slice(1, -1), 'i');
+      return { test: h => re.test(h), invalid: false };
     } catch {
       return { test: null, invalid: true };
     }
   }
   const sub = q.toLowerCase();
-  return { test: sub === "" ? null : (h) => h.includes(sub), invalid: false };
+  return { test: sub === '' ? null : h => h.includes(sub), invalid: false };
 }
 
 export function matches(ev: StoredEvent, f: FilterState): boolean {
-  if (ev.kind === "truapi") {
+  if (ev.kind === 'truapi') {
     if (!f.showTruapi) {
       return false;
     }
-    if (f.direction !== "both" && ev.direction !== f.direction) {
+    if (f.direction !== 'both' && ev.direction !== f.direction) {
       return false;
     }
     if (f.product !== undefined) {
@@ -101,9 +101,7 @@ export function matches(ev: StoredEvent, f: FilterState): boolean {
     }
     // Direction and product filters don't apply to system events.
   }
-  const haystack = (
-    ev.kind === "truapi" ? ev.tag : `${ev.layer}:${ev.event}`
-  ).toLowerCase();
+  const haystack = (ev.kind === 'truapi' ? ev.tag : `${ev.layer}:${ev.event}`).toLowerCase();
   const include = compileQuery(f.tagQuery).test;
   if (include?.(haystack) === false) {
     return false;

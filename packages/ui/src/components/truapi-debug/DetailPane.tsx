@@ -9,17 +9,13 @@
 // touch it: rebuilding under traffic tore down an open "What is this?" block
 // and dropped clicks inside the pane between pointerdown and click.
 
-import { createEffect, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { renderGroupDetail, renderSingleDetail } from "@dotli/truapi-debug";
-import type { EventSeq, EventStore } from "@dotli/truapi-debug";
-import type { PanelView } from "./Tabs.js";
+import { createEffect, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { renderGroupDetail, renderSingleDetail } from '@dotli/truapi-debug';
+import type { EventSeq, EventStore } from '@dotli/truapi-debug';
+import type { PanelView } from './Tabs.js';
 
-function detailHtml(
-  store: EventStore,
-  selectedSeq: EventSeq | null,
-  view: PanelView,
-): string {
+function detailHtml(store: EventStore, selectedSeq: EventSeq | null, view: PanelView): string {
   if (selectedSeq === null) {
     return `<div class="td-detail-empty">Select an event on the left to inspect its payload.</div>`;
   }
@@ -27,9 +23,7 @@ function detailHtml(
   if (ev === undefined) {
     return `<div class="td-detail-empty">Selected event was evicted from the ring buffer.</div>`;
   }
-  return view === "timeline"
-    ? renderGroupDetail(ev, store)
-    : renderSingleDetail(ev, store);
+  return view === 'timeline' ? renderGroupDetail(ev, store) : renderSingleDetail(ev, store);
 }
 
 export function DetailPane(props: {
@@ -50,9 +44,7 @@ export function DetailPane(props: {
         return;
       }
       // Read at rebuild time only: the revision alone decides when.
-      const html = untrack(() =>
-        detailHtml(props.store, props.selectedSeq, props.view),
-      );
+      const html = untrack(() => detailHtml(props.store, props.selectedSeq, props.view));
       // Every product and network value is escaped by detail-html.ts.
       pane.innerHTML = html;
     },
@@ -61,14 +53,12 @@ export function DetailPane(props: {
   return (
     <div
       class="td-detail"
-      ref={(el) => {
+      ref={el => {
         pane = el;
       }}
-      onClick={(e) => {
-        const pair = (e.target as HTMLElement).closest<HTMLElement>(
-          ".td-detail-pair",
-        );
-        const seqAttr = pair?.dataset["seq"];
+      onClick={e => {
+        const pair = (e.target as HTMLElement).closest<HTMLElement>('.td-detail-pair');
+        const seqAttr = pair?.dataset['seq'];
         if (seqAttr !== undefined) {
           props.onSelectPair(Number(seqAttr));
         }

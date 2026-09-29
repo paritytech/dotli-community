@@ -15,18 +15,15 @@
 // across calls, because a contract redeploy would silently return stale
 // data otherwise.
 
-import type { SubstrateClient } from "@polkadot-api/substrate-client";
-import { StopError } from "@polkadot-api/substrate-client";
-import { Twox128, Blake2256, Hex } from "@polkadot-api/substrate-bindings";
-import { fromHex, toHex, mergeUint8 } from "@polkadot-api/utils";
+import type { SubstrateClient } from '@polkadot-api/substrate-client';
+import { StopError } from '@polkadot-api/substrate-client';
+import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
+import { fromHex, toHex, mergeUint8 } from '@polkadot-api/utils';
 
 const enc = new TextEncoder();
 
 // Precomputed once: twox128("Revive") ++ twox128("AccountInfoOf").
-const ACCOUNT_INFO_OF_PREFIX = mergeUint8([
-  Twox128(enc.encode("Revive")),
-  Twox128(enc.encode("AccountInfoOf")),
-]);
+const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox128(enc.encode('AccountInfoOf'))]);
 
 /** SCALE `Vec<u8>` decoder (compact length + bytes), shared across calls. */
 const decodeVecU8 = Hex().dec;
@@ -38,8 +35,8 @@ const decodeVecU8 = Hex().dec;
  */
 export class ApiStoppedError extends Error {
   constructor(cause?: unknown) {
-    super("chainHead follow stopped", { cause });
-    this.name = "ApiStoppedError";
+    super('chainHead follow stopped', { cause });
+    this.name = 'ApiStoppedError';
   }
 }
 
@@ -56,10 +53,7 @@ export interface Api {
    * contract's child-trie id, or `null` if the account is missing or not a
    * Contract variant. Always queries the network. There is no cache.
    */
-  resolveTrieId(
-    contractAddress: string,
-    atHash: string,
-  ): Promise<Uint8Array | null>;
+  resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null>;
   /**
    * Read a 32-byte EVM storage slot of a Revive contract. Optional `atHash`
    * and `trieId` let callers pin a multi-slot read to a single block and trie
@@ -106,8 +100,7 @@ export function createRawApi(client: SubstrateClient): Api {
       // Always wrap so callers can `instanceof ApiStoppedError` to
       // distinguish "follow died" from a transient network error inside an
       // operation. The original error is preserved as `cause`.
-      const wrapped =
-        err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
+      const wrapped = err instanceof ApiStoppedError ? err : new ApiStoppedError(err);
       rejectReady(wrapped);
       rejectReady = null;
       resolveReady = null;
@@ -124,17 +117,17 @@ export function createRawApi(client: SubstrateClient): Api {
 
   const follow = client.chainHead(
     false,
-    (event) => {
-      if (event.type === "initialized") {
+    event => {
+      if (event.type === 'initialized') {
         bestHashRef = event.finalizedBlockHashes.at(-1) ?? null;
         resolveReady?.();
         resolveReady = null;
         rejectReady = null;
-      } else if (event.type === "bestBlockChanged") {
+      } else if (event.type === 'bestBlockChanged') {
         bestHashRef = event.bestBlockHash;
       }
     },
-    (err) => {
+    err => {
       markStopped(err);
     },
   );
@@ -154,15 +147,10 @@ export function createRawApi(client: SubstrateClient): Api {
     }
   }
 
-  async function resolveTrieId(
-    contractAddress: string,
-    atHash: string,
-  ): Promise<Uint8Array | null> {
+  async function resolveTrieId(contractAddress: string, atHash: string): Promise<Uint8Array | null> {
     const addr = fromHex(contractAddress); // 20-byte H160, Identity hasher
     const mainKey = mergeUint8([ACCOUNT_INFO_OF_PREFIX, addr]);
-    const accountInfoHex = await withStopGuard(() =>
-      follow.storage(atHash, "value", toHex(mainKey), null),
-    );
+    const accountInfoHex = await withStopGuard(() => follow.storage(atHash, 'value', toHex(mainKey), null));
     if (accountInfoHex === null) {
       return null;
     }
@@ -190,9 +178,7 @@ export function createRawApi(client: SubstrateClient): Api {
         return null;
       }
       const childKey = Blake2256(fromHex(slotKey)); // Key::Fix hash path
-      const valueHex = await withStopGuard(() =>
-        follow.storage(hash, "value", toHex(childKey), toHex(trie)),
-      );
+      const valueHex = await withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie)));
       return valueHex === null ? null : fromHex(valueHex);
     },
     onStop(cb) {

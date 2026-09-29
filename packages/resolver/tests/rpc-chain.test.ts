@@ -1,22 +1,22 @@
-import { describe, expect, it, vi } from "vitest";
-import { getActiveServicesConfig } from "@dotli/config";
+import { describe, expect, it, vi } from 'vitest';
+import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
   createRpcChainProvider,
   isCoreRpcChainSupported,
   isRpcChainSupported,
-} from "../src/rpc-chain.js";
+} from '../src/rpc-chain.js';
 
 const mocks = vi.hoisted(() => ({
   getWsProvider: vi.fn(),
 }));
 
-vi.mock("polkadot-api/ws", () => ({
+vi.mock('polkadot-api/ws', () => ({
   getWsProvider: mocks.getWsProvider,
 }));
 
-describe("rpc-chain", () => {
-  it("supports the active People chain when RPC endpoints are configured", () => {
+describe('rpc-chain', () => {
+  it('supports the active People chain when RPC endpoints are configured', () => {
     const people = getActiveServicesConfig().people;
 
     expect(isRpcChainSupported(people.genesis)).toBe(true);
@@ -30,12 +30,12 @@ describe("rpc-chain", () => {
     });
   });
 
-  it("rejects unknown genesis hashes", () => {
-    expect(isRpcChainSupported("0xdeadbeef")).toBe(false);
-    expect(createRpcChainProvider("0xdeadbeef")).toBeNull();
+  it('rejects unknown genesis hashes', () => {
+    expect(isRpcChainSupported('0xdeadbeef')).toBe(false);
+    expect(createRpcChainProvider('0xdeadbeef')).toBeNull();
   });
 
-  it("As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core", () => {
+  it('As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core', () => {
     // Given
     const bulletin = getActiveServicesConfig().bulletin;
     const provider = {};

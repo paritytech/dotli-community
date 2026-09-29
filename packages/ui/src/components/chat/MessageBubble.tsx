@@ -5,15 +5,12 @@
 // inject markup; custom messages go through CustomMessage.tsx, whose
 // renderer maps a closed token vocabulary to DOM.
 
-import { For, Show, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
-import type { ChatMessageContent } from "@parity/truapi";
-import {
-  userTriggerAction,
-  type ChatMessageRecord,
-} from "../../chat/service.js";
-import { CustomMessage } from "./CustomMessage.js";
-import { relativeTime } from "./contacts.js";
+import { For, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import type { ChatMessageContent } from '@parity/truapi';
+import { userTriggerAction, type ChatMessageRecord } from '../../chat/service.js';
+import { CustomMessage } from './CustomMessage.js';
+import { relativeTime } from './contacts.js';
 
 export function MessageBubble(props: {
   record: ChatMessageRecord;
@@ -38,63 +35,55 @@ export function MessageBubble(props: {
 
   const bubble = (): JSX.Element => {
     switch (content.tag) {
-      case "Text":
+      case 'Text':
         return (
           <div class="chat-msg-bubble">
             {content.value.text}
             {time}
           </div>
         );
-      case "RichText": {
+      case 'RichText': {
         const count = content.value.media.length;
         return (
           <div class="chat-msg-bubble">
-            {content.value.text ?? ""}
+            {content.value.text ?? ''}
             <Show when={count > 0}>
-              <span class="chat-msg-meta">
-                {` [${String(count)} attachment${count === 1 ? "" : "s"}]`}
-              </span>
+              <span class="chat-msg-meta">{` [${String(count)} attachment${count === 1 ? '' : 's'}]`}</span>
             </Show>
             {time}
           </div>
         );
       }
-      case "Reaction":
+      case 'Reaction':
         return (
           <div class="chat-msg-bubble chat-msg-event">
             {`reacted ${content.value.emoji}`}
             {time}
           </div>
         );
-      case "ReactionRemoved":
+      case 'ReactionRemoved':
         return (
           <div class="chat-msg-bubble chat-msg-event">
             {`removed reaction ${content.value.emoji}`}
             {time}
           </div>
         );
-      case "File":
+      case 'File':
         return (
           <div class="chat-msg-bubble">
             {`[file] ${content.value.fileName}`}
             {time}
           </div>
         );
-      case "Actions":
+      case 'Actions':
         return (
           <div class="chat-msg-bubble">
-            <Show
-              when={
-                content.value.text !== undefined && content.value.text !== ""
-              }
-            >
+            <Show when={content.value.text !== undefined && content.value.text !== ''}>
               <span>{content.value.text}</span>
             </Show>
-            <div
-              class={`chat-msg-actions chat-msg-actions-${content.value.layout === "Grid" ? "grid" : "column"}`}
-            >
+            <div class={`chat-msg-actions chat-msg-actions-${content.value.layout === 'Grid' ? 'grid' : 'column'}`}>
               <For each={content.value.actions}>
-                {(action) => (
+                {action => (
                   <button
                     type="button"
                     class="chat-custom-btn chat-custom-btn-secondary"
@@ -116,7 +105,7 @@ export function MessageBubble(props: {
             {time}
           </div>
         );
-      case "Custom":
+      case 'Custom':
         return (
           <div class="chat-msg-bubble chat-msg-custom">
             <CustomMessage
@@ -139,11 +128,5 @@ export function MessageBubble(props: {
     }
   };
 
-  return (
-    <div
-      class={`chat-msg ${record.author === "user" ? "chat-msg-user" : "chat-msg-product"}`}
-    >
-      {bubble()}
-    </div>
-  );
+  return <div class={`chat-msg ${record.author === 'user' ? 'chat-msg-user' : 'chat-msg-product'}`}>{bubble()}</div>;
 }

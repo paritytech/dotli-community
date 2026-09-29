@@ -10,15 +10,15 @@
 // block a chain is still sitting in has to keep growing toward now while a
 // chain that has gone quiet emits nothing to redraw on.
 
-import { createEffect, onCleanup, untrack } from "solid-js";
-import type { JSX } from "@solidjs/web";
+import { createEffect, onCleanup, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import {
   buildResolution,
   buildResolutionContainer,
   renderResolution,
   type ResolutionRecorder,
-} from "@dotli/truapi-debug";
-import { wireHoverTooltips } from "./hover-tooltip.js";
+} from '@dotli/truapi-debug';
+import { wireHoverTooltips } from './hover-tooltip.js';
 
 /** How often the Resolution view redraws the open block of an in-flight load. */
 const RESOLUTION_TICK_MS = 500;
@@ -41,8 +41,8 @@ export function ResolutionView(props: {
 
   createEffect(
     () => props.active,
-    (active) => {
-      container.classList.toggle("hidden", !active);
+    active => {
+      container.classList.toggle('hidden', !active);
     },
   );
 
@@ -50,7 +50,7 @@ export function ResolutionView(props: {
   // every compute, so the compute reads nothing that moves with traffic.
   createEffect(
     () => (props.active && !props.collapsed ? props.refresh : null),
-    (refresh) => {
+    refresh => {
       if (refresh !== null) {
         draw();
       }

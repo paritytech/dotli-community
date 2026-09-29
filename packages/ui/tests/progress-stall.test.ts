@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   advancePhase,
   initPhases,
@@ -6,33 +6,33 @@ import {
   onProgressStall,
   stopProgressWatch,
   type LoadingPhase,
-} from "../src/loading-controller.js";
-import { getLoadingState } from "../src/state/loading.js";
-import { resetAllStoresForTests } from "../src/state/create-store.js";
-import { nth } from "./helpers/nth.js";
+} from '../src/loading-controller.js';
+import { getLoadingState } from '../src/state/loading.js';
+import { resetAllStoresForTests } from '../src/state/create-store.js';
+import { nth } from './helpers/nth.js';
 
 // Mirror of PROGRESS_STALL_MS in loading-controller.ts.
 const STALL_MS = 4_000;
 
 const PHASES: LoadingPhase[] = [
   {
-    label: "Starting",
+    label: 'Starting',
     base: 0,
     target: 10,
     expectedMs: 500,
-    stage: "starting",
+    stage: 'starting',
   },
   {
-    label: "Fetching content",
+    label: 'Fetching content',
     base: 10,
     target: 90,
     expectedMs: 10_000,
-    stage: "content",
+    stage: 'content',
     reportsProgress: true,
   },
 ];
 
-describe("The loading bar reports when it stops moving", () => {
+describe('The loading bar reports when it stops moving', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetAllStoresForTests();
@@ -44,11 +44,11 @@ describe("The loading bar reports when it stops moving", () => {
     vi.useRealTimers();
   });
 
-  it("As a user whose load has parked, I am told the percentage it stuck at", () => {
+  it('As a user whose load has parked, I am told the percentage it stuck at', () => {
     // Given
     const stalls: number[] = [];
     initPhases(PHASES);
-    onProgressStall((pct) => {
+    onProgressStall(pct => {
       stalls.push(pct);
     });
 
@@ -61,11 +61,11 @@ describe("The loading bar reports when it stops moving", () => {
     expect(Math.round(nth(stalls, 0))).toBeGreaterThanOrEqual(10);
   });
 
-  it("As a user whose load is still moving, I am not warned", () => {
+  it('As a user whose load is still moving, I am not warned', () => {
     // Given
     const stalls: number[] = [];
     initPhases(PHASES);
-    onProgressStall((pct) => {
+    onProgressStall(pct => {
       stalls.push(pct);
     });
     advancePhase(1);
@@ -73,25 +73,25 @@ describe("The loading bar reports when it stops moving", () => {
     // When
     for (let i = 1; i <= 6; i += 1) {
       vi.advanceTimersByTime(1_000);
-      nudgePhaseProgress(i / 10, "content");
+      nudgePhaseProgress(i / 10, 'content');
     }
 
     // Then
     expect(stalls).toEqual([]);
   });
 
-  it("As a user whose load recovers then parks again, I am warned each time", () => {
+  it('As a user whose load recovers then parks again, I am warned each time', () => {
     // Given
     const stalls: number[] = [];
     initPhases(PHASES);
-    onProgressStall((pct) => {
+    onProgressStall(pct => {
       stalls.push(pct);
     });
     advancePhase(1);
 
     // When
     vi.advanceTimersByTime(STALL_MS + 100);
-    nudgePhaseProgress(0.5, "content");
+    nudgePhaseProgress(0.5, 'content');
     vi.advanceTimersByTime(STALL_MS + 100);
 
     // Then
@@ -99,17 +99,17 @@ describe("The loading bar reports when it stops moving", () => {
     expect(stalls[1]).toBeGreaterThan(nth(stalls, 0));
   });
 
-  it("As a user whose load finished, I am never warned about a full bar", () => {
+  it('As a user whose load finished, I am never warned about a full bar', () => {
     // Given
     const stalls: number[] = [];
     initPhases(PHASES);
-    onProgressStall((pct) => {
+    onProgressStall(pct => {
       stalls.push(pct);
     });
 
     // When
     advancePhase(1);
-    nudgePhaseProgress(1, "content");
+    nudgePhaseProgress(1, 'content');
     stopProgressWatch();
     vi.advanceTimersByTime(STALL_MS * 3);
 
@@ -118,7 +118,7 @@ describe("The loading bar reports when it stops moving", () => {
   });
 });
 
-describe("The loading bar never stands still", () => {
+describe('The loading bar never stands still', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     resetAllStoresForTests();
@@ -134,7 +134,7 @@ describe("The loading bar never stands still", () => {
     return Math.round(getLoadingState().progress);
   }
 
-  it("As a user whose download reports nothing at all, the number still moves every 3 seconds", () => {
+  it('As a user whose download reports nothing at all, the number still moves every 3 seconds', () => {
     // Given
     initPhases(PHASES);
     advancePhase(1);
@@ -151,7 +151,7 @@ describe("The loading bar never stands still", () => {
     expect(frozen).toEqual([]);
   });
 
-  it("As a user, the creeping number never claims more than the step it is in", () => {
+  it('As a user, the creeping number never claims more than the step it is in', () => {
     // Given
     initPhases(PHASES);
     advancePhase(1);
@@ -163,7 +163,7 @@ describe("The loading bar never stands still", () => {
     expect(shownPercent()).toBeLessThanOrEqual(nth(PHASES, 1).target);
   });
 
-  it("As a user whose real progress overtakes the creep, the number follows the truth", () => {
+  it('As a user whose real progress overtakes the creep, the number follows the truth', () => {
     // Given
     initPhases(PHASES);
     advancePhase(1);
@@ -171,7 +171,7 @@ describe("The loading bar never stands still", () => {
     const crept = shownPercent();
 
     // When
-    nudgePhaseProgress(0.9, "content");
+    nudgePhaseProgress(0.9, 'content');
 
     // Then
     expect(shownPercent()).toBeGreaterThan(crept);

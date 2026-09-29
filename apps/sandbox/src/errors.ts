@@ -7,7 +7,6 @@
 // controller, so the wording names the deadline that expired.
 
 export const SANDBOX_ERRORS = {
-  SW_NOT_AVAILABLE: "Service Worker not available after 10s",
-  SW_ARCHIVE_NOT_ACKNOWLEDGED:
-    "Service worker did not acknowledge archive within 10s",
+  SW_NOT_AVAILABLE: 'Service Worker not available after 10s',
+  SW_ARCHIVE_NOT_ACKNOWLEDGED: 'Service worker did not acknowledge archive within 10s',
 } as const;

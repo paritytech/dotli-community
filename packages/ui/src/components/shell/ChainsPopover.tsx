@@ -1,32 +1,17 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  Errored,
-  For,
-  onSettled,
-  Show,
-  untrack,
-} from "solid-js";
-import type { JSX } from "@solidjs/web";
-import { captureException } from "@dotli/metrics";
-import type { ChainStatus } from "../../network-monitor.js";
-import { shallowEqual } from "../../state/create-store.js";
-import { networkStore, watchNetwork } from "../../state/network.js";
-import { productStore } from "../../state/product.js";
-import { topbarStore } from "../../state/topbar.js";
-import { useStore } from "../use-store.js";
-import {
-  describeBlockDelay,
-  describeLiveNetwork,
-  formatRate,
-  formatSize,
-  stripCapacity,
-} from "./chains-format.js";
-import { createPopover } from "./popover.js";
+import { createEffect, createMemo, createSignal, Errored, For, onSettled, Show, untrack } from 'solid-js';
+import type { JSX } from '@solidjs/web';
+import { captureException } from '@dotli/metrics';
+import type { ChainStatus } from '../../network-monitor.js';
+import { shallowEqual } from '../../state/create-store.js';
+import { networkStore, watchNetwork } from '../../state/network.js';
+import { productStore } from '../../state/product.js';
+import { topbarStore } from '../../state/topbar.js';
+import { useStore } from '../use-store.js';
+import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
+import { createPopover } from './popover.js';
 
 /**
  * How often the pending cells' countdown is recomputed while open and a
@@ -34,10 +19,7 @@ import { createPopover } from "./popover.js";
  */
 const PENDING_TICK_MS = 250;
 
-const TIPS = [
-  "Close apps and tabs you are not using",
-  "Move closer to your router",
-];
+const TIPS = ['Close apps and tabs you are not using', 'Move closer to your router'];
 
 /**
  * Glide the strip left by the room the newly landed bars just took.
@@ -58,23 +40,23 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   }
   for (const node of Array.from(strip.children).slice(-landed)) {
     const mark = node as HTMLElement;
-    mark.classList.add("is-new");
+    mark.classList.add('is-new');
     mark.addEventListener(
-      "animationend",
+      'animationend',
       () => {
-        mark.classList.remove("is-new");
+        mark.classList.remove('is-new');
       },
       { once: true },
     );
   }
-  strip.classList.remove("is-sliding");
+  strip.classList.remove('is-sliding');
   strip.style.transform = `translateX(${String(shift)}px)`;
   // Read back so the untransitioned offset is committed before the class that
   // animates it is added. Without this the browser coalesces both into the
   // final position and nothing moves.
   strip.getBoundingClientRect();
-  strip.classList.add("is-sliding");
-  strip.style.transform = "translateX(0)";
+  strip.classList.add('is-sliding');
+  strip.style.transform = 'translateX(0)';
 }
 
 /**
@@ -86,10 +68,7 @@ function slideStrip(strip: HTMLElement, landed: number): void {
  * negative: past the estimate it swaps to words, and past 3x the verdict line
  * escalates, so "due any moment" cannot linger.
  */
-function PendingBar(props: {
-  chain: ChainStatus;
-  sinceLast: number | null;
-}): JSX.Element {
+function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   // Read four times per render: computed once per tick.
   const pending = createMemo(
     (): {
@@ -100,8 +79,8 @@ function PendingBar(props: {
       const since = props.sinceLast;
       if (since === null) {
         return {
-          modifier: " is-searching",
-          text: props.chain.phase ?? "connecting",
+          modifier: ' is-searching',
+          text: props.chain.phase ?? 'connecting',
         };
       }
       const fraction = Math.min(since / props.chain.blockTimeMs, 1);
@@ -109,22 +88,18 @@ function PendingBar(props: {
       const leftMs = props.chain.blockTimeMs - since;
       return leftMs > 0
         ? {
-            modifier: "",
+            modifier: '',
             height,
             text: `next block in about ${String(Math.ceil(leftMs / 1000))}s`,
           }
-        : { modifier: " is-due", height, text: "due any moment" };
+        : { modifier: ' is-due', height, text: 'due any moment' };
     },
   );
   return (
     <>
       <span
         class={`chains-bar chains-bar-pending${pending().modifier}`}
-        style={
-          pending().height === undefined
-            ? undefined
-            : { height: pending().height }
-        }
+        style={pending().height === undefined ? undefined : { height: pending().height }}
       />
       <span class="chains-bars-waiting">{pending().text}</span>
     </>
@@ -136,10 +111,7 @@ function PendingBar(props: {
  * element while they stay on screen, so newly landed ones slide in (see
  * slideStrip) instead of the strip being rebuilt.
  */
-function BarStrip(props: {
-  chain: ChainStatus;
-  sinceLast: number | null;
-}): JSX.Element {
+function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   let strip: HTMLDivElement | undefined;
   // The network store is rebuilt on every monitor notification, speed
   // samples included. The monitor adds a new bar object per block and never
@@ -158,7 +130,7 @@ function BarStrip(props: {
   // resizes. Network updates read no layout.
   onSettled(() => {
     measure();
-    if (strip === undefined || typeof ResizeObserver === "undefined") {
+    if (strip === undefined || typeof ResizeObserver === 'undefined') {
       return;
     }
     const observer = new ResizeObserver(measure);
@@ -185,10 +157,7 @@ function BarStrip(props: {
     // Only blocks newer than the newest shown landed: bars revealed on the
     // left by a wider strip are history, not arrivals.
     const newest = prev.at(-1)?.number;
-    const landed =
-      newest === undefined
-        ? list.length
-        : list.filter((bar) => bar.number > newest).length;
+    const landed = newest === undefined ? list.length : list.filter(bar => bar.number > newest).length;
     // Bars landing in a strip that showed none (on opening, or after the
     // pending cell) appear without sliding.
     if (landed > 0 && list.length > landed) {
@@ -197,19 +166,17 @@ function BarStrip(props: {
   });
   return (
     <div
-      ref={(el) => {
+      ref={el => {
         strip = el;
       }}
       class="chains-bars"
     >
       <Show
         when={props.chain.bars.length > 0}
-        fallback={
-          <PendingBar chain={props.chain} sinceLast={props.sinceLast} />
-        }
+        fallback={<PendingBar chain={props.chain} sinceLast={props.sinceLast} />}
       >
         <For each={visible()}>
-          {(bar) => {
+          {bar => {
             const block = String(bar.number);
             // Hovering a bar answers the only question it raises: how late
             // was it.
@@ -236,14 +203,10 @@ function BarStrip(props: {
  * A labelled strip per chain. The bars answer whether blocks are arriving;
  * the peer count beside the name answers who they are arriving from.
  */
-function ChainGroup(props: {
-  chain: ChainStatus;
-  sinceLast: number | null;
-}): JSX.Element {
+function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   // Blank rather than "0 peers" until a sample lands: before the first reply
   // the shell does not know the count, and zero is a different claim.
-  const peers = (): number | null =>
-    props.chain.reachable ? props.chain.peers : null;
+  const peers = (): number | null => (props.chain.reachable ? props.chain.peers : null);
   return (
     <div class="chains-group">
       <p class="chains-group-label">
@@ -253,27 +216,14 @@ function ChainGroup(props: {
           aria-label={
             peers() === null
               ? undefined
-              : `${props.chain.label}: ${String(peers())} ${peers() === 1 ? "peer" : "peers"} connected`
+              : `${props.chain.label}: ${String(peers())} ${peers() === 1 ? 'peer' : 'peers'} connected`
           }
         >
-          {peers() === null
-            ? ""
-            : peers() === 1
-              ? "1 peer"
-              : `${String(peers())} peers`}
+          {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
         </span>
       </p>
-      <div
-        class={
-          props.chain.reachable
-            ? "chains-bars-cell"
-            : "chains-bars-cell is-unavailable"
-        }
-      >
-        <Show
-          when={props.chain.reachable}
-          fallback="no endpoint on this network"
-        >
+      <div class={props.chain.reachable ? 'chains-bars-cell' : 'chains-bars-cell is-unavailable'}>
+        <Show when={props.chain.reachable} fallback="no endpoint on this network">
           <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
         </Show>
       </div>
@@ -299,12 +249,9 @@ function ChainsPanel(): JSX.Element {
   // ticker stops. A memo, as Solid 2 runs an effect's function every time
   // its compute re-runs.
   const counting = createMemo(() =>
-    network().chains.some(
-      (chain) =>
-        chain.reachable && chain.bars.length === 0 && chain.sinceLast !== null,
-    ),
+    network().chains.some(chain => chain.reachable && chain.bars.length === 0 && chain.sinceLast !== null),
   );
-  createEffect(counting, (on) => {
+  createEffect(counting, on => {
     if (!on) {
       return;
     }
@@ -317,18 +264,14 @@ function ChainsPanel(): JSX.Element {
   });
   /** How long ago the chain's last block landed, as of the latest tick. */
   const sinceLast = (chain: ChainStatus): number | null =>
-    chain.sinceLast === null
-      ? null
-      : chain.sinceLast + Math.max(0, now() - network().readAt);
+    chain.sinceLast === null ? null : chain.sinceLast + Math.max(0, now() - network().readAt);
   // Speed and size describe the load. Once the product is on screen they
   // describe history, so the footer empties rather than sitting at its final
   // numbers forever.
-  const loading = (): boolean => product().status !== "loaded";
+  const loading = (): boolean => product().status !== 'loaded';
   const speed = (): string | null => {
     const { bytesPerSecond } = network().transfer;
-    return loading() && bytesPerSecond !== null
-      ? formatRate(bytesPerSecond)
-      : null;
+    return loading() && bytesPerSecond !== null ? formatRate(bytesPerSecond) : null;
   };
   const size = (): { label: string; value: string } | null => {
     const { fetched, total } = network().transfer;
@@ -336,9 +279,9 @@ function ChainsPanel(): JSX.Element {
       return null;
     }
     return fetched >= total
-      ? { label: "Size", value: formatSize(total) }
+      ? { label: 'Size', value: formatSize(total) }
       : {
-          label: "Downloading",
+          label: 'Downloading',
           value: `${formatSize(fetched)} / ${formatSize(total)}`,
         };
   };
@@ -349,15 +292,13 @@ function ChainsPanel(): JSX.Element {
         <span class={`chains-status-dot is-${verdict().tone}`} />
         <span>{verdict().text}</span>
       </div>
-      <For each={network().chains} keyed={(chain) => chain.role}>
-        {(chain) => (
-          <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />
-        )}
+      <For each={network().chains} keyed={chain => chain.role}>
+        {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
       </For>
       <div class="chains-transfer">
         <p class="chains-transfer-row">
           <Show when={speed()}>
-            {(rate) => (
+            {rate => (
               <>
                 <span class="chains-transfer-label">Speed</span>
                 <span class="chains-transfer-value">{rate()}</span>
@@ -367,7 +308,7 @@ function ChainsPanel(): JSX.Element {
         </p>
         <p class="chains-transfer-row">
           <Show when={size()}>
-            {(row) => (
+            {row => (
               <>
                 <span class="chains-transfer-label">{row().label}</span>
                 <span class="chains-transfer-value">{row().value}</span>
@@ -380,7 +321,7 @@ function ChainsPanel(): JSX.Element {
       <div class="chains-tips">
         <p class="chains-tips-title">Tips for better performance</p>
         <ul class="chains-tips-list">
-          <For each={TIPS}>{(tip) => <li>{tip}</li>}</For>
+          <For each={TIPS}>{tip => <li>{tip}</li>}</For>
         </ul>
       </div>
     </>
@@ -410,11 +351,11 @@ export function ChainsPopover(): JSX.Element {
   let popover: HTMLDivElement | undefined;
   const topbar = useStore(topbarStore);
   const surface = createPopover({
-    mode: "popover",
+    mode: 'popover',
     trigger: () => button,
     surface: () => popover,
   });
-  createEffect(surface.open, (open) => {
+  createEffect(surface.open, open => {
     if (!open) {
       return;
     }
@@ -424,19 +365,19 @@ export function ChainsPopover(): JSX.Element {
   return (
     <>
       <button
-        ref={(el) => {
+        ref={el => {
           button = el;
           // No stopPropagation: the settings island's outside-click closer
           // has to see this click to shut Settings, which sits at the same
           // fixed position and would otherwise render on top of this panel.
-          el.addEventListener("click", surface.toggle);
+          el.addEventListener('click', surface.toggle);
         }}
         id="chains-button"
-        class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? " visible" : ""}`}
+        class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? ' visible' : ''}`}
         title="Network"
         aria-label="Network"
         aria-haspopup="dialog"
-        aria-expanded={surface.open() ? "true" : "false"}
+        aria-expanded={surface.open() ? 'true' : 'false'}
         aria-controls="chains-popover"
       >
         <svg
@@ -455,10 +396,10 @@ export function ChainsPopover(): JSX.Element {
         </svg>
       </button>
       <div
-        ref={(el) => {
+        ref={el => {
           popover = el;
         }}
-        class={`more-popover chains-popover${surface.open() ? " open" : ""}`}
+        class={`more-popover chains-popover${surface.open() ? ' open' : ''}`}
         id="chains-popover"
         role="dialog"
         aria-label="Network"
@@ -472,7 +413,7 @@ export function ChainsPopover(): JSX.Element {
               afresh. */}
           <Errored
             fallback={(err: () => unknown) => {
-              captureException(err(), { root: "island:chains" });
+              captureException(err(), { root: 'island:chains' });
               surface.setOpen(false);
               return null;
             }}

@@ -9,16 +9,16 @@
 // user side of the conversation flows the other way, through
 // `publishChatAction` on the worker host runtime; see `../chat/service`.
 
-import type { ChatPlatform } from "@parity/truapi-host";
-import type { HostChatListSubscribeItem } from "@parity/truapi";
+import type { ChatPlatform } from '@parity/truapi-host';
+import type { HostChatListSubscribeItem } from '@parity/truapi';
 import {
   CHAT_ROOMS_CHANGED_EVENT,
   chatRooms,
   productCreateRoom,
   productPostMessage,
   registerBot,
-} from "../chat/service.js";
-import { createResultStream } from "./result-stream.js";
+} from '../chat/service.js';
+import { createResultStream } from './result-stream.js';
 
 export function createChatPlatform(): Required<ChatPlatform> {
   return {
@@ -41,63 +41,52 @@ export function createChatPlatform(): Required<ChatPlatform> {
     },
 
     async postChatMessage(product, request) {
-      const messageId = await productPostMessage(
-        product.productId,
-        request.roomId,
-        request.payload,
-      );
+      const messageId = await productPostMessage(product.productId, request.roomId, request.payload);
       return { messageId };
     },
 
     subscribeChatRooms(product) {
       const snapshot = async (): Promise<HostChatListSubscribeItem> => ({
-        rooms: (await chatRooms(product.productId)).map((room) => ({
+        rooms: (await chatRooms(product.productId)).map(room => ({
           roomId: room.roomId,
-          participatingAs: "RoomHost" as const,
+          participatingAs: 'RoomHost' as const,
         })),
       });
-      return createResultStream<HostChatListSubscribeItem>(
-        [],
-        (push, pushError) => {
-          let live = true;
-          // Snapshot reads are independent transactions and can settle out
-          // of order; only the newest may push or the list goes stale.
-          let latest = 0;
-          const emitSnapshot = (): void => {
-            const generation = ++latest;
-            snapshot().then(
-              (item) => {
-                if (live && generation === latest) {
-                  push(item);
-                }
-              },
-              (error: unknown) => {
-                if (live && generation === latest) {
-                  pushError({
-                    reason:
-                      error instanceof Error ? error.message : String(error),
-                  });
-                }
-              },
-            );
-          };
-          const onRoomsChanged = (event: Event): void => {
-            const detail = (event as CustomEvent<{ productId: string }>).detail;
-            if (detail.productId === product.productId) {
-              emitSnapshot();
-            }
-          };
-          window.addEventListener(CHAT_ROOMS_CHANGED_EVENT, onRoomsChanged);
-          emitSnapshot();
-          return () => {
-            live = false;
-            window.removeEventListener(
-              CHAT_ROOMS_CHANGED_EVENT,
-              onRoomsChanged,
-            );
-          };
-        },
-      );
+      return createResultStream<HostChatListSubscribeItem>([], (push, pushError) => {
+        let live = true;
+        // Snapshot reads are independent transactions and can settle out
+        // of order; only the newest may push or the list goes stale.
+        let latest = 0;
+        const emitSnapshot = (): void => {
+          const generation = ++latest;
+          snapshot().then(
+            item => {
+              if (live && generation === latest) {
+                push(item);
+              }
+            },
+            (error: unknown) => {
+              if (live && generation === latest) {
+                pushError({
+                  reason: error instanceof Error ? error.message : String(error),
+                });
+              }
+            },
+          );
+        };
+        const onRoomsChanged = (event: Event): void => {
+          const detail = (event as CustomEvent<{ productId: string }>).detail;
+          if (detail.productId === product.productId) {
+            emitSnapshot();
+          }
+        };
+        window.addEventListener(CHAT_ROOMS_CHANGED_EVENT, onRoomsChanged);
+        emitSnapshot();
+        return () => {
+          live = false;
+          window.removeEventListener(CHAT_ROOMS_CHANGED_EVENT, onRoomsChanged);
+        };
+      });
     },
   };
 }

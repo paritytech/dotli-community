@@ -15,13 +15,13 @@
 // Bytes and bookkeeping live in separate stores, so touching a block on read
 // and walking the cache to prune it never load the bytes.
 
-import { getDb } from "./db.js";
-import { log } from "@dotli/shared";
-import { captureException } from "@dotli/metrics";
+import { getDb } from './db.js';
+import { log } from '@dotli/shared';
+import { captureException } from '@dotli/metrics';
 
-const BLOCKS = "blocks";
-const META = "block_meta";
-const BY_LAST_USED = "byLastUsed";
+const BLOCKS = 'blocks';
+const META = 'block_meta';
+const BY_LAST_USED = 'byLastUsed';
 
 interface BlockEntry {
   cid: string;
@@ -40,10 +40,10 @@ function completion(tx: IDBTransaction): Promise<void> {
       resolve();
     };
     tx.onerror = () => {
-      reject(tx.error ?? new Error("IDB transaction error"));
+      reject(tx.error ?? new Error('IDB transaction error'));
     };
     tx.onabort = () => {
-      reject(tx.error ?? new Error("IDB transaction aborted"));
+      reject(tx.error ?? new Error('IDB transaction aborted'));
     };
   });
 }
@@ -54,7 +54,7 @@ const reportedActions = new Set<string>();
 
 function report(action: string, err: unknown): void {
   const name = err instanceof Error ? err.name : undefined;
-  if (name === "QuotaExceededError") {
+  if (name === 'QuotaExceededError') {
     // Expected under storage pressure, not a bug to page on. Still logged
     // every time so a full cache is visible in the console.
     log.warn(`[dot.li block-cache] ${action} error:`, err);
@@ -76,10 +76,10 @@ function meta(cid: string, size: number): BlockMeta {
 export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
   try {
     const db = await getDb();
-    const tx = db.transaction([BLOCKS, META], "readwrite");
+    const tx = db.transaction([BLOCKS, META], 'readwrite');
     const request = tx.objectStore(BLOCKS).get(cid);
     let settled = false;
-    return await new Promise<Uint8Array | null>((resolve) => {
+    return await new Promise<Uint8Array | null>(resolve => {
       // The read and the touch write share one transaction, so a failure in
       // either reaches this same `tx.onerror`/`onabort`. `settled` tells them
       // apart: before it, a failure means the read itself never came back, so
@@ -111,40 +111,37 @@ export async function getCachedBlock(cid: string): Promise<Uint8Array | null> {
       const fail = (err: Error): void => {
         if (!reported) {
           reported = true;
-          report(settled ? "touch" : "read", err);
+          report(settled ? 'touch' : 'read', err);
         }
         settle(null);
       };
-      tx.onerror = (event) => {
+      tx.onerror = event => {
         // `tx.error` is still null while the failing request bubbles; the
         // request carries the cause.
         const failed = event.target as IDBRequest | null;
-        fail(failed?.error ?? tx.error ?? new Error("IDB transaction error"));
+        fail(failed?.error ?? tx.error ?? new Error('IDB transaction error'));
       };
       tx.onabort = () => {
-        fail(tx.error ?? new Error("IDB transaction aborted"));
+        fail(tx.error ?? new Error('IDB transaction aborted'));
       };
     });
   } catch (err) {
-    report("read", err);
+    report('read', err);
     return null;
   }
 }
 
 /** Keep `bytes` as the block for `cid`. Best-effort: failures are logged. */
-export async function putCachedBlock(
-  cid: string,
-  bytes: Uint8Array,
-): Promise<void> {
+export async function putCachedBlock(cid: string, bytes: Uint8Array): Promise<void> {
   try {
     const db = await getDb();
-    const tx = db.transaction([BLOCKS, META], "readwrite");
+    const tx = db.transaction([BLOCKS, META], 'readwrite');
     const entry: BlockEntry = { cid, bytes };
     tx.objectStore(BLOCKS).put(entry);
     tx.objectStore(META).put(meta(cid, bytes.byteLength));
     await completion(tx);
   } catch (err) {
-    report("write", err);
+    report('write', err);
   }
 }
 
@@ -152,12 +149,12 @@ export async function putCachedBlock(
 export async function deleteCachedBlock(cid: string): Promise<void> {
   try {
     const db = await getDb();
-    const tx = db.transaction([BLOCKS, META], "readwrite");
+    const tx = db.transaction([BLOCKS, META], 'readwrite');
     tx.objectStore(BLOCKS).delete(cid);
     tx.objectStore(META).delete(cid);
     await completion(tx);
   } catch (err) {
-    report("delete", err);
+    report('delete', err);
   }
 }
 
@@ -165,12 +162,12 @@ export async function deleteCachedBlock(cid: string): Promise<void> {
 export async function clearBlockCache(): Promise<void> {
   try {
     const db = await getDb();
-    const tx = db.transaction([BLOCKS, META], "readwrite");
+    const tx = db.transaction([BLOCKS, META], 'readwrite');
     tx.objectStore(BLOCKS).clear();
     tx.objectStore(META).clear();
     await completion(tx);
   } catch (err) {
-    report("clear", err);
+    report('clear', err);
   }
 }
 
@@ -181,12 +178,9 @@ export async function clearBlockCache(): Promise<void> {
 export async function pruneBlockCache(maxBytes: number): Promise<number> {
   try {
     const db = await getDb();
-    const tx = db.transaction([BLOCKS, META], "readwrite");
+    const tx = db.transaction([BLOCKS, META], 'readwrite');
     const blocks = tx.objectStore(BLOCKS);
-    const cursorRequest = tx
-      .objectStore(META)
-      .index(BY_LAST_USED)
-      .openCursor(null, "prev");
+    const cursorRequest = tx.objectStore(META).index(BY_LAST_USED).openCursor(null, 'prev');
     let kept = 0;
     let evicted = 0;
     cursorRequest.onsuccess = () => {
@@ -206,7 +200,7 @@ export async function pruneBlockCache(maxBytes: number): Promise<number> {
     await completion(tx);
     return evicted;
   } catch (err) {
-    report("prune", err);
+    report('prune', err);
     return 0;
   }
 }

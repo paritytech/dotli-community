@@ -5,60 +5,39 @@
 // it holds, so no reader recomputes for it. The window events some setters
 // dispatch are not the store's notification: they still fire as before.
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
-vi.mock("../../../metrics/src/sentry.js", () => sentry);
+vi.mock('../../../metrics/src/sentry.js', () => sentry);
 
-import { CHAT_AVAILABILITY_EVENT } from "@dotli/shared";
-import type { ReadableStore } from "../../src/state/create-store.js";
-import { resetStores } from "../helpers/solid.js";
-import {
-  getLoadingState,
-  loadingStore,
-  updateLoading,
-} from "../../src/state/loading.js";
+import { CHAT_AVAILABILITY_EVENT } from '@dotli/shared';
+import type { ReadableStore } from '../../src/state/create-store.js';
+import { resetStores } from '../helpers/solid.js';
+import { getLoadingState, loadingStore, updateLoading } from '../../src/state/loading.js';
 import {
   recordChainsButtonVisible,
   setBlockingModalActive,
   setTopbarVisible,
   topbarStore,
-} from "../../src/state/topbar.js";
+} from '../../src/state/topbar.js';
 import {
   chatPanelStore,
   initChatPanelState,
   resetChatPanelStateForTests,
   setChatComposerError,
   setChatPanelWidth,
-} from "../../src/state/chat-panel.js";
-import {
-  authModalStore,
-  resetAuthModal,
-  updateAuthModal,
-} from "../../src/state/auth-modal.js";
-import {
-  clearToasts,
-  resetToastsForTests,
-  toastsStore,
-} from "../../src/state/toasts.js";
-import {
-  authStore,
-  loggedInStore,
-  setAuthState,
-  setLoggedIn,
-} from "../../src/state/auth.js";
-import {
-  productStore,
-  setProductError,
-  setProductLoaded,
-} from "../../src/state/product.js";
-import { setTheme, themeStore } from "../../src/state/theme.js";
+} from '../../src/state/chat-panel.js';
+import { authModalStore, resetAuthModal, updateAuthModal } from '../../src/state/auth-modal.js';
+import { clearToasts, resetToastsForTests, toastsStore } from '../../src/state/toasts.js';
+import { authStore, loggedInStore, setAuthState, setLoggedIn } from '../../src/state/auth.js';
+import { productStore, setProductError, setProductLoaded } from '../../src/state/product.js';
+import { setTheme, themeStore } from '../../src/state/theme.js';
 import {
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
   urlPillStore,
-} from "../../src/state/url-pill.js";
+} from '../../src/state/url-pill.js';
 
 /** Count the store's notifications from now on. */
 function countNotifications<T>(store: ReadableStore<T>): {
@@ -93,14 +72,14 @@ afterEach(() => {
   resetChatPanelStateForTests();
 });
 
-describe("store equality", () => {
-  it("As the loading screen, a frame that rewrites the same headline notifies nobody", () => {
+describe('store equality', () => {
+  it('As the loading screen, a frame that rewrites the same headline notifies nobody', () => {
     // Given
-    updateLoading({ statusText: "Reaching out", statusOpacity: 0.5 });
+    updateLoading({ statusText: 'Reaching out', statusOpacity: 0.5 });
     const loading = countNotifications(loadingStore);
 
     // When: the typing loop writes the same frame again, twice.
-    updateLoading({ statusText: "Reaching out", statusOpacity: 0.5 });
+    updateLoading({ statusText: 'Reaching out', statusOpacity: 0.5 });
     updateLoading({ ...getLoadingState() });
 
     // Then
@@ -114,7 +93,7 @@ describe("store equality", () => {
     loading.stop();
   });
 
-  it("As the topbar, an unchanged visibility notifies nobody", () => {
+  it('As the topbar, an unchanged visibility notifies nobody', () => {
     // Given: the topbar starts visible.
     const topbar = countNotifications(topbarStore);
 
@@ -134,7 +113,7 @@ describe("store equality", () => {
     topbar.stop();
   });
 
-  it("As the topbar, an unchanged blocking-modal flag or chains button notifies nobody", () => {
+  it('As the topbar, an unchanged blocking-modal flag or chains button notifies nobody', () => {
     // Given
     setBlockingModalActive(true);
     recordChainsButtonVisible(true);
@@ -149,12 +128,12 @@ describe("store equality", () => {
     topbar.stop();
   });
 
-  it("As the chat panel, a width drag past the clamp, a cleared composer error, an unchanged topbar and a repeated availability event notify nobody", () => {
+  it('As the chat panel, a width drag past the clamp, a cleared composer error, an unchanged topbar and a repeated availability event notify nobody', () => {
     // Given
     const remove = initChatPanelState();
     window.dispatchEvent(
       new CustomEvent(CHAT_AVAILABILITY_EVENT, {
-        detail: { label: "app", chat: true },
+        detail: { label: 'app', chat: true },
       }),
     );
     setChatPanelWidth(10_000);
@@ -168,7 +147,7 @@ describe("store equality", () => {
     setBlockingModalActive(true);
     window.dispatchEvent(
       new CustomEvent(CHAT_AVAILABILITY_EVENT, {
-        detail: { label: "app", chat: true },
+        detail: { label: 'app', chat: true },
       }),
     );
 
@@ -184,18 +163,18 @@ describe("store equality", () => {
     remove();
   });
 
-  it("As the auth modal, rewriting the same fields and an equal view notifies nobody", () => {
+  it('As the auth modal, rewriting the same fields and an equal view notifies nobody', () => {
     // Given
     updateAuthModal({
       open: true,
-      view: { kind: "pairing", payload: "polkadotapp://pair?x" },
+      view: { kind: 'pairing', payload: 'polkadotapp://pair?x' },
     });
     const modal = countNotifications(authModalStore);
 
     // When
     updateAuthModal({ open: true });
     updateAuthModal({
-      view: { kind: "pairing", payload: "polkadotapp://pair?x" },
+      view: { kind: 'pairing', payload: 'polkadotapp://pair?x' },
     });
 
     // Then
@@ -203,7 +182,7 @@ describe("store equality", () => {
 
     // When
     updateAuthModal({
-      view: { kind: "pairing", payload: "polkadotapp://pair?y" },
+      view: { kind: 'pairing', payload: 'polkadotapp://pair?y' },
     });
     resetAuthModal();
     resetAuthModal();
@@ -213,7 +192,7 @@ describe("store equality", () => {
     modal.stop();
   });
 
-  it("As the toasts, clearing an empty stack notifies nobody", () => {
+  it('As the toasts, clearing an empty stack notifies nobody', () => {
     // Given
     const toasts = countNotifications(toastsStore);
 
@@ -226,12 +205,12 @@ describe("store equality", () => {
     toasts.stop();
   });
 
-  it("As the auth controller, every auth step notifies, even the same object again, and dotli:truapi-auth-state fires every time", () => {
+  it('As the auth controller, every auth step notifies, even the same object again, and dotli:truapi-auth-state fires every time', () => {
     // Given
-    const step = { tag: "Authenticating" } as const;
+    const step = { tag: 'Authenticating' } as const;
     setAuthState(step);
     const auth = countNotifications(authStore);
-    const events = countEvents("dotli:truapi-auth-state");
+    const events = countEvents('dotli:truapi-auth-state');
 
     // When
     setAuthState(step);
@@ -244,11 +223,11 @@ describe("store equality", () => {
     events.stop();
   });
 
-  it("As the session store, an unchanged login notifies nobody and dotli:authenticated still fires every time", () => {
+  it('As the session store, an unchanged login notifies nobody and dotli:authenticated still fires every time', () => {
     // Given
     setLoggedIn(true);
     const session = countNotifications(loggedInStore);
-    const events = countEvents("dotli:authenticated");
+    const events = countEvents('dotli:authenticated');
 
     // When
     setLoggedIn(true);
@@ -260,15 +239,15 @@ describe("store equality", () => {
     events.stop();
   });
 
-  it("As the product store, reloading the same product notifies nobody and dotli:product-loaded and dotli:product-error still fire every time", () => {
+  it('As the product store, reloading the same product notifies nobody and dotli:product-loaded and dotli:product-error still fire every time', () => {
     // Given
-    setProductLoaded("app", "app.dot");
+    setProductLoaded('app', 'app.dot');
     const product = countNotifications(productStore);
-    const loaded = countEvents("dotli:product-loaded");
-    const errors = countEvents("dotli:product-error");
+    const loaded = countEvents('dotli:product-loaded');
+    const errors = countEvents('dotli:product-error');
 
     // When
-    setProductLoaded("app", "app.dot");
+    setProductLoaded('app', 'app.dot');
     setProductError();
     setProductError();
 
@@ -281,14 +260,14 @@ describe("store equality", () => {
     errors.stop();
   });
 
-  it("As the theme store, an unchanged theme notifies nobody and dotli:theme-changed still fires every time", () => {
+  it('As the theme store, an unchanged theme notifies nobody and dotli:theme-changed still fires every time', () => {
     // Given
-    setTheme({ pref: "light", resolved: "light" });
+    setTheme({ pref: 'light', resolved: 'light' });
     const theme = countNotifications(themeStore);
-    const events = countEvents("dotli:theme-changed");
+    const events = countEvents('dotli:theme-changed');
 
     // When
-    setTheme({ pref: "light", resolved: "light" });
+    setTheme({ pref: 'light', resolved: 'light' });
 
     // Then
     expect(theme.count()).toBe(0);
@@ -297,21 +276,21 @@ describe("store equality", () => {
     events.stop();
   });
 
-  it("As the URL pill, showing the same pill or shield again notifies nobody", () => {
+  it('As the URL pill, showing the same pill or shield again notifies nobody', () => {
     // Given
-    showProductPill("app", ".dot");
-    setVerificationShieldState("verified");
+    showProductPill('app', '.dot');
+    setVerificationShieldState('verified');
     const pill = countNotifications(urlPillStore);
 
     // When
-    setVerificationShieldState("verified");
+    setVerificationShieldState('verified');
 
     // Then
     expect(pill.count()).toBe(0);
 
     // When
-    showLocalhostPill("localhost:3000");
-    showLocalhostPill("localhost:3000");
+    showLocalhostPill('localhost:3000');
+    showLocalhostPill('localhost:3000');
 
     // Then
     expect(pill.count()).toBe(1);

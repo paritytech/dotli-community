@@ -10,14 +10,10 @@
  * fired first.
  */
 
-import { NetworkSyncTimeoutError } from "./errors.js";
+import { NetworkSyncTimeoutError } from './errors.js';
 
 /** Race `work` against a `NetworkSyncTimeoutError` naming `chain`. */
-export function raceSyncTimeout<T>(
-  work: Promise<T>,
-  chain: string,
-  timeoutMs: number,
-): Promise<T> {
+export function raceSyncTimeout<T>(work: Promise<T>, chain: string, timeoutMs: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout>;
   return Promise.race([
     work,

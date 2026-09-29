@@ -6,7 +6,7 @@
 // so index.ts stays pure re-exports, which rolldown's lazy barrel
 // optimization needs to leave unused re-exports out of an importer's chunk.
 
-import type * as FetchNamespace from "./fetch.js";
+import type * as FetchNamespace from './fetch.js';
 
 export type FetchModule = typeof FetchNamespace;
-export const loadFetch = (): Promise<FetchModule> => import("./fetch.js");
+export const loadFetch = (): Promise<FetchModule> => import('./fetch.js');

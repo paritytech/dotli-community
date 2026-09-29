@@ -11,9 +11,9 @@ import {
   getEnabledNetworks,
   getNetwork,
   type Network,
-} from "@dotli/config";
+} from '@dotli/config';
 
-import { createSyncStore, type ReadableStore } from "./create-store.js";
+import { createSyncStore, type ReadableStore } from './create-store.js';
 
 export interface SettingsState {
   backend: Backend;

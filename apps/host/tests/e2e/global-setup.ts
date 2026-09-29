@@ -1,15 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { chromium, type FullConfig, type Page } from "@playwright/test";
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { dirname } from "node:path";
+import { chromium, type FullConfig, type Page } from '@playwright/test';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import {
   formatSigningHostExit,
   signingHostVersion,
@@ -18,48 +12,39 @@ import {
   stopSigningHostPid,
   type SigningHostConfig,
   type SigningHostProcess,
-} from "./helpers/signing-host-cli.js";
-import { extractQrPayload } from "./helpers/extract-qr-payload.js";
-import {
-  E2E_CHAIN_BACKEND,
-  initializeChainBackend,
-} from "./helpers/chain-backend.js";
-import {
-  STATE_FILE,
-  SESSION_FILE,
-  SIGNING_HOST_STATE_DIR,
-  type PersistedSession,
-} from "./fixtures/paths.js";
+} from './helpers/signing-host-cli.js';
+import { extractQrPayload } from './helpers/extract-qr-payload.js';
+import { E2E_CHAIN_BACKEND, initializeChainBackend } from './helpers/chain-backend.js';
+import { STATE_FILE, SESSION_FILE, SIGNING_HOST_STATE_DIR, type PersistedSession } from './fixtures/paths.js';
 
 // Must equal the host's default network (`packages/config/src/network.ts`
 // `defaultNetwork()`, "paseo-next-v2" at time of writing). Required with no
 // default: a mismatch surfaces as "pair OK, user-badge never appears"
 // because the CLI attests on a different chain than the host listens on.
-const NETWORK = requiredEnv("SIGNING_HOST_NETWORK");
+const NETWORK = requiredEnv('SIGNING_HOST_NETWORK');
 // The truapi-host CLI from paritytech/host-rust-core, on PATH by default.
 // The .env loader can hand us empty strings, so these treat "" as unset.
-const SIGNING_HOST_BIN = nonEmptyEnv("SIGNING_HOST_BIN") ?? "truapi-host";
-const SIGNING_HOST_BASE_PATH =
-  nonEmptyEnv("SIGNING_HOST_BASE_PATH") ?? SIGNING_HOST_STATE_DIR;
+const SIGNING_HOST_BIN = nonEmptyEnv('SIGNING_HOST_BIN') ?? 'truapi-host';
+const SIGNING_HOST_BASE_PATH = nonEmptyEnv('SIGNING_HOST_BASE_PATH') ?? SIGNING_HOST_STATE_DIR;
 // The product the tests exercise, mirroring fixtures/paired.ts. The CLI
 // scopes wallet-level signing (signRaw) to this id.
 const PRODUCT_ID =
-  nonEmptyEnv("SIGNING_HOST_PRODUCT_ID") ??
-  (process.env["E2E_PRODUCT_URL"] === undefined
-    ? `${process.env["E2E_HOST"] ?? "host-playground"}.dot`
-    : new URL(process.env["E2E_PRODUCT_URL"]).host);
+  nonEmptyEnv('SIGNING_HOST_PRODUCT_ID') ??
+  (process.env['E2E_PRODUCT_URL'] === undefined
+    ? `${process.env['E2E_HOST'] ?? 'host-playground'}.dot`
+    : new URL(process.env['E2E_PRODUCT_URL']).host);
 // Local-dev knobs. Defaults are fine because they don't depend on
 // external services.
-const PORT = process.env["PORT"] ?? "5173";
+const PORT = process.env['PORT'] ?? '5173';
 // Pairing only needs the host shell and protocol iframe. Loading the
 // host-playground product here can open product permission modals before the
 // auth button is clicked, so keep global auth setup on the bare host origin.
-const AUTH_HOST = process.env["E2E_AUTH_HOST"] ?? "localhost";
+const AUTH_HOST = process.env['E2E_AUTH_HOST'] ?? 'localhost';
 
 /** The env var `name`, or undefined when it is unset or empty. */
 function nonEmptyEnv(name: string): string | undefined {
   const value = process.env[name];
-  return value === "" ? undefined : value;
+  return value === '' ? undefined : value;
 }
 
 function requiredEnv(name: string): string {
@@ -81,9 +66,7 @@ function positiveIntegerEnv(name: string, fallback: number): number {
 
   const value = Number(raw);
   if (!Number.isSafeInteger(value) || value <= 0) {
-    console.error(
-      `[globalSetup] ${name} must be a positive integer, got "${raw}".`,
-    );
+    console.error(`[globalSetup] ${name} must be a positive integer, got "${raw}".`);
     process.exit(1);
   }
   return value;
@@ -93,17 +76,11 @@ const PAIR_ATTEMPTS = 3;
 const PAIR_ATTEMPT_BACKOFF_MS = 3_000;
 // First-attempt ceiling: a cold signing-host state dir registers a lite
 // username and waits for ring inclusion, which can take several minutes.
-const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv(
-  "E2E_PAIR_BADGE_TIMEOUT_MS",
-  600_000,
-);
+const USER_BADGE_TIMEOUT_MS = positiveIntegerEnv('E2E_PAIR_BADGE_TIMEOUT_MS', 600_000);
 // Retries reuse the warmed state dir, so they get a far smaller ceiling.
 // Caps the worst case under CI's 35-min job timeout so exit 99 stays
 // reachable during an outage instead of the runner hard-killing the job.
-const RETRY_BADGE_TIMEOUT_MS = positiveIntegerEnv(
-  "E2E_RETRY_BADGE_TIMEOUT_MS",
-  120_000,
-);
+const RETRY_BADGE_TIMEOUT_MS = positiveIntegerEnv('E2E_RETRY_BADGE_TIMEOUT_MS', 120_000);
 // A CLI death this soon after spawn is a deterministic tooling failure:
 // chain-side errors take multiple RPC round trips to surface.
 const FAST_CLI_EXIT_MS = 5_000;
@@ -119,8 +96,8 @@ export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 // run fails as taken. Six lowercase letters give a ~3·10^8 namespace. Lowercase
 // ASCII only: the CLI rejects digits and separators.
 function randomLiteUsernamePrefix(): string {
-  const alphabet = "abcdefghijklmnopqrstuvwxyz";
-  let suffix = "";
+  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
+  let suffix = '';
   for (let i = 0; i < 6; i++) {
     suffix += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
   }
@@ -140,9 +117,7 @@ function signingHostConfig(): SigningHostConfig {
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
     liteUsernamePrefix:
-      (process.env["HOST_CLI_SIGNER_MNEMONIC"]?.trim() ?? "") !== ""
-        ? undefined
-        : randomLiteUsernamePrefix(),
+      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : randomLiteUsernamePrefix(),
   };
 }
 
@@ -158,12 +133,8 @@ class SigningHostExitError extends Error {
   }
 }
 
-export default async function globalSetup(
-  _config: FullConfig,
-): Promise<() => Promise<void>> {
-  console.log(
-    `[globalSetup] signing-host=${SIGNING_HOST_BIN} network=${NETWORK} backend=${E2E_CHAIN_BACKEND}`,
-  );
+export default async function globalSetup(_config: FullConfig): Promise<() => Promise<void>> {
+  console.log(`[globalSetup] signing-host=${SIGNING_HOST_BIN} network=${NETWORK} backend=${E2E_CHAIN_BACKEND}`);
 
   const version = signingHostVersion(SIGNING_HOST_BIN);
   if (version === null) {
@@ -180,18 +151,14 @@ export default async function globalSetup(
 
   // Honor HEADED=1 here too so a local repro can watch the pair flow.
   const browser = await chromium.launch({
-    headless: process.env["HEADED"] !== "1",
-    slowMo:
-      process.env["SLOWMO"] !== undefined && process.env["SLOWMO"] !== ""
-        ? Number(process.env["SLOWMO"])
-        : 0,
+    headless: process.env['HEADED'] !== '1',
+    slowMo: process.env['SLOWMO'] !== undefined && process.env['SLOWMO'] !== '' ? Number(process.env['SLOWMO']) : 0,
   });
   let lastErr: unknown = null;
 
   for (let attempt = 1; attempt <= PAIR_ATTEMPTS; attempt++) {
     try {
-      const badgeTimeoutMs =
-        attempt === 1 ? USER_BADGE_TIMEOUT_MS : RETRY_BADGE_TIMEOUT_MS;
+      const badgeTimeoutMs = attempt === 1 ? USER_BADGE_TIMEOUT_MS : RETRY_BADGE_TIMEOUT_MS;
       const result = await pairOnce(browser, badgeTimeoutMs);
       mkdirSync(dirname(STATE_FILE), { recursive: true });
       const session: PersistedSession = {
@@ -210,31 +177,24 @@ export default async function globalSetup(
       return async () => {
         await stopSigningHost(result.signingHost);
         rmSync(SESSION_FILE, { force: true });
-        console.log(
-          `[globalTeardown] stopped signing-host pid=${String(session.pid)} ("${result.username}")`,
-        );
+        console.log(`[globalTeardown] stopped signing-host pid=${String(session.pid)} ("${result.username}")`);
       };
     } catch (e) {
       lastErr = e;
-      console.warn(
-        `[globalSetup] attempt ${String(attempt)}/${String(PAIR_ATTEMPTS)} failed: ${(e as Error).message}`,
-      );
+      console.warn(`[globalSetup] attempt ${String(attempt)}/${String(PAIR_ATTEMPTS)} failed: ${(e as Error).message}`);
       if (attempt < PAIR_ATTEMPTS) {
-        await new Promise((r) => setTimeout(r, PAIR_ATTEMPT_BACKOFF_MS));
+        await new Promise(r => setTimeout(r, PAIR_ATTEMPT_BACKOFF_MS));
       }
     }
   }
 
   await browser.close();
-  console.error(
-    `[globalSetup] PAIR EXHAUSTED after ${String(PAIR_ATTEMPTS)} attempts: ${(lastErr as Error).message}`,
-  );
+  console.error(`[globalSetup] PAIR EXHAUSTED after ${String(PAIR_ATTEMPTS)} attempts: ${(lastErr as Error).message}`);
   // A usage error or instant death is deterministic; hard-fail so a broken
   // release can't soft-pass the suite forever as an "outage".
   const deterministic =
     lastErr instanceof SigningHostExitError &&
-    (lastErr.exitCode === CLI_USAGE_EXIT_CODE ||
-      lastErr.elapsedMs < FAST_CLI_EXIT_MS);
+    (lastErr.exitCode === CLI_USAGE_EXIT_CODE || lastErr.elapsedMs < FAST_CLI_EXIT_MS);
   process.exit(deterministic ? 1 : SIGNING_UNAVAILABLE_EXIT_CODE);
 }
 
@@ -245,13 +205,9 @@ async function killStaleSigningHost(): Promise<void> {
     return;
   }
   try {
-    const stale = JSON.parse(
-      readFileSync(SESSION_FILE, "utf-8"),
-    ) as PersistedSession;
+    const stale = JSON.parse(readFileSync(SESSION_FILE, 'utf-8')) as PersistedSession;
     if (stale.pid > 0) {
-      console.warn(
-        `[globalSetup] stopping stale signing-host pid=${String(stale.pid)}`,
-      );
+      console.warn(`[globalSetup] stopping stale signing-host pid=${String(stale.pid)}`);
       await stopSigningHostPid(stale.pid);
     }
     // eslint-disable-next-line no-restricted-syntax -- an unreadable session file names no process to stop, so there is nothing to report.
@@ -276,7 +232,7 @@ async function pairOnce(
   const ctx = await browser.newContext();
   const page = await ctx.newPage();
 
-  page.on("pageerror", (err) => {
+  page.on('pageerror', err => {
     console.log(`[globalSetup:pageerror] ${err.message}`);
   });
 
@@ -284,13 +240,9 @@ async function pairOnce(
   // Installed before the CLI spawns and re-installed on every navigation,
   // so a LoginFailed fired at any point is never missed.
   await page.addInitScript(() => {
-    window.addEventListener("dotli:truapi-auth-state", (event: Event) => {
-      const detail = (
-        event as CustomEvent<
-          { tag?: string; kind?: string; reason?: string } | undefined
-        >
-      ).detail;
-      if (detail?.tag === "LoginFailed") {
+    window.addEventListener('dotli:truapi-auth-state', (event: Event) => {
+      const detail = (event as CustomEvent<{ tag?: string; kind?: string; reason?: string } | undefined>).detail;
+      if (detail?.tag === 'LoginFailed') {
         (window as LoginFailureWindow).__e2eLoginFailed = detail;
       }
     });
@@ -303,34 +255,32 @@ async function pairOnce(
     await page.goto(`http://${AUTH_HOST}:${PORT}/?network=${NETWORK}`, {
       timeout: 60_000,
     });
-    if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+    if (E2E_CHAIN_BACKEND === 'rpc-gateway') {
       await page
-        .getByRole("button", { name: "Switch to Gateway" })
+        .getByRole('button', { name: 'Switch to Gateway' })
         .click({ timeout: 5_000 })
         .catch(() => {});
     }
 
-    const authBtn = page.locator("#auth-button");
-    await authBtn.waitFor({ state: "visible", timeout: 30_000 });
+    const authBtn = page.locator('#auth-button');
+    await authBtn.waitFor({ state: 'visible', timeout: 30_000 });
     await authBtn.click();
 
-    const qrCanvas = page.locator("#auth-modal-qr canvas");
-    await qrCanvas.waitFor({ state: "visible", timeout: 30_000 });
+    const qrCanvas = page.locator('#auth-modal-qr canvas');
+    await qrCanvas.waitFor({ state: 'visible', timeout: 30_000 });
 
-    const deeplink = await extractQrPayload(page, "#auth-modal-qr canvas");
+    const deeplink = await extractQrPayload(page, '#auth-modal-qr canvas');
     const pairStart = Date.now();
     signingHost = startSigningHostPair(signingHostConfig(), deeplink);
 
     await waitForSignedIn(page, signingHost, badgeTimeoutMs, pairStart);
-    console.log(
-      `[globalSetup] signed in after ${String(Date.now() - pairStart)}ms.`,
-    );
+    console.log(`[globalSetup] signed in after ${String(Date.now() - pairStart)}ms.`);
 
     const username = (
       await page
-        .locator("#user-popover-username")
+        .locator('#user-popover-username')
         .innerText({ timeout: 5_000 })
-        .catch(() => "unknown")
+        .catch(() => 'unknown')
     ).trim();
 
     // Persist cookies and localStorage from every origin this context has
@@ -359,34 +309,28 @@ async function waitForSignedIn(
 ): Promise<void> {
   const outcome = await Promise.race([
     page
-      .locator("#auth-button .user-badge")
-      .waitFor({ state: "visible", timeout: badgeTimeoutMs })
-      .then(() => ({ tag: "signed-in" as const })),
+      .locator('#auth-button .user-badge')
+      .waitFor({ state: 'visible', timeout: badgeTimeoutMs })
+      .then(() => ({ tag: 'signed-in' as const })),
     page
-      .waitForFunction(
-        () => (window as LoginFailureWindow).__e2eLoginFailed ?? null,
-        undefined,
-        { timeout: 0 },
-      )
-      .then(async (handle) => ({
-        tag: "login-failed" as const,
+      .waitForFunction(() => (window as LoginFailureWindow).__e2eLoginFailed ?? null, undefined, { timeout: 0 })
+      .then(async handle => ({
+        tag: 'login-failed' as const,
         failure: await handle.jsonValue(),
       })),
-    signingHost.completed.then((result) => ({
-      tag: "signing-host-exit" as const,
+    signingHost.completed.then(result => ({
+      tag: 'signing-host-exit' as const,
       result,
     })),
   ]);
-  if (outcome.tag === "signing-host-exit") {
+  if (outcome.tag === 'signing-host-exit') {
     throw new SigningHostExitError(
       formatSigningHostExit(outcome.result, signingHost.output()),
       Date.now() - spawnedAtMs,
       outcome.result.code,
     );
   }
-  if (outcome.tag === "login-failed") {
-    throw new Error(
-      `Login failed (${outcome.failure?.kind ?? "Other"}): ${outcome.failure?.reason ?? "unknown"}`,
-    );
+  if (outcome.tag === 'login-failed') {
+    throw new Error(`Login failed (${outcome.failure?.kind ?? 'Other'}): ${outcome.failure?.reason ?? 'unknown'}`);
   }
 }

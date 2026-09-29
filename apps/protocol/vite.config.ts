@@ -1,75 +1,67 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type Plugin, type PluginOption } from "vite";
-import { resolve } from "node:path";
-import wasmPlugin from "vite-plugin-wasm";
-import {
-  buildInfo,
-  runtimeNetworkConfigScript,
-  appBuildOptions,
-  rolldownOptions,
-} from "@dotli/config/vite";
-import { stripAnalytics } from "@dotli/metrics/vite";
+import { sentryVitePlugin } from '@sentry/vite-plugin';
+import { defineConfig, type Plugin, type PluginOption } from 'vite';
+import { resolve } from 'node:path';
+import wasmPlugin from 'vite-plugin-wasm';
+import { buildInfo, runtimeNetworkConfigScript, appBuildOptions, rolldownOptions } from '@dotli/config/vite';
+import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
 const wasm = wasmPlugin as unknown as () => Plugin;
 
-const OUT_DIR = "dist";
-const APP_URL = process.env["VITE_APP_URL"] ?? "";
+const OUT_DIR = 'dist';
+const APP_URL = process.env['VITE_APP_URL'] ?? '';
 
 function sentry(): PluginOption {
-  if (process.env["VITE_METRICS"] !== "true") {
+  if (process.env['VITE_METRICS'] !== 'true') {
     return false;
   }
-  if ((process.env["SENTRY_AUTH_TOKEN"] ?? "") === "") {
+  if ((process.env['SENTRY_AUTH_TOKEN'] ?? '') === '') {
     return false;
   }
   return sentryVitePlugin({
-    org: "paritytech",
-    project: "dotli",
+    org: 'paritytech',
+    project: 'dotli',
     telemetry: false,
-    authToken: process.env["SENTRY_AUTH_TOKEN"],
-    release:
-      process.env["VITE_COMMIT_SHA"] !== undefined
-        ? { name: process.env["VITE_COMMIT_SHA"] }
-        : {},
-    sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+    authToken: process.env['SENTRY_AUTH_TOKEN'],
+    release: process.env['VITE_COMMIT_SHA'] !== undefined ? { name: process.env['VITE_COMMIT_SHA'] } : {},
+    sourcemaps: { filesToDeleteAfterUpload: ['./dist/**/*.map'] },
   });
 }
 
 export default defineConfig({
-  envDir: resolve(import.meta.dirname, "../.."),
-  base: APP_URL === "" ? "/" : new URL(APP_URL).pathname,
+  envDir: resolve(import.meta.dirname, '../..'),
+  base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   plugins: [
-    stripAnalytics(process.env["VITE_METRICS"] !== "true"),
+    stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
     wasm(),
     runtimeNetworkConfigScript(),
-    buildInfo("protocol"),
+    buildInfo('protocol'),
     sentry(),
   ],
   worker: {
-    plugins: () => [stripAnalytics(process.env["VITE_METRICS"] !== "true")],
+    plugins: () => [stripAnalytics(process.env['VITE_METRICS'] !== 'true')],
     rolldownOptions: rolldownOptions(),
   },
   define: {
-    __BUILD_TARGET__: JSON.stringify("protocol"),
+    __BUILD_TARGET__: JSON.stringify('protocol'),
   },
   optimizeDeps: {
-    exclude: ["@polkadot-api/wasm-executor"],
+    exclude: ['@polkadot-api/wasm-executor'],
   },
   build: {
     ...appBuildOptions(),
-    target: "esnext",
+    target: 'esnext',
     modulePreload: { polyfill: false },
     outDir: OUT_DIR,
-    sourcemap: "hidden",
+    sourcemap: 'hidden',
   },
   server: {
     headers: {
-      "Access-Control-Allow-Origin": "*",
+      'Access-Control-Allow-Origin': '*',
     },
   },
 });
