@@ -318,8 +318,12 @@ export default defineConfig({
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,
         // Bypass the SW for /__preview so nginx's COEP/COOP/CORP headers
-        // reach the browser.
-        navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/],
+        // reach the browser, and for host_version.json so opening it shows
+        // the file rather than the cached shell.
+        navigateFallbackDenylist: [
+          /^\/__preview(\?|$|\/)/,
+          /^\/host_version\.json$/,
+        ],
       },
     }),
   ],

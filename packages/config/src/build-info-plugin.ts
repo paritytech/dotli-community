@@ -31,8 +31,8 @@ export function buildInfo(build: "host" | "app" | "protocol"): Plugin {
       root = config.root;
     },
     // Post, so every other plugin has emitted into the bundle and the hash
-    // covers the final bytes. Files written after the bundle (the service
-    // workers) are not part of it.
+    // covers the final bytes. Files outside the bundle are not part of it: the
+    // copied public/ dir and the service workers, written after it.
     generateBundle: {
       order: "post",
       handler(_options, bundle) {
