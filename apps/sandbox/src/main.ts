@@ -388,7 +388,8 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
 }
 
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
-// we store the password so SW-cache hits don't re-prompt.
+// we store the password so a re-fetch of the same CID in the same session
+// doesn't re-prompt.
 const decryptedPasswords = new Map<string, string>();
 
 /**
@@ -491,7 +492,8 @@ async function purgeSandboxOriginState(): Promise<void> {
   } catch (err) {
     log.warn("[dot.li app] IDB purge failed:", err);
   }
-  // CacheStorage (the Cache API, not the SW archive which lives in IDB)
+  // CacheStorage (the Cache API). The archive itself lives only in the SW's
+  // memory now, so there's nothing archive-related here to clear.
   try {
     if (typeof caches !== "undefined") {
       const keys = await caches.keys();

@@ -282,7 +282,7 @@ Everything that happens from here until \`sandbox:document_written\` runs in the
 
   "sandbox:archive_stored": {
     title: "Archive staged in service worker",
-    body: `The sandbox has packed the archive into a single \`Uint8Array\` + an index map, and posted it to the SW via \`postMessage({ type: "SET_ARCHIVE", ... })\`. The SW writes it into IndexedDB and acknowledges with \`ARCHIVE_READY\`. From now on, **all** sub-resource requests the dApp makes (CSS, JS, fonts) are served by this SW out of IDB instead of hitting the network.
+    body: `The sandbox has packed the archive into a single \`Uint8Array\` + an index map, and posted it to the SW via \`postMessage({ type: "SET_ARCHIVE", ... })\`. The SW keeps it in memory and acknowledges with \`ARCHIVE_READY\`. From now on, **all** sub-resource requests the dApp makes (CSS, JS, fonts) are served by this SW out of that in-memory archive instead of hitting the network.
 
 This **must** complete before \`document.write\` for multi-file archives — otherwise the first CSS/JS request would race the SW install and miss.`,
   },
