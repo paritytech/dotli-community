@@ -73,6 +73,8 @@ export type MainToWorker = {
 } | {
     kind: "notifySessionStoreChanged";
 } | {
+    kind: "notifyContactsChanged";
+} | {
     kind: "acquireWorker";
     productId: string;
 } | {

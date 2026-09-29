@@ -1,4 +1,4 @@
-import type { GenericError, NotificationId } from "@parity/truapi";
+import type { GenericError } from "@parity/truapi";
 import type { RequiredHostCallbacks } from "./host-callbacks.js";
 import type { ChainConnect } from "../runtime.js";
 /**
@@ -13,6 +13,8 @@ export interface RawCallbacks {
     registerChatBot?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     postChatMessage?(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     subscribeChatRooms?(product: Uint8Array, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    contacts?(lookup: Uint8Array): Promise<Uint8Array>;
+    pickContact?(product: Uint8Array): Promise<Uint8Array>;
     readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
     writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
     clearCoreStorage(key: Uint8Array): Promise<void>;
@@ -21,7 +23,7 @@ export interface RawCallbacks {
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     navigateTo(url: string): Promise<void>;
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
-    cancelNotification(id: NotificationId): Promise<void>;
+    cancelNotification(id: number): Promise<void>;
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
     devicePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     remotePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;

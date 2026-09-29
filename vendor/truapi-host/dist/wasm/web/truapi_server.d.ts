@@ -50,6 +50,11 @@ export class WasmPairingHostRuntime {
      */
     constructor(callbacks: any, host_config: any);
     /**
+     * Notify the runtime that the host's contacts changed, so cached contact
+     * handles are dropped and the next resolution reads the list.
+     */
+    notifyContactsChanged(): void;
+    /**
      * Notify the runtime that the auth session slot may have changed.
      */
     notifySessionStoreChanged(): void;
@@ -118,11 +123,16 @@ export class WasmProductRuntime {
     dispose(): void;
     /**
      * Build the core from a JS callbacks object. The object must define
-     * every host capability the [`truapi_platform::Platform`] trait set
+     * every host capability the [`crate::platform::Platform`] trait set
      * requires (camelCase property names; see the source for the full
      * list).
      */
     constructor(callbacks: any, runtime_config: any);
+    /**
+     * Notify the runtime that the host's contacts changed, so cached contact
+     * handles are dropped and the next resolution asks the host.
+     */
+    notifyContactsChanged(): void;
     /**
      * Read a permission authorization status without prompting.
      *
@@ -247,6 +257,11 @@ export class WasmSigningHostRuntime {
      */
     constructor(callbacks: any, host_config: any);
     /**
+     * Tell the runtime that the host's contact list changed, so cached
+     * handles are dropped and the next resolution reads the list.
+     */
+    notifyContactsChanged(): void;
+    /**
      * Read one permission authorization status for a product.
      */
     permissionAuthorizationStatus(product_id: string, payload: Uint8Array): Promise<any>;
@@ -301,22 +316,8 @@ export function describeCoreStorageKey(encoded: Uint8Array): any;
  * Whether `productId` is a first-party product the host grants every
  * `RemotePermission` without prompting.
  *
- * Pure and stateless: it reads the compiled-in list and nothing else. **A
- * stored user decision wins over the list**, so this is only the answer for
- * the branch where the host's own store reads undetermined. Consulting it
- * first would let a revoked grant keep working.
- *
- * `permissionAuthorizationStatus` is the stateful answer — it folds the list
- * and the stored decision together — and a host that can reach a runtime
- * should ask that instead.
- *
- * This exists for the path where a host mediates product network access in its
- * own code — a service worker, a `fetch` shim — and has already found nothing
- * stored. Without it a first-party product is prompted by the host for access
- * the core would have granted.
- *
- * Covers remote permissions only. Device capabilities, identity disclosure and
- * cross-product account access always prompt, whoever asks.
+ * Blessed products bypass recorded permissions. Only device permissions require
+ * consent. Hosts mediating product network access can use this check before storage.
  *
  * Normalizes before matching, and answers `false` for an id that does not
  * normalize, so an unknown spelling is never read as trusted.
@@ -371,6 +372,7 @@ export interface InitOutput {
     readonly wasmpairinghostruntime_deviceStatementKey: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_disconnectSession: (a: number) => number;
     readonly wasmpairinghostruntime_new: (a: number, b: number, c: number) => void;
+    readonly wasmpairinghostruntime_notifyContactsChanged: (a: number) => void;
     readonly wasmpairinghostruntime_notifySessionStoreChanged: (a: number) => void;
     readonly wasmpairinghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmpairinghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
@@ -383,6 +385,7 @@ export interface InitOutput {
     readonly wasmproductruntime_disconnectSession: (a: number) => number;
     readonly wasmproductruntime_dispose: (a: number, b: number) => void;
     readonly wasmproductruntime_new: (a: number, b: number, c: number) => void;
+    readonly wasmproductruntime_notifyContactsChanged: (a: number) => void;
     readonly wasmproductruntime_permissionAuthorizationStatus: (a: number, b: number, c: number) => number;
     readonly wasmproductruntime_permissionAuthorizationStatuses: (a: number, b: number) => number;
     readonly wasmproductruntime_publishChatAction: (a: number, b: number, c: number, d: number) => void;
@@ -402,6 +405,7 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_localIdentityContext: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_localLiteRegistrationBody: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wasmsigninghostruntime_new: (a: number, b: number, c: number) => void;
+    readonly wasmsigninghostruntime_notifyContactsChanged: (a: number) => void;
     readonly wasmsigninghostruntime_permissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number) => number;
     readonly wasmsigninghostruntime_permissionAuthorizationStatuses: (a: number, b: number, c: number, d: number) => number;
     readonly wasmsigninghostruntime_productRuntime: (a: number, b: number, c: number, d: number) => void;
@@ -411,12 +415,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_15555: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_15557: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4704: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4705: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10983: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4706: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6827: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_6885: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_2930: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_2923: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_6709: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_2927: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -112,6 +112,10 @@ PolkaVM runtime ABI 1. Guest Host requests use the neutral
 `host_frame_send`/`host_frame_poll` ABI; the browser worker exposes the same
 transport as `host-frame-request`/`host-frame-response` messages.
 
+Host-frame bytes use the canonical TrUAPI wire codec, currently version 3.
+Build guest clients against the SDK recorded in `vendor/truapi-host.lock.json`;
+runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
+
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and
 bounded capability negotiation; TrUAPI, MotionSample v1, text, IME, focus, and
 wheel input use the same pinned browser runtime as native Hosts. UI output v1 applies
@@ -243,8 +247,11 @@ bun install
 bun run preview          # Build + serve both apps on localhost:5173
 ```
 
-The TrUAPI packages are installed from their published `@parity` packages. To
-iterate against a local truapi checkout instead, run:
+This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages
+from the unified host-rust-core runtime. `vendor/truapi-host.lock.json` records
+the source revisions, archive hashes, and signing-host WASM digest. The browser
+wallet artifact enables `wasm-signing-host`, without `test-host`.
+To iterate against a local truapi checkout instead, run:
 
 ```bash
 bun run link:truapi

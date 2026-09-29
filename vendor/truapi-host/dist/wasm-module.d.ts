@@ -9,6 +9,8 @@ export interface WorkerRendererSubscription {
 /** One product-scoped core inside the worker. */
 export interface WorkerProductRuntime {
     receiveFrame(frame: Uint8Array): Promise<void>;
+    /** Drop cached contact handles after a contact is removed or blocked. */
+    notifyContactsChanged(): void;
     dispose(): void;
     free(): void;
     /** Throws when the connection may not reach Chat. */
@@ -35,6 +37,7 @@ export type WorkerTransition = "Start" | "Stop";
 export interface WorkerHostRuntime extends PermissionAuthorizationRuntime {
     productRuntime(product: unknown, coreCallbacks: unknown): WorkerProductRuntime;
     disconnectSession(): Promise<void>;
+    notifyContactsChanged(): void;
     sessionChatIdentityKey(): Uint8Array | undefined;
     deviceStatementKey(): Uint8Array | undefined;
     deviceEncryptionKey(): Promise<Uint8Array>;
@@ -102,7 +105,7 @@ export interface WasmModuleShape {
     /** SS58 address for a product account public key, at the core's prefix. */
     productAccountAddress: (publicKey: Uint8Array) => string;
     /**
-     * The core's own `TRUAPI_WIRE_SCHEMA_HASH`, exported by `truapi-server`'s wasm
+     * The core's own `TRUAPI_WIRE_SCHEMA_HASH`, exported by `truapi`'s wasm
      * bridge. Optional because `dist/wasm/web/` is gitignored and built by hand, so
      * a stale bundle predating the export is a normal state to find at runtime; a
      * core that cannot vouch for its table streams frames without a `schema` stamp
