@@ -422,22 +422,6 @@ function isBitswapAbortMessage(value: unknown): value is BitswapAbortMessage {
   );
 }
 
-/**
- * Live relayed fetches, per requesting frame and then per request id.
- *
- * The relay outlives the sandbox it serves, so a fetch started for a page the
- * user has navigated away from keeps retrying and posts its result into a dead
- * frame. Nothing in the DOM tells us the frame went: the sandbox has to say so,
- * which it does on `pagehide`.
- *
- * The frame is the outer key for two reasons. Origin alone does not identify
- * one, and every product runs at a sandbox origin, so origin-only gating would
- * let any product cancel another's fetches with ids that are sequential and so
- * guessable in bulk. And ids restart at 1 in every frame, so a flat map lets a
- * second frame's entry overwrite a first frame's and strand it unabortable —
- * `renderIframe` keeps the outgoing product alive while its replacement boots,
- * so two frames really do coexist.
- */
 /** Where the relay keeps blocks between page loads. */
 export interface BlockCache {
   get: (cid: string) => Promise<Uint8Array | null>;
@@ -515,6 +499,22 @@ async function serveBlock(
   return { bytes, from: "network" };
 }
 
+/**
+ * Live relayed fetches, per requesting frame and then per request id.
+ *
+ * The relay outlives the sandbox it serves, so a fetch started for a page the
+ * user has navigated away from keeps retrying and posts its result into a dead
+ * frame. Nothing in the DOM tells us the frame went: the sandbox has to say so,
+ * which it does on `pagehide`.
+ *
+ * The frame is the outer key for two reasons. Origin alone does not identify
+ * one, and every product runs at a sandbox origin, so origin-only gating would
+ * let any product cancel another's fetches with ids that are sequential and so
+ * guessable in bulk. And ids restart at 1 in every frame, so a flat map lets a
+ * second frame's entry overwrite a first frame's and strand it unabortable —
+ * `renderIframe` keeps the outgoing product alive while its replacement boots,
+ * so two frames really do coexist.
+ */
 const inFlight = new Map<MessageEventSource, Map<string, AbortController>>();
 let relayInstalled = false;
 
