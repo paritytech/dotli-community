@@ -7,7 +7,6 @@ import {
   POLKAVM_APPS_KEY,
   configureModeStorage,
   defaultBackend,
-  defaultPolkaVmAppsEnabled,
   getBackend,
   getPolkaVmAppsEnabled,
   isSharedWorkerAvailable,
