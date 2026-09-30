@@ -183,17 +183,7 @@ export function AuthModal(): JSX.Element {
   });
   // The dialog follows the store.
   createEffect(open, isOpen => {
-    if (!isOpen || backdrop?.isConnected !== false) {
-      dialog.setOpen(isOpen);
-      return;
-    }
-    // Already open as it mounts, before it is in the document: open the
-    // dialog, which takes the focus, once it is.
-    queueMicrotask(() => {
-      if (getAuthModalState().open) {
-        dialog.setOpen(true);
-      }
-    });
+    dialog.setOpen(isOpen);
   });
 
   const hint = (): string =>
