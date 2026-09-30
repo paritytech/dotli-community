@@ -390,6 +390,7 @@ uses the guest's Retry button to open a fresh host prompt, cancels again, and
 checks redraw and resize. An idle, demand-driven UI need not publish continuous
 update telemetry. The game scenarios retain their continuous rendering, audio,
 and input checks.
+
 ```bash
 cd apps/host
 DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 bun run test:smoke:products --output=test-results/products
