@@ -826,7 +826,6 @@ describe("user confirmation modal", () => {
     );
   });
 
-
   it("As a dotli user, always allowing profile disclosure is remembered", async () => {
     // Given
     const decision = createUserConfirmationAdapters(
