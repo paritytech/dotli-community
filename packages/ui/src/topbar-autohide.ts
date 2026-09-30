@@ -23,7 +23,7 @@ import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surf
 
 const HIDE_DELAY_MS = 5000;
 
-/** The bar's slide, unless the user asks for reduced motion. */
+/** The bar's slide (#topbar in topbar.css), unless the user asks for reduced motion. */
 export const SLIDE_TRANSITION = 'transform 0.3s ease';
 
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
@@ -65,7 +65,7 @@ function reducedMotionQuery(): MediaQueryList | null {
   return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 }
 
-/** The bar's transition now: none under reduced motion. */
+/** The bar's transition now, for the frame to follow: none under reduced motion. */
 export function topbarTransition(): string {
   return reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION;
 }

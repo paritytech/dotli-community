@@ -41,7 +41,6 @@ export {
   revealTopbar,
   scheduleTopbarHide,
   TOPBAR_REVEAL_SHORTCUT,
-  topbarTransition,
 } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
 export { SETTINGS_GLYPH, showError, showErrorPage, showNoContentError } from './ui.js';

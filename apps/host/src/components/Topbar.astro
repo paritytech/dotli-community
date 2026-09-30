@@ -10,27 +10,23 @@
 // build-time buttons must be gone before the landing page renders its own,
 // with the same ids.
 //
-// Its script drives the rest from the topbar store: the slide the auto-hide
-// (topbar-autohide.ts in @dotli/ui) asks for, with no transition under
-// reduced motion, the reveal shortcut while it auto-hides, a reveal on
-// hover, the offline banner while offline and the bar is visible, and the
-// landing page's mode, where the bar hides (`data-landing`).
+// Its script sets the bar's state as attributes, which topbar.css styles:
+// slid out when the auto-hide (topbar-autohide.ts in @dotli/ui) hides it
+// (`data-hidden`), offline (`data-offline`, which shows the banner while the
+// bar is visible), and the landing page's mode, where the bar hides
+// (`data-landing`). It also advertises the reveal shortcut while the bar
+// auto-hides, and reveals it on hover.
 import { TopbarActionsIsland } from '@dotli/ui/islands/TopbarActionsIsland';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
 ---
 
-<header id="topbar" aria-label="dot.li browser bar" style="transform: translateY(0); transition: transform 0.3s ease">
+<header id="topbar" aria-label="dot.li browser bar">
   <TopbarLogo />
   <UrlPill />
   <TopbarActionsIsland client:load />
-  {/* A status line, not focusable: shown by the script while offline. */}
-  <div
-    id="offline-banner"
-    role="status"
-    aria-live="polite"
-    style="position: absolute; top: 100%; left: 0; right: 0; z-index: 999; background: #b45309; color: #fff; font-size: 0.75rem; font-weight: 500; text-align: center; padding: 4px 12px; letter-spacing: 0.02em; display: none"
-  >
+  {/* A status line, not focusable. */}
+  <div id="offline-banner" role="status" aria-live="polite">
     You are offline
   </div>
 </header>
@@ -42,33 +38,27 @@ import UrlPill from './UrlPill.astro';
     scheduleTopbarHide,
     TOPBAR_REVEAL_SHORTCUT,
     topbarStore,
-    topbarTransition,
   } from '@dotli/ui';
 
   const bar = document.getElementById('topbar');
   if (bar !== null) {
-    const banner = document.getElementById('offline-banner');
     registerTopbarElement(bar);
     bar.addEventListener('mouseenter', revealTopbar);
     bar.addEventListener('mouseleave', scheduleTopbarHide);
 
     const render = (): void => {
       const { visible, autoHide, landing } = topbarStore.get();
-      bar.style.transform = visible ? 'translateY(0)' : 'translateY(-100%)';
-      bar.style.transition = topbarTransition();
+      bar.toggleAttribute('data-hidden', !visible);
+      bar.toggleAttribute('data-offline', !navigator.onLine);
       if (autoHide) {
         bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
       } else {
         bar.removeAttribute('aria-keyshortcuts');
       }
       bar.toggleAttribute('data-landing', landing);
-      if (banner !== null) {
-        banner.style.display = !navigator.onLine && visible ? 'block' : 'none';
-      }
     };
     window.addEventListener('online', render);
     window.addEventListener('offline', render);
-    window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', render);
     render();
     topbarStore.subscribe(render);
   }
