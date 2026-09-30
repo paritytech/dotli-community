@@ -21,18 +21,29 @@ client for Rust-core `chain.connect` requests.
 | Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
 | Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
 
-Both origins construct smoldot through the singletons in
-`packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
-to configured WebSocket endpoints and does not start the host-shell client.
+Both origins use the singleton in `packages/resolver/src/provider.ts`,
+backed by **`@parity/truapi-provider` 0.3.1**. RPC Gateway mode routes
+requests to configured WebSocket endpoints instead.
 
-## Smoldot factories
+## Provider contract
 
-Two factories live in `packages/resolver/src/smoldot.ts`:
+`createChainProvider(genesisHash)` adapts the provider's raw JSON-RPC
+`Connection` to polkadot-api. It queues only while asynchronous initialization
+and connection opening are pending. After connection, the provider itself holds
+requests until the chain first syncs, then forwards them in order. Chain-spec,
+statement-store, Bitswap, and lifecycle requests bypass that sync wait.
 
-- `getSmoldot()` (line 171) calls `startFromWorker(new SmWorker(), …)`. Smoldot runs in a dedicated Web Worker. Used in iframe main-thread contexts.
-- `getSmoldotDirect()` (line 158) calls `start(…)`. Smoldot runs on the calling thread. Used inside the SharedWorker, where the `Worker` constructor is unavailable.
+Held requests share the provider's 1024-frame connection budget. The adapter
+continuously drains `nextResponse()`; budget refusals arrive as JSON-RPC errors,
+not a closed connection. An unexpected end of the response stream is fatal.
 
-Both share the same `smoldotInstance` cell (line 148). Calling either returns the existing client if one is already constructed.
+The existing `lifecycle_unstable_follow` side channel remains active during sync.
+Its snapshots count as watchdog proof even while `system_health` is held until
+ready, so healthy sync progress does not report a broken loading-detail channel.
+
+The optional `setConnectionTypes({ secure, localhost, unsecure })` API is not
+used here: the upgrade preserves the existing connection policy and browser
+restrictions rather than adding a new settings control.
 
 ## Chains
 
@@ -86,9 +97,11 @@ Bulletin preimage submission is built, signed, and submitted entirely by the Rus
 
 ## Persistence
 
-Smoldot persists chain DBs to IndexedDB internally. dotli does not manage save/load. The comment at `smoldot.ts:8-9` is explicit on this.
-
-Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's destination origin. Stale state from the deleted code path stays on disk until the user clears storage. There is no `dotli doctor` command for this today.
+dotli supplies origin-scoped IndexedDB storage through `createSmoldotDb()` and
+`ChainProviderBuilder.setStorage()`. Before connecting, it calls `loadDatabase()`
+so the first chain add can resume from stored finalized state. Cache outcomes
+remain observable through the existing sync reporting; a storage failure leaves
+the chain starting from its bundled checkpoint.
 
 ## Failure modes
 
@@ -108,17 +121,25 @@ These resolver-package exports are owner-only and must not be imported outside
 
 ## Adding a new chain
 
-Steps to make a parachain reachable through the protocol iframe. The sequence below is inferred from the existing layout (relay, Asset Hub, Bulletin), and has not been exercised end-to-end in this branch.
+The provider resolves supported genesis hashes through its bundled catalogue,
+including parachain relay wiring. Add chains to that catalogue and the active
+network service configuration in `packages/config/src/network.ts`; merely adding
+a local chain-spec JSON file does not register a chain with this adapter.
 
-1. Drop the chain spec JSON into `packages/resolver/src/chain-specs/`.
-2. Add a loader in `packages/resolver/src/chain-specs/index.ts`. Mirror `getBulletinPaseoChainSpec`.
-3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
-4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
-5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol/client`; Rust-core access uses the host `chain.connect` callback.
+The 0.3.1 package includes refreshed Paseo and Previewnet relay checkpoints.
+These apply to catalogue-backed light-client connections; stored finalized
+state still takes precedence. This adapter does not call `addLightChain()` or
+load external spec overrides. The legacy `VITE_SS_RELAY_CHAIN` setting is not
+consumed by the provider. Runtime endpoint overrides apply to `rpc-gateway`,
+not to the catalogue or its checkpoints; custom external specs and remote RPC
+nodes are not refreshed by this package upgrade.
 
-Steps 4 and 5 make a chain reachable from both the protocol broker and the
-host callback. Skip them and the request fails with `"Unsupported chain"`.
+Qualification used the real 0.3.1 WASM through `createChainProvider()` in a
+browser: Paseo returned its genesis before an earlier `system_health` request,
+reported connecting/warp progress/ready through the existing side channel, and
+then answered health with `isSyncing: false` and four peers. Resolver unit tests
+and typechecking passed. Deployment backend and product qualification remains
+separate from this provider-level check.
 
 ## Related
 
