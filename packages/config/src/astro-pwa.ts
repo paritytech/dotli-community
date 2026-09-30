@@ -4,7 +4,8 @@
 // vite-plugin-pwa under Astro: the host page is written by Astro after the
 // client build, so the service worker, whose precache lists that page, is
 // generated once the build is done instead of when the client bundle
-// closes. Also what @vite-pwa/astro does, which does not support Astro 7.
+// closes. Also what @vite-pwa/astro does, but its latest (1.2.0) supports
+// Astro up to 5: switch to it once it supports Astro 7.
 
 import type { AstroIntegration } from 'astro';
 import type { Plugin, PluginOption } from 'vite';

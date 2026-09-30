@@ -312,7 +312,7 @@ test('As a user, when the app chunks fail to load mid-session, I see the appropr
 }) => {
   // Given
   await setBackend(page, 'smoldot-direct');
-  await page.route('**/assets/resolve-*.js', route => route.abort());
+  await page.route('**/assets/resolve.*.js', route => route.abort());
 
   // When
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });

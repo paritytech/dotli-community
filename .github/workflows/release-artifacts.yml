@@ -130,9 +130,9 @@ jobs:
             sleep 1
           done
           # Each hostname must reach a different build.
-          h=$(curl -fsS -H 'Host: browse.localhost'   http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
-          p=$(curl -fsS -H 'Host: host.localhost'     http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
-          a=$(curl -fsS -H 'Host: x.app.localhost'    http://127.0.0.1:5199/ | grep -o 'index-[^.]*\.js' | head -1)
+          h=$(curl -fsS -H 'Host: browse.localhost'   http://127.0.0.1:5199/ | grep -o 'assets/[^"]*\.js' | head -1)
+          p=$(curl -fsS -H 'Host: host.localhost'     http://127.0.0.1:5199/ | grep -o 'assets/[^"]*\.js' | head -1)
+          a=$(curl -fsS -H 'Host: x.app.localhost'    http://127.0.0.1:5199/ | grep -o 'assets/[^"]*\.js' | head -1)
           test "$h" != "$p" && test "$p" != "$a" && test "$h" != "$a" \
             || { echo "::error::hostname routing did not resolve three distinct builds ($h/$p/$a)"; exit 1; }
           curl -fsS -H 'Host: browse.localhost' http://127.0.0.1:5199/dotli-network.js | grep -q '"label":"smoke"' \

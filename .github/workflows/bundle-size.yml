@@ -74,7 +74,7 @@ jobs:
           # Host shell main entry — must not regress more than ~20% above
           # its current ~460 KB raw size.
           check "host-entry" \
-                "apps/host/dist/assets/index-*.js" \
+                "apps/host/dist/assets/index.astro_astro_type_script_index_0_lang.*.js" \
                 $((600 * 1024))
 
           # Eager path = module entry + every modulepreloaded chunk, gzip.

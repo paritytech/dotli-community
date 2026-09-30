@@ -11,7 +11,7 @@ import { defineConfig } from 'astro/config';
 import type { AstroIntegration } from 'astro';
 import type { Plugin, PluginOption } from 'vite';
 import { readFileSync, readdirSync } from 'node:fs';
-import { readdir, readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -134,18 +134,24 @@ function readPolkadotApiVersion(): string {
 }
 
 /**
- * The page's preloads, added to the built page. Every chunk the page's
- * script imports statically, as `<link rel="modulepreload">`: what Vite
- * writes for an HTML entry, which Astro does not, so the browser fetches
- * them in parallel rather than one import level at a time. Not the islands'
- * modules: they hydrate `client:idle`, off the startup path. And, on subdomain pages, a script
- * that preloads the critical lazy chunks (resolve, fetch, render) and the
- * metadata asset.
+ * The page's preloads, which Vite writes for an HTML entry and Astro does
+ * not, added to the built page:
+ * - `<link rel="modulepreload">` for every chunk the page's scripts import
+ *   statically, so the browser fetches them in parallel rather than one
+ *   import level at a time. The islands load as Astro loads them: each
+ *   island element imports its component and renderer when it hydrates.
+ * - On subdomain pages, a script that preloads the critical lazy chunks
+ *   (resolve, fetch, render) and the metadata asset.
+ *
+ * It rewrites index.html, so it runs before astroPwa, whose precache
+ * manifest records the page's hash.
  */
 function pagePreloads(): AstroIntegration {
   let base = '/';
   /** Each client chunk's static imports, by file name. */
   const imports = new Map<string, readonly string[]>();
+  /** The client chunks' and assets' file names, by the name they were built from. */
+  const byName = new Map<string, string>();
   const graph: Plugin = {
     name: 'page-preloads:graph',
     applyToEnvironment: environment => environment.name === 'client',
@@ -153,6 +159,11 @@ function pagePreloads(): AstroIntegration {
       for (const output of Object.values(bundle)) {
         if (output.type === 'chunk') {
           imports.set(output.fileName, output.imports);
+          byName.set(output.name, output.fileName);
+        } else {
+          for (const name of output.names) {
+            byName.set(name, output.fileName);
+          }
         }
       }
     },
@@ -167,12 +178,11 @@ function pagePreloads(): AstroIntegration {
         base = config.base.endsWith('/') ? config.base : `${config.base}/`;
       },
       'astro:build:done': async ({ dir }) => {
-        const out = fileURLToPath(dir);
-        const page = join(out, 'index.html');
+        const page = join(fileURLToPath(dir), 'index.html');
         let html = await readFile(page, 'utf8');
 
         const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
-        const entries = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
+        const scripts = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
         const preload = new Set<string>();
         const visit = (file: string): void => {
           for (const dependency of imports.get(file) ?? []) {
@@ -182,24 +192,20 @@ function pagePreloads(): AstroIntegration {
             }
           }
         };
-        for (const file of entries) {
+        for (const file of scripts) {
           visit(file);
         }
-        for (const entry of entries) {
-          preload.delete(entry);
+        for (const script of scripts) {
+          preload.delete(script);
         }
         const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
 
-        const assets = (await readdir(join(out, 'assets'))).map(name => `assets/${name}`);
-        const find = (pattern: RegExp): string | undefined => assets.find(name => pattern.test(name));
-        const chunks = [
-          find(/^assets\/resolve-.*\.js$/),
-          find(/^assets\/fetch-.*\.js$/),
-          find(/^assets\/render-.*\.js$/),
-        ].filter((c): c is string => c !== undefined);
+        const chunks = ['resolve', 'fetch', 'render']
+          .map(name => byName.get(name))
+          .filter((c): c is string => c !== undefined);
         let critical = '';
         if (chunks.length > 0) {
-          const metadataAsset = find(/^assets\/ah-.*\.scale$/);
+          const metadataAsset = [...byName].find(([name]) => /^ah[.-].*\.scale$/.test(name))?.[1];
           const fetchPreloads = [metadataAsset]
             .filter((a): a is string => a !== undefined)
             .map(
@@ -275,7 +281,6 @@ function sentry(): PluginOption {
 }
 
 export default defineConfig({
-  output: 'static',
   outDir: OUT_DIR,
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   // Where the Vite build put them: nginx rate-limits and caches /assets/.
@@ -285,6 +290,8 @@ export default defineConfig({
     // Compiles Solid for the islands: server-rendered at build time and
     // hydrated in the browser (see packages/astro-solid).
     astroSolid(),
+    // Before astroPwa: it rewrites the page that the precache manifest hashes.
+    pagePreloads(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. `registerType:
@@ -318,7 +325,7 @@ export default defineConfig({
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
-        globIgnores: ['**/truapi_provider_bg-*.wasm', '**/truapi_verifiable_bg-*.wasm'],
+        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm'],
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.
@@ -331,7 +338,6 @@ export default defineConfig({
         navigateFallbackDenylist: [/^\/__preview(\?|$|\/)/, /^\/host_version\.json$/],
       },
     }),
-    pagePreloads(),
   ],
   vite: {
     envDir: resolve(import.meta.dirname, '../..'),
@@ -371,31 +377,6 @@ export default defineConfig({
       target: 'esnext',
       modulePreload: { polyfill: false },
       sourcemap: 'hidden',
-    },
-    environments: {
-      client: {
-        build: {
-          rolldownOptions: {
-            // Vite's file names, which the bundle-size budgets, the eager
-            // path measure and the service worker's rules match: the page's
-            // script is the `index` entry. A page-derived name (`@_@`) keeps
-            // only its page part, as Astro's own naming does.
-            output: {
-              entryFileNames: chunk =>
-                chunk.facadeModuleId?.includes('/src/pages/index.astro?astro&type=script') === true
-                  ? 'assets/index-[hash].js'
-                  : 'assets/[name]-[hash].js',
-              chunkFileNames: 'assets/[name]-[hash].js',
-              assetFileNames: asset => {
-                const [page] = (asset.names[0] ?? '').split('@_@');
-                return page !== undefined && page !== asset.names[0]
-                  ? `assets/${page}-[hash][extname]`
-                  : 'assets/[name]-[hash][extname]';
-              },
-            },
-          },
-        },
-      },
     },
     server: {
       headers: {
