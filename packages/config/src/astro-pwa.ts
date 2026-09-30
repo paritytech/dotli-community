@@ -7,6 +7,7 @@
 // closes. Also what @vite-pwa/astro does, but its latest (1.2.0) supports
 // Astro up to 5: switch to it once it supports Astro 7.
 
+import { fileURLToPath } from 'node:url';
 import type { AstroIntegration } from 'astro';
 import type { Plugin, PluginOption } from 'vite';
 import { VitePWA, type VitePluginPWAAPI, type VitePWAOptions } from 'vite-plugin-pwa';
@@ -22,13 +23,15 @@ export function astroPwa(options: Partial<VitePWAOptions>): AstroIntegration {
   return {
     name: 'dotli-pwa',
     hooks: {
-      'astro:config:setup': ({ command, updateConfig }) => {
+      'astro:config:setup': ({ command, config, updateConfig }) => {
         if (command !== 'build' && command !== 'dev') {
           return;
         }
         // `vite-plugin-pwa:build` would edit the HTML and write the service
-        // worker as the client bundle closes, before the page exists.
-        const plugins: PluginOption[] = VitePWA(options).filter(
+        // worker as the client bundle closes, before the page exists. Its
+        // output directory is Astro's (`--outDir` included), which it cannot
+        // tell from Vite's config.
+        const plugins: PluginOption[] = VitePWA({ outDir: fileURLToPath(config.outDir), ...options }).filter(
           plugin =>
             plugin.name !== 'vite-plugin-pwa:build' && (command === 'dev' || plugin.name !== 'vite-plugin-pwa:dev-sw'),
         );
