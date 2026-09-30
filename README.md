@@ -364,6 +364,13 @@ The deployment smoke suites load published products through the deployed host,
 not the localhost fixture. The TrUAPI suite exercises 19 wallet-free capabilities
 without pairing a signer or writing to the chain; it does not replace paired E2E.
 
+PolkaVM execution is opt-in on `dot.li` and on by default on every other
+shell (`paseo.fyi`, `paseo.li`, previews, localhost); **Settings → Experimental
+→ PolkaVM apps** overrides the site default either way. Each product scenario
+still enables the toggle explicitly and uses **Save & Apply** before exercising
+the published guest, so the smoke holds regardless of the deployment's default.
+An existing saved choice, including an opt-out on a testnet, remains authoritative.
+The site default applies only when no valid preference has been saved.
 ```bash
 cd apps/host
 DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 bun run test:smoke:products --output=test-results/products

@@ -29,6 +29,7 @@ import { SITE_ID, isLocalhost } from "@dotli/config/config";
 import {
   BACKEND_KEY,
   CACHE_KEY,
+  POLKAVM_APPS_KEY,
   configureModeStorage,
   getBackend,
   localStorageAdapter,
@@ -44,7 +45,11 @@ import {
 } from "@dotli/protocol/client";
 import { log } from "@dotli/shared/log";
 
-const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY];
+const SHARED_KEYS: readonly string[] = [
+  BACKEND_KEY,
+  CACHE_KEY,
+  POLKAVM_APPS_KEY,
+];
 
 let bootstrapped = false;
 const pendingWrites = new Set<Promise<void>>();
@@ -134,10 +139,10 @@ export async function bootstrapSharedMode(): Promise<void> {
   bootstrapped = true;
 
   // Run legacy migration against `localStorage` *before* we swap the
-  // adapter. After the swap, the cache-only adapter only sees the two
-  // SHARED_KEYS, so `dotli:mode` and `dotli:content-backend` would be
-  // invisible to `migrateLegacy`, and a user whose only prior signal was
-  // a legacy key would silently get the default backend.
+  // adapter. After the swap, the cache-only adapter only sees SHARED_KEYS,
+  // so `dotli:mode` and `dotli:content-backend` would be invisible to
+  // `migrateLegacy`, and a user whose only prior signal was a legacy key
+  // would silently get the default backend.
   migrateLegacyOn(localStorageAdapter);
 
   // Snapshot the backend the host iframe will be loaded with. The first

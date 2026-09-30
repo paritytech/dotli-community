@@ -4,16 +4,21 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   BACKEND_KEY,
+  POLKAVM_APPS_KEY,
   configureModeStorage,
   defaultBackend,
   getBackend,
+  getPolkaVmAppsEnabled,
   isSharedWorkerAvailable,
+  setPolkaVmAppsEnabled,
   type ModeStorage,
 } from "@dotli/config/mode";
 
-function makeMemoryStorage(): ModeStorage & {
+interface MemoryStorage extends ModeStorage {
   dump: () => Record<string, string>;
-} {
+}
+
+function makeMemoryStorage(): MemoryStorage {
   const map = new Map<string, string>();
   return {
     getItem: (key) => map.get(key) ?? null,
@@ -96,7 +101,7 @@ describe("defaultBackend", () => {
 });
 
 describe("getBackend", () => {
-  let storage: ReturnType<typeof makeMemoryStorage>;
+  let storage: MemoryStorage;
 
   beforeEach(() => {
     storage = makeMemoryStorage();
@@ -163,4 +168,46 @@ describe("getBackend", () => {
       restore();
     }
   });
+});
+
+describe("PolkaVM apps setting", () => {
+  let storage: MemoryStorage;
+
+  beforeEach(() => {
+    storage = makeMemoryStorage();
+    configureModeStorage(storage);
+  });
+
+  afterEach(() => {
+    configureModeStorage({
+      getItem: () => null,
+      setItem: () => undefined,
+      removeItem: () => undefined,
+    });
+  });
+
+  it.each([
+    ["dot.li", false],
+    ["paseo.fyi", true],
+    ["paseo.li", true],
+    ["testnet.li", true],
+    ["local.li", true],
+  ] as const)(
+    "uses the %s default unless the user explicitly chooses",
+    (siteId, enabledByDefault) => {
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
+
+      setPolkaVmAppsEnabled(false);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(false);
+
+      setPolkaVmAppsEnabled(true);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(true);
+
+      storage.setItem(POLKAVM_APPS_KEY, "yes");
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
+
+      storage.removeItem(POLKAVM_APPS_KEY);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
+    },
+  );
 });
