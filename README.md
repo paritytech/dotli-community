@@ -308,10 +308,11 @@ Local runs expect the product at `../../../host-playground` relative to this
 repository by default. The signing host must match `upstreamRevision` in
 `vendor/truapi-host.lock.json`, not the latest released CLI. CI checks out that
 exact [host-rust-core](https://github.com/paritytech/host-rust-core) commit,
-generates its sources, and builds `truapi-host` locally.
+installs its `nightly-toolchain` pin with `rustfmt` (or `nightly` for older
+feature SDK sources), generates its sources, and builds `truapi-host` locally.
 
-To build the matching binary in a fresh sibling checkout, install Rust stable,
-Rust nightly with `rustfmt`, and Node.js 22/npm, then run from this repository:
+To build the matching binary in a fresh sibling checkout, install Rust stable
+and Node.js 22/npm, then run from this repository:
 
 ```bash
 revision="$(jq -er '.upstreamRevision' vendor/truapi-host.lock.json)"
@@ -320,6 +321,11 @@ git -C ../host-rust-core-e2e fetch --depth=1 origin "$revision"
 git -C ../host-rust-core-e2e checkout --detach "$revision"
 (
   cd ../host-rust-core-e2e
+  toolchain=nightly
+  if [[ -f nightly-toolchain ]]; then
+    read -r toolchain < nightly-toolchain
+  fi
+  rustup toolchain install "$toolchain" --profile minimal --component rustfmt
   npm ci --ignore-scripts
   RUSTUP_TOOLCHAIN=stable TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
   cargo +stable build --locked -p truapi-host-cli --bin truapi-host
