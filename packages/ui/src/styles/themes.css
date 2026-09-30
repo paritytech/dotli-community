@@ -76,9 +76,7 @@
 }
 
 [data-theme="light"] .more-popover,
-[data-theme="light"] .user-popover,
-[data-theme="light"] .mode-popover,
-[data-theme="light"] .permissions-popover,
+[data-theme="light"] .popover,
 [data-theme="light"] .permissions-popover-menu,
 [data-theme="light"] .auth-modal {
   background: rgba(255, 255, 255, 0.82);
@@ -92,9 +90,7 @@
     backdrop-filter: blur(20px) saturate(180%);
   }
   [data-theme="light"] .more-popover,
-  [data-theme="light"] .user-popover,
-  [data-theme="light"] .mode-popover,
-  [data-theme="light"] .permissions-popover,
+  [data-theme="light"] .popover,
   [data-theme="light"] .permissions-popover-menu,
   [data-theme="light"] .auth-modal {
     backdrop-filter: blur(24px) saturate(180%);
@@ -107,9 +103,7 @@
     background: rgba(248, 248, 248, 0.97);
   }
   [data-theme="light"] .more-popover,
-  [data-theme="light"] .user-popover,
-  [data-theme="light"] .mode-popover,
-  [data-theme="light"] .permissions-popover,
+  [data-theme="light"] .popover,
   [data-theme="light"] .auth-modal {
     background: rgba(255, 255, 255, 0.98);
   }
@@ -451,23 +445,27 @@
 [data-theme="light"] .permissions-popover-menu-check {
   color: #0a0a0a;
 }
-[data-theme="light"] .mode-popover-sheet-header {
+[data-theme="light"] .popover-sheet-header {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(0, 0, 0, 0.08);
 }
-@media (max-width: 560px) {
-  [data-theme="light"] .mode-apply-footer {
-    background: rgba(255, 255, 255, 0.92);
-    border-color: rgba(0, 0, 0, 0.08);
-  }
+[data-theme="light"] .popover.sheet {
+  border-top-color: rgba(0, 0, 0, 0.08);
 }
-[data-theme="light"] .mode-popover-sheet-title {
+[data-theme="light"] .popover-sheet-grabber {
+  background: rgba(0, 0, 0, 0.2);
+}
+[data-theme="light"] .popover.sheet .mode-apply-footer {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+[data-theme="light"] .popover-sheet-title {
   color: #111;
 }
-[data-theme="light"] .mode-popover-sheet-close {
+[data-theme="light"] .popover-sheet-close {
   color: rgba(0, 0, 0, 0.55);
 }
-[data-theme="light"] .mode-popover-sheet-close:hover {
+[data-theme="light"] .popover-sheet-close:hover {
   background: rgba(0, 0, 0, 0.06);
   color: #111;
 }

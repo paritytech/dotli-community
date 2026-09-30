@@ -521,8 +521,16 @@
 }
 .popover.sheet.verification-tooltip {
   width: 100%;
-  padding: 0 14px 12px;
+  padding: 0;
   border-radius: 16px 16px 0 0;
+}
+.popover.sheet.verification-tooltip > .popover-body {
+  padding: 12px 14px;
+}
+/* The sheet's header names it: the content's own heading would repeat it. */
+.popover.sheet .verification-tooltip-title,
+.popover.sheet .permissions-popover-header {
+  display: none;
 }
 .verification-tooltip-title {
   font-size: 0.68rem;
