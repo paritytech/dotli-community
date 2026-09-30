@@ -26,7 +26,12 @@ jobs:
       - name: Setup Node
         uses: ./.github/actions/setup-node
 
+      # With metrics on, as the deploys build: with them off the Sentry SDK
+      # is swapped for a no-op (stripAnalytics), and the sizes would leave it
+      # out.
       - name: Build
+        env:
+          VITE_METRICS: "true"
         run: npx turbo run build:prod
 
       - name: Remove source maps
@@ -78,12 +83,11 @@ jobs:
                 $((600 * 1024))
 
           # Eager path = module entry + every modulepreloaded chunk, and the
-          # host's client:load islands with their static imports, gzip.
-          # The sandbox's budget is the Solid migration's whole-migration
-          # limit (baseline in docs/perf/solid-migration-baseline.md):
-          # pre-migration 45,015 B + 10 KB. The host's is its Astro build's,
-          # which loads the Solid runtime and the client:load islands at
-          # startup: 122,429 B measured + about 10%.
+          # host's client:load islands with their static imports, gzip, with
+          # metrics on (the Sentry SDK included), as the deploys build. Each
+          # budget is its measured size + about 10%: the host 152,746 B (the
+          # Solid runtime and the client:load islands among it), the
+          # sandbox 79,325 B.
           check_eager() {
             local label=$1 dist=$2 max=$3
             local json gz
@@ -100,8 +104,8 @@ jobs:
               echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
             fi
           }
-          check_eager "host-eager-path" apps/host/dist 135000
-          check_eager "sandbox-eager-path" apps/sandbox/dist 55255
+          check_eager "host-eager-path" apps/host/dist 168000
+          check_eager "sandbox-eager-path" apps/sandbox/dist 87000
 
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
