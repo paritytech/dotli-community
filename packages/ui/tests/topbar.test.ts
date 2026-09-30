@@ -1032,7 +1032,7 @@ describe("topbar permissions", () => {
 });
 
 describe("topbar experimental runtimes", () => {
-  it("lets the user enable PolkaVM apps and marks the setting ready to apply", async () => {
+  it("lets the user turn PolkaVM apps off and marks the setting ready to apply", async () => {
     installTopbarDom();
     // Import after beforeEach resets the module-owned settings storage adapter.
     const { initTopBar } = await import("@dotli/ui/topbar");
@@ -1042,11 +1042,12 @@ describe("topbar experimental runtimes", () => {
     const toggle = document.querySelector<HTMLButtonElement>(
       '[role="switch"][aria-label="PolkaVM apps"]',
     );
-    expect(toggle?.getAttribute("aria-checked")).toBe("false");
+    // localhost is a test environment: the runtime is on until turned off.
+    expect(toggle?.getAttribute("aria-checked")).toBe("true");
 
     toggle?.click();
 
-    expect(toggle?.getAttribute("aria-checked")).toBe("true");
+    expect(toggle?.getAttribute("aria-checked")).toBe("false");
     const apply = Array.from(
       document.querySelectorAll<HTMLButtonElement>(".mode-clear-btn"),
     ).find((button) => button.textContent === "Save & Apply");

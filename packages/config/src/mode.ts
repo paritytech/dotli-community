@@ -11,6 +11,8 @@
 //   rpc-gateway: chain access via WSS JSON-RPC to a trusted node, content
 //                fetch via HTTPS IPFS gateway. No smoldot.
 
+import { SITE_ID, type SiteId } from "./config";
+
 export type Backend =
   "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
 
@@ -247,9 +249,25 @@ export function setCacheSettings(settings: CacheSettings): void {
   storage.setItem(CACHE_KEY, JSON.stringify(settings));
 }
 
-/** Whether the user has opted into the experimental PolkaVM App runtime. */
+/**
+ * Production (`dot.li`) keeps the experimental PolkaVM App runtime opt-in.
+ * Every other shell — `paseo.fyi`, `paseo.li`, previews, localhost — is a
+ * test environment where the runtime is on unless the user turned it off.
+ */
+export function defaultPolkaVmAppsEnabled(siteId: SiteId = SITE_ID): boolean {
+  return siteId !== "dot.li";
+}
+
+/** Whether the PolkaVM App runtime runs: the user's choice, else the site default. */
 export function getPolkaVmAppsEnabled(): boolean {
-  return storage.getItem(POLKAVM_APPS_KEY) === "1";
+  const stored = storage.getItem(POLKAVM_APPS_KEY);
+  if (stored === "1") {
+    return true;
+  }
+  if (stored === "0") {
+    return false;
+  }
+  return defaultPolkaVmAppsEnabled();
 }
 
 /** Persist the user's experimental PolkaVM App runtime preference. */
