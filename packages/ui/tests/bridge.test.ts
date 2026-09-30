@@ -405,7 +405,8 @@ describe("bridge render lifecycle", () => {
     );
   }, 10_000);
 
-  it("threads exact executable manifest text into the sandbox contract", async () => {
+  it("threads exact executable manifest text and the user's PolkaVM opt-out into the sandbox contract", async () => {
+    localStorage.setItem(POLKAVM_APPS_KEY, "0");
     const executableManifest =
       '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
     const { renderAppSubdomain } = await import("@dotli/ui/bridge");
