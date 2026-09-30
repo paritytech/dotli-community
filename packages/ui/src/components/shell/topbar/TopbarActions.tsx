@@ -21,17 +21,15 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
 }
 
 /**
- * The topbar's collapsible action group (`#topbar-actions`): its children
- * are the items (each wrapping its button in a TopbarItem), in bar order,
- * followed by the More menu. Items sit in the bar while they fit; the ones
- * that do not move into the More menu, lowest priority first (fitActions,
- * TOPBAR_PRIORITY), and come back as room frees up. The group takes the room
- * the account button (an island of its own, which never collapses) leaves
- * in the bar's `.topbar-right`, so its width is the room there is; a
- * ResizeObserver on it, on every item and on the More button measures again
- * whenever one of them changes size (the window, the chat unread count), and
- * an item showing or hiding does too. The More button only shows while
- * something is collapsed.
+ * The topbar's action group (`#topbar-actions`): its children are the items
+ * (each wrapping its button in a TopbarItem), in bar order, followed by the
+ * More menu. Items sit in the bar while they fit; the ones that do not move
+ * into the More menu, lowest priority first (fitActions, TOPBAR_PRIORITY),
+ * and come back as room frees up. The group fills its grid cell, so its
+ * width is the room there is; a ResizeObserver on it, on every item and on
+ * the More button measures again whenever one of them changes size (the
+ * window, an account badge, the chat unread count), and an item showing or
+ * hiding does too. The More button only shows while something is collapsed.
  *
  * `data-collapsible` marks the group once it is mounted and measuring. The
  * build-time render (the Astro page) goes without it, so until the group
@@ -115,7 +113,7 @@ export function TopbarActions(props: { children: JSX.Element }): JSX.Element {
           group = el;
           observe(el);
         }}
-        class="topbar-actions"
+        class="topbar-right"
         id="topbar-actions"
         data-collapsible={measuring() ? '' : undefined}
       >

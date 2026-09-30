@@ -353,7 +353,7 @@ function GlobeIcon(props: { size: number }): JSX.Element {
 /**
  * The network button (`#chains-button`) and its popover (`#chains-popover`,
  * rendered into the body), an item of the topbar's action group island (see
- * islands.ts), rendered with the host page and hydrated.
+ * src/islands/), rendered with the host page and hydrated.
  *
  * The button shows once the host has a product on screen (topbarStore's
  * `chainsButtonVisible`, which setChainsButtonVisible in topbar.ts writes).

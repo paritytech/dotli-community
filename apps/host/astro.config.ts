@@ -135,10 +135,10 @@ function readPolkadotApiVersion(): string {
 
 /**
  * The page's preloads, added to the built page. Every chunk the page's
- * script and its islands' modules (component and renderer) import
- * statically, as `<link rel="modulepreload">`: what Vite writes for an HTML
- * entry, which Astro does not, so the browser fetches them in parallel
- * rather than one import level at a time. And, on subdomain pages, a script
+ * script imports statically, as `<link rel="modulepreload">`: what Vite
+ * writes for an HTML entry, which Astro does not, so the browser fetches
+ * them in parallel rather than one import level at a time. Not the islands'
+ * modules: they hydrate `client:idle`, off the startup path. And, on subdomain pages, a script
  * that preloads the critical lazy chunks (resolve, fetch, render) and the
  * metadata asset.
  */
@@ -173,8 +173,7 @@ function pagePreloads(): AstroIntegration {
 
         const strip = (url: string): string => (url.startsWith(base) ? url.slice(base.length) : url);
         const entries = [...html.matchAll(/<script type="module" src="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
-        const islandModules = [...html.matchAll(/\b(?:component|renderer)-url="([^"]+)"/g)].map(m => strip(m[1] ?? ''));
-        const preload = new Set<string>(islandModules);
+        const preload = new Set<string>();
         const visit = (file: string): void => {
           for (const dependency of imports.get(file) ?? []) {
             if (!preload.has(dependency)) {
@@ -183,7 +182,7 @@ function pagePreloads(): AstroIntegration {
             }
           }
         };
-        for (const file of [...entries, ...islandModules]) {
+        for (const file of entries) {
           visit(file);
         }
         for (const entry of entries) {

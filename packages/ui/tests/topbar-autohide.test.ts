@@ -22,11 +22,16 @@ const HIDE_DELAY_MS = 5000;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 
-// Shaped like the host page (apps/host/src/pages/index.astro): the bar, the
-// app with its product frame, then the reveal control and the toasts.
+// Shaped like the host page (apps/host/src/pages/index.astro): the bar
+// (components/Topbar.astro, its action group down to the account and settings buttons),
+// the app with its product frame, then the reveal control and the toasts.
 function installPageDom(): void {
   document.body.innerHTML = `
-    <div id="topbar-slot"></div>
+    <div id="topbar" style="transform: translateY(0); transition: transform 0.3s ease">
+      <a class="topbar-left" id="topbar-home" href="/">Home</a>
+      <div class="topbar-url" id="topbar-url" hidden></div>
+      <div class="topbar-right" id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
+    </div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
@@ -111,18 +116,14 @@ async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   const mod = await import('../src/topbar-autohide.js');
   disposers.push(mod.disposeTopbarAutoHide);
 
-  // The Topbar and TopbarReveal islands, from this module graph. Built
-  // without JSX: this file's JSX would bind to the Solid instance loaded
-  // before resetModules.
+  // The bar's script and the TopbarReveal island, from this module graph.
+  // The island is built without JSX: this file's JSX would bind to the Solid
+  // instance loaded before resetModules.
+  const { bindTopbar } = await import('../src/topbar-bar.js');
+  disposers.push(bindTopbar(topbar()));
   const solid = await import('solid-js');
   const web = await import('@solidjs/web');
-  const { Topbar } = await import('../src/components/shell/Topbar.js');
   const { TopbarReveal } = await import('../src/components/shell/TopbarReveal.js');
-  const account = document.createElement('button');
-  account.id = 'auth-button';
-  const url = document.createElement('div');
-  url.id = 'topbar-url';
-  disposers.push(web.render(() => solid.createComponent(Topbar, { url, account }), byId('topbar-slot')));
   disposers.push(web.render(() => solid.createComponent(TopbarReveal, {}), byId('reveal-slot')));
   flushUi = solid.flush;
   flushUi();

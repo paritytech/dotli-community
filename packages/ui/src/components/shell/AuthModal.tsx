@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, Match, onSettled, Show, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
@@ -69,9 +69,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 
 /**
  * The QR pairing modal (`#auth-modal-backdrop`), a shell island (see
- * islands.ts) rendered in the browser only (`client:only`). It renders
+ * src/islands/), rendered with the host page, closed, and hydrated. It renders
  * authModalStore, which auth-controller.ts writes from boot onwards, so a
- * login that started before the island rendered shows as it renders.
+ * login that started before the island hydrated shows once it has.
  *
  * The body follows the store's view: a spinner, the pairing QR code, login
  * progress, or an error with the friendly copy and, when it can help, Retry.
@@ -92,7 +92,12 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
-  const mobile = isMobileDevice();
+  // A phone's layout, from mount: the build-time render, which has no
+  // device, is the desktop one.
+  const [mobile, setMobile] = createSignal(false);
+  onSettled(() => {
+    setMobile(isMobileDevice());
+  });
 
   // The effects below compute from memos, not from `state()`: Solid 2 runs an
   // effect's function every time its compute re-runs, so a compute over the
@@ -146,7 +151,7 @@ export function AuthModal(): JSX.Element {
       .then(() => {
         if (current) {
           setDrawn({ payload, canvas });
-          if (mobile) {
+          if (mobile()) {
             setMobileLayout(true);
           }
         }
@@ -193,7 +198,7 @@ export function AuthModal(): JSX.Element {
   });
 
   const hint = (): string =>
-    mobile && !qrShown()
+    mobile() && !qrShown()
       ? // Mobile leads with the deeplink button.
         'Sign in with the Polkadot app on this device'
       : SCAN_HINT;
@@ -201,7 +206,7 @@ export function AuthModal(): JSX.Element {
   // link only helps on the phone itself, and not once pairing is past the QR.
   const getAppHidden = (): boolean => {
     const kind = state().view.kind;
-    return !mobile || kind === 'authenticating' || kind === 'error';
+    return !mobile() || kind === 'authenticating' || kind === 'error';
   };
   const errorView = (): ErrorView | undefined => {
     const v = view();
@@ -262,7 +267,7 @@ export function AuthModal(): JSX.Element {
             <Match when={view() !== null}>
               <Show when={qr()} fallback={<Spinner />}>
                 {drawnQr =>
-                  mobile ? (
+                  mobile() ? (
                     <MobileQr
                       qr={drawnQr()}
                       shown={qrShown()}

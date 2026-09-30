@@ -2,49 +2,15 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host shell: the top bar and the QR pairing modal, as Solid islands
-// (@dotli/ui/islands). Imperative code and the Playwright suites select
+// The host shell: the top bar (Topbar.astro) and the QR pairing modal, a
+// Solid island (@dotli/ui/islands/AuthModal) server-rendered closed and hydrated once
+// the browser is idle. Imperative code and the Playwright suites select
 // their ids and classes.
-//
-// The bar is server-rendered here and hydrated. The URL bar and the account
-// button, whose first render depends on the browser (the page's URL, the
-// session), are islands of their own in its slots that render in the
-// browser only (`client:only`), as does the pairing modal; each slot shows
-// its fallback until then.
-import { AuthButton, AuthModal, Topbar, UrlPill } from '@dotli/ui/islands';
+import { AuthModal } from '@dotli/ui/islands/AuthModal';
+import Topbar from './Topbar.astro';
 ---
 
-<Topbar client:load>
-  <UrlPill slot="url" client:only="solid-js">
-    <div slot="fallback" class="topbar-url" id="topbar-url"></div>
-  </UrlPill>
-  <AuthButton slot="account" client:only="solid-js">
-    {/* Until the account button renders: the session is not known yet. */}
-    <button
-      slot="fallback"
-      id="auth-button"
-      class="topbar-btn"
-      title="Connecting..."
-      aria-label="Connecting..."
-      aria-busy="true"
-      disabled
-    >
-      <svg
-        width="12"
-        height="12"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    </button>
-  </AuthButton>
-</Topbar>
+<Topbar />
 
 {/* QR Pairing Modal */}
-<AuthModal client:only="solid-js" />
+<AuthModal client:idle />

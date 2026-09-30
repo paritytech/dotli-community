@@ -3,7 +3,7 @@
 
 // Focus and scroll helpers shared by the shell surfaces (shell/popover.ts),
 // the overlay dialogs (overlays/Dialog.tsx) and the island swap
-// (shell/islands.ts). Solid-free.
+// (src/islands/). Solid-free.
 
 /** What a browser can focus (hidden and inert elements aside). */
 export const FOCUSABLE =

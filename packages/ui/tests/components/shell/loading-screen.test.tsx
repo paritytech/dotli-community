@@ -27,7 +27,7 @@ vi.mock('../../../src/recent-labels.js', () => ({
 }));
 
 import client from '@dotli/astro-solid/client.js';
-import { LoadingScreen } from '../../../src/components/shell/islands.js';
+import { LoadingScreen } from '../../../src/islands/LoadingScreen.js';
 import * as ctl from '../../../src/loading-controller.js';
 import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';

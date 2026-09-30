@@ -7,11 +7,10 @@ import { loadingStore } from '../../state/loading.js';
 import { useStore } from '../use-store.js';
 
 /**
- * The loading screen (`#app-loading`), an island (see islands.ts) the host
+ * The loading screen (`#app-loading`), an island (see src/islands/) the host
  * page paints first and hydrates. It renders the loading store, which
  * loading-controller.ts writes, so progress made before it hydrates shows
- * straight away. It fades while the
- * screen is dismissed. Removing it is the `"loading"` app root's job.
+ * once it has. It fades while the screen is dismissed. Removing it is the `"loading"` app root's job.
  * The petals cycle in CSS (styles/base.css).
  */
 export function LoadingScreen(): JSX.Element {

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
+import { createSignal, getOwner, onCleanup, onSettled, sharedConfig, type Accessor } from 'solid-js';
 import type { ReadableStore } from '../state/create-store.js';
 
 /**
@@ -37,13 +37,17 @@ export function useStore<T, S>(
     throw new Error('useStore must be called inside a component or reactive owner');
   }
 
-  const read = (): S => (select === undefined ? (store.get() as unknown as S) : select(store.get()));
+  const pick = (state: T): S => (select === undefined ? (state as unknown as S) : select(state));
+  const read = (): S => pick(store.get());
+  // Solid's client types re-export sharedConfig without declaring it; the
+  // one field read here, as its runtime has it.
+  const { hydrating } = sharedConfig as { hydrating: boolean };
 
   // Value form, not a compute function: in Solid 2 a function first argument
   // makes a derived signal. Stores never hold functions.
   const [value, setValue] = createSignal<S>(
     // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- mirrors createSignal's own overload
-    read() as Exclude<S, Function>,
+    (hydrating ? pick(store.initial) : read()) as Exclude<S, Function>,
     {
       // The store notifies subscribers synchronously, from whatever owner
       // happens to be active when a producer calls `set` (e.g. a `createRoot`
@@ -63,5 +67,13 @@ export function useStore<T, S>(
     setValue(() => next);
   });
   onCleanup(unsubscribe);
+  // Called either way: it takes a hydration id on the server as on the
+  // client, and a call on one side only would shift the ids after it.
+  onSettled(() => {
+    if (hydrating) {
+      const next = read();
+      setValue(() => next);
+    }
+  });
   return value;
 }

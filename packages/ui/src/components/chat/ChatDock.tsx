@@ -13,7 +13,7 @@ const PREFETCH_TIMEOUT_MS = 2000;
 
 /**
  * The docked product-chat panel (`aside#chat-panel`), an island of the host
- * page (see components/shell/islands.tsx). It docks to the right edge while
+ * page (see src/islands/). It docks to the right edge while
  * the chat-panel store says it is open, shrinking the product frame by its
  * width (product-frame-layout), and stretches into the topbar's strip while
  * the topbar is auto-hidden. Escape inside it closes it; the chat button

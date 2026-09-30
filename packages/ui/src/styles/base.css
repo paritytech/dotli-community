@@ -58,7 +58,7 @@ body[data-scroll-locked] {
 }
 
 /* App Content */
-/* The landing page hides the topbar (components/shell/Topbar.tsx), so the
+/* The landing page hides the topbar (bindTopbar, topbar-bar.ts), so the
    page starts at the top. */
 #topbar[data-landing] {
   display: none;

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import { AuthButton } from './AuthButton.js';
 import { ChainsPopover } from './ChainsPopover.js';
 import { ChatButton } from './ChatButton.js';
 import { PermissionsPopover } from './PermissionsPopover.js';
@@ -10,12 +11,16 @@ import { ThemeToggle } from './ThemeToggle.js';
 import { TopbarActions } from './topbar/TopbarActions.js';
 
 /**
- * The topbar's collapsible action group with its items, in bar order. Their
- * surfaces render through portals into the body.
+ * The topbar's action group with its items, in bar order: the account
+ * button, which never collapses, then the actions the More menu collapses
+ * when they do not fit. An island of the host page's top bar (apps/host/src/
+ * components/Topbar.astro). Their surfaces render through portals into the
+ * body.
  */
 export function TopbarActionsIsland(): JSX.Element {
   return (
     <TopbarActions>
+      <AuthButton />
       <ChainsPopover />
       <ChatButton />
       <PermissionsPopover />

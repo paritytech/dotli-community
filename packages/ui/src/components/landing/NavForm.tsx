@@ -114,7 +114,7 @@ export function NavForm(): JSX.Element {
     stopPlaceholder?.();
   });
 
-  // Native listeners, like the shell's islands (components/shell/islands.ts).
+  // Native listeners, like the shell's islands (src/islands/).
   const onSubmit = (e: Event): void => {
     e.preventDefault();
     if (input === undefined) {

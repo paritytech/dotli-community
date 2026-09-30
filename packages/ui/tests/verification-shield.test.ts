@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UrlPill } from '../src/components/shell/UrlPill.js';
+import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
 import { showProductPill } from '../src/state/url-pill.js';
 import { setBlockingModalActive } from '../src/state/topbar.js';
 import {
@@ -47,7 +47,7 @@ beforeEach(async () => {
   other.textContent = 'Other';
   document.body.replaceChildren(other);
   showProductPill('app', '.dot');
-  renderComponent(UrlPill);
+  renderComponent(UrlPillShield);
   await settle();
 });
 

@@ -33,6 +33,8 @@ export { getLoadingState, updateLoading } from './state/loading.js';
 export { initSettingsStore } from './state/settings.js';
 export { openSettings as openSettingsPanel } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
+export { bindTopbar } from './topbar-bar.js';
+export { bindUrlPill } from './url-pill.js';
 export { armTopbarAutoHide, pinTopbarVisible } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
 export { SETTINGS_GLYPH, showError, showErrorPage, showNoContentError } from './ui.js';

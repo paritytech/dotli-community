@@ -8,9 +8,9 @@
 // so home, settings, permissions and login never become mouse-only.
 //
 // The timing and the input handling live here, framework-free; what shows
-// is the topbar store's: the Topbar island renders the bar's slide and its
-// shortcut from `visible` and `autoHide`, and the TopbarReveal island the
-// reveal control and the hover strip. The bar registers its element
+// is the topbar store's: the bar's script (bindTopbar, topbar-bar.ts) sets
+// its slide and shortcut from `visible` and `autoHide`, and the TopbarReveal
+// island renders the reveal control and the hover strip. The bar registers its element
 // (registerTopbarElement) and the popovers theirs (state/topbar-surfaces.ts),
 // for the focus and open checks.
 //
@@ -36,7 +36,7 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 let appFrameTracking = false;
-/** The bar (the Topbar island's `#topbar`), while mounted. */
+/** The bar (the host page's `#topbar`), while bound. */
 let bar: HTMLElement | undefined;
 /** The reveal control (the TopbarReveal island's), while mounted. */
 let revealButton: HTMLElement | undefined;

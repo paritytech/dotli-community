@@ -210,9 +210,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#topbar')).toBeAttached();
-    // The account button's placeholder, until its client-only island renders.
-    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Connecting...');
-    // A hydrated island's build-time render.
+    // The hydrated islands' build-time renders.
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Login with Polkadot Mobile');
     await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');
 
     await context.close();

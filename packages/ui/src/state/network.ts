@@ -61,6 +61,7 @@ function read(): NetworkState {
  */
 export const networkStore: ReadableStore<NetworkState> = {
   get: read,
+  initial: network.initial,
   subscribe: listener => {
     const reader = {};
     readers.add(reader);

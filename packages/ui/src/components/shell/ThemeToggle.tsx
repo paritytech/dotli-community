@@ -83,7 +83,7 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
 /**
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`,
  * rendered into the body), an item of the topbar's action group island (see
- * islands.ts): rendered with the host page from the theme store's default
+ * src/islands/): rendered with the host page from the theme store's default
  * ("Theme: System"), then hydrated, which brings the stored preference. The
  * landing page (components/landing/) renders it too, in its corner. The
  * menu is a modal menu, like Radix DropdownMenu with a RadioGroup

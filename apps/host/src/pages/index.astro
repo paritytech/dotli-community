@@ -7,7 +7,9 @@
 // components/Shell.astro), and the loading screen. src/main.ts boots the
 // host from there.
 import { socialMetaAttributes } from '@dotli/config/vite';
-import { ChatDock, LoadingScreen, TopbarReveal } from '@dotli/ui/islands';
+import { ChatDock } from '@dotli/ui/islands/ChatDock';
+import { LoadingScreen } from '@dotli/ui/islands/LoadingScreen';
+import { TopbarReveal } from '@dotli/ui/islands/TopbarReveal';
 import Shell from '../components/Shell.astro';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
@@ -82,12 +84,6 @@ const socialMeta = socialMetaAttributes({
         };
       });
     </script>
-    <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
-    <link rel="preconnect" href="https://paseo-bulletin-collator-node-1.parity-testnet.parity.io" />
-    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-0.polkadot.io" />
-    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-1.polkadot.io" />
-    <link rel="preconnect" href="https://paseo-ipfs.polkadot.io" />
-    <link rel="preconnect" href="https://sys.ibp.network" />
     {socialMeta.map(attrs => <meta {...attrs} />)}
     <link rel="manifest" href={`${base}manifest.webmanifest`} />
   </head>
@@ -114,14 +110,14 @@ const socialMeta = socialMetaAttributes({
     <div id="shell" style="display: contents"><Shell /></div>
 
     {/* The docked product chat: shrinks the product frame while open. */}
-    <ChatDock client:load />
+    <ChatDock client:idle />
 
     <!-- App Content -->
     <div id="app">
       <LoadingScreen client:load />
     </div>
     {/* The auto-hiding topbar's reveal control: one Tab past the app frame. */}
-    <TopbarReveal client:load />
+    <TopbarReveal client:idle />
     <script src="../main.ts"></script>
   </body>
 </html>

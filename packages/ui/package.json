@@ -9,7 +9,7 @@
   ],
   "exports": {
     ".": "./src/index.ts",
-    "./islands": "./src/components/shell/islands.ts",
+    "./islands/*": "./src/islands/*.ts",
     "./styles.css": "./src/styles.css",
     "./package.json": "./package.json"
   },

@@ -62,7 +62,7 @@ function LockIcon(props: { size: number }): JSX.Element {
 /**
  * The permissions button (`#permissions-button`), its popover
  * (`#permissions-popover`) and the popover's backdrop, both rendered into the
- * body, an item of the topbar's action group island (see islands.ts),
+ * body, an item of the topbar's action group island (see src/islands/),
  * rendered with the host page and hydrated.
  *
  * The popover lists every permission of the loaded product (productStore)

@@ -4,11 +4,13 @@
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
 
-// In test mode @solidjs/vite-plugin compiles components non-hydratable for
-// the DOM, which is how the host build compiles its client code
-// (apps/host/vite.config.ts): nothing on the client hydrates.
+const HYDRATION_TESTS = 'tests/**/*.hydration.test.tsx';
+
+// Two projects. In test mode @solidjs/vite-plugin compiles components
+// non-hydratable for the DOM, which the component tests render with. The
+// hydration tests compile hydratable, as the host build does (@dotli/
+// astro-solid), to hydrate build-time markup the way the host page does.
 export default defineConfig({
-  plugins: [solid()],
   define: {
     // getEnabledNetworks() requires VITE_NETWORKS (no default by design); the
     // test build supplies it the same way a deployment does.
@@ -19,9 +21,19 @@ export default defineConfig({
   // workspace-only file serving.
   server: { fs: { strict: false } },
   test: {
-    name: 'ui',
-    include: ['tests/**/*.test.{ts,tsx}'],
-    environment: 'happy-dom',
     globals: false,
+    environment: 'happy-dom',
+    projects: [
+      {
+        extends: true,
+        plugins: [solid()],
+        test: { name: 'ui', include: ['tests/**/*.test.{ts,tsx}'], exclude: [HYDRATION_TESTS] },
+      },
+      {
+        extends: true,
+        plugins: [solid({ ssr: true, solid: { hydratable: true } })],
+        test: { name: 'ui:hydration', include: [HYDRATION_TESTS] },
+      },
+    ],
   },
 });
