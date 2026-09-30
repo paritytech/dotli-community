@@ -1,7 +1,7 @@
 // @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import {
   type WireProvider,
   MESSAGE_TYPE_RESPONSE,
@@ -35,12 +35,24 @@ interface MockProvider {
 interface MockRuntime {
   createProvider: ReturnType<typeof vi.fn>;
   cancelPairing: ReturnType<typeof vi.fn>;
+  disconnectSession: ReturnType<typeof vi.fn>;
   notifySessionStoreChanged: ReturnType<typeof vi.fn>;
   dispose: ReturnType<typeof vi.fn>;
 }
 
 type ProviderListener = (message: Uint8Array) => void;
 type ProviderCloseListener = (error: Error) => void;
+
+// Window listeners the bridge under test added; removed after each test so an
+// earlier test's bridge never reacts to a later test's events.
+let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
+
+afterEach(() => {
+  for (const [type, listener] of bridgeListeners) {
+    window.removeEventListener(type, listener);
+  }
+  bridgeListeners = [];
+});
 
 function deferred<T>(): Deferred<T> {
   let resolve!: (value: T) => void;
@@ -150,6 +162,7 @@ function makeRuntime(): MockRuntime {
       return item.promise;
     }),
     cancelPairing: vi.fn(),
+    disconnectSession: vi.fn(async () => {}),
     notifySessionStoreChanged: vi.fn(),
     dispose: vi.fn(),
   };
@@ -223,12 +236,6 @@ async function waitForProviderRequests(count: number): Promise<void> {
   });
 }
 
-async function waitForMockCalls(mock: ReturnType<typeof vi.fn>, count: number): Promise<void> {
-  await vi.waitFor(() => {
-    expect(mock).toHaveBeenCalledTimes(count);
-  });
-}
-
 describe('bridge render lifecycle', () => {
   beforeEach(async () => {
     vi.resetModules();
@@ -262,7 +269,10 @@ describe('bridge render lifecycle', () => {
       import('../src/bridge.js'),
       import('../src/blocking-modal-queue.js'),
     ]);
+    const spy = vi.spyOn(window, 'addEventListener');
     initBridgeEventListeners(createBlockingModalCoordinator());
+    bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
+    spy.mockRestore();
   });
 
   it('As a dotli integrator, the host disposes a host that resolves after a newer render has started', async () => {
@@ -417,23 +427,126 @@ describe('bridge render lifecycle', () => {
     window.dispatchEvent(new Event('dotli:truapi-cancel-login'));
 
     // Then
-    expect(mocks.coreRuntimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
+    await vi.waitFor(() => {
+      expect(mocks.coreRuntimes[0]?.cancelPairing).toHaveBeenCalledTimes(1);
+    });
   });
 
-  it('As a dotli integrator, the host boots the landing auth core to disconnect a stored session without a product', async () => {
+  it('As a user who logs in before the product has loaded, the product joins the core my login runs on and my pairing survives its render', async () => {
+    // Given: a product page whose topbar login is pairing
+    const { renderIframe, setPageProduct } = await import('../src/bridge.js');
+    setPageProduct({ label: 'product' });
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const sent: { requestId?: string } = {};
+    const login = makeLoginProvider({
+      onPostMessage(message) {
+        sent.requestId = requestIdFromFrame(message);
+      },
+    });
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+    await vi.waitFor(() => {
+      expect(sent.requestId).toBeDefined();
+    });
+
+    // When: the product renders mid-pairing
+    const render = renderIframe('https://product.example/app', 'product');
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await render;
+
+    // Then: one core serves both, and the pairing's connection is still open
+    expect(mocks.coreRuntimes).toHaveLength(1);
+    expect(login.dispose).not.toHaveBeenCalled();
+
+    // When: the wallet completes pairing
+    login.listener?.(loginResponseFrame(sent.requestId ?? '', { success: true, value: 'Success' }));
+
+    // Then: the login's connection closes, and the product keeps the core
+    await vi.waitFor(() => {
+      expect(login.dispose).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.coreRuntimes[0]?.dispose).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it('As a user who logs in while the core is still starting, the product render does not cancel my login', async () => {
+    // Given: a topbar login waiting for its connection to the core
+    const { renderIframe, setPageProduct } = await import('../src/bridge.js');
+    setPageProduct({ label: 'product' });
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+
+    // When: the product renders before that connection is open
+    const render = renderIframe('https://product.example/app', 'product');
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await render;
+    const login = makeLoginProvider({});
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then: the login still goes out, on the same core
+    await vi.waitFor(() => {
+      expect(login.postMessage).toHaveBeenCalledTimes(1);
+    });
+    expect(login.dispose).not.toHaveBeenCalled();
+    expect(mocks.coreRuntimes).toHaveLength(1);
+  }, 10_000);
+
+  it('As a user on the landing page, the core goes once my login is done', async () => {
+    // Given: a topbar login with no product on the page
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const login = makeLoginProvider({
+      onPostMessage(message) {
+        login.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: true, value: 'Success' }));
+      },
+    });
+
+    // When
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then: nothing holds the core any more
+    await vi.waitFor(() => {
+      expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
+  }, 10_000);
+
+  it('As a user whose core went down, reloading the product boots a fresh core', async () => {
+    // Given: a product whose core closed its connection unasked
+    const { renderIframe } = await import('../src/bridge.js');
+    const render = renderIframe('https://product.example/app', 'product');
+    await waitForProviderRequests(1);
+    const failed = makeLoginProvider({});
+    nth(mocks.coreProviderDefers, 0).resolve(failed);
+    await render;
+    failed.closeListener?.(new Error('worker fatal error: boom'));
+
+    // When: the product reloads
+    const reload = renderIframe('https://product.example/app', 'product');
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await reload;
+
+    // Then: the reload runs on a new core, and the dead one goes with its host
+    await vi.waitFor(() => {
+      expect(mocks.coreRuntimes).toHaveLength(2);
+      expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
+  }, 10_000);
+
+  it('As a dotli integrator, the host boots the page core to disconnect a stored session without a product', async () => {
     // Given
     await import('../src/bridge.js');
 
     // When
     window.dispatchEvent(new Event('dotli:truapi-disconnect-request'));
-    await waitForProviderRequests(1);
 
-    const provider = makeProvider();
-    nth(mocks.coreProviderDefers, 0).resolve(provider);
-    await waitForMockCalls(provider.disconnectSession, 1);
-
-    // Then
-    expect(provider.disconnectSession).toHaveBeenCalledTimes(1);
+    // Then: the core disconnects, then goes with its only lease
+    await vi.waitFor(() => {
+      expect(mocks.coreRuntimes[0]?.disconnectSession).toHaveBeenCalledTimes(1);
+      expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
+    });
   }, 10_000);
 });
 
@@ -469,7 +582,10 @@ describe('bridge app roots', () => {
       import('../src/bridge.js'),
       import('../src/blocking-modal-queue.js'),
     ]);
+    const spy = vi.spyOn(window, 'addEventListener');
     initBridgeEventListeners(createBlockingModalCoordinator());
+    bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
+    spy.mockRestore();
   });
 
   /** Register both roots the way the shell does: disposing removes the node. */

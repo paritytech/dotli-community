@@ -1,9 +1,9 @@
 // dot.li TrUAPI host bridge
 //
-// Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@parity/truapi-host`. Each render swaps the running
-// runtime, so disposing the last host tears down both the iframe and
-// the core.
+// Connects the page's TrUAPI core (see page-core.ts) to a sandboxed product
+// iframe via `@parity/truapi-host`, and routes the topbar's login, pairing
+// cancel and logout to that same core. Each render swaps the iframe and its
+// connection; the core stays for as long as anything holds it.
 //
 // Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
 // sessions, product identities, or storage namespaces. Any future nested
@@ -37,14 +37,14 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
-import type { PairingHostAdmin } from '@parity/truapi-host';
 import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
-import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
-import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { LoginRequestError } from './login-request-error.js';
 import { attachProductFrame } from './product-frame-layout.js';
-import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { labelToProductId } from './runtime-config.js';
+import { acquireCore, cancelPairing, initPageCore, setPageProduct, type CoreConnection } from './page-core.js';
+
+export { setPageProduct } from './page-core.js';
 import { setProductLoaded } from './state/product.js';
 import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
@@ -63,13 +63,9 @@ const chunkLoadStart = performance.now();
 const runtimeChunkPromise = Promise.all([
   import('@parity/truapi-host/web'),
   import('@parity/truapi-host/worker-runtime?worker'),
-]).then(([web, workerMod]) => {
+]).then(([web]) => {
   m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
-  return {
-    createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
-    createIframeHost: web.createIframeHost,
-    HostWorker: workerMod.default,
-  };
+  return { createIframeHost: web.createIframeHost };
 });
 void runtimeChunkPromise.catch(() => {
   /* fire-and-forget */
@@ -79,31 +75,16 @@ const app = document.getElementById('app') ?? document.body;
 
 interface ActiveHost {
   iframe: HTMLIFrameElement;
-  requestLogin: (reason?: string) => Promise<LoginResponse>;
-  cancelLogin: () => void;
-  disconnect: () => Promise<void>;
-  dispose: () => void;
-}
-
-interface CoreHost {
-  requestLogin: (reason?: string) => Promise<LoginResponse>;
-  cancelLogin: () => void;
-  disconnect: () => Promise<void>;
   dispose: () => void;
 }
 
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    | 'disconnectSession'
     | 'getPermissionAuthorizationStatus'
     | 'getPermissionAuthorizationStatuses'
     | 'setPermissionAuthorizationStatus'
   >;
-type CoreProvider = CoreProviderBase & PairingHostAdmin;
-type PairingRuntimeControls = PairingHostAdmin & {
-  dispose(): void;
-};
 type CurrentProduct =
   | {
       mode: 'iframe';
@@ -117,123 +98,10 @@ type CurrentProduct =
       cid: string;
     };
 
-const LANDING_AUTH_LABEL = 'dotli';
-const LANDING_AUTH_DISPLAY_LABEL = 'Polkadot Web';
-
 let currentHost: ActiveHost | null = null;
-let landingAuthHostPromise: Promise<CoreHost> | null = null;
-let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
-const liveCoreProviders = new Set<CoreProvider>();
-let unsubscribeSessionStoreChanges: (() => void) | null = null;
-let blockingModalCoordinator: BlockingModalCoordinator | null = null;
-
-function ensureStoredSessionForwarder(): void {
-  if (unsubscribeSessionStoreChanges !== null) {
-    return;
-  }
-  unsubscribeSessionStoreChanges = onStoredSessionChanged(() => {
-    notifyLiveCoreProvidersSessionStoreChanged();
-  });
-}
-
-function trackCoreProvider(
-  provider: CoreProviderBase,
-  pairing: PairingRuntimeControls,
-  disposeModalScope: () => void,
-): CoreProvider {
-  const tracked: CoreProvider = {
-    postMessage(message: Uint8Array): void {
-      provider.postMessage(message);
-    },
-    subscribe(callback) {
-      return provider.subscribe(callback);
-    },
-    subscribeClose(callback) {
-      return provider.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await provider.disconnectSession();
-    },
-    cancelPairing() {
-      pairing.cancelPairing();
-    },
-    notifySessionStoreChanged() {
-      pairing.notifySessionStoreChanged();
-    },
-    getPermissionAuthorizationStatus(request) {
-      return provider.getPermissionAuthorizationStatus(request);
-    },
-    getPermissionAuthorizationStatuses(requests) {
-      return provider.getPermissionAuthorizationStatuses(requests);
-    },
-    setPermissionAuthorizationStatus(request, status) {
-      return provider.setPermissionAuthorizationStatus(request, status);
-    },
-    dispose() {
-      disposeModalScope();
-      provider.dispose();
-      pairing.dispose();
-    },
-  };
-  liveCoreProviders.add(tracked);
-  ensureStoredSessionForwarder();
-  let disposed = false;
-  queueMicrotask(() => {
-    if (!disposed) {
-      tracked.notifySessionStoreChanged();
-    }
-  });
-  return {
-    postMessage(message: Uint8Array): void {
-      tracked.postMessage(message);
-    },
-    subscribe(callback) {
-      return tracked.subscribe(callback);
-    },
-    subscribeClose(callback) {
-      return tracked.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await tracked.disconnectSession();
-    },
-    cancelPairing() {
-      tracked.cancelPairing();
-    },
-    notifySessionStoreChanged() {
-      tracked.notifySessionStoreChanged();
-    },
-    getPermissionAuthorizationStatus(request) {
-      return tracked.getPermissionAuthorizationStatus(request);
-    },
-    getPermissionAuthorizationStatuses(requests) {
-      return tracked.getPermissionAuthorizationStatuses(requests);
-    },
-    setPermissionAuthorizationStatus(request, status) {
-      return tracked.setPermissionAuthorizationStatus(request, status);
-    },
-    dispose() {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      liveCoreProviders.delete(tracked);
-      if (liveCoreProviders.size === 0 && unsubscribeSessionStoreChanges !== null) {
-        unsubscribeSessionStoreChanges();
-        unsubscribeSessionStoreChanges = null;
-      }
-      tracked.dispose();
-    },
-  };
-}
-
-function notifyLiveCoreProvidersSessionStoreChanged(): void {
-  for (const provider of [...liveCoreProviders]) {
-    provider.notifySessionStoreChanged();
-  }
-}
 
 function rerenderProduct(product: CurrentProduct): void {
   const expectedGeneration = renderGeneration + 1;
@@ -308,37 +176,22 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   if (bridgeEventListenersInitialized) {
     return;
   }
-  blockingModalCoordinator = modalCoordinator;
+  initPageCore(modalCoordinator);
   bridgeEventListenersInitialized = true;
   (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
   window.addEventListener('dotli:truapi-disconnect-request', () => {
-    void disconnectTruapiHosts();
+    void disconnectSession();
   });
 
-  // User closed the pairing modal: cancel whichever core initiated it. A
-  // product can request login directly, while the topbar uses the landing
-  // auth host.
+  // User closed the pairing modal: the page's core runs every pairing,
+  // whether the product or the topbar asked for it.
   window.addEventListener('dotli:truapi-cancel-login', () => {
-    currentHost?.cancelLogin();
-    void landingAuthHostPromise?.then(
-      host => {
-        host.cancelLogin();
-      },
-      () => {
-        /* a failed pending host has no login to cancel */
-      },
-    );
+    cancelPairing();
   });
 
   window.addEventListener('dotli:truapi-login-request', (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
-    void (async () => {
-      const host = await getLandingAuthHost();
-      const result = await host.requestLogin(detail.reason);
-      if (result === 'Success' || result === 'AlreadyConnected') {
-        notifyLiveCoreProvidersSessionStoreChanged();
-      }
-    })().catch((error: unknown) => {
+    void topbarLogin(detail.reason).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       // A `LoginRequestError` came back over the wire, so the core already
       // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
@@ -355,30 +208,42 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   });
 }
 
-async function disconnectTruapiHosts(): Promise<void> {
-  const hosts = new Set<CoreHost | ActiveHost>();
-  if (currentHost !== null) {
-    hosts.add(currentHost);
-  }
-  if (landingAuthHostPromise !== null) {
+/**
+ * Log in from the topbar, over a connection of its own: the product's
+ * connection forwards every frame to the product. The lease keeps the core
+ * up until the login settles, whatever renders meanwhile.
+ */
+async function topbarLogin(reason: string | undefined): Promise<void> {
+  const lease = await acquireCore();
+  try {
+    const core = wrapCoreProviderForDebug(await lease.connect());
     try {
-      hosts.add(await landingAuthHostPromise);
-    } catch (err) {
-      log.warn('[dot.li] pending login host cleanup failed:', err);
+      await requestCoreLogin(core, reason);
+    } finally {
+      core.dispose();
     }
+  } finally {
+    lease.release();
   }
+}
 
-  if (hosts.size === 0) {
-    try {
-      hosts.add(await getLandingAuthHost());
-    } catch {
-      // If the auth runtime cannot boot, keep the UI responsive even though
-      // persisted core session state could not be cleared.
-      dispatchAuthState({ tag: 'Disconnected' });
-      return;
-    }
+async function disconnectSession(): Promise<void> {
+  let lease;
+  try {
+    lease = await acquireCore();
+  } catch {
+    // If the core cannot boot, keep the UI responsive even though persisted
+    // core session state could not be cleared.
+    dispatchAuthState({ tag: 'Disconnected' });
+    return;
   }
-  await Promise.allSettled([...hosts].map(host => host.disconnect()));
+  try {
+    await lease.runtime.disconnectSession();
+  } catch (err) {
+    log.warn('[dot.li] disconnect failed:', err);
+  } finally {
+    lease.release();
+  }
 }
 
 /**
@@ -486,7 +351,8 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
   }
 }
 
-function wrapCoreProviderForDebug(provider: CoreProviderBase, productId: string): CoreProviderBase {
+function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase {
+  const { provider, productId } = connection;
   const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
   const unsubscribeCore = provider.subscribe(message => {
@@ -516,9 +382,6 @@ function wrapCoreProviderForDebug(provider: CoreProviderBase, productId: string)
     subscribeClose(callback) {
       return provider.subscribeClose?.(callback) ?? noop;
     },
-    async disconnectSession() {
-      await provider.disconnectSession();
-    },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
     },
@@ -535,7 +398,7 @@ function wrapCoreProviderForDebug(provider: CoreProviderBase, productId: string)
       disposed = true;
       unsubscribeCore();
       listeners.clear();
-      provider.dispose();
+      connection.close();
     },
   };
 }
@@ -664,24 +527,43 @@ async function createHost(args: {
   container: HTMLElement;
   debugFlowId: string;
 }): Promise<ActiveHost> {
-  const coreProvider = await createCoreProvider(args.label, {
-    productId: args.productId,
-  });
+  const lease = await acquireCore();
+  let connection: CoreConnection;
+  let chatCapable: boolean;
+  try {
+    // Chat-capable products get a Worker-kind execution so the core serves
+    // their chat calls; everything an App connection can do still works.
+    // The capability is primed by the host shell before rendering, so
+    // this await settles from cache or the in-flight manifest read.
+    chatCapable = await chatCapabilityFor(args.label);
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App');
+  } catch (error) {
+    lease.release();
+    throw error;
+  }
+  const coreProvider = wrapCoreProviderForDebug(connection);
+  const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
   const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   const { createIframeHost } = await runtimeChunkPromise;
-  const productId = args.productId ?? labelToProductId(args.label);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
-    productId,
+    productId: connection.productId,
   };
   const cleanupProductSide = (): void => {
     disposePipe?.();
     productProvider?.dispose();
     disposePipe = null;
     productProvider = null;
+  };
+  const cleanupCoreSide = (): void => {
+    unregisterPermissions();
+    unregisterChat();
+    cleanupProductSide();
+    coreProvider.dispose();
+    lease.release();
   };
   try {
     const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
@@ -699,155 +581,35 @@ async function createHost(args: {
 
     return {
       iframe: host.iframe,
-      requestLogin(reason) {
-        return requestCoreLogin(coreProvider, reason);
-      },
-      cancelLogin() {
-        coreProvider.cancelPairing();
-      },
-      disconnect() {
-        return coreProvider.disconnectSession();
-      },
       dispose() {
-        unregisterPermissions();
-        cleanupProductSide();
-        coreProvider.dispose();
+        cleanupCoreSide();
         host.dispose();
       },
     };
   } catch (error) {
-    unregisterPermissions();
-    cleanupProductSide();
-    coreProvider.dispose();
+    cleanupCoreSide();
     throw error;
   }
 }
 
-async function createCoreProvider(
-  label: string,
-  options: {
-    pairingLabel?: string | undefined;
-    pairingDotSuffix?: boolean | undefined;
-    pairingHostGlobal?: boolean | undefined;
-    productId?: string | undefined;
-  } = {},
-): Promise<CoreProvider> {
-  if (blockingModalCoordinator === null) {
-    throw new Error('TrUAPI bridge initialized without a blocking modal coordinator');
-  }
-  const blockingModalScope = blockingModalCoordinator.createScope();
-  try {
-    const { createWebWorkerPairingHostRuntime, HostWorker } = await runtimeChunkPromise;
-    const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
-    const { productId, ...hostConfig } = runtimeConfig;
-    // Chat-capable products get a Worker-kind execution so the core serves
-    // their chat calls; everything an App connection can do still works.
-    // The capability is primed by the host shell before rendering, so
-    // this await settles from cache or the in-flight manifest read.
-    const chatCapable = await chatCapabilityFor(label);
-    const runtime = await createWebWorkerPairingHostRuntime(
-      new HostWorker(),
-      createHostCallbacks({
-        label,
-        pairingLabel: options.pairingLabel,
-        pairingDotSuffix: options.pairingDotSuffix,
-        pairingHostGlobal: options.pairingHostGlobal,
-        blockingModalScope,
-      }),
-      {
-        hostConfig,
-      },
-    );
-    const provider = await runtime.createProvider({
-      productId,
-      executionKind: chatCapable ? 'Worker' : 'App',
-    });
-    const unregisterChat = chatCapable
-      ? registerChatConnection(productId, {
-          publish: action =>
-            provider.publishChatAction === undefined
-              ? Promise.reject(new Error('chat publishing unavailable'))
-              : provider.publishChatAction(action),
-          publishRendererAction: item =>
-            provider.publishRendererAction === undefined
-              ? Promise.reject(new Error('renderer actions unavailable'))
-              : provider.publishRendererAction(item),
-          render: (request, sink) => {
-            if (provider.render === undefined) {
-              sink.onError?.(new Error('rendering unavailable'));
-              return noop;
-            }
-            return provider.render(request, sink);
-          },
-        })
-      : noop;
-    return trackCoreProvider(wrapCoreProviderForDebug(provider, options.productId ?? label), runtime, () => {
-      unregisterChat();
-      blockingModalScope.dispose();
-    });
-  } catch (error) {
-    blockingModalScope.dispose();
-    throw error;
-  }
-}
-
-async function getLandingAuthHost(): Promise<CoreHost> {
-  if (landingAuthHostPromise !== null) {
-    return landingAuthHostPromise;
-  }
-  const generation = landingAuthGeneration;
-  const promise = createLandingAuthHost()
-    .then(host => {
-      if (generation !== landingAuthGeneration || landingAuthHostPromise !== promise) {
-        host.dispose();
-        throw new Error('Landing auth host was disposed before it became ready');
+function registerProductChat({ provider, productId }: CoreConnection): () => void {
+  return registerChatConnection(productId, {
+    publish: action =>
+      provider.publishChatAction === undefined
+        ? Promise.reject(new Error('chat publishing unavailable'))
+        : provider.publishChatAction(action),
+    publishRendererAction: item =>
+      provider.publishRendererAction === undefined
+        ? Promise.reject(new Error('renderer actions unavailable'))
+        : provider.publishRendererAction(item),
+    render: (request, sink) => {
+      if (provider.render === undefined) {
+        sink.onError?.(new Error('rendering unavailable'));
+        return noop;
       }
-      return host;
-    })
-    .catch((error: unknown) => {
-      if (landingAuthHostPromise === promise) {
-        landingAuthHostPromise = null;
-      }
-      throw error;
-    });
-  landingAuthHostPromise = promise;
-  return promise;
-}
-
-async function createLandingAuthHost(): Promise<CoreHost> {
-  const coreProvider = await createCoreProvider(LANDING_AUTH_LABEL, {
-    pairingLabel: LANDING_AUTH_DISPLAY_LABEL,
-    pairingDotSuffix: false,
-    pairingHostGlobal: true,
+      return provider.render(request, sink);
+    },
   });
-  return {
-    requestLogin(reason) {
-      return requestCoreLogin(coreProvider, reason);
-    },
-    cancelLogin() {
-      coreProvider.cancelPairing();
-    },
-    disconnect() {
-      return coreProvider.disconnectSession();
-    },
-    dispose() {
-      coreProvider.dispose();
-    },
-  };
-}
-
-function disposeLandingAuthHost(): void {
-  landingAuthGeneration++;
-  const pending = landingAuthHostPromise;
-  landingAuthHostPromise = null;
-  void pending?.then(
-    host => {
-      host.dispose();
-    },
-    () => {
-      /* failed pending host has nothing to dispose */
-    },
-  );
 }
 
 /**
@@ -870,9 +632,10 @@ export async function renderIframe(
     payload: { label, url, mode: 'iframe' },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Keep the current product visible while the replacement core initializes.
-  // Core startup can take several seconds. Removing the old iframe first made
-  // permission-triggered reloads look like a permanently blank application.
+  // Keep the current product visible while its replacement frame connects.
+  // A core booting for it can take several seconds. Removing the old iframe
+  // first made permission-triggered reloads look like a permanently blank
+  // application.
   const previousHost = currentHost;
   if (previousHost === null) {
     // This path has no loading overlay to keep, so the tracked roots go first
@@ -880,7 +643,7 @@ export async function renderIframe(
     disposeAppRoots();
     app.innerHTML = '';
   }
-  disposeLandingAuthHost();
+  setPageProduct({ label, productId: options.productId });
 
   currentProduct = {
     mode: 'iframe',
@@ -974,9 +737,9 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Permission changes rebuild this host so the iframe receives a refreshed
   // `allow` attribute. Keep the current product visible until its replacement
-  // core and iframe are ready, just like the direct-iframe render path.
+  // iframe is connected, just like the direct-iframe render path.
   const previousHost = currentHost;
-  disposeLandingAuthHost();
+  setPageProduct({ label });
 
   currentProduct = {
     mode: 'subdomain',
