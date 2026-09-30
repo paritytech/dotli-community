@@ -134,12 +134,21 @@ consumed by the provider. Runtime endpoint overrides apply to `rpc-gateway`,
 not to the catalogue or its checkpoints; custom external specs and remote RPC
 nodes are not refreshed by this package upgrade.
 
+Previewnet also reset its four chain genesis hashes
+([upstream #995](https://github.com/paritytech/host-rust-core/pull/995)).
+The active network configuration tracks the 0.3.1 catalogue's relay, Asset Hub,
+Bulletin, and People hashes; the previous hashes are no longer registered.
+DotNS addresses, storage slots, network suffix, and endpoint settings are unchanged.
+
 Qualification used the real 0.3.1 WASM through `createChainProvider()` in a
 browser: Paseo returned its genesis before an earlier `system_health` request,
 reported connecting/warp progress/ready through the existing side channel, and
 then answered health with `isSyncing: false` and four peers. Resolver unit tests
 and typechecking passed. Deployment backend and product qualification remains
 separate from this provider-level check.
+The Previewnet browser check returned the configured genesis hash and synchronized
+health with a peer for all four chains. It does not qualify Previewnet product
+publication or identity registration.
 
 ## Related
 

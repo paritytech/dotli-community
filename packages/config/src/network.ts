@@ -107,7 +107,7 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     identityBackendBaseUrl: "/__dotli-identity/testnet",
     relay: {
       genesis:
-        "0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e",
+        "0x860145753657e73c29b9388ffa0a8aebc643ea87434b4b271b6c3c3cc9e6bf92",
       rpcs: [
         "wss://previewnet.substrate.dev/relay/alice",
         "wss://previewnet.substrate.dev/relay/bob",
@@ -116,20 +116,20 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
     },
     assethub: {
       genesis:
-        "0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe",
+        "0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896",
       rpcs: ["wss://previewnet.substrate.dev/asset-hub"],
       blockTimeMs: 2000,
     },
     bulletin: {
       genesis:
-        "0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d",
+        "0xa081192b90c1f6a3f8e9ce7b2a8246f41af805c66456c84e05fd97c2b3502425",
       rpcs: ["wss://previewnet.substrate.dev/bulletin"],
       blockTimeMs: 6000,
       ipfsGateways: ["https://previewnet.substrate.dev"],
     },
     people: {
       genesis:
-        "0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218",
+        "0x55e3e689ecfa9d2fffcf7d309b8011956671493982230bfd0420c683542249e9",
       rpcs: ["wss://previewnet.substrate.dev/people"],
       blockTimeMs: 2000,
     },
