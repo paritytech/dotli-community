@@ -368,9 +368,9 @@ without pairing a signer or writing to the chain; it does not replace paired E2E
 
 PolkaVM execution is opt-in on `dot.li` and on by default on every other
 shell (`paseo.fyi`, `paseo.li`, previews, localhost); **Settings → Experimental
-→ PolkaVM apps** overrides the site default either way. Each product scenario
-still enables the toggle explicitly and uses **Save & Apply** before exercising
-the published guest, so the smoke holds regardless of the deployment's default.
+→ PolkaVM apps** overrides the site default either way. Testnet product smoke
+scenarios exercise a fresh visit without opting in. On production `dot.li`,
+the smoke explicitly enables the toggle with **Save & Apply** first.
 An existing saved choice, including an opt-out on a testnet, remains authoritative.
 The site default applies only when no valid preference has been saved.
 
