@@ -371,6 +371,7 @@ scenarios exercise a fresh visit without opting in. On production `dot.li`,
 the smoke explicitly enables the toggle with **Save & Apply** first.
 An existing saved choice, including an opt-out on a testnet, remains authoritative.
 The site default applies only when no valid preference has been saved.
+
 ```bash
 cd apps/host
 DOTLI_SMOKE_ROOT=paseo.fyi DOTLI_WEBGPU=1 bun run test:smoke:products --output=test-results/products
