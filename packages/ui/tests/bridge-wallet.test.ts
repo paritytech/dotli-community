@@ -143,6 +143,7 @@ vi.mock("@parity/truapi-host/web", () => ({
       });
     };
     return {
+      notifyContactsChanged: assertLive,
       activateLocalSession: async () => {
         publish();
       },

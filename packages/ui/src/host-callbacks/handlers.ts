@@ -7,7 +7,10 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { RequiredHostCallbacks } from "@parity/truapi-host";
+import type {
+  ContactsPlatform,
+  RequiredHostCallbacks,
+} from "@parity/truapi-host";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";
@@ -40,6 +43,7 @@ export interface CreateHostCallbacksOptions {
   pairingHostGlobal?: boolean;
   blockingModalScope?: BlockingModalScope;
   custodyLease?: string;
+  contacts?: Required<ContactsPlatform>;
 }
 
 export function createHostCallbacks(
@@ -52,6 +56,7 @@ export function createHostCallbacks(
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
     custodyLease,
+    contacts,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -84,5 +89,6 @@ export function createHostCallbacks(
     // Always served; the core itself denies chat calls on non-Chat
     // executions and without an active session.
     chat: createChatPlatform(),
+    ...(contacts === undefined ? {} : { contacts }),
   };
 }

@@ -31,6 +31,7 @@ browser wallet instead needs a web bundle built with `--no-default-features --fe
 `test-host`. That enables native signing and wallet administration without the testing-only allocation shortcuts.
 Build that wallet variant with `npm run build:wasm -- --web-only --signing-host`.
 The default web build remains pairing-only.
+Run the package tests against the default web/testing build, before selecting the wallet variant for consumer verification.
 `ProductRuntimeConfig` configures the pairing host and requires no network suffix. The signing constructor's
 configuration requires `runtimeConfig.networkSuffix` in addition: the bare TLD (`dot`, `paseo`, or `testnet`) matching
 the People chain and the wallet's onboarding configuration.
@@ -270,6 +271,19 @@ account (`blake2b(account, { key: handleKey, dkLen: 32 })` in `@noble/hashes`).
 The core re-checks every account returned. It caches what it resolves, so call
 `notifyContactsChanged()` whenever a contact is removed or blocked. Omit blocked
 contacts from both. See the contacts RFC (`docs/rfcs/contacts-api.md`).
+
+Browser signing hosts can back this UI with `runtime.getNativeChatContacts()`. It returns
+`{ walletPublicKey, genesisHash, contacts: [{ peerIdentity, username? }] }` to trusted host code only.
+The directory restores encrypted native Chat actors, checks their current authorization, includes only authenticated
+ready peers, and deduplicates identities. Conflicting verified names are omitted. It is not a product or SSO API;
+pairing hosts reject it. Bind the result to the active signing public key and People genesis, never to a username.
+Native departures/revocations remove readiness; product-private block lists are not a separate directory source.
+
+Actors are indexed when opened. Historical unindexed products must be opened once on the upgraded host; private storage
+has no enumeration API. Directory reads share native commit gates, and native state/session/permission changes invalidate
+cached handles. A browser adapter must also cancel pending picker/lookup work when its wallet, network, provider or
+directory generation changes. Provider-scoped `contacts` callbacks control that provider's UI; absent overrides inherit
+the runtime-wide Contacts adapter. Keep the runtime-wide source alive for host-owned rendering until the owner closes.
 
 ## Generated WASM artefacts
 

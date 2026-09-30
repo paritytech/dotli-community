@@ -157,3 +157,28 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.contacts-modal > p {
+  overflow-wrap: anywhere;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+.contacts-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.contacts-picker-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+.contacts-picker-identity {
+  font-family: monospace;
+  font-size: 0.7rem;
+  opacity: 0.75;
+}

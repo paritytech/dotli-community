@@ -20,6 +20,7 @@ let nextProductSubtreePublicKeyRequestId = 0;
 let nextSessionActivationRequestId = 0;
 let nextLocalIdentityRequestId = 0;
 let nextAllowanceSnapshotRequestId = 0;
+let nextNativeChatContactsRequestId = 0;
 let nextActionRequestId = 0;
 let nextRenderId = 0;
 function encodePermissionAuthorizationRequest(request) {
@@ -546,6 +547,7 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingSessionActivations, error);
     rejectAll(state.pendingLocalIdentities, error);
     rejectAll(state.pendingAllowanceSnapshots, error);
+    rejectAll(state.pendingNativeChatContacts, error);
     rejectAll(state.pendingPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
@@ -625,6 +627,7 @@ function invalidateAllowanceIdentity(state) {
     state.identityGeneration++;
     state.identityAccountId = null;
     rejectAll(state.pendingAllowanceSnapshots, new Error("local identity activation changed"));
+    rejectAll(state.pendingNativeChatContacts, new Error("local identity activation changed"));
 }
 async function getWalletAllowanceSnapshot(state, input) {
     if (state.disposed || state.disposePending) {
@@ -670,6 +673,43 @@ async function getWalletAllowanceSnapshot(state, input) {
     }
     catch (error) {
         settlePending(state.pendingAllowanceSnapshots, requestId, {
+            ok: false,
+            error: errorMessage(error),
+        });
+    }
+    return promise;
+}
+async function getNativeChatContacts(state) {
+    if (state.disposed || state.disposePending) {
+        throw state.closedError ?? new Error("runtime disposed");
+    }
+    if (state.role !== "signing" ||
+        state.pendingSessionActivations.size > 0 ||
+        state.pendingDisconnects.size > 0) {
+        throw new Error("native Chat contacts require a current local signing session");
+    }
+    const generation = state.identityGeneration;
+    const requestId = ++nextNativeChatContactsRequestId;
+    const { promise, resolve, reject } = Promise.withResolvers();
+    state.pendingNativeChatContacts.set(requestId, {
+        resolve(snapshot) {
+            if (generation !== state.identityGeneration || state.disposePending) {
+                reject(new Error("local identity activation changed"));
+            }
+            else {
+                resolve(snapshot);
+            }
+        },
+        reject,
+    });
+    try {
+        state.worker.postMessage({
+            kind: "getNativeChatContacts",
+            requestId,
+        });
+    }
+    catch (error) {
+        settlePending(state.pendingNativeChatContacts, requestId, {
             ok: false,
             error: errorMessage(error),
         });
@@ -778,6 +818,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             identityAccountId: null,
             identityGeneration: 0,
             pendingAllowanceSnapshots: new Map(),
+            pendingNativeChatContacts: new Map(),
             rawCallbacks: callbacks,
             coreCallbacks: new Map(),
             cores: new Map(),
@@ -872,6 +913,11 @@ function createWebWorkerHostRuntime(worker, host, options) {
                     break;
                 case "walletAllowanceSnapshotResponse":
                     settlePending(state.pendingAllowanceSnapshots, msg.requestId, msg.ok
+                        ? { ok: true, value: msg.snapshot }
+                        : { ok: false, error: msg.error });
+                    break;
+                case "nativeChatContactsResponse":
+                    settlePending(state.pendingNativeChatContacts, msg.requestId, msg.ok
                         ? { ok: true, value: msg.snapshot }
                         : { ok: false, error: msg.error });
                     break;
@@ -1128,6 +1174,7 @@ function buildRuntime(state) {
                             : {
                                 capabilities: {
                                     chat: callbacks.chat !== undefined,
+                                    contacts: callbacks.contacts !== undefined,
                                     permissionStatus: callbacks.permissionStatus !== undefined,
                                     pocket: callbacks.pocket !== undefined,
                                     identityBackend: callbacks.identityBackend !== undefined,
@@ -1185,6 +1232,7 @@ function buildRuntime(state) {
             });
         },
         notifyContactsChanged() {
+            rejectAll(state.pendingNativeChatContacts, new Error("native Chat contacts changed"));
             postUnlessDisposed(state, { kind: "notifyContactsChanged" });
         },
         acquireWorker(productId) {
@@ -1256,6 +1304,9 @@ function buildRuntime(state) {
         },
         getWalletAllowanceSnapshot(productIds) {
             return getWalletAllowanceSnapshot(state, productIds);
+        },
+        getNativeChatContacts() {
+            return getNativeChatContacts(state);
         },
         registerLocalLiteUsername(baseUsername, identityBackendBaseUrl, onProgress) {
             return sendLocalIdentityRequest(state, (requestId) => ({

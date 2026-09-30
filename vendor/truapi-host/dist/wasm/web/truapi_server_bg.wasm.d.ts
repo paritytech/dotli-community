@@ -18,6 +18,7 @@ export const wasmpairinghostruntime_clearProductState: (a: number, b: number, c:
 export const wasmpairinghostruntime_deviceEncryptionKey: (a: number) => number;
 export const wasmpairinghostruntime_deviceStatementKey: (a: number, b: number) => void;
 export const wasmpairinghostruntime_disconnectSession: (a: number) => number;
+export const wasmpairinghostruntime_getNativeChatContacts: (a: number) => number;
 export const wasmpairinghostruntime_new: (a: number, b: number, c: number) => void;
 export const wasmpairinghostruntime_notifyContactsChanged: (a: number) => void;
 export const wasmpairinghostruntime_notifySessionStoreChanged: (a: number) => void;
@@ -47,6 +48,7 @@ export const wasmsigninghostruntime_activateLocalSessionWithIdentity: (a: number
 export const wasmsigninghostruntime_clearProductState: (a: number, b: number, c: number) => number;
 export const wasmsigninghostruntime_deviceEncryptionKey: (a: number) => number;
 export const wasmsigninghostruntime_disconnectSession: (a: number) => number;
+export const wasmsigninghostruntime_getNativeChatContacts: (a: number) => number;
 export const wasmsigninghostruntime_getWalletAllowanceSnapshot: (a: number, b: number, c: number, d: number, e: number) => number;
 export const wasmsigninghostruntime_localIdentityAuthProof: (a: number, b: number, c: number, d: number, e: number, f: number) => void;
 export const wasmsigninghostruntime_localIdentityContext: (a: number, b: number) => void;
@@ -62,12 +64,12 @@ export const wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: num
 export const wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
 export const wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
 export const wireSchemaHash: (a: number) => void;
-export const __wasm_bindgen_func_elem_9363: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_9421: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_4252: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_4245: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_9245: (a: number, b: number) => void;
-export const __wasm_bindgen_func_elem_4249: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_9407: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_9465: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_4279: (a: number, b: number, c: number) => void;
+export const __wasm_bindgen_func_elem_4272: (a: number, b: number, c: number) => void;
+export const __wasm_bindgen_func_elem_9288: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_4276: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_export3: (a: number) => void;
