@@ -103,7 +103,7 @@ export function ChatDock(): JSX.Element {
       role="complementary"
       aria-label="Product chat"
       hidden={!open()}
-      style={open() ? { width: `${String(width())}px` } : undefined}
+      style={{ width: `${String(width())}px` }}
     >
       <Show when={opened()}>
         <Errored fallback={(err, reset) => <Broken error={err()} reset={reset} />}>

@@ -224,10 +224,11 @@ describe('Loading screen island', () => {
     ctl.dismissLoading();
     await settle();
 
-    // Then
-    expect(screen.style.transition).toBe('opacity 0.3s ease');
-    expect(screen.style.opacity).toBe('0');
-    expect(screen.style.pointerEvents).toBe('none');
+    // Then: it fades (base.css), and lets clicks through.
+    expect(screen.classList.contains('dismissing')).toBe(true);
+    expect(BASE_CSS).toMatch(
+      /#app-loading\.dismissing \{\s*transition: opacity 0\.3s ease;\s*opacity: 0;\s*pointer-events: none;/,
+    );
     expect(byId('loading-progress-pct').textContent).toBe('100%');
     expect(screen.isConnected).toBe(true);
 

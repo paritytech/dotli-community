@@ -24,7 +24,7 @@ import * as Sentry from '@sentry/browser';
 import { captureException, m, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
-  openSettingsPanel,
+  openSettings,
   showError,
   showErrorPage,
   showNoContentError,
@@ -810,18 +810,6 @@ function forgetError(): void {
   } catch {
     /* sessionStorage unavailable: nothing was stored, so nothing to clear */
   }
-}
-
-/**
- * Open the topbar's Settings panel, the way the mobile "more" menu does.
- *
- * `stopPropagation` for the same reason that menu needs it: the document-level
- * close-outside listener would see this button as outside the popover that just
- * opened and close it again within the same click.
- */
-function openSettings(event: MouseEvent): void {
-  event.stopPropagation();
-  openSettingsPanel();
 }
 
 function switchBackendAndReload(nextBackend: Backend): void {

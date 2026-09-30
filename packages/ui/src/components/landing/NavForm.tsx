@@ -26,12 +26,13 @@ const NAME_ERROR_COPY: Record<Exclude<DotLabelResult, { ok: true }>['reason'], s
 /**
  * Cycle example names through `input`'s placeholder, typing and erasing
  * them, while the input is empty. Holds the first name for a visitor who
- * prefers reduced motion. Returns what stops the cycle.
+ * prefers reduced motion. Returns what resumes the cycle, for each input
+ * event (it pauses while the input has a value), and what stops it.
  */
-function animatePlaceholder(input: HTMLInputElement): () => void {
+function animatePlaceholder(input: HTMLInputElement): { resume: () => void; stop: () => void } {
   input.placeholder = PLACEHOLDER_NAMES[0];
   if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    return () => undefined;
+    return { resume: () => undefined, stop: () => undefined };
   }
   let wordIdx = 0;
   let charIdx: number = PLACEHOLDER_NAMES[0].length;
@@ -81,14 +82,15 @@ function animatePlaceholder(input: HTMLInputElement): () => void {
       schedule(PLACEHOLDER_TYPE_MS);
     }
   };
-  input.addEventListener('input', resume);
   schedule(PLACEHOLDER_HOLD_MS);
-  return () => {
-    input.removeEventListener('input', resume);
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+  return {
+    resume,
+    stop: () => {
+      if (timer !== null) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    },
   };
 }
 
@@ -104,14 +106,14 @@ export function NavForm(): JSX.Element {
   const [invalid, setInvalid] = createSignal(false);
   const [message, setMessage] = createSignal('');
 
-  let stopPlaceholder: (() => void) | undefined;
+  let placeholder: ReturnType<typeof animatePlaceholder> | undefined;
   onSettled(() => {
     if (input !== undefined) {
-      stopPlaceholder = animatePlaceholder(input);
+      placeholder = animatePlaceholder(input);
     }
   });
   onCleanup(() => {
-    stopPlaceholder?.();
+    placeholder?.stop();
   });
 
   const onSubmit = (e: Event): void => {
@@ -151,6 +153,7 @@ export function NavForm(): JSX.Element {
           }}
           onInput={() => {
             setInvalid(false);
+            placeholder?.resume();
           }}
           id="dotli-nav-input"
           class="landing-search-input"

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Every live root, by name: the Solid roots mountRoot mounts (`"chat"`, ...)
- * and the roots that take turns filling `#app`.
+ * Every live root, by name: the Solid roots mountRoot mounts (`"overlays"`,
+ * ...) and the roots that take turns filling `#app`.
  *
- * `"loading"` is the loading overlay and `"page"` is the page content, such as
- * the landing page. Whatever replaces them (a product frame, an error page)
+ * `"loading"` is the loading overlay and `"page"` is a page's content in
+ * `#app`. Whatever replaces them (a product frame, an error page)
  * disposes them through here rather than removing their nodes, so their timers
  * and listeners stop with them.
  *

@@ -109,6 +109,12 @@ body:has(#topbar[data-landing]) #app-loading {
   left: 0;
   right: 0;
 }
+/* Fading out once the app has loaded (loading-controller.ts dismisses it). */
+#app-loading.dismissing {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* Loading logo spinner. */
 .loading-logo {

@@ -30,19 +30,7 @@ export function LoadingScreen(): JSX.Element {
 
   return (
     <Show when={!gone()}>
-      <div
-        class="loading"
-        id="app-loading"
-        style={
-          dismissing()
-            ? {
-                transition: 'opacity 0.3s ease',
-                opacity: '0',
-                'pointer-events': 'none',
-              }
-            : undefined
-        }
-      >
+      <div class={['loading', { dismissing: dismissing() }]} id="app-loading">
         <div class="loading-logo" id="loading-logo">
           <svg width="120" height="120" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
             <path

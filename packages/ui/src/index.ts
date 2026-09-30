@@ -30,7 +30,7 @@ export { initScheduledNotifications } from './scheduled-notifications.js';
 export { wipeOriginState } from './settings-actions.js';
 export { getLoadingState, updateLoading } from './state/loading.js';
 export { initSettingsStore } from './state/settings.js';
-export { openSettings as openSettingsPanel, setLandingPage, topbarStore } from './state/topbar.js';
+export { openSettings, setLandingPage, topbarStore } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
 export { bindUrlPill } from './url-pill.js';
 export {
