@@ -81,9 +81,7 @@ interface ActiveHost {
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    | 'getPermissionAuthorizationStatus'
-    | 'getPermissionAuthorizationStatuses'
-    | 'setPermissionAuthorizationStatus'
+    'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
   >;
 type CurrentProduct =
   | {
