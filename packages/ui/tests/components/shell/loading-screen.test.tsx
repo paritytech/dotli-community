@@ -1,15 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The loading screen island (components/shell/LoadingScreen.tsx), mounted in
-// an island element through the Astro renderer's client entry, as the host
-// page mounts it, rendering the loading store the controller writes.
+// The loading screen island (components/shell/LoadingScreen.tsx), rendered
+// before `#app` as the host page has it, following the loading store the
+// controller writes.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { Window } from 'happy-dom';
 import { flush } from 'solid-js';
+import { render } from '@solidjs/web';
 
 // ui.ts binds `#app` when it loads, so the element exists before any import
 // runs and every test only ever replaces its children.
@@ -26,7 +27,6 @@ vi.mock('../../../src/recent-labels.js', () => ({
   forgetRecentLabel: () => Promise.resolve(),
 }));
 
-import client from '@dotli/astro-solid/client.js';
 import { LoadingScreen } from '../../../src/islands/LoadingScreen.js';
 import * as ctl from '../../../src/loading-controller.js';
 import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js';
@@ -37,17 +37,21 @@ import { showLanding } from '../../../src/landing/load.js';
 import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
-/**
- * Mount the loading screen in an island element before `#app`, as the host
- * page does (client-rendered: the tests compile Solid for the DOM only).
- */
+/** The mounted screens' disposers. */
+const mounted: (() => void)[] = [];
+
+/** Render the loading screen before `#app`, where the host page has it. */
 async function mountScreen(): Promise<HTMLElement> {
-  const island = document.createElement('astro-island');
-  island.setAttribute('ssr', '');
-  app().before(island);
-  client(island)(LoadingScreen, {}, {}, { client: 'only' });
+  const slot = document.createElement('div');
+  app().before(slot);
+  mounted.push(
+    () => {
+      slot.remove();
+    },
+    render(() => <LoadingScreen />, slot),
+  );
   await settle();
-  return island;
+  return slot;
 }
 
 const FADE_MS = 300;
@@ -128,13 +132,13 @@ beforeEach(() => {
     frames.delete(id);
   });
   app().replaceChildren();
-  for (const island of document.querySelectorAll('astro-island')) {
-    island.remove();
-  }
   sentry.captureException.mockClear();
 });
 
 afterEach(() => {
+  for (const dispose of mounted.splice(0).reverse()) {
+    dispose();
+  }
   disposeAppRoots();
   ctl.stopStatusTick();
   resetAllStoresForTests();

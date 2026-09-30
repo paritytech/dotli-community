@@ -19,7 +19,6 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/astro-solid": "*",
     "@dotli/eslint-config": "*",
     "@dotli/typescript-config": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",

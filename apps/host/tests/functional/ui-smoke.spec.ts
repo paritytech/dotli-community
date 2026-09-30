@@ -156,6 +156,26 @@ test.describe('Shell UI smoke', () => {
     await expect(html).toHaveAttribute('data-theme', 'dark');
   });
 
+  test("As a user with a saved theme, the topbar's theme button names it, however late the bar hydrates", async ({
+    page,
+  }) => {
+    // Given: the build rendered the button for the default, System, and the
+    // action group's module arrives only after boot has read the saved theme.
+    await page.addInitScript(() => {
+      localStorage.setItem('dotli-theme', 'light');
+    });
+    await page.route('**/assets/TopbarActionsIsland.*.js', async route => {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      await route.continue();
+    });
+
+    // When
+    await page.goto(LABEL_URL);
+
+    // Then
+    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Theme: Light');
+  });
+
   test("As a user who loses the connection, I see an offline banner that goes away when I'm back", async ({
     page,
     context,
