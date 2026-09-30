@@ -445,6 +445,10 @@
 [data-theme="light"] .permissions-popover-menu-check {
   color: #0a0a0a;
 }
+[data-theme="light"] .popover-loading::after {
+  border-color: rgba(0, 0, 0, 0.12);
+  border-top-color: rgba(0, 0, 0, 0.55);
+}
 [data-theme="light"] .popover-sheet-header {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(0, 0, 0, 0.08);

@@ -194,6 +194,12 @@
   opacity: 1;
   transform: scale(1);
 }
+@starting-style {
+  .popover.peek {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .popover,

@@ -24,6 +24,15 @@ const urlPill = createSyncStore<UrlPillState>({ kind: 'none' }, { equals: shallo
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
 
+/**
+ * The pill's shield: undefined for a pill with none (not a product's), null
+ * while the host does not know how the product was loaded. The shield, its
+ * explainer and their island read it from here, so they agree.
+ */
+export function pillShield(state: UrlPillState): ShieldState | null | undefined {
+  return state.kind === 'product' ? state.shield : undefined;
+}
+
 /** A local product (localhost proxy or preview route) served from `host`. */
 export function showLocalhostPill(host: string): void {
   urlPill.set({ kind: 'localhost', host });

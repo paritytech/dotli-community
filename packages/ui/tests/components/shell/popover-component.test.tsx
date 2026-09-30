@@ -7,7 +7,7 @@
 import { createSignal, lazy } from 'solid-js';
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { EXIT_MS, Popover, usePopover } from '../../../src/components/shell/Popover.js';
+import { EXIT_MS, Popover, SHEET_EXIT_MS, usePopover } from '../../../src/components/shell/Popover.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, must } from '../../support.js';
 
@@ -528,6 +528,30 @@ describe('Popover', () => {
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
   });
 
+  it('As a phone user, a closing sheet keeps its content until it has slid out', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    stubViewport(true);
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content);
+    await settle();
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // When
+    mouseClick(must(surface().querySelector<HTMLElement>('.popover-sheet-close'), 'close'));
+    await settle();
+    vi.advanceTimersByTime(EXIT_MS);
+    await settle();
+
+    // Then: longer than an anchored popover's fade.
+    expect(surface().querySelector('#body')).not.toBeNull();
+    vi.advanceTimersByTime(SHEET_EXIT_MS - EXIT_MS);
+    await settle();
+    expect(surface().querySelector('#body')).toBeNull();
+  });
+
   it('As a phone user, a resize past the breakpoint leaves the open sheet a sheet, and the next opening follows the viewport', async () => {
     // Given
     stubViewport(true);
@@ -654,9 +678,10 @@ describe('Popover', () => {
     mouseClick(trigger());
     await waitForContent('test-popover');
 
-    // Then
+    // Then: a dialog, and its trigger says so while it is one.
     expect(surface().getAttribute('role')).toBe('dialog');
     expect(surface().getAttribute('aria-modal')).toBe('true');
+    expect(trigger().getAttribute('aria-haspopup')).toBe('dialog');
   });
 
   it('As a user, a popover anchored to its trigger opens under it', async () => {
@@ -675,6 +700,34 @@ describe('Popover', () => {
     expect(surface().classList.contains('anchor-trigger')).toBe(true);
     expect(surface().style.top).toBe('36px');
     expect(surface().style.left).toBe('40px');
+  });
+
+  it('As a desktop user, a peeking popover under its trigger follows the trigger when the window resizes', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(hover: hover)',
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content, { anchor: 'trigger', openOnHover: true });
+    await settle();
+    const rect = vi.spyOn(trigger(), 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 10, 24, 20));
+    trigger().dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    vi.advanceTimersByTime(200);
+    await waitForContent('test-popover');
+    expect(surface().style.left).toBe('40px');
+
+    // When
+    rect.mockReturnValue(new DOMRect(90, 10, 24, 20));
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+
+    // Then
+    expect(surface().style.left).toBe('90px');
   });
 
   it('As a desktop user, resting the mouse on the trigger shows the popover without taking focus', async () => {

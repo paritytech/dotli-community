@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
-import { urlPillStore } from '../../state/url-pill.js';
+import { pillShield, urlPillStore } from '../../state/url-pill.js';
 import { useStore } from '../use-store.js';
 import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
 
@@ -13,7 +13,7 @@ import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
  * components, so the markup matches the pre-Solid explainer node for node.
  */
 export function VerificationContent(): JSX.Element {
-  const state = useStore(urlPillStore, s => (s.kind === 'product' ? (s.shield ?? null) : null));
+  const state = useStore(urlPillStore, s => pillShield(s) ?? null);
   return (
     <>
       <div class="verification-tooltip-title">{TOOLTIP_TITLE}</div>

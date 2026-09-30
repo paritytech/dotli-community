@@ -3,7 +3,7 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { urlPillStore } from '../../state/url-pill.js';
+import { pillShield, urlPillStore } from '../../state/url-pill.js';
 import { useStore } from '../use-store.js';
 import { VerificationShield } from './VerificationShield.js';
 
@@ -15,12 +15,10 @@ import { VerificationShield } from './VerificationShield.js';
  * pill is the page's markup, which bindUrlPill (url-pill.ts) fills in.
  */
 export function UrlPillShield(): JSX.Element {
-  // undefined: not a product pill; null: a product pill whose shield state
-  // the host does not know yet.
-  const shield = useStore(urlPillStore, state => (state.kind === 'product' ? state.shield : undefined));
+  const shown = useStore(urlPillStore, state => pillShield(state) !== undefined);
   return (
-    <Show when={shield() !== undefined}>
-      <VerificationShield state={shield() ?? null} />
+    <Show when={shown()}>
+      <VerificationShield />
     </Show>
   );
 }

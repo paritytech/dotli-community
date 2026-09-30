@@ -23,6 +23,8 @@ import { createPopover, isSheetViewport } from './create-popover.js';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
+/** A sheet's: its slide down (popover.css). */
+export const SHEET_EXIT_MS = 280;
 
 /** A swipe past this share of the sheet's height closes it. */
 const SWIPE_CLOSE_FRACTION = 0.3;
@@ -211,9 +213,12 @@ export function Popover(props: PopoverProps): JSX.Element {
       return;
     }
     clearTimeout(unmountTimer);
-    unmountTimer = setTimeout(() => {
-      setMounted(false);
-    }, EXIT_MS);
+    unmountTimer = setTimeout(
+      () => {
+        setMounted(false);
+      },
+      untrack(sheet) ? SHEET_EXIT_MS : EXIT_MS,
+    );
   });
   onCleanup(() => {
     clearTimeout(unmountTimer);
@@ -222,15 +227,19 @@ export function Popover(props: PopoverProps): JSX.Element {
   // The chunk, before anyone asks for it.
   onSettled(() => preloadWhenIdle(Content));
 
-  createEffect(popover.open, open => {
-    if (!open || props.anchor !== 'trigger') {
-      return;
-    }
-    window.addEventListener('resize', measure);
-    return () => {
-      window.removeEventListener('resize', measure);
-    };
-  });
+  // Kept under its trigger while shown, opened or peeking.
+  createEffect(
+    () => (popover.open() || peek()) && props.anchor === 'trigger',
+    shown => {
+      if (!shown) {
+        return;
+      }
+      window.addEventListener('resize', measure);
+      return () => {
+        window.removeEventListener('resize', measure);
+      };
+    },
+  );
 
   let hoverTimer: ReturnType<typeof setTimeout> | undefined;
   const onHoverEnter = (ev: PointerEvent): void => {
@@ -291,7 +300,8 @@ export function Popover(props: PopoverProps): JSX.Element {
     },
     onClick: toggle,
     get 'aria-haspopup'() {
-      return props.disclosure === true ? undefined : 'dialog';
+      // A disclosure opened as a sheet is a dialog, and says so.
+      return props.disclosure === true && !(popover.open() && sheet()) ? undefined : 'dialog';
     },
     get 'aria-expanded'() {
       return popover.open() ? 'true' : 'false';

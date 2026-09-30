@@ -150,6 +150,49 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).not.toHaveClass(/\bopen\b/);
   });
 
+  test('As a phone user, Permissions opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 375, height: 740 });
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+    const sheet = page.locator('#permissions-popover');
+    const open = async (): Promise<void> => {
+      await page.locator('#more-button').click();
+      await page.locator('#more-popover .more-row[data-item="permissions"]').click();
+      await expect(sheet).toHaveClass(/\bopen\b/);
+      await expect.poll(() => sheetBottom(sheet)).toBe(740);
+    };
+
+    // When
+    await open();
+
+    // Then
+    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('aria-modal', 'true');
+    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Permissions');
+
+    // When
+    await sheet.locator('.popover-sheet-close').click();
+
+    // Then
+    await expect(sheet).not.toHaveClass(/\bopen\b/);
+
+    // When: open it again and swipe the header down.
+    await open();
+    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
+    const y = (header?.y ?? 0) + 10;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 300, { steps: 8 });
+    await page.mouse.up();
+
+    // Then
+    await expect(sheet).not.toHaveClass(/\bopen\b/);
+  });
+
   test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
     // Given
     await page.setViewportSize({ width: 1280, height: 800 });

@@ -4,6 +4,8 @@
 import { lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
+import { pillShield, urlPillStore } from '../../state/url-pill.js';
+import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
 
@@ -25,14 +27,19 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
  * phones. It closes on a press outside both, on focus leaving both, on
  * Escape (focus back to the button when it was inside or lost to the body),
  * on window blur (a tap inside the product iframe) and when a blocking modal
- * comes up. `state` is null until the host knows how the product was
- * loaded: the verified glyph shows (CSS) and no row is marked as this site.
+ * comes up. The shield's state is the url-pill store's (pillShield), null
+ * until the host knows how the product was loaded: the verified glyph shows
+ * (CSS) and no row is marked as this site.
  * The explainer's body, VerificationContent, is its own chunk.
  *
  * Rendered by the URL pill's UrlPillShield island.
  */
-export function VerificationShield(props: { state: ShieldState | null }): JSX.Element {
-  const label = (): string => (props.state === null ? TOOLTIP_TITLE : `${BUTTON_LABEL[props.state]}. ${TOOLTIP_TITLE}`);
+export function VerificationShield(): JSX.Element {
+  const state = useStore(urlPillStore, s => pillShield(s) ?? null);
+  const label = (): string => {
+    const current = state();
+    return current === null ? TOOLTIP_TITLE : `${BUTTON_LABEL[current]}. ${TOOLTIP_TITLE}`;
+  };
 
   return (
     <div class="verification-shield-wrap">
@@ -55,8 +62,8 @@ export function VerificationShield(props: { state: ShieldState | null }): JSX.El
             class={[
               'verification-shield',
               {
-                verified: props.state === 'verified',
-                trusted: props.state === 'trusted',
+                verified: state() === 'verified',
+                trusted: state() === 'trusted',
               },
             ]}
             aria-label={label()}
