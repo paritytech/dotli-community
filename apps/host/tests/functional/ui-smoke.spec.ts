@@ -5,7 +5,7 @@
 // piece. None of these wait for a chain: they stop at what the shell renders
 // by itself. End-to-end resolution lives in resolution.spec.ts.
 
-import { expect } from '@playwright/test';
+import { expect, type Locator } from '@playwright/test';
 import { PORT } from '../env.js';
 import { test } from './helpers/shared-mode-reset.js';
 
@@ -14,6 +14,12 @@ const LABEL_URL = `http://browse.localhost:${PORT}/`;
 // Same endpoint shared-mode-reset uses; 127.0.0.1 because Node on Linux does
 // not resolve *.localhost.
 const SHARED_STORE = `http://127.0.0.1:${PORT}/__dotli-mode/`;
+
+/** Where a popover's bottom edge is, rounded: a sheet's is the viewport's once it has slid up. */
+async function sheetBottom(sheet: Locator): Promise<number> {
+  const box = await sheet.boundingBox();
+  return Math.round((box?.y ?? 0) + (box?.height ?? 0));
+}
 
 test.describe('Shell UI smoke', () => {
   test('As a returning user, the landing page shows my recent sites as pills', async ({ page, request }) => {
@@ -99,6 +105,66 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
     await expect(page.locator('#mode-popover')).toHaveClass(/\bopen\b/);
+  });
+
+  test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 375, height: 740 });
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+    const sheet = page.locator('#mode-popover');
+
+    // When
+    await page.locator('#more-button').click();
+    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+
+    // Then
+    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('aria-modal', 'true');
+    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Settings');
+    // At the bottom edge, once it has slid up.
+    await expect.poll(() => sheetBottom(sheet)).toBe(740);
+
+    // When
+    await sheet.locator('.popover-sheet-close').click();
+
+    // Then
+    await expect(sheet).not.toHaveClass(/\bopen\b/);
+
+    // When: open it again and swipe the header down.
+    await page.locator('#more-button').click();
+    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await expect(sheet).toHaveClass(/\bopen\b/);
+    await expect.poll(() => sheetBottom(sheet)).toBe(740);
+    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
+    const y = (header?.y ?? 0) + 10;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.mouse.move(x, y + 400, { steps: 8 });
+    await page.mouse.up();
+
+    // Then
+    await expect(sheet).not.toHaveClass(/\bopen\b/);
+  });
+
+  test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
+    // Given
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // When
+    await page.locator('#permissions-button').click();
+
+    // Then
+    const popover = page.locator('#permissions-popover');
+    await expect(popover).toHaveClass(/\bopen\b/);
+    await expect(popover).not.toHaveClass(/\bsheet\b/);
+    const box = await popover.boundingBox();
+    expect(box?.y ?? 0).toBeLessThan(100);
   });
 
   test('As a desktop user, every topbar button fits and there is no More button', async ({ page }) => {
