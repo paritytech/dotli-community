@@ -424,7 +424,12 @@ function createProfileDisclosureFields(
     {
       label: "Permission",
       value:
-        "Show this app's profile photo and mood to the people you chat with",
+        "Share this app's profile with app audiences or selected contacts. Personally shared profiles may be shown across the recipients' apps.",
+    },
+    {
+      label: "Audience changes",
+      value:
+        "This authorizes the app to choose and update recipients. Always allow remembers that permission; it does not ask again for each audience change.",
     },
   ];
 }
@@ -562,7 +567,7 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       return { title: "Resource Allocation", action: "Allow" };
     case "ProfileDisclosure":
       return {
-        title: "Share Profile with Chat Contacts",
+        title: "Allow Profile Sharing",
         action: "Allow",
         cancelAction: "Deny",
       };
