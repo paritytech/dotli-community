@@ -1,12 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createMemo, createSignal, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
 import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
+import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
 import { createPopover } from './popover.js';
@@ -259,7 +260,7 @@ function GearIcon(props: { size: number }): JSX.Element {
 /**
  * The settings button (`#mode-button`), its popover (`#mode-popover`) and
  * the popover's backdrop, both rendered into the body, an item of the
- * topbar's action group island (see islands.tsx), rendered with the host
+ * topbar's action group island (see islands.ts), rendered with the host
  * page and hydrated.
  *
  * The popover shows the saved settings: the network and transport choices,
@@ -314,6 +315,16 @@ export function SettingsPopover(): JSX.Element {
     }
     surface.toggle();
   };
+  // openSettings(): each request opens the panel, as a click on a closed
+  // button would.
+  createEffect(
+    useStore(topbarStore, state => state.settingsRequests),
+    (requests, previous) => {
+      if (previous !== undefined && requests > previous && !untrack(surface.open)) {
+        onButtonClick();
+      }
+    },
+  );
 
   return (
     <>

@@ -7,7 +7,7 @@
 
 import { captureException } from '@dotli/metrics';
 import { disposeAppRoot } from '../mount/app-roots.js';
-import { unmountIslands } from '../mount/islands.js';
+import { setLandingPage } from '../state/topbar.js';
 import { showError } from '../ui.js';
 
 let showing: Promise<void> | null = null;
@@ -33,15 +33,9 @@ export function showLanding(): Promise<void> {
   showing ??= import('../components/landing/mount.js')
     .then(({ mountLanding }) => {
       const app = document.getElementById('app') ?? document.body;
-      const topbar = document.getElementById('topbar');
-      if (topbar) {
-        topbar.style.display = 'none';
-      }
-      app.style.marginTop = '0';
-      app.style.minHeight = '100dvh';
-      // The landing page renders its own auth and theme buttons: the
-      // topbar's actions go, their islands with them.
-      unmountIslands(topbar?.querySelector('.topbar-right') ?? null);
+      // The topbar hides and its actions go: the landing page renders its
+      // own auth and theme buttons.
+      setLandingPage();
       // The landing page replaces the loading screen, island and all.
       disposeAppRoot('loading');
       const view = document.createElement('div');

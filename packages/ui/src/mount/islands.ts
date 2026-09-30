@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The host page's side of the shell's islands (the Astro page, see
-// components/shell/islands.tsx): their failures, and taking them out of the
+// components/shell/islands.ts): their failures, and taking them out of the
 // page. Solid-free: the host's startup path runs it.
 
 import { captureException } from '@dotli/metrics';

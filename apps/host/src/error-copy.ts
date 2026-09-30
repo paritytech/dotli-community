@@ -21,7 +21,6 @@ export const HOST_ERRORS = {
   MODULE_FETCH_FAILED: "Couldn't load app resources — reload to retry.",
   CHAIN_SPEC_REJECTED: "The light client couldn't load the chain configuration.",
   CONTENTHASH_UNSUPPORTED: "This domain's content format isn't supported.",
-  TOPBAR_URL_NODE_MISSING: 'Required DOM node missing: #topbar-url',
 } as const;
 
 /**

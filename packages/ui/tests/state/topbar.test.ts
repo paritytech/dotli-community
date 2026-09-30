@@ -4,8 +4,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   getTopbarState,
+  openSettings,
   setBlockingModalActive,
   recordChainsButtonVisible,
+  setLandingPage,
+  setTopbarAutoHide,
+  setTopbarPresent,
   setTopbarVisible,
   topbarStore,
 } from '../../src/state/topbar.js';
@@ -16,11 +20,15 @@ describe('topbar store', () => {
     resetStores();
   });
 
-  it('As the shell, the topbar starts visible, unblocked, with the chains button hidden', () => {
+  it('As the shell, the topbar starts absent, visible, pinned, unblocked, with the chains button hidden', () => {
     expect(getTopbarState()).toEqual({
+      present: false,
       visible: true,
+      autoHide: false,
+      landing: false,
       blockingModalActive: false,
       chainsButtonVisible: false,
+      settingsRequests: 0,
     });
   });
 
@@ -30,11 +38,23 @@ describe('topbar store', () => {
     setBlockingModalActive(true);
 
     // Then
-    expect(topbarStore.get()).toEqual({
+    expect(topbarStore.get()).toMatchObject({
       visible: false,
       blockingModalActive: true,
       chainsButtonVisible: false,
     });
+  });
+
+  it('As the host, the page marks the topbar present, the landing page and the auto-hide, and asks for the settings panel', () => {
+    // When
+    setTopbarPresent();
+    setLandingPage();
+    setTopbarAutoHide(true);
+    openSettings();
+    openSettings();
+
+    // Then
+    expect(getTopbarState()).toMatchObject({ present: true, landing: true, autoHide: true, settingsRequests: 2 });
   });
 
   it('As the host, chains button visibility is recorded', () => {

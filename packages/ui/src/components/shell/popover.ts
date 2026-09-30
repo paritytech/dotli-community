@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onSettled, useContext, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onSettled, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
+import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
@@ -221,6 +222,9 @@ export function createPopover(options: PopoverOptions): Popover {
       options.onClose?.();
     }
   };
+
+  // The topbar's auto-hide keeps the bar up while this is open or focused.
+  onCleanup(registerTopbarSurface({ element: options.surface, open: () => current }));
 
   /** Close, and hand focus back unless the user moved it elsewhere. */
   const closeReturningFocus = (): void => {

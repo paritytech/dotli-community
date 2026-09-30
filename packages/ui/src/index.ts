@@ -31,6 +31,7 @@ export { initScheduledNotifications } from './scheduled-notifications.js';
 export { wipeOriginState } from './settings-actions.js';
 export { getLoadingState, updateLoading } from './state/loading.js';
 export { initSettingsStore } from './state/settings.js';
+export { openSettings as openSettingsPanel } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
 export { armTopbarAutoHide, pinTopbarVisible } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';

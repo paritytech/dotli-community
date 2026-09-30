@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The topbar's action group island (components/shell/islands.tsx), with its
+// The topbar's action group (components/shell/TopbarActionsIsland.tsx), with its
 // real items: what the More menu's rows open. The group's fitting is covered
 // with stand-in items in topbar-actions.test.tsx, and each item on its own in
 // its own test.
 
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TopbarActionsIsland } from '../../../src/components/shell/islands.js';
+import { TopbarActionsIsland } from '../../../src/components/shell/TopbarActionsIsland.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';

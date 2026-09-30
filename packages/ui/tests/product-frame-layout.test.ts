@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { resetAllStoresForTests } from '../src/state/create-store.js';
+import { setTopbarPresent } from '../src/state/topbar.js';
 import {
   attachProductFrame,
   currentProductFrame,
@@ -37,10 +39,12 @@ const SHIFT_BELOW_BAR = 'translateY(calc(var(--topbar-height, 56px) - var(--safe
 const SLIDE = 'transform 0.3s ease';
 
 beforeEach(() => {
-  document.body.innerHTML = `<div id="topbar"></div>`;
+  // The host page, which has the topbar.
+  setTopbarPresent();
 });
 
 afterEach(() => {
+  resetAllStoresForTests();
   resetProductFrameLayout();
 });
 
@@ -188,8 +192,8 @@ describe('product frame layout', () => {
   });
 
   it('As a dotli integrator, a page without a bar gives the frame the full safe height', () => {
-    // Given
-    document.body.innerHTML = '';
+    // Given: the sandbox app's page, which has no topbar.
+    resetAllStoresForTests();
     const { frame, style } = recordingFrame();
 
     // When

@@ -3,7 +3,7 @@
 
 // The topbar's collapsible action group (components/shell/topbar/), with
 // stand-in items. The real items reaching their surfaces from the More menu
-// are covered in their own tests and in islands.test.tsx (the action group
+// are covered in their own tests and in topbar-actions-island.test.tsx (the action group
 // island).
 
 import { createSignal } from 'solid-js';

@@ -58,6 +58,15 @@ body[data-scroll-locked] {
 }
 
 /* App Content */
+/* The landing page hides the topbar (components/shell/Topbar.tsx), so the
+   page starts at the top. */
+#topbar[data-landing] {
+  display: none;
+}
+body:has(#topbar[data-landing]) #app {
+  margin-top: 0;
+  min-height: 100dvh;
+}
 #app {
   display: flex;
   align-items: center;
@@ -69,13 +78,15 @@ body[data-scroll-locked] {
 /* Scoped to `#app > .loading` because the bare `.loading` class is *also*
    used as a modifier on in-popover value spans (e.g. the domain info popover's
    "Resolving..." row). Before scoping, the full-viewport `min-height` on the
-   span stretched popover rows to viewport height. */
+   span stretched popover rows to viewport height. On the host page the
+   screen is an island, whose element sits in between (`display: contents`). */
 /* Positioned the way a browser positions its own status pages: a bounded
    column starting in the upper part of the viewport rather than floating in the
    dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
    sitting above the midline means the text does not move when a second line
    wraps in. */
-#app > .loading {
+#app > .loading,
+#app > astro-island > .loading {
   display: flex;
   flex-direction: column;
   align-items: center;

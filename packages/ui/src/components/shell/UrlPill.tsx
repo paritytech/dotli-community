@@ -10,7 +10,7 @@ import { VerificationShield } from './VerificationShield.js';
 type Pill<K extends UrlPillState['kind']> = Extract<UrlPillState, { kind: K }>;
 
 /**
- * The topbar's URL bar (`#topbar-url`), a shell island (see islands.tsx)
+ * The topbar's URL bar (`#topbar-url`), a shell island (see islands.ts)
  * rendered in the browser only (`client:only`): until then the host page
  * shows an empty `#topbar-url`, which is also what the url-pill store's
  * default renders. The host (main.ts) writes the store, possibly before the

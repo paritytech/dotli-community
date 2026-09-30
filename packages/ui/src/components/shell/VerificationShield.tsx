@@ -33,7 +33,7 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
  * is null until the host knows how the product was loaded: the verified
  * glyph shows (CSS) and no row is marked as this site.
  *
- * Rendered inside the URL pill island (see islands.tsx), so its listeners
+ * Rendered inside the URL pill island (see islands.ts), so its listeners
  * are native, added in callback refs. The icons and rows are written out
  * rather than split into components: a component among siblings leaves a
  * marker comment in the DOM, and the markup matches the pre-Solid shield

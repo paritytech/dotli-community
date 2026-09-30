@@ -7,15 +7,24 @@
 // returns on pointer hover, on keyboard focus, and on the reveal shortcut,
 // so home, settings, permissions and login never become mouse-only.
 //
+// The timing and the input handling live here, framework-free; what shows
+// is the topbar store's: the Topbar island renders the bar's slide and its
+// shortcut from `visible` and `autoHide`, and the TopbarReveal island the
+// reveal control and the hover strip. The bar registers its element
+// (registerTopbarElement) and the popovers theirs (state/topbar-surfaces.ts),
+// for the focus and open checks.
+//
 import { isMobileDevice } from '@dotli/shared';
-import { setTopbarLayout } from './product-frame-layout.js';
+import { focusables } from './components/focus.js';
+import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
 import { getLoggedIn } from './state/auth.js';
-import { setTopbarVisible } from './state/topbar.js';
+import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
+import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
 const HIDE_DELAY_MS = 5000;
-const SLIDE_TRANSITION = 'transform 0.3s ease';
-const HOVER_STRIP_HEIGHT = '6px';
-const FIRST_CONTROL_SELECTOR = 'a[href], button:not([disabled])';
+
+/** The bar's slide, unless the user asks for reduced motion. */
+export const SLIDE_TRANSITION = 'transform 0.3s ease';
 
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
@@ -23,59 +32,42 @@ export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 /** The always-reachable reveal control, one Tab past the app frame. */
 export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 
-// Popovers and the pairing modal belong to the bar but render outside
-// #topbar (the topbar island portals its popovers into the body), so focus
-// or an open state in one of them counts as "in the bar".
-const SURFACES_OUTSIDE_BAR = [
-  'user-popover',
-  'mode-popover',
-  'permissions-popover',
-  'auth-modal-backdrop',
-  'chains-popover',
-  'theme-popover',
-];
-
-// The More flyout and the shield explainer live inside #topbar, so they
-// only matter here.
-const OPEN_SURFACE_IDS = [...SURFACES_OUTSIDE_BAR, 'more-popover', 'verification-tooltip'];
-
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
-let hoverStrip: HTMLElement | null = null;
-let revealButton: HTMLButtonElement | null = null;
-let armed = false;
-let visible = true;
 let appFrameTracking = false;
+/** The bar (the Topbar island's `#topbar`), while mounted. */
+let bar: HTMLElement | undefined;
+/** The reveal control (the TopbarReveal island's), while mounted. */
+let revealButton: HTMLElement | undefined;
 
-function getTopbar(): HTMLElement | null {
-  return document.getElementById('topbar');
+/** Register the bar's element; returns the unregister. */
+export function registerTopbarElement(el: HTMLElement): () => void {
+  bar = el;
+  return () => {
+    if (bar === el) {
+      bar = undefined;
+    }
+  };
 }
 
-/** The product frame. The 0x0 protocol iframe is aria-hidden, so skip it. */
-function getAppFrame(): HTMLIFrameElement | null {
-  return document.querySelector<HTMLIFrameElement>('iframe:not([aria-hidden="true"])');
-}
-
-// The session store, not the `.user-badge` it renders: the badge island
-// renders on Solid's next flush, after `dotli:authenticated`, whose listener
-// arms the auto-hide, and not at all before the account button's island has.
-function isLoggedIn(): boolean {
-  return getLoggedIn();
+/** Register the reveal control; returns the unregister. */
+export function registerTopbarRevealButton(el: HTMLElement): () => void {
+  revealButton = el;
+  return () => {
+    if (revealButton === el) {
+      revealButton = undefined;
+    }
+  };
 }
 
 function reducedMotionQuery(): MediaQueryList | null {
   return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
 }
 
-function applySlideTransition(): void {
-  const topbar = getTopbar();
-  if (topbar === null) {
-    return;
-  }
-  // The transform is an inline style, so the reduced-motion block in
-  // topbar.css cannot gate it for us.
-  topbar.style.transition = reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION;
+/** The bar's transition now: none under reduced motion. */
+export function topbarTransition(): string {
+  return reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION;
 }
 
 /**
@@ -88,32 +80,21 @@ function applySlideTransition(): void {
 function syncFrameLayout(): void {
   setTopbarLayout(
     appFrameTracking
-      ? {
-          offset: false,
-          shown: visible,
-          transition: reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION,
-        }
+      ? { offset: false, shown: getTopbarState().visible, transition: topbarTransition() }
       : { offset: true, shown: true, transition: '' },
   );
 }
 
 function setVisible(next: boolean): void {
-  const topbar = getTopbar();
-  if (topbar === null) {
-    return;
-  }
-  visible = next;
-  applySlideTransition();
-  topbar.style.transform = next ? 'translateY(0)' : 'translateY(-100%)';
   // The hidden bar keeps its tab stops on purpose: tabbing into it is what
   // reveals it again for keyboard users.
   if (!next) {
     appFrameTracking = true;
   }
+  setTopbarVisible(next);
   if (appFrameTracking) {
     syncFrameLayout();
   }
-  setTopbarVisible(next);
 }
 
 function cancelHide(): void {
@@ -132,26 +113,20 @@ function topbarHoldsFocus(): boolean {
   if (active === null) {
     return false;
   }
-  if (getTopbar()?.contains(active) === true || active === revealButton) {
-    return true;
-  }
-  return SURFACES_OUTSIDE_BAR.some(id => document.getElementById(id)?.contains(active) === true);
-}
-
-function hasOpenSurface(): boolean {
-  return OPEN_SURFACE_IDS.some(id => document.getElementById(id)?.classList.contains('open') === true);
+  return bar?.contains(active) === true || active === revealButton || topbarSurfaceContains(active);
 }
 
 /** True while the user is working in the bar, so it must stay on screen. */
 function isBusy(): boolean {
-  return topbarHoldsFocus() || hasOpenSurface();
+  return topbarHoldsFocus() || anyTopbarSurfaceOpen();
 }
 
 function canAutoHide(): boolean {
-  return armed && !isMobileDevice() && isLoggedIn();
+  return getTopbarState().autoHide && !isMobileDevice() && getLoggedIn();
 }
 
-function scheduleHide(): void {
+/** Hide the bar after the delay, unless it is pinned or in use then. */
+export function scheduleTopbarHide(): void {
   cancelHide();
   if (!canAutoHide()) {
     return;
@@ -161,25 +136,30 @@ function scheduleHide(): void {
     // Focus or an open popover during the delay defers the hide rather than
     // pulling the controls out from under the user.
     if (isBusy()) {
-      scheduleHide();
+      scheduleTopbarHide();
       return;
     }
     setVisible(false);
   }, HIDE_DELAY_MS);
 }
 
-function reveal(): void {
+/** Show the bar (a hover, a focus in it). */
+export function revealTopbar(): void {
   cancelHide();
   setVisible(true);
 }
 
-function focusFirstControl(): void {
-  getTopbar()?.querySelector<HTMLElement>(FIRST_CONTROL_SELECTOR)?.focus();
+/** Show the bar and focus its first control (the reveal shortcut or control). */
+export function revealTopbarAndFocus(): void {
+  revealTopbar();
+  if (bar !== undefined) {
+    focusables(bar)[0]?.focus();
+  }
 }
 
 /** Hand focus back to the app so it never parks on an offscreen control. */
 function releaseFocusToApp(): void {
-  const frame = getAppFrame();
+  const frame = currentProductFrame();
   if (frame !== null) {
     frame.focus();
     return;
@@ -199,14 +179,13 @@ function onKeyDown(event: KeyboardEvent): void {
     return;
   }
   event.preventDefault();
-  if (!visible) {
-    reveal();
-    focusFirstControl();
+  if (!getTopbarState().visible) {
+    revealTopbarAndFocus();
     return;
   }
   // Nothing to toggle while the bar is pinned, and an open popover owns
   // Escape for its own dismissal, so leave both alone.
-  if (!canAutoHide() || hasOpenSurface()) {
+  if (!canAutoHide() || anyTopbarSurfaceOpen()) {
     return;
   }
   if (topbarHoldsFocus()) {
@@ -217,77 +196,22 @@ function onKeyDown(event: KeyboardEvent): void {
 }
 
 function syncFocus(): void {
-  if (!armed) {
+  if (!getTopbarState().autoHide) {
     return;
   }
   if (isBusy()) {
-    reveal();
+    revealTopbar();
   } else {
-    scheduleHide();
+    scheduleTopbarHide();
   }
-}
-
-/**
- * A skip-link style control appended after the app frame, so one forward Tab
- * out of the dApp reaches the bar. Keys pressed inside the cross-origin frame
- * never reach this document, which rules out a shortcut-only recovery.
- */
-function createRevealButton(signal: AbortSignal): void {
-  revealButton = document.createElement('button');
-  revealButton.type = 'button';
-  revealButton.id = TOPBAR_REVEAL_BUTTON_ID;
-  revealButton.className = 'topbar-reveal';
-  revealButton.textContent = 'Show browser bar';
-  revealButton.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
-  revealButton.setAttribute('aria-controls', 'topbar');
-  // Directly after the app container, so tabbing out of the dApp reaches it
-  // before the toasts and debug chrome that also live at the end of body.
-  const appContainer = document.getElementById('app');
-  if (appContainer !== null) {
-    appContainer.after(revealButton);
-  } else {
-    document.body.appendChild(revealButton);
-  }
-
-  // Focus alone reveals the bar, so a passing Tab already shows what the
-  // control does. Activating it hands focus to the bar's first control.
-  revealButton.addEventListener('focus', reveal, { signal });
-  revealButton.addEventListener(
-    'click',
-    () => {
-      reveal();
-      focusFirstControl();
-    },
-    { signal },
-  );
 }
 
 function bindListeners(): void {
-  const topbar = getTopbar();
-  if (listeners !== null || topbar === null) {
+  if (listeners !== null) {
     return;
   }
   listeners = new AbortController();
   const { signal } = listeners;
-
-  // Invisible strip at the very top, so hover reaches the host document even
-  // when the pointer is over the product frame.
-  hoverStrip = document.createElement('div');
-  hoverStrip.setAttribute('aria-hidden', 'true');
-  hoverStrip.style.cssText = `position:fixed;top:0;left:0;right:0;height:${HOVER_STRIP_HEIGHT};z-index:999;`;
-  document.body.appendChild(hoverStrip);
-  hoverStrip.addEventListener('mouseenter', reveal, { signal });
-
-  createRevealButton(signal);
-
-  topbar.addEventListener('mouseenter', reveal, { signal });
-  topbar.addEventListener(
-    'mouseleave',
-    () => {
-      scheduleHide();
-    },
-    { signal },
-  );
 
   // Tabbing into the offscreen bar reveals it, leaving it re-arms the timer.
   document.addEventListener('focusin', syncFocus, { signal });
@@ -309,52 +233,33 @@ function bindListeners(): void {
 
   const reducedMotion = reducedMotionQuery();
   if (typeof reducedMotion?.addEventListener === 'function') {
-    reducedMotion.addEventListener(
-      'change',
-      () => {
-        applySlideTransition();
-        syncFrameLayout();
-      },
-      { signal },
-    );
+    reducedMotion.addEventListener('change', syncFrameLayout, { signal });
   }
 }
 
 /**
  * Start auto-hiding the bar. Safe to call repeatedly: listeners bind once
  * and the hide timer restarts. No-op on touch devices, which have no hover
- * to bring the bar back.
+ * to bring the bar back, and on a page without the bar.
  */
 export function armTopbarAutoHide(): void {
-  const topbar = getTopbar();
-  if (isMobileDevice() || topbar === null) {
+  if (isMobileDevice() || !getTopbarState().present) {
     return;
   }
-  armed = true;
-  topbar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
-  applySlideTransition();
+  setTopbarAutoHide(true);
   bindListeners();
-  if (revealButton !== null) {
-    revealButton.hidden = false;
-  }
-  scheduleHide();
+  scheduleTopbarHide();
 }
 
 /** Pin the bar on screen and stop auto-hiding, e.g. after logout. */
 export function pinTopbarVisible(): void {
-  armed = false;
+  setTopbarAutoHide(false);
   cancelHide();
   // A focus check queued by focusout must not run against a pinned or
   // disposed bar.
   if (focusoutTimer !== null) {
     clearTimeout(focusoutTimer);
     focusoutTimer = null;
-  }
-  getTopbar()?.removeAttribute('aria-keyshortcuts');
-  // A pinned bar needs no reveal control, and a stray tab stop would just
-  // sit in the way.
-  if (revealButton !== null) {
-    revealButton.hidden = true;
   }
   if (appFrameTracking) {
     appFrameTracking = false;
@@ -371,9 +276,4 @@ export function disposeTopbarAutoHide(): void {
   pinTopbarVisible();
   listeners?.abort();
   listeners = null;
-  hoverStrip?.remove();
-  hoverStrip = null;
-  revealButton?.remove();
-  revealButton = null;
-  visible = true;
 }

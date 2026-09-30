@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { stubColorScheme } from './helpers/color-scheme.js';
-import { byId } from './support.js';
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
@@ -65,10 +64,8 @@ beforeEach(() => {
 // and the mobile "More" flyout (more-menu.test.tsx).
 
 describe('topbar boot wiring', () => {
-  it('As the host, initTopBar starts the auth controller, block source, network store, chat panel, theme and home link, and rehydrates the session on idle', async () => {
+  it('As the host, initTopBar marks the topbar present, starts the auth controller, block source, network store, chat state and theme, and rehydrates the session on idle', async () => {
     // Given
-    document.body.innerHTML = `<a id="topbar-home"></a>`;
-    vi.stubEnv('VITE_APP_URL', 'https://app.example/home');
     let idle: (() => void) | null = null;
     vi.stubGlobal('requestIdleCallback', (callback: () => void): number => {
       idle = callback;
@@ -80,7 +77,7 @@ describe('topbar boot wiring', () => {
       createBlockSource: vi.fn(() => source),
       setBlockSource: vi.fn(),
       startNetworkStore: vi.fn(),
-      initChatPanel: vi.fn(),
+      initChatPanelState: vi.fn(),
       initTheme: vi.fn(),
       emitPersistedSessionUiState: vi.fn(),
     };
@@ -96,8 +93,8 @@ describe('topbar boot wiring', () => {
     vi.doMock('../src/state/network.js', () => ({
       startNetworkStore: boot.startNetworkStore,
     }));
-    vi.doMock('../src/chat/panel.js', () => ({
-      initChatPanel: boot.initChatPanel,
+    vi.doMock('../src/state/chat-panel.js', () => ({
+      initChatPanelState: boot.initChatPanelState,
     }));
     vi.doMock('../src/theme-controller.js', () => ({
       initTheme: boot.initTheme,
@@ -118,9 +115,10 @@ describe('topbar boot wiring', () => {
       expect(boot.initAuthController).toHaveBeenCalledWith(coordinator);
       expect(boot.setBlockSource).toHaveBeenCalledWith(source);
       expect(boot.startNetworkStore).toHaveBeenCalledTimes(1);
-      expect(boot.initChatPanel).toHaveBeenCalledTimes(1);
+      expect(boot.initChatPanelState).toHaveBeenCalledTimes(1);
       expect(boot.initTheme).toHaveBeenCalledTimes(1);
-      expect(byId('topbar-home', HTMLAnchorElement).getAttribute('href')).toBe('https://app.example/home');
+      const { getTopbarState } = await import('../src/state/topbar.js');
+      expect(getTopbarState().present).toBe(true);
       expect(boot.emitPersistedSessionUiState).not.toHaveBeenCalled();
 
       // When
@@ -129,13 +127,12 @@ describe('topbar boot wiring', () => {
       // Then
       expect(boot.emitPersistedSessionUiState).toHaveBeenCalledTimes(1);
     } finally {
-      vi.unstubAllEnvs();
       for (const id of [
         '../src/auth-controller.js',
         '../src/block-source.js',
         '../src/network-monitor.js',
         '../src/state/network.js',
-        '../src/chat/panel.js',
+        '../src/state/chat-panel.js',
         '../src/theme-controller.js',
         '../src/host-callbacks/SessionStore.js',
       ]) {

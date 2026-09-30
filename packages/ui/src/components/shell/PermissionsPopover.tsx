@@ -62,7 +62,7 @@ function LockIcon(props: { size: number }): JSX.Element {
 /**
  * The permissions button (`#permissions-button`), its popover
  * (`#permissions-popover`) and the popover's backdrop, both rendered into the
- * body, an item of the topbar's action group island (see islands.tsx),
+ * body, an item of the topbar's action group island (see islands.ts),
  * rendered with the host page and hydrated.
  *
  * The popover lists every permission of the loaded product (productStore)
@@ -84,6 +84,8 @@ export function PermissionsPopover(): JSX.Element {
   let popover: HTMLDivElement | undefined;
   /** The open row dropdown's listbox. */
   let menu: HTMLDivElement | undefined;
+  /** Each row's select, by permission. */
+  const selects = new Map<EnforceablePermissionName, HTMLButtonElement>();
   const product = useStore(productStore);
   const [fetched, setFetched] = createSignal<Fetched | null>(null);
   const [hasGrants, setHasGrants] = createSignal(false);
@@ -98,7 +100,7 @@ export function PermissionsPopover(): JSX.Element {
     const hadFocus = menu?.contains(document.activeElement) === true;
     setOpenRow(null);
     if (hadFocus) {
-      document.getElementById(`permissions-popover-select-${name}`)?.focus();
+      selects.get(name)?.focus();
     }
   };
 
@@ -345,6 +347,9 @@ export function PermissionsPopover(): JSX.Element {
                           choose={choose}
                           menuRef={el => {
                             menu = el;
+                          }}
+                          selectRef={el => {
+                            selects.set(perm.name, el);
                           }}
                         />
                       )}

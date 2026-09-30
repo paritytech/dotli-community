@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Contents of the docked chat panel. The panel container, the topbar button
-// and the product-iframe width belong to the controller (chat/panel.ts);
-// this renders inside `aside#chat-panel` and reads rooms, bots and messages
-// from storage whenever the chat-panel store says they may have changed.
+// Contents of the docked chat panel. The panel itself (`aside#chat-panel`)
+// and the product-iframe width are ChatDock's, which loads this chunk; this
+// renders inside it and reads rooms, bots and messages from storage whenever
+// the chat-panel store says they may have changed.
 
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';

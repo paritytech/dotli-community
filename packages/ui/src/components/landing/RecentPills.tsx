@@ -32,7 +32,7 @@ export function RecentPills(): JSX.Element {
   const itemOf = (target: EventTarget | null): HTMLElement | null =>
     target instanceof Element ? target.closest<HTMLElement>('.landing-recent-item') : null;
 
-  // Native listeners, like the shell's islands (components/shell/islands.tsx).
+  // Native listeners, like the shell's islands (components/shell/islands.ts).
   const onClick = (e: MouseEvent): void => {
     const item = itemOf(e.target);
     const label = item?.dataset['label'];

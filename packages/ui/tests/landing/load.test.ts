@@ -10,6 +10,7 @@ import type * as LoadModule from '../../src/landing/load.js';
 import type * as AppRootsModule from '../../src/mount/app-roots.js';
 import type * as UiModule from '../../src/ui.js';
 import type * as LoadingModule from '../../src/state/loading.js';
+import type * as TopbarModule from '../../src/state/topbar.js';
 import { must } from '../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -30,6 +31,7 @@ let load: Loader;
 let roots: AppRoots;
 let ui: Ui;
 let loading: LoadingState;
+let topbar: typeof TopbarModule;
 
 /**
  * Fresh modules, so each test gets its own memoized loader. The loading
@@ -37,11 +39,12 @@ let loading: LoadingState;
  * bundle loads it on every path: that is what makes the screen a root.
  */
 async function importFresh(): Promise<void> {
-  [load, roots, ui, loading] = await Promise.all([
+  [load, roots, ui, loading, topbar] = await Promise.all([
     import('../../src/landing/load.js'),
     import('../../src/mount/app-roots.js'),
     import('../../src/ui.js'),
     import('../../src/state/loading.js'),
+    import('../../src/state/topbar.js'),
     import('../../src/loading-controller.js'),
   ]);
 }
@@ -77,18 +80,11 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like the host page (apps/host/src/pages/index.astro): the topbar
-  // with its actions, the account button and the action group, each an
-  // island, then `#app` holding the loading screen island.
-  document.body.innerHTML = [
-    '<div id="topbar"><div class="topbar-right">',
-    '<astro-island component-export="AuthButton"><button id="auth-button"></button></astro-island>',
-    '<astro-island component-export="TopbarActionsIsland"><div class="topbar-actions" id="topbar-actions">',
-    '<button id="theme-toggle"></button>',
-    '</div></astro-island>',
-    '</div></div>',
-    '<div id="app"><astro-island component-export="LoadingScreen"><div class="loading" id="app-loading"></div></astro-island></div>',
-  ].join('');
+  // Shaped like the host page (apps/host/src/pages/index.astro): `#app`
+  // holding the loading screen island. The topbar is an island that follows
+  // the topbar store (tests/components/shell/topbar.test.tsx).
+  document.body.innerHTML =
+    '<div id="app"><astro-island component-export="LoadingScreen"><div class="loading" id="app-loading"></div></astro-island></div>';
 });
 
 afterEach(() => {
@@ -112,8 +108,8 @@ describe('landing loader', () => {
     // Then: nothing changed while the chunk downloads.
     expect(loading.getLoadingState().phase).toBe('active');
     expect(byId('app-loading')).not.toBeNull();
-    expect(byId('topbar')?.style.display).toBe('');
     expect(byId('app-view')).toBeNull();
+    expect(topbar.getTopbarState().landing).toBe(false);
 
     // When
     release();
@@ -124,44 +120,20 @@ describe('landing loader', () => {
     expect(byId('app-loading')).toBeNull();
     expect(document.querySelector('astro-island[component-export="LoadingScreen"]')).toBeNull();
     expect(loading.getLoadingState().phase).toBe('gone');
-    expect(byId('topbar')?.style.display).toBe('none');
-    expect(app().style.marginTop).toBe('0px');
-    expect(app().style.minHeight).toBe('100dvh');
+    // The topbar hides and its actions go (components/shell/Topbar.tsx).
+    expect(topbar.getTopbarState().landing).toBe(true);
     expect([...app().children].map(el => el.id)).toEqual(['app-view']);
     const view = must(byId('app-view'), '#app-view');
     expect(view.firstElementChild?.className).toBe('landing');
-    // The topbar's action group went: the page renders its own auth and
-    // theme buttons, whose menus it portals into the body, so every id is
-    // there once.
-    expect(byId('topbar-actions')).toBeNull();
+    // The page renders its own auth and theme buttons, whose menus it
+    // portals into the body, so every id is there once.
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
     ).toEqual(['auth', 'theme']);
     for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
-    expect(byId('topbar')?.contains(byId('auth-button'))).toBe(false);
     expect(sentry.captureException).not.toHaveBeenCalled();
-  });
-
-  it("As a visitor, the landing page unmounts the topbar's action islands before taking their place", async () => {
-    // Given
-    await importFresh();
-    const unmounted: string[] = [];
-    for (const island of document.querySelectorAll('#topbar astro-island')) {
-      island.addEventListener('astro:unmount', () => {
-        unmounted.push(island.getAttribute('component-export') ?? '');
-      });
-    }
-
-    // When
-    await load.showLanding();
-    await settle();
-
-    // Then
-    expect(unmounted).toEqual(['AuthButton', 'TopbarActionsIsland']);
-    expect(document.querySelector('#topbar .topbar-right')).toBeNull();
-    expect(byId('landing-auth')?.querySelector('#auth-button')).not.toBeNull();
   });
 
   it('As a visitor, the landing page mounts once however often it is asked for', async () => {

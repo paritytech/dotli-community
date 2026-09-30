@@ -1,11 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Show } from 'solid-js';
+import { onSettled, Show } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { requestTruapiDisconnect, startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
-import { authModalStore } from '../../state/auth-modal.js';
+import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
 import { useStore } from '../use-store.js';
 import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
 import { createPopover } from './popover.js';
@@ -33,7 +33,7 @@ function UserIcon(): JSX.Element {
 /**
  * The topbar's auth button (`#auth-button`) and the logged-in account's
  * popover (`#user-popover`, rendered into the body), an island of its own
- * (see islands.tsx) in the bar's `.topbar-right`, before the collapsible
+ * (see islands.ts) in the bar's `.topbar-right`, before the collapsible
  * action group, so it never collapses into More (a TopbarItem with no bar
  * around it stays inline). It shows the session, which only the browser
  * knows, so it renders there only (`client:only`): until then the host page
@@ -99,6 +99,8 @@ export function AuthButton(): JSX.Element {
       startLogin();
     }
   };
+  // The auth modal's trigger, while mounted (see setAuthModalTrigger).
+  onSettled(() => (button === undefined ? undefined : setAuthModalTrigger(button)));
   const onDisconnect = (): void => {
     menu.setOpen(false);
     requestTruapiDisconnect();

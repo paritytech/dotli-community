@@ -17,6 +17,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
 import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.js';
+import type * as TopbarStateModule from '../../src/state/topbar.js';
 import { query, must } from '../support.js';
 import { nth } from '../helpers/nth.js';
 
@@ -28,6 +29,7 @@ const PANEL_ID = 'truapi-debug-panel';
 
 let bus: Bus;
 let layout: typeof ProductFrameLayoutModule;
+let topbarState: typeof TopbarStateModule;
 let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
@@ -56,6 +58,7 @@ beforeEach(async () => {
   bus = await import('../../../truapi-debug/src/dotli-debug-bus.js');
   // Imported after the reset so the panel reports to this same instance.
   layout = await import('../../src/product-frame-layout.js');
+  topbarState = await import('../../src/state/topbar.js');
   panelModule = await loadPanel();
   // As `apps/host/src/main.ts` does once it decides the panel will mount.
   bus.enableDotliDebugBuffering();
@@ -221,10 +224,8 @@ function stubPanelBox(width: number, height: number): void {
  * a `var()`, so a real iframe would read back empty inset-aware values.
  */
 function attachFrame(withTopbar: boolean): Record<string, string> {
-  if (withTopbar && document.getElementById('topbar') === null) {
-    const topbar = document.createElement('div');
-    topbar.id = 'topbar';
-    document.body.appendChild(topbar);
+  if (withTopbar) {
+    topbarState.setTopbarPresent();
   }
   const style: Record<string, string> = {};
   layout.attachProductFrame({ style } as unknown as HTMLIFrameElement);
@@ -1212,10 +1213,8 @@ describe('truapi debug panel: views', () => {
 
 describe('truapi debug panel: dock, collapse and resize', () => {
   it('As a dotli developer, the dock button switches to the right edge and back, and remembers it', () => {
-    // Given
-    const topbar = document.createElement('div');
-    topbar.id = 'topbar';
-    document.body.appendChild(topbar);
+    // Given: the host page, which has the topbar.
+    topbarState.setTopbarPresent();
     mount();
     const dock = q('.td-dock');
 

@@ -89,6 +89,7 @@ import {
   chatPanelStore,
   initChatPanelState,
   openChatRoom,
+  setChatPanelElement,
   setChatPanelOpen,
   setChatPanelWidth,
 } from '../../../src/state/chat-panel.js';
@@ -151,11 +152,14 @@ function rows(): HTMLButtonElement[] {
 }
 
 let removeRules: (() => void) | undefined;
+let unregisterPanel: (() => void) | undefined;
 
 async function openPanel(roomCount = 20): Promise<void> {
+  // The docked panel, as ChatDock renders and registers it.
   const container = document.createElement('aside');
   container.id = 'chat-panel';
   document.body.append(container);
+  unregisterPanel = setChatPanelElement(container);
   removeRules = initChatPanelState();
   emit('dotli:product-loaded', { label: 'chatty', productId: PRODUCT });
   emit('dotli:chat-availability', { label: 'chatty', chat: true });
@@ -182,6 +186,7 @@ beforeEach(() => {
 
 afterEach(() => {
   removeRules?.();
+  unregisterPanel?.();
   removeRules = undefined;
   resetStores();
   document.body.replaceChildren();

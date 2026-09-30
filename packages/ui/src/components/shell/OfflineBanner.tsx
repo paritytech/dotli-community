@@ -7,8 +7,8 @@ import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 
 /**
- * The topbar's offline banner (`#offline-banner`), a shell island (see
- * islands.tsx), the last child of `#topbar`: rendered with the host page,
+ * The topbar's offline banner (`#offline-banner`), the last child of
+ * `#topbar` (components/shell/Topbar.tsx): rendered with the host page,
  * hidden (online, as a build-time render has no navigator), then hydrated,
  * reading the connection once mounted. It shows while the browser reports
  * being offline and the topbar is visible, so it rides the topbar's auto-hide

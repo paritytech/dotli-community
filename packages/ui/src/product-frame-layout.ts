@@ -14,6 +14,7 @@
  */
 
 import { productIframeBox } from './product-iframe-box.js';
+import { getTopbarState } from './state/topbar.js';
 
 const TOPBAR_HEIGHT = 'var(--topbar-height, 56px)';
 const SAFE_TOP = 'var(--safe-top, 0px)';
@@ -79,7 +80,7 @@ function write(): void {
   } else {
     // A page without the bar has nothing to clear but the top inset.
     box = productIframeBox({
-      topbarOffset: document.getElementById('topbar') !== null,
+      topbarOffset: getTopbarState().present,
     });
   }
   // Docks at the same edge stack, so their insets add up.

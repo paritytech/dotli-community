@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
-import { authModalStore, getAuthModalState, type AuthModalView } from '../../state/auth-modal.js';
+import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
 import { createPopover } from './popover.js';
@@ -22,10 +22,6 @@ type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 interface DrawnQr {
   payload: string;
   canvas: HTMLCanvasElement;
-}
-
-function authButton(): HTMLElement | undefined {
-  return document.getElementById('auth-button') ?? undefined;
 }
 
 function Spinner(): JSX.Element {
@@ -73,7 +69,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 
 /**
  * The QR pairing modal (`#auth-modal-backdrop`), a shell island (see
- * islands.tsx) rendered in the browser only (`client:only`). It renders
+ * islands.ts) rendered in the browser only (`client:only`). It renders
  * authModalStore, which auth-controller.ts writes from boot onwards, so a
  * login that started before the island rendered shows as it renders.
  *
@@ -169,7 +165,7 @@ export function AuthModal(): JSX.Element {
 
   const dialog = createPopover({
     mode: 'dialog',
-    trigger: authButton,
+    trigger: getAuthModalTrigger,
     surface: () => backdrop,
     closeOnBlockingModal: false,
     onClose: () => {
@@ -187,9 +183,8 @@ export function AuthModal(): JSX.Element {
       dialog.setOpen(isOpen);
       return;
     }
-    // Already open as the island mounts: it renders detached and is swapped
-    // in right after (islands.tsx), so open the dialog, which takes the
-    // focus, once it is in the document.
+    // Already open as it mounts, before it is in the document: open the
+    // dialog, which takes the focus, once it is.
     queueMicrotask(() => {
       if (getAuthModalState().open) {
         dialog.setOpen(true);

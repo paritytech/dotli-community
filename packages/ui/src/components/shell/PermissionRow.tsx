@@ -53,6 +53,8 @@ export interface PermissionRowProps {
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
   /** Receives the dropdown's listbox each time it opens. */
   menuRef: (el: HTMLDivElement) => void;
+  /** Receives the select, which gets the focus back as its dropdown closes. */
+  selectRef: (el: HTMLButtonElement) => void;
 }
 
 /**
@@ -99,6 +101,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
       <div class="permissions-popover-select-wrap">
         <button
           ref={el => {
+            props.selectRef(el);
             el.addEventListener('click', onTriggerClick);
           }}
           type="button"

@@ -7,7 +7,7 @@ import { loadingStore } from '../../state/loading.js';
 import { useStore } from '../use-store.js';
 
 /**
- * The loading screen (`#app-loading`), an island (see islands.tsx) the host
+ * The loading screen (`#app-loading`), an island (see islands.ts) the host
  * page paints first and hydrates. It renders the loading store, which
  * loading-controller.ts writes, so progress made before it hydrates shows
  * straight away. It fades while the

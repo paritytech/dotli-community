@@ -364,7 +364,7 @@ describe('The network popover island', () => {
   });
 
   it('As a dotli user, a render error while open is reported, closes the popover and stops the countdown and the watch', async () => {
-    // Given: the island in its root, as islands.tsx mounts it.
+    // Given: the island in its root, as islands.ts mounts it.
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
     const container = document.createElement('div');

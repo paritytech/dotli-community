@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as TopbarAutohideModule from '../src/topbar-autohide.js';
+import type * as TopbarSurfacesModule from '../src/state/topbar-surfaces.js';
 import { byId } from './support.js';
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
@@ -19,24 +20,17 @@ vi.mock('../src/product-iframe-box.js', () => ({
 
 const HIDE_DELAY_MS = 5000;
 
-function installTopbarDom(): void {
+const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
+
+// Shaped like the host page (apps/host/src/pages/index.astro): the bar, the
+// app with its product frame, then the reveal control and the toasts.
+function installPageDom(): void {
   document.body.innerHTML = `
-    <div id="topbar" role="banner">
-      <a id="topbar-home" href="/"></a>
-      <button id="permissions-button"></button>
-      <button id="mode-button"></button>
-      <button id="auth-button"><div class="user-badge">RS</div></button>
-      <div class="more-popover" id="more-popover"></div>
-      <div class="verification-tooltip" id="verification-tooltip"></div>
-    </div>
-    <div class="user-popover" id="user-popover"></div>
-    <div class="mode-popover" id="mode-popover"></div>
-    <div class="permissions-popover" id="permissions-popover"></div>
-    <div class="auth-modal-backdrop" id="auth-modal-backdrop"></div>
-    <div class="more-popover chains-popover" id="chains-popover"><button id="chains-row">row</button></div>
+    <div id="topbar-slot"></div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>
     </div>
+    <div id="reveal-slot"></div>
     <a id="toast" href="/">a toast that also lives after the app</a>
   `;
 }
@@ -53,10 +47,25 @@ function isHidden(): boolean {
   return topbar().style.transform === 'translateY(-100%)';
 }
 
+/** Applies the islands' batched Solid updates (the current module graph's). */
+let flushUi: () => void = () => undefined;
+
 /** happy-dom does not raise focusin from focus(), so drive it explicitly. */
 function focusElement(el: HTMLElement): void {
   el.focus();
   el.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+  flushUi();
+}
+
+/** Let the timers run, then render what they changed. */
+function advance(ms: number): void {
+  vi.advanceTimersByTime(ms);
+  flushUi();
+}
+
+function pressShortcut(): void {
+  document.dispatchEvent(new KeyboardEvent('keydown', SHORTCUT));
+  flushUi();
 }
 
 function stubReducedMotion(reduce: boolean): void {
@@ -68,45 +77,86 @@ function stubReducedMotion(reduce: boolean): void {
   }));
 }
 
-// Each test imports a fresh module instance, so the previous one has to drop
-// its document listeners or it keeps acting on the shared DOM.
-let dispose: (() => void) | null = null;
+/** A popover of the bar, as createPopover registers it, open or not. */
+interface StandInSurface {
+  element: HTMLElement;
+  open: boolean;
+}
+
+// Each test imports a fresh module graph, so the previous one has to drop
+// its document listeners and its islands or they keep acting on the DOM.
+const disposers: (() => void)[] = [];
+let surfaces: typeof TopbarSurfacesModule;
+
+/** Register a stand-in surface, rendered outside `#topbar` like a portal. */
+function surface(open = false): StandInSurface {
+  const element = document.createElement('div');
+  document.body.append(element);
+  const stand: StandInSurface = { element, open };
+  disposers.push(surfaces.registerTopbarSurface({ element: () => stand.element, open: () => stand.open }));
+  return stand;
+}
 
 async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   // Logged in, as the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import('../src/state/auth.js');
   setLoggedIn(true);
+  // The host page has the topbar (initTopBar says so).
+  const { setTopbarPresent } = await import('../src/state/topbar.js');
+  setTopbarPresent();
   // The bridge hands each rendered product frame to the layout module.
   const { attachProductFrame } = await import('../src/product-frame-layout.js');
   attachProductFrame(appFrame());
+  surfaces = await import('../src/state/topbar-surfaces.js');
   const mod = await import('../src/topbar-autohide.js');
-  dispose = mod.disposeTopbarAutoHide;
+  disposers.push(mod.disposeTopbarAutoHide);
+
+  // The Topbar and TopbarReveal islands, from this module graph. Built
+  // without JSX: this file's JSX would bind to the Solid instance loaded
+  // before resetModules.
+  const solid = await import('solid-js');
+  const web = await import('@solidjs/web');
+  const { Topbar } = await import('../src/components/shell/Topbar.js');
+  const { TopbarReveal } = await import('../src/components/shell/TopbarReveal.js');
+  const account = document.createElement('button');
+  account.id = 'auth-button';
+  const url = document.createElement('div');
+  url.id = 'topbar-url';
+  disposers.push(web.render(() => solid.createComponent(Topbar, { url, account }), byId('topbar-slot')));
+  disposers.push(web.render(() => solid.createComponent(TopbarReveal, {}), byId('reveal-slot')));
+  flushUi = solid.flush;
+  flushUi();
   return mod;
 }
 
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
+  stubReducedMotion(false);
   vi.useFakeTimers();
-  installTopbarDom();
+  installPageDom();
 });
 
 afterEach(() => {
-  dispose?.();
-  dispose = null;
+  // Before the body goes: the bar's popovers are portaled into it.
+  for (const dispose of disposers.splice(0).reverse()) {
+    dispose();
+  }
+  flushUi = () => undefined;
   vi.useRealTimers();
+  document.body.replaceChildren();
 });
 
 describe('topbar auto-hide reveal', () => {
   it('As a user who just logged in, the bar arms from the session before the badge renders', async () => {
-    // Given: the auth button island renders the badge on Solid's next flush,
-    // after the dotli:authenticated listener has armed the auto-hide.
-    document.querySelector('.user-badge')?.remove();
+    // Given: the account button renders no badge here; the session store
+    // alone says the user is in.
     const { armTopbarAutoHide } = await loadAutoHide();
 
     // When
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -118,7 +168,8 @@ describe('topbar auto-hide reveal', () => {
 
     // When
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -128,7 +179,8 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
     expect(isHidden()).toBe(true);
 
     // When
@@ -138,7 +190,7 @@ describe('topbar auto-hide reveal', () => {
     expect(isHidden()).toBe(false);
 
     // When focus stays in the bar, the hide timer must not fire
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 2);
+    advance(HIDE_DELAY_MS * 2);
 
     // Then
     expect(isHidden()).toBe(false);
@@ -148,12 +200,13 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
+    flushUi();
     focusElement(byId('mode-button'));
     expect(isHidden()).toBe(false);
 
     // When
     focusElement(appFrame());
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -163,17 +216,18 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
+    flushUi();
 
     // When
-    document.getElementById('mode-popover')?.classList.add('open');
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+    const settings = surface(true);
+    advance(HIDE_DELAY_MS * 3);
 
     // Then
     expect(isHidden()).toBe(false);
 
     // When the popover closes, the bar hides again
-    document.getElementById('mode-popover')?.classList.remove('open');
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    settings.open = false;
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -183,17 +237,18 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
+    flushUi();
 
     // When
-    document.getElementById('verification-tooltip')?.classList.add('open');
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+    const explainer = surface(true);
+    advance(HIDE_DELAY_MS * 3);
 
     // Then
     expect(isHidden()).toBe(false);
 
     // When the explainer closes, the bar hides again
-    document.getElementById('verification-tooltip')?.classList.remove('open');
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    explainer.open = false;
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -203,20 +258,22 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    const chains = byId('chains-popover');
-    chains.classList.add('open');
+    flushUi();
+    const chains = surface(true);
+    const row = document.createElement('button');
+    chains.element.append(row);
 
     // When focus sits inside it, outside #topbar
-    focusElement(byId('chains-row'));
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 3);
+    focusElement(row);
+    advance(HIDE_DELAY_MS * 3);
 
     // Then
     expect(isHidden()).toBe(false);
 
     // When it closes and focus returns to the app, the bar hides again
-    chains.classList.remove('open');
+    chains.open = false;
     focusElement(appFrame());
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -226,17 +283,11 @@ describe('topbar auto-hide reveal', () => {
     // Given the bar is up and the chains popover is open
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    document.getElementById('chains-popover')?.classList.add('open');
+    flushUi();
+    surface(true);
 
     // When
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        code: 'KeyT',
-        altKey: true,
-        shiftKey: true,
-        bubbles: true,
-      }),
-    );
+    pressShortcut();
 
     // Then the popover owns the moment, so the bar stays
     expect(isHidden()).toBe(false);
@@ -246,6 +297,7 @@ describe('topbar auto-hide reveal', () => {
     // Given a focusout has queued its next-tick focus check
     const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
     armTopbarAutoHide();
+    flushUi();
     // Armed: the hide timer is pending, alongside timers owned by other modules.
     const armedTimers = vi.getTimerCount();
     document.dispatchEvent(new FocusEvent('focusout', { bubbles: true }));
@@ -262,31 +314,18 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // When
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        code: 'KeyT',
-        altKey: true,
-        shiftKey: true,
-        bubbles: true,
-      }),
-    );
+    pressShortcut();
 
     // Then
     expect(isHidden()).toBe(false);
     expect(document.activeElement?.id).toBe('topbar-home');
 
     // When
-    document.dispatchEvent(
-      new KeyboardEvent('keydown', {
-        code: 'KeyT',
-        altKey: true,
-        shiftKey: true,
-        bubbles: true,
-      }),
-    );
+    pressShortcut();
 
     // Then focus must not stay parked on the offscreen bar
     expect(isHidden()).toBe(true);
@@ -297,7 +336,8 @@ describe('topbar auto-hide reveal', () => {
     // Given
     const { armTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
     const button = byId(TOPBAR_REVEAL_BUTTON_ID);
 
     // Then it is focusable and sits between the frame and the toasts, so one
@@ -309,14 +349,16 @@ describe('topbar auto-hide reveal', () => {
     // When
     button.focus();
     button.dispatchEvent(new FocusEvent('focus'));
+    flushUi();
 
     // Then focus alone reveals the bar and holds it there
     expect(isHidden()).toBe(false);
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 2);
+    advance(HIDE_DELAY_MS * 2);
     expect(isHidden()).toBe(false);
 
     // When
     (button as HTMLButtonElement).click();
+    flushUi();
 
     // Then
     expect(document.activeElement?.id).toBe('topbar-home');
@@ -329,12 +371,14 @@ describe('topbar auto-hide reveal', () => {
 
     // When
     armTopbarAutoHide();
+    flushUi();
 
     // Then
     expect(topbar().getAttribute('aria-keyshortcuts')).toBe(TOPBAR_REVEAL_SHORTCUT);
 
     // When
     pinTopbarVisible();
+    flushUi();
 
     // Then
     expect(topbar().hasAttribute('aria-keyshortcuts')).toBe(false);
@@ -350,7 +394,8 @@ describe('topbar auto-hide motion and layout', () => {
 
     // When
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(isHidden()).toBe(true);
@@ -364,6 +409,7 @@ describe('topbar auto-hide motion and layout', () => {
 
     // When
     armTopbarAutoHide();
+    flushUi();
 
     // Then
     expect(topbar().style.transition).toContain('transform');
@@ -373,7 +419,8 @@ describe('topbar auto-hide motion and layout', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
     const hiddenTop = appFrame().style.top;
     const hiddenHeight = appFrame().style.height;
     expect(appFrame().style.transform).toBe('translateY(0)');
@@ -398,7 +445,8 @@ describe('topbar auto-hide motion and layout', () => {
 
     // When
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // Then
     expect(appFrame().style.transform).toBe('translateY(0)');
@@ -409,7 +457,8 @@ describe('topbar auto-hide motion and layout', () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
 
     // When a new render hands the layout module a fresh frame
     const { attachProductFrame } = await import('../src/product-frame-layout.js');
@@ -429,15 +478,16 @@ describe('topbar auto-hide motion and layout', () => {
     // Given
     const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
     armTopbarAutoHide();
-    vi.advanceTimersByTime(HIDE_DELAY_MS);
+    flushUi();
+    advance(HIDE_DELAY_MS);
     expect(isHidden()).toBe(true);
 
     // When
     const { setLoggedIn } = await import('../src/state/auth.js');
     setLoggedIn(false);
-    document.querySelector('.user-badge')?.remove();
     pinTopbarVisible();
-    vi.advanceTimersByTime(HIDE_DELAY_MS * 2);
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
 
     // Then
     expect(isHidden()).toBe(false);

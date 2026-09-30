@@ -7,7 +7,7 @@
 // components/Shell.astro), and the loading screen. src/main.ts boots the
 // host from there.
 import { socialMetaAttributes } from '@dotli/config/vite';
-import { LoadingScreen } from '@dotli/ui/islands';
+import { ChatDock, LoadingScreen, TopbarReveal } from '@dotli/ui/islands';
 import Shell from '../components/Shell.astro';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
@@ -113,15 +113,15 @@ const socialMeta = socialMetaAttributes({
     </script>
     <div id="shell" style="display: contents"><Shell /></div>
 
-    <!-- Chat Panel (docked right; the panel runtime shrinks the product
-             iframe while open, mirroring the debug panel's right dock).
-             Contents are rendered by components/chat/ChatPanel.tsx. -->
-    <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
+    {/* The docked product chat: shrinks the product frame while open. */}
+    <ChatDock client:load />
 
     <!-- App Content -->
     <div id="app">
       <LoadingScreen client:load />
     </div>
+    {/* The auto-hiding topbar's reveal control: one Tab past the app frame. */}
+    <TopbarReveal client:load />
     <script src="../main.ts"></script>
   </body>
 </html>
