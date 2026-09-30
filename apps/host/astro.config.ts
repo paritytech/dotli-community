@@ -264,7 +264,6 @@ export default defineConfig({
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   // Where the Vite build put them: nginx rate-limits and caches /assets/.
   build: { assets: 'assets' },
-  devToolbar: { enabled: false },
   integrations: [
     // Compiles Solid for the islands: server-rendered at build time and
     // hydrated in the browser (see packages/astro-solid).
@@ -353,8 +352,6 @@ export default defineConfig({
     },
     build: {
       ...appBuildOptions(),
-      target: 'esnext',
-      modulePreload: { polyfill: false },
       sourcemap: 'hidden',
     },
     server: {

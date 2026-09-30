@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "build": "astro build",
-    "build:prod": "tsc && astro build && node ../../scripts/compress-dist.ts",
+    "build:prod": "astro check && astro build && node ../../scripts/compress-dist.ts",
     "test": "vitest run",
     "test:functional": "playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts tests/functional/host-settings.spec.ts",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
