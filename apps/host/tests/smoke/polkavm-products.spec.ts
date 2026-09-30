@@ -171,6 +171,19 @@ async function smokeProduct(
     timeout: 60_000,
   });
 
+  await page.locator('#mode-button[aria-haspopup="dialog"]').click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const polkaVmApps = settings.getByRole("switch", {
+    name: "PolkaVM apps",
+    exact: true,
+  });
+  await expect(polkaVmApps).toHaveAttribute("aria-checked", "false");
+  await polkaVmApps.click();
+  await Promise.all([
+    page.waitForEvent("load"),
+    settings.getByRole("button", { name: "Save & Apply", exact: true }).click(),
+  ]);
+
   const iframe = page.locator(iframeSelector);
   await expect(iframe).toBeAttached({ timeout: 180_000 });
   const iframeSource = await iframe.getAttribute("src");

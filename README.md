@@ -251,6 +251,8 @@ This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packag
 from the unified host-rust-core runtime. `vendor/truapi-host.lock.json` records
 the source revisions, archive hashes, and signing-host WASM digest. The browser
 wallet artifact enables `wasm-signing-host`, without `test-host`.
+After a vendor refresh, run `bun install --force --frozen-lockfile` so Bun replaces
+cached file dependencies even when their package version is unchanged.
 To iterate against a local truapi checkout instead, run:
 
 ```bash
@@ -363,6 +365,10 @@ the run, and runs the same host-product suite used in CI.
 The deployment smoke suites load published products through the deployed host,
 not the localhost fixture. The TrUAPI suite exercises 19 wallet-free capabilities
 without pairing a signer or writing to the chain; it does not replace paired E2E.
+
+PolkaVM execution remains default-off. Each product scenario explicitly enables
+**Settings → Experimental → PolkaVM apps** and uses **Save & Apply** before
+exercising the published guest. The smoke does not bypass the execution gate.
 
 The `egui-chat` smoke stays signed out: it cancels the initial sign-in request,
 uses the guest's Retry button to open a fresh host prompt, cancels again, and
