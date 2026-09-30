@@ -370,22 +370,6 @@ export interface ColumnProps {
     verticalArrangement?: Arrangement;
 }
 export declare const ColumnProps: S.Codec<ColumnProps>;
-/** One avatar the product draws for a chat contact. */
-export interface ContactAvatarSlot {
-    /**
-     * Product-chosen id, stable for one on-screen avatar (a list row, a
-     * header). The host uses it only to keep what it draws stable across
-     * updates.
-     */
-    slot: number;
-    /** The contact's authenticated root identity, as the chat API names it. */
-    peerIdentity: HexString;
-    /** Bounding box of the avatar circle: square, 1 to 1024 units a side. */
-    rect: AvatarRect;
-    /** Visible region the avatar is cut to, such as the scroll area. */
-    clip: AvatarRect;
-}
-export declare const ContactAvatarSlot: S.Codec<ContactAvatarSlot>;
 /**
  * A contact as a product knows them: 32 bytes and nothing else.
  *
@@ -2128,25 +2112,25 @@ export type VersionedHostProductDeviceChatResponse =
 export declare const VersionedHostProductDeviceChatResponse: S.Codec<VersionedHostProductDeviceChatResponse>;
 /** Versioned envelope for [`HostProfileDiscloseError`]. */
 export type VersionedHostProfileDiscloseError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfileDiscloseError;
 };
 export declare const VersionedHostProfileDiscloseError: S.Codec<VersionedHostProfileDiscloseError>;
 /** Versioned envelope for [`HostProfileDiscloseRequest`]. */
 export type VersionedHostProfileDiscloseRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfileDiscloseRequest;
 };
 export declare const VersionedHostProfileDiscloseRequest: S.Codec<VersionedHostProfileDiscloseRequest>;
 /** Versioned envelope for [`HostProfileDiscloseResponse`]. */
 export type VersionedHostProfileDiscloseResponse = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export declare const VersionedHostProfileDiscloseResponse: S.Codec<VersionedHostProfileDiscloseResponse>;
@@ -2176,49 +2160,49 @@ export type VersionedHostProfileOwnStatusResponse =
 export declare const VersionedHostProfileOwnStatusResponse: S.Codec<VersionedHostProfileOwnStatusResponse>;
 /** Versioned envelope for [`HostProfilePlaceContactAvatarsError`]. */
 export type VersionedHostProfilePlaceContactAvatarsError = 
-/** Version 2 payload. */
+/** Version 3 payload. */
 {
-    tag: "V2";
+    tag: "V3";
     value: HostProfilePlaceContactAvatarsError;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsError: S.Codec<VersionedHostProfilePlaceContactAvatarsError>;
 /** Versioned envelope for [`HostProfilePlaceContactAvatarsRequest`]. */
 export type VersionedHostProfilePlaceContactAvatarsRequest = 
-/** Version 2 payload. */
+/** Version 3 payload. */
 {
-    tag: "V2";
+    tag: "V3";
     value: HostProfilePlaceContactAvatarsRequest;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsRequest: S.Codec<VersionedHostProfilePlaceContactAvatarsRequest>;
 /** Versioned envelope for [`HostProfilePlaceContactAvatarsResponse`]. */
 export type VersionedHostProfilePlaceContactAvatarsResponse = 
-/** Version 2 (no payload). */
+/** Version 3 (no payload). */
 {
-    tag: "V2";
+    tag: "V3";
     value?: undefined;
 };
 export declare const VersionedHostProfilePlaceContactAvatarsResponse: S.Codec<VersionedHostProfilePlaceContactAvatarsResponse>;
 /** Versioned envelope for [`HostProfilePresentContactError`]. */
 export type VersionedHostProfilePresentContactError = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfilePresentContactError;
 };
 export declare const VersionedHostProfilePresentContactError: S.Codec<VersionedHostProfilePresentContactError>;
 /** Versioned envelope for [`HostProfilePresentContactRequest`]. */
 export type VersionedHostProfilePresentContactRequest = 
-/** Version 1 payload. */
+/** Version 2 payload. */
 {
-    tag: "V1";
+    tag: "V2";
     value: HostProfilePresentContactRequest;
 };
 export declare const VersionedHostProfilePresentContactRequest: S.Codec<VersionedHostProfilePresentContactRequest>;
 /** Versioned envelope for [`HostProfilePresentContactResponse`]. */
 export type VersionedHostProfilePresentContactResponse = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export declare const VersionedHostProfilePresentContactResponse: S.Codec<VersionedHostProfilePresentContactResponse>;
@@ -2960,6 +2944,45 @@ export type VersionedProductRendererRenderRequest =
     value: ProductRendererRenderRequest;
 };
 export declare const VersionedProductRendererRenderRequest: S.Codec<VersionedProductRendererRenderRequest>;
+/** Recipients of one profile reference. Multiple audiences form a union. */
+export type ProfileAudience = 
+/** Every ready Chat App, with profiles scoped to that App. */
+{
+    tag: "ChatApps";
+    value?: undefined;
+}
+/** Contacts of this Chat App, with profiles scoped to that App. */
+ | {
+    tag: "App";
+    value: {
+        productId: string;
+    };
+}
+/** Selected contacts, with profiles available in any receiving App. */
+ | {
+    tag: "Contacts";
+    value: {
+        handles: Array<ContactHandle>;
+    };
+};
+export declare const ProfileAudience: S.Codec<ProfileAudience>;
+/** A contact named without exposing a handle's account to the product. */
+export type ProfileContact = 
+/** An authenticated Chat network identity already known to the product. */
+{
+    tag: "Peer";
+    value: {
+        peerIdentity: HexString;
+    };
+}
+/** An opaque host-issued contact selection. */
+ | {
+    tag: "Handle";
+    value: {
+        handle: ContactHandle;
+    };
+};
+export declare const ProfileContact: S.Codec<ProfileContact>;
 /** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload = 
 /** Raw binary data to sign. */
@@ -3924,6 +3947,22 @@ export declare const TxPayloadExtension: S.Codec<TxPayloadExtension>;
 /** Typography presets, resolved by the host's design system. */
 export type TypographyStyle = "HeadlineLarge" | "TitleMediumRegular" | "BodyLargeRegular" | "BodyMediumRegular" | "BodySmallRegular";
 export declare const TypographyStyle: S.Codec<TypographyStyle>;
+/** One avatar the product draws for a chat contact. */
+export interface ContactAvatarSlot {
+    /**
+     * Product-chosen id, stable for one on-screen avatar (a list row, a
+     * header). The host uses it only to keep what it draws stable across
+     * updates.
+     */
+    slot: number;
+    /** The contact's authenticated root identity, as the chat API names it. */
+    peerIdentity: HexString;
+    /** Bounding box of the avatar circle: square, 1 to 1024 units a side. */
+    rect: AvatarRect;
+    /** Visible region the avatar is cut to, such as the scroll area. */
+    clip: AvatarRect;
+}
+export declare const ContactAvatarSlot: S.Codec<ContactAvatarSlot>;
 /** User's authentication state. */
 export type HostAccountConnectionStatusSubscribeItem = "Disconnected" | "Connected";
 export declare const HostAccountConnectionStatusSubscribeItem: S.Codec<HostAccountConnectionStatusSubscribeItem>;
@@ -5088,11 +5127,11 @@ export declare const HostProfileDiscloseError: S.Codec<HostProfileDiscloseError>
  * The reference is a bearer capability for everyone the host relays it to.
  * The host stores it as the user's own and never parses it.
  */
-export interface HostProfileDiscloseRequest {
+export interface V01HostProfileDiscloseRequest {
     /** Opaque profile reference, e.g. a Seity contacts reference. */
     reference: string;
 }
-export declare const HostProfileDiscloseRequest: S.Codec<HostProfileDiscloseRequest>;
+export declare const V01HostProfileDiscloseRequest: S.Codec<V01HostProfileDiscloseRequest>;
 /** Failure while querying the signed-in user's profile status. */
 export type HostProfileOwnStatusError = 
 /** No user is signed in. */
@@ -5192,11 +5231,11 @@ export declare const HostProfilePresentContactError: S.Codec<HostProfilePresentC
  * reference that contact's host sent, so the product cannot read, keep or
  * substitute it.
  */
-export interface HostProfilePresentContactRequest {
+export interface V01HostProfilePresentContactRequest {
     /** The contact's authenticated root identity, as the chat API names it. */
     peerIdentity: HexString;
 }
-export declare const HostProfilePresentContactRequest: S.Codec<HostProfilePresentContactRequest>;
+export declare const V01HostProfilePresentContactRequest: S.Codec<V01HostProfilePresentContactRequest>;
 /** Profile presentation failure. */
 export type HostProfilePresentError = 
 /** The reference is malformed or names a format this host cannot open. */
@@ -5996,6 +6035,19 @@ export interface V02HostProductDeviceChatResponse {
 }
 export declare const V02HostProductDeviceChatResponse: S.Codec<V02HostProductDeviceChatResponse>;
 /**
+ * Replace the user's disclosed reference and its complete set of audiences.
+ *
+ * An empty audience retains the user's own profile but withdraws all delivery
+ * grants. A contact handle that no longer resolves rejects the whole request.
+ */
+export interface HostProfileDiscloseRequest {
+    /** Opaque bearer reference, retained and relayed only by the host. */
+    reference: string;
+    /** Independent grants for this reference, at most 64. */
+    audiences: Array<ProfileAudience>;
+}
+export declare const HostProfileDiscloseRequest: S.Codec<HostProfileDiscloseRequest>;
+/**
  * Where a chat product draws avatars the host fills in: its contacts' and,
  * optionally, the signed-in user's own.
  *
@@ -6004,7 +6056,7 @@ export declare const V02HostProductDeviceChatResponse: S.Codec<V02HostProductDev
  * placement so a product never has two placements replacing each other's
  * overlay.
  */
-export interface HostProfilePlaceContactAvatarsRequest {
+export interface V02HostProfilePlaceContactAvatarsRequest {
     /**
      * Width of the product's drawing surface, in the units of every rect:
      * framebuffer pixels for a PolkaVM product, CSS pixels of its viewport
@@ -6024,7 +6076,30 @@ export interface HostProfilePlaceContactAvatarsRequest {
      */
     slots: Array<ContactAvatarSlot>;
 }
-export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
+export declare const V02HostProfilePlaceContactAvatarsRequest: S.Codec<V02HostProfilePlaceContactAvatarsRequest>;
+/**
+ * Ask the host to present a contact's available profile.
+ *
+ * Unknown handles, absent profiles and presentation failures return success,
+ * without disclosing whether the contact shares a profile.
+ */
+export interface HostProfilePresentContactRequest {
+    /** The contact whose profile the host may present. */
+    contact: ProfileContact;
+}
+export declare const HostProfilePresentContactRequest: S.Codec<HostProfilePresentContactRequest>;
+/** Geometry and opaque contact selection for one host-rendered avatar. */
+export interface V03ContactAvatarSlot {
+    /** Product-chosen id, unique across contact and own slots. */
+    slot: number;
+    /** A peer identity or host-issued handle. Unresolved handles remain blank. */
+    contact: ProfileContact;
+    /** Square avatar bounds, from 1 to 1024 units per side. */
+    rect: AvatarRect;
+    /** Visible region to which the avatar is clipped. */
+    clip: AvatarRect;
+}
+export declare const V03ContactAvatarSlot: S.Codec<V03ContactAvatarSlot>;
 /** An operation using the calling product's non-exportable Host Chat device. */
 export type HostProductDeviceChatRequest = 
 /** Restore public metadata, pending ciphertext, and private file-transfer progress. */
@@ -6154,6 +6229,18 @@ export interface HostProductDeviceChatResponse {
     coinageCentsUnit?: bigint;
 }
 export declare const HostProductDeviceChatResponse: S.Codec<HostProductDeviceChatResponse>;
+/** A host-rendered avatar placement using peer identities or opaque handles. */
+export interface HostProfilePlaceContactAvatarsRequest {
+    /** Width of the drawing surface, from 1 to 16384 units. */
+    surfaceWidth: number;
+    /** Height of the drawing surface, from 1 to 16384 units. */
+    surfaceHeight: number;
+    /** Optional slot for the signed-in user's own disclosed profile. */
+    own?: OwnAvatarSlot;
+    /** Complete replacement of the contact slots, at most 64. */
+    slots: Array<V03ContactAvatarSlot>;
+}
+export declare const HostProfilePlaceContactAvatarsRequest: S.Codec<HostProfilePlaceContactAvatarsRequest>;
 /** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;

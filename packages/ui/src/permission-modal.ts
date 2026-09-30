@@ -40,7 +40,7 @@ export const PERMISSION_DESCRIPTIONS: Record<
     "Bind this app's device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
   IdentityDisclosure: "Share your primary DotNS identity with this app",
   ProfileDisclosure:
-    "Show this app's profile photo and mood to the people you chat with",
+    "Share this app's profile with app audiences or selected contacts, including personal sharing across recipients' apps",
   ChainSubmit: "Sign and submit on-chain transactions on your behalf",
   PreimageSubmit: "Store preimage data on-chain via the Bulletin network",
   StatementSubmit: "Submit signed statements to the statement store",

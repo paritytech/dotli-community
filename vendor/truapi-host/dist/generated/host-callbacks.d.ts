@@ -308,6 +308,17 @@ export type CoreStorageKey =
         genesisHash: Uint8Array;
         productId: string;
     };
+}
+/**
+ * Wallet-wide personal profile grants, including replay tombstones.
+ * These bearer capabilities are independent of the receiving product.
+ */
+ | {
+    tag: "ProfilePersonalReferencesReceived";
+    value: {
+        rootPublicKey: Uint8Array;
+        genesisHash: Uint8Array;
+    };
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -922,10 +933,11 @@ export interface PlacedAvatar {
      */
     reference: string;
     /**
-     * When the contact's host sent the share this reflects, in Unix
-     * milliseconds. A contact re-shares the same reference when the record
-     * behind it changes; a larger `shared_at` for the same reference means
-     * any cached copy of that profile is stale.
+     * Freshness token for this reference. Contact shares use Unix
+     * milliseconds, advanced monotonically for personal revisions even
+     * across relay actors with different clocks. The own avatar uses the
+     * disclosure revision. A changed token invalidates cached contents;
+     * do not interpret an own-profile token as a wall-clock date.
      */
     sharedAt: bigint;
 }
@@ -973,8 +985,8 @@ export interface PresentedContactProfile {
      */
     peerIdentity: Uint8Array;
     /**
-     * When the contact's host sent the share, in Unix milliseconds, as in
-     * `PlacedAvatar::shared_at`.
+     * The share's freshness timestamp, as in `PlacedAvatar::shared_at`.
+     * Personal grants advance it monotonically across relay actors.
      */
     sharedAt: bigint;
     /**
@@ -1027,9 +1039,10 @@ export interface ProductSubtreeReview {
     productId: string;
 }
 /**
- * Review shown before a product first discloses a profile reference to the
- * user's Chat contacts. The host relays it to every contact, so the prompt
- * names the product, never the contacts or the reference.
+ * Review shown before a product discloses a profile reference to an app
+ * audience or selected contacts. Personal grants permit host rendering across
+ * recipient apps. This authorizes the product, not individual audience edits.
+ * The prompt names the product, never the contacts or the reference.
  */
 export interface ProfileDisclosureReview {
     /**
@@ -1481,9 +1494,10 @@ export declare const ProductExecutionKind: S.Codec<ProductExecutionKind>;
  */
 export declare const ProductSubtreeReview: S.Codec<ProductSubtreeReview>;
 /**
- * Review shown before a product first discloses a profile reference to the
- * user's Chat contacts. The host relays it to every contact, so the prompt
- * names the product, never the contacts or the reference.
+ * Review shown before a product discloses a profile reference to an app
+ * audience or selected contacts. Personal grants permit host rendering across
+ * recipient apps. This authorizes the product, not individual audience edits.
+ * The prompt names the product, never the contacts or the reference.
  */
 export declare const ProfileDisclosureReview: S.Codec<ProfileDisclosureReview>;
 /**

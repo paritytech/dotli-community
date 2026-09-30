@@ -193,7 +193,7 @@ and printable ASCII without whitespace; parsing the format is the host's.
 
 `profile.presentContactProfile(product, presented)` shows the profile a Chat contact shared when a chat product calls
 `profile.presentContact`. `presented` carries the `reference`, the `peerIdentity` of the contact whose authenticated
-Chat device delivered it, the `sharedAt` (Unix ms, a `bigint`) of that share and, when the core knows it, the contact's
+Chat device delivered it, the `sharedAt` freshness timestamp (`bigint`) and, when the core knows it, the contact's
 `username`, so the drawer can say who shared it rather than which product asked. The username is the one the core's
 Chat roster verified for that contact, else the contact's verified dotNS name, looked up for at most 2 seconds; never a
 name from the product. Without one, name the contact generically, never by address. It names who sent the reference,
@@ -204,9 +204,9 @@ presented through `presentProfile`.
 `profile.placeContactAvatars(product, placed)` draws contacts' avatars over a chat product. `placed` carries the
 product's surface size and, per avatar, the product's `slot` id, a square `rect`, the `clip` region it is cut to, all in
 surface units (framebuffer pixels for a PolkaVM product, CSS pixels of the viewport for a web product), and the
-`reference` that contact disclosed, so the host can draw their photo and mood ring, with `sharedAt` (Unix ms, a
-`bigint`) of the share it came from. A contact re-shares the same reference when the record behind it changes, so a
-larger `sharedAt` for a reference the host has cached means the cached profile is stale. Each call replaces what was
+`reference` that contact disclosed, so the host can draw their photo and mood ring, with a `sharedAt` freshness token
+(`bigint`). Contact tokens use Unix ms, advanced monotonically for personal revisions across relay actors; the own
+avatar uses the disclosure revision, not a date. A changed token invalidates cached contents. Each call replaces what was
 drawn for the product; an empty `avatars` clears it. The core calls it again with the same geometry when a contact
 shares, re-shares or withdraws a profile, and with no avatars when the product's connection goes away. Draw on a layer
 the product cannot
@@ -214,9 +214,17 @@ read that lets pointer input through, and never tell the product what was drawn.
 `RequiredHostCallbacks`, so a `profile` group implements it and `presentContactProfile` alongside `presentProfile`.
 
 `profile.disclose` needs no `profile` group, but the first call from a product asks the user through
-`userConfirmation.confirmPermission` with a `ProfileDisclosure` review naming that product: every Chat contact receives
-the reference. The answer is kept like any other permission, as `ProfileDisclosure`. A host that cannot render the
+`userConfirmation.confirmPermission` with a `ProfileDisclosure` review naming that product. V1 shares app-scoped
+references with every ready Chat contact; V2 can select apps or opaque Contacts handles. Personal grants are
+host-renderable across recipient apps. The answer is kept like any other permission, as `ProfileDisclosure`.
+Audience mutations currently reuse that product-level consent. A host that cannot render the
 review should reject the call rather than answer `Deny`: the product is refused, but no refusal is remembered.
+
+`presentContact` V2 accepts peer or Contacts-handle selectors and hides sharing availability; V1 remains app-only.
+`placeContactAvatars` V3 accepts those selectors alongside the V2 own slot. V1/V2 placement bytes remain compatible.
+Hosts must call `notifyContactsChanged()` after directory changes so stale handle resolution and overlays clear.
+These APIs do not create a Chat channel or a group editor. See the
+[Profile RFC](../../../docs/rfcs/profile-disclosure.md) for audience, transport and withdrawal semantics.
 
 Under `createWebWorkerPairingHostRuntime` the presence of each optional group is reported to the worker in its `init`
 message, so the core sees the same capability set on both sides of the boundary.
@@ -302,6 +310,19 @@ account (`blake2b(account, { key: handleKey, dkLen: 32 })` in `@noble/hashes`).
 The core re-checks every account returned. It caches what it resolves, so call
 `notifyContactsChanged()` whenever a contact is removed or blocked. Omit blocked
 contacts from both. See the contacts RFC (`docs/rfcs/contacts-api.md`).
+
+Browser signing hosts can back this UI with `runtime.getNativeChatContacts()`. It returns
+`{ walletPublicKey, genesisHash, contacts: [{ peerIdentity, username? }] }` to trusted host code only.
+The directory restores encrypted native Chat actors, checks their current authorization, includes only authenticated
+ready peers, and deduplicates identities. Conflicting verified names are omitted. It is not a product or SSO API;
+pairing hosts reject it. Bind the result to the active signing public key and People genesis, never to a username.
+Native departures/revocations remove readiness; product-private block lists are not a separate directory source.
+
+Actors are indexed when opened. Historical unindexed products must be opened once on the upgraded host; private storage
+has no enumeration API. Directory reads share native commit gates, and native state/session/permission changes invalidate
+cached handles. A browser adapter must also cancel pending picker/lookup work when its wallet, network, provider or
+directory generation changes. Provider-scoped `contacts` callbacks control that provider's UI; absent overrides inherit
+the runtime-wide Contacts adapter. Keep the runtime-wide source alive for host-owned rendering until the owner closes.
 
 ## Generated WASM artefacts
 

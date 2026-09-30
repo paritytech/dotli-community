@@ -463,16 +463,22 @@ describe("session-store host callbacks", () => {
         productId: "egui-chat.dot",
       },
     } satisfies CoreStorageKey;
+    // Same scope as the disclosure: the two must not share a slot.
+    const personal = {
+      tag: "ProfilePersonalReferencesReceived",
+      value: scope,
+    } satisfies CoreStorageKey;
 
     // When
     await writeCoreStorage(disclosure, new Uint8Array([21]));
     await writeCoreStorage(otherWallet, new Uint8Array([22]));
     await writeCoreStorage(received, new Uint8Array([23]));
     await writeCoreStorage(otherChain, new Uint8Array([24]));
+    await writeCoreStorage(personal, new Uint8Array([25]));
 
     // Then
     // The references are bearer capabilities, so every slot is encrypted.
-    expect(localStorage.length).toBe(4);
+    expect(localStorage.length).toBe(5);
     for (let index = 0; index < localStorage.length; index += 1) {
       expect(localStorage.getItem(localStorage.key(index) ?? "")).toMatch(
         /^enc1:0x/,
@@ -484,6 +490,7 @@ describe("session-store host callbacks", () => {
     ]);
     expect(Array.from((await readCoreStorage(received)) ?? [])).toEqual([23]);
     expect(Array.from((await readCoreStorage(otherChain)) ?? [])).toEqual([24]);
+    expect(Array.from((await readCoreStorage(personal)) ?? [])).toEqual([25]);
 
     // When
     await clearCoreStorage(disclosure);
@@ -496,6 +503,7 @@ describe("session-store host callbacks", () => {
       22,
     ]);
     expect(Array.from((await readCoreStorage(otherChain)) ?? [])).toEqual([24]);
+    expect(Array.from((await readCoreStorage(personal)) ?? [])).toEqual([25]);
   });
 
   it("As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer", async () => {
