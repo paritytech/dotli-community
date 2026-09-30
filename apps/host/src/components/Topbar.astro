@@ -6,9 +6,9 @@
 // the URL bar, the action group and the offline banner, as markup. Only the
 // action group is interactive, a Solid island (TopbarActionsIsland: the
 // account button first, then the actions and the More menu they collapse
-// into), hydrated at load: on the landing page it renders nothing, and its
-// build-time buttons must be gone before the landing page renders its own,
-// with the same ids.
+// into), hydrated at load: on the landing page it renders nothing, and the
+// landing page waits for it (`actionsLive`), its build-time buttons having
+// the ids of the page's own.
 //
 // Its script sets the bar's state as attributes, which topbar.css styles:
 // slid out when the auto-hide (topbar-autohide.ts in @dotli/ui) hides it

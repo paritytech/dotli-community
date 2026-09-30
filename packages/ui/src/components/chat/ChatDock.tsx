@@ -39,12 +39,16 @@ export function ChatDock(): JSX.Element {
 
   /** Renders the broken panel afresh; set while it is broken. */
   let resetBroken: (() => void) | null = null;
-  const onBroken = (err: unknown, reset: () => void): null => {
-    if (resetBroken === null) {
-      resetBroken = reset;
-      captureException(err, { root: 'chat' });
-      setChatPanelOpen(false);
-    }
+  /** The panel broke: report it and close, after it renders. */
+  const Broken = (props: { error: unknown; reset: () => void }): JSX.Element => {
+    createEffect(
+      () => props.error,
+      error => {
+        resetBroken = props.reset;
+        captureException(error, { root: 'chat' });
+        setChatPanelOpen(false);
+      },
+    );
     return null;
   };
 
@@ -102,7 +106,7 @@ export function ChatDock(): JSX.Element {
       style={open() ? { width: `${String(width())}px` } : undefined}
     >
       <Show when={opened()}>
-        <Errored fallback={(err, reset) => onBroken(err(), reset)}>
+        <Errored fallback={(err, reset) => <Broken error={err()} reset={reset} />}>
           <Loading>
             <ChatPanel />
           </Loading>

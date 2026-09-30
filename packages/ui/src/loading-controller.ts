@@ -4,9 +4,8 @@
 // The loading screen's behaviour: the progress bar, the stage narration, the
 // stall watch and the dismiss. It writes the loading store, which the loading
 // screen island (components/shell/LoadingScreen.tsx) renders, so it stays on
-// the startup path without Solid. The one DOM it touches is that island,
-// which the host page paints from the start and this takes out of the page
-// when the loading root is disposed.
+// the startup path without Solid. It touches no DOM: the island renders
+// nothing once the loading root is disposed.
 
 import { isSandboxOrigin, withActiveTld } from '@dotli/config';
 
@@ -539,12 +538,15 @@ function trackLoadingRoot(): boolean {
   return true;
 }
 
-// The screen is live from first paint, so it is a root before any
-// timer starts. Whatever replaces it first (the landing page, a preview or
-// local-target frame, an error page shown before the phases start) then
-// removes it.
-if (typeof document !== 'undefined' && document.getElementById('app-loading')) {
-  trackLoadingRoot();
+// The screen is live from first paint (the store starts `active`), so it is
+// a root before any timer starts. Whatever replaces it first (the landing
+// page, a preview or local-target frame, an error page shown before the
+// phases start) then disposes it.
+trackLoadingRoot();
+
+/** Take the loading screen down at once, without the fade: for a page that replaces it (the landing page). */
+export function hideLoading(): void {
+  disposeAppRoot('loading');
 }
 
 /**

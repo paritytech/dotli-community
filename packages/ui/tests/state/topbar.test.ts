@@ -22,6 +22,7 @@ describe('topbar store', () => {
       visible: true,
       autoHide: false,
       landing: false,
+      actionsLive: false,
       blockingModalActive: false,
       chainsButtonVisible: false,
       settingsOpen: false,

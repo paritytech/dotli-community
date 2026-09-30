@@ -3,8 +3,8 @@
 
 // The landing page island (components/landing/LandingPage.tsx), beside `#app`
 // as the host page has it: it keeps the loading screen until the landing
-// chunk arrives, then shows the page as the "page" app root, and shows the
-// error page if the chunk cannot load or the page throws.
+// chunk arrives, then shows the page until an error page takes it down, and
+// shows the reload error page if the chunk cannot load or the page throws.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as AppRootsModule from '../../../src/mount/app-roots.js';
@@ -77,6 +77,7 @@ async function settle(): Promise<void> {
 /** Show the landing page, as boot does on the bare host, and wait for it. */
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
+  topbar.setTopbarActionsLive();
   await vi.waitFor(() => {
     expect(document.querySelector('.landing, .error-page')).not.toBeNull();
   });
@@ -120,6 +121,7 @@ describe('landing page island', () => {
 
     // When
     topbar.setLandingPage(true);
+    topbar.setTopbarActionsLive();
     await settle();
 
     // Then: the topbar is in landing mode, and the screen stays while the
@@ -159,23 +161,22 @@ describe('landing page island', () => {
     expect(document.querySelectorAll('.landing')).toHaveLength(1);
   });
 
-  it('As a visitor, the landing page is the page app root, so whatever replaces the page disposes it', async () => {
+  it("As a visitor, the landing page waits for the topbar's action group, whose build-time buttons carry the same ids", async () => {
     // Given
     await mountIsland();
-    const remove = vi.spyOn(document, 'removeEventListener');
-    await showLanding();
-    await vi.waitFor(() => {
-      expect(document.querySelectorAll('.landing-recent-item')).toHaveLength(1);
-    });
 
-    // When: what activateHost calls for the product frame.
-    roots.disposeAppRoot('page');
+    // When: boot says it is the landing page, before the group hydrated.
+    topbar.setLandingPage(true);
     await settle();
 
     // Then
-    expect(document.querySelector('.landing')).toBeNull();
-    expect(topbar.getTopbarState().landing).toBe(false);
-    expect(remove).toHaveBeenCalledWith('pointerdown', expect.any(Function));
+    expect(must(byId('landing-slot'), 'slot').childElementCount).toBe(0);
+
+    // When
+    topbar.setTopbarActionsLive();
+    await vi.waitFor(() => {
+      expect(document.querySelector('.landing')).not.toBeNull();
+    });
   });
 
   it('As a visitor, an error page disposes the landing page, typing placeholder and all', async () => {
@@ -192,6 +193,7 @@ describe('landing page island', () => {
 
       // Then
       expect(document.querySelector('.landing')).toBeNull();
+      expect(topbar.getTopbarState().landing).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
       expect(document.querySelector('.error-page-title')?.textContent).toBe('Failed');
     } finally {

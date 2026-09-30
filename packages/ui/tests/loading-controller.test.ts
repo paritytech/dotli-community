@@ -374,22 +374,20 @@ describe('The loading controller drives the loading store', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('As the shell, a page without the static screen gets no loading root when the controller loads', async () => {
-    // Given a page with no static screen, such as the sandbox's
+  it('As the shell, the loading screen is a root from the start, so a page shown before any phase takes it down', async () => {
+    // Given the controller, freshly loaded, before any phase
     vi.resetModules();
-    document.body.innerHTML = `<div id="app"></div>`;
-    const [fresh, freshStore, roots] = await Promise.all([
-      import('../src/loading-controller.js'),
+    const [freshStore, roots] = await Promise.all([
       import('../src/state/loading.js'),
       import('../src/mount/app-roots.js'),
+      import('../src/loading-controller.js'),
     ]);
 
     // When
     roots.disposeAppRoots();
 
-    // Then nothing was registered to dispose
-    expect(freshStore.getLoadingState().phase).toBe('active');
-    expect(fresh.LOADING_STAGES).toContain('starting');
+    // Then
+    expect(freshStore.getLoadingState().phase).toBe('gone');
   });
 
   it('As a visitor whose app loaded, the dismiss stops the headline rotation and the typing', () => {

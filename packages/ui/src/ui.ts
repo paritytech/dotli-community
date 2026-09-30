@@ -11,6 +11,7 @@
 import { escapeHtml } from '@dotli/shared';
 import { getActiveTldSuffix } from '@dotli/config';
 import { setProductError } from './state/product.js';
+import { setLandingPage } from './state/topbar.js';
 import { disposeAppRoots } from './mount/app-roots.js';
 
 /** Where the error pages go, looked up when one shows. */
@@ -18,13 +19,18 @@ function appElement(): HTMLElement {
   return document.getElementById('app') ?? document.body;
 }
 
+/**
+ * Clear the page for an error page: dispose the loading screen and any page
+ * root, whose timers stop with them, and take the landing page down (the
+ * LandingPage island hides, and the topbar and `#app` come back).
+ */
+function clearPage(): void {
+  disposeAppRoots();
+  setLandingPage(false);
+}
+
 export interface ErrorAction {
   label: string;
-  /**
-   * Receives the click so a handler that opens one of the topbar popovers can
-   * stop it reaching the document-level close-outside listener, which would
-   * otherwise read the button as "outside" and shut the popover immediately.
-   */
   onClick: (event: MouseEvent) => void;
   /**
    * The recommended way out. Rendered filled and pushed to the right of the
@@ -83,9 +89,8 @@ export interface ErrorPage {
 
 /** Render a full-page error state, replacing whatever `#app` holds. */
 export function showErrorPage(page: ErrorPage): void {
-  // The markup below replaces the loading screen and any page, so they are
-  // disposed first and their timers stop with them.
-  disposeAppRoots();
+  // The markup below replaces the loading screen and any page.
+  clearPage();
   const { title, detail, glyph } = page;
   const tips = page.tips ?? [];
   const actions = page.actions ?? [];
@@ -160,13 +165,26 @@ export function showError(
 }
 
 /**
+ * The "reload" error page, for a page of the host's own (the landing page)
+ * that cannot show.
+ */
+export function showBrokenPage(): void {
+  showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
+    label: 'Reload',
+    onClick: () => {
+      window.location.reload();
+    },
+  });
+}
+
+/**
  * Show the "no content set" error in a Chrome-style "site can't be reached"
  * layout. The domain is highlighted so the user can immediately scan for a
  * typo, and a secondary hint explains the network reason without burying it.
  */
 export function showNoContentError(label: string): void {
-  // Replaces the loading screen mid-load, so its timers are stopped here too.
-  disposeAppRoots();
+  // Replaces the loading screen mid-load.
+  clearPage();
   const safeLabel = escapeHtml(label);
   const app = appElement();
   app.innerHTML = `

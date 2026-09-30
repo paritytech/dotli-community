@@ -7,17 +7,39 @@
 
 import { captureException } from '@dotli/metrics';
 import { disableAuthModal } from '../auth-controller.js';
+import type { ReadableStore } from '../state/create-store.js';
+import { loadingStore } from '../state/loading.js';
+import { setTopbarActionsLive, topbarStore } from '../state/topbar.js';
+import { showBrokenPage } from '../ui.js';
 
 interface HydrationErrorDetail {
   error: unknown;
   componentUrl: string | null;
 }
 
+/** Run `act` once `when` holds for the store's value, now or later. */
+function once<T>(store: ReadableStore<T>, when: (value: T) => boolean, act: () => void): void {
+  if (when(store.get())) {
+    act();
+    return;
+  }
+  const unsubscribe = store.subscribe(() => {
+    if (when(store.get())) {
+      unsubscribe();
+      act();
+    }
+  });
+}
+
 /**
  * Report an island that failed to load or hydrate (Astro's
- * `astro:hydration-error`), in place of Astro's console log. Without the auth
- * modal island the auth modal is disabled (disableAuthModal), so a login
- * never holds the blocking-modal lease for a modal nobody can see.
+ * `astro:hydration-error`), in place of Astro's console log, and stand in
+ * for what it would have done. Its build-time markup stays, as rendered:
+ * - AuthModal: the auth modal is disabled (disableAuthModal), so a login
+ *   never holds the blocking-modal lease for a modal nobody can see.
+ * - LoadingScreen: its markup goes once the loading screen does.
+ * - LandingPage: the landing page shows the reload error page instead.
+ * - TopbarActionsIsland: the landing page no longer waits for it.
  */
 export function reportIslandErrors(): void {
   document.addEventListener('astro:hydration-error', ev => {
@@ -26,8 +48,25 @@ export function reportIslandErrors(): void {
     const component = island?.getAttribute('component-export') ?? 'unknown';
     const { error } = (ev as CustomEvent<HydrationErrorDetail>).detail;
     captureException(error, { kind: 'island_hydration_error', root: `island:${component}` });
-    if (component === 'AuthModal') {
-      disableAuthModal();
+    switch (component) {
+      case 'AuthModal':
+        disableAuthModal();
+        break;
+      case 'LoadingScreen':
+        once(
+          loadingStore,
+          state => state.phase === 'gone',
+          () => {
+            island?.replaceChildren();
+          },
+        );
+        break;
+      case 'LandingPage':
+        once(topbarStore, state => state.landing, showBrokenPage);
+        break;
+      case 'TopbarActionsIsland':
+        setTopbarActionsLive();
+        break;
     }
   });
 }
