@@ -36,10 +36,10 @@ const socialMeta = socialMetaAttributes({
     <title>{TITLE}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://host.dot.li" crossorigin />
+    {/* Pre-opens the shared IndexedDB during HTML parse, so it is ready
+         before main.ts runs: the open (~10-50ms) overlaps module loading.
+         src/db.ts picks it up from window.__dotliDb. */}
     <script is:inline>
-      // Pre-open the shared IndexedDB during HTML parse so it's ready
-      // before main.ts executes. Overlaps IDB open (~10-50ms) with
-      // module loading. Picked up by src/db.ts via window.__dotliDb.
       window.__dotliDb = new Promise(function (resolve, reject) {
         const req = indexedDB.open('dotli', 5);
         req.onupgradeneeded = function () {
@@ -93,6 +93,12 @@ const socialMeta = socialMetaAttributes({
         };
       });
     </script>
+    <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-collator-node-1.parity-testnet.parity.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-0.polkadot.io" />
+    <link rel="preconnect" href="https://paseo-bulletin-rpc-node-1.polkadot.io" />
+    <link rel="preconnect" href="https://paseo-ipfs.polkadot.io" />
+    <link rel="preconnect" href="https://sys.ibp.network" />
     {socialMeta.map(attrs => (
       <meta {...attrs} />
     ))}
@@ -119,9 +125,7 @@ const socialMeta = socialMetaAttributes({
         document.documentElement.setAttribute('data-theme', theme);
       })();
     </script>
-    <div id="shell" style="display: contents">
-      <Shell />
-    </div>
+    <Shell />
 
     {/* The docked product chat: shrinks the product frame while open. */}
     <ChatDock client:idle />
