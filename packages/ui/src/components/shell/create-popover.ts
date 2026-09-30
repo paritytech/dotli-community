@@ -9,6 +9,17 @@ import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
 
 /**
+ * The viewport where a popover opens as a bottom sheet (Popover.tsx), the
+ * breakpoint of `.popover.sheet` in styles/popover.css.
+ */
+export const SHEET_QUERY = '(max-width: 560px)';
+
+/** Whether a popover opening now opens as a sheet. */
+export function isSheetViewport(): boolean {
+  return window.matchMedia(SHEET_QUERY).matches;
+}
+
+/**
  * How a shell surface behaves, after the Radix UI v1 primitive it
  * corresponds to. The primitive handles focus and dismissal; the component
  * renders the markup, which each mode expects to carry:

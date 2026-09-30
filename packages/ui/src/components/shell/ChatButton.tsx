@@ -12,7 +12,7 @@ import {
   totalChatUnread,
 } from '../../state/chat-panel.js';
 import { useStore } from '../use-store.js';
-import { focusLostOrInside, focusTrigger } from './popover.js';
+import { focusLostOrInside, focusTrigger } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarContext } from './topbar/context.js';
 import { TopbarItem } from './topbar/TopbarItem.js';

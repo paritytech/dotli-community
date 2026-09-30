@@ -17,7 +17,7 @@ import { recordPermissionChange } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import { PermissionRow } from './PermissionRow.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 

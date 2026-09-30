@@ -3,7 +3,7 @@
 
 import { createEffect, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createPopover } from '../popover.js';
+import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
 
 /**

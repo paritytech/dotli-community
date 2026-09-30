@@ -11,7 +11,7 @@ import { productStore } from '../../state/product.js';
 import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 

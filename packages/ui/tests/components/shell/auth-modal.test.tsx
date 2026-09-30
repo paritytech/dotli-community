@@ -12,7 +12,7 @@ import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
 import { byId, coordinator, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
 import { normalized, oldModal, type OldModalBody } from './old-auth-markup.js';
-import type * as PopoverModule from '../../../src/components/shell/popover.js';
+import type * as PopoverModule from '../../../src/components/shell/create-popover.js';
 import { query } from '../../support.js';
 
 const device = vi.hoisted(() => ({ mobile: false }));
@@ -36,7 +36,7 @@ vi.mock('qrcode', () => {
 // Counts the auth modal's dialog `setOpen` calls: its popover is the only
 // one in `dialog` mode here.
 const dialogSetOpen = vi.hoisted(() => ({ calls: [] as boolean[] }));
-vi.mock('../../../src/components/shell/popover.js', async importOriginal => {
+vi.mock('../../../src/components/shell/create-popover.js', async importOriginal => {
   const actual = await importOriginal<typeof PopoverModule>();
   return {
     ...actual,

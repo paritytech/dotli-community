@@ -9,6 +9,7 @@
 
 @import "./styles/base.css";
 @import "./styles/topbar.css";
+@import "./styles/popover.css";
 @import "./styles/modals.css";
 @import "./styles/signing.css";
 @import "./styles/password-prompt.css";

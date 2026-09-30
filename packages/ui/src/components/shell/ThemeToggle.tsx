@@ -5,7 +5,7 @@ import { Portal, type JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
 import { useStore } from '../use-store.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 

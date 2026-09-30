@@ -3,7 +3,7 @@
 
 import type { JSX } from '@solidjs/web';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 
 const TOOLTIP_TITLE = 'How was this site loaded?';
 

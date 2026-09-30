@@ -34,7 +34,7 @@ body {
   color: #e0e0e0;
   font-family: system-ui, sans-serif;
 }
-/* A modal shell dialog is open (components/shell/popover.ts lockScroll):
+/* A modal shell dialog is open (components/shell/create-popover.ts lockScroll):
    the page does not scroll. An attribute, not the inline style, so the
    page's own inline overflow (bridge.ts sets one) survives the dialog. */
 body[data-scroll-locked] {

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Focus and scroll helpers shared by the shell surfaces (shell/popover.ts),
+// Focus and scroll helpers shared by the shell surfaces (shell/create-popover.ts),
 // the overlay dialogs (overlays/Dialog.tsx) and the topbar's auto-hide
 // (topbar-autohide.ts). Solid-free.
 

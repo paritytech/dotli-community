@@ -8,7 +8,7 @@ import { getAuthState } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
 import { useStore } from '../use-store.js';
 import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 

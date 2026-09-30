@@ -4,7 +4,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createPopover, type PopoverMode, type PopoverOptions } from '../../../src/components/shell/popover.js';
+import { createPopover, type PopoverMode, type PopoverOptions } from '../../../src/components/shell/create-popover.js';
 import { recordChainsButtonVisible, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
 import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId, must } from '../../support.js';

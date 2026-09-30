@@ -1,0 +1,104 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The shell's popovers (components/shell/Popover.tsx): the surface, its
+   backdrop and its loading state. Each surface's own class sets its width
+   and inner layout; everything they share is here. */
+
+.popover-backdrop {
+  display: none;
+  position: fixed;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1400;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    display 0.18s allow-discrete;
+}
+.popover-backdrop.open {
+  display: block;
+  opacity: 1;
+}
+@starting-style {
+  .popover-backdrop.open {
+    opacity: 0;
+  }
+}
+
+.popover {
+  display: none;
+  position: fixed;
+  /* Overlaps the bottom of the topbar so the surface attaches to its
+     button instead of floating with a gap. */
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
+  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  /* `--content-height` is dvh-based: it tracks the visible area as mobile
+     browser chrome shows and hides, without the home indicator. */
+  max-height: calc(var(--content-height) - 4px);
+  overflow-y: auto;
+  background: rgb(34, 34, 34);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1500;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
+}
+@supports (backdrop-filter: blur(1px)) {
+  .popover {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+}
+.popover.open {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* The content's chunk is on its way. */
+.popover-loading {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+}
+.popover-loading::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  animation: popover-spin 0.8s linear infinite;
+}
+@keyframes popover-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover,
+  .popover-backdrop {
+    transition: none !important;
+  }
+  .popover-loading::after {
+    animation: none;
+  }
+}
