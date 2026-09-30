@@ -2,12 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Page } from '@playwright/test';
-// jsqr's declarations say `export default` from a CommonJS file, so NodeNext
-// types the default import as the module object. Its `.default` is the decoder
-// at runtime as well (module.exports and exports.default are the same function).
-import jsQRModule from 'jsqr';
-
-const jsQR = jsQRModule.default;
+import jsQR from 'jsqr';
 
 export async function extractQrPayload(page: Page, canvasSelector: string, timeoutMs = 30_000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
