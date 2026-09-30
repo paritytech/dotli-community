@@ -15,10 +15,10 @@
 // deployment misconfiguration and aborts boot rather than opening the
 // allowlist to the wrong origin.
 //
-// A build-time render (the host page's islands, rendered by Astro in Node)
+// Astro's build-time render of the host page's islands (`import.meta.env.SSR`)
 // has no location and derives as localhost: nothing it renders depends on
 // the domain it will be served from.
-const hostname = (globalThis as { location?: Location }).location?.hostname ?? 'localhost';
+const hostname = import.meta.env.SSR ? 'localhost' : self.location.hostname;
 const segments = hostname.split('.');
 const isLocalEnv = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
 
