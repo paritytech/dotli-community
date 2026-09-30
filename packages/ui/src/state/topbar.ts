@@ -18,13 +18,6 @@ export interface TopbarState {
    * theme buttons.
    */
   landing: boolean;
-  /**
-   * The action group's island is past its build-time markup: hydrated, or
-   * failed to (its markup then stays, hidden with the bar on the landing
-   * page). The landing page waits for it, so the group's build-time account
-   * and theme buttons are gone before it renders its own, with the same ids.
-   */
-  actionsLive: boolean;
   blockingModalActive: boolean;
   chainsButtonVisible: boolean;
   /**
@@ -40,7 +33,6 @@ const topbar = createSyncStore<TopbarState>(
     visible: true,
     autoHide: false,
     landing: false,
-    actionsLive: false,
     blockingModalActive: false,
     chainsButtonVisible: false,
     settingsOpen: false,
@@ -68,11 +60,6 @@ export function setTopbarAutoHide(autoHide: boolean): void {
 /** The landing page takes the page over (boot, on the bare host), or goes. */
 export function setLandingPage(landing: boolean): void {
   topbar.set({ ...topbar.get(), landing });
-}
-
-/** The action group's island hydrated, or failed to (TopbarActionsIsland). */
-export function setTopbarActionsLive(): void {
-  topbar.set({ ...topbar.get(), actionsLive: true });
 }
 
 export function setBlockingModalActive(active: boolean): void {

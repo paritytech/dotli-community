@@ -262,7 +262,8 @@ async function pairOnce(
         .catch(() => {});
     }
 
-    const authBtn = page.locator('#auth-button');
+    // The landing page's own account button.
+    const authBtn = page.locator('#landing-auth-button');
     await authBtn.waitFor({ state: 'visible', timeout: 30_000 });
     await authBtn.click();
 
@@ -278,7 +279,7 @@ async function pairOnce(
 
     const username = (
       await page
-        .locator('#user-popover-username')
+        .locator('#landing-user-popover-username')
         .innerText({ timeout: 5_000 })
         .catch(() => 'unknown')
     ).trim();
@@ -309,7 +310,7 @@ async function waitForSignedIn(
 ): Promise<void> {
   const outcome = await Promise.race([
     page
-      .locator('#auth-button .user-badge')
+      .locator('#landing-auth-button .user-badge')
       .waitFor({ state: 'visible', timeout: badgeTimeoutMs })
       .then(() => ({ tag: 'signed-in' as const })),
     page

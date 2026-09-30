@@ -19,10 +19,10 @@ export interface TopbarItemProps {
 
 /**
  * One item of the topbar's action group: wraps the item's button, and tells
- * the TopbarActions it sits in how to show it as a More menu row. While the
+ * the ActionGroup it sits in how to show it as a More menu row. While the
  * bar has collapsed it, the wrapper stays in place, out of flow and
  * invisible (`.topbar-item-collapsed`), so it can still be measured and its
- * button still anchors its surface. Outside a TopbarActions (the landing
+ * button still anchors its surface. Outside an ActionGroup (the landing
  * page) it is always inline.
  */
 export function TopbarItem(props: TopbarItemProps): JSX.Element {

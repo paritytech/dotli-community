@@ -34,7 +34,7 @@ import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
 import { LandingPage } from '../../../src/islands/LandingPage.js';
-import { setLandingPage, setTopbarActionsLive } from '../../../src/state/topbar.js';
+import { setLandingPage } from '../../../src/state/topbar.js';
 import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
@@ -289,7 +289,6 @@ describe('Loading screen island', () => {
     app().before(landing);
     mounted.push(render(() => <LandingPage />, landing));
     setLandingPage(true);
-    setTopbarActionsLive();
     await vi.waitFor(() => {
       expect(document.querySelector('.landing')).not.toBeNull();
     });

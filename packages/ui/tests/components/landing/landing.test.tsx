@@ -530,14 +530,14 @@ describe('landing page', () => {
     // no topbar to collapse them into).
     const corner = byId('landing-auth');
     expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth', 'theme']);
-    expect(query(corner, '[data-item="auth"] > #auth-button', HTMLButtonElement).disabled).toBe(false);
-    expect(query(corner, '[data-item="theme"] > #theme-toggle')).not.toBeNull();
+    expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
+    expect(query(corner, '[data-item="theme"] > #landing-theme-toggle')).not.toBeNull();
     expect(corner.querySelector('.topbar-item-collapsed')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
     // The menus render through portals, outside the page.
-    expect(byId('theme-popover').parentElement).toBe(document.body);
-    expect(byId('user-popover').parentElement).toBe(document.body);
-    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+    expect(byId('landing-theme-popover').parentElement).toBe(document.body);
+    expect(byId('landing-user-popover').parentElement).toBe(document.body);
+    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
     expect(sentry.captureException).not.toHaveBeenCalled();
@@ -549,23 +549,23 @@ describe('landing page', () => {
     await settle();
 
     // When
-    click(byId('theme-toggle'));
+    click(byId('landing-theme-toggle'));
     await settle();
 
     // Then
-    expect(byId('theme-popover').classList.contains('open')).toBe(true);
-    expect(byId('theme-toggle').getAttribute('aria-expanded')).toBe('true');
+    expect(byId('landing-theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('landing-theme-toggle').getAttribute('aria-expanded')).toBe('true');
 
     // When
     click(query(document, '.theme-popover-option[data-theme-option="dark"]'));
     await settle();
 
     // Then
-    expect(byId('theme-popover').classList.contains('open')).toBe(false);
+    expect(byId('landing-theme-popover').classList.contains('open')).toBe(false);
     expect(query(document, '.theme-popover-option[data-theme-option="dark"]').getAttribute('aria-checked')).toBe(
       'true',
     );
-    expect(byId('theme-toggle').title).toBe('Theme: Dark');
+    expect(byId('landing-theme-toggle').title).toBe('Theme: Dark');
   });
 
   it('As a visitor, leaving the landing page takes its corner buttons and their menus with it', async () => {
@@ -579,7 +579,7 @@ describe('landing page', () => {
     await settle();
 
     // Then
-    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
       expect(document.getElementById(id)).toBeNull();
     }
   });

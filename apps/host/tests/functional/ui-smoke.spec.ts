@@ -64,13 +64,13 @@ test.describe('Shell UI smoke', () => {
 
     // Then: the landing page renders its own theme button, and the topbar's
     // action group, More button included, is gone.
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', /^Theme: /);
-    await expect(page.locator('#theme-toggle')).toHaveCount(1);
+    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Theme: /);
+    await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
 
     // When
-    await page.locator('#auth-button').click();
+    await page.locator('#landing-auth-button').click();
 
     // Then
     await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
@@ -122,7 +122,7 @@ test.describe('Shell UI smoke', () => {
     const backdrop = page.locator('#auth-modal-backdrop');
 
     // When
-    await page.locator('#auth-button').click();
+    await page.locator('#landing-auth-button').click();
 
     // Then
     await expect(backdrop).toHaveClass(/\bopen\b/);
@@ -140,8 +140,8 @@ test.describe('Shell UI smoke', () => {
     await page.goto(LANDING_URL);
 
     // When
-    await page.locator('#theme-toggle').click();
-    await expect(page.locator('#theme-popover')).toBeVisible();
+    await page.locator('#landing-theme-toggle').click();
+    await expect(page.locator('#landing-theme-popover')).toBeVisible();
     await page.locator('[data-theme-option="dark"]').click();
 
     // Then

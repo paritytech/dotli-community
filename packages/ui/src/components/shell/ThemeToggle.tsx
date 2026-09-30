@@ -17,16 +17,14 @@ const THEME_LABEL: Record<ThemePref, string> = {
 
 /**
  * The sun, moon and monitor, of which CSS shows the one for
- * `<html data-theme-pref>`: on the button (by id) or a More menu row (by
- * class).
+ * `<html data-theme-pref>`: on the button or a More menu row.
  */
 function ThemeIcons(props: { row?: boolean }): JSX.Element {
   const size = (): number => (props.row === true ? 14 : 12);
   return (
     <>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-sun'}
-        class={props.row === true ? 'more-row-icon-sun' : undefined}
+        class={props.row === true ? 'more-row-icon-sun' : 'theme-icon-sun'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -47,8 +45,7 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
       </svg>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-moon'}
-        class={props.row === true ? 'more-row-icon-moon' : undefined}
+        class={props.row === true ? 'more-row-icon-moon' : 'theme-icon-moon'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -61,8 +58,7 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
       </svg>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-system'}
-        class={props.row === true ? 'more-row-icon-system' : undefined}
+        class={props.row === true ? 'more-row-icon-system' : 'theme-icon-system'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -100,8 +96,12 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
  * inline bootstrap script and theme-controller.ts own, never this component.
  * The More menu's Theme row opens this menu with the row click: a keyboard
  * choice (`detail` 0) opens it as a keyboard opening, on the first option.
+ *
+ * `idPrefix` sets another instance's ids apart (the landing page's, whose
+ * page also holds the topbar's build-time markup).
  */
-export function ThemeToggle(): JSX.Element {
+export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
+  const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const theme = useStore(themeStore);
@@ -137,13 +137,13 @@ export function ThemeToggle(): JSX.Element {
             button = el;
           }}
           onClick={menu.toggle}
-          id="theme-toggle"
+          id={id('theme-toggle')}
           class="topbar-btn"
           title={title()}
           aria-label={title()}
           aria-haspopup="menu"
           aria-expanded={menu.open() ? 'true' : 'false'}
-          aria-controls="theme-popover"
+          aria-controls={id('theme-popover')}
         >
           <ThemeIcons />
         </button>
@@ -155,7 +155,7 @@ export function ThemeToggle(): JSX.Element {
           }}
           onClick={onClick}
           class={['more-popover theme-popover', { open: menu.open() }]}
-          id="theme-popover"
+          id={id('theme-popover')}
           role="menu"
           aria-label="Theme"
           tabindex="-1"

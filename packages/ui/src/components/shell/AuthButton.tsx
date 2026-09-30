@@ -33,7 +33,7 @@ function UserIcon(): JSX.Element {
 /**
  * The topbar's auth button (`#auth-button`) and the logged-in account's
  * popover (`#user-popover`, rendered into the body), an item of the topbar's
- * action group (see TopbarActionsIsland.tsx) that never collapses into
+ * action group (see TopbarActions.tsx) that never collapses into
  * More. The host page renders it logged out at build time, and it shows the
  * session once hydrated. The landing page (components/landing/) renders it
  * too, in its corner.
@@ -56,8 +56,12 @@ function UserIcon(): JSX.Element {
  * a blocking modal close it, a non-modal popover (createPopover's `popover`
  * mode, `role="dialog"` named after its "Welcome back" heading) that hands
  * focus back to the button unless the user moved it.
+ *
+ * `idPrefix` sets another instance's ids apart (the landing page's, whose
+ * page also holds the topbar's build-time markup).
  */
-export function AuthButton(): JSX.Element {
+export function AuthButton(props: { idPrefix?: string }): JSX.Element {
+  const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const account = useAccount();
@@ -111,13 +115,13 @@ export function AuthButton(): JSX.Element {
             button = el;
           }}
           onClick={onClick}
-          id="auth-button"
+          id={id('auth-button')}
           class="topbar-btn"
           title={label()}
           aria-label={label()}
           aria-haspopup="dialog"
           aria-expanded={(opensPopover() ? menu.open() : authModal().open) ? 'true' : 'false'}
-          aria-controls={opensPopover() ? 'user-popover' : 'auth-modal-backdrop'}
+          aria-controls={opensPopover() ? id('user-popover') : 'auth-modal-backdrop'}
         >
           <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
             {session => (
@@ -141,26 +145,26 @@ export function AuthButton(): JSX.Element {
             popover = el;
           }}
           class={['user-popover', { open: menu.open() }]}
-          id="user-popover"
+          id={id('user-popover')}
           role="dialog"
           aria-label="Welcome back"
           tabindex="-1"
         >
           <div class="user-popover-name">
             <div class="label">Welcome back</div>
-            <div class="name" id="user-popover-username">
+            <div class="name" id={id('user-popover-username')}>
               {name()}
             </div>
             {/* Explains the username-less state instead of leaving a bare
                 address that reads as a rendering bug. */}
             <Show when={account.loggedIn() && (username() ?? '').length === 0}>
-              <div id="user-popover-hint" class="user-popover-hint">
+              <div id={id('user-popover-hint')} class="user-popover-hint">
                 No username found for this account on this network.
               </div>
             </Show>
           </div>
           <div class="user-popover-divider" />
-          <button onClick={onDisconnect} class="user-popover-disconnect" id="user-popover-disconnect">
+          <button onClick={onDisconnect} class="user-popover-disconnect" id={id('user-popover-disconnect')}>
             <svg
               viewBox="0 0 24 24"
               fill="none"

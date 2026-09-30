@@ -184,11 +184,11 @@ describe('chat panel', () => {
     const solid = await import('solid-js');
     const web = await import('@solidjs/web');
     const { ChatButton } = await import('../src/components/shell/ChatButton.js');
-    const { TopbarActions } = await import('../src/components/shell/topbar/TopbarActions.js');
+    const { ActionGroup } = await import('../src/components/shell/topbar/ActionGroup.js');
     stubTopbarLayout(1);
     disposeButton = web.render(
       () =>
-        solid.createComponent(TopbarActions, {
+        solid.createComponent(ActionGroup, {
           get children() {
             return solid.createComponent(ChatButton, {});
           },

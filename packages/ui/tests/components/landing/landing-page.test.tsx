@@ -77,7 +77,6 @@ async function settle(): Promise<void> {
 /** Show the landing page, as boot does on the bare host, and wait for it. */
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
-  topbar.setTopbarActionsLive();
   await vi.waitFor(() => {
     expect(document.querySelector('.landing, .error-page')).not.toBeNull();
   });
@@ -121,7 +120,6 @@ describe('landing page island', () => {
 
     // When
     topbar.setLandingPage(true);
-    topbar.setTopbarActionsLive();
     await settle();
 
     // Then: the topbar is in landing mode, and the screen stays while the
@@ -142,7 +140,7 @@ describe('landing page island', () => {
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
     ).toEqual(['auth', 'theme']);
-    for (const id of ['auth-button', 'theme-toggle', 'theme-popover', 'user-popover']) {
+    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
     expect(sentry.captureException).not.toHaveBeenCalled();
@@ -161,22 +159,23 @@ describe('landing page island', () => {
     expect(document.querySelectorAll('.landing')).toHaveLength(1);
   });
 
-  it("As a visitor, the landing page waits for the topbar's action group, whose build-time buttons carry the same ids", async () => {
-    // Given
+  it("As a visitor, the landing page renders beside the topbar's build-time buttons, with ids of its own", async () => {
+    // Given: the topbar's action group as the build renders it, before it
+    // hydrates.
+    document.body.insertAdjacentHTML(
+      'afterbegin',
+      '<header id="topbar"><button id="auth-button"></button><button id="theme-toggle"></button></header>',
+    );
     await mountIsland();
 
-    // When: boot says it is the landing page, before the group hydrated.
-    topbar.setLandingPage(true);
-    await settle();
+    // When
+    await showLanding();
 
     // Then
-    expect(must(byId('landing-slot'), 'slot').childElementCount).toBe(0);
-
-    // When
-    topbar.setTopbarActionsLive();
-    await vi.waitFor(() => {
-      expect(document.querySelector('.landing')).not.toBeNull();
-    });
+    expect(document.querySelector('.landing')).not.toBeNull();
+    for (const id of ['auth-button', 'theme-toggle', 'landing-auth-button', 'landing-theme-toggle']) {
+      expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
+    }
   });
 
   it('As a visitor, an error page disposes the landing page, typing placeholder and all', async () => {

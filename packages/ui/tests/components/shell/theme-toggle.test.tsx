@@ -31,20 +31,21 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function themeButton(): HTMLButtonElement {
-  return byId('theme-toggle', HTMLButtonElement);
+/** The button and menu of the instance whose ids start with `prefix`. */
+function themeButton(prefix = ''): HTMLButtonElement {
+  return byId(`${prefix}theme-toggle`, HTMLButtonElement);
 }
 
-function themePopover(): HTMLElement {
-  return byId('theme-popover');
+function themePopover(prefix = ''): HTMLElement {
+  return byId(`${prefix}theme-popover`);
 }
 
 function themeOption(pref: string): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(`.theme-popover-option[data-theme-option="${pref}"]`);
 }
 
-function isOpen(): boolean {
-  return themePopover().classList.contains('open');
+function isOpen(prefix = ''): boolean {
+  return themePopover(prefix).classList.contains('open');
 }
 
 /** The toggle, plus a button outside it, with a known stored theme and OS. */
@@ -126,9 +127,9 @@ describe('ThemeToggle', () => {
     expect(btn.getAttribute('aria-haspopup')).toBe('menu');
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(btn.getAttribute('aria-controls')).toBe('theme-popover');
-    expect(
-      ['theme-icon-sun', 'theme-icon-moon', 'theme-icon-system'].map(id => document.getElementById(id)?.parentElement),
-    ).toEqual([btn, btn, btn]);
+    expect(['sun', 'moon', 'system'].map(icon => document.querySelector(`.theme-icon-${icon}`)?.parentElement)).toEqual(
+      [btn, btn, btn],
+    );
     const popover = themePopover();
     expect(popover.className).toBe('more-popover theme-popover');
     expect(popover.getAttribute('role')).toBe('menu');
@@ -508,17 +509,17 @@ describe('ThemeToggle', () => {
     await settle();
     initTheme();
     await settle();
-    const btn = themeButton();
+    const btn = themeButton('landing-');
     expect(btn.closest('#landing-auth')).not.toBeNull();
-    expect(themePopover().parentElement).toBe(document.body);
+    expect(themePopover('landing-').parentElement).toBe(document.body);
 
     // When
     mouseClick(btn);
     await settle();
 
     // Then
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(themePopover());
+    expect(isOpen('landing-')).toBe(true);
+    expect(document.activeElement).toBe(themePopover('landing-'));
 
     // When
     await pressThemeKey('ArrowDown');
@@ -532,7 +533,7 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(localStorage.getItem('dotli-theme')).toBe('dark');
-    expect(isOpen()).toBe(false);
+    expect(isOpen('landing-')).toBe(false);
     expect(document.activeElement).toBe(btn);
     landing.dispose();
   });

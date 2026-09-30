@@ -18,8 +18,8 @@ let islands: typeof IslandsModule;
 let loading: typeof LoadingModule;
 let topbar: typeof TopbarModule;
 let roots: typeof AppRootsModule;
-/** The listeners each test's reportIslandErrors added, removed after it. */
-let added: [string, EventListenerOrEventListenerObject][] = [];
+/** Stops the test's reportIslandErrors listening. */
+let stop: () => void;
 
 /** An island of the page, as the build rendered it. */
 function island(component: string): HTMLElement {
@@ -52,17 +52,13 @@ beforeEach(async () => {
     import('../../src/mount/app-roots.js'),
     import('../../src/loading-controller.js'),
   ]);
-  const add = vi.spyOn(document, 'addEventListener');
-  islands.reportIslandErrors();
-  added = add.mock.calls.map(([type, listener]) => [type, listener]);
-  add.mockRestore();
+  stop = islands.reportIslandErrors();
 });
 
 afterEach(() => {
+  stop();
   roots.disposeAppRoots();
-  for (const [type, listener] of added) {
-    document.removeEventListener(type, listener);
-  }
+  delete window.__dotliIslandErrors;
   document.body.innerHTML = '';
 });
 
@@ -116,11 +112,39 @@ describe('island failures', () => {
     expect(loading.getLoadingState().phase).toBe('active');
   });
 
-  it('As a visitor, the landing page does not wait for an action group that never hydrated', () => {
-    // When
-    fail(island('TopbarActionsIsland'));
+  it('As the shell, an island that failed before the host listened is reported and stood in for, and later ones as they happen', () => {
+    // Given: the host page's inline script (pages/index.astro) kept a failure
+    // from before boot.
+    stop();
+    const keep = (ev: Event): void => {
+      window.__dotliIslandErrors?.push(ev);
+    };
+    window.__dotliIslandErrors = [];
+    window.addEventListener('astro:hydration-error', keep);
+    const screen = island('LoadingScreen');
+    fail(screen);
 
-    // Then
-    expect(topbar.getTopbarState().actionsLive).toBe(true);
+    try {
+      // When
+      stop = islands.reportIslandErrors();
+
+      // Then
+      expect(sentry.captureException).toHaveBeenCalledTimes(1);
+      expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+        kind: 'island_hydration_error',
+        root: 'island:LoadingScreen',
+      });
+      roots.disposeAppRoot('loading');
+      expect(screen.childElementCount).toBe(0);
+
+      // When
+      fail(island('ChatDock'));
+
+      // Then
+      expect(sentry.captureException).toHaveBeenCalledTimes(2);
+      expect(window.__dotliIslandErrors).toBeNull();
+    } finally {
+      window.removeEventListener('astro:hydration-error', keep);
+    }
   });
 });

@@ -94,6 +94,17 @@ const socialMeta = socialMetaAttributes({
         };
       });
     </script>
+    {/* Keeps the islands' failures (Astro's `astro:hydration-error`) from
+         before main.ts listens: an island hydrates as soon as its module
+         arrives, which can be before main.ts has run. reportIslandErrors
+         (@dotli/ui) takes them from window.__dotliIslandErrors, then
+         listens itself. */}
+    <script is:inline>
+      window.__dotliIslandErrors = [];
+      addEventListener('astro:hydration-error', function (event) {
+        window.__dotliIslandErrors?.push(event);
+      });
+    </script>
     <link rel="preconnect" href="https://paseo-bulletin-collator-node-0.parity-testnet.parity.io" />
     <link rel="preconnect" href="https://paseo-bulletin-collator-node-1.parity-testnet.parity.io" />
     <link rel="preconnect" href="https://paseo-bulletin-rpc-node-0.polkadot.io" />

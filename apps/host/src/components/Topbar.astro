@@ -4,11 +4,9 @@
 
 // The host's top bar (`header#topbar`, the page's banner): the home link,
 // the URL bar, the action group and the offline banner, as markup. Only the
-// action group is interactive, a Solid island (TopbarActionsIsland: the
-// account button first, then the actions and the More menu they collapse
-// into), hydrated at load: on the landing page it renders nothing, and the
-// landing page waits for it (`actionsLive`), its build-time buttons having
-// the ids of the page's own.
+// action group is interactive, a Solid island (TopbarActions: the account
+// button first, then the actions and the More menu they collapse into),
+// hydrated at load: on the landing page it renders nothing.
 //
 // Its script sets the bar's state as attributes, which topbar.css styles:
 // slid out when the auto-hide (topbar-autohide.ts in @dotli/ui) hides it
@@ -16,7 +14,7 @@
 // bar is visible), and the landing page's mode, where the bar hides
 // (`data-landing`). It also advertises the reveal shortcut while the bar
 // auto-hides, and reveals it on hover.
-import { TopbarActionsIsland } from '@dotli/ui/islands/TopbarActionsIsland';
+import { TopbarActions } from '@dotli/ui/islands/TopbarActions';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
 ---
@@ -24,7 +22,7 @@ import UrlPill from './UrlPill.astro';
 <header id="topbar" aria-label="dot.li browser bar">
   <TopbarLogo />
   <UrlPill />
-  <TopbarActionsIsland client:load />
+  <TopbarActions client:load />
   {/* A status line, not focusable. */}
   <div id="offline-banner" role="status" aria-live="polite">
     You are offline

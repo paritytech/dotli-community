@@ -15,17 +15,15 @@ const Landing = lazy(() => import('./Landing.js'), { export: 'Landing' });
  * The landing page island of the host page (`@dotli/ui/islands/LandingPage`),
  * beside `#app`: it renders the page while the topbar store says the landing
  * page is up (setLandingPage, from boot on the bare host), and nothing
- * otherwise. It waits for the topbar's action group to hydrate, whose
- * build-time account and theme buttons carry the ids of the page's own. The
- * page's chunk loads then, and the page replaces the loading screen once it
- * renders.
+ * otherwise. The page's chunk loads then, and the page replaces the loading
+ * screen once it renders.
  *
  * An error page takes the landing page down (it clears the flag). A chunk
  * that cannot load, or a page that throws, is reported and replaced by the
  * reload error page.
  */
 export function LandingPage(): JSX.Element {
-  const shown = useStore(topbarStore, state => state.landing && state.actionsLive);
+  const shown = useStore(topbarStore, state => state.landing);
   return (
     <Show when={shown()}>
       <Errored fallback={err => <Broken error={err()} />}>

@@ -212,23 +212,23 @@
   opacity: 1;
   transform: scale(1);
 }
-#theme-icon-sun,
+.theme-icon-sun,
 .more-row-icon-sun,
-#theme-icon-system,
+.theme-icon-system,
 .more-row-icon-system {
   display: none;
 }
-[data-theme-pref="light"] #theme-icon-sun,
+[data-theme-pref="light"] .theme-icon-sun,
 [data-theme-pref="light"] .more-row-icon-sun {
   display: block;
 }
-[data-theme-pref="light"] #theme-icon-moon,
+[data-theme-pref="light"] .theme-icon-moon,
 [data-theme-pref="light"] .more-row-icon-moon,
-[data-theme-pref="system"] #theme-icon-moon,
+[data-theme-pref="system"] .theme-icon-moon,
 [data-theme-pref="system"] .more-row-icon-moon {
   display: none;
 }
-[data-theme-pref="system"] #theme-icon-system,
+[data-theme-pref="system"] .theme-icon-system,
 [data-theme-pref="system"] .more-row-icon-system {
   display: block;
 }
@@ -358,7 +358,7 @@
   justify-self: end;
 }
 /* The measuring action group fills its grid cell: its width is the room its
-   items are fitted into (components/shell/topbar/TopbarActions.tsx). */
+   items are fitted into (components/shell/topbar/ActionGroup.tsx). */
 .topbar-right[data-collapsible] {
   position: relative;
   justify-self: stretch;

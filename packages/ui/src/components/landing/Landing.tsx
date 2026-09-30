@@ -13,7 +13,9 @@ import { RecentPills } from './RecentPills.js';
  * The landing page, shown on the bare host with no name to resolve: the
  * name form, the recently visited names, and the auth and theme buttons in
  * the corner, the shell's own components outside the topbar (which the
- * landing page hides, its action group gone). Rendered by the LandingPage
+ * landing page hides, its action group gone), with ids of their own
+ * (`#landing-auth-button`, `#landing-theme-toggle` and their surfaces'),
+ * the topbar's build-time markup still holding the topbar's. Rendered by the LandingPage
  * island, its own chunk. It replaces the loading screen once it renders.
  */
 export function Landing(): JSX.Element {
@@ -21,8 +23,8 @@ export function Landing(): JSX.Element {
   return (
     <div class="landing">
       <div class="landing-auth" id="landing-auth">
-        <AuthButton />
-        <ThemeToggle />
+        <AuthButton idPrefix="landing-" />
+        <ThemeToggle idPrefix="landing-" />
       </div>
       <div class="landing-center">
         <div class="landing-content">
