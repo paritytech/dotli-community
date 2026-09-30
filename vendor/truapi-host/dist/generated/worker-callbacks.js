@@ -3,12 +3,14 @@
 // Worker-side metadata and proxy functions for the raw WASM callback
 // surface. The worker transport/lifecycle remains hand-written; this
 // file owns the callback names, host-hook arity, and
-// subscription payload shape derived from `truapi-platform`.
+// subscription payload shape derived from the `platform` modules.
 export const CALLBACK_NAMES = [
     "authStateChanged",
     "createChatRoom",
     "registerChatBot",
     "postChatMessage",
+    "contacts",
+    "pickContact",
     "readCoreStorage",
     "writeCoreStorage",
     "clearCoreStorage",
@@ -75,6 +77,12 @@ function chatRawCallbacks(bridge) {
         subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
     };
 }
+function contactsRawCallbacks(bridge) {
+    return {
+        contacts: (lookup) => bridge.callbackRequest("contacts", [lookup]),
+        pickContact: (product) => bridge.callbackRequest("pickContact", [product]),
+    };
+}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -94,6 +102,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
     };
     if (capabilities.chat)
         Object.assign(callbacks, chatRawCallbacks(bridge));
+    if (capabilities.contacts)
+        Object.assign(callbacks, contactsRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)

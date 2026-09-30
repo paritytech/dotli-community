@@ -87,13 +87,12 @@ export const services = [
             {
                 name: "register_ring_vrf_key",
                 type: "unary",
-                signature: "registerRingVrfKey(request: HostAccountRegisterRingVrfKeyRequest): Promise<Result<RingVrfPublicKey, S.CallErrorValue<VersionedHostAccountRegisterRingVrfKeyError>>>",
+                signature: "registerRingVrfKey(request: HostAccountRegisterRingVrfKeyRequest): Promise<Result<HexString, S.CallErrorValue<VersionedHostAccountRegisterRingVrfKeyError>>>",
                 docUrl: "api/account/trait.Account.html#method.register_ring_vrf_key",
                 description: "Register a ring-VRF key owned by the calling product.",
                 requestDescription: "HostAccountRegisterRingVrfKeyRequest",
                 exampleSource: 'const people = await truapi.chain.getChainInfo({ chain: "People" });\nassert(people.isOk(), "getChainInfo failed:", people);\n\nconst PEOPLE_COLLECTION_ID =\n  "0x706f703a706f6c6b61646f742e6e6574776f726b2f70656f706c652d6c697465";\n\nconst result = await truapi.account.registerRingVrfKey({\n  index: { tag: "Index", value: 0 },\n  ring: {\n    chainId: people.value.genesisHash,\n    junctions: [\n      { tag: "CollectionId", value: PEOPLE_COLLECTION_ID },\n    ],\n  },\n});\nassert(result.isOk(), "registerRingVrfKey failed:", result);\nconsole.log("ring VRF public key:", result.value);',
                 requestType: "host-account-register-ring-vrf-key-request",
-                responseType: "ring-vrf-public-key",
             },
             {
                 name: "list_ring_vrf_keys",
@@ -434,6 +433,22 @@ export const services = [
         ],
     },
     {
+        name: "Contacts",
+        methods: [
+            {
+                name: "pick",
+                type: "unary",
+                signature: "pick(request: HostContactsPickRequest): Promise<Result<HostContactsPickResponse, S.CallErrorValue<VersionedHostContactsPickError>>>",
+                docUrl: "api/contacts/trait.Contacts.html#method.pick",
+                description: "Ask the host to let the user pick one contact.\n\nResolves with the chosen contact's handle, or with why nothing was\nchosen. A host that serves no picker answers `Unsupported`.\n\nThe handle is not an address and cannot be turned into one. To pay the\nperson it names, put the handle where the recipient goes in the call and\nlist it in `contacts` on the transaction payload: the host replaces it\nwith their account before anything is signed or shown. A handle sent\nanywhere else is 32 bytes that resolve to nobody.",
+                requestDescription: "HostContactsPickRequest",
+                exampleSource: 'const result = await truapi.contacts.pick({});\nassert(result.isOk(), "contacts.pick failed:", result);\nconst outcome = result.value.outcome;\nswitch (outcome.tag) {\n  case "Picked":\n    console.log("picked:", outcome.value.handle);\n    break;\n  case "Dismissed":\n    console.log("the user closed the picker; worth offering again");\n    break;\n  case "NoContacts":\n    console.log("nothing to pick from");\n    break;\n}',
+                requestType: "host-contacts-pick-request",
+                responseType: "host-contacts-pick-response",
+            },
+        ],
+    },
+    {
         name: "Entropy",
         methods: [
             {
@@ -518,7 +533,7 @@ export const services = [
                 type: "unary",
                 signature: "sendPushNotification(request: HostPushNotificationRequest): Promise<Result<HostPushNotificationResponse, S.CallErrorValue<VersionedHostPushNotificationError>>>",
                 docUrl: "api/notifications/trait.Notifications.html#method.send_push_notification",
-                description: "Send a push notification to the user.\n\nReturns a [`NotificationId`](crate::v01::NotificationId) that can be\npassed to [`cancel_push_notification`](Self::cancel_push_notification)\nto retract a scheduled notification. When `scheduled_at` is set the host\npersists the notification across restarts and fires it through the\nplatform-native scheduler. See [RFC 0019].\n\n[RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md",
+                description: "Send a push notification to the user.\n\nReturns a notification id that can be\npassed to [`cancel_push_notification`](Self::cancel_push_notification)\nto retract a scheduled notification. When `scheduled_at` is set the host\npersists the notification across restarts and fires it through the\nplatform-native scheduler. See [RFC 0019].\n\n[RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md",
                 requestDescription: "HostPushNotificationRequest",
                 exampleSource: 'const result = await truapi.notifications.sendPushNotification({\n  text: "Hello!",\n});\nassert(result.isOk(), "sendPushNotification failed:", result);\nconsole.log("notification sent:", result.value);',
                 requestType: "host-push-notification-request",
@@ -712,9 +727,9 @@ export const services = [
                 type: "unary",
                 signature: "createTransaction(request: ProductAccountTxPayload): Promise<Result<HostCreateTransactionResponse, S.CallErrorValue<VersionedHostCreateTransactionError>>>",
                 docUrl: "api/signing/trait.Signing.html#method.create_transaction",
-                description: "Construct a transaction for a product account.\n\nServed locally without a user confirmation when an RFC-0010 `AutoSigning`\ngrant covers the account; otherwise each call is confirmed by the user.\n\nUnder Extrinsic V5, omitting `VerifyMultiSignature` from `extensions`\nlets the host sign with the signer's key. Listing it — as `Disabled`,\nwith a proof in a later extension — encodes the given bytes verbatim and\nreturns an unsigned transaction.",
+                description: "Construct a transaction for a product account.\n\nServed locally without a user confirmation when an RFC-0010 `AutoSigning`\ngrant covers the account; otherwise each call is confirmed by the user.\n\nUnder Extrinsic V5, omitting `VerifyMultiSignature` from `extensions`\nlets the host sign with the signer's key. Listing it — as `Disabled`,\nwith a proof in a later extension — encodes the given bytes verbatim and\nreturns an unsigned transaction.\n\n`txExtVersion` is the version of the transaction extensions in\n`extensions`, as the runtime numbers them. The host picks the extrinsic\nformat from it. V4 always uses version 0, so a non-zero version builds a\nV5 general transaction. Version 0 builds V5 when it includes\n`VerifyMultiSignature`, and a signed V4 transaction otherwise.\n\n`contacts` lists the contact handles `callData` names, and the host\nreplaces each with the account it resolves to before the call is shown\nor signed. A declared handle the call does not contain, or one no\ncontact matches, refuses the whole call as `UnknownContact` rather than\nsigning something that names somebody else. A call paying nobody from\nthe picker leaves it empty.",
                 requestDescription: "ProductAccountTxPayload",
-                exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst people = await truapi.chain.getChainInfo({ chain: "People" });\nassert(people.isOk(), "getChainInfo failed:", people);\n\nconst payload = await buildCreateTransactionPayload({\n  signer: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  genesisHash: people.value.genesisHash,\n  callData: "0x000000",\n});\nassert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);\n\nfor (const txExtVersion of [0, 5]) {\n  const version = txExtVersion === 0 ? "V4" : "V5";\n  // V5 leaves VerifyMultiSignature to the host, which signs. V4 keeps\n  // it: that body is a plain concatenation, so dropping one shifts the rest.\n  const extensions =\n    txExtVersion === 5\n      ? payload.value.extensions.filter(\n          (ext) => ext.id !== "VerifyMultiSignature",\n        )\n      : payload.value.extensions;\n  const result = await truapi.signing.createTransaction({\n    ...payload.value,\n    extensions,\n    txExtVersion,\n  });\n  assert(result.isOk(), `${version} createTransaction failed:`, result);\n  console.log(`${version} transaction created:`, result.value);\n}',
+                exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst people = await truapi.chain.getChainInfo({ chain: "People" });\nassert(people.isOk(), "getChainInfo failed:", people);\n\nconst payload = await buildCreateTransactionPayload({\n  signer: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  genesisHash: people.value.genesisHash,\n  callData: "0x000000",\n});\nassert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);\n\nconst result = await truapi.signing.createTransaction(payload.value);\nassert(result.isOk(), "createTransaction failed:", result);\nconsole.log("transaction created:", result.value);',
                 requestType: "product-account-tx-payload",
                 responseType: "host-create-transaction-response",
             },
@@ -725,7 +740,7 @@ export const services = [
                 docUrl: "api/signing/trait.Signing.html#method.create_transaction_with_legacy_account",
                 description: "Construct a transaction for a non-product (legacy) account.\n\nThe V5 `VerifyMultiSignature` rule is the same as\n[`Signing::create_transaction`]: omit it and the host signs, list it and\nthe given bytes are used with no host signature.",
                 requestDescription: "LegacyAccountTxPayload",
-                exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst people = await truapi.chain.getChainInfo({ chain: "People" });\nassert(people.isOk(), "getChainInfo failed:", people);\n\nconst accountResult = await truapi.account.getAccount({\n  productAccountId: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n});\nassert(accountResult.isOk(), "getAccount failed:", accountResult);\n\nconst payload = await buildCreateTransactionPayload({\n  signer: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  genesisHash: people.value.genesisHash,\n  callData: "0x000000",\n});\nassert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);\n\n// Host-owned under V5 only: a V4 body is a plain concatenation, so\n// dropping a declared extension there shifts every one after it.\nconst extensions =\n  payload.value.txExtVersion === 5\n    ? payload.value.extensions.filter(\n        (ext) => ext.id !== "VerifyMultiSignature",\n      )\n    : payload.value.extensions;\n\nconst result = await truapi.signing.createTransactionWithLegacyAccount({\n  ...payload.value,\n  extensions,\n  signer: accountResult.value.account.publicKey,\n});\nassert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);\nconsole.log("transaction created:", result.value);',
+                exampleSource: 'const productContext = await truapi.system.getProductContext();\nassert(productContext.isOk(), "getProductContext failed:", productContext);\n\nconst people = await truapi.chain.getChainInfo({ chain: "People" });\nassert(people.isOk(), "getChainInfo failed:", people);\n\nconst accountResult = await truapi.account.getAccount({\n  productAccountId: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n});\nassert(accountResult.isOk(), "getAccount failed:", accountResult);\n\nconst payload = await buildCreateTransactionPayload({\n  signer: {\n    dotNsIdentifier: productContext.value.productId,\n    derivationIndex: { tag: "Index", value: 0 },\n  },\n  genesisHash: people.value.genesisHash,\n  callData: "0x000000",\n});\nassert(payload.isOk(), "buildCreateTransactionPayload failed:", payload);\n\nconst result = await truapi.signing.createTransactionWithLegacyAccount({\n  ...payload.value,\n  signer: accountResult.value.account.publicKey,\n});\nassert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);\nconsole.log("transaction created:", result.value);',
                 requestType: "legacy-account-tx-payload",
                 responseType: "host-create-transaction-with-legacy-account-response",
             },

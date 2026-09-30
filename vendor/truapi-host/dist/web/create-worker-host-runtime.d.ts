@@ -25,6 +25,11 @@ export interface WorkerPairingHostRuntime {
     cancelPairing(): void;
     notifySessionStoreChanged(): void;
     /**
+     * Tell the core the host's contacts changed. Call it whenever a contact is
+     * removed or blocked, so a contact handle the core cached stops resolving.
+     */
+    notifyContactsChanged(): void;
+    /**
      * Restore the session persisted in the core's `AuthSession` slot. Resolves
      * once product frames may use it, so a host can await this at boot before
      * routing. Rejects when the runtime has been disposed or the worker faulted,
@@ -123,6 +128,10 @@ export declare function resolveDebuggerEnablement(fromOption: string | null | un
 interface CreateWebWorkerHostRuntimeOptions {
     logLevel?: LogLevel;
     hostConfig: WebWorkerHostConfig | WebWorkerSigningHostConfig;
+    /**
+     * Maximum inactivity during each worker startup phase. Loading the WASM and
+     * constructing the runtime each get a full interval. Defaults to 30s.
+     */
     initTimeoutMs?: number;
     /**
      * Dev-only: a loopback `ws://` wire debugger to stream tapped frames to.

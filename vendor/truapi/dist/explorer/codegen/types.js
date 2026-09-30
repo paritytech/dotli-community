@@ -1,12 +1,5 @@
 export const types = [
     {
-        id: "account-id",
-        name: "AccountId",
-        category: "transaction",
-        definition: "export type AccountId = HexString;",
-        description: "A 32-byte raw account identifier used for legacy (non-product) accounts.",
-    },
-    {
         id: "action-trigger",
         name: "ActionTrigger",
         category: "chat",
@@ -140,13 +133,6 @@ export const types = [
                 description: "Background shape.",
             },
         ],
-    },
-    {
-        id: "balance",
-        name: "Balance",
-        category: "payment",
-        definition: "export type Balance = bigint;",
-        description: "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
     },
     {
         id: "blending-mode",
@@ -700,27 +686,20 @@ export const types = [
         ],
     },
     {
-        id: "coin-payment-balance",
-        name: "CoinPaymentBalance",
-        category: "coin_payment",
-        definition: "export type CoinPaymentBalance = number;",
-        description: "Balance amount for CoinPayment operations.",
-    },
-    {
         id: "coin-payment-cheque",
         name: "CoinPaymentCheque",
         category: "coin_payment",
-        definition: "export interface CoinPaymentCheque {\n  id: CoinPaymentReceivable;\n  amount: CoinPaymentBalance;\n  encryptedSecrets: HexString;\n}",
+        definition: "export interface CoinPaymentCheque {\n  id: HexString;\n  amount: number;\n  encryptedSecrets: HexString;\n}",
         description: "Standardized encrypted Coinage secret transmission payload.",
         fields: [
             {
                 name: "id",
-                type: "CoinPaymentReceivable",
+                type: "HexString",
                 description: "Receivable public key protecting the cheque contents.",
             },
             {
                 name: "amount",
-                type: "CoinPaymentBalance",
+                type: "number",
                 description: "Claimed payment amount.",
             },
             {
@@ -734,27 +713,20 @@ export const types = [
         id: "coin-payment-clearing-reference",
         name: "CoinPaymentClearingReference",
         category: "coin_payment",
-        definition: "export interface CoinPaymentClearingReference {\n  root: CoinPaymentMerkleRoot;\n  leaves: Array<[CoinPaymentCoinagePubKey, CoinPaymentTransactionHash]>;\n}",
+        definition: "export interface CoinPaymentClearingReference {\n  root: HexString;\n  leaves: Array<[HexString, HexString]>;\n}",
         description: "Product-visible clearing reference for reconciliation and receipts.",
         fields: [
             {
                 name: "root",
-                type: "CoinPaymentMerkleRoot",
+                type: "HexString",
                 description: "Clearing Merkle root.",
             },
             {
                 name: "leaves",
-                type: "Array<[CoinPaymentCoinagePubKey, CoinPaymentTransactionHash]>",
+                type: "Array<[HexString, HexString]>",
                 description: "Product-visible coin key and transaction hash leaves.",
             },
         ],
-    },
-    {
-        id: "coin-payment-coinage-pub-key",
-        name: "CoinPaymentCoinagePubKey",
-        category: "coin_payment",
-        definition: "export type CoinPaymentCoinagePubKey = HexString;",
-        description: "Public Coinage key referenced by clearing evidence.",
     },
     {
         id: "coin-payment-error",
@@ -811,31 +783,10 @@ export const types = [
         ],
     },
     {
-        id: "coin-payment-merkle-root",
-        name: "CoinPaymentMerkleRoot",
-        category: "coin_payment",
-        definition: "export type CoinPaymentMerkleRoot = HexString;",
-        description: "Merkle root for a product-visible clearing reference.",
-    },
-    {
-        id: "coin-payment-product-id",
-        name: "CoinPaymentProductId",
-        category: "coin_payment",
-        definition: "export type CoinPaymentProductId = string;",
-        description: "Authenticated product identifier recorded for a product-created purse.",
-    },
-    {
-        id: "coin-payment-purse-id",
-        name: "CoinPaymentPurseId",
-        category: "coin_payment",
-        definition: "export type CoinPaymentPurseId = number;",
-        description: "RFC 0017 CoinPayment purse identifier.",
-    },
-    {
         id: "coin-payment-purse-info",
         name: "CoinPaymentPurseInfo",
         category: "coin_payment",
-        definition: "export interface CoinPaymentPurseInfo {\n  name: string;\n  created: CoinPaymentTimestamp;\n  creator: CoinPaymentProductId;\n  balance: CoinPaymentBalance;\n}",
+        definition: "export interface CoinPaymentPurseInfo {\n  name: string;\n  created: bigint;\n  creator: string;\n  balance: number;\n}",
         description: "Product-visible metadata and balance state for a CoinPayment purse.",
         fields: [
             {
@@ -845,65 +796,44 @@ export const types = [
             },
             {
                 name: "created",
-                type: "CoinPaymentTimestamp",
+                type: "bigint",
                 description: "Creation timestamp.",
             },
             {
                 name: "creator",
-                type: "CoinPaymentProductId",
+                type: "string",
                 description: "Product that created the purse.",
             },
             {
                 name: "balance",
-                type: "CoinPaymentBalance",
+                type: "number",
                 description: "Current product-visible balance.",
             },
         ],
     },
     {
-        id: "coin-payment-receivable",
-        name: "CoinPaymentReceivable",
-        category: "coin_payment",
-        definition: "export type CoinPaymentReceivable = HexString;",
-        description: "Public key identifying a CoinPayment receivable.",
-    },
-    {
         id: "coin-payment-status",
         name: "CoinPaymentStatus",
         category: "coin_payment",
-        definition: 'export type CoinPaymentStatus =\n  | { tag: "Clearing"; value: { clearing: CoinPaymentBalance; cleared: CoinPaymentBalance } }\n  | { tag: "Failed"; value: { error: CoinPaymentError; cleared: CoinPaymentBalance; reference: CoinPaymentClearingReference } }\n  | { tag: "Done"; value: { cleared: CoinPaymentBalance; reference: CoinPaymentClearingReference } }\n;',
+        definition: 'export type CoinPaymentStatus =\n  | { tag: "Clearing"; value: { clearing: number; cleared: number } }\n  | { tag: "Failed"; value: { error: CoinPaymentError; cleared: number; reference: CoinPaymentClearingReference } }\n  | { tag: "Done"; value: { cleared: number; reference: CoinPaymentClearingReference } }\n;',
         description: "Clearing status stream item.",
         variants: [
             {
                 name: "Clearing",
-                type: '{ tag: "Clearing"; value: { clearing: CoinPaymentBalance; cleared: CoinPaymentBalance } }',
+                type: '{ tag: "Clearing"; value: { clearing: number; cleared: number } }',
                 description: "More coins have cleared.",
             },
             {
                 name: "Failed",
-                type: '{ tag: "Failed"; value: { error: CoinPaymentError; cleared: CoinPaymentBalance; reference: CoinPaymentClearingReference } }',
+                type: '{ tag: "Failed"; value: { error: CoinPaymentError; cleared: number; reference: CoinPaymentClearingReference } }',
                 description: "Some or all coins failed to transfer.",
             },
             {
                 name: "Done",
-                type: '{ tag: "Done"; value: { cleared: CoinPaymentBalance; reference: CoinPaymentClearingReference } }',
+                type: '{ tag: "Done"; value: { cleared: number; reference: CoinPaymentClearingReference } }',
                 description: "All coins cleared.",
             },
         ],
-    },
-    {
-        id: "coin-payment-timestamp",
-        name: "CoinPaymentTimestamp",
-        category: "coin_payment",
-        definition: "export type CoinPaymentTimestamp = bigint;",
-        description: "Milliseconds since Unix epoch.",
-    },
-    {
-        id: "coin-payment-transaction-hash",
-        name: "CoinPaymentTransactionHash",
-        category: "coin_payment",
-        definition: "export type CoinPaymentTransactionHash = HexString;",
-        description: "Transaction hash for a product-visible clearing reference.",
     },
     {
         id: "coin-payment-transmission-channel",
@@ -989,6 +919,44 @@ export const types = [
                 name: "vertical_arrangement",
                 type: "Arrangement | undefined",
                 description: "Main-axis distribution of children.",
+            },
+        ],
+    },
+    {
+        id: "contact-handle",
+        name: "ContactHandle",
+        category: "contacts",
+        definition: "export interface ContactHandle {\n  bytes: Bytes32;\n}",
+        description: "A contact as a product knows them: 32 bytes and nothing else.\n\nIts own type rather than a bare [`Bytes32`], because an account id is also\n32 bytes. A product that could pass one where the other is expected would\nbuild a valid-looking transfer to an address nobody controls. A handle is\nnot an address, and the type is where that is said.",
+        fields: [
+            {
+                name: "bytes",
+                type: "Bytes32",
+                description: "The handle's bytes.",
+            },
+        ],
+    },
+    {
+        id: "contact-pick-outcome",
+        name: "ContactPickOutcome",
+        category: "contacts",
+        definition: 'export type ContactPickOutcome =\n  | { tag: "Picked"; value: { handle: ContactHandle } }\n  | { tag: "Dismissed"; value?: undefined }\n  | { tag: "NoContacts"; value?: undefined }\n;',
+        description: "How a contact pick ended.\n\nDistinguishing these matters to a product deciding what to do next: a\ndismissal is worth retrying, an empty list is not.",
+        variants: [
+            {
+                name: "Picked",
+                type: '{ tag: "Picked"; value: { handle: ContactHandle } }',
+                description: "The user chose someone.\n\n`handle` is the same value for this person in every product, and on every\nhost of this user. It is not an address and cannot be turned into one:\nthe core resolves it when it builds a transaction, so a product can name\na recipient it never learns the account of.",
+            },
+            {
+                name: "Dismissed",
+                type: '{ tag: "Dismissed"; value?: undefined }',
+                description: "The user closed the picker without choosing.",
+            },
+            {
+                name: "NoContacts",
+                type: '{ tag: "NoContacts"; value?: undefined }',
+                description: "The user has no contacts, so no picker was shown.",
             },
         ],
     },
@@ -1154,13 +1122,6 @@ export const types = [
                 description: "Human-readable failure reason.",
             },
         ],
-    },
-    {
-        id: "genesis-hash",
-        name: "GenesisHash",
-        category: "transaction",
-        definition: "export type GenesisHash = HexString;",
-        description: "A 32-byte chain genesis hash used to identify the target chain.",
     },
     {
         id: "horizontal-alignment",
@@ -1827,22 +1788,22 @@ export const types = [
         id: "host-coin-payment-create-cheque-request",
         name: "HostCoinPaymentCreateChequeRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentCreateChequeRequest {\n  from: CoinPaymentPurseId;\n  to: CoinPaymentReceivable;\n  amount: CoinPaymentBalance;\n}",
+        definition: "export interface HostCoinPaymentCreateChequeRequest {\n  from: number;\n  to: HexString;\n  amount: number;\n}",
         description: "Request to create a cheque from a local purse to a receivable.",
         fields: [
             {
                 name: "from",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Source purse.",
             },
             {
                 name: "to",
-                type: "CoinPaymentReceivable",
+                type: "HexString",
                 description: "Destination receivable.",
             },
             {
                 name: "amount",
-                type: "CoinPaymentBalance",
+                type: "number",
                 description: "Payment amount.",
             },
         ],
@@ -1879,12 +1840,12 @@ export const types = [
         id: "host-coin-payment-create-purse-response",
         name: "HostCoinPaymentCreatePurseResponse",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentCreatePurseResponse {\n  purse: CoinPaymentPurseId;\n}",
+        definition: "export interface HostCoinPaymentCreatePurseResponse {\n  purse: number;\n}",
         description: "Created purse identifier.",
         fields: [
             {
                 name: "purse",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Assigned purse identifier.",
             },
         ],
@@ -1893,12 +1854,12 @@ export const types = [
         id: "host-coin-payment-create-receivable-request",
         name: "HostCoinPaymentCreateReceivableRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentCreateReceivableRequest {\n  into: CoinPaymentPurseId;\n}",
+        definition: "export interface HostCoinPaymentCreateReceivableRequest {\n  into: number;\n}",
         description: "Request to create a fresh receivable for a purse.",
         fields: [
             {
                 name: "into",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Target purse for future deposits.",
             },
         ],
@@ -1907,12 +1868,12 @@ export const types = [
         id: "host-coin-payment-create-receivable-response",
         name: "HostCoinPaymentCreateReceivableResponse",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentCreateReceivableResponse {\n  receivable: CoinPaymentReceivable;\n}",
+        definition: "export interface HostCoinPaymentCreateReceivableResponse {\n  receivable: HexString;\n}",
         description: "Created receivable response.",
         fields: [
             {
                 name: "receivable",
-                type: "CoinPaymentReceivable",
+                type: "HexString",
                 description: "Receivable public key.",
             },
         ],
@@ -1921,17 +1882,17 @@ export const types = [
         id: "host-coin-payment-delete-purse-request",
         name: "HostCoinPaymentDeletePurseRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentDeletePurseRequest {\n  target: CoinPaymentPurseId;\n  drainInto: CoinPaymentPurseId;\n}",
+        definition: "export interface HostCoinPaymentDeletePurseRequest {\n  target: number;\n  drainInto: number;\n}",
         description: "Request to delete a purse after draining its balance.",
         fields: [
             {
                 name: "target",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Purse to delete.",
             },
             {
                 name: "drain_into",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Purse that receives drained funds.",
             },
         ],
@@ -1973,12 +1934,12 @@ export const types = [
         id: "host-coin-payment-listen-for-request",
         name: "HostCoinPaymentListenForRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentListenForRequest {\n  receivable: CoinPaymentReceivable;\n}",
+        definition: "export interface HostCoinPaymentListenForRequest {\n  receivable: HexString;\n}",
         description: "Request to listen for a cheque delivered to a receivable.",
         fields: [
             {
                 name: "receivable",
-                type: "CoinPaymentReceivable",
+                type: "HexString",
                 description: "Receivable to listen for.",
             },
         ],
@@ -1987,12 +1948,12 @@ export const types = [
         id: "host-coin-payment-query-purse-request",
         name: "HostCoinPaymentQueryPurseRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentQueryPurseRequest {\n  purse: CoinPaymentPurseId;\n}",
+        definition: "export interface HostCoinPaymentQueryPurseRequest {\n  purse: number;\n}",
         description: "Request to query product-visible purse metadata.",
         fields: [
             {
                 name: "purse",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Purse to query.",
             },
         ],
@@ -2015,22 +1976,22 @@ export const types = [
         id: "host-coin-payment-rebalance-purse-request",
         name: "HostCoinPaymentRebalancePurseRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentRebalancePurseRequest {\n  from: CoinPaymentPurseId;\n  to: CoinPaymentPurseId;\n  amount: CoinPaymentBalance;\n}",
+        definition: "export interface HostCoinPaymentRebalancePurseRequest {\n  from: number;\n  to: number;\n  amount: number;\n}",
         description: "Request to transfer balance between local purses.",
         fields: [
             {
                 name: "from",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Source purse.",
             },
             {
                 name: "to",
-                type: "CoinPaymentPurseId",
+                type: "number",
                 description: "Destination purse.",
             },
             {
                 name: "amount",
-                type: "CoinPaymentBalance",
+                type: "number",
                 description: "Amount to move.",
             },
         ],
@@ -2039,13 +2000,54 @@ export const types = [
         id: "host-coin-payment-refund-request",
         name: "HostCoinPaymentRefundRequest",
         category: "coin_payment",
-        definition: "export interface HostCoinPaymentRefundRequest {\n  receivable: CoinPaymentReceivable;\n}",
+        definition: "export interface HostCoinPaymentRefundRequest {\n  receivable: HexString;\n}",
         description: "Request to refund coins associated with a receivable.",
         fields: [
             {
                 name: "receivable",
-                type: "CoinPaymentReceivable",
+                type: "HexString",
                 description: "Receivable to refund.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-error",
+        name: "HostContactsPickError",
+        category: "contacts",
+        definition: 'export type HostContactsPickError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Error returned by the contact picker.\n\nNeither a dismissal nor an empty contact list is an error; both are outcomes.\nA host that serves no picker at all answers `Unsupported` at the framework\nlevel rather than through this enum.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No active session.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-request",
+        name: "HostContactsPickRequest",
+        category: "contacts",
+        definition: "export interface HostContactsPickRequest {\n}",
+        description: "Request to open the host's contact picker.\n\nCarries no arguments: the host owns the overlay, draws it from its own chat\ncontacts, and nothing the product supplies appears in it.",
+        fields: [],
+    },
+    {
+        id: "host-contacts-pick-response",
+        name: "HostContactsPickResponse",
+        category: "contacts",
+        definition: "export interface HostContactsPickResponse {\n  outcome: ContactPickOutcome;\n}",
+        description: "Outcome of a pick.",
+        fields: [
+            {
+                name: "outcome",
+                type: "ContactPickOutcome",
+                description: "How the pick ended.",
             },
         ],
     },
@@ -2053,7 +2055,7 @@ export const types = [
         id: "host-create-transaction-error",
         name: "HostCreateTransactionError",
         category: "transaction",
-        definition: 'export type HostCreateTransactionError =\n  | { tag: "FailedToDecode"; value?: undefined }\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "NotSupported"; value: { reason: string } }\n  | { tag: "PermissionDenied"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostCreateTransactionError =\n  | { tag: "FailedToDecode"; value?: undefined }\n  | { tag: "Rejected"; value?: undefined }\n  | { tag: "NotSupported"; value: { reason: string } }\n  | { tag: "PermissionDenied"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n  | { tag: "UnknownContact"; value?: undefined }\n;',
         description: "Transaction creation error.",
         variants: [
             {
@@ -2080,6 +2082,11 @@ export const types = [
                 name: "Unknown",
                 type: '{ tag: "Unknown"; value: { reason: string } }',
                 description: "Catch-all.",
+            },
+            {
+                name: "UnknownContact",
+                type: '{ tag: "UnknownContact"; value?: undefined }',
+                description: "A declared contact handle names nobody this host has a contact for, or\ndoes not appear in the call it was declared for, or a handle appears in\nthe call without being declared. One refusal for all three, because\ntelling them apart would say whether a handle is current.",
             },
         ],
     },
@@ -2565,12 +2572,12 @@ export const types = [
         id: "host-payment-balance-subscribe-item",
         name: "HostPaymentBalanceSubscribeItem",
         category: "payment",
-        definition: "export interface HostPaymentBalanceSubscribeItem {\n  available: Balance;\n}",
+        definition: "export interface HostPaymentBalanceSubscribeItem {\n  available: bigint;\n}",
         description: "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         fields: [
             {
                 name: "available",
-                type: "Balance",
+                type: "bigint",
                 description: "Balance that can be spent right now.",
             },
         ],
@@ -2579,12 +2586,12 @@ export const types = [
         id: "host-payment-balance-subscribe-request",
         name: "HostPaymentBalanceSubscribeRequest",
         category: "payment",
-        definition: "export interface HostPaymentBalanceSubscribeRequest {\n  purse?: CoinPaymentPurseId;\n}",
+        definition: "export interface HostPaymentBalanceSubscribeRequest {\n  purse?: number;\n}",
         description: "Request to subscribe to payment balance updates.",
         fields: [
             {
                 name: "purse",
-                type: "CoinPaymentPurseId | undefined",
+                type: "number | undefined",
                 description: "Optional purse selector. `None` means MAIN_PURSE.",
             },
         ],
@@ -2617,17 +2624,17 @@ export const types = [
         id: "host-payment-request",
         name: "HostPaymentRequest",
         category: "payment",
-        definition: "export interface HostPaymentRequest {\n  from?: CoinPaymentPurseId;\n  amount: Balance;\n  destination: HexString;\n}",
+        definition: "export interface HostPaymentRequest {\n  from?: number;\n  amount: bigint;\n  destination: HexString;\n}",
         description: "Request to initiate a payment to another account.",
         fields: [
             {
                 name: "from",
-                type: "CoinPaymentPurseId | undefined",
+                type: "number | undefined",
                 description: "Optional purse selector. `None` means MAIN_PURSE.",
             },
             {
                 name: "amount",
-                type: "Balance",
+                type: "bigint",
                 description: "Amount to pay.",
             },
             {
@@ -2712,7 +2719,7 @@ export const types = [
         id: "host-payment-top-up-error",
         name: "HostPaymentTopUpError",
         category: "payment",
-        definition: 'export type HostPaymentTopUpError =\n  | { tag: "InsufficientFunds"; value?: undefined }\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "PartialPayment"; value: { credited: Balance } }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        definition: 'export type HostPaymentTopUpError =\n  | { tag: "InsufficientFunds"; value?: undefined }\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "PartialPayment"; value: { credited: bigint } }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
         description: "Error from [`crate::api::Payment::top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         variants: [
             {
@@ -2727,7 +2734,7 @@ export const types = [
             },
             {
                 name: "PartialPayment",
-                type: '{ tag: "PartialPayment"; value: { credited: Balance } }',
+                type: '{ tag: "PartialPayment"; value: { credited: bigint } }',
                 description: "Some coins were claimed but the total fell short of the requested amount.",
             },
             {
@@ -2741,17 +2748,17 @@ export const types = [
         id: "host-payment-top-up-request",
         name: "HostPaymentTopUpRequest",
         category: "payment",
-        definition: "export interface HostPaymentTopUpRequest {\n  into?: CoinPaymentPurseId;\n  amount: Balance;\n  source: PaymentTopUpSource;\n}",
+        definition: "export interface HostPaymentTopUpRequest {\n  into?: number;\n  amount: bigint;\n  source: PaymentTopUpSource;\n}",
         description: "Request to top up the product payment balance.",
         fields: [
             {
                 name: "into",
-                type: "CoinPaymentPurseId | undefined",
+                type: "number | undefined",
                 description: "Optional purse selector. `None` means MAIN_PURSE.",
             },
             {
                 name: "amount",
-                type: "Balance",
+                type: "bigint",
                 description: "Amount to top up.",
             },
             {
@@ -2851,12 +2858,12 @@ export const types = [
         id: "host-push-notification-cancel-request",
         name: "HostPushNotificationCancelRequest",
         category: "notifications",
-        definition: "export interface HostPushNotificationCancelRequest {\n  id: NotificationId;\n}",
+        definition: "export interface HostPushNotificationCancelRequest {\n  id: number;\n}",
         description: "Request to cancel a previously scheduled notification.",
         fields: [
             {
                 name: "id",
-                type: "NotificationId",
+                type: "number",
                 description: "The notification identifier returned by [`HostPushNotificationResponse`].",
             },
         ],
@@ -2908,12 +2915,12 @@ export const types = [
         id: "host-push-notification-response",
         name: "HostPushNotificationResponse",
         category: "notifications",
-        definition: "export interface HostPushNotificationResponse {\n  id: NotificationId;\n}",
+        definition: "export interface HostPushNotificationResponse {\n  id: number;\n}",
         description: "Successful push notification response carrying the assigned id.",
         fields: [
             {
                 name: "id",
-                type: "NotificationId",
+                type: "number",
                 description: "Host-assigned notification identifier.",
             },
         ],
@@ -3267,12 +3274,12 @@ export const types = [
         id: "host-worker-begin-operation-response",
         name: "HostWorkerBeginOperationResponse",
         category: "worker",
-        definition: "export interface HostWorkerBeginOperationResponse {\n  id: OperationId;\n}",
+        definition: "export interface HostWorkerBeginOperationResponse {\n  id: number;\n}",
         description: "Response carrying the id of a newly begun operation.",
         fields: [
             {
                 name: "id",
-                type: "OperationId",
+                type: "number",
                 description: "Id to pass to `end_operation`.",
             },
         ],
@@ -3281,12 +3288,12 @@ export const types = [
         id: "host-worker-end-operation-request",
         name: "HostWorkerEndOperationRequest",
         category: "worker",
-        definition: "export interface HostWorkerEndOperationRequest {\n  id: OperationId;\n}",
+        definition: "export interface HostWorkerEndOperationRequest {\n  id: number;\n}",
         description: "Request to end a pending operation.",
         fields: [
             {
                 name: "id",
-                type: "OperationId",
+                type: "number",
                 description: "Id returned by `begin_operation`.",
             },
         ],
@@ -3405,17 +3412,17 @@ export const types = [
         id: "legacy-account-tx-payload",
         name: "LegacyAccountTxPayload",
         category: "transaction",
-        definition: "export interface LegacyAccountTxPayload {\n  signer: AccountId;\n  genesisHash: GenesisHash;\n  callData: HexString;\n  extensions: Array<TxPayloadExtension>;\n  txExtVersion: number;\n}",
-        description: "Transaction payload for a legacy (non-product) account.\n\nIdentical to [`ProductAccountTxPayload`] except the signer is a raw\n32-byte [`AccountId`].",
+        definition: "export interface LegacyAccountTxPayload {\n  signer: HexString;\n  genesisHash: HexString;\n  callData: HexString;\n  extensions: Array<TxPayloadExtension>;\n  txExtVersion: number;\n}",
+        description: "Transaction payload for a legacy (non-product) account.\n\nIdentical to [`ProductAccountTxPayload`] except the signer is a raw\n32-byte account identifier.",
         fields: [
             {
                 name: "signer",
-                type: "AccountId",
+                type: "HexString",
                 description: "Raw 32-byte public key of the legacy account.",
             },
             {
                 name: "genesis_hash",
-                type: "GenesisHash",
+                type: "HexString",
                 description: "Chain where the transaction will execute.",
             },
             {
@@ -3431,7 +3438,7 @@ export const types = [
             {
                 name: "tx_ext_version",
                 type: "number",
-                description: "0 for Extrinsic V4, runtime-supported value for V5.",
+                description: "Version of the transaction extensions in `extensions`, as the runtime\nnumbers them.",
             },
         ],
     },
@@ -3503,20 +3510,6 @@ export const types = [
                 description: "Compositing mode against what is behind the node.",
             },
         ],
-    },
-    {
-        id: "notification-id",
-        name: "NotificationId",
-        category: "notifications",
-        definition: "export type NotificationId = number;",
-        description: "Opaque identifier for a push notification, unique per product.",
-    },
-    {
-        id: "operation-id",
-        name: "OperationId",
-        category: "worker",
-        definition: "export type OperationId = number;",
-        description: "Opaque host-assigned pending-operation identifier, unique per product.",
     },
     {
         id: "operation-started-result",
@@ -3631,7 +3624,7 @@ export const types = [
         id: "product-account-tx-payload",
         name: "ProductAccountTxPayload",
         category: "transaction",
-        definition: "export interface ProductAccountTxPayload {\n  signer: ProductAccountId;\n  genesisHash: GenesisHash;\n  callData: HexString;\n  extensions: Array<TxPayloadExtension>;\n  txExtVersion: number;\n}",
+        definition: "export interface ProductAccountTxPayload {\n  signer: ProductAccountId;\n  genesisHash: HexString;\n  callData: HexString;\n  extensions: Array<TxPayloadExtension>;\n  txExtVersion: number;\n  contacts: Array<ContactHandle>;\n}",
         description: "Transaction payload for a product account.\n\nContains everything the host needs to construct a signed extrinsic.\nThe signer is a [`ProductAccountId`]; the host resolves the\ncorresponding key pair through its account management layer.",
         fields: [
             {
@@ -3641,7 +3634,7 @@ export const types = [
             },
             {
                 name: "genesis_hash",
-                type: "GenesisHash",
+                type: "HexString",
                 description: "Chain where the transaction will execute.",
             },
             {
@@ -3657,7 +3650,12 @@ export const types = [
             {
                 name: "tx_ext_version",
                 type: "number",
-                description: "0 for Extrinsic V4, runtime-supported value for V5.",
+                description: "Version of the transaction extensions in `extensions`, as the runtime\nnumbers them.",
+            },
+            {
+                name: "contacts",
+                type: "Array<ContactHandle>",
+                description: "Contact handles `call_data` names, which the host replaces with the\naccounts they resolve to before anything is signed or shown.\n\nA product declares them rather than passing offsets: an offset is a\nnumber it computes about its own encoding and gets wrong silently,\nwhile a declared handle is either in the call or it is not, and a host\nthat cannot find one refuses rather than signing a call that names\nsomebody else. A call naming nobody leaves this empty.",
             },
         ],
     },
@@ -3722,7 +3720,7 @@ export const types = [
         id: "registered-ring-vrf-key",
         name: "RegisteredRingVrfKey",
         category: "account",
-        definition: "export interface RegisteredRingVrfKey {\n  handle: ProductAccountId;\n  rings: Array<RingLocation>;\n  publicKey?: RingVrfPublicKey;\n}",
+        definition: "export interface RegisteredRingVrfKey {\n  handle: ProductAccountId;\n  rings: Array<RingLocation>;\n  publicKey?: HexString;\n}",
         description: "A registered ring-VRF key entry.",
         fields: [
             {
@@ -3737,7 +3735,7 @@ export const types = [
             },
             {
                 name: "public_key",
-                type: "RingVrfPublicKey | undefined",
+                type: "HexString | undefined",
                 description: "Present when the caller owns the key or requested/granted disclosure.",
             },
         ],
@@ -4437,17 +4435,17 @@ export const types = [
         id: "remote-statement-store-subscribe-request",
         name: "RemoteStatementStoreSubscribeRequest",
         category: "statement_store",
-        definition: 'export type RemoteStatementStoreSubscribeRequest =\n  | { tag: "MatchAll"; value: Array<Topic> }\n  | { tag: "MatchAny"; value: Array<Topic> }\n;',
+        definition: 'export type RemoteStatementStoreSubscribeRequest =\n  | { tag: "MatchAll"; value: Array<HexString> }\n  | { tag: "MatchAny"; value: Array<HexString> }\n;',
         description: "Request to subscribe to statements via a topic filter (RFC 0008).",
         variants: [
             {
                 name: "MatchAll",
-                type: '{ tag: "MatchAll"; value: Array<Topic> }',
+                type: '{ tag: "MatchAll"; value: Array<HexString> }',
                 description: "AND: statement must contain every listed topic.",
             },
             {
                 name: "MatchAny",
-                type: '{ tag: "MatchAny"; value: Array<Topic> }',
+                type: '{ tag: "MatchAny"; value: Array<HexString> }',
                 description: "OR: statement must contain at least one listed topic.",
             },
         ],
@@ -4558,12 +4556,12 @@ export const types = [
         id: "ring-location",
         name: "RingLocation",
         category: "account",
-        definition: "export interface RingLocation {\n  chainId: GenesisHash;\n  junctions: Array<RingLocationJunction>;\n}",
+        definition: "export interface RingLocation {\n  chainId: HexString;\n  junctions: Array<RingLocationJunction>;\n}",
         description: "Locates a ring for ring VRF operations using only identifiers that are\nstable across membership changes.",
         fields: [
             {
                 name: "chain_id",
-                type: "GenesisHash",
+                type: "HexString",
                 description: "Genesis hash of the chain hosting the ring.",
             },
             {
@@ -4610,13 +4608,6 @@ export const types = [
                 description: "Include the member public key.",
             },
         ],
-    },
-    {
-        id: "ring-vrf-public-key",
-        name: "RingVrfPublicKey",
-        category: "account",
-        definition: "export type RingVrfPublicKey = HexString;",
-        description: "Ring-VRF member public key.",
     },
     {
         id: "row-props",
@@ -5024,13 +5015,6 @@ export const types = [
                 description: "Dark appearance.",
             },
         ],
-    },
-    {
-        id: "topic",
-        name: "Topic",
-        category: "statement_store",
-        definition: "export type Topic = HexString;",
-        description: "32-byte statement topic.",
     },
     {
         id: "tx-payload-extension",
