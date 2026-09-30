@@ -4,7 +4,7 @@
 // dot.li Pure DOM UI helpers
 //
 // Error states. The loading screen lives in loading-controller.ts and the
-// landing page in components/landing/ (loaded by landing/load.ts). No heavy
+// landing page in components/landing/ (the LandingPage island). No heavy
 // dependencies and no Solid (the sandbox imports this), kept in the eager
 // bundle.
 
@@ -13,7 +13,10 @@ import { getActiveTldSuffix } from '@dotli/config';
 import { setProductError } from './state/product.js';
 import { disposeAppRoots } from './mount/app-roots.js';
 
-const app = document.getElementById('app') ?? document.body;
+/** Where the error pages go, looked up when one shows. */
+function appElement(): HTMLElement {
+  return document.getElementById('app') ?? document.body;
+}
 
 export interface ErrorAction {
   label: string;
@@ -101,6 +104,7 @@ export function showErrorPage(page: ErrorPage): void {
       a.icon === undefined ? '' : `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`;
     return `<button class="${cls}" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span></button>`;
   };
+  const app = appElement();
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner">
@@ -164,6 +168,7 @@ export function showNoContentError(label: string): void {
   // Replaces the loading screen mid-load, so its timers are stopped here too.
   disposeAppRoots();
   const safeLabel = escapeHtml(label);
+  const app = appElement();
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner error-page-inner--unreached">

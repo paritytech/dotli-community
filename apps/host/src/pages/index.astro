@@ -8,6 +8,7 @@
 // host from there.
 import { socialMetaAttributes } from '@dotli/config/vite';
 import { ChatDock } from '@dotli/ui/islands/ChatDock';
+import { LandingPage } from '@dotli/ui/islands/LandingPage';
 import { LoadingScreen } from '@dotli/ui/islands/LoadingScreen';
 import { TopbarReveal } from '@dotli/ui/islands/TopbarReveal';
 import Shell from '../components/Shell.astro';
@@ -132,6 +133,9 @@ const socialMeta = socialMetaAttributes({
 
     {/* Laid over the app content, outside `#app`, which the page's content replaces. */}
     <LoadingScreen client:load />
+
+    {/* The bare host's page, beside `#app`, where the other pages go. */}
+    <LandingPage client:load />
 
     <!-- App Content -->
     <div id="app"></div>

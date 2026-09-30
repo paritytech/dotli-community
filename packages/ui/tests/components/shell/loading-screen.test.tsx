@@ -33,7 +33,8 @@ import { disposeAppRoot, disposeAppRoots } from '../../../src/mount/app-roots.js
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
 import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
-import { showLanding } from '../../../src/landing/load.js';
+import { LandingPage } from '../../../src/islands/LandingPage.js';
+import { setLandingPage } from '../../../src/state/topbar.js';
 import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
@@ -283,7 +284,13 @@ describe('Loading screen island', () => {
     runFrames(100);
 
     // When
-    await showLanding();
+    const landing = document.createElement('div');
+    app().before(landing);
+    mounted.push(render(() => <LandingPage />, landing));
+    setLandingPage(true);
+    await vi.waitFor(() => {
+      expect(document.querySelector('.landing')).not.toBeNull();
+    });
     await settle();
 
     // Then

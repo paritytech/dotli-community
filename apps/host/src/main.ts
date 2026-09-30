@@ -28,7 +28,7 @@ import {
   showError,
   showErrorPage,
   showNoContentError,
-  showLanding,
+  setLandingPage,
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -1069,7 +1069,7 @@ async function main(): Promise<void> {
 
   if (label === null) {
     log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
-    void showLanding();
+    setLandingPage(true);
     performance.mark('dotli:main:end');
     emitDotliDebugEvent({
       layer: 'boot',

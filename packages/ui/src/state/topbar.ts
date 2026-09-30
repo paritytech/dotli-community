@@ -12,7 +12,11 @@ export interface TopbarState {
    * and the reveal control shows.
    */
   autoHide: boolean;
-  /** The landing page is up: it has its own account and theme buttons. */
+  /**
+   * The landing page is up (the LandingPage island): the topbar hides, and
+   * its action group renders nothing, the page having its own account and
+   * theme buttons.
+   */
   landing: boolean;
   blockingModalActive: boolean;
   chainsButtonVisible: boolean;
@@ -53,9 +57,9 @@ export function setTopbarAutoHide(autoHide: boolean): void {
   topbar.set({ ...topbar.get(), autoHide });
 }
 
-/** The landing page took the page over (landing/load.ts). */
-export function setLandingPage(): void {
-  topbar.set({ ...topbar.get(), landing: true });
+/** The landing page takes the page over (boot, on the bare host), or goes. */
+export function setLandingPage(landing: boolean): void {
+  topbar.set({ ...topbar.get(), landing });
 }
 
 export function setBlockingModalActive(active: boolean): void {

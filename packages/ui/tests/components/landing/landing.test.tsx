@@ -1,8 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The landing page (components/landing/Landing.tsx), mounted as the loader
-// mounts it: the name form, the typing placeholder, the recently visited
+// The landing page (components/landing/Landing.tsx): the name form, the typing placeholder, the recently visited
 // pills, and the auth and theme buttons it renders in its corner.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

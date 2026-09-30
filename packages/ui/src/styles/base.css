@@ -58,14 +58,15 @@ body[data-scroll-locked] {
 }
 
 /* App Content */
-/* The landing page hides the topbar (its `data-landing`), so the
-   page starts at the top. */
-#topbar[data-landing] {
+/* The landing page (the LandingPage island, beside `#app`) hides the
+   topbar (its `data-landing`) and takes the page, from the top: the
+   loading screen before it too. */
+#topbar[data-landing],
+body:has(#topbar[data-landing]) #app {
   display: none;
 }
-body:has(#topbar[data-landing]) #app {
-  margin-top: 0;
-  min-height: 100dvh;
+body:has(#topbar[data-landing]) #app-loading {
+  top: 0;
 }
 #app {
   display: flex;

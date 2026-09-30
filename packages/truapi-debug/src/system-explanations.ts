@@ -71,7 +71,7 @@ The sandbox cannot keep content itself: its iframe is credentialless, so its sto
 
   'boot:landing_page_shown': {
     title: 'Landing page rendered',
-    body: `The host URL had no product subdomain to resolve, so \`showLanding()\` rendered the marketing landing page and \`main()\` returned. Boot ends here; no product iframe, no bridge, no TrUAPI traffic.`,
+    body: `The host URL had no product subdomain to resolve, so the landing page island rendered the marketing landing page and \`main()\` returned. Boot ends here; no product iframe, no bridge, no TrUAPI traffic.`,
   },
 
   'boot:ready': {

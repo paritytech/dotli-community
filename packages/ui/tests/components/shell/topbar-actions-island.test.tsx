@@ -159,7 +159,7 @@ describe('Topbar actions island', () => {
     expect(document.getElementById('auth-button')).not.toBeNull();
 
     // When
-    setLandingPage();
+    setLandingPage(true);
     await settle();
 
     // Then
