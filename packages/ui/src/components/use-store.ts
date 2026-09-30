@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, getOwner, onCleanup, onSettled, sharedConfig, type Accessor } from 'solid-js';
+import { createMemo, createSignal, getOwner, onCleanup, type Accessor } from 'solid-js';
 import type { ReadableStore } from '../state/create-store.js';
 
 /**
@@ -38,42 +38,20 @@ export function useStore<T, S>(
   }
 
   const pick = (state: T): S => (select === undefined ? (state as unknown as S) : select(state));
-  const read = (): S => pick(store.get());
-  // Solid's client types re-export sharedConfig without declaring it; the
-  // one field read here, as its runtime has it.
-  const { hydrating } = sharedConfig as { hydrating: boolean };
-
-  // Value form, not a compute function: in Solid 2 a function first argument
-  // makes a derived signal. Stores never hold functions.
-  const [value, setValue] = createSignal<S>(
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-function-type -- mirrors createSignal's own overload
-    (hydrating ? pick(store.initial) : read()) as Exclude<S, Function>,
-    {
-      // The store notifies subscribers synchronously, from whatever owner
-      // happens to be active when a producer calls `set` (e.g. a `createRoot`
-      // scope, not this accessor's own owner). Solid 2's dev build otherwise
-      // throws REACTIVE_WRITE_IN_OWNED_SCOPE for that write; this mirror
-      // signal is meant to be written from other owners, so it opts out.
-      ownedWrite: true,
-      // Drops an unchanged slice here, at the source, so nothing downstream
-      // recomputes for it.
-      ...(equals === undefined ? {} : { equals }),
+  // Bumped on every store notification; the memo below reads it to follow
+  // the store. The store notifies from whatever owner a producer's `set`
+  // runs under, so the write opts out of Solid's owned-scope check.
+  const [version, setVersion] = createSignal(0, { ownedWrite: true });
+  onCleanup(store.subscribe(() => setVersion(n => n + 1)));
+  // An island renders at build time from the store's initial value, and may
+  // hydrate after boot has written the store: `ssrSource: 'client'` renders
+  // `loadingValue` on the server and while hydrating, then computes the live
+  // value once hydration completes. Outside hydration it computes at once.
+  return createMemo(
+    () => {
+      version();
+      return pick(store.get());
     },
+    { ssrSource: 'client', loadingValue: pick(store.initial), ...(equals === undefined ? {} : { equals }) },
   );
-  const unsubscribe = store.subscribe(() => {
-    // Wrapped so a function-valued slice would be stored, not called as an
-    // updater.
-    const next = read();
-    setValue(() => next);
-  });
-  onCleanup(unsubscribe);
-  // Called either way: it takes a hydration id on the server as on the
-  // client, and a call on one side only would shift the ids after it.
-  onSettled(() => {
-    if (hydrating) {
-      const next = read();
-      setValue(() => next);
-    }
-  });
-  return value;
 }
