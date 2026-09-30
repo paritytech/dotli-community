@@ -33,7 +33,11 @@ import {
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
 } from "@dotli/config/host-sandbox-contract";
-import { getBackend, getCacheSettings } from "@dotli/config/mode";
+import {
+  getBackend,
+  getCacheSettings,
+  getPolkaVmAppsEnabled,
+} from "@dotli/config/mode";
 import {
   getActiveServicesConfig,
   getNetwork,
@@ -80,6 +84,10 @@ import type {
   ContactAvatarOverlay,
 } from "./profile/avatar-overlay";
 import { dispatchAuthState } from "./host-callbacks/AuthState";
+import {
+  createContactsPlatform,
+  NativeChatContactsDirectory,
+} from "./host-callbacks/Contacts";
 import {
   CameraInputCancelledError,
   CameraInputPermissionError,
@@ -280,6 +288,7 @@ const mediatedInputHost = new MediatedInputHost({
 interface LiveLocalWallet {
   runtime: WorkerSigningHostRuntime;
   custodyLease: string;
+  contactsDirectory: NativeChatContactsDirectory;
   binding: LocalWalletIdentityBinding;
   identity: LocalIdentity;
   /** Whether `identity`'s username came from a chain read in this session. */
@@ -2070,6 +2079,21 @@ async function createCoreProvider(
   let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
   let custodyLease = owner?.custodyLease;
   let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
+  const contactsGenesis = getActiveServicesConfig().people.genesis;
+  const contactsDirectory =
+    localContext === undefined
+      ? undefined
+      : (owner?.contactsDirectory ??
+        new NativeChatContactsDirectory(
+          () =>
+            !isRuntimeDisposed() &&
+            isCurrentLocalWallet(localContext) &&
+            contactsGenesis === getActiveServicesConfig().people.genesis,
+        ));
+  const nativeContacts =
+    contactsDirectory === undefined
+      ? undefined
+      : createContactsPlatform(contactsDirectory, blockingModalScope);
   const releaseCustody = (): void => {
     if (owner !== undefined || custodyLease === undefined) {
       return;
@@ -2087,6 +2111,10 @@ async function createCoreProvider(
   const disposeNativeRuntime = (): void => {
     runtimeDisposed = true;
     localRuntimeDisposers.delete(disposeNativeRuntime);
+    nativeContacts?.dispose();
+    if (owner === undefined) {
+      contactsDirectory?.dispose();
+    }
     if (liveWallet !== undefined && owner === undefined) {
       liveLocalWallets.delete(liveWallet.runtime);
     }
@@ -2138,7 +2166,13 @@ async function createCoreProvider(
       blockingModalScope,
       custodyLease,
       contactAvatars: options.contactAvatars,
+      contacts: nativeContacts?.callbacks,
     });
+    if (contactsDirectory !== undefined) {
+      callbacks.coreStorage = contactsDirectory.observeStorage(
+        callbacks.coreStorage,
+      );
+    }
     if (owner === undefined && custodyLease !== undefined) {
       const lease = custodyLease;
       const { createBrowserNativeChatFilesHost } = await runtimeChunkPromise;
@@ -2182,6 +2216,9 @@ async function createCoreProvider(
           : !isCurrentLocalWallet(localContext))
       ) {
         return;
+      }
+      if (owner === undefined) {
+        contactsDirectory?.invalidate();
       }
       if (localContext !== undefined && state.tag === "Connected") {
         const account = state.value.identityAccountId;
@@ -2261,6 +2298,19 @@ async function createCoreProvider(
             "Test wallet changed or native activation did not report its identity.",
           );
         }
+        if (
+          nativeSessionUiInfo?.publicKey === undefined ||
+          contactsDirectory === undefined
+        ) {
+          throw new Error(
+            "Native Chat contacts require the activated signing wallet",
+          );
+        }
+        contactsDirectory.bind(
+          signing,
+          nativeSessionUiInfo.publicKey,
+          contactsGenesis,
+        );
         const binding: LocalWalletIdentityBinding = {
           ...localContext,
           identityAccountId: activatedIdentity.identityAccountId,
@@ -2319,6 +2369,7 @@ async function createCoreProvider(
           liveWallet = {
             runtime: signing,
             custodyLease,
+            contactsDirectory,
             binding,
             identity: activatedIdentity,
             usernameVerified,
@@ -2395,6 +2446,10 @@ async function createCoreProvider(
         : { dispose: noop },
       () => {
         runtimeDisposed = true;
+        nativeContacts?.dispose();
+        if (owner === undefined) {
+          contactsDirectory?.dispose();
+        }
         unsubscribeOwnerClose?.();
         localRuntimeDisposers.delete(disposeNativeRuntime);
         if (liveWallet !== undefined) {
@@ -2735,6 +2790,10 @@ export async function renderAppSubdomain(
     chainBackend,
   );
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
+  parsedUrl.searchParams.set(
+    SANDBOX_CONTRACT_PARAMS.polkaVmEnabled,
+    getPolkaVmAppsEnabled() ? "1" : "0",
+  );
   if (executableManifest !== null) {
     parsedUrl.searchParams.set(
       SANDBOX_CONTRACT_PARAMS.executableManifest,

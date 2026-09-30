@@ -7,7 +7,10 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { RequiredHostCallbacks } from "@parity/truapi-host";
+import type {
+  ContactsPlatform,
+  RequiredHostCallbacks,
+} from "@parity/truapi-host";
 import { createNavigateTo } from "./OpenUrl";
 import { createNotificationAdapters } from "./PushNotification";
 import { createPromptPermission } from "./PromptPermission";
@@ -44,6 +47,7 @@ export interface CreateHostCallbacksOptions {
   custodyLease?: string;
   /** Avatar layer of the product frame this connection serves, if any. */
   contactAvatars?: ContactAvatarOverlay;
+  contacts?: Required<ContactsPlatform>;
 }
 
 export function createHostCallbacks(
@@ -57,6 +61,7 @@ export function createHostCallbacks(
     blockingModalScope = createBlockingModalScope(),
     custodyLease,
     contactAvatars,
+    contacts,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -93,5 +98,6 @@ export function createHostCallbacks(
     // drawer attributes it to the product and returns nothing to it. Placed
     // contact avatars are drawn on the frame's own host layer.
     profile: createProfilePlatform(contactAvatars),
+    ...(contacts === undefined ? {} : { contacts }),
   };
 }
