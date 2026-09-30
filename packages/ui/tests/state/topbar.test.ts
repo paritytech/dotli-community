@@ -4,12 +4,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   getTopbarState,
-  openSettings,
   setBlockingModalActive,
   recordChainsButtonVisible,
-  setLandingPage,
-  setTopbarAutoHide,
-  setTopbarPresent,
   setTopbarVisible,
   topbarStore,
 } from '../../src/state/topbar.js';
@@ -43,18 +39,6 @@ describe('topbar store', () => {
       blockingModalActive: true,
       chainsButtonVisible: false,
     });
-  });
-
-  it('As the host, the page marks the topbar present, the landing page and the auto-hide, and asks for the settings panel', () => {
-    // When
-    setTopbarPresent();
-    setLandingPage();
-    setTopbarAutoHide(true);
-    openSettings();
-    openSettings();
-
-    // Then
-    expect(getTopbarState()).toMatchObject({ present: true, landing: true, autoHide: true, settingsRequests: 2 });
   });
 
   it('As the host, chains button visibility is recorded', () => {

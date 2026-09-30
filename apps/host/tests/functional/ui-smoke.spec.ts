@@ -208,8 +208,8 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then
-    await expect(page.locator('#topbar')).toBeAttached();
+    // Then: the bar is the page's banner landmark.
+    await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
     // The hydrated islands' build-time renders.
     await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Login with Polkadot Mobile');
     await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');

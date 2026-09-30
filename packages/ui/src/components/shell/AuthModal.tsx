@@ -138,6 +138,7 @@ export function AuthModal(): JSX.Element {
       return;
     }
     let current = true;
+    const onPhone = mobile();
     const canvas = document.createElement('canvas');
     canvas.dataset['qrPayload'] = payload;
     void import('qrcode')
@@ -151,7 +152,7 @@ export function AuthModal(): JSX.Element {
       .then(() => {
         if (current) {
           setDrawn({ payload, canvas });
-          if (mobile()) {
+          if (onPhone) {
             setMobileLayout(true);
           }
         }
