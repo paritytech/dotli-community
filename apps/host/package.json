@@ -29,7 +29,7 @@
     "@dotli/typescript-config": "*",
     "@playwright/test": "^1.63.0",
     "@solidjs/testing-library": "1.0.0-beta.3",
-    "@solidjs/vite-plugin": "3.0.0-next.46",
+    "@solidjs/vite-plugin": "3.0.0-next.47",
     "jsqr": "^1.4.0",
     "playwright": "^1.63.0",
     "simple-statistics": "^7.12.1",
