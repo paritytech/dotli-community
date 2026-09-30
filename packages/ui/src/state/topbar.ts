@@ -16,8 +16,11 @@ export interface TopbarState {
   landing: boolean;
   blockingModalActive: boolean;
   chainsButtonVisible: boolean;
-  /** Bumped by openSettings(): the settings panel opens on each bump. */
-  settingsRequests: number;
+  /**
+   * The Settings panel is open. SettingsPopover writes it as the panel opens
+   * and closes, and opens the panel when openSettings() sets it.
+   */
+  settingsOpen: boolean;
 }
 
 const topbar = createSyncStore<TopbarState>(
@@ -28,7 +31,7 @@ const topbar = createSyncStore<TopbarState>(
     landing: false,
     blockingModalActive: false,
     chainsButtonVisible: false,
-    settingsRequests: 0,
+    settingsOpen: false,
   },
   { equals: shallowEqual },
 );
@@ -69,6 +72,10 @@ export function recordChainsButtonVisible(visible: boolean): void {
  * settings").
  */
 export function openSettings(): void {
-  const state = topbar.get();
-  topbar.set({ ...state, settingsRequests: state.settingsRequests + 1 });
+  setSettingsOpen(true);
+}
+
+/** The Settings panel opened or closed (SettingsPopover). */
+export function setSettingsOpen(settingsOpen: boolean): void {
+  topbar.set({ ...topbar.get(), settingsOpen });
 }

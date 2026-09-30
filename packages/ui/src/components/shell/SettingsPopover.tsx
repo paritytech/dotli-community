@@ -7,7 +7,7 @@ import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Net
 
 import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
-import { topbarStore } from '../../state/topbar.js';
+import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
 import { createPopover } from './popover.js';
@@ -296,6 +296,9 @@ export function SettingsPopover(): JSX.Element {
     mode: () => (untrack(sheet) ? 'dialog' : 'popover'),
     trigger: () => button,
     surface: () => popover,
+    onClose: () => {
+      setSettingsOpen(false);
+    },
   });
   /** Counts the openings: each renders the content afresh. */
   const [opening, setOpening] = createSignal(0);
@@ -305,18 +308,21 @@ export function SettingsPopover(): JSX.Element {
     surface.setOpen(false);
   };
   const onButtonClick = (): void => {
-    if (!untrack(surface.open)) {
+    const opening = !untrack(surface.open);
+    if (opening) {
       setOpening(n => n + 1);
       setSheet(window.matchMedia(SHEET_QUERY).matches);
     }
     surface.toggle();
+    if (opening) {
+      setSettingsOpen(true);
+    }
   };
-  // openSettings(): each request opens the panel, as a click on a closed
-  // button would.
+  // openSettings() opens the panel, as a click on the closed button would.
   createEffect(
-    useStore(topbarStore, state => state.settingsRequests),
-    (requests, previous) => {
-      if (previous !== undefined && requests > previous && !untrack(surface.open)) {
+    useStore(topbarStore, state => state.settingsOpen),
+    open => {
+      if (open && !untrack(surface.open)) {
         onButtonClick();
       }
     },

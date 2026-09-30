@@ -24,7 +24,7 @@ describe('topbar store', () => {
       landing: false,
       blockingModalActive: false,
       chainsButtonVisible: false,
-      settingsRequests: 0,
+      settingsOpen: false,
     });
   });
 
