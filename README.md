@@ -369,6 +369,8 @@ shell (`paseo.fyi`, `paseo.li`, previews, localhost); **Settings → Experimenta
 → PolkaVM apps** overrides the site default either way. Each product scenario
 still enables the toggle explicitly and uses **Save & Apply** before exercising
 the published guest, so the smoke holds regardless of the deployment's default.
+An existing saved choice, including an opt-out on a testnet, remains authoritative.
+The site default applies only when no valid preference has been saved.
 
 ```bash
 cd apps/host
