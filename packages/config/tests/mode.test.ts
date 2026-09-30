@@ -187,27 +187,28 @@ describe("PolkaVM apps setting", () => {
     });
   });
 
-  it("is opt-in on production and on everywhere else", () => {
-    expect(defaultPolkaVmAppsEnabled("dot.li")).toBe(false);
-    expect(defaultPolkaVmAppsEnabled("paseo.fyi")).toBe(true);
-    expect(defaultPolkaVmAppsEnabled("paseo.li")).toBe(true);
-    expect(defaultPolkaVmAppsEnabled("local.li")).toBe(true);
-  });
+  it.each([
+    ["dot.li", false],
+    ["paseo.fyi", true],
+    ["paseo.li", true],
+    ["testnet.li", true],
+    ["local.li", true],
+  ] as const)(
+    "uses the %s default unless the user explicitly chooses",
+    (siteId, enabledByDefault) => {
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
 
-  it("follows the running site's default until the user chooses", () => {
-    // Tests run on localhost, a test environment.
-    expect(getPolkaVmAppsEnabled()).toBe(true);
+      setPolkaVmAppsEnabled(false);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(false);
 
-    setPolkaVmAppsEnabled(false);
-    expect(getPolkaVmAppsEnabled()).toBe(false);
-    expect(storage.dump()[POLKAVM_APPS_KEY]).toBe("0");
+      setPolkaVmAppsEnabled(true);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(true);
 
-    setPolkaVmAppsEnabled(true);
-    expect(getPolkaVmAppsEnabled()).toBe(true);
-    expect(storage.dump()[POLKAVM_APPS_KEY]).toBe("1");
+      storage.setItem(POLKAVM_APPS_KEY, "yes");
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
 
-    // A value no version of the setting ever wrote is not a decision.
-    storage.setItem(POLKAVM_APPS_KEY, "yes");
-    expect(getPolkaVmAppsEnabled()).toBe(true);
-  });
+      storage.removeItem(POLKAVM_APPS_KEY);
+      expect(getPolkaVmAppsEnabled(siteId)).toBe(enabledByDefault);
+    },
+  );
 });

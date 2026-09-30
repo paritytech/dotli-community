@@ -44,6 +44,7 @@ import {
   type Backend,
   type CacheSettings,
 } from "@dotli/config/mode";
+import { SITE_ID } from "@dotli/config/config";
 import { clearInstalledExecutableCache } from "@dotli/storage/cid-cache";
 import {
   getEnabledNetworks,
@@ -2098,7 +2099,7 @@ function renderModePopover(): void {
     chain: getBackend(),
     network: getNetwork(),
     cache: getCacheSettings(),
-    polkaVmAppsEnabled: getPolkaVmAppsEnabled(),
+    polkaVmAppsEnabled: getPolkaVmAppsEnabled(SITE_ID),
   };
   const draft: ModeDraft = { ...persisted, cache: { ...persisted.cache } };
 
