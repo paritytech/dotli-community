@@ -37,21 +37,6 @@ export function ChatDock(): JSX.Element {
   // Rendered once the panel first opens, and kept while it is closed.
   const [opened, setOpened] = createSignal(false);
 
-  /** Renders the broken panel afresh; set while it is broken. */
-  let resetBroken: (() => void) | null = null;
-  /** The panel broke: report it and close, after it renders. */
-  const Broken = (props: { error: unknown; reset: () => void }): JSX.Element => {
-    createEffect(
-      () => props.error,
-      error => {
-        resetBroken = props.reset;
-        captureException(error, { root: 'chat' });
-        setChatPanelOpen(false);
-      },
-    );
-    return null;
-  };
-
   createEffect(buttonVisible, visible => {
     if (!visible) {
       return;
@@ -67,13 +52,9 @@ export function ChatDock(): JSX.Element {
     }
   });
   createEffect(open, isOpen => {
-    if (!isOpen) {
-      return;
+    if (isOpen) {
+      setOpened(true);
     }
-    const reset = resetBroken;
-    resetBroken = null;
-    reset?.();
-    setOpened(true);
   });
   // The panel is border-box, so its width is exactly the room it takes.
   createEffect(
@@ -114,4 +95,29 @@ export function ChatDock(): JSX.Element {
       </Show>
     </aside>
   );
+}
+
+/**
+ * The panel broke: report it and close, after it renders. The next open
+ * renders the panel afresh.
+ */
+function Broken(props: { error: unknown; reset: () => void }): JSX.Element {
+  const open = useStore(chatPanelStore, state => state.open);
+  createEffect(
+    () => props.error,
+    error => {
+      captureException(error, { root: 'chat' });
+      setChatPanelOpen(false);
+    },
+  );
+  createEffect(
+    open,
+    isOpen => {
+      if (isOpen) {
+        props.reset();
+      }
+    },
+    { defer: true },
+  );
+  return null;
 }

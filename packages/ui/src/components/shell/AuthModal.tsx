@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, Match, onSettled, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
@@ -90,12 +90,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
-  // A phone's layout, from mount: the build-time render, which has no
+  // A phone's layout once hydrated: the build-time render, which has no
   // device, is the desktop one.
-  const [mobile, setMobile] = createSignal(false);
-  onSettled(() => {
-    setMobile(isMobileDevice());
-  });
+  const mobile = createMemo(isMobileDevice, { ssrSource: 'client', loadingValue: false });
 
   // The effects below compute from memos, not from `state()`: Solid 2 runs an
   // effect's function every time its compute re-runs, so a compute over the
