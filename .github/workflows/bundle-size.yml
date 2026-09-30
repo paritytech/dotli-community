@@ -77,10 +77,13 @@ jobs:
                 "apps/host/dist/assets/index.astro_astro_type_script_index_0_lang.*.js" \
                 $((600 * 1024))
 
-          # Eager path = module entry + every modulepreloaded chunk, gzip.
-          # Budgets are the Solid migration's whole-migration limits
-          # (baseline in docs/perf/solid-migration-baseline.md):
-          # pre-migration 74,649 B + 15 KB (host), 45,015 B + 10 KB (sandbox).
+          # Eager path = module entry + every modulepreloaded chunk, and the
+          # host's client:load islands with their static imports, gzip.
+          # The sandbox's budget is the Solid migration's whole-migration
+          # limit (baseline in docs/perf/solid-migration-baseline.md):
+          # pre-migration 45,015 B + 10 KB. The host's is its Astro build's,
+          # which loads the Solid runtime and the client:load islands at
+          # startup: 122,429 B measured + about 10%.
           check_eager() {
             local label=$1 dist=$2 max=$3
             local json gz
@@ -97,7 +100,7 @@ jobs:
               echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
             fi
           }
-          check_eager "host-eager-path" apps/host/dist 90009
+          check_eager "host-eager-path" apps/host/dist 135000
           check_eager "sandbox-eager-path" apps/sandbox/dist 55255
 
       # ── PR: download baseline from main ────────────────────────
@@ -128,7 +131,7 @@ jobs:
 
           # Strip content hashes: "fetch-CMRV9u5T.js" → "fetch.js"
           strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
+            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
           }
 
           fmt() {
@@ -356,7 +359,7 @@ jobs:
         run: |
           # Strip content hashes from filenames: "fetch-CMRV9u5T.js" → "fetch.js"
           strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
+            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
           }
 
           echo "{" > /tmp/bundle-baseline.json

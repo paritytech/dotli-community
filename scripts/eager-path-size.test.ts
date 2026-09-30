@@ -3,7 +3,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { eagerChunkPaths } from './eager-path-size.ts';
+import { eagerChunkPaths, loadIslandModules, staticImports } from './eager-path-size.ts';
 
 describe('eagerChunkPaths', () => {
   it('returns the module entry and every modulepreload, in document order', () => {
@@ -43,5 +43,25 @@ describe('eagerChunkPaths', () => {
 
   it('throws when the page has no module entry, instead of reporting 0 bytes', () => {
     assert.throws(() => eagerChunkPaths('<html><body></body></html>'), /no <script type="module" src>/);
+  });
+});
+
+describe('loadIslandModules', () => {
+  it('returns the component and renderer of the islands that hydrate at load, once each', () => {
+    const html = `<astro-island uid="a" component-url="/assets/Load.AAAAAAAA.js" component-export="Load" renderer-url="/assets/client.BBBBBBBB.js" ssr client="load">
+      <astro-island uid="b" component-url="/assets/Idle.CCCCCCCC.js" renderer-url="/assets/client.BBBBBBBB.js" ssr client="idle">
+      <astro-island uid="c" component-url="/assets/Other.DDDDDDDD.js" renderer-url="/assets/client.BBBBBBBB.js" client="load">`;
+    assert.deepEqual(loadIslandModules(html), [
+      '/assets/Load.AAAAAAAA.js',
+      '/assets/client.BBBBBBBB.js',
+      '/assets/Other.DDDDDDDD.js',
+    ]);
+  });
+});
+
+describe('staticImports', () => {
+  it('returns the relative modules imported statically, not dynamic imports or bare packages', () => {
+    const code = `import{a as b}from"./solid.AAAAAAAA.js";import"./side.BBBBBBBB.js";export{c}from"./re.CCCCCCCC.js";const l=()=>import("./lazy.DDDDDDDD.js");import x from"pkg"`;
+    assert.deepEqual(staticImports(code), ['./solid.AAAAAAAA.js', './side.BBBBBBBB.js', './re.CCCCCCCC.js']);
   });
 });
