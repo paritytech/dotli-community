@@ -114,7 +114,6 @@ export function NavForm(): JSX.Element {
     stopPlaceholder?.();
   });
 
-  // Native listeners, like the shell's islands (src/islands/).
   const onSubmit = (e: Event): void => {
     e.preventDefault();
     if (input === undefined) {
@@ -138,14 +137,7 @@ export function NavForm(): JSX.Element {
   };
 
   return (
-    <form
-      ref={el => {
-        el.addEventListener('submit', onSubmit);
-      }}
-      id="dotli-nav-form"
-      class="landing-nav-form"
-      autocomplete="off"
-    >
+    <form onSubmit={onSubmit} id="dotli-nav-form" class="landing-nav-form" autocomplete="off">
       <div
         class={{
           'landing-search-bar': true,
@@ -156,9 +148,9 @@ export function NavForm(): JSX.Element {
         <input
           ref={el => {
             input = el;
-            el.addEventListener('input', () => {
-              setInvalid(false);
-            });
+          }}
+          onInput={() => {
+            setInvalid(false);
           }}
           id="dotli-nav-input"
           class="landing-search-input"

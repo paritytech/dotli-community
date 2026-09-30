@@ -80,8 +80,8 @@ export function ChatButton(): JSX.Element {
       <button
         ref={el => {
           button = el;
-          el.addEventListener('click', toggle);
         }}
+        onClick={toggle}
         id="chat-button"
         class={['topbar-btn', { active: open() }]}
         title="Chat"

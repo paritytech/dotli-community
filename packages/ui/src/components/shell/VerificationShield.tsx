@@ -57,8 +57,8 @@ export function VerificationShield(props: { state: ShieldState | null }): JSX.El
       <button
         ref={el => {
           button = el;
-          el.addEventListener('click', disclosure.toggle);
         }}
+        onClick={disclosure.toggle}
         type="button"
         id={VERIFICATION_SHIELD_ID}
         class={[

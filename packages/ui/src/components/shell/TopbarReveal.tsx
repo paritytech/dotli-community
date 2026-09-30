@@ -35,9 +35,9 @@ export function TopbarReveal(): JSX.Element {
       <button
         ref={el => {
           button = el;
-          el.addEventListener('focus', revealTopbar);
-          el.addEventListener('click', revealTopbarAndFocus);
         }}
+        onFocus={revealTopbar}
+        onClick={revealTopbarAndFocus}
         type="button"
         id={TOPBAR_REVEAL_BUTTON_ID}
         class="topbar-reveal"
@@ -49,9 +49,7 @@ export function TopbarReveal(): JSX.Element {
       </button>
       <Show when={autoHide()}>
         <div
-          ref={el => {
-            el.addEventListener('mouseenter', revealTopbar);
-          }}
+          onMouseEnter={revealTopbar}
           aria-hidden="true"
           style={{ position: 'fixed', top: '0', left: '0', right: '0', height: '6px', 'z-index': '999' }}
         />

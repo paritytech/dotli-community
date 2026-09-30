@@ -114,7 +114,6 @@ export function ThemeToggle(): JSX.Element {
     surface: () => popover,
   });
 
-  // Native listeners, added in the refs below, like the rest of the shell.
   const onClick = (e: MouseEvent): void => {
     const option = (e.target as HTMLElement).closest<HTMLElement>('.theme-popover-option');
     const next = option?.dataset['themeOption'];
@@ -136,8 +135,8 @@ export function ThemeToggle(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            el.addEventListener('click', menu.toggle);
           }}
+          onClick={menu.toggle}
           id="theme-toggle"
           class="topbar-btn"
           title={title()}
@@ -153,8 +152,8 @@ export function ThemeToggle(): JSX.Element {
         <div
           ref={el => {
             popover = el;
-            el.addEventListener('click', onClick);
           }}
+          onClick={onClick}
           class={['more-popover theme-popover', { open: menu.open() }]}
           id="theme-popover"
           role="menu"

@@ -102,8 +102,8 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
         <button
           ref={el => {
             props.selectRef(el);
-            el.addEventListener('click', onTriggerClick);
           }}
+          onClick={onTriggerClick}
           type="button"
           class="permissions-popover-select"
           id={`permissions-popover-select-${props.perm.name}`}
@@ -132,9 +132,9 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
         <Show when={props.open}>
           <div
             ref={el => {
-              el.addEventListener('keydown', onMenuKeyDown);
               props.menuRef(el);
             }}
+            onKeyDown={onMenuKeyDown}
             class="permissions-popover-menu"
             role="listbox"
             aria-label={`${props.perm.label} permission`}
@@ -142,11 +142,9 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
             <For each={STATUS_ORDER}>
               {status => (
                 <button
-                  ref={el => {
-                    el.addEventListener('click', e => {
-                      e.stopPropagation();
-                      props.choose(props.perm.name, status);
-                    });
+                  onClick={e => {
+                    e.stopPropagation();
+                    props.choose(props.perm.name, status);
                   }}
                   type="button"
                   class={['permissions-popover-menu-item', { selected: status === props.status }]}

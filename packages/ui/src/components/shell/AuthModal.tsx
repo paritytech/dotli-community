@@ -53,10 +53,8 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
       </Show>
       <Show when={props.view.retry}>
         <button
-          ref={el => {
-            el.addEventListener('click', () => {
-              props.retry();
-            });
+          onClick={() => {
+            props.retry();
           }}
           class="auth-modal-retry"
         >
@@ -233,8 +231,8 @@ export function AuthModal(): JSX.Element {
     <div
       ref={el => {
         backdrop = el;
-        el.addEventListener('click', onBackdropClick);
       }}
+      onClick={onBackdropClick}
       class={['auth-modal-backdrop', { open: open() }]}
       id="auth-modal-backdrop"
       role="dialog"
@@ -295,10 +293,8 @@ export function AuthModal(): JSX.Element {
           Don't have the app? Get Polkadot Mobile
         </a>
         <button
-          ref={el => {
-            el.addEventListener('click', () => {
-              closeAuthModal();
-            });
+          onClick={() => {
+            closeAuthModal();
           }}
           class="auth-modal-close"
           id="auth-modal-close"
@@ -329,8 +325,8 @@ function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): J
   );
   const toggle = (
     <button
-      ref={el => {
-        el.addEventListener('click', props.reveal);
+      onClick={() => {
+        props.reveal();
       }}
       type="button"
       class="auth-modal-qr-toggle"

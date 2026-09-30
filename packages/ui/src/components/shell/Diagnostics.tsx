@@ -123,9 +123,7 @@ export function Diagnostics(props: {
       )}
       <div class="mode-cache-row mode-diag-links-row">
         <button
-          ref={el => {
-            el.addEventListener('click', share);
-          }}
+          onClick={share}
           type="button"
           class="mode-clear-btn"
           title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
@@ -133,9 +131,7 @@ export function Diagnostics(props: {
           Share diagnostic
         </button>
         <button
-          ref={el => {
-            el.addEventListener('click', toggleDebug);
-          }}
+          onClick={toggleDebug}
           type="button"
           class="mode-clear-btn"
           title={

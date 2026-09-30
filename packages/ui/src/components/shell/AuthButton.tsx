@@ -109,8 +109,8 @@ export function AuthButton(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            el.addEventListener('click', onClick);
           }}
+          onClick={onClick}
           id="auth-button"
           class="topbar-btn"
           title={label()}
@@ -160,13 +160,7 @@ export function AuthButton(): JSX.Element {
             </Show>
           </div>
           <div class="user-popover-divider" />
-          <button
-            ref={el => {
-              el.addEventListener('click', onDisconnect);
-            }}
-            class="user-popover-disconnect"
-            id="user-popover-disconnect"
-          >
+          <button onClick={onDisconnect} class="user-popover-disconnect" id="user-popover-disconnect">
             <svg
               viewBox="0 0 24 24"
               fill="none"

@@ -36,11 +36,9 @@ export function RadioRow(props: {
   return (
     <label class={`mode-radio-row${props.selected ? ' selected' : ''}${disabled() ? ' disabled' : ''}`}>
       <input
-        ref={el => {
-          el.addEventListener('change', () => {
-            props.choose();
-            el.focus();
-          });
+        onChange={e => {
+          props.choose();
+          e.currentTarget.focus();
         }}
         type="radio"
         name={props.name}
@@ -72,12 +70,10 @@ export function CacheToggle(props: {
     <div class="mode-cache-row">
       <span class="mode-cache-label">{props.label}</span>
       <button
-        ref={el => {
-          el.addEventListener('click', () => {
-            const next = !untrack(on);
-            setOn(next);
-            props.update(next);
-          });
+        onClick={() => {
+          const next = !untrack(on);
+          setOn(next);
+          props.update(next);
         }}
         role="switch"
         aria-label={props.label}
@@ -108,23 +104,21 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
   const copyable = untrack(() => props.copyable === true);
   return (
     <div
-      ref={el => {
+      onClick={() => {
         if (!copyable) {
           return;
         }
-        el.addEventListener('click', () => {
-          const value = untrack(() => props.value);
-          if (value === '' || value === '…' || value === 'n/a') {
-            return;
-          }
-          void navigator.clipboard.writeText(value).then(() => {
-            setCopied(true);
-            clearTimeout(copiedTimer);
-            copiedTimer = setTimeout(() => {
-              setCopied(false);
-              copiedTimer = undefined;
-            }, COPIED_MS);
-          });
+        const value = untrack(() => props.value);
+        if (value === '' || value === '…' || value === 'n/a') {
+          return;
+        }
+        void navigator.clipboard.writeText(value).then(() => {
+          setCopied(true);
+          clearTimeout(copiedTimer);
+          copiedTimer = setTimeout(() => {
+            setCopied(false);
+            copiedTimer = undefined;
+          }, COPIED_MS);
         });
       }}
       class={`mode-endpoint-row mode-info-row${copyable ? ' mode-info-row-copyable' : ''}${copied() ? ' copied' : ''}`}

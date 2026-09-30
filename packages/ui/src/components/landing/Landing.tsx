@@ -12,8 +12,7 @@ import { RecentPills } from './RecentPills.js';
  * name form, the recently visited names, and the auth and theme buttons in
  * the corner, the shell's own components outside the topbar (which the
  * landing page hides, its action group gone). Mounted by landing/load.ts as
- * the `"page"` app root. Events use native listeners, as in the shell's
- * islands.
+ * the `"page"` app root.
  */
 export function Landing(): JSX.Element {
   return (

@@ -42,8 +42,8 @@ function SheetHeader(props: { close: () => void }): JSX.Element {
     <div class="mode-popover-sheet-header">
       <span class="mode-popover-sheet-title">Settings</span>
       <button
-        ref={el => {
-          el.addEventListener('click', props.close);
+        onClick={() => {
+          props.close();
         }}
         class="mode-popover-sheet-close"
         aria-label="Close settings"
@@ -195,9 +195,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               toggle a setting back and forth just to wipe state. */}
           <div class="mode-cache-row mode-clear-all-row">
             <button
-              ref={el => {
-                el.addEventListener('click', clearAll);
-              }}
+              onClick={clearAll}
               class="mode-clear-btn"
               title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
               disabled={clearing()}
@@ -218,9 +216,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <div class="mode-popover-divider" />
         <div class="mode-cache-row mode-apply-row">
           <button
-            ref={el => {
-              el.addEventListener('click', apply);
-            }}
+            onClick={apply}
             class={`mode-clear-btn${dirty() ? ' mode-apply-dirty' : ''}`}
             disabled={!dirty() || applying()}
           >
@@ -338,8 +334,8 @@ export function SettingsPopover(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            el.addEventListener('click', onButtonClick);
           }}
+          onClick={onButtonClick}
           id="mode-button"
           class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
           title="Settings"
@@ -354,9 +350,7 @@ export function SettingsPopover(): JSX.Element {
       <Portal>
         {/* Blocks clicks under the popover and dismisses it when clicked. */}
         <div
-          ref={el => {
-            el.addEventListener('click', close);
-          }}
+          onClick={close}
           class={`mode-popover-backdrop${surface.open() ? ' open' : ''}`}
           id="mode-popover-backdrop"
         />

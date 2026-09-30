@@ -96,11 +96,11 @@ export function ChatDock(): JSX.Element {
     <aside
       ref={el => {
         aside = el;
-        el.addEventListener('keydown', ev => {
-          if (ev.key === 'Escape') {
-            setChatPanelOpen(false);
-          }
-        });
+      }}
+      onKeyDown={ev => {
+        if (ev.key === 'Escape') {
+          setChatPanelOpen(false);
+        }
       }}
       class={['chat-panel', { 'topbar-hidden': !topbarVisible() }]}
       id="chat-panel"

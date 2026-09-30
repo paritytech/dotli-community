@@ -295,8 +295,8 @@ export function PermissionsPopover(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            el.addEventListener('click', surface.toggle);
           }}
+          onClick={surface.toggle}
           id="permissions-button"
           class={['topbar-btn', { 'has-grants': hasGrants() }]}
           title="Permissions"
@@ -312,10 +312,8 @@ export function PermissionsPopover(): JSX.Element {
         {/* Blocks clicks under the popover and dismisses it when clicked, as
             the settings menu's backdrop does. */}
         <div
-          ref={el => {
-            el.addEventListener('click', () => {
-              surface.setOpen(false);
-            });
+          onClick={() => {
+            surface.setOpen(false);
           }}
           class={['permissions-popover-backdrop', { open: surface.open() }]}
           id="permissions-popover-backdrop"

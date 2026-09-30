@@ -397,11 +397,11 @@ export function ChainsPopover(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            // No stopPropagation: the settings island's outside-click closer
-            // has to see this click to shut Settings, which sits at the same
-            // fixed position and would otherwise render on top of this panel.
-            el.addEventListener('click', surface.toggle);
           }}
+          // No stopPropagation: the settings island's outside-click closer
+          // has to see this click to shut Settings, which sits at the same
+          // fixed position and would otherwise render on top of this panel.
+          onClick={surface.toggle}
           id="chains-button"
           class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? ' visible' : ''}`}
           title="Network"
