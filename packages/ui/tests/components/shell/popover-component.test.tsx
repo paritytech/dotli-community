@@ -319,6 +319,47 @@ describe('Popover', () => {
     expect(surface().querySelector('#body')).not.toBeNull();
   });
 
+  it('As a user whose pointer leaves the button between closing and reopening, the reopened popover keeps its content', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content);
+    await settle();
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // When: closed, the pointer leaves and comes back, and reopens it
+    // within the fade-out (a touch fires pointerleave before each click).
+    mouseClick(trigger());
+    await settle();
+    trigger().dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'touch' }));
+    vi.advanceTimersByTime(150);
+    mouseClick(trigger());
+    await settle();
+    vi.advanceTimersByTime(EXIT_MS * 2);
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(surface().querySelector('#body')).not.toBeNull();
+  });
+
+  it('As the shell, a pointer passing over a button whose popover does not open on hover leaves no timer', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { Content } = chunk(Body);
+    renderPopover(Content);
+    await settle();
+
+    // When
+    trigger().dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    trigger().dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('As a user, a second popover opening closes the first', async () => {
     // Given
     const a = chunk(Body);
@@ -552,6 +593,13 @@ describe('Popover', () => {
       drag(header, 60, 50);
       await settle();
       expect(isOpen()).toBe(false);
+    });
+
+    it('As a phone user whose tap on the header jitters a few pixels, the sheet stays open', async () => {
+      const header = await openSheet();
+      drag(header, 4, 5);
+      await settle();
+      expect(isOpen()).toBe(true);
     });
 
     it('As a phone user, a short slow swipe springs the sheet back', async () => {

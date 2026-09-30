@@ -527,6 +527,19 @@
 .popover.sheet.verification-tooltip > .popover-body {
   padding: 12px 14px;
 }
+/* In a sheet, which scrolls, a row's dropdown opens as a list under its row
+   instead of floating past the sheet's bottom edge. */
+.popover.sheet .permissions-popover-row {
+  flex-wrap: wrap;
+}
+.popover.sheet .permissions-popover-select-wrap {
+  display: contents;
+}
+.popover.sheet .permissions-popover-menu {
+  position: static;
+  flex-basis: 100%;
+  margin-top: 4px;
+}
 /* The sheet's header names it: the content's own heading would repeat it. */
 .popover.sheet .verification-tooltip-title,
 .popover.sheet .permissions-popover-header {

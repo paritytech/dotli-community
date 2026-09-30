@@ -26,8 +26,10 @@ export const EXIT_MS = 220;
 
 /** A swipe past this share of the sheet's height closes it. */
 const SWIPE_CLOSE_FRACTION = 0.3;
-/** So does one faster than this, in px/ms. */
+/** So does one faster than this, in px/ms... */
 const SWIPE_CLOSE_SPEED = 0.5;
+/** ...that went at least this far, so a tap's jitter is no flick. */
+const SWIPE_FLICK_MIN_PX = 24;
 /** How long a mouse rests on the trigger before an `openOnHover` popover shows. */
 const HOVER_SHOW_MS = 200;
 /** How long after the mouse leaves before it hides. */
@@ -252,10 +254,19 @@ export function Popover(props: PopoverProps): JSX.Element {
     }, HOVER_SHOW_MS);
   };
   const onHoverLeave = (): void => {
+    if (props.openOnHover !== true) {
+      return;
+    }
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
+      // Only a peek ends here: an opening, or a close already under way,
+      // keeps its own timing.
+      if (!untrack(peek)) {
+        return;
+      }
       setPeek(false);
       if (!untrack(popover.open)) {
+        clearTimeout(unmountTimer);
         unmountTimer = setTimeout(() => {
           setMounted(false);
         }, EXIT_MS);
@@ -414,7 +425,10 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       end: () => {
         const speed = dy / Math.max(1, performance.now() - startTime);
         surface.classList.remove('dragging');
-        if (dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION || speed > SWIPE_CLOSE_SPEED) {
+        if (
+          dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION ||
+          (dy >= SWIPE_FLICK_MIN_PX && speed > SWIPE_CLOSE_SPEED)
+        ) {
           props.close();
         }
         surface.style.transform = '';
