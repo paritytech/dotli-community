@@ -302,7 +302,7 @@ function unrefHandle(handle: ReturnType<typeof setTimeout>): void {
   (handle as unknown as { unref?: () => void }).unref?.();
 }
 
-let healthResponseSeen = false;
+let sideChannelResponseSeen = false;
 
 /**
  * Warn once per session if our reserved-id requests go unanswered.
@@ -319,7 +319,7 @@ const armSideChannelWatchdog = (() => {
     }
     armed = true;
     const watchdog = setTimeout(() => {
-      if (!healthResponseSeen) {
+      if (!sideChannelResponseSeen) {
         log.warn(
           "[dot.li chain-sync] sync side-channel not observed within 5s, loading detail will not update",
         );
@@ -439,6 +439,9 @@ export function attachChainSync(
       return;
     }
     follow.works = true;
+    // The provider holds system_health until sync completes, but lifecycle
+    // snapshots already prove the side channel is feeding the loading screen.
+    sideChannelResponseSeen = true;
     // The follow supersedes the poller: its peer counts are pushed rather
     // than sampled, so they are both fresher and cheaper.
     stopHealth();
@@ -581,7 +584,7 @@ export function attachChainSync(
   };
 
   const handleHealthResponse = (result: unknown): void => {
-    healthResponseSeen = true;
+    sideChannelResponseSeen = true;
     if (follow.works) {
       // The follow started reporting while this poll was in flight. Let it
       // own the peer count from here.
