@@ -61,6 +61,21 @@ describe('preloadWhenIdle', () => {
     expect(preload).toHaveBeenCalledTimes(1);
   });
 
+  it('As the shell, cancelling works with the idle API it scheduled on, whatever the page did to it since', () => {
+    // Given
+    const cancelIdle = vi.fn();
+    vi.stubGlobal('requestIdleCallback', () => 7);
+    vi.stubGlobal('cancelIdleCallback', cancelIdle);
+    const cancel = preloadWhenIdle({ preload: () => Promise.resolve() });
+
+    // When
+    vi.stubGlobal('cancelIdleCallback', undefined);
+    cancel();
+
+    // Then
+    expect(cancelIdle).toHaveBeenCalledWith(7);
+  });
+
   it('As the shell, a failed preload is left to the first open, and a cancelled one never runs', async () => {
     // Given
     vi.useFakeTimers();

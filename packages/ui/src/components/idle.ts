@@ -17,9 +17,11 @@ export function preloadWhenIdle(component: { preload: () => Promise<unknown> }):
   // Both or neither: an environment with only one of them (happy-dom) takes
   // the timer.
   if (typeof window.requestIdleCallback === 'function' && typeof window.cancelIdleCallback === 'function') {
+    // Kept from now: the cancel pairs with the request that scheduled it.
+    const cancel = window.cancelIdleCallback.bind(window);
     const handle = window.requestIdleCallback(run, { timeout: PRELOAD_TIMEOUT_MS });
     return () => {
-      window.cancelIdleCallback(handle);
+      cancel(handle);
     };
   }
   const timer = setTimeout(run, PRELOAD_TIMEOUT_MS);
