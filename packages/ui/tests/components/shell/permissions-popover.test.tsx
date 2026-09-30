@@ -9,17 +9,12 @@ import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../../
 import { setProductError, setProductLoaded } from '../../../src/state/product.js';
 import { recordPermissionChange } from '../../../src/state/permissions.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { pointerPressUnfocusable, renderComponent, resetStores, tabTo } from '../../helpers/solid.js';
-import {
-  oldPermissionsBackdrop,
-  oldPermissionsButton,
-  oldPermissionsPopover,
-  type OldPermissionsList,
-} from './old-permissions-markup.js';
-import { normalized } from './old-auth-markup.js';
+import { pointerPressUnfocusable, renderComponent, resetStores, tabTo, waitForContent } from '../../helpers/solid.js';
+import { oldPermissionsButton, oldPermissionsPopover, type OldPermissionsList } from './old-permissions-markup.js';
+import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { focusables } from '../../../src/components/focus.js';
-import { byId, must } from '../../support.js';
+import { byId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const LABEL = 'localhost:3000';
@@ -121,10 +116,13 @@ function isOpen(): boolean {
   return byId('permissions-popover').classList.contains('open');
 }
 
+/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('permissions-button').click();
   await settleAll();
   expect(isOpen()).toBe(true);
+  await waitForContent('permissions-popover');
+  await settleAll();
 }
 
 function select(name: string): HTMLButtonElement {
@@ -144,8 +142,28 @@ function option(label: string): HTMLButtonElement {
   );
 }
 
+/**
+ * The popover: the shared Popover's surface, holding what topbar.ts rendered
+ * while open, and nothing while closed.
+ */
 function expectPopover(opts: { open: boolean; list: OldPermissionsList }): void {
-  expect(normalized(byId('permissions-popover')).isEqualNode(normalized(oldPermissionsPopover(opts)))).toBe(true);
+  const popover = byId('permissions-popover');
+  expect(popover.getAttribute('role')).toBe('dialog');
+  expect(popover.getAttribute('aria-label')).toBe('Permissions');
+  expect(popover.classList.contains('open')).toBe(opts.open);
+  const body = query(popover, ':scope > .popover-body');
+  if (opts.open) {
+    expect(sameChildren(normalized(body), normalized(oldPermissionsPopover(opts)))).toBe(true);
+  } else {
+    expect(body.childElementCount).toBe(0);
+  }
+}
+
+/** The backdrop: the shared Popover's, open with the popover. */
+function expectBackdrop(open: boolean): void {
+  const backdrop = byId('permissions-popover-backdrop');
+  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
+  expect(backdrop.classList.contains('open')).toBe(open);
 }
 
 describe('PermissionsPopover', () => {
@@ -159,9 +177,7 @@ describe('PermissionsPopover', () => {
         normalized(oldPermissionsButton({ open: false, hasGrants: false })),
       ),
     ).toBe(true);
-    expect(
-      normalized(byId('permissions-popover-backdrop')).isEqualNode(normalized(oldPermissionsBackdrop(false))),
-    ).toBe(true);
+    expectBackdrop(false);
     expectPopover({ open: false, list: { kind: 'empty' } });
   });
 
@@ -191,9 +207,7 @@ describe('PermissionsPopover', () => {
         normalized(oldPermissionsButton({ open: true, hasGrants: true })),
       ),
     ).toBe(true);
-    expect(normalized(byId('permissions-popover-backdrop')).isEqualNode(normalized(oldPermissionsBackdrop(true)))).toBe(
-      true,
-    );
+    expectBackdrop(true);
     expect(document.activeElement).toBe(byId('permissions-popover'));
 
     // When

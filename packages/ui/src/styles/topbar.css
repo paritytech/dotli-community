@@ -12,9 +12,7 @@
 @media (prefers-reduced-motion: reduce) {
   .more-popover,
   .mode-popover,
-  .permissions-popover,
-  .mode-popover-backdrop,
-  .permissions-popover-backdrop {
+  .mode-popover-backdrop {
     transition: none !important;
   }
 }
@@ -460,7 +458,6 @@
   }
   .more-popover,
   .mode-popover,
-  .permissions-popover,
   .permissions-popover-menu {
     backdrop-filter: blur(24px) saturate(180%);
   }
@@ -1201,67 +1198,14 @@
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 
-/* Permissions Popover */
-/* Backdrop mirrors `.mode-popover-backdrop`. Blocks clicks under the
-   permissions popover and dismisses it on click. */
-.permissions-popover-backdrop {
-  display: none;
-  position: fixed;
-  top: var(--topbar-height);
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1400;
-  opacity: 0;
-  transition:
-    opacity 0.18s ease-out,
-    display 0.18s allow-discrete;
-}
-.permissions-popover-backdrop.open {
-  display: block;
-  opacity: 1;
-}
-@starting-style {
-  .permissions-popover-backdrop.open {
-    opacity: 0;
-  }
-}
+/* Permissions Popover: a Popover with a backdrop (popover.css), with its own
+   width. */
 .permissions-popover {
-  display: none;
-  position: fixed;
-  /* Matches `.mode-popover`. Overlaps the topbar bottom so the popover
-     visually attaches to its trigger button. */
-  top: var(--topbar-height);
-  right: calc(12px + var(--safe-right));
   width: 340px;
   background: rgba(20, 20, 20, 0.82);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1500;
   /* `overflow: visible` lets the dropdown menus escape the popover's
      bounds; rows handle their own clipping via hover background. */
   overflow: visible;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
-}
-.permissions-popover.open {
-  display: block;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .permissions-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
 }
 .permissions-popover-header {
   padding: 10px 14px 6px;

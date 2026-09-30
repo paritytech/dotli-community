@@ -16,7 +16,7 @@ import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
-import { pointerPress, renderComponent, settle } from '../../helpers/solid.js';
+import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
@@ -81,6 +81,9 @@ describe('Topbar actions island', () => {
       expect(byId('permissions-popover').classList.contains('open')).toBe(true);
       expect(byId('permissions-popover-backdrop').classList.contains('open')).toBe(true);
       expect(document.activeElement).toBe(byId('permissions-popover'));
+      // The list is the popover's body, its own chunk.
+      await waitForContent('permissions-popover');
+      await settle();
       expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
     } finally {
       unregister();

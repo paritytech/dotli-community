@@ -77,6 +77,11 @@ interface PopoverContextValue {
   onEscape: (handler: () => boolean) => void;
   /** Whether this opening is a bottom sheet. */
   sheet: Accessor<boolean>;
+  /**
+   * Whether the popover is open: false already while the content stays for
+   * the exit transition, so work that belongs to an open popover can stop.
+   */
+  open: Accessor<boolean>;
 }
 
 const PopoverContext = createContext<PopoverContextValue | null>(null);
@@ -276,6 +281,7 @@ export function Popover(props: PopoverProps): JSX.Element {
       });
     },
     sheet,
+    open: popover.open,
   };
 
   return (
