@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { sentryVitePlugin } from "@sentry/vite-plugin";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, build as viteBuild, type Plugin } from "vite";
 import { readFileSync, readdirSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { resolve } from "node:path";
@@ -11,6 +11,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { prodNoAnalyticsAliases } from "../../packages/metrics/src/prod-no-analytics-aliases";
 import { runtimeNetworkConfigScript } from "../../packages/config/src/runtime-network-config-plugin";
 import { socialMetaTags } from "../../packages/config/src/social-meta-plugin";
+import { SANDBOX_SCHEMA_VERSION } from "../../packages/config/src/host-sandbox-contract";
 import {
   handleNodeIdentityProxy,
   IDENTITY_PROXY_PREFIX,
@@ -34,6 +35,40 @@ if (!process.env.VITE_COMMIT_SHA) {
 }
 
 const OUT_DIR = "dist";
+const HOST_UPDATE_SCRIPT = `assets/host-update-${process.env.VITE_COMMIT_SHA ?? "dev"}.js`;
+
+function buildHostUpdateWorker(): Plugin {
+  return {
+    name: "build-host-update-worker",
+    apply: "build",
+    async writeBundle() {
+      // Finish before VitePWA's closeBundle generates the importing worker.
+      // A release-specific URL also avoids stale HTTP-cached importScripts.
+      await viteBuild({
+        configFile: false,
+        define: {
+          __HOST_SANDBOX_SCHEMA_VERSION__: JSON.stringify(
+            SANDBOX_SCHEMA_VERSION,
+          ),
+        },
+        build: {
+          emptyOutDir: false,
+          outDir: OUT_DIR,
+          lib: {
+            entry: resolve(import.meta.dirname, "src/host-update.ts"),
+            formats: ["iife"],
+            name: "DotliHostUpdate",
+            fileName: () => HOST_UPDATE_SCRIPT,
+          },
+          codeSplitting: false,
+          sourcemap: false,
+          minify: true,
+        },
+        logLevel: "warn",
+      });
+    },
+  };
+}
 
 /**
  * Walk every workspace member's `package.json` and collect its direct
@@ -288,11 +323,11 @@ export default defineConfig({
     preloadCriticalAssets(),
     previewCoepHeaders(),
     sentry(),
-    // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
-    // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
-    // cross-origin and outside this SW's reach by design. `registerType:
-    // "prompt"` defers update activation to the user via workbox-window in
-    // src/pwa.ts.
+    buildHostUpdateWorker(),
+    // Compatible host sessions keep prompt-style updates. The imported worker
+    // upgrade coordinator replaces legacy/incompatible cached shells without
+    // touching wallet or app storage. Cross-origin app/protocol workers remain
+    // outside the host worker's scope.
     VitePWA({
       injectRegister: false,
       registerType: "prompt",
@@ -323,11 +358,13 @@ export default defineConfig({
         // installed shell download it after each release.
         globIgnores: [
           "**/truapi_provider_bg-*.wasm",
+          "**/host-update-*.js",
           "**/truapi_verifiable_bg-*.wasm",
         ],
         cleanupOutdatedCaches: true,
-        // skipWaiting/clientsClaim stay false: prompt-style updates require
-        // the waiting SW to sit idle until the user opts in.
+        importScripts: [HOST_UPDATE_SCRIPT],
+        // The upgrade coordinator overrides these only for outdated shells;
+        // matching-contract sessions still opt into an ordinary update.
         skipWaiting: false,
         clientsClaim: false,
         maximumFileSizeToCacheInBytes: 32 * 1024 * 1024,

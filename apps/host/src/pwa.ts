@@ -16,11 +16,21 @@
 import { Workbox } from "workbox-window";
 import { showNotification } from "@dotli/ui/notification";
 import { log } from "@dotli/shared/log";
+import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 if ("serviceWorker" in navigator) {
   const wb = new Workbox("/host-sw.js");
+  navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
+    const data = event.data as { type?: unknown } | null;
+    const reply = event.ports.at(0);
+    if (data?.type !== "dotli:host-contract-version" || reply === undefined) {
+      return;
+    }
+    reply.postMessage({ version: SANDBOX_SCHEMA_VERSION });
+    reply.close();
+  });
   let hostUpdateRequired = false;
   let applyingUpdate = false;
 

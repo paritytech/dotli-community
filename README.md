@@ -184,6 +184,16 @@ On repeat visits, content renders instantly from the cache while it is resolved 
 
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification with a **Reload** action rather than swapping content silently.
 
+The host PWA caches its shell separately from the cross-origin sandbox. On a
+worker update, open host pages report their sandbox-contract version. Matching
+hosts keep the normal update prompt. Legacy, incompatible, or nonresponsive
+hosts are reloaded at the same URL after the new shell finishes installing,
+without clearing wallet/app storage or product caches. This lets an already
+cached host recover even when it cannot understand the newer sandbox's update
+request; the sandbox's strict contract validation remains unchanged.
+As with any host reload, in-memory app state and credentialless iframe storage
+restart; persistent host storage is retained.
+
 ## TrUAPI bridge
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
