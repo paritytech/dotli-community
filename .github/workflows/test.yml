@@ -171,11 +171,21 @@ jobs:
           path: .signing-host-src
           persist-credentials: false
 
+      - name: Resolve signing-host codegen toolchain
+        id: signing-host-codegen
+        run: |
+          # Older feature SDK sources use nightly; refreshed sources declare a pin.
+          toolchain=nightly
+          if [[ -f .signing-host-src/nightly-toolchain ]]; then
+            read -r toolchain < .signing-host-src/nightly-toolchain
+          fi
+          echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
+
       # Match host-rust-core's codegen toolchains; generated Rust is not tracked.
       - name: Setup nightly Rust for codegen
         uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
-          toolchain: nightly
+          toolchain: ${{ steps.signing-host-codegen.outputs.toolchain }}
           components: rustfmt
 
       - name: Setup stable Rust
