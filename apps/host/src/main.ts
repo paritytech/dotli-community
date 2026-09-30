@@ -981,6 +981,7 @@ async function main(): Promise<void> {
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
     log.warn(`[dot.li perf] Preview route: ${host} (${elapsed(T0)})`);
+    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
 
@@ -1018,6 +1019,7 @@ async function main(): Promise<void> {
   if (label === null && localhostUrl !== null) {
     const host = new URL(localhostUrl).host;
     log.warn(`[dot.li perf] Localhost proxy: ${host} (${elapsed(T0)})`);
+    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
 
@@ -1072,6 +1074,9 @@ async function main(): Promise<void> {
   bindTopbarAutoHide();
 
   log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
+  // Before resolution starts, so a login clicked while the product resolves
+  // boots the product's core rather than a second one.
+  bridgeModule.setPageProduct({ label });
 
   initScheduledNotifications({ label });
 
