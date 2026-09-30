@@ -410,4 +410,117 @@ describe('Popover', () => {
     // Then
     expect(isOpen()).toBe(false);
   });
+  it('As a phone user, a popover opens as a modal bottom sheet with a title and a close button', async () => {
+    // Given
+    stubViewport(true);
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content);
+    await settle();
+
+    // When
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // Then
+    expect(surface().classList.contains('sheet')).toBe(true);
+    expect(surface().getAttribute('aria-modal')).toBe('true');
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
+    expect(byId('test-popover-backdrop').classList.contains('open')).toBe(true);
+    const header = must(surface().querySelector<HTMLElement>(':scope > .popover-sheet-header'), 'sheet header');
+    expect(header.querySelector('.popover-sheet-title')?.textContent).toBe('Test');
+
+    // When
+    mouseClick(must(header.querySelector<HTMLElement>('.popover-sheet-close'), 'close'));
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
+  });
+
+  it('As a phone user, a resize past the breakpoint leaves the open sheet a sheet, and the next opening follows the viewport', async () => {
+    // Given
+    stubViewport(true);
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content);
+    await settle();
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // When
+    stubViewport(false);
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+
+    // Then
+    expect(surface().classList.contains('sheet')).toBe(true);
+
+    // When
+    mouseClick(surface().querySelector<HTMLElement>('.popover-sheet-close') ?? surface());
+    await settle();
+    mouseClick(trigger());
+    await settle();
+
+    // Then
+    expect(surface().classList.contains('sheet')).toBe(false);
+    expect(surface().querySelector('.popover-sheet-header')).toBeNull();
+  });
+
+  describe('swipe', () => {
+    /** A drag on `el` from y 100 by `dy` pixels over `ms` milliseconds. */
+    function drag(el: HTMLElement, dy: number, ms: number): void {
+      const now = vi.spyOn(performance, 'now');
+      now.mockReturnValue(1000);
+      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientY: 100, button: 0 }));
+      now.mockReturnValue(1000 + ms);
+      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
+      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
+      now.mockRestore();
+    }
+
+    async function openSheet(): Promise<HTMLElement> {
+      stubViewport(true);
+      const { Content, release } = chunk(Body);
+      release();
+      renderPopover(Content);
+      await settle();
+      mouseClick(trigger());
+      await waitForContent('test-popover');
+      vi.spyOn(surface(), 'offsetHeight', 'get').mockReturnValue(400);
+      return must(surface().querySelector<HTMLElement>('.popover-sheet-header'), 'header');
+    }
+
+    it('As a phone user, a slow swipe down past 30% of the sheet closes it', async () => {
+      const header = await openSheet();
+      drag(header, 130, 1000);
+      await settle();
+      expect(isOpen()).toBe(false);
+    });
+
+    it('As a phone user, a quick flick down closes the sheet', async () => {
+      const header = await openSheet();
+      drag(header, 60, 50);
+      await settle();
+      expect(isOpen()).toBe(false);
+    });
+
+    it('As a phone user, a short slow swipe springs the sheet back', async () => {
+      const header = await openSheet();
+      drag(header, 60, 1000);
+      await settle();
+      expect(isOpen()).toBe(true);
+      expect(surface().style.transform).toBe('');
+      expect(surface().classList.contains('dragging')).toBe(false);
+    });
+
+    it('As a phone user scrolling the sheet, a drag on its content neither moves nor closes it', async () => {
+      await openSheet();
+      drag(must(surface().querySelector<HTMLElement>('#body'), '#body'), 300, 1000);
+      await settle();
+      expect(isOpen()).toBe(true);
+      expect(surface().style.transform).toBe('');
+    });
+  });
 });

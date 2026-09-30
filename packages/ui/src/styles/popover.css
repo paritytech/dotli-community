@@ -93,6 +93,91 @@
   }
 }
 
+/* On phones (SHEET_QUERY, max-width 560px, read as each opening starts) a
+   popover is a modal bottom sheet: at the bottom edge, full width, at most
+   85% of the visible height, sliding up. */
+.popover-backdrop.sheet {
+  top: 0;
+}
+.popover.sheet {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(var(--content-height) * 0.85);
+  overflow-y: auto;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: var(--safe-bottom);
+  opacity: 1;
+  transform: translateY(100%);
+  transform-origin: bottom center;
+  transition:
+    transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    display 0.28s allow-discrete;
+}
+.popover.sheet.open {
+  transform: translateY(0);
+}
+@starting-style {
+  .popover.sheet.open {
+    opacity: 1;
+    transform: translateY(100%);
+  }
+}
+/* The sheet follows the pointer while dragged. */
+.popover.sheet.dragging {
+  transition: none;
+}
+.popover-sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 18px 14px 12px;
+  background: rgba(20, 20, 20, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  touch-action: none;
+  cursor: grab;
+}
+.popover-sheet-grabber {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.popover-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.popover-sheet-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.popover-sheet-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .popover,
   .popover-backdrop {

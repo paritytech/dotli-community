@@ -16,11 +16,17 @@ import {
 } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
+import { startDrag } from '../drag.js';
 import { preloadWhenIdle } from '../idle.js';
 import { createPopover, isSheetViewport } from './create-popover.js';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
+
+/** A swipe past this share of the sheet's height closes it. */
+const SWIPE_CLOSE_FRACTION = 0.3;
+/** So does one faster than this, in px/ms. */
+const SWIPE_CLOSE_SPEED = 0.5;
 
 /** What the trigger carries: spread it on the trigger button. */
 export interface PopoverTrigger {
@@ -207,8 +213,12 @@ export function Popover(props: PopoverProps): JSX.Element {
     <>
       {props.trigger(trigger)}
       <Portal>
-        <Show when={props.backdrop === true}>
-          <div onClick={close} class={['popover-backdrop', { open: popover.open() }]} id={`${props.id}-backdrop`} />
+        <Show when={props.backdrop === true || sheet()}>
+          <div
+            onClick={close}
+            class={['popover-backdrop', { open: popover.open(), sheet: sheet() }]}
+            id={`${props.id}-backdrop`}
+          />
         </Show>
         <div
           ref={el => {
@@ -221,6 +231,9 @@ export function Popover(props: PopoverProps): JSX.Element {
           aria-modal={popover.open() && sheet() ? 'true' : undefined}
           tabindex="-1"
         >
+          <Show when={sheet()}>
+            <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />
+          </Show>
           <div class="popover-body">
             <Show when={mounted()}>
               <PopoverContext value={context}>
@@ -252,4 +265,68 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
     },
   );
   return null;
+}
+
+/**
+ * The sheet's header: a grabber, the title and a close button. A drag down
+ * that starts on it moves the sheet with the pointer; released past 30% of
+ * the sheet's height, or in a flick, it closes the sheet, and the sheet
+ * springs back otherwise.
+ */
+function SheetHeader(props: { title: string; surface: () => HTMLElement | undefined; close: () => void }): JSX.Element {
+  let header: HTMLDivElement | undefined;
+  let stop: (() => void) | undefined;
+  onCleanup(() => stop?.());
+
+  const onPointerDown = (down: PointerEvent): void => {
+    const surface = props.surface();
+    if (header === undefined || surface === undefined || down.button !== 0) {
+      return;
+    }
+    // Not from the close button: its own click closes.
+    if ((down.target as Element).closest('.popover-sheet-close') !== null) {
+      return;
+    }
+    const startY = down.clientY;
+    const startTime = performance.now();
+    let dy = 0;
+    surface.classList.add('dragging');
+    stop = startDrag(header, down, {
+      move: ev => {
+        dy = Math.max(0, ev.clientY - startY);
+        surface.style.transform = `translateY(${String(dy)}px)`;
+      },
+      end: () => {
+        const speed = dy / Math.max(1, performance.now() - startTime);
+        surface.classList.remove('dragging');
+        if (dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION || speed > SWIPE_CLOSE_SPEED) {
+          props.close();
+        }
+        surface.style.transform = '';
+      },
+    });
+  };
+
+  return (
+    <div
+      ref={el => {
+        header = el;
+      }}
+      class="popover-sheet-header"
+      onPointerDown={onPointerDown}
+    >
+      <div class="popover-sheet-grabber" aria-hidden="true" />
+      <span class="popover-sheet-title">{props.title}</span>
+      <button
+        type="button"
+        class="popover-sheet-close"
+        aria-label={`Close ${props.title}`}
+        onClick={() => {
+          props.close();
+        }}
+      >
+        ✕
+      </button>
+    </div>
+  );
 }
