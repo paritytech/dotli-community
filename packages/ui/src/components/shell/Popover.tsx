@@ -115,6 +115,8 @@ export function Popover(props: PopoverProps): JSX.Element {
   const [sheet, setSheet] = createSignal(false);
   /** The content is in the surface: from an opening to the end of its close. */
   const [mounted, setMounted] = createSignal(false);
+  /** Counts the openings: each renders the content afresh. */
+  const [opening, setOpening] = createSignal(0);
   /** Shown while a mouse rests on the trigger (`openOnHover`), not opened. */
   const [peek, setPeek] = createSignal(false);
   /** The anchored surface's place under its trigger (`anchor="trigger"`). */
@@ -149,6 +151,11 @@ export function Popover(props: PopoverProps): JSX.Element {
     setSheet(isSheetViewport());
     if (props.anchor === 'trigger') {
       measure();
+    }
+    // A peek's content is this opening's: a click on a peeking explainer
+    // keeps it.
+    if (!untrack(peek)) {
+      setOpening(n => n + 1);
     }
     setMounted(true);
     popover.setOpen(true);
@@ -226,6 +233,9 @@ export function Popover(props: PopoverProps): JSX.Element {
         setSheet(false);
         if (props.anchor === 'trigger') {
           measure();
+        }
+        if (!untrack(mounted)) {
+          setOpening(n => n + 1);
         }
         setMounted(true);
         setPeek(true);
@@ -323,15 +333,20 @@ export function Popover(props: PopoverProps): JSX.Element {
             <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />
           </Show>
           <div class="popover-body">
-            <Show when={mounted()}>
-              <PopoverContext value={context}>
-                <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
-                  <Loading fallback={<div class="popover-loading" aria-hidden="true" />}>
-                    <Content />
-                    <FocusWhenLoaded surface={() => surfaceEl} />
-                  </Loading>
-                </Errored>
-              </PopoverContext>
+            {/* Keyed on the opening, and taking it as a parameter (Show calls
+                only a child that declares one), so each opening mounts the
+                content afresh, a reopening during the fade-out included. */}
+            <Show when={mounted() ? opening() : 0} keyed>
+              {(_opening: number) => (
+                <PopoverContext value={context}>
+                  <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
+                    <Loading fallback={<div class="popover-loading" aria-hidden="true" />}>
+                      <Content />
+                      <FocusWhenLoaded surface={() => surfaceEl} />
+                    </Loading>
+                  </Errored>
+                </PopoverContext>
+              )}
             </Show>
           </div>
         </div>

@@ -294,7 +294,7 @@ describe('Popover', () => {
     expect(second).not.toBe(first);
   });
 
-  it('As a user who reopens it while it fades out, the content stays', async () => {
+  it('As a user who reopens it while it fades out, the content shows afresh and stays', async () => {
     // Given
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     const { Content, release } = chunk(Body);
@@ -313,9 +313,10 @@ describe('Popover', () => {
     vi.advanceTimersByTime(EXIT_MS);
     await settle();
 
-    // Then
+    // Then: the opening's own content, still there once the old fade-out ended.
     expect(isOpen()).toBe(true);
-    expect(body.isConnected).toBe(true);
+    expect(body.isConnected).toBe(false);
+    expect(surface().querySelector('#body')).not.toBeNull();
   });
 
   it('As a user, a second popover opening closes the first', async () => {
