@@ -180,6 +180,9 @@ describe('landing page island', () => {
 
   it('As a visitor, an error page disposes the landing page, typing placeholder and all', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    // The account popover's idle preload is not one of the page's timers.
+    vi.stubGlobal('requestIdleCallback', () => 1);
+    vi.stubGlobal('cancelIdleCallback', () => undefined);
     try {
       // Given
       await mountIsland();

@@ -60,6 +60,11 @@
     backdrop-filter: blur(24px) saturate(180%);
   }
 }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .popover {
+    background: rgba(20, 20, 20, 0.97);
+  }
+}
 .popover.open {
   display: block;
   opacity: 1;

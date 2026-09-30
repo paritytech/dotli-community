@@ -348,6 +348,9 @@ describe('landing page', () => {
   it('As a visitor who prefers reduced motion, the placeholder shows one name and stays still', async () => {
     // Given
     reducedMotion = true;
+    // The account popover's idle preload is not one of the page's timers.
+    vi.stubGlobal('requestIdleCallback', () => 1);
+    vi.stubGlobal('cancelIdleCallback', () => undefined);
 
     // When
     mount();

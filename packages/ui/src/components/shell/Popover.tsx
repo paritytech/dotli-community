@@ -17,6 +17,7 @@ import {
 import { Portal, type JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 import { startDrag } from '../drag.js';
+import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { createPopover, isSheetViewport } from './create-popover.js';
 
@@ -182,7 +183,8 @@ export function Popover(props: PopoverProps): JSX.Element {
 
   // The content stays for the exit transition, then goes.
   createEffect(popover.open, open => {
-    if (open) {
+    // Nothing to take away while nothing is mounted (a popover never opened).
+    if (open || !untrack(mounted)) {
       return;
     }
     clearTimeout(unmountTimer);
@@ -320,6 +322,7 @@ export function Popover(props: PopoverProps): JSX.Element {
                 <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
                   <Loading fallback={<div class="popover-loading" aria-hidden="true" />}>
                     <Content />
+                    <FocusWhenLoaded surface={() => surfaceEl} />
                   </Loading>
                 </Errored>
               </PopoverContext>
@@ -409,4 +412,20 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       </button>
     </div>
   );
+}
+
+/**
+ * The popover opened before its content was in, and createPopover focused
+ * the surface itself: once the content renders, focus moves into it as an
+ * opening with the content already there would have. Focus the user moved
+ * elsewhere meanwhile stays.
+ */
+function FocusWhenLoaded(props: { surface: () => HTMLElement | undefined }): JSX.Element {
+  onSettled(() => {
+    const surface = props.surface();
+    if (surface !== undefined && document.activeElement === surface) {
+      focusInto(surface);
+    }
+  });
+  return null;
 }

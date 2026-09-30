@@ -11,7 +11,6 @@
    The transform timing function overshoots slightly for a subtle bounce. */
 @media (prefers-reduced-motion: reduce) {
   .more-popover,
-  .user-popover,
   .mode-popover,
   .permissions-popover,
   .mode-popover-backdrop,
@@ -460,7 +459,6 @@
     backdrop-filter: blur(20px) saturate(180%);
   }
   .more-popover,
-  .user-popover,
   .mode-popover,
   .permissions-popover,
   .permissions-popover-menu {
@@ -647,38 +645,12 @@
   height: 12px;
 }
 
-/* User Popover */
+/* User Popover: a Popover (popover.css), with its own place and width. */
 .user-popover {
-  display: none;
-  position: fixed;
   top: calc(var(--topbar-height) + 4px);
-  right: calc(12px + var(--safe-right));
   width: 220px;
   background: rgba(18, 18, 18, 0.92);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1500;
   overflow: hidden;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
-}
-.user-popover.open {
-  display: block;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .user-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
 }
 .user-popover-name {
   padding: 12px 14px 8px;

@@ -125,6 +125,40 @@ describe('Popover', () => {
     expect(body.querySelector('#body')).not.toBeNull();
   });
 
+  it('As a keyboard user, focus moves to the content once it has loaded, not left on the empty surface', async () => {
+    // Given
+    const { Content, release } = chunk(Body);
+    renderPopover(Content);
+    await settle();
+
+    // When: opened before the chunk is in.
+    mouseClick(trigger());
+    await settle();
+    expect(document.activeElement).toBe(surface());
+    release();
+    await waitForContent('test-popover');
+
+    // Then
+    expect(document.activeElement).toBe(byId('inside'));
+  });
+
+  it('As a user who moved focus while the content loaded, focus stays where I put it', async () => {
+    // Given
+    const { Content, release } = chunk(Body);
+    renderPopover(Content);
+    await settle();
+    mouseClick(trigger());
+    await settle();
+
+    // When
+    trigger().focus();
+    release();
+    await waitForContent('test-popover');
+
+    // Then
+    expect(document.activeElement).toBe(trigger());
+  });
+
   it('As a user, Escape, a press outside and a second click on the trigger each close it', async () => {
     // Given
     const { Content, release } = chunk(Body);
@@ -308,6 +342,19 @@ describe('Popover', () => {
     // Then
     expect(byId('first').classList.contains('open')).toBe(false);
     expect(byId('second').classList.contains('open')).toBe(true);
+  });
+
+  it('As the shell, a popover that was never opened keeps no timer running', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const { Content } = chunk(Body);
+
+    // When
+    renderPopover(Content);
+    await settle();
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('As the shell, the content chunk preloads when the browser is idle', async () => {
