@@ -6,13 +6,11 @@ import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 import { setChatWidth } from '../../product-frame-layout.js';
 import { chatButtonVisible, chatPanelStore, setChatPanelElement, setChatPanelOpen } from '../../state/chat-panel.js';
+import { preloadWhenIdle } from '../idle.js';
 import { useStore } from '../use-store.js';
 
 /** The panel's contents, their own chunk. */
 const ChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
-
-/** How long an idle prefetch waits for the browser to go idle. */
-const PREFETCH_TIMEOUT_MS = 2000;
 
 /**
  * The docked product-chat panel (`aside#chat-panel`), an island of the host
@@ -37,20 +35,7 @@ export function ChatDock(): JSX.Element {
   // Rendered once the panel first opens, and kept while it is closed.
   const [opened, setOpened] = createSignal(false);
 
-  createEffect(buttonVisible, visible => {
-    if (!visible) {
-      return;
-    }
-    const run = (): void => {
-      // A failed preload is left to the first open, which loads it again.
-      ChatPanel.preload().catch(() => undefined);
-    };
-    if (typeof window.requestIdleCallback === 'function') {
-      window.requestIdleCallback(run, { timeout: PREFETCH_TIMEOUT_MS });
-    } else {
-      setTimeout(run, PREFETCH_TIMEOUT_MS);
-    }
-  });
+  createEffect(buttonVisible, visible => (visible ? preloadWhenIdle(ChatPanel) : undefined));
   createEffect(open, isOpen => {
     if (isOpen) {
       setOpened(true);
