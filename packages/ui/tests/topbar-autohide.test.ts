@@ -387,7 +387,7 @@ describe('topbar auto-hide reveal', () => {
 });
 
 describe('topbar auto-hide motion and layout', () => {
-  it('As a dApp user, revealing the bar shifts the app below it without resizing it', async () => {
+  it('As a dApp user, revealing the bar slides the app down with it, then fits the app below it so its bottom stays reachable', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
@@ -400,14 +400,45 @@ describe('topbar auto-hide motion and layout', () => {
     // When
     focusElement(byId('topbar-home'));
 
-    // Then the layout box is untouched (no relayout) and a transform moves
-    // the frame under the bar, so the app's top content is never covered
+    // Then: while the bar slides in, a transform moves the frame with it, so
+    // the app's top is never covered
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe(hiddenTop);
     expect(appFrame().style.height).toBe(hiddenHeight);
     expect(hiddenTop).toBe('0px');
     expect(hiddenHeight).toBe('100vh');
     expect(appFrame().style.transform).toBe('translateY(calc(var(--topbar-height, 56px) - var(--safe-top, 0px)))');
+
+    // When: the slide is over
+    advance(300);
+
+    // Then: the frame sits below the bar at its size, nothing off-screen
+    expect(appFrame().style.top).toBe('56px');
+    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
+    expect(appFrame().style.transform).toBe('');
+  });
+
+  it('As a dApp user, the bar hiding again slides the app back up from where it sits', async () => {
+    // Given: revealed and settled below the bar
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    focusElement(byId('topbar-home'));
+    advance(300);
+    expect(appFrame().style.top).toBe('56px');
+
+    // When: focus leaves the bar, and the hide delay passes
+    focusElement(byId('toast'));
+    advance(0);
+    advance(HIDE_DELAY_MS);
+
+    // Then: the full box again, sliding up with the bar
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+    expect(appFrame().style.transform).toBe('translateY(0)');
+    expect(appFrame().style.transition).toContain('transform');
   });
 
   it('As a reduced-motion user, the app frame follows the bar without a slide', async () => {
