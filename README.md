@@ -251,6 +251,8 @@ This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packag
 from the unified host-rust-core runtime. `vendor/truapi-host.lock.json` records
 the source revisions, archive hashes, and signing-host WASM digest. The browser
 wallet artifact enables `wasm-signing-host`, without `test-host`.
+After changing these vendored packages, run `bun install --frozen-lockfile --force`
+to refresh Bun's cached local-package copies even when their versions are unchanged.
 To iterate against a local truapi checkout instead, run:
 
 ```bash

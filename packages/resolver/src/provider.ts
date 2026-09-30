@@ -295,7 +295,8 @@ async function resumeFromStore(
  *
  * papi providers are object-wire. The truapi connection is a raw string pipe,
  * so messages are stringified on send and parsed on receipt. Messages sent
- * before the async connect resolves are queued and flushed in order.
+ * before the async connect resolves are queued and flushed in order. Once
+ * connected, the provider owns sync-aware buffering; do not wait for ready here.
  */
 export function createChainProvider(
   genesisHash: string,
@@ -353,8 +354,8 @@ export function createChainProvider(
           const response = await candidate.nextResponse();
           if (response === undefined) {
             // Only `disconnect()` makes this an orderly end. Otherwise the
-            // transport died or overflowed its send budget, and no further
-            // response will ever arrive on this chain.
+            // transport died, and no further response will arrive. Queue-budget
+            // refusals are JSON-RPC errors, handled through the normal pipe.
             if (!isClosed()) {
               markFatal(`chain ${key} stopped responding`);
             }
