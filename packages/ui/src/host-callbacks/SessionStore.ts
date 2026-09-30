@@ -426,6 +426,7 @@ export function createSessionStoreAdapters(custodyLease?: string): CoreStorage {
       case "DeviceEncryptionKey":
       case "ProfileDisclosure":
       case "ProfileReferencesReceived":
+      case "ProfilePersonalReferencesReceived":
         return encoded;
       case "AuthSession":
       case "PairingDeviceIdentity":
@@ -606,6 +607,11 @@ function coreLocalStorageKey(key: CoreStorageKey): string {
       return `${CORE_LOCAL_STORAGE_PREFIX}profile-references-received:${hexNoPrefix(
         encodeCoreStorageKey(key),
       )}`;
+    // Personal grants are wallet-wide, per chain, independent of any product.
+    case "ProfilePersonalReferencesReceived":
+      return `${CORE_LOCAL_STORAGE_PREFIX}profile-personal-references-received:${hexNoPrefix(
+        encodeCoreStorageKey(key),
+      )}`;
     case "MainPurseCoinage":
     case "NativeChatDevice":
     case "NativeChatFileChunk":
@@ -622,7 +628,8 @@ function storesSecretMaterial(key: CoreStorageKey): boolean {
     key.tag === "DeviceEncryptionKey" ||
     // Bearer capabilities: whoever reads one can open the profile it names.
     key.tag === "ProfileDisclosure" ||
-    key.tag === "ProfileReferencesReceived"
+    key.tag === "ProfileReferencesReceived" ||
+    key.tag === "ProfilePersonalReferencesReceived"
   );
 }
 
