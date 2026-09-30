@@ -140,8 +140,8 @@ function readPolkadotApiVersion(): string {
  *   statically, so the browser fetches them in parallel rather than one
  *   import level at a time. The islands load as Astro loads them: each
  *   island element imports its component and renderer when it hydrates.
- * - On subdomain pages, a script that preloads the critical lazy chunks
- *   (resolve, fetch, render) and the metadata asset.
+ * - On subdomain pages, a script that preloads the name resolution chunk
+ *   (`resolve`), the first lazy chunk a product load imports.
  *
  * It rewrites index.html, so it runs before astroPwa, whose precache
  * manifest records the page's hash.
@@ -150,7 +150,7 @@ function pagePreloads(): AstroIntegration {
   let base = '/';
   /** Each client chunk's static imports, by file name. */
   const imports = new Map<string, readonly string[]>();
-  /** The client chunks' and assets' file names, by the name they were built from. */
+  /** The client chunks' file names, by chunk name. */
   const byName = new Map<string, string>();
   const graph: Plugin = {
     name: 'page-preloads:graph',
@@ -160,10 +160,6 @@ function pagePreloads(): AstroIntegration {
         if (output.type === 'chunk') {
           imports.set(output.fileName, output.imports);
           byName.set(output.name, output.fileName);
-        } else {
-          for (const name of output.names) {
-            byName.set(name, output.fileName);
-          }
         }
       }
     },
@@ -200,35 +196,18 @@ function pagePreloads(): AstroIntegration {
         }
         const links = [...preload].map(file => `<link rel="modulepreload" crossorigin href="${base}${file}">`).join('');
 
-        const chunks = ['resolve', 'fetch', 'render']
-          .map(name => byName.get(name))
-          .filter((c): c is string => c !== undefined);
-        let critical = '';
-        if (chunks.length > 0) {
-          const metadataAsset = [...byName].find(([name]) => /^ah[.-].*\.scale$/.test(name))?.[1];
-          const fetchPreloads = [metadataAsset]
-            .filter((a): a is string => a !== undefined)
-            .map(
-              a =>
-                `l=document.createElement("link");l.rel="preload";l.as="fetch";l.crossOrigin="anonymous";l.href="${base}${a}";document.head.appendChild(l);`,
-            )
-            .join('');
-          const preloadStatements = chunks
-            .map(
-              c =>
-                `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${c}";document.head.appendChild(l);`,
-            )
-            .join('');
-          critical = `<script>${[
-            '(function(){',
-            'var h=location.hostname,l;',
-            'if(h==="dot.li"||h==="localhost")return;',
-            'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
-            fetchPreloads,
-            preloadStatements,
-            '})()',
-          ].join('')}</script>`;
-        }
+        const resolveChunk = byName.get('resolve');
+        const critical =
+          resolveChunk === undefined
+            ? ''
+            : `<script>${[
+                '(function(){',
+                'var h=location.hostname,l;',
+                'if(h==="dot.li"||h==="localhost")return;',
+                'if(!h.endsWith(".dot.li")&&!h.endsWith(".localhost"))return;',
+                `l=document.createElement("link");l.rel="modulepreload";l.href="${base}${resolveChunk}";document.head.appendChild(l);`,
+                '})()',
+              ].join('')}</script>`;
         html = html.replace('</head>', `${links}${critical}</head>`);
         await writeFile(page, html);
       },

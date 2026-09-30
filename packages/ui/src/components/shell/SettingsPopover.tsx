@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, For, Show, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { BACKEND_LABELS, type Backend, NETWORK_NAME_TO_SERVICES_CONFIG, type Network } from '@dotli/config';
 
@@ -318,6 +318,10 @@ export function SettingsPopover(): JSX.Element {
       setSettingsOpen(true);
     }
   };
+  // Gone with the panel: a later openSettings() opens it again.
+  onCleanup(() => {
+    setSettingsOpen(false);
+  });
   // openSettings() opens the panel, as a click on the closed button would.
   createEffect(
     useStore(topbarStore, state => state.settingsOpen),
