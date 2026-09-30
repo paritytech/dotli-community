@@ -44,17 +44,17 @@ const PARKED_PHASES: LoadingPhase[] = [
 ];
 
 function installLoadingDom(): void {
+  // As the host page paints it: the loading screen beside `#app`.
   document.body.innerHTML = `
-    <div id="app">
-      <div class="loading" id="app-loading">
-        <div class="loading-progress" id="loading-progress">
-          <div class="loading-progress-fill" id="loading-progress-fill"></div>
-          <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
-        </div>
-        <p id="status"></p>
-        <p class="sr-only" id="status-sr"></p>
+    <div class="loading" id="app-loading">
+      <div class="loading-progress" id="loading-progress">
+        <div class="loading-progress-fill" id="loading-progress-fill"></div>
+        <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
       </div>
-    </div>`;
+      <p id="status"></p>
+      <p class="sr-only" id="status-sr"></p>
+    </div>
+    <div id="app"></div>`;
 }
 
 describe('The loading screen is a tracked app root', () => {
@@ -164,15 +164,13 @@ describe('The loading screen is a tracked app root', () => {
         u.showNoContentError('nothing');
       },
     ],
-  ])('As a visitor, %s shown before the load starts removes the static screen', (_name, show) => {
+  ])('As a visitor, %s shown before the load starts takes the static screen down', (_name, show) => {
     // Given the static screen, with no phases started
-    const screen = document.getElementById('app-loading');
 
     // When
     show(ui);
 
     // Then
-    expect(screen?.isConnected).toBe(false);
     expect(state.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
     expect(document.querySelector('.error-page-title')).not.toBeNull();
@@ -217,10 +215,9 @@ describe('The loading screen is a tracked app root', () => {
     expect(document.querySelector('.error-page')).not.toBeNull();
   });
 
-  it('As the shell, disposing the loading root stops its timers and removes the overlay', () => {
+  it('As the shell, disposing the loading root stops its timers and takes the overlay down', () => {
     // Given
     startLoading();
-    const loading = document.querySelector('#app > .loading');
 
     // When
     roots.disposeAppRoot('loading');
@@ -228,7 +225,7 @@ describe('The loading screen is a tracked app root', () => {
     vi.advanceTimersByTime(STALL_MS * 5);
 
     // Then
-    expect(loading?.isConnected).toBe(false);
+    expect(state.getLoadingState().phase).toBe('gone');
     expect(progress()).toBe(frozen);
   });
 
@@ -267,13 +264,12 @@ describe('The loading screen is a tracked app root', () => {
       throw failure;
     });
     ctl.initPhases(PHASES);
-    const loading = document.querySelector('#app > .loading');
 
     // When
     show(ui);
 
     // Then the loading root is still disposed and the error page is up
-    expect(loading?.isConnected).toBe(false);
+    expect(state.getLoadingState().phase).toBe('gone');
     expect(document.querySelector('.error-page-title')).not.toBeNull();
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
@@ -285,18 +281,17 @@ describe('The loading screen is a tracked app root', () => {
   it('As the shell, starting the loading phases again keeps the overlay on screen', () => {
     // Given
     ctl.initPhases(PHASES);
-    const loading = document.querySelector('#app > .loading');
 
     // When
     ctl.initPhases(PHASES);
 
     // Then
-    expect(loading?.isConnected).toBe(true);
+    expect(state.getLoadingState().phase).toBe('active');
 
     // When
     roots.disposeAppRoot('loading');
 
     // Then
-    expect(loading?.isConnected).toBe(false);
+    expect(state.getLoadingState().phase).toBe('gone');
   });
 });

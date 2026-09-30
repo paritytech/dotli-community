@@ -2,18 +2,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host's top bar (`header#topbar`, the page's banner): the home link, the URL bar, the action
-// group and the offline banner, as markup. Only the action group is
-// interactive, a Solid island (TopbarActionsIsland: the account button
-// first, then the actions and the More menu they collapse into), hydrated
-// once the browser is idle.
+// The host's top bar (`header#topbar`, the page's banner): the home link,
+// the URL bar, the action group and the offline banner, as markup. Only the
+// action group is interactive, a Solid island (TopbarActionsIsland: the
+// account button first, then the actions and the More menu they collapse
+// into), hydrated at load: on the landing page it renders nothing, and its
+// build-time buttons must be gone before the landing page renders its own,
+// with the same ids.
 //
-// Its script (bindTopbar in @dotli/ui) drives the rest from the topbar
-// store: the slide the auto-hide (topbar-autohide.ts) asks for, with no
-// transition under reduced motion, the reveal shortcut while it auto-hides,
-// a reveal on hover, the offline banner while offline and the bar is
-// visible, and the landing page's mode, where the bar hides and its action
-// group goes (the landing page has its own account and theme buttons).
+// Its script drives the rest from the topbar store: the slide the auto-hide
+// (topbar-autohide.ts in @dotli/ui) asks for, with no transition under
+// reduced motion, the reveal shortcut while it auto-hides, a reveal on
+// hover, the offline banner while offline and the bar is visible, and the
+// landing page's mode, where the bar hides (`data-landing`).
 import { TopbarActionsIsland } from '@dotli/ui/islands/TopbarActionsIsland';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
@@ -22,7 +23,7 @@ import UrlPill from './UrlPill.astro';
 <header id="topbar" aria-label="dot.li browser bar" style="transform: translateY(0); transition: transform 0.3s ease">
   <TopbarLogo />
   <UrlPill />
-  <TopbarActionsIsland client:idle />
+  <TopbarActionsIsland client:load />
   {/* A status line, not focusable: shown by the script while offline. */}
   <div
     id="offline-banner"
@@ -35,10 +36,40 @@ import UrlPill from './UrlPill.astro';
 </header>
 
 <script>
-  import { bindTopbar } from '@dotli/ui';
+  import {
+    registerTopbarElement,
+    revealTopbar,
+    scheduleTopbarHide,
+    TOPBAR_REVEAL_SHORTCUT,
+    topbarStore,
+    topbarTransition,
+  } from '@dotli/ui';
 
   const bar = document.getElementById('topbar');
   if (bar !== null) {
-    bindTopbar(bar);
+    const banner = document.getElementById('offline-banner');
+    registerTopbarElement(bar);
+    bar.addEventListener('mouseenter', revealTopbar);
+    bar.addEventListener('mouseleave', scheduleTopbarHide);
+
+    const render = (): void => {
+      const { visible, autoHide, landing } = topbarStore.get();
+      bar.style.transform = visible ? 'translateY(0)' : 'translateY(-100%)';
+      bar.style.transition = topbarTransition();
+      if (autoHide) {
+        bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
+      } else {
+        bar.removeAttribute('aria-keyshortcuts');
+      }
+      bar.toggleAttribute('data-landing', landing);
+      if (banner !== null) {
+        banner.style.display = !navigator.onLine && visible ? 'block' : 'none';
+      }
+    };
+    window.addEventListener('online', render);
+    window.addEventListener('offline', render);
+    window.matchMedia('(prefers-reduced-motion: reduce)').addEventListener('change', render);
+    render();
+    topbarStore.subscribe(render);
   }
 </script>

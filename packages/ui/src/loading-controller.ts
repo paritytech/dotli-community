@@ -11,7 +11,6 @@
 import { isSandboxOrigin, withActiveTld } from '@dotli/config';
 
 import { disposeAppRoot, registerAppRoot } from './mount/app-roots.js';
-import { unmountIslands } from './mount/islands.js';
 import { getLoadingState, updateLoading } from './state/loading.js';
 
 // Phase-based loading indicator.
@@ -509,14 +508,6 @@ export function stopStatusTick(): void {
 let loadingRootLive = false;
 
 /**
- * Takes the loading screen, the LoadingScreen island the host page paints,
- * off the page, as part of disposing the loading root: hydrated or not yet.
- */
-function removeScreen(): void {
-  unmountIslands(document.getElementById('app-loading'));
-}
-
-/**
  * Track the loading screen as the `"loading"` app root, so whatever replaces
  * it (the product frame, an error page) stops its timers instead of leaving
  * them running behind the new content.
@@ -541,8 +532,9 @@ function trackLoadingRoot(): boolean {
     loadingRootLive = false;
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
+    // The screen renders nothing from here on (components/shell/
+    // LoadingScreen.tsx).
     updateLoading({ phase: 'gone' });
-    removeScreen();
   });
   return true;
 }

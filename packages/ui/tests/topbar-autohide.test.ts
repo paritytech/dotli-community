@@ -27,7 +27,7 @@ const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 // the app with its product frame, then the reveal control and the toasts.
 function installPageDom(): void {
   document.body.innerHTML = `
-    <div id="topbar" style="transform: translateY(0); transition: transform 0.3s ease">
+    <div id="topbar">
       <a class="topbar-left" id="topbar-home" href="/">Home</a>
       <div class="topbar-url" id="topbar-url" hidden></div>
       <div class="topbar-right" id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
@@ -48,9 +48,8 @@ function topbar(): HTMLElement {
   return byId('topbar');
 }
 
-function isHidden(): boolean {
-  return topbar().style.transform === 'translateY(-100%)';
-}
+/** Hidden as the topbar store says, which the bar's script renders. */
+let isHidden: () => boolean = () => false;
 
 /** Applies the islands' batched Solid updates (the current module graph's). */
 let flushUi: () => void = () => undefined;
@@ -116,11 +115,13 @@ async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
   const mod = await import('../src/topbar-autohide.js');
   disposers.push(mod.disposeTopbarAutoHide);
 
-  // The bar's script and the TopbarReveal island, from this module graph.
-  // The island is built without JSX: this file's JSX would bind to the Solid
-  // instance loaded before resetModules.
-  const { bindTopbar } = await import('../src/topbar-bar.js');
-  disposers.push(bindTopbar(topbar()));
+  // The bar registers its element, as its script does on the host page
+  // (apps/host/src/components/Topbar.astro).
+  disposers.push(mod.registerTopbarElement(topbar()));
+  const { getTopbarState } = await import('../src/state/topbar.js');
+  isHidden = () => !getTopbarState().visible;
+  // The TopbarReveal island, from this module graph. Built without JSX: this
+  // file's JSX would bind to the Solid instance loaded before resetModules.
   const solid = await import('solid-js');
   const web = await import('@solidjs/web');
   const { TopbarReveal } = await import('../src/components/shell/TopbarReveal.js');
@@ -365,57 +366,27 @@ describe('topbar auto-hide reveal', () => {
     expect(document.activeElement?.id).toBe('topbar-home');
   });
 
-  it('As a dotli integrator, the bar advertises its reveal shortcut while armed', async () => {
+  it('As a dotli integrator, the reveal button shows only while the bar auto-hides', async () => {
     // Given
-    const { armTopbarAutoHide, pinTopbarVisible, TOPBAR_REVEAL_SHORTCUT, TOPBAR_REVEAL_BUTTON_ID } =
-      await loadAutoHide();
+    const { armTopbarAutoHide, pinTopbarVisible, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
 
     // When
     armTopbarAutoHide();
     flushUi();
 
     // Then
-    expect(topbar().getAttribute('aria-keyshortcuts')).toBe(TOPBAR_REVEAL_SHORTCUT);
+    expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(false);
 
     // When
     pinTopbarVisible();
     flushUi();
 
     // Then
-    expect(topbar().hasAttribute('aria-keyshortcuts')).toBe(false);
     expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(true);
   });
 });
 
 describe('topbar auto-hide motion and layout', () => {
-  it('As a reduced-motion user, the bar skips the slide animation', async () => {
-    // Given
-    stubReducedMotion(true);
-    const { armTopbarAutoHide } = await loadAutoHide();
-
-    // When
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-
-    // Then
-    expect(isHidden()).toBe(true);
-    expect(topbar().style.transition).toBe('none');
-  });
-
-  it('As a dotli integrator, motion stays on when nothing is reduced', async () => {
-    // Given
-    stubReducedMotion(false);
-    const { armTopbarAutoHide } = await loadAutoHide();
-
-    // When
-    armTopbarAutoHide();
-    flushUi();
-
-    // Then
-    expect(topbar().style.transition).toContain('transform');
-  });
-
   it('As a dApp user, revealing the bar shifts the app below it without resizing it', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();

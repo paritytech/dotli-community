@@ -14,6 +14,7 @@ import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
 import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
+import { setLandingPage } from '../../../src/state/topbar.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { pointerPress, renderComponent, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
@@ -149,5 +150,21 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
+  });
+
+  it("As a visitor on the landing page, the group renders nothing, so the page's own account and theme buttons are the only ones", async () => {
+    // Given
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    await renderIsland();
+    expect(document.getElementById('auth-button')).not.toBeNull();
+
+    // When
+    setLandingPage();
+    await settle();
+
+    // Then
+    expect(document.getElementById('topbar-actions')).toBeNull();
+    expect(document.getElementById('auth-button')).toBeNull();
+    expect(document.getElementById('theme-toggle')).toBeNull();
   });
 });

@@ -80,11 +80,9 @@ async function settle(): Promise<void> {
 beforeEach(() => {
   vi.resetModules();
   sentry.captureException.mockReset();
-  // Shaped like the host page (apps/host/src/pages/index.astro): `#app`
-  // holding the loading screen island. The topbar is an island that follows
-  // the topbar store (tests/components/shell/topbar.test.tsx).
-  document.body.innerHTML =
-    '<div id="app"><astro-island component-export="LoadingScreen"><div class="loading" id="app-loading"></div></astro-island></div>';
+  // Shaped like the host page (apps/host/src/pages/index.astro): the
+  // loading screen beside `#app`, which the landing page is written into.
+  document.body.innerHTML = '<div class="loading" id="app-loading"></div><div id="app"></div>';
 });
 
 afterEach(() => {
@@ -116,11 +114,8 @@ describe('landing loader', () => {
     await shown;
     await settle();
 
-    // Then the loading screen went, its island with it
-    expect(byId('app-loading')).toBeNull();
-    expect(document.querySelector('astro-island[component-export="LoadingScreen"]')).toBeNull();
+    // Then the loading screen is gone, and the topbar in landing mode
     expect(loading.getLoadingState().phase).toBe('gone');
-    // The topbar hides and its actions go (components/shell/Topbar.tsx).
     expect(topbar.getTopbarState().landing).toBe(true);
     expect([...app().children].map(el => el.id)).toEqual(['app-view']);
     const view = must(byId('app-view'), '#app-view');
@@ -206,7 +201,7 @@ describe('landing loader', () => {
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
       kind: 'landing_load_error',
     });
-    expect(byId('app-loading')).toBeNull();
+    expect(loading.getLoadingState().phase).toBe('gone');
     expect(document.querySelector('.error-page-title')?.textContent).toBe('Something went wrong on our side');
     expect(document.querySelector('.error-page-detail')?.textContent).toBe(
       "This page didn't load properly. Reloading usually fixes it.",

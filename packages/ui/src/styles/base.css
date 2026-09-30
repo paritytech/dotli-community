@@ -58,7 +58,7 @@ body[data-scroll-locked] {
 }
 
 /* App Content */
-/* The landing page hides the topbar (bindTopbar, topbar-bar.ts), so the
+/* The landing page hides the topbar (its `data-landing`), so the
    page starts at the top. */
 #topbar[data-landing] {
   display: none;
@@ -75,18 +75,18 @@ body:has(#topbar[data-landing]) #app {
   margin-top: var(--topbar-height);
   text-align: center;
 }
-/* Scoped to `#app > .loading` because the bare `.loading` class is *also*
-   used as a modifier on in-popover value spans (e.g. the domain info popover's
-   "Resolving..." row). Before scoping, the full-viewport `min-height` on the
-   span stretched popover rows to viewport height. On the host page the
-   screen is an island, whose element sits in between (`display: contents`). */
+/* Scoped to `#app > .loading` (the sandbox's screen) and `#app-loading` (the
+   host's) because the bare `.loading` class is *also* used as a modifier on
+   in-popover value spans (e.g. the domain info popover's "Resolving..." row).
+   Before scoping, the full-viewport `min-height` on the span stretched popover
+   rows to viewport height. */
 /* Positioned the way a browser positions its own status pages: a bounded
    column starting in the upper part of the viewport rather than floating in the
    dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
    sitting above the midline means the text does not move when a second line
    wraps in. */
 #app > .loading,
-#app > astro-island > .loading {
+#app-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -98,6 +98,15 @@ body:has(#topbar[data-landing]) #app {
   max-width: 600px;
   margin: 0 auto;
   text-align: center;
+}
+/* The host's screen (the LoadingScreen island) sits outside `#app`, so that
+   whatever replaces `#app`'s content never takes the island with it: laid
+   over the content area, where `#app` is. */
+#app-loading {
+  position: absolute;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
 }
 
 /* Loading logo spinner. */

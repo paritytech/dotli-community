@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { LoadingPhase } from '../src/loading-controller.js';
 import type * as LoadingControllerModule from '../src/loading-controller.js';
 import type * as LoadingModule from '../src/state/loading.js';
-import { must } from './support.js';
 
 type Controller = typeof LoadingControllerModule;
 type LoadingStateModule = typeof LoadingModule;
@@ -31,21 +30,9 @@ function stubMotionPreference(): void {
 }
 
 function installLoadingDom(): void {
-  // As the host page paints it: the LoadingScreen island.
-  document.body.innerHTML = `
-    <div id="app">
-      <astro-island component-export="LoadingScreen"><div class="loading" id="app-loading">
-        <div class="loading-progress" id="loading-progress" aria-valuenow="0">
-          <div class="loading-progress-fill" id="loading-progress-fill"></div>
-          <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
-        </div>
-        <p id="status" aria-hidden="true">Reaching out</p>
-        <p class="sr-only" id="status-sr" aria-live="polite"></p>
-        <p class="loading-warning" id="loading-warning" role="status">
-          <span id="loading-warning-text"></span>
-        </p>
-      </div></astro-island>
-    </div>`;
+  // As the host page paints it: the LoadingScreen island's screen, beside
+  // `#app`.
+  document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
 }
 
 describe('The loading controller drives the loading store', () => {
@@ -360,28 +347,22 @@ describe('The loading controller drives the loading store', () => {
 
   it('As the shell, the static screen is the loading root from the moment the controller loads', async () => {
     // Given a controller that has started nothing
-    const screen = document.getElementById('app-loading');
     const roots = await import('../src/mount/app-roots.js');
 
     // When whatever replaces the screen disposes the roots
     roots.disposeAppRoots();
 
-    // Then the static screen went
-    expect(screen?.isConnected).toBe(false);
+    // Then the screen is gone
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('As the shell, starting the phases keeps the root the controller registered on load', async () => {
-    // Given
-    const screen = document.getElementById('app-loading');
-
     // When
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.advancePhase(0);
 
     // Then the screen is still up and the load is running
-    expect(screen?.isConnected).toBe(true);
     expect(store.getLoadingState().phase).toBe('active');
 
     // When
@@ -389,7 +370,7 @@ describe('The loading controller drives the loading store', () => {
     roots.disposeAppRoot('loading');
 
     // Then one root, disposed once
-    expect(screen?.isConnected).toBe(false);
+    expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 
@@ -455,66 +436,5 @@ describe('The loading controller drives the loading store', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('As the shell, disposing the loading root before the island hydrates removes the screen', async () => {
-    // Given
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    const screen = document.getElementById('app-loading');
-    const roots = await import('../src/mount/app-roots.js');
-
-    // When
-    roots.disposeAppRoot('loading');
-
-    // Then
-    expect(screen?.isConnected).toBe(false);
-  });
-
-  it('As a visitor whose app loaded before the island hydrated, the screen goes after 300 ms', () => {
-    // Given
-    const screen = document.getElementById('app-loading');
-
-    // When
-    ctl.dismissLoading();
-    vi.advanceTimersByTime(FADE_MS - 1);
-
-    // Then
-    expect(screen?.isConnected).toBe(true);
-
-    // When
-    vi.advanceTimersByTime(1);
-
-    // Then
-    expect(screen?.isConnected).toBe(false);
-    expect(store.getLoadingState().phase).toBe('gone');
-  });
-
-  it('As the shell, the screen island is unmounted and removed with the loading root, timers and all', async () => {
-    // Given a crawling bar
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    ctl.advancePhase(0);
-    const island = must(document.querySelector('astro-island'), 'the screen island');
-    const unmount = vi.fn();
-    island.addEventListener('astro:unmount', unmount);
-
-    // When
-    const roots = await import('../src/mount/app-roots.js');
-    roots.disposeAppRoot('loading');
-    const frozen = progress();
-    vi.advanceTimersByTime(10_000);
-
-    // Then
-    expect(unmount).toHaveBeenCalledTimes(1);
-    expect(island.isConnected).toBe(false);
-    expect(progress()).toBe(frozen);
-    expect(store.getLoadingState().phase).toBe('gone');
-
-    // When a late signal restarts a timer, there is no screen left to root
-    ctl.releasePhaseProgress();
-    ctl.setLoadingStage('content');
-    roots.disposeAppRoot('loading');
-
-    // Then
-    expect(unmount).toHaveBeenCalledTimes(1);
   });
 });

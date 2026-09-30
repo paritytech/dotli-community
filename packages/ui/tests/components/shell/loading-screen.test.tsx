@@ -38,13 +38,13 @@ import { byId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 /**
- * Mount the loading screen in `#app`, in an island element, as the host page
- * does (client-rendered: the tests compile Solid for the DOM only).
+ * Mount the loading screen in an island element before `#app`, as the host
+ * page does (client-rendered: the tests compile Solid for the DOM only).
  */
 async function mountScreen(): Promise<HTMLElement> {
   const island = document.createElement('astro-island');
   island.setAttribute('ssr', '');
-  app().replaceChildren(island);
+  app().before(island);
   client(island)(LoadingScreen, {}, {}, { client: 'only' });
   await settle();
   return island;
@@ -128,6 +128,9 @@ beforeEach(() => {
     frames.delete(id);
   });
   app().replaceChildren();
+  for (const island of document.querySelectorAll('astro-island')) {
+    island.remove();
+  }
   sentry.captureException.mockClear();
 });
 
@@ -327,7 +330,7 @@ describe('Loading screen island', () => {
     }
   });
 
-  it('As the shell, disposing the loading root stops the loading timers along with the island', async () => {
+  it('As the shell, disposing the loading root stops the loading timers and the screen goes', async () => {
     // Given
     const onStall = vi.fn();
     ctl.initPhases([
@@ -348,6 +351,7 @@ describe('Loading screen island', () => {
     // When
     disposeAppRoot('loading');
     vi.advanceTimersByTime(20_000);
+    await settle();
 
     // Then
     expect(screen.isConnected).toBe(false);
@@ -372,22 +376,18 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-pct').textContent).toBe(`${String(Math.round(getLoadingState().progress))}%`);
   });
 
-  it('As the shell, the first app-subdomain render keeps the live screen and it still follows the store', async () => {
+  it('As the shell, content written over `#app` leaves the live screen, which still follows the store', async () => {
     // Given
     await mountScreen();
+    const screen = byId('app-loading');
 
-    // When the bridge clears `#app` and puts the overlay back, as
-    // renderAppSubdomain does on its first render
-    const loading = app().querySelector<HTMLElement>('.loading');
+    // When the bridge clears `#app` for the product frame
     app().innerHTML = '';
-    if (loading !== null) {
-      app().appendChild(loading);
-    }
     updateLoading({ progress: 80 });
     await settle();
 
-    // Then it found the island's node, which is still live
-    expect(loading).toBe(byId('app-loading'));
+    // Then
+    expect(byId('app-loading')).toBe(screen);
     expect(byId('loading-progress-pct').textContent).toBe('80%');
   });
 });

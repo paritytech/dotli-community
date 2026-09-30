@@ -8,11 +8,11 @@
 // so home, settings, permissions and login never become mouse-only.
 //
 // The timing and the input handling live here, framework-free; what shows
-// is the topbar store's: the bar's script (bindTopbar, topbar-bar.ts) sets
-// its slide and shortcut from `visible` and `autoHide`, and the TopbarReveal
-// island renders the reveal control and the hover strip. The bar registers its element
-// (registerTopbarElement) and the popovers theirs (state/topbar-surfaces.ts),
-// for the focus and open checks.
+// is the topbar store's: the bar's script (apps/host/src/components/
+// Topbar.astro) sets its slide and shortcut from `visible` and `autoHide`,
+// and the TopbarReveal island renders the reveal control and the hover
+// strip. The bar registers its element (registerTopbarElement) and the
+// popovers theirs (state/topbar-surfaces.ts), for the focus and open checks.
 //
 import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';

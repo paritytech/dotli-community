@@ -33,10 +33,10 @@ export function showLanding(): Promise<void> {
   showing ??= import('../components/landing/mount.js')
     .then(({ mountLanding }) => {
       const app = document.getElementById('app') ?? document.body;
-      // The topbar hides and its actions go: the landing page renders its
-      // own auth and theme buttons.
+      // The topbar hides and its action group renders nothing: the landing
+      // page renders its own auth and theme buttons.
       setLandingPage();
-      // The landing page replaces the loading screen, island and all.
+      // The landing page replaces the loading screen, which hides.
       disposeAppRoot('loading');
       const view = document.createElement('div');
       view.id = 'app-view';
