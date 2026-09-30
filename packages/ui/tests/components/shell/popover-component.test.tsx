@@ -523,4 +523,55 @@ describe('Popover', () => {
       expect(surface().style.transform).toBe('');
     });
   });
+  it('As a user, a popover anchored to its trigger opens under it', async () => {
+    // Given
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content, { anchor: 'trigger' });
+    await settle();
+    vi.spyOn(trigger(), 'getBoundingClientRect').mockReturnValue(new DOMRect(40, 10, 24, 20));
+
+    // When
+    mouseClick(trigger());
+    await settle();
+
+    // Then
+    expect(surface().classList.contains('anchor-trigger')).toBe(true);
+    expect(surface().style.top).toBe('36px');
+    expect(surface().style.left).toBe('40px');
+  });
+
+  it('As a desktop user, resting the mouse on the trigger shows the popover without taking focus', async () => {
+    // Given
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.stubGlobal('matchMedia', (query: string) => ({
+      matches: query === '(hover: hover)',
+      media: query,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content, { openOnHover: true });
+    await settle();
+    byId('outside').focus();
+
+    // When
+    trigger().dispatchEvent(new PointerEvent('pointerenter', { pointerType: 'mouse' }));
+    vi.advanceTimersByTime(200);
+    await waitForContent('test-popover');
+
+    // Then
+    expect(surface().classList.contains('peek')).toBe(true);
+    expect(trigger().getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(byId('outside'));
+
+    // When
+    trigger().dispatchEvent(new PointerEvent('pointerleave', { pointerType: 'mouse' }));
+    vi.advanceTimersByTime(100);
+    await settle();
+
+    // Then
+    expect(surface().classList.contains('peek')).toBe(false);
+  });
 });

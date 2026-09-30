@@ -178,6 +178,18 @@
   color: #fff;
 }
 
+/* Under its trigger (anchor="trigger"): the place is set inline. */
+.popover.anchor-trigger {
+  right: auto;
+  transform-origin: top left;
+}
+/* Shown while a mouse rests on the trigger (openOnHover). */
+.popover.peek {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .popover,
   .popover-backdrop {

@@ -27,6 +27,10 @@ export const EXIT_MS = 220;
 const SWIPE_CLOSE_FRACTION = 0.3;
 /** So does one faster than this, in px/ms. */
 const SWIPE_CLOSE_SPEED = 0.5;
+/** How long a mouse rests on the trigger before an `openOnHover` popover shows. */
+const HOVER_SHOW_MS = 200;
+/** How long after the mouse leaves before it hides. */
+const HOVER_HIDE_MS = 100;
 
 /** What the trigger carries: spread it on the trigger button. */
 export interface PopoverTrigger {
@@ -105,6 +109,15 @@ export function Popover(props: PopoverProps): JSX.Element {
   const [sheet, setSheet] = createSignal(false);
   /** The content is in the surface: from an opening to the end of its close. */
   const [mounted, setMounted] = createSignal(false);
+  /** Shown while a mouse rests on the trigger (`openOnHover`), not opened. */
+  const [peek, setPeek] = createSignal(false);
+  /** The anchored surface's place under its trigger (`anchor="trigger"`). */
+  const [place, setPlace] = createSignal<{ top: number; left: number } | null>(null);
+  const measure = (): void => {
+    const rect = triggerEl?.getBoundingClientRect();
+    setPlace(rect === undefined ? null : { top: rect.bottom + 6, left: rect.left });
+  };
+  const anchoredToTrigger = (): boolean => props.anchor === 'trigger' && !sheet();
   const escapeHandlers = new Set<() => boolean>();
   let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -128,6 +141,9 @@ export function Popover(props: PopoverProps): JSX.Element {
   const openNow = (): void => {
     clearTimeout(unmountTimer);
     setSheet(isSheetViewport());
+    if (props.anchor === 'trigger') {
+      measure();
+    }
     setMounted(true);
     popover.setOpen(true);
   };
@@ -181,9 +197,60 @@ export function Popover(props: PopoverProps): JSX.Element {
   // The chunk, before anyone asks for it.
   onSettled(() => preloadWhenIdle(Content));
 
+  createEffect(popover.open, open => {
+    if (!open || props.anchor !== 'trigger') {
+      return;
+    }
+    window.addEventListener('resize', measure);
+    return () => {
+      window.removeEventListener('resize', measure);
+    };
+  });
+
+  let hoverTimer: ReturnType<typeof setTimeout> | undefined;
+  const onHoverEnter = (ev: PointerEvent): void => {
+    if (props.openOnHover !== true || ev.pointerType !== 'mouse' || !window.matchMedia('(hover: hover)').matches) {
+      return;
+    }
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      if (!untrack(popover.open)) {
+        clearTimeout(unmountTimer);
+        setSheet(false);
+        if (props.anchor === 'trigger') {
+          measure();
+        }
+        setMounted(true);
+        setPeek(true);
+      }
+    }, HOVER_SHOW_MS);
+  };
+  const onHoverLeave = (): void => {
+    clearTimeout(hoverTimer);
+    hoverTimer = setTimeout(() => {
+      setPeek(false);
+      if (!untrack(popover.open)) {
+        unmountTimer = setTimeout(() => {
+          setMounted(false);
+        }, EXIT_MS);
+      }
+    }, HOVER_HIDE_MS);
+  };
+  onCleanup(() => {
+    clearTimeout(hoverTimer);
+  });
+  // An opening takes over from a peek.
+  createEffect(popover.open, open => {
+    if (open) {
+      setPeek(false);
+    }
+  });
+
   const trigger: PopoverTrigger = {
     ref: el => {
       triggerEl = el;
+      el.addEventListener('pointerenter', onHoverEnter);
+      el.addEventListener('pointerleave', onHoverLeave);
     },
     onClick: toggle,
     'aria-haspopup': 'dialog',
@@ -224,7 +291,20 @@ export function Popover(props: PopoverProps): JSX.Element {
           ref={el => {
             surfaceEl = el;
           }}
-          class={['popover', props.class ?? '', { open: popover.open(), sheet: sheet() }]}
+          class={[
+            'popover',
+            props.class ?? '',
+            { open: popover.open(), sheet: sheet(), peek: peek(), 'anchor-trigger': anchoredToTrigger() },
+          ]}
+          style={
+            anchoredToTrigger() && place() !== null
+              ? { top: `${String(place()?.top)}px`, left: `${String(place()?.left)}px` }
+              : undefined
+          }
+          onPointerEnter={() => {
+            clearTimeout(hoverTimer);
+          }}
+          onPointerLeave={onHoverLeave}
           id={props.id}
           role="dialog"
           aria-label={props.title}
