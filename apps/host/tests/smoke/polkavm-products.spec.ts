@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { POLKAVM_APPS_KEY } from "@dotli/config/mode";
 
 interface ProductSmoke {
   label: string;
@@ -377,6 +378,16 @@ for (const product of products) {
     const context = await browser.newContext({
       viewport: { width: 1280, height: 800 },
     });
+    // PolkaVM apps are opt-in. Seed the host shell's preference; with no
+    // shared value yet, the host migrates it into the shared mode store.
+    await context.addInitScript(
+      ({ host, key }) => {
+        if (location.hostname === host) {
+          localStorage.setItem(key, "1");
+        }
+      },
+      { host: `${product.label}.${root}`, key: POLKAVM_APPS_KEY },
+    );
     const page = await context.newPage();
     try {
       const metrics = await smokeProduct(page, product);
