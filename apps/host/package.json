@@ -21,9 +21,10 @@
     "test:perf:compare": "node tests/performance/compare.ts",
     "test:perf:compare:md": "node tests/performance/compare.ts --markdown",
     "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && astro check --tsconfig tsconfig.astro.json"
   },
   "devDependencies": {
+    "@astrojs/check": "^0.9.10",
     "@dotli/eslint-config": "*",
     "@dotli/typescript-config": "*",
     "@playwright/test": "^1.63.0",

@@ -41,33 +41,42 @@ const socialMeta = socialMetaAttributes({
       // before main.ts executes. Overlaps IDB open (~10-50ms) with
       // module loading. Picked up by src/db.ts via window.__dotliDb.
       window.__dotliDb = new Promise(function (resolve, reject) {
-        var req = indexedDB.open('dotli', 5);
+        const req = indexedDB.open('dotli', 5);
         req.onupgradeneeded = function () {
-          var db = req.result;
-          if (!db.objectStoreNames.contains('cids')) db.createObjectStore('cids', { keyPath: 'label' });
-          if (!db.objectStoreNames.contains('chains')) db.createObjectStore('chains', { keyPath: 'chain' });
+          const db = req.result;
+          if (!db.objectStoreNames.contains('cids')) {
+            db.createObjectStore('cids', { keyPath: 'label' });
+          }
+          if (!db.objectStoreNames.contains('chains')) {
+            db.createObjectStore('chains', { keyPath: 'chain' });
+          }
           // v2: scheduled notifications + per-product id counters.
           if (!db.objectStoreNames.contains('scheduled_notifications')) {
-            var s = db.createObjectStore('scheduled_notifications', { keyPath: 'hostId', autoIncrement: true });
+            const s = db.createObjectStore('scheduled_notifications', { keyPath: 'hostId', autoIncrement: true });
             s.createIndex('byProductId', 'productId', { unique: false });
             s.createIndex('byScheduledAt', 'scheduledAt', { unique: false });
           }
-          if (!db.objectStoreNames.contains('notification_counters'))
+          if (!db.objectStoreNames.contains('notification_counters')) {
             db.createObjectStore('notification_counters', { keyPath: 'productId' });
+          }
           // v3: product chat rooms and messages.
-          if (!db.objectStoreNames.contains('chat_rooms'))
+          if (!db.objectStoreNames.contains('chat_rooms')) {
             db.createObjectStore('chat_rooms', { keyPath: ['productId', 'roomId'] });
+          }
           if (!db.objectStoreNames.contains('chat_messages')) {
-            var c = db.createObjectStore('chat_messages', { keyPath: 'seq', autoIncrement: true });
+            const c = db.createObjectStore('chat_messages', { keyPath: 'seq', autoIncrement: true });
             c.createIndex('byRoom', ['productId', 'roomId'], { unique: false });
           }
           // v4: product chat bot identities.
-          if (!db.objectStoreNames.contains('chat_bots'))
+          if (!db.objectStoreNames.contains('chat_bots')) {
             db.createObjectStore('chat_bots', { keyPath: ['productId', 'botId'] });
+          }
           // v5: content block cache.
-          if (!db.objectStoreNames.contains('blocks')) db.createObjectStore('blocks', { keyPath: 'cid' });
+          if (!db.objectStoreNames.contains('blocks')) {
+            db.createObjectStore('blocks', { keyPath: 'cid' });
+          }
           if (!db.objectStoreNames.contains('block_meta')) {
-            var b = db.createObjectStore('block_meta', { keyPath: 'cid' });
+            const b = db.createObjectStore('block_meta', { keyPath: 'cid' });
             b.createIndex('byLastUsed', 'lastUsed', { unique: false });
           }
         };
@@ -84,22 +93,25 @@ const socialMeta = socialMetaAttributes({
         };
       });
     </script>
-    {socialMeta.map(attrs => <meta {...attrs} />)}
+    {socialMeta.map(attrs => (
+      <meta {...attrs} />
+    ))}
     <link rel="manifest" href={`${base}manifest.webmanifest`} />
   </head>
   <body>
     <script is:inline>
       (function () {
-        var pref = 'system';
+        let pref = 'system';
         try {
-          var stored = localStorage.getItem('dotli-theme');
+          const stored = localStorage.getItem('dotli-theme');
           if (stored === 'light' || stored === 'dark' || stored === 'system') {
             pref = stored;
           }
-        } catch (_) {
+          // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode, disabled cookies): fall back to the system theme.
+        } catch {
           /* localStorage unavailable: fall back to system */
         }
-        var theme = pref;
+        let theme = pref;
         if (theme === 'system') {
           theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
         }
@@ -107,7 +119,9 @@ const socialMeta = socialMetaAttributes({
         document.documentElement.setAttribute('data-theme', theme);
       })();
     </script>
-    <div id="shell" style="display: contents"><Shell /></div>
+    <div id="shell" style="display: contents">
+      <Shell />
+    </div>
 
     {/* The docked product chat: shrinks the product frame while open. */}
     <ChatDock client:idle />

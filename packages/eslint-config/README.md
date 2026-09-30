@@ -5,10 +5,11 @@ published to npm.
 
 ## Exports
 
-| Entry                       | Use                                                                                                    |
-| --------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `@dotli/eslint-config/base` | Base config: `@eslint/js` recommended, `typescript-eslint` recommended, Prettier compat, Turbo plugin. |
-| `@dotli/eslint-config/vite` | Vite + TypeScript apps: extends base with `strictTypeChecked` + `stylisticTypeChecked` rules.          |
+| Entry                        | Use                                                                                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@dotli/eslint-config/base`  | Base config: `@eslint/js` recommended, `typescript-eslint` recommended, Prettier compat, Turbo plugin.                                           |
+| `@dotli/eslint-config/vite`  | Vite + TypeScript apps: extends base with `strictTypeChecked` + `stylisticTypeChecked` rules.                                                    |
+| `@dotli/eslint-config/astro` | Astro apps: extends vite with `eslint-plugin-astro` recommended for `.astro` components; type-aware rules off there (`astro check` covers them). |
 
 ## Usage
 
