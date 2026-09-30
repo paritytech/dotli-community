@@ -4,6 +4,7 @@
 // The URL pill's shield island (components/shell/UrlPillShield.tsx): the
 // shield for a product pill, in the state the host set, and none otherwise.
 
+import { cleanup } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it } from 'vitest';
 import { UrlPillShield } from '../../../src/components/shell/UrlPillShield.js';
 import { setVerificationShieldState, showLocalhostPill, showProductPill } from '../../../src/state/url-pill.js';
@@ -11,6 +12,8 @@ import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 
 afterEach(() => {
+  // Before the page is cleared: the explainer is portalled into the body.
+  cleanup();
   resetStores();
   document.body.replaceChildren();
 });

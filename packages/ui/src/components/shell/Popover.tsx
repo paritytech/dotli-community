@@ -37,7 +37,7 @@ const HOVER_HIDE_MS = 100;
 export interface PopoverTrigger {
   ref: (el: HTMLElement) => void;
   onClick: (ev?: Event) => void;
-  readonly 'aria-haspopup': 'dialog';
+  readonly 'aria-haspopup': 'dialog' | undefined;
   readonly 'aria-expanded': 'true' | 'false';
   readonly 'aria-controls': string;
 }
@@ -64,6 +64,13 @@ export interface PopoverProps {
   trapFocus?: boolean;
   /** Show the surface while a mouse rests on the trigger (the explainer). */
   openOnHover?: boolean;
+  /**
+   * A disclosure while anchored: the trigger says only whether it is shown
+   * (no `aria-haspopup`), and the surface is plain content, with no role and
+   * nothing that takes focus (the explainer). As a sheet it is a modal
+   * dialog like any other.
+   */
+  disclosure?: boolean;
 }
 
 interface PopoverContextValue {
@@ -126,6 +133,8 @@ export function Popover(props: PopoverProps): JSX.Element {
     setPlace(rect === undefined ? null : { top: rect.bottom + 6, left: rect.left });
   };
   const anchoredToTrigger = (): boolean => props.anchor === 'trigger' && !sheet();
+  /** A disclosure shown anchored: plain content, not a dialog. */
+  const plain = (): boolean => props.disclosure === true && !sheet();
   const escapeHandlers = new Set<() => boolean>();
   let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -270,7 +279,9 @@ export function Popover(props: PopoverProps): JSX.Element {
       el.addEventListener('pointerleave', onHoverLeave);
     },
     onClick: toggle,
-    'aria-haspopup': 'dialog',
+    get 'aria-haspopup'() {
+      return props.disclosure === true ? undefined : 'dialog';
+    },
     get 'aria-expanded'() {
       return popover.open() ? 'true' : 'false';
     },
@@ -324,10 +335,10 @@ export function Popover(props: PopoverProps): JSX.Element {
           }}
           onPointerLeave={onHoverLeave}
           id={props.id}
-          role="dialog"
-          aria-label={props.title}
+          role={plain() ? undefined : 'dialog'}
+          aria-label={plain() ? undefined : props.title}
           aria-modal={popover.open() && sheet() ? 'true' : undefined}
-          tabindex="-1"
+          tabindex={plain() ? undefined : '-1'}
         >
           <Show when={sheet()}>
             <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />

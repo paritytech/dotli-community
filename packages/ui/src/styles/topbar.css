@@ -505,55 +505,24 @@
   display: block;
 }
 
+/* The explainer: a Popover under the shield (popover.css), with its own
+   look. */
 .verification-tooltip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 9px;
   width: 268px;
   padding: 12px 14px;
   background: rgba(28, 28, 28, 0.96);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
   font-family: system-ui, sans-serif;
   color: rgba(255, 255, 255, 0.78);
   text-align: left;
   z-index: 1600;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.15s ease-out,
-    visibility 0s linear 0.15s;
 }
-@supports (backdrop-filter: blur(1px)) {
-  .verification-tooltip {
-    backdrop-filter: blur(24px) saturate(180%);
-  }
-}
-@media (hover: hover) {
-  .verification-shield-wrap:hover .verification-tooltip {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-    transition-delay: 0.2s;
-  }
-}
-.verification-tooltip.open {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateY(0);
-  transition-delay: 0s;
-}
-@media (prefers-reduced-motion: reduce) {
-  .verification-tooltip {
-    transform: none;
-    transition: none;
-  }
+.popover.sheet.verification-tooltip {
+  width: 100%;
+  padding: 0 14px 12px;
+  border-radius: 16px 16px 0 0;
 }
 .verification-tooltip-title {
   font-size: 0.68rem;

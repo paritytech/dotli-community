@@ -571,6 +571,46 @@ describe('Popover', () => {
       expect(surface().style.transform).toBe('');
     });
   });
+  it('As a screen-reader user, a disclosure says only whether it is shown, and its plain content takes no focus', async () => {
+    // Given
+    function Text() {
+      return <p id="text">Plain text</p>;
+    }
+    const { Content, release } = chunk(Text);
+    release();
+    renderPopover(Content, { disclosure: true });
+    await settle();
+    expect(trigger().hasAttribute('aria-haspopup')).toBe(false);
+    expect(surface().hasAttribute('role')).toBe(false);
+    expect(surface().hasAttribute('tabindex')).toBe(false);
+    trigger().focus();
+
+    // When
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // Then
+    expect(trigger().getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it('As a phone user, a disclosure opens as a sheet, a modal dialog like any other', async () => {
+    // Given
+    stubViewport(true);
+    const { Content, release } = chunk(Body);
+    release();
+    renderPopover(Content, { disclosure: true });
+    await settle();
+
+    // When
+    mouseClick(trigger());
+    await waitForContent('test-popover');
+
+    // Then
+    expect(surface().getAttribute('role')).toBe('dialog');
+    expect(surface().getAttribute('aria-modal')).toBe('true');
+  });
+
   it('As a user, a popover anchored to its trigger opens under it', async () => {
     // Given
     const { Content, release } = chunk(Body);
