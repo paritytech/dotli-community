@@ -5,9 +5,9 @@ import { SubscriptionError } from '../transport.js';
 import * as T from './types.js';
 import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
-export const TRUAPI_VERSION = 2;
+export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "7e0cfb17584411ff";
+export const TRUAPI_WIRE_SCHEMA_HASH = "9d439310e8ccad94";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -713,11 +713,12 @@ export class ContactsClient {
      * Resolves with the chosen contact's handle, or with why nothing was
      * chosen. A host that serves no picker answers `Unsupported`.
      *
-     * The handle is not an address and cannot be turned into one. To pay the
-     * person it names, put the handle where the recipient goes in the call and
-     * list it in `contacts` on the transaction payload: the host replaces it
-     * with their account before anything is signed or shown. A handle sent
-     * anywhere else is 32 bytes that resolve to nobody.
+     * The handle is not an address and cannot be turned into one by a product.
+     * To pay the person, put the handle where the recipient goes in the call
+     * and list it in `contacts` on the transaction payload: the host replaces
+     * it with their account before anything is signed or shown. Profile also
+     * accepts handles as disclosure recipients and as contacts to present or
+     * draw avatars for, without returning accounts or profile contents.
      */
     pick(request, options) {
         return this.#transport.request({
@@ -1168,19 +1169,20 @@ export class ProfileClient {
         });
     }
     /**
-     * Give the user's chat contacts this reference to their profile.
+     * Store the user's profile and replace its independent delivery audiences.
      *
-     * The host stores it as the user's own and relays it to each contact,
-     * replacing whatever it sent before; the product never learns who they
-     * are. App executions only. The first disclosure asks the user once for
-     * this product; a refusal, then or remembered, is `PermissionDenied`. A
-     * reference this core cannot screen is `InvalidReference`, and with no
-     * user signed in the call is `NotConnected`.
+     * `ChatApps` shares within every ready Chat App. `App` selects one Chat
+     * App's audience. `Contacts` shares personally with picked opaque handles;
+     * those received profiles may render in any App. An empty audience list
+     * retains the own profile but withdraws all grants. Unknown handles reject
+     * the whole disclosure. App executions only. The first disclosure asks
+     * the user once per product; a refusal is `PermissionDenied`.
+     * v0.1 callers retain the `ChatApps` audience.
      */
     disclose(request, options) {
         return this.#transport.request({
             ids: W.PROFILE_DISCLOSE,
-            payload: T.VersionedHostProfileDiscloseRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostProfileDiscloseRequest.enc({ tag: "V2", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfileDiscloseResponse, S.CallError(T.VersionedHostProfileDiscloseError)).dec(payload);
@@ -1204,16 +1206,20 @@ export class ProfileClient {
         });
     }
     /**
-     * Show a chat contact's profile in host-owned UI.
+     * Show a contact's available profile in host-owned UI.
      *
-     * The product names the contact; the host looks up the reference that
-     * contact shared and presents it as `present` would. The reference never
-     * reaches the product. A contact who shared nothing is `NotShared`.
+     * The selector names a Chat peer or a picked opaque handle. App-scoped
+     * profiles take precedence over personal profiles. References, names,
+     * resolved accounts and availability never return to the product. Unknown
+     * handles, absent profiles and host presentation failures return the same
+     * success. v0.1 callers retain their `NotShared` and presentation errors
+     * for App-scoped shares only; personal drawers require v0.2 so a legacy
+     * raw-peer request cannot disclose personal sharing availability.
      */
     presentContact(request, options) {
         return this.#transport.request({
             ids: W.PROFILE_PRESENT_CONTACT,
-            payload: T.VersionedHostProfilePresentContactRequest.enc({ tag: "V1", value: request }),
+            payload: T.VersionedHostProfilePresentContactRequest.enc({ tag: "V2", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfilePresentContactResponse, S.CallError(T.VersionedHostProfilePresentContactError)).dec(payload);
@@ -1222,7 +1228,7 @@ export class ProfileClient {
         });
     }
     /**
-     * Tell the host where this product draws chat contacts' avatars, and
+     * Tell the host where this product draws contacts' avatars, and
      * optionally the signed-in user's own, so it can draw each shared photo
      * and mood ring over them on its own layer.
      *
@@ -1247,7 +1253,7 @@ export class ProfileClient {
     placeContactAvatars(request, options) {
         return this.#transport.request({
             ids: W.PROFILE_PLACE_CONTACT_AVATARS,
-            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V2", value: request }),
+            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V3", value: request }),
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload);
