@@ -20,6 +20,11 @@ import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.j
 import { query } from '../support.js';
 import { nth } from '../helpers/nth.js';
 
+// Each test renders up to 2000 rows: a few hundred milliseconds here, but
+// several seconds on a loaded CI runner, past Vitest's 5 s default. The
+// tests count work, not time.
+vi.setConfig({ testTimeout: 20_000 });
+
 const calls = vi.hoisted(() => ({
   matches: 0,
   openCalls: 0,
