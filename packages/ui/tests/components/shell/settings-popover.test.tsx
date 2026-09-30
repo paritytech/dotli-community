@@ -9,10 +9,17 @@ import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { pointerPress, pointerPressUnfocusable, renderComponent, resetStores, tabTo } from '../../helpers/solid.js';
-import { normalized } from './old-auth-markup.js';
+import {
+  pointerPress,
+  pointerPressUnfocusable,
+  renderComponent,
+  resetStores,
+  tabTo,
+  waitForContent,
+} from '../../helpers/solid.js';
+import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { oldModeBackdrop, oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
+import { oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, query } from '../../support.js';
@@ -179,16 +186,34 @@ async function renderPopover({ seed = true } = {}): Promise<void> {
   await settle();
 }
 
+/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('mode-button').click();
   await settle();
   expect(isOpen()).toBe(true);
+  await waitForContent('mode-popover');
+  await settle();
 }
 
+/** The backdrop: the shared Popover's, open with the popover. */
+function expectBackdrop(open: boolean): void {
+  const backdrop = byId('mode-popover-backdrop');
+  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
+  expect(backdrop.classList.contains('open')).toBe(open);
+}
+
+/**
+ * The open popover: the shared Popover's surface, whose body holds the
+ * settings topbar.ts rendered. Their sheet header is the Popover's now, and
+ * only a sheet's.
+ */
 function expectPopoverMatches(settings: OldSettings): void {
-  expect(normalized(byId('mode-popover')).isEqualNode(normalized(oldModePopover({ open: true, ...settings })))).toBe(
-    true,
-  );
+  const popover = byId('mode-popover');
+  expect(popover.getAttribute('role')).toBe('dialog');
+  expect(popover.getAttribute('aria-label')).toBe('Settings');
+  const expected = oldModePopover({ open: true, ...settings });
+  expected.querySelector('.mode-popover-sheet-header')?.remove();
+  expect(sameChildren(normalized(query(popover, ':scope > .popover-body')), normalized(expected))).toBe(true);
   // isEqualNode leaves out the `checked` property, which the old code set.
   const checked = Array.from(document.querySelectorAll<HTMLInputElement>('.mode-radio-input'))
     .filter(input => input.checked)
@@ -208,10 +233,10 @@ describe('The settings popover island', () => {
     expect(
       normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: true }))),
     ).toBe(true);
-    expect(normalized(byId('mode-popover-backdrop')).isEqualNode(normalized(oldModeBackdrop({ open: false })))).toBe(
-      true,
-    );
-    expect(normalized(byId('mode-popover')).isEqualNode(normalized(oldModePopover({ open: false })))).toBe(true);
+    expectBackdrop(false);
+    // The surface is the shared Popover's, and holds nothing until opened.
+    expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
+    expect(query(byId('mode-popover'), ':scope > .popover-body').childElementCount).toBe(0);
   });
 
   it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
@@ -252,6 +277,7 @@ describe('The settings popover island', () => {
 
   it('As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded', async () => {
     // Given: the islands mounted before the host seeded the settings.
+    stubViewport(true);
     await renderPopover({ seed: false });
 
     // When
@@ -260,7 +286,7 @@ describe('The settings popover island', () => {
     // Then: no settings yet, but the sheet header and its close button are
     // there.
     expect(document.querySelector('.mode-popover-columns')).toBeNull();
-    expect(document.querySelector('.mode-popover-sheet-close')).not.toBeNull();
+    expect(document.querySelector('.popover-sheet-close')).not.toBeNull();
 
     // When
     press('Escape');
@@ -279,7 +305,7 @@ describe('The settings popover island', () => {
 
     // When
     await openPopover();
-    query(document, '.mode-popover-sheet-close').click();
+    query(document, '.popover-sheet-close').click();
     await settle();
 
     // Then
@@ -314,9 +340,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
-    expect(normalized(byId('mode-popover-backdrop')).isEqualNode(normalized(oldModeBackdrop({ open: true })))).toBe(
-      true,
-    );
+    expectBackdrop(true);
     expectPopoverMatches({
       chain: 'smoldot-direct',
       network: 'previewnet',
@@ -702,6 +726,7 @@ describe('The settings popover island', () => {
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
+    stubViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
@@ -711,7 +736,7 @@ describe('The settings popover island', () => {
     expect(isOpen()).toBe(true);
 
     // When
-    query(document, '.mode-popover-sheet-close').click();
+    query(document, '.popover-sheet-close').click();
     await settle();
 
     // Then
@@ -795,12 +820,30 @@ describe('The settings popover island', () => {
     expect(isOpen()).toBe(true);
 
     // When
-    query(document, '.mode-popover-sheet-close').click();
+    query(document, '.popover-sheet-close').click();
     await settle();
 
     // Then
     expect(isOpen()).toBe(false);
     expect(popover.hasAttribute('aria-modal')).toBe(false);
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
+  });
+
+  it('As a phone user, the Settings sheet going away while open unlocks the page', async () => {
+    // Given
+    stubViewport(true);
+    await renderPopover();
+    await openPopover();
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
+
+    // When
+    for (const cleanup of cleanups) {
+      cleanup();
+    }
+    cleanups = [];
+    await settle();
+
+    // Then
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
   });
 

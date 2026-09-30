@@ -4,7 +4,7 @@
 import { flush } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { cleanup, render } from '@solidjs/testing-library';
-import { afterEach } from 'vitest';
+import { afterEach, vi } from 'vitest';
 
 afterEach(() => {
   cleanup();
@@ -34,7 +34,7 @@ export { resetAllStoresForTests as resetStores } from '../../src/state/create-st
 
 /**
  * A mouse press on `el`: pointerdown, which is what dismisses a shell
- * popover pressed outside (components/shell/popover.ts), then the click.
+ * popover pressed outside (components/shell/create-popover.ts), then the click.
  */
 export function pointerPress(el: Element): void {
   el.dispatchEvent(
@@ -94,4 +94,22 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
     next.focus();
   }
   return event;
+}
+
+/**
+ * The body of popover `#id` once its lazy content has loaded: the content
+ * chunk is a dynamic import, which resolves over several microtasks.
+ */
+export async function waitForContent(id: string): Promise<HTMLElement> {
+  const body = await vi.waitFor(() => {
+    const found = document.querySelector<HTMLElement>(`#${id} > .popover-body`);
+    const loaded =
+      found !== null && found.firstElementChild !== null && found.querySelector('.popover-loading') === null;
+    if (!loaded) {
+      throw new Error(`#${id} has no content yet`);
+    }
+    return found;
+  });
+  flush();
+  return body;
 }

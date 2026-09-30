@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { UrlPill } from '../src/components/shell/UrlPill.js';
+import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
 import { showProductPill } from '../src/state/url-pill.js';
 import { setBlockingModalActive } from '../src/state/topbar.js';
 import {
@@ -7,7 +7,15 @@ import {
   VERIFICATION_SHIELD_ID,
   VERIFICATION_TOOLTIP_ID,
 } from '../src/verification-shield.js';
-import { pointerPress, pointerPressUnfocusable, renderComponent, resetStores, settle, tabTo } from './helpers/solid.js';
+import {
+  pointerPress,
+  pointerPressUnfocusable,
+  renderComponent,
+  resetStores,
+  settle,
+  tabTo,
+  waitForContent,
+} from './helpers/solid.js';
 import { byId, query } from './support.js';
 
 function button(): HTMLButtonElement {
@@ -35,10 +43,12 @@ function rowFor(state: string): HTMLElement {
   return query(panel(), `.verification-tooltip-row[data-state="${state}"]`);
 }
 
+/** Open the explainer, and wait for its body (its own chunk). */
 async function openShield(): Promise<void> {
   button().click();
   await settle();
   expect(isOpen()).toBe(true);
+  await waitForContent(VERIFICATION_TOOLTIP_ID);
 }
 
 beforeEach(async () => {
@@ -47,7 +57,7 @@ beforeEach(async () => {
   other.textContent = 'Other';
   document.body.replaceChildren(other);
   showProductPill('app', '.dot');
-  renderComponent(UrlPill);
+  renderComponent(UrlPillShield);
   await settle();
 });
 
@@ -206,8 +216,10 @@ describe('verification shield', () => {
   });
 
   it('As a screen reader user, the state is in the button name, not only its colour', async () => {
-    // Given: no state yet, as right after the pill appears
+    // Given: no state yet, as right after the pill appears, the explainer
+    // open (its rows are its body).
     expect(button().getAttribute('aria-label')).toBe('How was this site loaded?');
+    await openShield();
     expect(panel().querySelector('.is-current')).toBeNull();
 
     // When
@@ -245,7 +257,10 @@ describe('verification shield', () => {
     expect(isOpen()).toBe(true);
   });
 
-  it('As a low-vision user, each state ships its own glyph', () => {
+  it('As a low-vision user, each state ships its own glyph', async () => {
+    // Given
+    await openShield();
+
     // Then
     const glyphs = button().querySelectorAll('.verification-shield-icon');
     expect(glyphs).toHaveLength(2);

@@ -3,7 +3,7 @@
 
 // The chains the network popover watches, reached over the host's remote
 // chain provider. Eager and Solid-free: initTopBar hands it to the network
-// monitor at boot (setBlockSource), before the islands chunk loads.
+// monitor at boot (setBlockSource), whenever the shell's islands hydrate.
 
 import { log } from '@dotli/shared';
 import { createRemoteChainProvider, isRemoteChainConnectable } from '@dotli/protocol';

@@ -1,7 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { hideLoading } from '../../loading-controller.js';
 import { AuthButton } from '../shell/AuthButton.js';
 import { ThemeToggle } from '../shell/ThemeToggle.js';
 import { NavForm } from './NavForm.js';
@@ -11,16 +13,18 @@ import { RecentPills } from './RecentPills.js';
  * The landing page, shown on the bare host with no name to resolve: the
  * name form, the recently visited names, and the auth and theme buttons in
  * the corner, the shell's own components outside the topbar (which the
- * landing page hides, its action group gone). Mounted by landing/load.ts as
- * the `"page"` app root. Events use native listeners, as in the shell's
- * islands.
+ * landing page hides, its action group gone), with ids of their own
+ * (`#landing-auth-button`, `#landing-theme-toggle` and their surfaces'),
+ * the topbar's build-time markup still holding the topbar's. Rendered by the LandingPage
+ * island, its own chunk. It replaces the loading screen once it renders.
  */
 export function Landing(): JSX.Element {
+  onSettled(hideLoading);
   return (
     <div class="landing">
       <div class="landing-auth" id="landing-auth">
-        <AuthButton />
-        <ThemeToggle />
+        <AuthButton idPrefix="landing-" />
+        <ThemeToggle idPrefix="landing-" />
       </div>
       <div class="landing-center">
         <div class="landing-content">

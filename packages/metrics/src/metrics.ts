@@ -147,8 +147,11 @@ function warnUnboundOnce(): void {
  * import * as Sentry from "@sentry/browser";
  * import { m } from "@dotli/metrics/metrics";
  * Sentry.init({ ... });
- * m.bind(Sentry);
+ * m.bind({ startSpan: Sentry.startSpan, setTag: Sentry.setTag, ... });
  * ```
+ *
+ * Pass the functions, not the namespace: a namespace passed as a value
+ * keeps every export of the SDK in the bundle.
  */
 function bind(s: SentryLike): void {
   _sentry = s;

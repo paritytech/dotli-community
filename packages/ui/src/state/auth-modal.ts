@@ -65,3 +65,26 @@ export function updateAuthModal(patch: Partial<AuthModalState>): void {
 export function resetAuthModal(): void {
   authModal.set(INITIAL);
 }
+
+/**
+ * The account button (components/shell/AuthButton.tsx), the modal's
+ * trigger: it gets the focus back as the modal closes, and pressing it does
+ * not count as outside the modal. The two render as separate islands, so
+ * the button hands itself over here.
+ */
+let trigger: HTMLElement | undefined;
+
+/** The account button, while one is mounted. */
+export function getAuthModalTrigger(): HTMLElement | undefined {
+  return trigger;
+}
+
+/** Register `el` as the modal's trigger; returns the unregister. */
+export function setAuthModalTrigger(el: HTMLElement): () => void {
+  trigger = el;
+  return () => {
+    if (trigger === el) {
+      trigger = undefined;
+    }
+  };
+}

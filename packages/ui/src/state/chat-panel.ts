@@ -294,3 +294,24 @@ export function initChatPanelState(): () => void {
 export function resetChatPanelStateForTests(): void {
   panel.set(INITIAL);
 }
+
+/**
+ * The docked panel's element (components/chat/ChatDock.tsx), for the chat
+ * button, a separate island, to tell whether the focus was in it.
+ */
+let panelElement: HTMLElement | undefined;
+
+/** The docked panel, while one is mounted. */
+export function getChatPanelElement(): HTMLElement | undefined {
+  return panelElement;
+}
+
+/** Register `el` as the docked panel; returns the unregister. */
+export function setChatPanelElement(el: HTMLElement): () => void {
+  panelElement = el;
+  return () => {
+    if (panelElement === el) {
+      panelElement = undefined;
+    }
+  };
+}

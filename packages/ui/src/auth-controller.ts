@@ -261,8 +261,8 @@ export function openAuthModal(
 }
 
 /**
- * The modal view can never show (the islands chunk failed to load, or the
- * auth-modal island failed to mount). A login would hold the blocking-modal
+ * The modal view can never show (the auth-modal island failed to load or
+ * render, see reportIslandErrors). A login would hold the blocking-modal
  * lease for a modal nobody can see or close, stalling every later blocking
  * prompt, so release any lease held now and, from here on, cancel each login
  * that would open the modal instead of taking the lease.

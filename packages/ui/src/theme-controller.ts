@@ -6,14 +6,17 @@
 // and the theme store (state/theme.ts) that the toggle
 // (components/shell/ThemeToggle.tsx) and the TrUAPI theme bridge follow.
 //
-// Before paint, the inline bootstrap script in apps/host/index.html sets the
-// same `<html>` attributes from the same key and resolves them the same way,
-// so initTheme() re-applies what is already on the page, never a different
-// theme. Free of Solid: topbar.ts calls initTheme() on the boot path.
+// Before paint, the inline bootstrap script in the host page
+// (apps/host/src/pages/index.astro) sets the same `<html>` attributes from
+// the same key and resolves them the same way, so initTheme() re-applies
+// what is already on the page, never a different theme. Free of Solid: topbar.ts calls initTheme() on the boot path.
 
 import { setTheme, type ThemePref } from './state/theme.js';
 
-/** localStorage key of the theme preference; apps/host/index.html reads it too. */
+/**
+ * localStorage key of the theme preference; the host page's inline bootstrap
+ * script (apps/host/src/pages/index.astro) reads it too.
+ */
 export const THEME_KEY = 'dotli-theme';
 
 /**

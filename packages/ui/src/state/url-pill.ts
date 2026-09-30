@@ -5,9 +5,10 @@ import type { ShieldState } from '../verification-shield.js';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 /**
- * What the topbar's URL pill shows. `none` is the landing page (and the
- * prerendered shell): an empty `#topbar-url`, hidden by CSS. `shield` is null
- * until the host knows how the product was loaded.
+ * What the topbar's URL pill shows (bindUrlPill, url-pill.ts, and the
+ * UrlPillShield island). `none` is the landing page, and the host page
+ * until main.ts knows the product: the URL bar hidden.
+ * `shield` is null until the host knows how the product was loaded.
  */
 export type UrlPillState =
   | { kind: 'none' }
@@ -22,6 +23,15 @@ export type UrlPillState =
 const urlPill = createSyncStore<UrlPillState>({ kind: 'none' }, { equals: shallowEqual });
 
 export const urlPillStore: ReadableStore<UrlPillState> = urlPill;
+
+/**
+ * The pill's shield: undefined for a pill with none (not a product's), null
+ * while the host does not know how the product was loaded. The shield, its
+ * explainer and their island read it from here, so they agree.
+ */
+export function pillShield(state: UrlPillState): ShieldState | null | undefined {
+  return state.kind === 'product' ? state.shield : undefined;
+}
 
 /** A local product (localhost proxy or preview route) served from `host`. */
 export function showLocalhostPill(host: string): void {

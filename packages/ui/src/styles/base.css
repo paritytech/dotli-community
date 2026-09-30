@@ -34,7 +34,7 @@ body {
   color: #e0e0e0;
   font-family: system-ui, sans-serif;
 }
-/* A modal shell dialog is open (components/shell/popover.ts lockScroll):
+/* A modal shell dialog is open (components/shell/create-popover.ts lockScroll):
    the page does not scroll. An attribute, not the inline style, so the
    page's own inline overflow (bridge.ts sets one) survives the dialog. */
 body[data-scroll-locked] {
@@ -58,6 +58,16 @@ body[data-scroll-locked] {
 }
 
 /* App Content */
+/* The landing page (the LandingPage island, beside `#app`) hides the
+   topbar (its `data-landing`) and takes the page, from the top: the
+   loading screen before it too. */
+#topbar[data-landing],
+body:has(#topbar[data-landing]) #app {
+  display: none;
+}
+body:has(#topbar[data-landing]) #app-loading {
+  top: 0;
+}
 #app {
   display: flex;
   align-items: center;
@@ -66,16 +76,18 @@ body[data-scroll-locked] {
   margin-top: var(--topbar-height);
   text-align: center;
 }
-/* Scoped to `#app > .loading` because the bare `.loading` class is *also*
-   used as a modifier on in-popover value spans (e.g. the domain info popover's
-   "Resolving..." row). Before scoping, the full-viewport `min-height` on the
-   span stretched popover rows to viewport height. */
+/* Scoped to `#app > .loading` (the sandbox's screen) and `#app-loading` (the
+   host's) because the bare `.loading` class is *also* used as a modifier on
+   in-popover value spans (e.g. the domain info popover's "Resolving..." row).
+   Before scoping, the full-viewport `min-height` on the span stretched popover
+   rows to viewport height. */
 /* Positioned the way a browser positions its own status pages: a bounded
    column starting in the upper part of the viewport rather than floating in the
    dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
    sitting above the midline means the text does not move when a second line
    wraps in. */
-#app > .loading {
+#app > .loading,
+#app-loading {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -87,6 +99,21 @@ body[data-scroll-locked] {
   max-width: 600px;
   margin: 0 auto;
   text-align: center;
+}
+/* The host's screen (the LoadingScreen island) sits outside `#app`, so that
+   whatever replaces `#app`'s content never takes the island with it: laid
+   over the content area, where `#app` is. */
+#app-loading {
+  position: absolute;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
+}
+/* Fading out once the app has loaded (loading-controller.ts dismisses it). */
+#app-loading.dismissing {
+  transition: opacity 0.3s ease;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* Loading logo spinner. */

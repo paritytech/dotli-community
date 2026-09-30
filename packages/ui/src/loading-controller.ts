@@ -4,9 +4,8 @@
 // The loading screen's behaviour: the progress bar, the stage narration, the
 // stall watch and the dismiss. It writes the loading store, which the loading
 // screen island (components/shell/LoadingScreen.tsx) renders, so it stays on
-// the startup path without Solid. The one DOM it touches is the static screen
-// from apps/host/index.html, which it removes when the loading root is
-// disposed before the island has taken the screen over.
+// the startup path without Solid. It touches no DOM: the island renders
+// nothing once the loading root is disposed.
 
 import { isSandboxOrigin, withActiveTld } from '@dotli/config';
 
@@ -507,17 +506,6 @@ export function stopStatusTick(): void {
 /** True while the loading screen is registered as the `"loading"` app root. */
 let loadingRootLive = false;
 
-/** The static screen apps/host/index.html paints. */
-function removeStaticScreen(): void {
-  document.getElementById('app-loading')?.remove();
-}
-
-/**
- * Takes the loading screen off the page, as part of disposing the loading
- * root. The static screen until the island adopts it, then the island.
- */
-let disposeScreen: () => void = removeStaticScreen;
-
 /**
  * Track the loading screen as the `"loading"` app root, so whatever replaces
  * it (the product frame, an error page) stops its timers instead of leaving
@@ -543,31 +531,22 @@ function trackLoadingRoot(): boolean {
     loadingRootLive = false;
     // Covers the crawl, the stage messages and the stall watch.
     stopStatusTick();
+    // The screen renders nothing from here on (components/shell/
+    // LoadingScreen.tsx).
     updateLoading({ phase: 'gone' });
-    // Back to the static fallback, so the island is never disposed twice.
-    const dispose = disposeScreen;
-    disposeScreen = removeStaticScreen;
-    dispose();
   });
   return true;
 }
 
-/**
- * Hand the loading root's screen over to the island that replaced the static
- * one: disposing the root now runs `dispose` instead of removing the static
- * screen. The root itself, and every timer it tracks, carries on untouched.
- */
-export function adoptLoadingScreen(dispose: () => void): void {
-  disposeScreen = dispose;
-  trackLoadingRoot();
-}
+// The screen is live from first paint (the store starts `active`), so it is
+// a root before any timer starts. Whatever replaces it first (the landing
+// page, a preview or local-target frame, an error page shown before the
+// phases start) then disposes it.
+trackLoadingRoot();
 
-// The static screen is live from first paint, so it is a root before any
-// timer starts. Whatever replaces it first (the landing page, a preview or
-// local-target frame, an error page shown before the phases start) then
-// removes it.
-if (typeof document !== 'undefined' && document.getElementById('app-loading')) {
-  trackLoadingRoot();
+/** Take the loading screen down at once, without the fade: for a page that replaces it (the landing page). */
+export function hideLoading(): void {
+  disposeAppRoot('loading');
 }
 
 /**

@@ -3,7 +3,7 @@
 
 import { vi } from 'vitest';
 import type { JSX } from '@solidjs/web';
-import { TopbarActions } from '../../../src/components/shell/topbar/TopbarActions.js';
+import { ActionGroup } from '../../../src/components/shell/topbar/ActionGroup.js';
 import { pointerPress, renderComponent, settle } from '../../helpers/solid.js';
 import { byId, query } from '../../support.js';
 
@@ -79,7 +79,7 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
 }
 
 /**
- * Render `items` as the children of a TopbarActions in the document, as the
+ * Render `items` as the children of an ActionGroup in the document, as the
  * topbar island does, with `room` pixels for them (see stubTopbarLayout).
  * Returns the layout, to change the room later.
  */
@@ -87,7 +87,7 @@ export async function renderTopbar(items: () => JSX.Element, room: number): Prom
   const layout = stubTopbarLayout(room);
   const container = document.createElement('div');
   document.body.append(container);
-  renderComponent(() => <TopbarActions>{items()}</TopbarActions>, { container });
+  renderComponent(() => <ActionGroup>{items()}</ActionGroup>, { container });
   await settle();
   return layout;
 }

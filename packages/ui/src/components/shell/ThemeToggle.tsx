@@ -5,7 +5,7 @@ import { Portal, type JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
 import { useStore } from '../use-store.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 
@@ -17,16 +17,14 @@ const THEME_LABEL: Record<ThemePref, string> = {
 
 /**
  * The sun, moon and monitor, of which CSS shows the one for
- * `<html data-theme-pref>`: on the button (by id) or a More menu row (by
- * class).
+ * `<html data-theme-pref>`: on the button or a More menu row.
  */
 function ThemeIcons(props: { row?: boolean }): JSX.Element {
   const size = (): number => (props.row === true ? 14 : 12);
   return (
     <>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-sun'}
-        class={props.row === true ? 'more-row-icon-sun' : undefined}
+        class={props.row === true ? 'more-row-icon-sun' : 'theme-icon-sun'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -47,8 +45,7 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
       </svg>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-moon'}
-        class={props.row === true ? 'more-row-icon-moon' : undefined}
+        class={props.row === true ? 'more-row-icon-moon' : 'theme-icon-moon'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -61,8 +58,7 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
       </svg>
       <svg
-        id={props.row === true ? undefined : 'theme-icon-system'}
-        class={props.row === true ? 'more-row-icon-system' : undefined}
+        class={props.row === true ? 'more-row-icon-system' : 'theme-icon-system'}
         width={size()}
         height={size()}
         viewBox="0 0 24 24"
@@ -82,12 +78,12 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
 
 /**
  * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`,
- * rendered into the body), an item of the topbar island (see islands.tsx):
- * Shell.tsx prerenders the same markup statically (title "Theme", no option
- * checked), and the island is swapped in for it after boot. The landing
- * page (components/landing/) renders it too, in its corner. The menu is a modal menu, like Radix
- * DropdownMenu with a RadioGroup (createPopover's `menu` mode, which owns
- * its keys and focus): a keyboard opening focuses the first option and a
+ * rendered into the body), an item of the topbar's action group island (see
+ * src/islands/): rendered with the host page from the theme store's default
+ * ("Theme: System"), then hydrated, which brings the stored preference. The
+ * landing page (components/landing/) renders it too, in its corner. The
+ * menu is a modal menu, like Radix DropdownMenu with a RadioGroup
+ * (createPopover's `menu` mode, which owns its keys and focus): a keyboard opening focuses the first option and a
  * pointer opening the menu itself; ArrowUp/ArrowDown (wrapping), Home, End
  * and typeahead move between the options (`menuitemradio`, `aria-checked`
  * on the current one); Escape closes and hands focus back to the button;
@@ -100,8 +96,12 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
  * inline bootstrap script and theme-controller.ts own, never this component.
  * The More menu's Theme row opens this menu with the row click: a keyboard
  * choice (`detail` 0) opens it as a keyboard opening, on the first option.
+ *
+ * `idPrefix` sets another instance's ids apart (the landing page's, whose
+ * page also holds the topbar's build-time markup).
  */
-export function ThemeToggle(): JSX.Element {
+export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
+  const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const theme = useStore(themeStore);
@@ -114,9 +114,6 @@ export function ThemeToggle(): JSX.Element {
     surface: () => popover,
   });
 
-  // Native listeners (added in the refs below), not Solid's onClick: Solid 2
-  // delegates it to the root's container, which is the detached element the
-  // island renders into before it is swapped in (islands.tsx).
   const onClick = (e: MouseEvent): void => {
     const option = (e.target as HTMLElement).closest<HTMLElement>('.theme-popover-option');
     const next = option?.dataset['themeOption'];
@@ -138,15 +135,15 @@ export function ThemeToggle(): JSX.Element {
         <button
           ref={el => {
             button = el;
-            el.addEventListener('click', menu.toggle);
           }}
-          id="theme-toggle"
+          onClick={menu.toggle}
+          id={id('theme-toggle')}
           class="topbar-btn"
           title={title()}
           aria-label={title()}
           aria-haspopup="menu"
           aria-expanded={menu.open() ? 'true' : 'false'}
-          aria-controls="theme-popover"
+          aria-controls={id('theme-popover')}
         >
           <ThemeIcons />
         </button>
@@ -155,10 +152,10 @@ export function ThemeToggle(): JSX.Element {
         <div
           ref={el => {
             popover = el;
-            el.addEventListener('click', onClick);
           }}
+          onClick={onClick}
           class={['more-popover theme-popover', { open: menu.open() }]}
-          id="theme-popover"
+          id={id('theme-popover')}
           role="menu"
           aria-label="Theme"
           tabindex="-1"

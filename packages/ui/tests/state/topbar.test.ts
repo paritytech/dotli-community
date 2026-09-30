@@ -16,11 +16,15 @@ describe('topbar store', () => {
     resetStores();
   });
 
-  it('As the shell, the topbar starts visible, unblocked, with the chains button hidden', () => {
+  it('As the shell, the topbar starts absent, visible, pinned, unblocked, with the chains button hidden', () => {
     expect(getTopbarState()).toEqual({
+      present: false,
       visible: true,
+      autoHide: false,
+      landing: false,
       blockingModalActive: false,
       chainsButtonVisible: false,
+      settingsOpen: false,
     });
   });
 
@@ -30,7 +34,7 @@ describe('topbar store', () => {
     setBlockingModalActive(true);
 
     // Then
-    expect(topbarStore.get()).toEqual({
+    expect(topbarStore.get()).toMatchObject({
       visible: false,
       blockingModalActive: true,
       chainsButtonVisible: false,

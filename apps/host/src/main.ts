@@ -16,7 +16,7 @@ if (typeof globalThis.requestIdleCallback !== 'function') {
 }
 
 // Must stay the first import: it starts Sentry before any other module
-// evaluates, then starts loading the shell's islands (see boot.ts).
+// evaluates (see boot.ts).
 import './boot.js';
 import './pwa.js';
 import '@dotli/ui/styles.css';
@@ -24,10 +24,11 @@ import * as Sentry from '@sentry/browser';
 import { captureException, m, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
+  openSettings,
   showError,
   showErrorPage,
   showNoContentError,
-  showLanding,
+  setLandingPage,
   initPhases,
   advancePhase,
   nudgePhaseProgress,
@@ -143,11 +144,8 @@ import {
 import type { DotliDebugEvent } from '@dotli/truapi-debug';
 import {
   describeError,
-  ERROR_TITLES,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
-  HOST_ERRORS,
-  HOST_UNAVAILABLE_DETAIL,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   trustedProviderHosts,
@@ -179,13 +177,6 @@ window.addEventListener('vite:preloadError', event => {
 // Fetch the toast/modal chunk while the browser is idle, so it is in memory
 // before a deploy could make later chunk loads fail.
 prefetchOverlays();
-
-const errorIcon = (paths: string): string =>
-  `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
-
-const REFRESH_ICON = errorIcon(
-  '<polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>',
-);
 
 // Respect the user's dismissal unconditionally. Once dismissed, never
 // resurface unless the dismissal flag is cleared from localStorage.
@@ -821,18 +812,6 @@ function forgetError(): void {
   }
 }
 
-/**
- * Open the topbar's Settings panel, the way the mobile "more" menu does.
- *
- * `stopPropagation` for the same reason that menu needs it: the document-level
- * close-outside listener would see this button as outside the popover that just
- * opened and close it again within the same click.
- */
-function openSettings(event: MouseEvent): void {
-  event.stopPropagation();
-  document.getElementById('mode-button')?.click();
-}
-
 function switchBackendAndReload(nextBackend: Backend): void {
   setBackend(nextBackend);
   const search = new URLSearchParams(window.location.search);
@@ -1078,7 +1057,7 @@ async function main(): Promise<void> {
 
   if (label === null) {
     log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
-    void showLanding();
+    setLandingPage(true);
     performance.mark('dotli:main:end');
     emitDotliDebugEvent({
       layer: 'boot',
@@ -1114,24 +1093,6 @@ async function main(): Promise<void> {
     /* fire-and-forget */
   });
 
-  // The topbar DOM nodes are required-by-contract invariants of
-  // `index.html`. Their absence is a build/deploy bug, not a recoverable
-  // runtime branch, so fail loud so monitoring catches it instead of silently
-  // leaving the page in its initial loading state.
-  // `urlBar` is looked up only for this invariant check.
-  const urlBar = document.getElementById('topbar-url');
-  if (urlBar === null) {
-    const err = new Error(HOST_ERRORS.TOPBAR_URL_NODE_MISSING);
-    captureException(err, { surface: 'host_main_dom_invariant' });
-    showError(ERROR_TITLES.HOST_UNAVAILABLE, HOST_UNAVAILABLE_DETAIL, {
-      label: RELOAD_BTN_LABEL,
-      icon: REFRESH_ICON,
-      onClick: () => {
-        window.location.reload();
-      },
-    });
-    return;
-  }
   showProductPill(label, getActiveTldSuffix());
 
   // Listen for status messages from the sandbox iframe so the loading

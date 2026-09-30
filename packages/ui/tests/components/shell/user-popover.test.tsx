@@ -7,9 +7,10 @@ import { requestTruapiDisconnect } from '../../../src/auth-controller.js';
 import { setAuthState } from '../../../src/state/auth.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import type { TruapiSessionUiState } from '../../../src/host-callbacks/SessionStore.js';
-import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo } from '../../helpers/solid.js';
+import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo, waitForContent } from '../../helpers/solid.js';
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { normalized, oldUserPopover } from './old-auth-markup.js';
+import { query } from '../../support.js';
+import { normalized, oldUserPopover, sameChildren } from './old-auth-markup.js';
 
 useAuthController();
 
@@ -38,22 +39,26 @@ function isOpen(): boolean {
 }
 
 /**
- * The popover as topbar.ts left it, plus what a Radix-style non-modal popover
- * carries: role="dialog", named by its "Welcome back" heading, and the
- * tabindex that lets it take focus.
+ * The popover: a Radix-style non-modal popover surface (role="dialog", named
+ * by its "Welcome back" heading, with the tabindex that lets it take focus)
+ * whose body is the markup topbar.ts left in it.
  */
 function expectMarkup(popover: Element, opts: Parameters<typeof oldUserPopover>[0]): void {
-  const expected = oldUserPopover(opts);
-  expected.setAttribute('role', 'dialog');
-  expected.setAttribute('aria-label', 'Welcome back');
-  expected.setAttribute('tabindex', '-1');
-  expect(normalized(popover).isEqualNode(normalized(expected))).toBe(true);
+  expect(popover.getAttribute('role')).toBe('dialog');
+  expect(popover.getAttribute('aria-label')).toBe('Welcome back');
+  expect(popover.getAttribute('tabindex')).toBe('-1');
+  expect(popover.classList.contains('user-popover')).toBe(true);
+  expect(popover.classList.contains('open')).toBe(opts.open);
+  const body = query(popover, ':scope > .popover-body');
+  expect(sameChildren(normalized(body), normalized(oldUserPopover(opts)))).toBe(true);
 }
 
+/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('auth-button').click();
   await settleAll();
   expect(isOpen()).toBe(true);
+  await waitForContent('user-popover');
 }
 
 describe('UserPopover', () => {
@@ -65,6 +70,7 @@ describe('UserPopover', () => {
       liteUsername: 'pgherveou.04',
       primaryUsername: 'pgherveou.04',
     });
+    await openPopover();
 
     // Then
     expect(byId('user-popover-username').textContent).toBe('pgherveou.04');
@@ -72,7 +78,7 @@ describe('UserPopover', () => {
     expectMarkup(popover, {
       username: 'pgherveou.04',
       hint: false,
-      open: false,
+      open: true,
     });
   });
 
@@ -82,6 +88,7 @@ describe('UserPopover', () => {
       connected: true,
       publicKey: PUBLIC_KEY,
     });
+    await openPopover();
 
     // Then
     expect(byId('user-popover-username').textContent).toBe('0x000102...1e1f');
@@ -89,7 +96,7 @@ describe('UserPopover', () => {
     expectMarkup(popover, {
       username: '0x000102...1e1f',
       hint: true,
-      open: false,
+      open: true,
     });
 
     // When: reconnecting with a username clears the hint again.
@@ -107,12 +114,13 @@ describe('UserPopover', () => {
   it('As a user restored from a bare session, the popover says I am connected', async () => {
     // When
     const popover = await renderAccount({ connected: true });
+    await openPopover();
 
     // Then
     expectMarkup(popover, {
       username: 'Connected with Polkadot Mobile',
       hint: true,
-      open: false,
+      open: true,
     });
   });
 
@@ -122,6 +130,7 @@ describe('UserPopover', () => {
       connected: true,
       primaryUsername: '<b>x</b>',
     });
+    await openPopover();
 
     // Then
     expect(popover.querySelector('b')).toBeNull();
@@ -315,6 +324,7 @@ describe('UserPopover', () => {
 
     // When
     await renderAccount();
+    await openPopover();
 
     // Then
     expect(byId('user-popover-username').textContent).toBe('alice');

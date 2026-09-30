@@ -5,7 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
 import { mountViolationPanel } from '../../../src/components/sandbox-checker/mount.js';
 import { attachProductFrame, resetProductFrameLayout, setChatWidth } from '../../../src/product-frame-layout.js';
-import { settle } from '../../helpers/solid.js';
+import { resetStores, settle } from '../../helpers/solid.js';
+import { setTopbarPresent } from '../../../src/state/topbar.js';
 import { byId, query } from '../../support.js';
 
 const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
@@ -28,7 +29,9 @@ function panel(): HTMLElement {
 }
 
 beforeEach(() => {
-  document.body.innerHTML = '<div id="topbar"></div>';
+  // The host page, which has the topbar.
+  setTopbarPresent();
+  document.body.replaceChildren();
   iframe = document.createElement('iframe');
   document.body.appendChild(iframe);
   frame = {};
@@ -39,6 +42,8 @@ beforeEach(() => {
 afterEach(() => {
   dispose();
   resetProductFrameLayout();
+  resetStores();
+  resetStores();
   vi.restoreAllMocks();
   document.body.replaceChildren();
 });

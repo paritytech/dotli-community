@@ -6,7 +6,6 @@
 
 export { createBlockingModalCoordinator } from './blocking-modal-queue.js';
 export { chainRoleForKey } from './chain-roles.js';
-export { showLanding } from './landing/load.js';
 export {
   advancePhase,
   initPhases,
@@ -21,7 +20,7 @@ export {
   stopStatusTick,
   type LoadingPhase,
 } from './loading-controller.js';
-export { ensureIslands } from './mount/load-islands.js';
+export { reportIslandErrors } from './mount/islands.js';
 export { recordChainPhase, recordPeerCount, recordTransfer, type ChainPhase } from './network-monitor.js';
 export { showNotification } from './notification.js';
 export { prefetchOverlays } from './overlays/load.js';
@@ -31,8 +30,17 @@ export { initScheduledNotifications } from './scheduled-notifications.js';
 export { wipeOriginState } from './settings-actions.js';
 export { getLoadingState, updateLoading } from './state/loading.js';
 export { initSettingsStore } from './state/settings.js';
+export { openSettings, setLandingPage, topbarStore } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
-export { armTopbarAutoHide, pinTopbarVisible } from './topbar-autohide.js';
+export { bindUrlPill } from './url-pill.js';
+export {
+  armTopbarAutoHide,
+  pinTopbarVisible,
+  registerTopbarElement,
+  revealTopbar,
+  scheduleTopbarHide,
+  TOPBAR_REVEAL_SHORTCUT,
+} from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
 export { SETTINGS_GLYPH, showError, showErrorPage, showNoContentError } from './ui.js';
 export { type ShieldState } from './verification-shield.js';

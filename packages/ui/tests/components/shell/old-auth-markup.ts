@@ -50,6 +50,17 @@ export function normalized(el: Element): Element {
   return copy;
 }
 
+/**
+ * Whether `a` and `b` hold equal child nodes, in order: a Popover's body
+ * against the children of the surface the old markup built (the surface
+ * itself is now the shared Popover's).
+ */
+export function sameChildren(a: Node, b: Node): boolean {
+  const left = Array.from(a.childNodes);
+  const right = Array.from(b.childNodes);
+  return left.length === right.length && left.every((node, i) => node.isEqualNode(right[i] ?? null));
+}
+
 // --- auth button (initTopBar, renderLoggedOut, renderTruapiLoggedIn) ---
 
 export function oldAuthButton(state: { initials: string | undefined } | 'logged-out'): HTMLElement {

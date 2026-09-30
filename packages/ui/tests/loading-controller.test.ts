@@ -30,20 +30,9 @@ function stubMotionPreference(): void {
 }
 
 function installLoadingDom(): void {
-  document.body.innerHTML = `
-    <div id="app">
-      <div class="loading" id="app-loading">
-        <div class="loading-progress" id="loading-progress" aria-valuenow="0">
-          <div class="loading-progress-fill" id="loading-progress-fill"></div>
-          <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
-        </div>
-        <p id="status" aria-hidden="true">Reaching out</p>
-        <p class="sr-only" id="status-sr" aria-live="polite"></p>
-        <p class="loading-warning" id="loading-warning" role="status">
-          <span id="loading-warning-text"></span>
-        </p>
-      </div>
-    </div>`;
+  // As the host page paints it: the LoadingScreen island's screen, beside
+  // `#app`.
+  document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
 }
 
 describe('The loading controller drives the loading store', () => {
@@ -358,28 +347,22 @@ describe('The loading controller drives the loading store', () => {
 
   it('As the shell, the static screen is the loading root from the moment the controller loads', async () => {
     // Given a controller that has started nothing
-    const screen = document.getElementById('app-loading');
     const roots = await import('../src/mount/app-roots.js');
 
     // When whatever replaces the screen disposes the roots
     roots.disposeAppRoots();
 
-    // Then the static screen went
-    expect(screen?.isConnected).toBe(false);
+    // Then the screen is gone
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('As the shell, starting the phases keeps the root the controller registered on load', async () => {
-    // Given
-    const screen = document.getElementById('app-loading');
-
     // When
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.advancePhase(0);
 
     // Then the screen is still up and the load is running
-    expect(screen?.isConnected).toBe(true);
     expect(store.getLoadingState().phase).toBe('active');
 
     // When
@@ -387,26 +370,24 @@ describe('The loading controller drives the loading store', () => {
     roots.disposeAppRoot('loading');
 
     // Then one root, disposed once
-    expect(screen?.isConnected).toBe(false);
+    expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('As the shell, a page without the static screen gets no loading root when the controller loads', async () => {
-    // Given a page with no static screen, such as the sandbox's
+  it('As the shell, the loading screen is a root from the start, so a page shown before any phase takes it down', async () => {
+    // Given the controller, freshly loaded, before any phase
     vi.resetModules();
-    document.body.innerHTML = `<div id="app"></div>`;
-    const [fresh, freshStore, roots] = await Promise.all([
-      import('../src/loading-controller.js'),
+    const [freshStore, roots] = await Promise.all([
       import('../src/state/loading.js'),
       import('../src/mount/app-roots.js'),
+      import('../src/loading-controller.js'),
     ]);
 
     // When
     roots.disposeAppRoots();
 
-    // Then nothing was registered to dispose
-    expect(freshStore.getLoadingState().phase).toBe('active');
-    expect(fresh.LOADING_STAGES).toContain('starting');
+    // Then
+    expect(freshStore.getLoadingState().phase).toBe('gone');
   });
 
   it('As a visitor whose app loaded, the dismiss stops the headline rotation and the typing', () => {
@@ -453,75 +434,5 @@ describe('The loading controller drives the loading store', () => {
     expect(onDone).toHaveBeenCalledTimes(1);
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
-  });
-
-  it('As the shell, disposing the loading root before the island mounts removes the static screen', async () => {
-    // Given
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    const screen = document.getElementById('app-loading');
-    const roots = await import('../src/mount/app-roots.js');
-
-    // When
-    roots.disposeAppRoot('loading');
-
-    // Then
-    expect(screen?.isConnected).toBe(false);
-  });
-
-  it('As a visitor whose app loaded before the island mounted, the static screen goes after 300 ms', () => {
-    // Given
-    const screen = document.getElementById('app-loading');
-
-    // When
-    ctl.dismissLoading();
-    vi.advanceTimersByTime(FADE_MS - 1);
-
-    // Then
-    expect(screen?.isConnected).toBe(true);
-
-    // When
-    vi.advanceTimersByTime(1);
-
-    // Then
-    expect(screen?.isConnected).toBe(false);
-    expect(store.getLoadingState().phase).toBe('gone');
-  });
-
-  it('As the shell, a screen the island adopted is disposed with the loading root, timers and all', async () => {
-    // Given a crawling bar
-    ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
-    ctl.advancePhase(0);
-    const disposeScreen = vi.fn();
-
-    // When the island takes the screen over
-    ctl.adoptLoadingScreen(disposeScreen);
-    const before = progress();
-    vi.advanceTimersByTime(1_000);
-
-    // Then nothing was disposed and the load goes on
-    expect(disposeScreen).not.toHaveBeenCalled();
-    expect(store.getLoadingState().phase).toBe('active');
-    expect(progress()).toBeGreaterThan(before);
-
-    // When
-    const roots = await import('../src/mount/app-roots.js');
-    roots.disposeAppRoot('loading');
-    const frozen = progress();
-    vi.advanceTimersByTime(10_000);
-
-    // Then the island's dispose ran instead of the static fallback
-    expect(disposeScreen).toHaveBeenCalledTimes(1);
-    expect(document.getElementById('app-loading')?.isConnected).toBe(true);
-    expect(progress()).toBe(frozen);
-    expect(store.getLoadingState().phase).toBe('gone');
-
-    // When a late signal restarts a timer, the root is the static fallback
-    // again and never the disposed island
-    ctl.releasePhaseProgress();
-    ctl.setLoadingStage('content');
-    roots.disposeAppRoot('loading');
-
-    // Then
-    expect(disposeScreen).toHaveBeenCalledTimes(1);
   });
 });

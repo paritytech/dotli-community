@@ -48,8 +48,21 @@ interface ChainBackendState {
   url: string;
 }
 
+/**
+ * The settings once boot has applied them: the stored backend is `expected`
+ * and the address bar's `chainBackend` is too, or gone. Boot stores the
+ * default backend (the shared-mode bootstrap reads it) before it applies and
+ * rewrites the link's, so the stored value alone can match too early.
+ */
 async function readChainBackendState(page: Page, expected: string): Promise<ChainBackendState> {
-  await page.waitForFunction(e => localStorage.getItem('dotli:chain-backend') === e, expected, { timeout: 10_000 });
+  await page.waitForFunction(
+    e => {
+      const inUrl = new URL(window.location.href).searchParams.get('chainBackend');
+      return localStorage.getItem('dotli:chain-backend') === e && (inUrl === null || inUrl === e);
+    },
+    expected,
+    { timeout: 10_000 },
+  );
   return page.evaluate(() => ({
     chainBackend: localStorage.getItem('dotli:chain-backend'),
     cacheSettings: localStorage.getItem('dotli:cache-settings'),

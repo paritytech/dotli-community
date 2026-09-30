@@ -170,7 +170,17 @@ export function initSentry(source: SentrySource): void {
     tracePropagationTargets: [],
   });
 
-  m.bind(Sentry as unknown as Parameters<typeof m.bind>[0]);
+  // The functions @dotli/metrics calls, by name: binding the namespace
+  // itself would keep every export of @sentry/browser (Replay and Feedback
+  // among them) in the bundle.
+  m.bind({
+    startSpan: Sentry.startSpan,
+    startInactiveSpan: Sentry.startInactiveSpan,
+    setMeasurement: Sentry.setMeasurement,
+    metrics: Sentry.metrics,
+    setTag: Sentry.setTag,
+    addBreadcrumb: Sentry.addBreadcrumb,
+  } as unknown as Parameters<typeof m.bind>[0]);
   // Use the canonical schema keys documented in `metrics.ts` (`source`,
   // `env`). The metrics layer owns any Sentry-side prefixing, so pass bare
   // keys here. An already-prefixed key like `dotli_source` would become

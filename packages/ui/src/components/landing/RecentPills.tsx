@@ -32,7 +32,6 @@ export function RecentPills(): JSX.Element {
   const itemOf = (target: EventTarget | null): HTMLElement | null =>
     target instanceof Element ? target.closest<HTMLElement>('.landing-recent-item') : null;
 
-  // Native listeners, like the shell's islands (components/shell/islands.tsx).
   const onClick = (e: MouseEvent): void => {
     const item = itemOf(e.target);
     const label = item?.dataset['label'];
@@ -87,12 +86,14 @@ export function RecentPills(): JSX.Element {
     <div
       ref={el => {
         container = el;
-        el.addEventListener('click', onClick);
+        // Passive, so a press never holds up scrolling: Solid's JSX events
+        // take no listener options.
         el.addEventListener('touchstart', onTouchStart, { passive: true });
         el.addEventListener('touchmove', cancelPress, { passive: true });
         el.addEventListener('touchend', cancelPress, { passive: true });
         el.addEventListener('touchcancel', cancelPress, { passive: true });
       }}
+      onClick={onClick}
       id="dotli-recent"
       class="landing-recent"
       hidden={labels().length === 0}

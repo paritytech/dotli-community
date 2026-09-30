@@ -6,7 +6,7 @@ import { getActiveChainRoles } from '@dotli/config';
 import { ChainsPopover } from '../src/components/shell/ChainsPopover.js';
 import { resetNetworkMonitor, setBlockSource } from '../src/network-monitor.js';
 import { startNetworkStore } from '../src/state/network.js';
-import { renderComponent, resetStores, settle } from './helpers/solid.js';
+import { renderComponent, resetStores, settle, waitForContent } from './helpers/solid.js';
 import { query } from './support.js';
 import { nth } from './helpers/nth.js';
 
@@ -64,8 +64,9 @@ async function openPanel(): Promise<HTMLElement> {
   await settle();
   document.getElementById('chains-button')?.click();
   await settle();
-  const strip = document.getElementById('chains-popover')?.querySelector<HTMLElement>('.chains-bars');
-  if (strip === null || strip === undefined) {
+  // The panel is the popover's body, its own chunk.
+  const strip = (await waitForContent('chains-popover')).querySelector<HTMLElement>('.chains-bars');
+  if (strip === null) {
     throw new Error('the panel rendered no bar strip');
   }
   return strip;

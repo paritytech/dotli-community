@@ -4,31 +4,26 @@
 // dot.li Top bar boot wiring
 //
 // Starts what the topbar needs from boot on: the auth controller, the block
-// source and network store, the product chat, the theme preference, the home
-// link and the idle session rehydrate. Every popover, and the mobile "more"
+// source and network store, the product chat, the theme preference and the
+// idle session rehydrate. Every popover, and the mobile "more"
 // flyout, is a shell island (components/shell/) that renders these stores
 // when it mounts. No framework here: this runs on the startup path.
 //
 import { setBlockSource } from './network-monitor.js';
 import { createBlockSource } from './block-source.js';
 import { startNetworkStore } from './state/network.js';
-import { initChatPanel } from './chat/panel.js';
+import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
-import { recordChainsButtonVisible } from './state/topbar.js';
+import { recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
+  setTopbarPresent();
   // The login and auth-state listeners, from boot on: the auth islands
   // mount later and render what the controller has kept.
   initAuthController(modalCoordinator);
-
-  // Set logo home link from VITE_APP_URL (defaults to /)
-  const homeLink = document.getElementById('topbar-home') as HTMLAnchorElement | null;
-  if (homeLink !== null) {
-    homeLink.href = import.meta.env.VITE_APP_URL ?? '/';
-  }
 
   // Theme preference (the toggle itself is components/shell/ThemeToggle.tsx)
   initTheme();
@@ -38,8 +33,8 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   setBlockSource(createBlockSource());
   startNetworkStore();
 
-  // Product chat button + docked panel
-  initChatPanel();
+  // The product chat's state: its button and docked panel are islands.
+  initChatPanelState();
 
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
@@ -61,11 +56,8 @@ function scheduleIdle(callback: () => void): void {
 /**
  * Reveal the network button. The host calls this once a product is on
  * screen, so the icon appears with the app rather than during the load.
- * Writes the store the chains island renders, and the static button's class
- * for the time before the island is swapped in (after the swap the element
- * is the island's, which renders the same class from the store).
+ * Writes the store the chains island renders.
  */
 export function setChainsButtonVisible(visible: boolean): void {
   recordChainsButtonVisible(visible);
-  document.getElementById('chains-button')?.classList.toggle('visible', visible);
 }

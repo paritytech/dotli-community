@@ -10,12 +10,7 @@
    defined alongside each popover give the enter direction its initial frame.
    The transform timing function overshoots slightly for a subtle bounce. */
 @media (prefers-reduced-motion: reduce) {
-  .more-popover,
-  .user-popover,
-  .mode-popover,
-  .permissions-popover,
-  .mode-popover-backdrop,
-  .permissions-popover-backdrop {
+  .more-popover {
     transition: none !important;
   }
 }
@@ -60,6 +55,37 @@
   padding: var(--safe-top) calc(14px + var(--safe-right)) 0
     calc(14px + var(--safe-left));
   z-index: 1000;
+  /* SLIDE_TRANSITION in topbar-autohide.ts, which the product frame follows. */
+  transition: transform 0.3s ease;
+}
+/* Slid out by the auto-hide (topbar-autohide.ts), set by Topbar.astro. */
+#topbar[data-hidden] {
+  transform: translateY(-100%);
+}
+@media (prefers-reduced-motion: reduce) {
+  #topbar {
+    transition: none;
+  }
+}
+/* A status line under the bar while the browser is offline, riding the
+   bar's auto-hide. */
+#offline-banner {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 999;
+  background: #b45309;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-align: center;
+  padding: 4px 12px;
+  letter-spacing: 0.02em;
+}
+#topbar[data-offline]:not([data-hidden]) #offline-banner {
+  display: block;
 }
 .topbar-left {
   grid-column: 1;
@@ -96,9 +122,9 @@
   line-height: 1;
   align-self: center;
 }
-/* The More button shows while the live action group has collapsed items
-   into it (components/shell/topbar/), and in the static group on narrow
-   viewports, until the topbar island is swapped in. */
+/* The More button shows while the action group has collapsed items into it
+   (components/shell/topbar/), and on narrow viewports until the group
+   hydrates and measures. */
 .topbar-btn.topbar-more-btn {
   display: none;
 }
@@ -181,23 +207,23 @@
   opacity: 1;
   transform: scale(1);
 }
-#theme-icon-sun,
+.theme-icon-sun,
 .more-row-icon-sun,
-#theme-icon-system,
+.theme-icon-system,
 .more-row-icon-system {
   display: none;
 }
-[data-theme-pref="light"] #theme-icon-sun,
+[data-theme-pref="light"] .theme-icon-sun,
 [data-theme-pref="light"] .more-row-icon-sun {
   display: block;
 }
-[data-theme-pref="light"] #theme-icon-moon,
+[data-theme-pref="light"] .theme-icon-moon,
 [data-theme-pref="light"] .more-row-icon-moon,
-[data-theme-pref="system"] #theme-icon-moon,
+[data-theme-pref="system"] .theme-icon-moon,
 [data-theme-pref="system"] .more-row-icon-moon {
   display: none;
 }
-[data-theme-pref="system"] #theme-icon-system,
+[data-theme-pref="system"] .theme-icon-system,
 [data-theme-pref="system"] .more-row-icon-system {
   display: block;
 }
@@ -248,8 +274,8 @@
 }
 /* Narrow viewports: drop the brand wordmark so the URL pill and right-side
    action buttons stay on-screen. Logo + Beta badge are small enough to keep.
-   The static action group, which cannot measure, also hides the buttons the
-   live one would most likely collapse, until the island is swapped in. */
+   Until the action group hydrates and measures, it also hides the buttons it
+   would most likely collapse. */
 @media (max-width: 560px) {
   .topbar-brand,
   .topbar-beta {
@@ -273,7 +299,7 @@
   max-width: 480px;
   margin: 0 12px;
 }
-.topbar-url:empty {
+.topbar-url[hidden] {
   display: none;
 }
 .topbar-url-pill {
@@ -316,6 +342,9 @@
   color: rgba(255, 255, 255, 0.55);
   flex-shrink: 0;
 }
+.topbar-url-pill:not(.localhost-pill) .localhost-icon {
+  display: none;
+}
 .topbar-right {
   grid-column: 3;
   display: flex;
@@ -323,8 +352,8 @@
   gap: 4px;
   justify-self: end;
 }
-/* The live action group fills its grid cell: its width is the room its
-   items are fitted into (components/shell/topbar/TopbarActions.tsx). */
+/* The measuring action group fills its grid cell: its width is the room its
+   items are fitted into (components/shell/topbar/ActionGroup.tsx). */
 .topbar-right[data-collapsible] {
   position: relative;
   justify-self: stretch;
@@ -426,9 +455,6 @@
     backdrop-filter: blur(20px) saturate(180%);
   }
   .more-popover,
-  .user-popover,
-  .mode-popover,
-  .permissions-popover,
   .permissions-popover-menu {
     backdrop-filter: blur(24px) saturate(180%);
   }
@@ -479,55 +505,52 @@
   display: block;
 }
 
+/* The explainer: a Popover under the shield (popover.css), with its own
+   look. */
 .verification-tooltip {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 9px;
   width: 268px;
   padding: 12px 14px;
   background: rgba(28, 28, 28, 0.96);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
   font-family: system-ui, sans-serif;
   color: rgba(255, 255, 255, 0.78);
   text-align: left;
   z-index: 1600;
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.15s ease-out,
-    visibility 0s linear 0.15s;
 }
-@supports (backdrop-filter: blur(1px)) {
-  .verification-tooltip {
-    backdrop-filter: blur(24px) saturate(180%);
-  }
+.popover.sheet.verification-tooltip {
+  width: 100%;
+  padding: 0;
+  border-radius: 16px 16px 0 0;
 }
-@media (hover: hover) {
-  .verification-shield-wrap:hover .verification-tooltip {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-    transition-delay: 0.2s;
-  }
+.popover.sheet.verification-tooltip > .popover-body {
+  padding: 12px 14px;
 }
-.verification-tooltip.open {
-  opacity: 1;
-  visibility: visible;
-  pointer-events: auto;
-  transform: translateY(0);
-  transition-delay: 0s;
+/* In a sheet, which scrolls, a row's dropdown opens as a list under its row
+   instead of floating past the sheet's bottom edge. */
+.popover.sheet .permissions-popover-row {
+  flex-wrap: wrap;
 }
-@media (prefers-reduced-motion: reduce) {
-  .verification-tooltip {
-    transform: none;
-    transition: none;
-  }
+.popover.sheet .permissions-popover-select-wrap {
+  display: contents;
+}
+.popover.sheet .permissions-popover-menu {
+  position: static;
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+/* The sheet's header names it: the content's own heading would repeat it. */
+.popover.sheet .verification-tooltip-title,
+.popover.sheet .permissions-popover-header,
+.popover.sheet.chains-popover .popover-body > .mode-popover-section:first-child {
+  display: none;
+}
+/* The network sheet: no More-menu padding or gap above the sheet's header,
+   and its own bottom breathing room back. */
+.popover.sheet.chains-popover {
+  gap: 0;
+  padding: 0 0 calc(8px + var(--safe-bottom));
 }
 .verification-tooltip-title {
   font-size: 0.68rem;
@@ -613,38 +636,12 @@
   height: 12px;
 }
 
-/* User Popover */
+/* User Popover: a Popover (popover.css), with its own place and width. */
 .user-popover {
-  display: none;
-  position: fixed;
   top: calc(var(--topbar-height) + 4px);
-  right: calc(12px + var(--safe-right));
   width: 220px;
   background: rgba(18, 18, 18, 0.92);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1500;
   overflow: hidden;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
-}
-.user-popover.open {
-  display: block;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .user-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
 }
 .user-popover-name {
   padding: 12px 14px 8px;
@@ -705,61 +702,13 @@
   background: #fafafa;
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
-.mode-popover-backdrop {
-  display: none;
-  position: fixed;
-  top: var(--topbar-height);
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1400;
-  opacity: 0;
-  transition:
-    opacity 0.18s ease-out,
-    display 0.18s allow-discrete;
-}
-.mode-popover-backdrop.open {
-  display: block;
-  opacity: 1;
-}
-@starting-style {
-  .mode-popover-backdrop.open {
-    opacity: 0;
-  }
-}
+/* The settings popover: a Popover with a backdrop (popover.css), with its
+   own width. Bottom padding lives on the popover itself so the gap between the
+   last element (Save & Apply when clean, warning text when dirty) and the
+   popover's bottom edge is visually identical in both states. */
 .mode-popover {
-  display: none;
-  position: fixed;
-  /* Overlaps the bottom of the topbar by a few pixels so the popover
-     visually attaches to the button instead of floating with a gap. */
-  top: var(--topbar-height);
-  right: calc(12px + var(--safe-right));
   width: 620px;
-  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
-  /* `--content-height` is dvh-based, so it tracks the visible area as mobile
-     browser chrome shows/hides, and it already excludes the home indicator. */
-  max-height: calc(var(--content-height) - 4px);
-  overflow-y: auto;
-  /* Opaque, matching `.more-popover`. Translucency let a light product page
-     bleed through the blur, so this panel read grey beside the network one. */
-  background: rgb(34, 34, 34);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1500;
-  /* Bottom padding lives on the popover itself so the gap between the
-     last element (Save & Apply when clean, warning text when dirty) and
-     the popover's bottom edge is visually identical in both states. */
   padding-bottom: 10px;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
 }
 .mode-popover-columns {
   display: grid;
@@ -776,92 +725,34 @@
   display: flex;
   flex-direction: column;
 }
-.mode-popover-sheet-header {
+/* In a sheet (popover.css): one column, and Save & Apply pinned to the
+   sheet's bottom. */
+.popover.sheet.mode-popover {
+  padding-bottom: 0;
+}
+.popover.sheet .mode-popover-columns {
+  grid-template-columns: 1fr;
+}
+.popover.sheet .mode-popover-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.popover.sheet .mode-apply-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: 12px 14px calc(12px + var(--safe-bottom));
+  background: rgba(20, 20, 20, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+.popover.sheet .mode-apply-footer .mode-apply-row {
+  padding-top: 0;
+}
+.popover.sheet .mode-apply-footer .mode-popover-divider {
   display: none;
-}
-
-@media (max-width: 560px) {
-  .mode-popover {
-    top: 0;
-    right: 0;
-    left: 0;
-    width: 100%;
-    max-width: 100%;
-    height: 100dvh;
-    max-height: 100dvh;
-    border: none;
-    border-radius: 0;
-    padding-bottom: 0;
-    transform-origin: bottom center;
-  }
-  .mode-popover-columns {
-    grid-template-columns: 1fr;
-  }
-  .mode-popover-content {
-    display: flex;
-    flex-direction: column;
-    min-height: 100%;
-  }
-  .mode-popover-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    padding: calc(12px + var(--safe-top)) 14px 12px;
-    background: rgba(20, 20, 20, 0.92);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  }
-  .mode-popover-sheet-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #fff;
-  }
-  .mode-popover-sheet-close {
-    appearance: none;
-    background: transparent;
-    border: none;
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 20px;
-    line-height: 1;
-    padding: 6px 10px;
-    border-radius: 8px;
-    cursor: pointer;
-  }
-  .mode-popover-sheet-close:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #fff;
-  }
-  .mode-apply-footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-    margin-top: auto;
-    padding: 12px 14px calc(12px + var(--safe-bottom));
-    background: rgba(20, 20, 20, 0.92);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
-  }
-  .mode-apply-footer .mode-apply-row {
-    padding-top: 0;
-  }
-  .mode-apply-footer .mode-popover-divider {
-    display: none;
-  }
-}
-.mode-popover.open {
-  display: block;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .mode-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
 }
 .mode-popover-header {
   padding: 10px 14px 6px;
@@ -1195,67 +1086,14 @@
   box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
 }
 
-/* Permissions Popover */
-/* Backdrop mirrors `.mode-popover-backdrop`. Blocks clicks under the
-   permissions popover and dismisses it on click. */
-.permissions-popover-backdrop {
-  display: none;
-  position: fixed;
-  top: var(--topbar-height);
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
-  z-index: 1400;
-  opacity: 0;
-  transition:
-    opacity 0.18s ease-out,
-    display 0.18s allow-discrete;
-}
-.permissions-popover-backdrop.open {
-  display: block;
-  opacity: 1;
-}
-@starting-style {
-  .permissions-popover-backdrop.open {
-    opacity: 0;
-  }
-}
+/* Permissions Popover: a Popover with a backdrop (popover.css), with its own
+   width. */
 .permissions-popover {
-  display: none;
-  position: fixed;
-  /* Matches `.mode-popover`. Overlaps the topbar bottom so the popover
-     visually attaches to its trigger button. */
-  top: var(--topbar-height);
-  right: calc(12px + var(--safe-right));
   width: 340px;
   background: rgba(20, 20, 20, 0.82);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  z-index: 1500;
   /* `overflow: visible` lets the dropdown menus escape the popover's
      bounds; rows handle their own clipping via hover background. */
   overflow: visible;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
-}
-.permissions-popover.open {
-  display: block;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .permissions-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
 }
 .permissions-popover-header {
   padding: 10px 14px 6px;

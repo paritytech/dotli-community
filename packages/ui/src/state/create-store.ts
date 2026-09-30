@@ -15,6 +15,11 @@ export interface ReadableStore<T> {
   /** Latest written value, immediately. */
   get: () => T;
   /**
+   * The value the store starts with: what a build-time render (the host
+   * page's islands) shows, as nothing writes a store then.
+   */
+  initial: T;
+  /**
    * Called synchronously after every set that changed the value (see
    * {@link SyncStoreOptions.equals}). Returns the unsubscribe.
    * Notifications are synchronous. A listener that calls another store's
@@ -116,7 +121,7 @@ export function createSyncStore<T>(initial: T, options: SyncStoreOptions<T> = {}
   };
   registry.add(reset);
 
-  return { get: () => current, set, subscribe, reset };
+  return { get: () => current, initial, set, subscribe, reset };
 }
 
 /**

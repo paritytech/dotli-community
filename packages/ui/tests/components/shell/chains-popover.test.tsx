@@ -10,8 +10,16 @@ import { mountRoot } from '../../../src/mount/root.js';
 import { startNetworkStore } from '../../../src/state/network.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { recordChainsButtonVisible, setBlockingModalActive } from '../../../src/state/topbar.js';
-import { pointerPress, pointerPressUnfocusable, renderComponent, resetStores, tabTo } from '../../helpers/solid.js';
-import { normalized } from './old-auth-markup.js';
+import { EXIT_MS } from '../../../src/components/shell/Popover.js';
+import {
+  pointerPress,
+  pointerPressUnfocusable,
+  renderComponent,
+  resetStores,
+  tabTo,
+  waitForContent,
+} from '../../helpers/solid.js';
+import { normalized, sameChildren } from './old-auth-markup.js';
 import { oldChainsButton, oldChainsPopover } from './old-chains-markup.js';
 import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
 import { focusables } from '../../../src/components/focus.js';
@@ -100,6 +108,9 @@ let cleanups: (() => void)[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers();
+  // The popover's idle preload is not one of the countdown's timers.
+  vi.stubGlobal('requestIdleCallback', () => 1);
+  vi.stubGlobal('cancelIdleCallback', () => undefined);
   monitor.status = [];
   monitor.transfer = NO_TRANSFER;
   monitor.startNetworkWatch = vi.fn();
@@ -118,6 +129,7 @@ afterEach(() => {
   resetStores();
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
 
@@ -150,10 +162,24 @@ async function renderPopover(): Promise<void> {
   await settle();
 }
 
+/** Open the popover, and wait for its body (its own chunk). */
 async function openPopover(): Promise<void> {
   byId('chains-button').click();
   await settle();
   expect(isOpen()).toBe(true);
+  await waitForContent('chains-popover');
+}
+
+/** Close the popover with its button, past the exit transition. */
+async function closePopover(): Promise<void> {
+  byId('chains-button').click();
+  await settle();
+  vi.advanceTimersByTime(EXIT_MS);
+  await settle();
+}
+
+function body(): HTMLElement {
+  return query(byId('chains-popover'), ':scope > .popover-body');
 }
 
 function waitingText(): string | null | undefined {
@@ -169,7 +195,11 @@ describe('The network popover island', () => {
     expect(
       normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: false }))),
     ).toBe(true);
-    expect(normalized(byId('chains-popover')).isEqualNode(normalized(oldChainsPopover({ open: false })))).toBe(true);
+    // The surface is the shared Popover's, and holds nothing until opened.
+    const popover = byId('chains-popover');
+    expect(popover.getAttribute('role')).toBe('dialog');
+    expect(popover.getAttribute('aria-label')).toBe('Network');
+    expect(body().childElementCount).toBe(0);
   });
 
   const statuses: {
@@ -265,7 +295,8 @@ describe('The network popover island', () => {
         normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: true, visible: false }))),
       ).toBe(true);
       expect(
-        normalized(byId('chains-popover')).isEqualNode(
+        sameChildren(
+          normalized(body()),
           normalized(
             oldChainsPopover({
               open: true,
@@ -291,8 +322,7 @@ describe('The network popover island', () => {
     expect(monitor.stopNetworkWatch).not.toHaveBeenCalled();
 
     // When
-    byId('chains-button').click();
-    await settle();
+    await closePopover();
 
     // Then
     expect(isOpen()).toBe(false);
@@ -337,8 +367,7 @@ describe('The network popover island', () => {
     expect(vi.getTimerCount()).toBe(1);
 
     // When
-    byId('chains-button').click();
-    await settle();
+    await closePopover();
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
@@ -364,16 +393,14 @@ describe('The network popover island', () => {
   });
 
   it('As a dotli user, a render error while open is reported, closes the popover and stops the countdown and the watch', async () => {
-    // Given: the island in its root, as islands.tsx mounts it.
+    // Given: the island in its root, as islands.ts mounts it.
     monitor.status = [chain({ latest: 10, sinceLast: 1000 })];
     notify();
     const container = document.createElement('div');
     document.body.appendChild(container);
     cleanups.push(mountRoot('island:chains-test', container, () => <ChainsPopover />));
     await settle();
-    byId('chains-button').click();
-    await settle();
-    expect(isOpen()).toBe(true);
+    await openPopover();
     expect(vi.getTimerCount()).toBe(1);
 
     // When: rendering the next network state throws.
@@ -390,7 +417,7 @@ describe('The network popover island', () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      root: 'island:chains',
+      root: 'popover:chains-popover',
     });
     expect(vi.getTimerCount()).toBe(0);
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);
@@ -399,8 +426,7 @@ describe('The network popover island', () => {
     // When: the next open, once the state renders again.
     monitor.status = [chain({ latest: 11, sinceLast: 0 })];
     notify();
-    byId('chains-button').click();
-    await settle();
+    await openPopover();
 
     // Then
     expect(isOpen()).toBe(true);
@@ -532,6 +558,8 @@ describe('The network popover island', () => {
 
     // When
     setBlockingModalActive(true);
+    await settle();
+    vi.advanceTimersByTime(EXIT_MS);
     await settle();
 
     // Then

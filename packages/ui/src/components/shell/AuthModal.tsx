@@ -6,10 +6,10 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
-import { authModalStore, getAuthModalState, type AuthModalView } from '../../state/auth-modal.js';
+import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
-import { createPopover } from './popover.js';
+import { createPopover } from './create-popover.js';
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
 const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
@@ -22,10 +22,6 @@ type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 interface DrawnQr {
   payload: string;
   canvas: HTMLCanvasElement;
-}
-
-function authButton(): HTMLElement | undefined {
-  return document.getElementById('auth-button') ?? undefined;
 }
 
 function Spinner(): JSX.Element {
@@ -57,10 +53,8 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
       </Show>
       <Show when={props.view.retry}>
         <button
-          ref={el => {
-            el.addEventListener('click', () => {
-              props.retry();
-            });
+          onClick={() => {
+            props.retry();
           }}
           class="auth-modal-retry"
         >
@@ -73,9 +67,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 
 /**
  * The QR pairing modal (`#auth-modal-backdrop`), a shell island (see
- * islands.tsx), swapped in for Shell.tsx's static markup after boot. It
- * renders authModalStore, which auth-controller.ts writes from boot onwards,
- * so a login that started before the island mounted shows as it mounts.
+ * src/islands/), rendered with the host page, closed, and hydrated. It renders
+ * authModalStore, which auth-controller.ts writes from boot onwards, so a
+ * login that started before the island hydrated shows once it has.
  *
  * The body follows the store's view: a spinner, the pairing QR code, login
  * progress, or an error with the friendly copy and, when it can help, Retry.
@@ -96,7 +90,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
-  const mobile = isMobileDevice();
+  // A phone's layout once hydrated: the build-time render, which has no
+  // device, is the desktop one.
+  const mobile = createMemo(isMobileDevice, { ssrSource: 'client', loadingValue: false });
 
   // The effects below compute from memos, not from `state()`: Solid 2 runs an
   // effect's function every time its compute re-runs, so a compute over the
@@ -137,6 +133,7 @@ export function AuthModal(): JSX.Element {
       return;
     }
     let current = true;
+    const onPhone = mobile();
     const canvas = document.createElement('canvas');
     canvas.dataset['qrPayload'] = payload;
     void import('qrcode')
@@ -150,7 +147,7 @@ export function AuthModal(): JSX.Element {
       .then(() => {
         if (current) {
           setDrawn({ payload, canvas });
-          if (mobile) {
+          if (onPhone) {
             setMobileLayout(true);
           }
         }
@@ -169,7 +166,7 @@ export function AuthModal(): JSX.Element {
 
   const dialog = createPopover({
     mode: 'dialog',
-    trigger: authButton,
+    trigger: getAuthModalTrigger,
     surface: () => backdrop,
     closeOnBlockingModal: false,
     onClose: () => {
@@ -183,22 +180,11 @@ export function AuthModal(): JSX.Element {
   });
   // The dialog follows the store.
   createEffect(open, isOpen => {
-    if (!isOpen || backdrop?.isConnected !== false) {
-      dialog.setOpen(isOpen);
-      return;
-    }
-    // Already open as the island mounts: it renders detached and is swapped
-    // in right after (islands.tsx), so open the dialog, which takes the
-    // focus, once it is in the document.
-    queueMicrotask(() => {
-      if (getAuthModalState().open) {
-        dialog.setOpen(true);
-      }
-    });
+    dialog.setOpen(isOpen);
   });
 
   const hint = (): string =>
-    mobile && !qrShown()
+    mobile() && !qrShown()
       ? // Mobile leads with the deeplink button.
         'Sign in with the Polkadot app on this device'
       : SCAN_HINT;
@@ -206,7 +192,7 @@ export function AuthModal(): JSX.Element {
   // link only helps on the phone itself, and not once pairing is past the QR.
   const getAppHidden = (): boolean => {
     const kind = state().view.kind;
-    return !mobile || kind === 'authenticating' || kind === 'error';
+    return !mobile() || kind === 'authenticating' || kind === 'error';
   };
   const errorView = (): ErrorView | undefined => {
     const v = view();
@@ -232,8 +218,8 @@ export function AuthModal(): JSX.Element {
     <div
       ref={el => {
         backdrop = el;
-        el.addEventListener('click', onBackdropClick);
       }}
+      onClick={onBackdropClick}
       class={['auth-modal-backdrop', { open: open() }]}
       id="auth-modal-backdrop"
       role="dialog"
@@ -267,7 +253,7 @@ export function AuthModal(): JSX.Element {
             <Match when={view() !== null}>
               <Show when={qr()} fallback={<Spinner />}>
                 {drawnQr =>
-                  mobile ? (
+                  mobile() ? (
                     <MobileQr
                       qr={drawnQr()}
                       shown={qrShown()}
@@ -294,10 +280,8 @@ export function AuthModal(): JSX.Element {
           Don't have the app? Get Polkadot Mobile
         </a>
         <button
-          ref={el => {
-            el.addEventListener('click', () => {
-              closeAuthModal();
-            });
+          onClick={() => {
+            closeAuthModal();
           }}
           class="auth-modal-close"
           id="auth-modal-close"
@@ -328,8 +312,8 @@ function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): J
   );
   const toggle = (
     <button
-      ref={el => {
-        el.addEventListener('click', props.reveal);
+      onClick={() => {
+        props.reveal();
       }}
       type="button"
       class="auth-modal-qr-toggle"

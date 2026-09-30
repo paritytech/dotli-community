@@ -557,10 +557,10 @@ describe('bridge app roots', () => {
     expect(app?.firstElementChild?.tagName).toBe('IFRAME');
   }, 10_000);
 
-  it('As a visitor on a preview or local target, the first iframe render removes the static screen', async () => {
+  it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
     // Given the static screen, with no phases started, and the loading
     // controller loaded over it as the host's startup bundle loads it
-    document.body.innerHTML = `<div id="app"><div class="loading" id="app-loading"></div></div>`;
+    document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
     const [{ renderIframe }, loading] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/state/loading.js'),
@@ -571,7 +571,6 @@ describe('bridge app roots', () => {
     await settle(renderIframe('https://product.example/app', 'product'), 0);
 
     // Then
-    expect(document.getElementById('app-loading')).toBeNull();
     expect(loading.getLoadingState().phase).toBe('gone');
   }, 10_000);
 

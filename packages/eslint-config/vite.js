@@ -156,7 +156,8 @@ export const config = defineConfig([
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    // `.astro` holds the types Astro generates for a site (apps/host).
+    ignores: ['dist/**', 'node_modules/**', '.astro/**'],
   },
   {
     files: ['**/*.tsx'],

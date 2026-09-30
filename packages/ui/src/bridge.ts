@@ -1024,10 +1024,10 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
 
   // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only on the initial render: `activateHost` keeps it as a retained child.
-  // During a permission refresh the current iframe remains visible until the
-  // replacement is ready, and the overlay, if still up, is disposed then.
-  const loading = previousHost === null ? app.querySelector<HTMLElement>('.loading') : null;
+  // Only on the initial render. During a permission refresh the current
+  // iframe remains visible until the replacement is ready, and the overlay,
+  // if still up, is disposed then.
+  const keepLoading = previousHost === null;
 
   const iframeUrl = new URL(url);
   emitDotliDebugEvent({
@@ -1065,7 +1065,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
     payload: { label, productId: label },
   });
   applyIframeStyling(host.iframe);
-  activateHost(host, previousHost, loading === null ? [] : [loading]);
+  activateHost(host, previousHost, keepLoading);
   host.iframe.addEventListener(
     'load',
     () => {
@@ -1111,11 +1111,7 @@ function getAppOrigin(label: string): string {
   return `https://${label}.app.${BASE_DOMAIN}`;
 }
 
-function activateHost(
-  host: ActiveHost,
-  previousHost: ActiveHost | null,
-  retainedChildren: readonly HTMLElement[] = [],
-): void {
+function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoading = false): void {
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;
@@ -1123,7 +1119,7 @@ function activateHost(
   // The previous frame leaves with its host.
   previousHost?.dispose();
   disposeAppRoot('page');
-  if (!retainedChildren.some(child => child.classList.contains('loading'))) {
+  if (!keepLoading) {
     disposeAppRoot('loading');
   }
   // The one untracked child: an error page written over a product whose frame

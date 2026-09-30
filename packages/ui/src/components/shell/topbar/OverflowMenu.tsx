@@ -3,7 +3,7 @@
 
 import { createEffect, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { createPopover } from '../popover.js';
+import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
 
 /**
@@ -56,8 +56,8 @@ export function OverflowMenu(props: {
         ref={el => {
           button = el;
           props.buttonRef(el);
-          el.addEventListener('click', menu.toggle);
         }}
+        onClick={menu.toggle}
         id="more-button"
         class={['topbar-btn topbar-more-btn', { 'topbar-more-idle': props.rows.length === 0 }]}
         title="More"
@@ -85,10 +85,8 @@ export function OverflowMenu(props: {
         <For each={props.rows}>
           {entry => (
             <button
-              ref={el => {
-                el.addEventListener('click', ev => {
-                  choose(entry, ev);
-                });
+              onClick={ev => {
+                choose(entry, ev);
               }}
               class="more-row"
               role="menuitem"

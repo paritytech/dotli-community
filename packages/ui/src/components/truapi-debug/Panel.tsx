@@ -42,6 +42,7 @@ import {
 
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
 import { setDockInset } from '../../product-frame-layout.js';
+import { getTopbarState } from '../../state/topbar.js';
 import { DetailPane } from './DetailPane.js';
 import { EventList, type Selection } from './EventList.js';
 import { Filters } from './Filters.js';
@@ -337,7 +338,7 @@ export function Panel(props: {
     // session controls remain reachable. Bottom-dock pins to the viewport
     // bottom edge.
     if (dock() === 'right') {
-      el.style.top = document.getElementById('topbar') !== null ? '40px' : '0';
+      el.style.top = getTopbarState().present ? '40px' : '0';
     } else {
       el.style.top = '';
     }

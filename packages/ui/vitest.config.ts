@@ -5,8 +5,7 @@ import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
 
 // In test mode @solidjs/vite-plugin compiles components non-hydratable for
-// the DOM, which is how the host build compiles its client code
-// (apps/host/vite.config.ts): nothing on the client hydrates.
+// the DOM, which the component tests render with.
 export default defineConfig({
   plugins: [solid()],
   define: {
@@ -19,9 +18,9 @@ export default defineConfig({
   // workspace-only file serving.
   server: { fs: { strict: false } },
   test: {
+    globals: false,
+    environment: 'happy-dom',
     name: 'ui',
     include: ['tests/**/*.test.{ts,tsx}'],
-    environment: 'happy-dom',
-    globals: false,
   },
 });

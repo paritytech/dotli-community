@@ -4,24 +4,33 @@
 // dot.li Pure DOM UI helpers
 //
 // Error states. The loading screen lives in loading-controller.ts and the
-// landing page in components/landing/ (loaded by landing/load.ts). No heavy
+// landing page in components/landing/ (the LandingPage island). No heavy
 // dependencies and no Solid (the sandbox imports this), kept in the eager
 // bundle.
 
 import { escapeHtml } from '@dotli/shared';
 import { getActiveTldSuffix } from '@dotli/config';
 import { setProductError } from './state/product.js';
+import { setLandingPage } from './state/topbar.js';
 import { disposeAppRoots } from './mount/app-roots.js';
 
-const app = document.getElementById('app') ?? document.body;
+/** Where the error pages go, looked up when one shows. */
+function appElement(): HTMLElement {
+  return document.getElementById('app') ?? document.body;
+}
+
+/**
+ * Clear the page for an error page: dispose the loading screen and any page
+ * root, whose timers stop with them, and take the landing page down (the
+ * LandingPage island hides, and the topbar and `#app` come back).
+ */
+function clearPage(): void {
+  disposeAppRoots();
+  setLandingPage(false);
+}
 
 export interface ErrorAction {
   label: string;
-  /**
-   * Receives the click so a handler that opens one of the topbar popovers can
-   * stop it reaching the document-level close-outside listener, which would
-   * otherwise read the button as "outside" and shut the popover immediately.
-   */
   onClick: (event: MouseEvent) => void;
   /**
    * The recommended way out. Rendered filled and pushed to the right of the
@@ -36,8 +45,8 @@ export interface ErrorAction {
 /**
  * The topbar's own Settings gear, so a button that opens that panel carries the
  * same mark the visitor is being sent to look for. The path data matches the
- * `#mode-button` icon in the host's index.html. Only the 12px box is widened to
- * 15px, so it sits with the button text.
+ * `#mode-button` icon (components/shell/SettingsPopover.tsx). Only the 12px
+ * box is widened to 15px, so it sits with the button text.
  */
 export const SETTINGS_GLYPH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
 
@@ -80,9 +89,8 @@ export interface ErrorPage {
 
 /** Render a full-page error state, replacing whatever `#app` holds. */
 export function showErrorPage(page: ErrorPage): void {
-  // The markup below replaces the loading screen and any page, so they are
-  // disposed first and their timers stop with them.
-  disposeAppRoots();
+  // The markup below replaces the loading screen and any page.
+  clearPage();
   const { title, detail, glyph } = page;
   const tips = page.tips ?? [];
   const actions = page.actions ?? [];
@@ -101,6 +109,7 @@ export function showErrorPage(page: ErrorPage): void {
       a.icon === undefined ? '' : `<span class="error-page-retry-icon" aria-hidden="true">${a.icon}</span>`;
     return `<button class="${cls}" id="${idFor(i)}">${leading}<span class="error-page-retry-label">${escapeHtml(a.label)}</span></button>`;
   };
+  const app = appElement();
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner">
@@ -156,14 +165,28 @@ export function showError(
 }
 
 /**
+ * The "reload" error page, for a page of the host's own (the landing page)
+ * that cannot show.
+ */
+export function showBrokenPage(): void {
+  showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
+    label: 'Reload',
+    onClick: () => {
+      window.location.reload();
+    },
+  });
+}
+
+/**
  * Show the "no content set" error in a Chrome-style "site can't be reached"
  * layout. The domain is highlighted so the user can immediately scan for a
  * typo, and a secondary hint explains the network reason without burying it.
  */
 export function showNoContentError(label: string): void {
-  // Replaces the loading screen mid-load, so its timers are stopped here too.
-  disposeAppRoots();
+  // Replaces the loading screen mid-load.
+  clearPage();
   const safeLabel = escapeHtml(label);
+  const app = appElement();
   app.innerHTML = `
     <div class="error-page">
       <div class="error-page-inner error-page-inner--unreached">

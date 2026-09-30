@@ -14,7 +14,11 @@
 // Anything else that doesn't parse as a two-segment hostname is a
 // deployment misconfiguration and aborts boot rather than opening the
 // allowlist to the wrong origin.
-const hostname = self.location.hostname;
+//
+// Astro's build-time render of the host page's islands (`import.meta.env.SSR`)
+// has no location and derives as localhost: nothing it renders depends on
+// the domain it will be served from.
+const hostname = import.meta.env.SSR ? 'localhost' : self.location.hostname;
 const segments = hostname.split('.');
 const isLocalEnv = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
 

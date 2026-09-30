@@ -7,11 +7,12 @@ import {
   chatButtonVisible,
   chatPanelStore,
   chatUnreadLabel,
+  getChatPanelElement,
   setChatPanelOpen,
   totalChatUnread,
 } from '../../state/chat-panel.js';
 import { useStore } from '../use-store.js';
-import { focusLostOrInside, focusTrigger } from './popover.js';
+import { focusLostOrInside, focusTrigger } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarContext } from './topbar/context.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
@@ -35,7 +36,7 @@ function ChatIcon(props: { size: number }): JSX.Element {
 
 /**
  * The topbar's chat button (`#chat-button`), which opens and closes the
- * docked chat panel (chat/panel.ts). It shows while the loaded product has
+ * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded product has
  * chat and a session is active (chatButtonVisible), and carries the unread
  * count while the panel is closed (the room rows carry their own while it is
  * open). When the panel closes with focus inside it (Escape, its own close
@@ -62,7 +63,7 @@ export function ChatButton(): JSX.Element {
     if (!closed) {
       return;
     }
-    if (focusLostOrInside(document.getElementById('chat-panel') ?? undefined)) {
+    if (focusLostOrInside(getChatPanelElement())) {
       focusTrigger(button, bar?.moreButton());
     }
   });
@@ -79,8 +80,8 @@ export function ChatButton(): JSX.Element {
       <button
         ref={el => {
           button = el;
-          el.addEventListener('click', toggle);
         }}
+        onClick={toggle}
         id="chat-button"
         class={['topbar-btn', { active: open() }]}
         title="Chat"

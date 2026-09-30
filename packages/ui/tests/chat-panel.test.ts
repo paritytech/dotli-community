@@ -10,7 +10,6 @@ import type {
 import type { RenderSink } from '@parity/truapi-host';
 import type * as AuthModule from '../src/state/auth.js';
 import type * as TopbarModule from '../src/state/topbar.js';
-import type * as PanelModule from '../src/chat/panel.js';
 import type * as ServiceModule from '../src/chat/service.js';
 import { byId, query } from './support.js';
 import { moreRow, stubTopbarLayout } from './components/shell/topbar-harness.js';
@@ -34,14 +33,40 @@ let stores: {
   auth: typeof AuthModule;
   topbar: typeof TopbarModule;
 };
+/** The docked panel, mounted by {@link loadDock}'s `initChatPanel`. */
+interface Dock {
+  /** Start the chat state and render the ChatDock island, as the host page does. */
+  initChatPanel: () => void;
+}
+
+let disposeDock: (() => void) | undefined;
+
+/**
+ * The ChatDock island (components/chat/ChatDock.tsx) and the chat state,
+ * from the current module graph, like the chat button.
+ */
+async function loadDock(): Promise<Dock> {
+  const solid = await import('solid-js');
+  const web = await import('@solidjs/web');
+  const { ChatDock } = await import('../src/components/chat/ChatDock.js');
+  const state = await import('../src/state/chat-panel.js');
+  return {
+    initChatPanel: () => {
+      state.initChatPanelState();
+      disposeDock = web.render(() => solid.createComponent(ChatDock, {}), byId('dock-slot'));
+      solid.flush();
+    },
+  };
+}
+
 async function loadChatModules(): Promise<{
-  panel: typeof PanelModule;
+  panel: Dock;
   service: typeof ServiceModule;
 }> {
   vi.resetModules();
   await loadStores();
   const modules = {
-    panel: await import('../src/chat/panel.js'),
+    panel: await loadDock(),
     service: await import('../src/chat/service.js'),
   };
   await mountChatButton();
@@ -77,7 +102,7 @@ async function mountChatButton(): Promise<void> {
 function installChatDom(): void {
   document.body.innerHTML = `
     <div id="topbar-slot"></div>
-    <aside class="chat-panel" id="chat-panel" role="complementary" aria-label="Product chat" hidden></aside>
+    <div id="dock-slot"></div>
     <div id="app"><iframe></iframe></div>
   `;
 }
@@ -125,6 +150,8 @@ describe('chat panel', () => {
   afterEach(() => {
     disposeButton?.();
     disposeButton = undefined;
+    disposeDock?.();
+    disposeDock = undefined;
     flushUi = () => undefined;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -153,15 +180,15 @@ describe('chat panel', () => {
     // Given: a bar with no room for the chat button.
     vi.resetModules();
     await loadStores();
-    const panel = await import('../src/chat/panel.js');
+    const panel = await loadDock();
     const solid = await import('solid-js');
     const web = await import('@solidjs/web');
     const { ChatButton } = await import('../src/components/shell/ChatButton.js');
-    const { TopbarActions } = await import('../src/components/shell/topbar/TopbarActions.js');
+    const { ActionGroup } = await import('../src/components/shell/topbar/ActionGroup.js');
     stubTopbarLayout(1);
     disposeButton = web.render(
       () =>
-        solid.createComponent(TopbarActions, {
+        solid.createComponent(ActionGroup, {
           get children() {
             return solid.createComponent(ChatButton, {});
           },
@@ -275,9 +302,11 @@ describe('chat panel', () => {
     const panelEl = byId('chat-panel');
 
     stores.topbar.setTopbarVisible(false);
+    flushUi();
     expect(panelEl.classList.contains('topbar-hidden')).toBe(true);
 
     stores.topbar.setTopbarVisible(true);
+    flushUi();
     expect(panelEl.classList.contains('topbar-hidden')).toBe(false);
   });
 
@@ -638,6 +667,7 @@ describe('chat panel', () => {
     // Dragging the resize handle follows the panel's width.
     const state = await import('../src/state/chat-panel.js');
     state.setChatPanelWidth(420);
+    flushUi();
     expect(iframe.style.width).toBe('calc(calc(100% - 10px) - 420px)');
 
     await settle(() => document.getElementById('chat-panel-close') !== null);
@@ -855,6 +885,7 @@ describe('chat panel', () => {
       await settle(() => byId('chat-panel-rooms').hidden === true);
 
       byId('chat-panel-close').click();
+      flushUi();
       expect(byId('chat-panel').hidden).toBe(true);
 
       release?.();
@@ -898,29 +929,24 @@ describe('chat panel', () => {
   it('As a user, if the chat code cannot load, the panel closes and the next open retries', async () => {
     vi.resetModules();
     let calls = 0;
-    vi.doMock('../src/components/chat/mount.js', () => {
+    vi.doMock('../src/components/chat/ChatPanel.js', () => {
       calls += 1;
       throw new Error('chunk failed');
     });
     try {
       await loadStores();
-      const panel = await import('../src/chat/panel.js');
-      const load = await import('../src/chat/load.js');
+      const panel = await loadDock();
       await mountChatButton();
       panel.initChatPanel();
       loadProduct('chatty-broken');
 
       clickChat();
-      await load.ensureChatPanel();
-      expect(byId('chat-panel').hidden).toBe(true);
-      expect(calls).toBe(1);
+      await settle(() => calls === 1 && byId('chat-panel').hidden === true);
 
       clickChat();
-      await load.ensureChatPanel();
-      expect(calls).toBe(2);
-      expect(byId('chat-panel').hidden).toBe(true);
+      await settle(() => calls === 2 && byId('chat-panel').hidden === true);
     } finally {
-      vi.doUnmock('../src/components/chat/mount.js');
+      vi.doUnmock('../src/components/chat/ChatPanel.js');
       vi.resetModules();
     }
   });

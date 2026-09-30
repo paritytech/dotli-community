@@ -53,6 +53,8 @@ export interface PermissionRowProps {
   choose: (name: EnforceablePermissionName, status: PermissionStatus) => void;
   /** Receives the dropdown's listbox each time it opens. */
   menuRef: (el: HTMLDivElement) => void;
+  /** Receives the select, which gets the focus back as its dropdown closes. */
+  selectRef: (el: HTMLButtonElement) => void;
 }
 
 /**
@@ -99,8 +101,9 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
       <div class="permissions-popover-select-wrap">
         <button
           ref={el => {
-            el.addEventListener('click', onTriggerClick);
+            props.selectRef(el);
           }}
+          onClick={onTriggerClick}
           type="button"
           class="permissions-popover-select"
           id={`permissions-popover-select-${props.perm.name}`}
@@ -129,9 +132,9 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
         <Show when={props.open}>
           <div
             ref={el => {
-              el.addEventListener('keydown', onMenuKeyDown);
               props.menuRef(el);
             }}
+            onKeyDown={onMenuKeyDown}
             class="permissions-popover-menu"
             role="listbox"
             aria-label={`${props.perm.label} permission`}
@@ -139,11 +142,9 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
             <For each={STATUS_ORDER}>
               {status => (
                 <button
-                  ref={el => {
-                    el.addEventListener('click', e => {
-                      e.stopPropagation();
-                      props.choose(props.perm.name, status);
-                    });
+                  onClick={e => {
+                    e.stopPropagation();
+                    props.choose(props.perm.name, status);
                   }}
                   type="button"
                   class={['permissions-popover-menu-item', { selected: status === props.status }]}
