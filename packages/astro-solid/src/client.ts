@@ -4,11 +4,11 @@
 // Astro's client entrypoint for Solid islands: hydrates the server-rendered
 // island (or renders a `client:only` one) and applies later prop updates.
 
-import { createStore, reconcile, type Component, type StoreSetter } from 'solid-js';
+import { createSignal, merge, type Component } from 'solid-js';
 import { createComponent, hydrate, render, type JSX } from '@solidjs/web';
 
 type Props = Record<string, unknown>;
-const alreadyInitializedElements = new WeakMap<Element, StoreSetter<Props>>();
+const alreadyInitializedElements = new WeakMap<Element, (props: Props) => void>();
 
 export default (element: HTMLElement) =>
   (Component: Component<never>, props: Props, slotted: Record<string, string>, { client }: { client: string }) => {
@@ -57,20 +57,26 @@ export default (element: HTMLElement) =>
     const setProps = alreadyInitializedElements.get(element);
     if (setProps !== undefined) {
       // update the mounted component
-      setProps(
-        // reconcile will make sure to apply as little updates as possible, and also remove missing values w/o breaking reactivity
-        reconcile({ ...props, ...slots, children }),
-      );
+      setProps({ ...props, ...slots, children });
     } else {
-      const [store, setStore] = createStore<Props>({ ...props, ...slots, children });
+      // The props Astro last sent, read through merge(): a prop read tracks
+      // them, so the component takes new props in place. A signal, not a
+      // store: Astro sends new props rarely, and the store would put
+      // Solid's store module on the page.
+      const [current, setCurrent] = createSignal<Props>({ ...props, ...slots, children });
       // store the function to update the current mounted component
-      alreadyInitializedElements.set(element, setStore);
+      alreadyInitializedElements.set(element, next => {
+        setCurrent(next);
+      });
+      // Made before hydrate(): the merge's memo would take a hydration id,
+      // which the server render never gave out.
+      const reactiveProps: Props = merge(() => current());
 
       // No boundary wrapper: the server render ships fully-settled HTML with
       // no boundary of its own, and hydration structure must match. Async is
       // first-class in Solid 2.0; components that want a fallback bring
       // their own Loading boundary (present in both renders).
-      const fn = (): JSX.Element => createComponent(Component as Component<Props>, store);
+      const fn = (): JSX.Element => createComponent(Component as Component<Props>, reactiveProps);
 
       let dispose: () => void;
       if (isHydrate) {
