@@ -395,6 +395,24 @@ describe('createChainPool', () => {
     expect(pool.status('0xaa')).toBe('connecting');
     expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
   });
+
+  it('As a dotli integrator, a remote connection named like a local lease does not collide with one', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const remote = must(
+      pool.connectRemote('0xaa', 'local:0', () => undefined),
+      'remote connection',
+    );
+
+    // When
+    const local = lease(pool, '0xaa');
+    local.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    remote.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] }));
+
+    // Then
+    expect(must(built[0], 'transport').sent).toHaveLength(2);
+  });
 });
 
 /** A transport factory whose transports can be paused, recording what happens in order. */

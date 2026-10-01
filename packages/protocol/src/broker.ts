@@ -7,6 +7,7 @@ import type {
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import { log } from '@dotli/shared';
+import { chainHaltedError } from './chain-halted.js';
 
 /**
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
@@ -123,8 +124,11 @@ function isJsonRpcObject(value: unknown): value is Record<string, unknown> & { j
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function buildJsonRpcError(id: JsonRpcId, message: string): Record<string, unknown> {
-  return { jsonrpc: '2.0', id, error: { code: -32603, message } };
+function buildJsonRpcError(
+  id: JsonRpcId,
+  error: string | ReturnType<typeof chainHaltedError>,
+): Record<string, unknown> {
+  return { jsonrpc: '2.0', id, error: typeof error === 'string' ? { code: -32603, message: error } : error };
 }
 
 function buildJsonRpcResult(id: JsonRpcId, result: unknown): Record<string, unknown> {
@@ -348,16 +352,18 @@ export class ChainBroker {
         deliveries.push({ session, message });
       }
     };
-    const reason = 'Upstream chain connection lost';
+    const reason = chainHaltedError();
     for (const pending of this.pending.values()) {
-      if (pending.method !== 'chainHead_v1_follow') {
+      if (pending.method !== 'chainHead_v1_follow' && pending.clientId !== null) {
         enqueue(pending.sessionId, buildJsonRpcError(pending.clientId, reason));
       }
     }
     for (const follow of this.sharedFollows.values()) {
       const awaitingTokens = new Set(follow.pendingLocals.map(local => local.localToken));
       for (const local of follow.pendingLocals) {
-        enqueue(local.sessionId, buildJsonRpcError(local.requestId, reason));
+        if (local.requestId !== null) {
+          enqueue(local.sessionId, buildJsonRpcError(local.requestId, reason));
+        }
       }
       for (const localToken of follow.localTokens) {
         const local = this.localFollowTokens.get(localToken);
@@ -377,7 +383,7 @@ export class ChainBroker {
         case 'statement_unsubscribeStatement':
           // jsonrpsee SubscriptionPayloadError, not a StatementEvent.
           method = 'statement_statement';
-          payload = { error: { code: -32603, message: reason } };
+          payload = { error: reason };
           break;
         case 'author_unwatchExtrinsic':
           method = 'author_extrinsicUpdate';
@@ -385,7 +391,7 @@ export class ChainBroker {
           break;
         case 'transactionWatch_v1_unwatch':
           method = 'transactionWatch_v1_watchEvent';
-          payload = { result: { event: 'error', error: reason } };
+          payload = { result: { event: 'error', error: reason.message } };
           break;
         default:
           // transaction_v1_broadcast returns a cancellation handle, not a subscription.
@@ -457,7 +463,7 @@ export class ChainBroker {
 
     if (!this.ensureUpstream()) {
       if (parsed.id !== undefined) {
-        this.sendToSession(session, buildJsonRpcError(parsed.id, 'Upstream chain connection unavailable'));
+        this.sendToSession(session, buildJsonRpcError(parsed.id, chainHaltedError()));
       }
       return;
     }

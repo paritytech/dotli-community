@@ -1,13 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import type * as ConfigModule from '@dotli/config';
+import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 
 const mocks = vi.hoisted(() => ({
-  onMessage: undefined as ((message: unknown) => void) | undefined,
+  onMessage: undefined as ((message: JsonRpcMessage) => void) | undefined,
   send: vi.fn(),
 }));
 
-vi.mock('@dotli/protocol', () => ({
-  createRemoteChainProvider: () => (onMessage: (message: unknown) => void) => {
+vi.mock(import('@dotli/protocol'), async importOriginal => ({
+  ...(await importOriginal()),
+  createRemoteChainProvider: () => (onMessage: (message: JsonRpcMessage) => void) => {
     mocks.onMessage = onMessage;
     return {
       send: mocks.send,
@@ -32,7 +34,7 @@ describe('Bulletin bitswap provider discovery', () => {
     mocks.send.mockReset();
     try {
       let childAttempts = 0;
-      mocks.send.mockImplementation((request: { id?: number; params?: string[] }) => {
+      mocks.send.mockImplementation((request: { id: number; params?: string[] }) => {
         const id = request.id;
         const cid = request.params?.[0];
         queueMicrotask(() => {
@@ -73,7 +75,7 @@ describe('Bulletin bitswap provider discovery', () => {
     mocks.send.mockReset();
     try {
       const attempts = new Map<string, number>();
-      mocks.send.mockImplementation((request: { id?: number; params?: string[] }) => {
+      mocks.send.mockImplementation((request: { id: number; params?: string[] }) => {
         const id = request.id;
         const cid = request.params?.[0];
         if (cid === undefined) {
@@ -115,7 +117,7 @@ describe('Bulletin bitswap provider discovery', () => {
     vi.useFakeTimers();
     mocks.send.mockReset();
     try {
-      mocks.send.mockImplementation((request: { id?: number }) => {
+      mocks.send.mockImplementation((request: { id: number }) => {
         const id = request.id;
         queueMicrotask(() => {
           mocks.onMessage?.({

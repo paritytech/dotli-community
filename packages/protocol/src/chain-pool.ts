@@ -228,9 +228,15 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         return null;
       }
       try {
+        // Prefixed so no remote id can collide with a local lease's `local:N`.
         return lease(
           entry,
-          entry.broker.connect(connectionId, onMessage as (message: unknown) => void, 'string', onHalt ?? null),
+          entry.broker.connect(
+            `remote:${connectionId}`,
+            onMessage as (message: unknown) => void,
+            'string',
+            onHalt ?? null,
+          ),
         );
       } catch (error) {
         idle(entry);
@@ -311,14 +317,4 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       }
     },
   };
-}
-
-/** Long-lived protocol iframe and SharedWorker pools with the same transport hooks. */
-export function createChainBrokerManager(
-  createProvider: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null,
-): ChainBrokerManager {
-  return createChainPool({
-    createTransport: createProvider,
-    destroyDelay: Infinity,
-  });
 }
