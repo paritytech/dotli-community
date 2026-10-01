@@ -7,6 +7,7 @@ import { getActiveServicesConfig } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { ChainTransportHooks } from '@dotli/resolver';
 import type * as ClientModule from '../../protocol/src/client.js';
+import type { ChainPool, LeaseProvider } from '@dotli/protocol';
 import { createChainConnect, createHostChainPool, hostAssetHubProvider } from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
@@ -175,6 +176,32 @@ describe('createChainConnect', () => {
     // Then
     expect(JSON.parse(yielded(await pending))).toEqual({ jsonrpc: '2.0', id: 'truapi:2', result: 'People' });
     connection.close();
+  });
+
+  it('As a dotli integrator, a lease that halts before it is handed over is not kept', async () => {
+    // Given: a pool whose first lease halts while it is being taken.
+    const live = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
+    const dead = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
+    let leases = 0;
+    const provider: LeaseProvider = (_onMessage, onHalt) => {
+      leases += 1;
+      if (leases === 1) {
+        onHalt?.(new Error('chain died while connecting'));
+        return dead;
+      }
+      return live;
+    };
+    const pool = { getLocalProvider: () => provider } as unknown as ChainPool;
+    const connection = await createChainConnect(pool)(hexBytes(people));
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the request went out on a new lease, not the dead one.
+    expect(dead.send).not.toHaveBeenCalled();
+    expect(live.send).toHaveBeenCalledTimes(1);
+    connection.close();
+    expect(live.disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli integrator, a request after a halt that no new transport can serve is answered at once', async () => {

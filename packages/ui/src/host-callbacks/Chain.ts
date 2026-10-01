@@ -29,7 +29,9 @@ import {
   CHAIN_HALTED_ERROR_DATA,
   createChainPool,
   haltReasonOf,
+  isProtocolReady,
   isRemoteChainConnectable,
+  onProtocolReady,
   requireBrokerLocalProvider,
   type ChainPool,
   type LeaseProvider,
@@ -114,6 +116,48 @@ function haltedAnswer(id: string | number): unknown {
   };
 }
 
+const FRAME_RETRY_FIRST_MS = 1_000;
+const FRAME_RETRY_MAX_MS = 30_000;
+
+/**
+ * When a product may boot a protocol frame after one died, shared by every
+ * core connection: its papi client re-follows every 250 ms, and each re-lease
+ * would boot a frame. The gate opens 1 s after the first frame halt, and each
+ * dial through it shuts it for twice as long, up to 30 s. A frame that
+ * reports ready resets it.
+ */
+const frameGate = {
+  opensAt: null as number | null,
+  delay: FRAME_RETRY_FIRST_MS,
+  subscribed: false,
+};
+
+function noteFrameHalt(): void {
+  if (!frameGate.subscribed) {
+    frameGate.subscribed = true;
+    onProtocolReady(() => {
+      frameGate.opensAt = null;
+      frameGate.delay = FRAME_RETRY_FIRST_MS;
+    });
+  }
+  frameGate.opensAt ??= Date.now() + frameGate.delay;
+}
+
+/** Whether a product may take a new lease now, after its last one heard `'frame'`. */
+function mayDialAfterFrameHalt(): boolean {
+  // A frame something else started is up: a lease boots nothing.
+  if (isProtocolReady()) {
+    return true;
+  }
+  const now = Date.now();
+  if (frameGate.opensAt !== null && now < frameGate.opensAt) {
+    return false;
+  }
+  frameGate.delay = Math.min(frameGate.delay * 2, FRAME_RETRY_MAX_MS);
+  frameGate.opensAt = now + frameGate.delay;
+  return true;
+}
+
 /**
  * A core connection over leases on the host pool. `takeLease` is asked for the
  * first lease, and again on the first send after a halt.
@@ -127,6 +171,8 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
   let wake: (() => void) | null = null;
   let closed = false;
   let lease: JsonRpcConnection | null = null;
+  // Whether the last lease heard `'frame'`: the next one waits for the gate.
+  let frameDown = false;
 
   const deliver = (message: unknown): void => {
     if (closed) {
@@ -139,18 +185,37 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
   // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
   // ignores its end and keeps sending on this connection. The broker has
   // answered the requests in flight and stopped the follows, so the next send
-  // takes a new lease, which rebuilds the chain (and, after `'frame'`, boots
-  // a frame: the product asked).
-  const open = (provider: LeaseProvider): JsonRpcConnection => {
-    const connection: JsonRpcConnection = provider(deliver, () => {
-      if (lease === connection) {
+  // takes a new lease, which rebuilds the chain. After `'frame'` that lease
+  // boots a frame, so it waits for the frame gate.
+  const open = (provider: LeaseProvider): JsonRpcConnection | null => {
+    // Per lease, so a halt heard while `provider` is still running, or a late
+    // one from a replaced lease, never touches another lease.
+    const slot = { connection: null as JsonRpcConnection | null, halted: false };
+    const connection = provider(deliver, error => {
+      slot.halted = true;
+      if (slot.connection !== null && lease === slot.connection) {
         lease = null;
       }
+      frameDown = haltReasonOf(error) === 'frame';
+      if (frameDown) {
+        noteFrameHalt();
+      }
     });
+    // A call, so the check isn't narrowed to the `false` it started as.
+    const isHalted = (): boolean => slot.halted;
+    if (isHalted()) {
+      return null;
+    }
+    slot.connection = connection;
     lease = connection;
     return connection;
   };
   const reopen = (): JsonRpcConnection | null => {
+    if (frameDown && !mayDialAfterFrameHalt()) {
+      // Answered at once, as the product's own retry is.
+      return null;
+    }
+    frameDown = false;
     try {
       const provider = takeLease();
       if (provider !== null) {

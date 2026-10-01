@@ -26,7 +26,9 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   resolution the halt cut off is retried once on the rebuilt chain.
 - When the **light client itself** cannot work any more, that is a **fatal**.
   The host tears the protocol iframe down, every remote connection is told
-  `'frame'`, and nothing redials by itself.
+  `'frame'`, and nothing redials by itself, except a product's own requests,
+  which may boot a new frame at most once per backoff window (1 s, doubling
+  to 30 s).
 
 ## Where chains are used
 
@@ -286,7 +288,7 @@ sequenceDiagram
   Ctx->>Cli: fatal
   Cli->>Cli: reject pending requests, remove the iframe
   Cli->>Use: onHalt('frame') for every remote connection
-  Note over Use: nobody redials on their own
+  Note over Use: nobody redials on their own,<br/>a product's requests only through the backoff
   Use-->>Cli: next user action (e.g. a content fetch) boots a new frame
   Cli->>Use: onProtocolReady → block bars reconnect
 ```
@@ -298,12 +300,18 @@ sequenceDiagram
   error at once instead of retrying a dead light client.
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress, and block bars wait for a frame that something else
-  started (`onProtocolReady`).
+  started (`onProtocolReady`). A product's requests are demand, but its papi
+  client re-follows every 250 ms, so the host pool lets them boot a frame only
+  through a backoff (below).
 - The host pool's remote connections hear `'frame'` too. Each halts its chain
   with `ChainHaltError('frame')`, and the block bars hear `'frame'` through the
   host pool. TrUAPI core connections deliver what was queued and stay open. A
-  product's next request on one takes a new lease, which boots a new frame:
-  the product asked. If no lease can be taken, that request is answered at
+  product's next request on one takes a new lease when a frame is up again
+  (`isProtocolReady()`), or when the frame gate has opened. The gate is shared
+  by every core connection: it opens 1 s after the first frame halt, each dial
+  through it shuts it for twice as long, up to 30 s, and a frame reporting
+  ready resets it. So concurrent connections boot one frame per window. A
+  request the gate refuses, or one no lease can be taken for, is answered at
   once with `Chain transport halted` (`data: 'dotli:chain-halted'`), so
   nothing hangs.
 - A connection that never reaches a frame halts with `'frame'` too: the frame
@@ -323,7 +331,7 @@ sequenceDiagram
 | Reason | Comes from | What it means | What consumers do |
 | --- | --- | --- | --- |
 | `'chain'` | `chain-halt` envelope | That chain died; the pool rebuilds it on the next lease | Reconnect (bitswap at once, bars with backoff) |
-| `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Don't redial on your own; wait for user demand or `onProtocolReady` |
+| `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Don't redial on your own; wait for user demand or `onProtocolReady`. A product's requests are demand, rate-limited by the host pool's frame gate |
 
 Through the host pool the reason travels as a `ChainHaltError`
 (`packages/protocol/src/chain-halted.ts`), and `haltReasonOf` reads it back.
@@ -361,3 +369,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
   the loading bar loses that chain's progress until something else opens it.
 - In `rpc-gateway`, bitswap (the product icon, the debug panel's archive) still
   asks the iframe's rpc mode for Bulletin, which opens a socket of its own.
+- After a halt on the smoldot backends, a product's statement subscriptions
+  and transaction broadcasts stop silently: the broker has no terminal event
+  to send them, while the same connection keeps serving new requests on its
+  new lease. The core does not know to subscribe again.
