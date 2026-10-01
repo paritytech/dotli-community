@@ -11,9 +11,15 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   takes a lease, and gives it back when done.
 - There are three pools, one per place that talks to chains: the **host
   page**, the **protocol iframe**, and the **SharedWorker**.
-- A pool closes a chain a while after its last lease is returned: 60 s for an
-  RPC socket, never for a smoldot chain (re-syncing a light-client chain is
-  expensive).
+- Every chain user on the host page leases from the **host pool**, except
+  bitswap. The host page runs **no light client**: on the smoldot backends the
+  host pool reaches each chain over one remote connection to the protocol
+  iframe, whose light client serves it. On `rpc-gateway` the host page holds
+  the only sockets: one per chain, in the host pool (bitswap aside, see
+  Known limits).
+- A pool closes a chain a while after its last lease is returned: 60 s in the
+  host pool and for an RPC socket, never for a smoldot chain in the iframe or
+  the SharedWorker (re-syncing a light-client chain is expensive).
 - When a chain **halts** (dies for good), the pool first answers everything
   that was still waiting on it, then tells each lease holder. The next lease
   builds the chain again. Holders reconnect on their own, and a name
@@ -49,10 +55,14 @@ flowchart LR
     WResolver["Resolver reads<br/>(Asset Hub, People)"]
   end
 
+  Nodes[("RPC nodes")]
+
   Core -- lease --> HostPool
   RpcResolve -- "lease (Asset Hub)" --> HostPool
-  Bars --> Client
-  Probe --> Client
+  Bars -- lease --> HostPool
+  Probe -- lease --> HostPool
+  HostPool -- "rpc-gateway: own socket" --> Nodes
+  HostPool -- "smoldot: one remote<br/>connection per chain" --> Client
   Bitswap --> Client
   Client -- postMessage --> Engine
   Engine -- "lease per connection" --> IframePool
@@ -66,22 +76,34 @@ flowchart LR
 In simple terms:
 
 - **The host page** has its own pool. Products' chain calls (through the
-  TrUAPI core) and, in `rpc-gateway`, name resolution lease from it.
-- **Everything else on the host page** (block bars, the settings probe,
-  bitswap) asks the **protocol iframe** for a chain over `postMessage`, through
-  `createRemoteChainProvider`. Each such connection becomes one lease in the
-  iframe's pool.
+  TrUAPI core), name resolution in `rpc-gateway`, the block bars and the
+  settings probe all lease from it, so the host page holds one connection per
+  chain.
+- **The host pool's transport follows the backend.** In `rpc-gateway` it is
+  the host page's own RPC socket. On the smoldot backends it is one remote
+  connection per chain to the **protocol iframe** over `postMessage`
+  (`createFrameChainTransport`, through `createRemoteChainProvider`), which
+  becomes one lease in the iframe's pool, next to the resolver's.
+- **Bitswap** keeps its own remote connection to the iframe: `@dotli/content`
+  cannot import the host pool. On the smoldot backends that lands on the same
+  chain in the iframe's pool, so no chain is duplicated.
 - **The protocol iframe** has a pool in `smoldot-direct` (light client in the
   iframe) and `rpc-gateway` (WebSockets). In `smoldot-shared-worker` it only
   relays to the **SharedWorker**, whose pool serves every tab.
+- The iframe allows 10 chain connections per origin
+  (`MAX_CONNECTIONS_PER_ORIGIN`). Through the host pool the host page holds at
+  most one per chain, plus bitswap's.
 
 Which transport a pool builds depends on the backend:
 
 | Backend | Host pool | Protocol iframe | SharedWorker | Closed after last lease |
 | --- | --- | --- | --- | --- |
 | `rpc-gateway` | RPC socket | RPC socket (rpc mode) | not used | 60 s |
-| `smoldot-direct` | smoldot | smoldot (direct mode) | not used | never |
-| `smoldot-shared-worker` | smoldot | relay only | smoldot | never |
+| `smoldot-direct` | remote connection to the iframe | smoldot (direct mode) | not used | host 60 s, iframe never |
+| `smoldot-shared-worker` | remote connection to the iframe | relay only | smoldot | host 60 s, worker never |
+
+Closing the host pool's remote connection is cheap: the iframe or the worker
+keeps the smoldot chain.
 
 ## Inside a pool
 
@@ -135,8 +157,17 @@ flowchart TB
   node a chain's socket is on.
 
 The smoldot transport (`createChainProvider` in
-`packages/resolver/src/provider.ts`) is one chain on the light client. It does
-not reconnect underneath its users: when its stream ends, it halts.
+`packages/resolver/src/provider.ts`) is one chain on the light client, in the
+protocol iframe or the SharedWorker only. It does not reconnect underneath its
+users: when its stream ends, it halts.
+
+The host pool's transport on the smoldot backends (`createFrameChainTransport`
+in `packages/ui/src/host-callbacks/frame-transport.ts`) wraps one remote
+connection. It reports `connecting`, then `connected` as soon as the
+connection exists: the remote provider has no finer signal, and queues sends
+until the iframe accepts the connection. When the remote connection halts, it
+reports `disconnected`, then halts with a `ChainHaltError` that carries the
+reason, `'chain'` or `'frame'`.
 
 ## What happens when…
 
@@ -168,7 +199,7 @@ dedupe them.
 
 ```mermaid
 sequenceDiagram
-  participant Use as Consumer (e.g. bitswap)
+  participant Use as Bitswap / host pool
   participant Cli as Protocol client
   participant Ctx as Iframe / worker
   participant Pool as Pool
@@ -178,7 +209,7 @@ sequenceDiagram
   Ctx->>Cli: chain-message (those answers)
   Ctx->>Cli: chain-halt
   Cli->>Use: onHalt('chain')
-  Use->>Cli: connect again
+  Use->>Cli: connect again (host pool: on its next lease)
   Cli->>Ctx: chainConnect
   Ctx->>Pool: new lease → entry rebuilt
 ```
@@ -192,8 +223,11 @@ sequenceDiagram
 - The resolver's papi clients drop themselves when their follow gets `stop`;
   their next read takes a fresh lease. A resolution running at that moment is
   retried once on it (see below).
-- The host page's own pool (TrUAPI core) halts the same way; its connection
-  delivers the answers, then ends.
+- On the smoldot backends the host pool's remote connection hears
+  `onHalt('chain')`, and the host pool halts that chain the same way: each
+  TrUAPI core connection delivers its answers, then ends, and each block bar
+  or probe client hears `'chain'` (`hostChainProvider` reads the reason with
+  `haltReasonOf`). The next lease connects again.
 
 ### …a chain halts while a page is loading
 
@@ -261,6 +295,10 @@ sequenceDiagram
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress, and block bars wait for a frame that something else
   started (`onProtocolReady`).
+- The host pool's remote connections hear `'frame'` too. Each halts its chain
+  with `ChainHaltError('frame')`: TrUAPI core connections deliver what was
+  queued, then end, and the block bars hear `'frame'` through the host pool.
+  A product's next chain call takes a new lease, which boots a new frame.
 - A connection that never reaches a frame halts with `'frame'` too: the frame
   did not come up in time, its iframe failed to load, or it refused the
   `chainConnect` (for example at its connection limit). So bitswap drops that
@@ -280,6 +318,10 @@ sequenceDiagram
 | `'chain'` | `chain-halt` envelope | That chain died; the pool rebuilds it on the next lease | Reconnect (bitswap at once, bars with backoff) |
 | `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Don't redial on your own; wait for user demand or `onProtocolReady` |
 
+Through the host pool the reason travels as a `ChainHaltError`
+(`packages/protocol/src/chain-halted.ts`), and `haltReasonOf` reads it back.
+Any other transport halt, such as a socket's, reads as `'chain'`.
+
 ## Where to look in the code
 
 | Piece | File |
@@ -287,14 +329,16 @@ sequenceDiagram
 | Pool | `packages/protocol/src/chain-pool.ts` |
 | Broker | `packages/protocol/src/broker.ts` |
 | Watch guard | `packages/protocol/src/watch-guard.ts` |
-| Halted-chain marker | `packages/protocol/src/chain-halted.ts` |
+| Halted-chain marker, `ChainHaltError`, `haltReasonOf` | `packages/protocol/src/chain-halted.ts` |
 | Protocol client (remote connections, halt reasons) | `packages/protocol/src/client.ts` |
 | RPC transport | `packages/resolver/src/rpc-chain.ts`, `packages/resolver/src/pause-controller.ts` |
 | smoldot transport | `packages/resolver/src/provider.ts` |
 | rpc-gateway name resolution | `packages/resolver/src/rpc-resolve.ts` |
 | smoldot name resolution, halt retry | `packages/resolver/src/resolve.ts` |
 | Host error page classification | `apps/host/src/errors.ts` |
-| Host pool, TrUAPI chain connections | `packages/ui/src/host-callbacks/Chain.ts` |
+| Host pool, TrUAPI chain connections, `hostChainProvider` | `packages/ui/src/host-callbacks/Chain.ts` |
+| Host pool's transport on the smoldot backends | `packages/ui/src/host-callbacks/frame-transport.ts` |
+| Settings probe | `packages/ui/src/settings-actions.ts` (`queryFinalizedBlock`) |
 | Block bars | `packages/ui/src/block-source.ts`, `packages/ui/src/block-watch.ts` |
 | Bitswap | `packages/content/src/bitswap.ts` |
 | Protocol iframe engine | `apps/protocol/src/engine.ts` |
@@ -308,3 +352,5 @@ sequenceDiagram
   but requests it sends afterwards on that connection stay pending.
 - The watched chains in `smoldot-direct` do not take a new lease after a halt;
   the loading bar loses that chain's progress until something else opens it.
+- In `rpc-gateway`, bitswap (the product icon, the debug panel's archive) still
+  asks the iframe's rpc mode for Bulletin, which opens a socket of its own.
