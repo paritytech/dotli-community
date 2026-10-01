@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -11,6 +11,7 @@ import type {
 import { createChainPool, type ProtocolEnvelope } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
 import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
+import { log } from '@dotli/shared';
 import { MAX_CHAIN_CONNECTIONS, createWorkerChainSessions, type WorkerChainSessions } from '../src/worker-chains.js';
 
 const ORIGIN_A = 'https://a.example';
@@ -76,6 +77,20 @@ function setup(onSend?: (sessions: () => WorkerChainSessions, port: MessagePort,
 const genesisRequest = (id: string): string =>
   JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_genesisHash', params: [] });
 
+// The broker traces each lease it opens and closes at debug level.
+let debug: Mock<(...args: unknown[]) => void>;
+
+beforeEach(() => {
+  debug = vi.fn<(...args: unknown[]) => void>();
+  vi.spyOn(log, 'debug').mockImplementation(debug);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+const traced = (line: string): unknown[] => ['[dot.li broker]', expect.stringContaining(line)];
+
 describe('createWorkerChainSessions', () => {
   it('As a dotli user on the shared light client, my chain answers reach the tab that asked', () => {
     // Given
@@ -90,6 +105,7 @@ describe('createWorkerChainSessions', () => {
     // Then
     expect(posted).toHaveLength(1);
     expect(must(posted[0], 'post').port).toBe(portA);
+    expect(debug).toHaveBeenCalledWith(...traced('c1 connecting'));
     expect(must(posted[0], 'post').envelope).toMatchObject({ kind: 'chain-message', connectionId: 'c1' });
   });
 
