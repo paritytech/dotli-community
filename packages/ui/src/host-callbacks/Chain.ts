@@ -153,8 +153,7 @@ function chainGate(genesisHash: string): RedialGate {
  * the first send after a halt.
  */
 function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
-  const takeLease = (): LeaseProvider | null => pool.getLocalProvider(genesisHash);
-  const first = takeLease();
+  const first = pool.getLocalProvider(genesisHash);
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -210,7 +209,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
       return null;
     }
     try {
-      const provider = takeLease();
+      const provider = pool.getLocalProvider(genesisHash);
       if (provider === null) {
         log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
         return null;
