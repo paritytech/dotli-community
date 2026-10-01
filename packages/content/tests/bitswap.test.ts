@@ -271,17 +271,14 @@ describe('bitswapGet after a halt', () => {
     vi.resetModules();
     const { bitswapGet } = await import('../src/bitswap.js');
     const inFlight = bitswapGet('bafyHalt');
-    const settled = expect(inFlight).rejects.toThrow('Bulletin connection halted');
     await vi.advanceTimersByTimeAsync(100);
 
     // When the chain halts
     chain.halts[0]?.('chain');
-    await settled;
+    await vi.advanceTimersByTimeAsync(1_000);
 
-    // Then the next fetch dials a new connection and succeeds
-    const next = bitswapGet('bafyHalt');
-    await vi.advanceTimersByTimeAsync(100);
-    await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    // Then the same call redials and resolves with the second connection's bytes
+    await expect(inFlight).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
     expect(chain.dials()).toBe(2);
   });
 
@@ -297,8 +294,17 @@ describe('bitswapGet after a halt', () => {
     // When the frame dies
     chain.halts[0]?.('frame');
 
-    // Then it fails without waiting for the 60s per-call timeout
+    // Then it fails without waiting for the 60s per-call timeout, and
+    // nothing dials during that call
     await settled;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(chain.dials()).toBe(1);
+
+    // And a later fetch dials anew
+    const next = bitswapGet('bafyFrame');
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.dials()).toBe(2);
   });
 });
 

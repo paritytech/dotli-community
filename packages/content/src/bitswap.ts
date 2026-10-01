@@ -189,13 +189,19 @@ function ensureConnection(): JsonRpcConnection {
       const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
       entry.resolve(hexToBytes(stripped));
     },
-    () => {
+    reason => {
       // The next attempt dials again. After a dead frame that only happens
       // because a fetch is running, so nothing reconnects on its own.
       connection = null;
       for (const [id, entry] of pending) {
         pending.delete(id);
-        entry.reject(new Error('Bulletin connection halted'));
+        const err = new Error('Bulletin connection halted');
+        // A halted chain is rebuilt on the next connect, so the retry loop
+        // redials. A dead frame is fatal and is never retried inside a fetch.
+        if (reason === 'chain') {
+          (err as { code?: number }).code = ERR_FAIL_RETRY;
+        }
+        entry.reject(err);
       }
     },
   );
