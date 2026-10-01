@@ -19,14 +19,14 @@
  * mode. Bulletin is reachable so in-core preimage submission can use its
  * `TransactionStorage` runtime API over the same trusted RPC posture.
  *
- * Each provider is polkadot-api's raw ws provider with ws-middleware (node
- * compatibility: the `rpc_methods` probe, the legacy RPC fallback for nodes
- * without `chainHead_v1` or refusing follows with `-32800`, numeric ids and
- * the chainHead event fixes), a pause controller and the subscription replay
- * of `@novasamatech/host-substrate-chain-connection`. It is the same
- * composition as polkadot-desktop's provider plus the ws-middleware this
- * module always had: a socket the heartbeat replaces comes back with its
- * subscriptions.
+ * Each provider is `getWsProvider` from `@polkadot-api/ws-provider` with
+ * `@polkadot-api/ws-middleware` (node compatibility: the `rpc_methods` probe,
+ * the legacy RPC fallback for nodes without `chainHead_v1` or refusing follows
+ * with `-32800`, numeric ids and the chainHead event fixes), a pause controller
+ * and the subscription replay of `@novasamatech/host-substrate-chain-connection`.
+ * It is the same composition as polkadot-desktop's provider plus the
+ * ws-middleware that `main` had through `polkadot-api/ws`: a socket the
+ * heartbeat replaces comes back with its subscriptions.
  */
 import { withSubscriptionReplay } from '@novasamatech/host-substrate-chain-connection';
 import { middleware as compatibilityMiddleware } from '@polkadot-api/ws-middleware';
@@ -39,11 +39,12 @@ import { createPauseController } from './pause-controller.js';
 import type { ChainTransportHooks, ConnectionStatus } from './transport-hooks.js';
 
 /**
- * A chain's WebSocket transport: polkadot-api's ws provider with
- * `withSubscriptionReplay` on top, which re-sends every confirmed
- * subscription when the socket reconnects and maps the server's new
- * subscription id back to the one its consumer saw. It can be paused (the
- * socket closes, sends buffer) and resumed.
+ * A chain's WebSocket transport, bottom to top: `getWsProvider` (ws provider),
+ * the pause controller, a copy layer (`withOwnMessages`) and
+ * `@polkadot-api/ws-middleware`, with `withSubscriptionReplay` on top, which
+ * re-sends every confirmed subscription when the socket reconnects and maps
+ * the server's new subscription id back to the one its consumer saw. It can be
+ * paused (the socket closes, sends buffer) and resumed.
  */
 export type RpcChainProvider = JsonRpcProvider & { pause: () => void; resume: () => void };
 
@@ -89,7 +90,11 @@ function closingWebSocketClass(): typeof WebSocket {
 /**
  * Hands the layers below a copy of every request.
  *
- * ws-middleware's numeric ids rewrite `id` on the request object itself, but
+ * Works around `@polkadot-api/ws-middleware` 0.4.2, whose numeric-ids
+ * middleware assigns `msg.id` on the caller's object. This layer can be
+ * deleted once numeric-ids sends a copy.
+ *
+ * Those numeric ids rewrite `id` on the request object itself, but
  * the subscription replay keeps its subscribe payloads and the provider proxy
  * its in-flight requests, to send again after a reconnect. A rewritten id
  * would come back on the new socket as the numeric one, not the caller's.

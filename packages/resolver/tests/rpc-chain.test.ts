@@ -141,7 +141,8 @@ describe('rpc-chain', () => {
     const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
     const { socket: first, connection } = await connect(provider, received);
     connection.send({ jsonrpc: '2.0', id: 'sub', method: 'statement_subscribeStatement', params: [{ matchAll: [] }] });
-    first.deliver({ jsonrpc: '2.0', id: 'sub', result: 'srv-1' });
+    const firstSubscribe = must(first.requests('statement_subscribeStatement')[0], 'first subscribe');
+    first.deliver({ jsonrpc: '2.0', id: firstSubscribe.id, result: 'srv-1' });
 
     // When
     await vi.advanceTimersByTimeAsync(121_000);
@@ -196,6 +197,24 @@ describe('rpc-chain', () => {
 
     // Then
     expect(typeof sent.id).toBe('number');
+    expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
+  });
+
+  it('As a dotli integrator, a request in flight when a socket dies is answered on the next socket under the caller\'s id', async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { connection } = await connect(provider, received);
+    connection.send({ jsonrpc: '2.0', id: 'core-1', method: 'chainSpec_v1_genesisHash', params: [] });
+
+    // When
+    await vi.advanceTimersByTimeAsync(121_000);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
+    const resent = must(second.requests('chainSpec_v1_genesisHash')[0], 're-sent request');
+    second.deliver({ jsonrpc: '2.0', id: resent.id, result: '0x01' });
+
+    // Then
     expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
   });
 
