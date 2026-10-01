@@ -30,13 +30,9 @@ export function observeChains(pool: ChainBrokerManager, genesisHashes: readonly 
       }),
     );
   }
-  let stopped = false;
   return () => {
-    if (stopped) {
-      return;
-    }
-    stopped = true;
-    for (const connection of connections) {
+    // Emptied, so a second stop releases nothing again.
+    for (const connection of connections.splice(0)) {
       connection.disconnect();
     }
   };
