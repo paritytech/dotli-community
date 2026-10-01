@@ -241,9 +241,8 @@ async function presync(): Promise<void> {
     // died during pre-sync is that cause, and this failure only its symptom:
     // the fatal broadcast already told the waiting ports, and later ones hear
     // the fatal's message.
-    const fatalSent = presyncFailureMessage !== null;
-    presyncFailureMessage ??= msg;
-    if (!fatalSent) {
+    if (presyncFailureMessage === null) {
+      presyncFailureMessage = msg;
       for (const port of pendingPorts) {
         const errorMsg: SWError = { type: 'error', message: msg };
         port.postMessage(errorMsg);
