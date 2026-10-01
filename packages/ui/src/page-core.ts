@@ -8,7 +8,12 @@
 import { DEBUG, getActiveServicesConfig } from '@dotli/config';
 import { requestWalletOwner, subscribeWalletOwnerRevoked, WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
 import { log } from '@dotli/shared';
-import type { AuthState, ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
+import type {
+  AuthState,
+  ProductExecutionKind,
+  RequiredHostCallbacks,
+  TrUApiProductProvider,
+} from '@parity/truapi-host';
 import type { LocalIdentity, WorkerPairingHostRuntime, WorkerSigningHostRuntime } from '@parity/truapi-host/web';
 import { createWebWorkerPairingHostRuntime, createWebWorkerSigningHostRuntime } from '@parity/truapi-host/web';
 import HostWorker from '@parity/truapi-host/worker-runtime?worker';
@@ -68,6 +73,7 @@ interface Core {
   leases: number;
   persistent: boolean;
   faulted: boolean;
+  openCallbacks(): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
 
@@ -227,7 +233,9 @@ function createCore(product: PageProduct): Core {
   if (modalCoordinator === null) {
     throw new Error('TrUAPI page core used before initPageCore');
   }
-  const blockingModalScope = modalCoordinator.createScope();
+  const coordinator = modalCoordinator;
+  const blockingModalScope = coordinator.createScope();
+  const connectionDisposers = new Set<() => void>();
   const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let booted: PageRuntime | undefined;
@@ -420,6 +428,37 @@ function createCore(product: PageProduct): Core {
     leases: 0,
     persistent: context !== undefined,
     faulted: false,
+    openCallbacks() {
+      if (disposed) {
+        throw new Error('Page core callbacks are unavailable');
+      }
+      const scope = coordinator.createScope();
+      const connectionCallbacks = createHostCallbacks({
+        label: product.label,
+        blockingModalScope: scope,
+      });
+      // Authentication and session storage stay core-owned; interactive
+      // product prompts cannot outlive the connection that requested them.
+      let closed = false;
+      connectionCallbacks.auth = {
+        authStateChanged: state => {
+          if (!closed) {
+            callbacks.auth.authStateChanged(state);
+          }
+        },
+      };
+      connectionCallbacks.coreStorage = callbacks.coreStorage;
+      const dispose = (): void => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        connectionDisposers.delete(dispose);
+        scope.dispose();
+      };
+      connectionDisposers.add(dispose);
+      return { callbacks: connectionCallbacks, dispose };
+    },
     dispose() {
       if (disposed) {
         return;
@@ -432,6 +471,9 @@ function createCore(product: PageProduct): Core {
       unsubscribeStore?.();
       unsubscribeIdentity?.();
       unsubscribeClose?.();
+      for (const dispose of connectionDisposers) {
+        dispose();
+      }
       blockingModalScope.dispose();
       monitor?.dispose();
       booted?.dispose();
@@ -465,19 +507,23 @@ async function connect(
     throw new Error('Page core is closed');
   }
   const productId = productIdOf(core.product);
+  const callbacks = core.openCallbacks();
   let provider: TrUApiProductProvider;
   try {
-    provider = await runtime.createProvider({ productId, executionKind });
+    provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
   } catch (error) {
+    callbacks.dispose();
     core.faulted = true;
     throw error;
   }
   if (!cores.has(core)) {
+    callbacks.dispose();
     provider.dispose();
     throw new Error('Page core closed while connecting the product');
   }
   let closing = false;
   provider.subscribeClose?.(() => {
+    callbacks.dispose();
     if (!closing) {
       core.faulted = true;
     }
@@ -491,6 +537,7 @@ async function connect(
         return;
       }
       closing = true;
+      callbacks.dispose();
       provider.dispose();
     },
   };

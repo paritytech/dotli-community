@@ -30,7 +30,7 @@ const subscriptionListeners = new Map();
 let nextConnId = 0;
 const chainConnectAcks = new Map();
 const chainResponseListeners = new Map();
-function callbackRequest(name, args) {
+function callbackRequest(name, args, coreId) {
     return new Promise((resolve, reject) => {
         const requestId = ++nextRequestId;
         pendingCallbacks.set(requestId, (r) => {
@@ -39,16 +39,28 @@ function callbackRequest(name, args) {
             else
                 reject(new Error(r.error));
         });
-        postToMain({ kind: "callbackRequest", requestId, name, args });
+        postToMain({
+            kind: "callbackRequest",
+            requestId,
+            name,
+            args,
+            ...(coreId === undefined ? {} : { coreId }),
+        });
     });
 }
-function startSubscription(name, payload, sendItem, sendError) {
+function startSubscription(name, payload, sendItem, sendError, coreId) {
     const subId = ++nextSubId;
     subscriptionListeners.set(subId, {
         sendItem: sendItem,
         sendError: (error) => sendError({ reason: error }),
     });
-    postToMain({ kind: "subscriptionStart", subId, name, payload });
+    postToMain({
+        kind: "subscriptionStart",
+        subId,
+        name,
+        payload,
+        ...(coreId === undefined ? {} : { coreId }),
+    });
     return () => {
         subscriptionListeners.delete(subId);
         postToMain({ kind: "subscriptionStop", subId });
@@ -105,11 +117,11 @@ function chainConnect(genesisHash, onResponse) {
     });
 }
 /** Build the host-level callback object passed to the WASM runtime. */
-function buildRawCallbacks(capabilities) {
+function buildRawCallbacks(capabilities, coreId) {
     return {
         ...createWorkerRawCallbacks({
-            callbackRequest,
-            startSubscription,
+            callbackRequest: (name, args) => callbackRequest(name, args, coreId),
+            startSubscription: (name, payload, sendItem, sendError) => startSubscription(name, payload, sendItem, sendError, coreId),
             chainConnect,
         }, capabilities),
         /**
@@ -650,7 +662,9 @@ ctx.addEventListener("message", (ev) => {
                 break;
             }
             try {
-                const core = runtime.productRuntime(msg.product, buildCoreCallbacks(msg.coreId));
+                const core = runtime.productRuntime(msg.product, buildCoreCallbacks(msg.coreId), msg.capabilities === undefined
+                    ? undefined
+                    : buildRawCallbacks(msg.capabilities, msg.coreId));
                 cores.set(msg.coreId, core);
                 postToMain({ kind: "coreReady", coreId: msg.coreId });
             }
