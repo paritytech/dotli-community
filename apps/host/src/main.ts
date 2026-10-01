@@ -442,14 +442,21 @@ let rpcResolveReady: Promise<RpcResolveModule> | null = null;
  * its first use. The resolver cannot import the pool itself.
  */
 function loadRpcResolve(): Promise<RpcResolveModule> {
-  rpcResolveReady ??= Promise.all([loadRpcResolveModule(), loadHostChain()]).then(([mod, chain]) => {
+  if (rpcResolveReady !== null) {
+    return rpcResolveReady;
+  }
+  const ready = Promise.all([loadRpcResolveModule(), loadHostChain()]).then(([mod, chain]) => {
     mod.setRpcAssetHubProvider(chain.hostAssetHubProvider);
     return mod;
   });
-  rpcResolveReady.catch(() => {
-    rpcResolveReady = null;
+  rpcResolveReady = ready;
+  // A failed load is retried by the next call, unless a newer one is already under way.
+  ready.catch(() => {
+    if (rpcResolveReady === ready) {
+      rpcResolveReady = null;
+    }
   });
-  return rpcResolveReady;
+  return ready;
 }
 type RenderChunk = RenderModule;
 
