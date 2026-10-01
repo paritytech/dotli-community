@@ -316,17 +316,3 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     },
   };
 }
-
-/**
- * The protocol iframe's and SharedWorker's broker manager: a pool that keeps
- * every chain once opened, as the manager always has. The next sub-project
- * moves them onto `createChainPool` with a finite delay.
- */
-export function createChainBrokerManager(
-  createProvider: (genesisHash: string) => JsonRpcProvider | null,
-): ChainBrokerManager {
-  return createChainPool({
-    createTransport: genesisHash => createProvider(genesisHash),
-    destroyDelay: Infinity,
-  });
-}
