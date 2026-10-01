@@ -1,5 +1,6 @@
 {
-  "$schema": "https://v2-9-18.turborepo.dev/schema.json",
+  "$schema": "https://v2-11-5.turborepo.dev/schema.json",
+  "agentGuidance": false,
   "globalEnv": ["DEV", "BASE_URL", "VITE_*", "DOTLI_NETWORK"],
   "tasks": {
     "build": {
@@ -26,6 +27,12 @@
     "dev": {
       "cache": false,
       "persistent": true
+    },
+    "//#lint:root": {
+      "outputs": []
+    },
+    "//#typecheck:root": {
+      "outputs": []
     }
   }
 }

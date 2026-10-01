@@ -7,7 +7,7 @@
 // so every line here says what is happening and, where it can, why. The copy
 // lives beside `errors.ts` because both carry the user-facing copy of the host.
 
-import type { ChainKey } from "@dotli/resolver/chain-sync";
+import type { ChainKey } from '@dotli/resolver';
 
 /**
  * How long a chain may sit in one lifecycle state before it owes an
@@ -16,11 +16,7 @@ import type { ChainKey } from "@dotli/resolver/chain-sync";
 export const STALL_WARNING_MS = 3_000;
 
 /** Chains the load actually waits on. A stall elsewhere is not the visitor's problem. */
-export const CRITICAL_CHAINS = [
-  "relay",
-  "asset-hub",
-  "bulletin",
-] as const satisfies readonly ChainKey[];
+export const CRITICAL_CHAINS = ['relay', 'asset-hub', 'bulletin'] as const satisfies readonly ChainKey[];
 
 export type CriticalChain = (typeof CRITICAL_CHAINS)[number];
 
@@ -36,13 +32,13 @@ export interface StallFacts {
   /** Bytes per second across every network the shell can see, or null. */
   bytesPerSecond: number | null;
   /** The word smoldot itself uses for why it stalled, on `stalled` only. */
-  reason?: string;
+  reason?: string | undefined;
 }
 
 const CHAIN_WORDS: Record<CriticalChain, string> = {
-  relay: "Polkadot",
-  "asset-hub": "the name registry",
-  bulletin: "the app files",
+  relay: 'Polkadot',
+  'asset-hub': 'the name registry',
+  bulletin: 'the app files',
 };
 
 function throughput(bytesPerSecond: number | null): string | null {
@@ -76,14 +72,13 @@ function throughput(bytesPerSecond: number | null): string | null {
 export function describeStall(facts: StallFacts): string | null {
   const what = CHAIN_WORDS[facts.chain];
 
-  if (facts.reason === "noPeers" || facts.peers === 0) {
+  if (facts.reason === 'noPeers' || facts.peers === 0) {
     return `Still looking for computers that carry ${what}. Nothing has answered yet.`;
   }
   if (facts.peers === null) {
     return null;
   }
-  const peerWords =
-    facts.peers === 1 ? "1 computer" : `${String(facts.peers)} computers`;
+  const peerWords = facts.peers === 1 ? '1 computer' : `${String(facts.peers)} computers`;
   if (facts.reason !== undefined) {
     return `${what} stopped advancing with ${peerWords} connected. Retrying.`;
   }
@@ -117,5 +112,5 @@ export function describeProgressStall(bytesPerSecond: number | null): string {
   if (rate !== null) {
     return `Still downloading at ${rate}. That is slower than this app usually needs, so give it a moment.`;
   }
-  return "Still working. No data is arriving right now, so it may be your connection.";
+  return 'Still working. No data is arriving right now, so it may be your connection.';
 }

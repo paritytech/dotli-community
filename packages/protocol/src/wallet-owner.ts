@@ -5,10 +5,10 @@
  * `Error.name` of a refused `acquire`: the tab that runs the test wallet did
  * not hand it over. Survives the postMessage hop, unlike `instanceof`.
  */
-export const WALLET_OWNER_BUSY_ERROR = "TestWalletOwnerBusyError";
+export const WALLET_OWNER_BUSY_ERROR = 'TestWalletOwnerBusyError';
 
 /** Fired on the host `window` after another tab took this page's test wallet. */
-export const WALLET_OWNER_REVOKED_EVENT = "dotli:test-wallet-owner-revoked";
+export const WALLET_OWNER_REVOKED_EVENT = 'dotli:test-wallet-owner-revoked';
 
 /**
  * Host-shell transport only. Never exposed through the product RPC bridge.
@@ -16,57 +16,42 @@ export const WALLET_OWNER_REVOKED_EVENT = "dotli:test-wallet-owner-revoked";
  * `acquire` makes this page the one tab running the test wallet, asking the
  * current owner to hand it over first. `release` ends a lease the page holds.
  */
-export type WalletOwnerOperation =
-  { action: "acquire" } | { action: "release"; lease: string };
+export type WalletOwnerOperation = { action: 'acquire' } | { action: 'release'; lease: string };
 
-export function isWalletOwnerOperation(
-  value: unknown,
-): value is WalletOwnerOperation {
-  if (typeof value !== "object" || value === null || !("action" in value)) {
+export function isWalletOwnerOperation(value: unknown): value is WalletOwnerOperation {
+  if (typeof value !== 'object' || value === null || !('action' in value)) {
     return false;
   }
-  if (value.action === "acquire") {
+  if (value.action === 'acquire') {
     return true;
   }
-  return (
-    value.action === "release" &&
-    "lease" in value &&
-    typeof value.lease === "string"
-  );
+  return value.action === 'release' && 'lease' in value && typeof value.lease === 'string';
 }
 
 interface HandoverChannel {
   postMessage(message: unknown): void;
-  addEventListener(
-    type: "message",
-    listener: (event: MessageEvent) => void,
-  ): void;
+  addEventListener(type: 'message', listener: (event: MessageEvent) => void): void;
 }
 
 export interface WalletOwnerDeps {
-  locks: Pick<LockManager, "request">;
+  locks: Pick<LockManager, 'request'>;
   /** One channel shared by every tab of the site, e.g. a `BroadcastChannel`. */
   channel: HandoverChannel;
   randomId: () => string;
   /** How long a new owner waits for the current one to hand over. */
   handoverWaitMs?: number;
-  /** How long a revoked owner may take to stop its wallet before release. */
-  releaseGraceMs?: number;
 }
 
 export interface WalletOwner {
-  handle(
-    operation: WalletOwnerOperation,
-    deadlineMs?: number,
-  ): Promise<string | undefined>;
+  handle(operation: WalletOwnerOperation, deadlineMs?: number): Promise<string | undefined>;
   /** Called with the lease another tab asked for; stop the wallet, then release it. */
   onRevoked(listener: (lease: string) => void): void;
   /** Page teardown. The browser also drops the lock when the page dies. */
   releaseAll(): void;
 }
 
-const OWNER_LOCK = "dotli:test-wallet-owner";
-const HANDOVER_REQUEST = "release";
+const OWNER_LOCK = 'dotli:test-wallet-owner';
+const HANDOVER_REQUEST = 'release';
 
 /**
  * One lease per page on a site-wide Web Lock. Acquiring asks the current owner
@@ -76,7 +61,6 @@ const HANDOVER_REQUEST = "release";
  */
 export function createWalletOwner(deps: WalletOwnerDeps): WalletOwner {
   const handoverWaitMs = deps.handoverWaitMs ?? 10_000;
-  const releaseGraceMs = deps.releaseGraceMs ?? 2_000;
   let lease: { token: string; release: () => void } | undefined;
   let pending: Promise<string> | undefined;
   let revoked: ((lease: string) => void) | undefined;
@@ -91,32 +75,27 @@ export function createWalletOwner(deps: WalletOwnerDeps): WalletOwner {
   };
 
   // Only the owner acts on a request, so it reaches exactly the tab that must stop.
-  deps.channel.addEventListener("message", (event) => {
+  deps.channel.addEventListener('message', event => {
     const data: unknown = event.data;
     if (
       lease === undefined ||
-      typeof data !== "object" ||
+      typeof data !== 'object' ||
       data === null ||
-      !("kind" in data) ||
+      !('kind' in data) ||
       data.kind !== HANDOVER_REQUEST
     ) {
       return;
     }
-    const token = lease.token;
-    setTimeout(() => {
-      release(token);
-    }, releaseGraceMs);
-    if (revoked === undefined) {
-      release(token);
-      return;
-    }
-    revoked(token);
+    // A timer cannot prove that a suspended page has stopped signing. Keep
+    // the lock until the owner acknowledges teardown or the browser drops it.
+    // A requester whose owner is unresponsive receives the busy error.
+    revoked?.(lease.token);
   });
 
   const hold = (options: LockOptions): Promise<string | undefined> => {
     const granted = Promise.withResolvers<string | undefined>();
     deps.locks
-      .request(OWNER_LOCK, options, async (lock) => {
+      .request(OWNER_LOCK, options, async lock => {
         if (lock === null) {
           granted.resolve(undefined);
           return;
@@ -146,28 +125,20 @@ export function createWalletOwner(deps: WalletOwnerDeps): WalletOwner {
     deps.channel.postMessage({ kind: HANDOVER_REQUEST });
     const waitMs = Math.max(
       0,
-      Math.min(
-        handoverWaitMs,
-        deadlineMs === undefined ? handoverWaitMs : deadlineMs - Date.now(),
-      ),
+      Math.min(handoverWaitMs, deadlineMs === undefined ? handoverWaitMs : deadlineMs - Date.now()),
     );
     // A timed-out wait means the owner did not hand over; anything else is a bug.
-    const token = await hold({ signal: AbortSignal.timeout(waitMs) }).catch(
-      (error: unknown) => {
-        if (
-          error instanceof DOMException &&
-          (error.name === "AbortError" || error.name === "TimeoutError")
-        ) {
-          return undefined;
-        }
-        throw error;
-      },
-    );
+    const token = await hold({ signal: AbortSignal.timeout(waitMs) }).catch((error: unknown) => {
+      if (error instanceof DOMException && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+        return undefined;
+      }
+      throw error;
+    });
     if (token !== undefined) {
       return token;
     }
     const busy = new Error(
-      "The test wallet is in use in another tab, which did not hand it over. Close that tab, then reload this one.",
+      'The test wallet is in use in another tab, which did not hand it over. Close that tab, then reload this one.',
     );
     busy.name = WALLET_OWNER_BUSY_ERROR;
     throw busy;
@@ -175,7 +146,7 @@ export function createWalletOwner(deps: WalletOwnerDeps): WalletOwner {
 
   return {
     handle(operation, deadlineMs) {
-      if (operation.action === "release") {
+      if (operation.action === 'release') {
         release(operation.lease);
         return Promise.resolve(undefined);
       }

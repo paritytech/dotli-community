@@ -4,14 +4,14 @@
 export class ProtocolFatalError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ProtocolFatalError";
+    this.name = 'ProtocolFatalError';
   }
 }
 
 export class ProtocolInitFailedError extends Error {
   constructor(message: string) {
     super(message);
-    this.name = "ProtocolInitFailedError";
+    this.name = 'ProtocolInitFailedError';
   }
 }
 
@@ -25,18 +25,18 @@ export class ProtocolInitFailedError extends Error {
  */
 export const PROTOCOL_ERRORS = {
   /** The iframe vanished between the readiness await and the post. */
-  FRAME_UNAVAILABLE: "Shared protocol iframe is unavailable",
+  FRAME_UNAVAILABLE: 'Shared protocol iframe is unavailable',
   /** The iframe loaded but never sent its ready signal. */
-  FRAME_READY_TIMEOUT: "Shared protocol iframe timed out (no ready signal)",
+  FRAME_READY_TIMEOUT: 'Shared protocol iframe timed out (no ready signal)',
   /** The `load` event of the host iframe never fired. */
-  HOST_FRAME_LOAD_TIMEOUT: "Shared host iframe timed out while loading",
+  HOST_FRAME_LOAD_TIMEOUT: 'Shared host iframe timed out while loading',
   /** The host iframe fired `error` instead of `load`. */
-  HOST_FRAME_LOAD_FAILED: "Shared host iframe failed to load",
+  HOST_FRAME_LOAD_FAILED: 'Shared host iframe failed to load',
   /**
    * Frame state was reset while callers were still waiting on readiness.
    *
    * The fallback rejection when the reset carries no reason of its own, so
    * waiters fail at once rather than hanging until their own timeout.
    */
-  FRAME_RESET: "Protocol frame state reset before ready signal",
+  FRAME_RESET: 'Protocol frame state reset before ready signal',
 } as const;

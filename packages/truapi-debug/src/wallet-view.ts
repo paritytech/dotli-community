@@ -2,33 +2,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type {
-  SetupOptions,
+  ExperimentalWalletControls as Wallet,
   InspectorIdentity as Identity,
   InspectorProduct as Product,
   InspectorResource as Resource,
-} from "./panel.ts";
-import type { EventStore, StoredTruapiEvent } from "./event-store.ts";
-import { renderAllowanceSnapshot } from "./wallet-allowances.ts";
-
-type Wallet = NonNullable<SetupOptions["experimentalWallet"]>;
+} from './wallet-types.js';
+import type { EventStore, StoredTruapiEvent } from './event-store.js';
+import { renderAllowanceSnapshot } from './wallet-allowances.js';
 
 function button(label: string): HTMLButtonElement {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.className = "td-btn";
+  const element = document.createElement('button');
+  element.type = 'button';
+  element.className = 'td-btn';
   element.textContent = label;
   return element;
 }
 
 function paragraph(text: string): HTMLParagraphElement {
-  const element = document.createElement("p");
+  const element = document.createElement('p');
   element.textContent = text;
   return element;
 }
 
 function field(parent: HTMLElement, label: string, value: string): void {
-  const row = paragraph("");
-  const title = document.createElement("strong");
+  const row = paragraph('');
+  const title = document.createElement('strong');
   title.textContent = `${label}: `;
   row.append(title, document.createTextNode(value));
   parent.append(row);
@@ -50,63 +48,58 @@ export interface WalletView {
 }
 
 /** Wallet content inside the shared debug pane; activity stays in its existing views. */
-export function createWalletView(
-  wallet: Wallet,
-  store: EventStore,
-): WalletView {
-  const entry = button("");
-  entry.classList.add("td-btn-icon", "td-wallet-entry");
-  entry.title = "Open wallet";
-  entry.setAttribute("aria-label", entry.title);
-  const entryIcon = document.createElement("span");
-  entryIcon.className = "td-wallet-entry-icon";
-  entryIcon.setAttribute("aria-hidden", "true");
+export function createWalletView(wallet: Wallet, store: EventStore): WalletView {
+  const entry = button('');
+  entry.classList.add('td-btn-icon', 'td-wallet-entry');
+  entry.title = 'Open wallet';
+  entry.setAttribute('aria-label', entry.title);
+  const entryIcon = document.createElement('span');
+  entryIcon.className = 'td-wallet-entry-icon';
+  entryIcon.setAttribute('aria-hidden', 'true');
   entryIcon.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6"/><path d="M20 12h-4a2 2 0 0 0 0 4h4"/></svg>`;
-  const entryName = document.createElement("span");
-  entryName.className = "td-wallet-entry-name";
+  const entryName = document.createElement('span');
+  entryName.className = 'td-wallet-entry-name';
   entry.append(entryIcon, entryName);
-  entry.setAttribute("aria-controls", "td-wallet-view");
-  entry.setAttribute("aria-expanded", "false");
-  const content = document.createElement("section");
-  content.id = "td-wallet-view";
-  content.className = "td-wallet-view hidden";
-  content.setAttribute("role", "tabpanel");
-  content.setAttribute("aria-labelledby", "td-tab-wallet");
+  entry.setAttribute('aria-controls', 'td-wallet-view');
+  entry.setAttribute('aria-expanded', 'false');
+  const content = document.createElement('section');
+  content.id = 'td-wallet-view';
+  content.className = 'td-wallet-view hidden';
+  content.setAttribute('role', 'tabpanel');
+  content.setAttribute('aria-labelledby', 'td-tab-wallet');
   content.tabIndex = 0;
-  const overview = document.createElement("div");
-  overview.className = "td-wallet-overview";
-  const recoveryDetails = document.createElement("details");
-  recoveryDetails.className = "td-wallet-recovery";
-  const recoverySummary = document.createElement("summary");
-  recoverySummary.textContent = "Recovery";
-  const recovery = document.createElement("div");
-  recovery.className = "td-wallet-recovery-content";
+  const overview = document.createElement('div');
+  overview.className = 'td-wallet-overview';
+  const recoveryDetails = document.createElement('details');
+  recoveryDetails.className = 'td-wallet-recovery';
+  const recoverySummary = document.createElement('summary');
+  recoverySummary.textContent = 'Recovery';
+  const recovery = document.createElement('div');
+  recovery.className = 'td-wallet-recovery-content';
   recoveryDetails.append(recoverySummary, recovery);
-  const productDetails = document.createElement("section");
-  productDetails.className = "td-wallet-product";
-  const allowances = document.createElement("section");
-  allowances.className = "td-wallet-allowances";
-  allowances.setAttribute("aria-labelledby", "td-wallet-allowances-title");
-  const allowancesTitle = document.createElement("h3");
-  allowancesTitle.id = "td-wallet-allowances-title";
-  allowancesTitle.textContent = "Usage & allowances";
-  const allowanceActions = document.createElement("div");
-  allowanceActions.className = "td-wallet-actions";
-  const refreshAllowances = button("Refresh");
-  refreshAllowances.setAttribute("aria-label", "Refresh usage and allowances");
+  const productDetails = document.createElement('section');
+  productDetails.className = 'td-wallet-product';
+  const allowances = document.createElement('section');
+  allowances.className = 'td-wallet-allowances';
+  allowances.setAttribute('aria-labelledby', 'td-wallet-allowances-title');
+  const allowancesTitle = document.createElement('h3');
+  allowancesTitle.id = 'td-wallet-allowances-title';
+  allowancesTitle.textContent = 'Usage & allowances';
+  const allowanceActions = document.createElement('div');
+  allowanceActions.className = 'td-wallet-actions';
+  const refreshAllowances = button('Refresh');
+  refreshAllowances.setAttribute('aria-label', 'Refresh usage and allowances');
   refreshAllowances.disabled = true;
   allowanceActions.append(refreshAllowances);
-  const allowanceStatus = paragraph(
-    "Connect and verify the experimental wallet to inspect live allowances.",
-  );
-  allowanceStatus.className = "td-wallet-status";
-  allowanceStatus.setAttribute("role", "status");
-  const allowanceResults = document.createElement("div");
-  allowanceResults.className = "td-wallet-allowance-results";
+  const allowanceStatus = paragraph('Connect and verify the experimental wallet to inspect live allowances.');
+  allowanceStatus.className = 'td-wallet-status';
+  allowanceStatus.setAttribute('role', 'status');
+  const allowanceResults = document.createElement('div');
+  allowanceResults.className = 'td-wallet-allowance-results';
   allowances.append(
     allowancesTitle,
     paragraph(
-      "Read-only current snapshot, not activity history. Refreshing never allocates or renews resources. Action costs and spending attribution are not available.",
+      'Read-only current snapshot, not activity history. Refreshing never allocates or renews resources. Action costs and spending attribution are not available.',
     ),
     allowanceActions,
     allowanceStatus,
@@ -141,11 +134,11 @@ export function createWalletView(
     allowanceNeedsLoad = true;
     allowanceReloadRequested = false;
     allowanceResults.replaceChildren();
-    allowanceResults.setAttribute("aria-busy", "false");
+    allowanceResults.setAttribute('aria-busy', 'false');
     allowanceStatus.textContent =
       identity === undefined
-        ? "Connect and verify the experimental wallet to inspect live allowances."
-        : "Waiting for the current product scope.";
+        ? 'Connect and verify the experimental wallet to inspect live allowances.'
+        : 'Waiting for the current product scope.';
     refreshAllowances.disabled = !opened || identity === undefined;
   }
 
@@ -168,8 +161,8 @@ export function createWalletView(
       identity.network === selectedIdentity.network &&
       product?.id === selectedProductId;
     refreshAllowances.disabled = true;
-    allowanceResults.setAttribute("aria-busy", "true");
-    allowanceStatus.textContent = "Reading finalized chain state…";
+    allowanceResults.setAttribute('aria-busy', 'true');
+    allowanceStatus.textContent = 'Reading finalized chain state…';
     allowanceNeedsLoad = false;
     allowancePending = (async (): Promise<void> => {
       try {
@@ -186,12 +179,9 @@ export function createWalletView(
           snapshot.identityAccountId !== selectedIdentity.identityAccountId ||
           (selectedProductId === undefined
             ? snapshot.productIds.length !== 0
-            : snapshot.productIds.length !== 1 ||
-              snapshot.productIds[0] !== selectedProductId)
+            : snapshot.productIds.length !== 1 || snapshot.productIds[0] !== selectedProductId)
         ) {
-          throw new Error(
-            "Allowance snapshot does not match the current wallet and product.",
-          );
+          throw new Error('Allowance snapshot does not match the current wallet and product.');
         }
         renderAllowanceSnapshot(allowanceResults, snapshot);
         const unavailable = [
@@ -200,23 +190,23 @@ export function createWalletView(
           snapshot.pgasBalances,
           snapshot.bulletinClaims,
           snapshot.bulletinQuotas,
-        ].filter((section) => section.status === "unavailable").length;
+        ].filter(section => section.status === 'unavailable').length;
         allowanceStatus.textContent =
           unavailable === 0
-            ? "Snapshot loaded. Each section shows its finalized source block and chain time."
+            ? 'Snapshot loaded. Each section shows its finalized source block and chain time.'
             : unavailable === 5
-              ? "All data sources are unavailable. No balance or capacity is inferred; each section states why."
+              ? 'All data sources are unavailable. No balance or capacity is inferred; each section states why.'
               : `${String(unavailable)} of 5 data sources unavailable. Available sections are shown below.`;
       } catch {
         if (isCurrent()) {
           allowanceResults.replaceChildren();
           allowanceStatus.textContent =
-            "Live allowances are unavailable. No balance or capacity is inferred. Refresh to try again.";
+            'Live allowances are unavailable. No balance or capacity is inferred. Refresh to try again.';
         }
       } finally {
         if (isCurrent()) {
           allowancePending = undefined;
-          allowanceResults.setAttribute("aria-busy", "false");
+          allowanceResults.setAttribute('aria-busy', 'false');
           refreshAllowances.disabled = false;
           if (allowanceReloadRequested) {
             allowanceReloadRequested = false;
@@ -228,7 +218,7 @@ export function createWalletView(
     return allowancePending;
   }
 
-  refreshAllowances.addEventListener("click", () => {
+  refreshAllowances.addEventListener('click', () => {
     if (!productResolved) {
       void loadProduct();
     } else {
@@ -241,7 +231,8 @@ export function createWalletView(
       return;
     }
     opened = next;
-    entry.setAttribute("aria-expanded", String(opened));
+    content.classList.toggle('hidden', !opened);
+    entry.setAttribute('aria-expanded', String(opened));
     if (!opened) {
       recoveryDetails.open = false;
       productGeneration++;
@@ -263,20 +254,16 @@ export function createWalletView(
       .list()
       .filter(
         (event): event is StoredTruapiEvent =>
-          event.kind === "truapi" &&
-          event.seq >= minimumSeq &&
-          event.productId === product?.id,
+          event.kind === 'truapi' && event.seq >= minimumSeq && event.productId === product?.id,
       );
   }
 
-  function allocationResources(
-    event: StoredTruapiEvent,
-  ): (Resource | null)[] | null {
+  function allocationResources(event: StoredTruapiEvent): (Resource | null)[] | null {
     if (
-      event.tag !== "resource_allocation_request_request" ||
-      typeof event.payload !== "object" ||
+      event.tag !== 'resource_allocation_request_request' ||
+      typeof event.payload !== 'object' ||
       event.payload === null ||
-      !("resources" in event.payload) ||
+      !('resources' in event.payload) ||
       !Array.isArray(event.payload.resources)
     ) {
       return null;
@@ -292,10 +279,10 @@ export function createWalletView(
 
   function allocationOutcomes(event: StoredTruapiEvent): string[] | null {
     if (
-      event.tag !== "resource_allocation_request_response" ||
-      typeof event.payload !== "object" ||
+      event.tag !== 'resource_allocation_request_response' ||
+      typeof event.payload !== 'object' ||
       event.payload === null ||
-      !("outcomes" in event.payload) ||
+      !('outcomes' in event.payload) ||
       !Array.isArray(event.payload.outcomes)
     ) {
       return null;
@@ -303,11 +290,7 @@ export function createWalletView(
     const results: string[] = [];
     const values: unknown[] = event.payload.outcomes;
     for (const value of values) {
-      if (
-        value !== "Allocated" &&
-        value !== "Rejected" &&
-        value !== "NotAvailable"
-      ) {
+      if (value !== 'Allocated' && value !== 'Rejected' && value !== 'NotAvailable') {
         return null;
       }
       results.push(value);
@@ -319,9 +302,7 @@ export function createWalletView(
     resources: Resource[];
     results: Map<string, { status: string; at: number }>;
   } {
-    const resources = new Map(
-      product?.resources.map((resource) => [resource.id, resource]),
-    );
+    const resources = new Map(product?.resources.map(resource => [resource.id, resource]));
     const results = new Map(outcomes);
     const requests = new Map<string, (Resource | null)[]>();
     for (const event of currentEvents()) {
@@ -336,7 +317,7 @@ export function createWalletView(
       }
       const statuses = allocationOutcomes(event);
       const requested = requests.get(event.requestId);
-      if (requested === undefined || requested.length !== statuses?.length) {
+      if (statuses === null || requested?.length !== statuses.length) {
         continue;
       }
       requested.forEach((resource, index) => {
@@ -344,7 +325,7 @@ export function createWalletView(
           return;
         }
         const status = statuses[index];
-        if ((results.get(resource.id)?.at ?? 0) <= event.receivedAt) {
+        if (status !== undefined && (results.get(resource.id)?.at ?? 0) <= event.receivedAt) {
           results.set(resource.id, { status, at: event.receivedAt });
         }
       });
@@ -354,91 +335,77 @@ export function createWalletView(
 
   function renderProduct(): void {
     const focusedResource =
-      document.activeElement instanceof HTMLButtonElement &&
-      productDetails.contains(document.activeElement)
-        ? document.activeElement.dataset.resource
+      document.activeElement instanceof HTMLButtonElement && productDetails.contains(document.activeElement)
+        ? document.activeElement.dataset['resource']
         : undefined;
     resourceButtons.length = 0;
     productDetails.replaceChildren();
-    const title = document.createElement("h3");
-    title.textContent = "Current product";
+    const title = document.createElement('h3');
+    title.textContent = 'Current product';
     productDetails.append(title);
     if (identity === undefined) {
       productDetails.append(
         paragraph(
           wallet.isActive()
-            ? "Native wallet verification is required before inspecting its product account or requesting resources."
-            : "Connect the experimental wallet to inspect its product account and permissions.",
+            ? 'Native wallet verification is required before inspecting its product account or requesting resources.'
+            : 'Connect the experimental wallet to inspect its product account and permissions.',
         ),
       );
       return;
     }
     if (product === null) {
       productDetails.append(
-        paragraph(
-          "No active product. Open a product to inspect its native account and permissions.",
-        ),
+        paragraph('No active product. Open a product to inspect its native account and permissions.'),
       );
       return;
     }
-    field(productDetails, "Product", product.name);
-    field(productDetails, "Product ID", product.id);
-    field(productDetails, "Origin", product.origin);
-    field(
-      productDetails,
-      "Product account public key",
-      product.accountPublicKey ?? "Unavailable",
-    );
+    field(productDetails, 'Product', product.name);
+    field(productDetails, 'Product ID', product.id);
+    field(productDetails, 'Origin', product.origin);
+    field(productDetails, 'Product account public key', product.accountPublicKey ?? 'Unavailable');
     if (product.accountError !== undefined) {
       productDetails.append(paragraph(product.accountError));
     }
-    field(productDetails, "Derivation", product.derivation);
-    const permissionsTitle = document.createElement("h3");
-    permissionsTitle.textContent = "Product permissions";
+    field(productDetails, 'Derivation', product.derivation);
+    const permissionsTitle = document.createElement('h3');
+    permissionsTitle.textContent = 'Product permissions';
     productDetails.append(permissionsTitle);
     for (const permission of product.permissions) {
       field(productDetails, permission.label, permission.status);
     }
     if (product.permissions.length === 0) {
-      productDetails.append(
-        paragraph("No persisted permissions are exposed for this product."),
-      );
+      productDetails.append(paragraph('No persisted permissions are exposed for this product.'));
     }
     productDetails.append(
       paragraph(
-        "Permission changes are reviewed by the host when a product requests access. The Wallet tab does not grant permissions implicitly.",
+        'Permission changes are reviewed by the host when a product requests access. The Wallet tab does not grant permissions implicitly.',
       ),
     );
-    const allowancesTitle = document.createElement("h3");
-    allowancesTitle.textContent = "Explicit allocation controls";
+    const allowancesTitle = document.createElement('h3');
+    allowancesTitle.textContent = 'Explicit allocation controls';
     productDetails.append(
       allowancesTitle,
       paragraph(
-        "These are last observed request outcomes, not balances or spending history. Consult Usage & allowances for live chain state. Amount is host-determined; fees are not exposed. Nothing is replenished automatically.",
+        'These are last observed request outcomes, not balances or spending history. Consult Usage & allowances for live chain state. Amount is host-determined; fees are not exposed. Nothing is replenished automatically.',
       ),
     );
     const observed = observedResources();
     for (const resource of observed.resources) {
-      const row = document.createElement("div");
-      row.className = "td-wallet-resource";
-      field(row, "Resource", resource.label);
+      const row = document.createElement('div');
+      row.className = 'td-wallet-resource';
+      field(row, 'Resource', resource.label);
       const outcome = observed.results.get(resource.id);
       row.append(
         paragraph(
           outcome === undefined
-            ? "No allocation outcome observed in this capture."
+            ? 'No allocation outcome observed in this capture.'
             : `Last observed request: ${outcome.status} · ${new Date(outcome.at).toLocaleString()}. See the live snapshot for current capacity.`,
         ),
       );
-      const request = button(
-        outcome?.status === "Allocated"
-          ? "Request renewal…"
-          : "Request allocation…",
-      );
-      request.dataset.resource = resource.id;
-      request.disabled =
-        actionPending || outcome?.status.startsWith("Outcome unknown") === true;
-      request.addEventListener("click", () => {
+      const request = button(outcome?.status === 'Allocated' ? 'Request renewal…' : 'Request allocation…');
+      request.dataset['resource'] = resource.id;
+      request.disabled = actionPending || outcome?.status.startsWith('Outcome unknown') === true;
+      request.addEventListener('click', () => {
         void requestResource(resource);
       });
       resourceButtons.push(request);
@@ -461,10 +428,7 @@ export function createWalletView(
     }
   }
 
-  function isCurrentSelection(
-    selectedIdentity: Identity,
-    selectedProduct: Product,
-  ): boolean {
+  function isCurrentSelection(selectedIdentity: Identity, selectedProduct: Product): boolean {
     return (
       !disposed &&
       identity?.identityAccountId === selectedIdentity.identityAccountId &&
@@ -474,12 +438,7 @@ export function createWalletView(
   }
 
   async function requestResource(resource: Resource): Promise<void> {
-    if (
-      actionPending ||
-      product === null ||
-      identity === undefined ||
-      disposed
-    ) {
+    if (actionPending || product === null || identity === undefined || disposed) {
       return;
     }
     const selectedProduct = product;
@@ -497,30 +456,18 @@ export function createWalletView(
       request.disabled = true;
     }
     try {
-      const result = await wallet.requestResource(
-        selectedProduct.id,
-        resource.request,
-      );
-      if (
-        selectedGeneration !== selectionGeneration ||
-        !isCurrentSelection(selectedIdentity, selectedProduct)
-      ) {
+      const result = await wallet.requestResource(selectedProduct.id, resource.request);
+      if (selectedGeneration !== selectionGeneration || !isCurrentSelection(selectedIdentity, selectedProduct)) {
         return;
       }
       recordOutcome(resource.id, result);
-      if (result === "Allocated") {
+      if (result === 'Allocated') {
         void loadAllowances(true);
       }
     } catch {
       // Native errors may carry arbitrary details. Never retain/display them as activity.
-      if (
-        selectedGeneration === selectionGeneration &&
-        isCurrentSelection(selectedIdentity, selectedProduct)
-      ) {
-        recordOutcome(
-          resource.id,
-          "Outcome unknown — inspect host state before another request; no retry was made",
-        );
+      if (selectedGeneration === selectionGeneration && isCurrentSelection(selectedIdentity, selectedProduct)) {
+        recordOutcome(resource.id, 'Outcome unknown — inspect host state before another request; no retry was made');
       }
     } finally {
       actionPending = false;
@@ -562,10 +509,10 @@ export function createWalletView(
       productResolved = false;
       invalidateAllowances();
       allowanceStatus.textContent =
-        "Current product scope is unavailable. Refresh to retry; no product account is inferred.";
+        'Current product scope is unavailable. Refresh to retry; no product account is inferred.';
       productDetails.replaceChildren(
         paragraph(
-          "Current product information is unavailable from the native host. No account or allowance is inferred.",
+          'Current product information is unavailable from the native host. No account or allowance is inferred.',
         ),
       );
     }
@@ -596,10 +543,9 @@ export function createWalletView(
       outcomes.clear();
       allocationsChanged = true;
     } else if (
-      latest?.kind === "truapi" &&
+      latest?.kind === 'truapi' &&
       latest.productId === product?.id &&
-      (latest.tag === "resource_allocation_request_request" ||
-        latest.tag === "resource_allocation_request_response")
+      (latest.tag === 'resource_allocation_request_request' || latest.tag === 'resource_allocation_request_response')
     ) {
       allocationsChanged = true;
     }
@@ -617,11 +563,11 @@ export function createWalletView(
       }
     });
   });
-  recoveryDetails.addEventListener("toggle", () => {
+  recoveryDetails.addEventListener('toggle', () => {
     onVisibilityChange();
   });
-  window.addEventListener("dotli:product-loaded", productChanged);
-  document.addEventListener("visibilitychange", pageHidden);
+  window.addEventListener('dotli:product-loaded', productChanged);
+  document.addEventListener('visibilitychange', pageHidden);
 
   return {
     entry,
@@ -631,8 +577,7 @@ export function createWalletView(
     productDetails,
     setVisible,
     isOpen: (): boolean => opened && !disposed,
-    isRecoveryVisible: (): boolean =>
-      opened && recoveryDetails.open && !document.hidden && !disposed,
+    isRecoveryVisible: (): boolean => opened && recoveryDetails.open && !document.hidden && !disposed,
     onVisibilityChange(callback: () => void): void {
       onVisibilityChange = callback;
     },
@@ -641,15 +586,12 @@ export function createWalletView(
         return;
       }
       entryName.textContent = username;
-      entryIcon.hidden = username !== "";
-      entry.title =
-        username === "" ? "Open wallet" : `Open wallet: ${username}`;
-      entry.setAttribute("aria-label", entry.title);
+      entryIcon.hidden = username !== '';
+      entry.title = username === '' ? 'Open wallet' : `Open wallet: ${username}`;
+      entry.setAttribute('aria-label', entry.title);
     },
     setIdentity(next: Identity | undefined): void {
-      const changed =
-        next?.identityAccountId !== identity?.identityAccountId ||
-        next?.network !== identity?.network;
+      const changed = next?.identityAccountId !== identity?.identityAccountId || next?.network !== identity?.network;
       if (changed) {
         minimumSeq = (store.list().at(-1)?.seq ?? -1) + 1;
         outcomes.clear();
@@ -671,8 +613,8 @@ export function createWalletView(
       productGeneration++;
       unsubscribe();
       cancelAnimationFrame(renderFrame);
-      window.removeEventListener("dotli:product-loaded", productChanged);
-      document.removeEventListener("visibilitychange", pageHidden);
+      window.removeEventListener('dotli:product-loaded', productChanged);
+      document.removeEventListener('visibilitychange', pageHidden);
       content.remove();
       entry.remove();
     },

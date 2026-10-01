@@ -21,14 +21,14 @@
  * whoever runs their network.
  */
 export function gatewayUnreachable(host: string | undefined): string {
-  return host === undefined || host === ""
+  return host === undefined || host === ''
     ? "Your browser couldn't connect to the trusted provider."
     : `Your browser couldn't connect to the trusted provider ${host}.`;
 }
 
 /** Hostname of a `wss://` or `https://` endpoint, for use in visitor-facing copy. */
 export function endpointHost(endpoint: string | undefined): string | undefined {
-  if (endpoint === undefined || endpoint === "") {
+  if (endpoint === undefined || endpoint === '') {
     return undefined;
   }
   try {

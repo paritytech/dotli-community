@@ -19,8 +19,8 @@
 // either just works or fails loudly in the drift-guard test instead of
 // silently mis-decoding.
 
-import * as WIRE_TABLE from "@parity/truapi/wire-table";
-import * as generated from "@parity/truapi";
+import * as WIRE_TABLE from '@parity/truapi/wire-table';
+import * as generated from '@parity/truapi';
 import {
   MESSAGE_TYPE_INTERRUPT,
   MESSAGE_TYPE_RECEIVE,
@@ -29,13 +29,8 @@ import {
   MESSAGE_TYPE_START,
   MESSAGE_TYPE_STOP,
   type MethodIds,
-} from "@parity/truapi";
-import {
-  CallError,
-  Result,
-  indexedTaggedUnion,
-  type Codec,
-} from "@parity/truapi/scale";
+} from '@parity/truapi';
+import { CallError, Result, indexedTaggedUnion, type Codec } from '@parity/truapi/scale';
 
 interface WireCodec {
   dec: (bytes: Uint8Array) => unknown;
@@ -65,28 +60,28 @@ interface ChainLinkage {
 }
 
 const CHAIN_LINKAGE: readonly ChainLinkage[] = [
-  { wireTableKey: "CHAIN_FOLLOW_HEAD_SUBSCRIBE", stem: "HeadFollow" },
-  { wireTableKey: "CHAIN_GET_HEAD_HEADER", stem: "HeadHeader" },
-  { wireTableKey: "CHAIN_GET_HEAD_BODY", stem: "HeadBody" },
-  { wireTableKey: "CHAIN_GET_HEAD_STORAGE", stem: "HeadStorage" },
-  { wireTableKey: "CHAIN_CALL_HEAD", stem: "HeadCall" },
-  { wireTableKey: "CHAIN_UNPIN_HEAD", stem: "HeadUnpin" },
-  { wireTableKey: "CHAIN_CONTINUE_HEAD", stem: "HeadContinue" },
-  { wireTableKey: "CHAIN_STOP_HEAD_OPERATION", stem: "HeadStopOperation" },
-  { wireTableKey: "CHAIN_GET_SPEC_GENESIS_HASH", stem: "SpecGenesisHash" },
-  { wireTableKey: "CHAIN_GET_SPEC_CHAIN_NAME", stem: "SpecChainName" },
-  { wireTableKey: "CHAIN_GET_SPEC_PROPERTIES", stem: "SpecProperties" },
-  { wireTableKey: "CHAIN_GET_CHAIN_INFO", stem: "Info" },
+  { wireTableKey: 'CHAIN_FOLLOW_HEAD_SUBSCRIBE', stem: 'HeadFollow' },
+  { wireTableKey: 'CHAIN_GET_HEAD_HEADER', stem: 'HeadHeader' },
+  { wireTableKey: 'CHAIN_GET_HEAD_BODY', stem: 'HeadBody' },
+  { wireTableKey: 'CHAIN_GET_HEAD_STORAGE', stem: 'HeadStorage' },
+  { wireTableKey: 'CHAIN_CALL_HEAD', stem: 'HeadCall' },
+  { wireTableKey: 'CHAIN_UNPIN_HEAD', stem: 'HeadUnpin' },
+  { wireTableKey: 'CHAIN_CONTINUE_HEAD', stem: 'HeadContinue' },
+  { wireTableKey: 'CHAIN_STOP_HEAD_OPERATION', stem: 'HeadStopOperation' },
+  { wireTableKey: 'CHAIN_GET_SPEC_GENESIS_HASH', stem: 'SpecGenesisHash' },
+  { wireTableKey: 'CHAIN_GET_SPEC_CHAIN_NAME', stem: 'SpecChainName' },
+  { wireTableKey: 'CHAIN_GET_SPEC_PROPERTIES', stem: 'SpecProperties' },
+  { wireTableKey: 'CHAIN_GET_CHAIN_INFO', stem: 'Info' },
   {
-    wireTableKey: "CHAIN_BROADCAST_TRANSACTION",
-    stem: "TransactionBroadcast",
+    wireTableKey: 'CHAIN_BROADCAST_TRANSACTION',
+    stem: 'TransactionBroadcast',
   },
-  { wireTableKey: "CHAIN_STOP_TRANSACTION", stem: "TransactionStop" },
+  { wireTableKey: 'CHAIN_STOP_TRANSACTION', stem: 'TransactionStop' },
 ];
 
 /** Turns a codec stem into its tag segment, e.g. `HeadStopOperation` into `head_stop_operation`. */
 function snakeCase(stem: string): string {
-  return stem.replace(/(?!^)([A-Z])/g, "_$1").toLowerCase();
+  return stem.replace(/(?!^)([A-Z])/g, '_$1').toLowerCase();
 }
 
 /**
@@ -97,9 +92,9 @@ function snakeCase(stem: string): string {
 function resolveCodec(exportName: string): Codec<unknown> | undefined {
   const candidate = (generated as Record<string, unknown>)[exportName];
   if (
-    typeof candidate === "object" &&
+    typeof candidate === 'object' &&
     candidate !== null &&
-    typeof (candidate as { dec?: unknown }).dec === "function"
+    typeof (candidate as { dec?: unknown }).dec === 'function'
   ) {
     return candidate as Codec<unknown>;
   }
@@ -130,28 +125,28 @@ export function wireFrameId(ids: MethodIds, messageType: number): WireFrameId {
 }
 
 const REQUEST_LEGS: readonly (readonly [number, string])[] = [
-  [MESSAGE_TYPE_REQUEST, "request"],
-  [MESSAGE_TYPE_RESPONSE, "response"],
+  [MESSAGE_TYPE_REQUEST, 'request'],
+  [MESSAGE_TYPE_RESPONSE, 'response'],
 ];
 
 const SUBSCRIPTION_LEGS: readonly (readonly [number, string])[] = [
-  [MESSAGE_TYPE_START, "start"],
-  [MESSAGE_TYPE_RECEIVE, "receive"],
-  [MESSAGE_TYPE_INTERRUPT, "interrupt"],
-  [MESSAGE_TYPE_STOP, "stop"],
+  [MESSAGE_TYPE_START, 'start'],
+  [MESSAGE_TYPE_RECEIVE, 'receive'],
+  [MESSAGE_TYPE_INTERRUPT, 'interrupt'],
+  [MESSAGE_TYPE_STOP, 'stop'],
 ];
 
 /** The legs a method's `kind` implies, as `[messageType, role]` pairs. */
 function legsOf(ids: MethodIds): readonly (readonly [number, string])[] {
-  return ids.kind === "subscription" ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
+  return ids.kind === 'subscription' ? SUBSCRIPTION_LEGS : REQUEST_LEGS;
 }
 
 function isMethodIds(value: unknown): value is MethodIds {
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    typeof (value as MethodIds).trait === "number" &&
-    typeof (value as MethodIds).method === "number"
+    typeof (value as MethodIds).trait === 'number' &&
+    typeof (value as MethodIds).method === 'number'
   );
 }
 
@@ -169,47 +164,29 @@ function buildChainEntries(): Map<number, ChainEntry> {
   for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
     const ids = WIRE_TABLE[wireTableKey] as unknown as MethodIds;
     const tagBase = `remote_chain_${snakeCase(stem)}`;
-    const set = (
-      messageType: number,
-      role: string,
-      codec: WireCodec | null,
-    ): void => {
+    const set = (messageType: number, role: string, codec: WireCodec | null): void => {
       entries.set(wireFrameKey(wireFrameId(ids, messageType)), {
         tag: `${tagBase}_${role}`,
         codec,
       });
     };
 
-    if (ids.kind === "subscription") {
-      set(
-        MESSAGE_TYPE_START,
-        "start",
-        resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
-      );
-      set(
-        MESSAGE_TYPE_RECEIVE,
-        "receive",
-        resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null,
-      );
+    if (ids.kind === 'subscription') {
+      set(MESSAGE_TYPE_START, 'start', resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null);
+      set(MESSAGE_TYPE_RECEIVE, 'receive', resolveCodec(`VersionedRemoteChain${stem}Item`) ?? null);
       // Control frames: legacy tag for swimlane routing, never decoded.
-      set(MESSAGE_TYPE_INTERRUPT, "interrupt", null);
-      set(MESSAGE_TYPE_STOP, "stop", null);
+      set(MESSAGE_TYPE_INTERRUPT, 'interrupt', null);
+      set(MESSAGE_TYPE_STOP, 'stop', null);
       continue;
     }
 
-    set(
-      MESSAGE_TYPE_REQUEST,
-      "request",
-      resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null,
-    );
+    set(MESSAGE_TYPE_REQUEST, 'request', resolveCodec(`VersionedRemoteChain${stem}Request`) ?? null);
     const okCodec = resolveCodec(`VersionedRemoteChain${stem}Response`);
     const errCodec = resolveCodec(`VersionedRemoteChain${stem}Error`);
     set(
       MESSAGE_TYPE_RESPONSE,
-      "response",
-      okCodec !== undefined && errCodec !== undefined
-        ? responseCodec(okCodec, errCodec)
-        : null,
+      'response',
+      okCodec !== undefined && errCodec !== undefined ? responseCodec(okCodec, errCodec) : null,
     );
   }
 
@@ -220,7 +197,7 @@ function buildChainEntries(): Map<number, ChainEntry> {
 // only. Matching is by name, so a discriminant from an SDK newer than the
 // host's wire table has no name to match and falls back to raw bytes. That
 // skew window is accepted until the host's truapi dependency catches up.
-const REDACTED_PREFIXES = ["signing", "session", "entropy", "local_storage"];
+const REDACTED_PREFIXES = ['signing', 'session', 'entropy', 'local_storage'];
 
 interface GenericEntry {
   name: string;
@@ -240,9 +217,7 @@ function buildGenericNames(): Map<number, GenericEntry> {
     }
     for (const [messageType, role] of legsOf(ids)) {
       const name = `${exportName.toLowerCase()}_${role}`;
-      const redacted = REDACTED_PREFIXES.some((prefix) =>
-        name.startsWith(prefix),
-      );
+      const redacted = REDACTED_PREFIXES.some(prefix => name.startsWith(prefix));
       names.set(wireFrameKey(wireFrameId(ids, messageType)), {
         name,
         redacted,
@@ -265,10 +240,7 @@ const allocationResponseCodec = indexedTaggedUnion({
   ],
 });
 
-export function describeWireFrame(
-  frame: WireFrameId,
-  bytes: Uint8Array,
-): { tag: string; value: unknown } {
+export function describeWireFrame(frame: WireFrameId, bytes: Uint8Array): { tag: string; value: unknown } {
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
 
@@ -276,43 +248,26 @@ export function describeWireFrame(
 
   // Only allocation resource selectors and outcomes are inspector metadata.
   // Never retain arbitrary native error reasons or malformed raw payloads.
-  const allocationIds =
-    WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST as unknown as MethodIds;
-  const allocationRequestKey = wireFrameKey(
-    wireFrameId(allocationIds, MESSAGE_TYPE_REQUEST),
-  );
-  const allocationResponseKey = wireFrameKey(
-    wireFrameId(allocationIds, MESSAGE_TYPE_RESPONSE),
-  );
+  const allocationIds = WIRE_TABLE.RESOURCE_ALLOCATION_REQUEST as unknown as MethodIds;
+  const allocationRequestKey = wireFrameKey(wireFrameId(allocationIds, MESSAGE_TYPE_REQUEST));
+  const allocationResponseKey = wireFrameKey(wireFrameId(allocationIds, MESSAGE_TYPE_RESPONSE));
   if (wireId === allocationRequestKey || wireId === allocationResponseKey) {
     const isRequest = wireId === allocationRequestKey;
-    const tag = isRequest
-      ? "resource_allocation_request_request"
-      : "resource_allocation_request_response";
+    const tag = isRequest ? 'resource_allocation_request_request' : 'resource_allocation_request_response';
     try {
       if (isRequest) {
-        const request =
-          generated.VersionedHostRequestResourceAllocationRequest.dec(bytes);
-        const encoded =
-          generated.VersionedHostRequestResourceAllocationRequest.enc(request);
-        if (
-          encoded.length === bytes.length &&
-          encoded.every((byte, index) => byte === bytes[index])
-        ) {
+        const request = generated.VersionedHostRequestResourceAllocationRequest.dec(bytes);
+        const encoded = generated.VersionedHostRequestResourceAllocationRequest.enc(request);
+        if (encoded.length === bytes.length && encoded.every((byte, index) => byte === bytes[index])) {
           return { tag, value: { resources: request.value.resources } };
         }
       } else {
         const response = allocationResponseCodec.dec(bytes);
         const encoded = allocationResponseCodec.enc(response);
-        if (
-          encoded.length === bytes.length &&
-          encoded.every((byte, index) => byte === bytes[index])
-        ) {
+        if (encoded.length === bytes.length && encoded.every((byte, index) => byte === bytes[index])) {
           return {
             tag,
-            value: response.value.success
-              ? { outcomes: response.value.value.outcomes }
-              : { failed: true },
+            value: response.value.success ? { outcomes: response.value.value.outcomes } : { failed: true },
           };
         }
       }

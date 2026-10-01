@@ -2,18 +2,25 @@
   "name": "@dotli/eslint-config",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": false,
   "private": true,
   "license": "AGPL-3.0-only",
   "exports": {
+    "./astro": "./astro.js",
     "./base": "./base.js",
     "./vite": "./vite.js"
   },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
+  },
   "devDependencies": {
+    "@dotli/typescript-config": "*",
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.11.0",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-turbo": "^2.11.3",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.70.1"
+    "eslint-plugin-astro": "^3.2.1",
+    "eslint-plugin-solid": "0.18.0",
+    "eslint-plugin-turbo": "^2.11.5",
+    "typescript-eslint": "^8.71.0"
   }
 }

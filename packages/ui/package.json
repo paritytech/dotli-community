@@ -4,46 +4,51 @@
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
   "exports": {
-    "./*": "./src/*"
+    ".": "./src/index.ts",
+    "./islands/*": "./src/islands/*.ts",
+    "./styles.css": "./src/styles.css",
+    "./package.json": "./package.json"
   },
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "lint": "bunx eslint src/",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "lint": "eslint .",
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "workspace:*",
-    "@dotli/typescript-config": "workspace:*",
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*",
+    "@solidjs/testing-library": "1.0.0-beta.3",
+    "@solidjs/vite-plugin": "3.0.0-next.47",
     "@types/qrcode": "^1.5.6",
-    "eslint": "^10.11.0",
-    "fake-indexeddb": "^6.2.5",
-    "happy-dom": "^20.14.5",
-    "typescript": "~6.0.3",
-    "vite": "^8.3.1",
-    "vitest": "^5.0.1"
+    "fake-indexeddb": "^6.2.5"
   },
   "dependencies": {
-    "@dotli/config": "workspace:*",
-    "@dotli/content": "workspace:*",
-    "@dotli/metrics": "workspace:*",
-    "@dotli/protocol": "workspace:*",
-    "@dotli/sandbox-checker": "workspace:*",
-    "@dotli/shared": "workspace:*",
-    "@dotli/storage": "workspace:*",
-    "@dotli/truapi-debug": "workspace:*",
+    "@dotli/config": "*",
+    "@dotli/content": "*",
+    "@dotli/metrics": "*",
+    "@dotli/protocol": "*",
+    "@dotli/sandbox-checker": "*",
+    "@dotli/shared": "*",
+    "@dotli/storage": "*",
+    "@dotli/truapi-debug": "*",
     "@noble/hashes": "^2.4.0",
     "@parity/truapi": "file:../../vendor/truapi",
     "@parity/truapi-host": "file:../../vendor/truapi-host",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.4.0",
     "@scure/bip39": "^2.4.0",
+    "@solidjs/web": "2.0.0-rc.13",
     "neverthrow": "^8.2.0",
-    "polkadot-api": "^3.1.0",
-    "qrcode": "^1.5.4"
+    "polkadot-api": "^3.2.0",
+    "qrcode": "^1.5.4",
+    "solid-js": "2.0.0-rc.13"
   },
   "peerDependencies": {
-    "@dotli/resolver": "workspace:*"
+    "@dotli/resolver": "*"
   },
   "peerDependenciesMeta": {
     "@dotli/resolver": {

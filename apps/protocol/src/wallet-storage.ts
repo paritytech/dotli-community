@@ -1,23 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type {
-  SharedWalletOperation,
-  SharedWalletResult,
-  SharedWalletState,
-} from "@dotli/protocol/wallet-storage";
+import type { SharedWalletOperation, SharedWalletResult, SharedWalletState } from '@dotli/protocol';
 
-export const WALLET_DB_NAME = "dotli-wallet";
-const STORE = "wallet";
-const SLOT = "state-v1";
-const LOCK = "dotli:shared-wallet-v1";
+export const WALLET_DB_NAME = 'dotli-wallet';
+const STORE = 'wallet';
+const SLOT = 'state-v1';
+const LOCK = 'dotli:shared-wallet-v1';
 const NONCE_LENGTH = 12;
 /**
  * Non-secret presence marker. Safari keys this frame's IndexedDB by the app
  * page it is embedded in, but shares its localStorage across apps, so the
  * marker tells an app that another app holds the wallet.
  */
-const STORED_MARKER = "dotli:test-wallet-stored";
+const STORED_MARKER = 'dotli:test-wallet-stored';
 
 interface WalletRecord {
   version: number;
@@ -36,22 +32,20 @@ function openDb(): Promise<IDBDatabase> {
     resolve(request.result);
   };
   request.onerror = () => {
-    reject(request.error ?? new Error("Wallet database unavailable"));
+    reject(request.error ?? new Error('Wallet database unavailable'));
   };
   return promise;
 }
 
 function readRecord(db: IDBDatabase): Promise<WalletRecord | undefined> {
-  const { promise, resolve, reject } = Promise.withResolvers<
-    WalletRecord | undefined
-  >();
+  const { promise, resolve, reject } = Promise.withResolvers<WalletRecord | undefined>();
   const tx = db.transaction(STORE);
   const request = tx.objectStore(STORE).get(SLOT);
   tx.oncomplete = () => {
     resolve(request.result as WalletRecord | undefined);
   };
   tx.onabort = tx.onerror = () => {
-    reject(tx.error ?? new Error("Wallet read failed"));
+    reject(tx.error ?? new Error('Wallet read failed'));
   };
   return promise;
 }
@@ -59,13 +53,13 @@ function readRecord(db: IDBDatabase): Promise<WalletRecord | undefined> {
 /** The lock covers crypto awaits; the transaction makes key/ciphertext/state durable together. */
 function writeRecord(db: IDBDatabase, record: WalletRecord): Promise<void> {
   const { promise, resolve, reject } = Promise.withResolvers<undefined>();
-  const tx = db.transaction(STORE, "readwrite");
+  const tx = db.transaction(STORE, 'readwrite');
   tx.objectStore(STORE).put(record, SLOT);
   tx.oncomplete = () => {
     resolve(undefined);
   };
   tx.onabort = tx.onerror = () => {
-    reject(tx.error ?? new Error("Wallet write failed"));
+    reject(tx.error ?? new Error('Wallet write failed'));
   };
   return promise;
 }
@@ -73,61 +67,45 @@ function writeRecord(db: IDBDatabase, record: WalletRecord): Promise<void> {
 function stateOf(record: WalletRecord | undefined): SharedWalletState {
   const hasWallet = record?.encrypted !== undefined;
   if (hasWallet) {
-    localStorage.setItem(STORED_MARKER, "1");
+    localStorage.setItem(STORED_MARKER, '1');
   }
   return {
     version: record?.version ?? 0,
     revision: record?.revision ?? null,
     enabled: record?.enabled ?? false,
     hasWallet,
-    storedInOtherApp:
-      !hasWallet && localStorage.getItem(STORED_MARKER) !== null,
+    storedInOtherApp: !hasWallet && localStorage.getItem(STORED_MARKER) !== null,
   };
 }
 
-async function decrypt(
-  record: WalletRecord | undefined,
-): Promise<Uint8Array<ArrayBuffer> | undefined> {
+async function decrypt(record: WalletRecord | undefined): Promise<Uint8Array<ArrayBuffer> | undefined> {
   if (record?.encrypted === undefined) {
     return undefined;
   }
-  if (
-    record.key === undefined ||
-    record.key.extractable ||
-    record.key.algorithm.name !== "AES-GCM"
-  ) {
-    throw new Error(
-      "Stored wallet key is invalid; wallet has been preserved for recovery",
-    );
+  if (record.key === undefined || record.key.extractable || record.key.algorithm.name !== 'AES-GCM') {
+    throw new Error('Stored wallet key is invalid; wallet has been preserved for recovery');
   }
   const secret = new Uint8Array(
     await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: record.encrypted.slice(0, NONCE_LENGTH) },
+      { name: 'AES-GCM', iv: record.encrypted.slice(0, NONCE_LENGTH) },
       record.key,
       record.encrypted.slice(NONCE_LENGTH),
     ),
   );
   if (!validEntropy(secret)) {
     secret.fill(0);
-    throw new Error(
-      "Stored wallet entropy is invalid; wallet has been preserved for recovery",
-    );
+    throw new Error('Stored wallet entropy is invalid; wallet has been preserved for recovery');
   }
   return secret;
 }
 
 function validEntropy(secret: unknown): boolean {
-  return (
-    secret instanceof Uint8Array &&
-    secret.length >= 16 &&
-    secret.length <= 32 &&
-    secret.length % 4 === 0
-  );
+  return secret instanceof Uint8Array && secret.length >= 16 && secret.length <= 32 && secret.length % 4 === 0;
 }
 
 function conflict(message: string): Error {
   const error = new Error(message);
-  error.name = "WalletConflictError";
+  error.name = 'WalletConflictError';
   return error;
 }
 
@@ -136,45 +114,37 @@ export async function handleWalletOperation(
   changed: (state: SharedWalletState) => void,
   deadlineMs?: number,
 ): Promise<SharedWalletResult> {
-  if (
-    typeof navigator.locks === "undefined" ||
-    typeof crypto.subtle === "undefined"
-  ) {
-    throw new Error(
-      "Shared wallets require secure-context Web Locks, Web Crypto and IndexedDB",
-    );
+  if (typeof navigator.locks === 'undefined' || typeof crypto.subtle === 'undefined') {
+    throw new Error('Shared wallets require secure-context Web Locks, Web Crypto and IndexedDB');
   }
   return navigator.locks.request(LOCK, async () => {
     if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-      throw new Error("Wallet request expired");
+      throw new Error('Wallet request expired');
     }
     const db = await openDb();
     try {
       const record = await readRecord(db);
       const state = stateOf(record);
-      if (operation.action === "state") {
+      if (operation.action === 'state') {
         return { state };
       }
-      if (operation.action === "read") {
-        return { state, secret: await decrypt(record) };
+      if (operation.action === 'read') {
+        const secret = await decrypt(record);
+        return { state, ...(secret === undefined ? {} : { secret }) };
       }
-      if (
-        !Number.isSafeInteger(operation.expectedVersion) ||
-        operation.expectedVersion !== state.version
-      ) {
-        throw conflict(
-          "Wallet changed in another tab. Reload and retry this operation.",
-        );
+      if (!Number.isSafeInteger(operation.expectedVersion) || operation.expectedVersion !== state.version) {
+        throw conflict('Wallet changed in another tab. Reload and retry this operation.');
       }
-      if (operation.action === "create" && state.hasWallet) {
-        return { state, secret: await decrypt(record), created: false };
+      if (operation.action === 'create' && state.hasWallet) {
+        const secret = await decrypt(record);
+        return { state, ...(secret === undefined ? {} : { secret }), created: false };
       }
-      if (operation.action === "migrate" || operation.action === "import") {
+      if (operation.action === 'migrate' || operation.action === 'import') {
         if (!validEntropy(operation.secret)) {
-          throw new Error("Invalid wallet entropy");
+          throw new Error('Invalid wallet entropy');
         }
       }
-      if (operation.action === "migrate" && record !== undefined) {
+      if (operation.action === 'migrate' && record !== undefined) {
         const existing = await decrypt(record);
         try {
           if (
@@ -190,25 +160,25 @@ export async function handleWalletOperation(
           existing?.fill(0);
         }
       }
-      if (operation.action === "enabled") {
-        if (typeof operation.enabled !== "boolean") {
-          throw new Error("Invalid wallet mode");
+      if (operation.action === 'enabled') {
+        if (typeof operation.enabled !== 'boolean') {
+          throw new Error('Invalid wallet mode');
         }
         if (operation.enabled && !state.hasWallet) {
-          throw new Error("Create or import a wallet before enabling Lite");
+          throw new Error('Create or import a wallet before enabling Lite');
         }
         if (state.enabled === operation.enabled) {
           return { state };
         }
       }
       if (state.version === Number.MAX_SAFE_INTEGER) {
-        throw new Error("Wallet revision exhausted");
+        throw new Error('Wallet revision exhausted');
       }
       let next: WalletRecord;
       let secret: Uint8Array<ArrayBuffer> | undefined;
-      if (operation.action === "enabled") {
+      if (operation.action === 'enabled') {
         if (record === undefined) {
-          throw conflict("Wallet is unavailable");
+          throw conflict('Wallet is unavailable');
         }
         // Enabling does not change the identity/grant revision.
         next = {
@@ -216,7 +186,7 @@ export async function handleWalletOperation(
           version: state.version + 1,
           enabled: operation.enabled,
         };
-      } else if (operation.action === "delete") {
+      } else if (operation.action === 'delete') {
         // Keep a tombstone forever: a stale origin-local copy cannot resurrect it.
         next = {
           version: state.version + 1,
@@ -224,34 +194,18 @@ export async function handleWalletOperation(
           enabled: false,
         };
       } else {
-        secret =
-          operation.action === "create"
-            ? crypto.getRandomValues(new Uint8Array(32))
-            : operation.secret.slice();
+        secret = operation.action === 'create' ? crypto.getRandomValues(new Uint8Array(32)) : operation.secret.slice();
         try {
-          const key = await crypto.subtle.generateKey(
-            { name: "AES-GCM", length: 256 },
-            false,
-            ["encrypt", "decrypt"],
-          );
+          const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
           const nonce = crypto.getRandomValues(new Uint8Array(NONCE_LENGTH));
-          const ciphertext = new Uint8Array(
-            await crypto.subtle.encrypt(
-              { name: "AES-GCM", iv: nonce },
-              key,
-              secret,
-            ),
-          );
+          const ciphertext = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, key, secret));
           const encrypted = new Uint8Array(nonce.length + ciphertext.length);
           encrypted.set(nonce);
           encrypted.set(ciphertext, nonce.length);
           next = {
             version: state.version + 1,
             revision: crypto.randomUUID(),
-            enabled:
-              operation.action === "migrate"
-                ? operation.enabled === true
-                : state.enabled,
+            enabled: operation.action === 'migrate' ? operation.enabled === true : state.enabled,
             key,
             encrypted,
           };
@@ -263,18 +217,18 @@ export async function handleWalletOperation(
       let returnedSecret = false;
       try {
         if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-          throw new Error("Wallet request expired");
+          throw new Error('Wallet request expired');
         }
         await writeRecord(db, next);
-        if (operation.action === "delete") {
+        if (operation.action === 'delete') {
           localStorage.removeItem(STORED_MARKER);
         }
         const nextState = stateOf(next);
         changed(nextState);
-        returnedSecret = operation.action === "create";
+        returnedSecret = operation.action === 'create';
         return {
           state: nextState,
-          ...(operation.action === "create" ? { secret, created: true } : {}),
+          ...(secret === undefined || operation.action !== 'create' ? {} : { secret, created: true }),
         };
       } finally {
         if (!returnedSecret) {
@@ -283,10 +237,7 @@ export async function handleWalletOperation(
       }
     } finally {
       db.close();
-      if (
-        (operation.action === "import" || operation.action === "migrate") &&
-        operation.secret instanceof Uint8Array
-      ) {
+      if ((operation.action === 'import' || operation.action === 'migrate') && operation.secret instanceof Uint8Array) {
         operation.secret.fill(0);
       }
     }
@@ -299,23 +250,18 @@ export async function withSharedWalletRevision(
   commit: () => void,
   deadlineMs?: number,
 ): Promise<void> {
-  if (typeof navigator.locks === "undefined") {
-    throw new Error("Shared wallets require secure-context Web Locks");
+  if (typeof navigator.locks === 'undefined') {
+    throw new Error('Shared wallets require secure-context Web Locks');
   }
   await navigator.locks.request(LOCK, async () => {
     const db = await openDb();
     try {
       const record = await readRecord(db);
       if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
-        throw new Error("Wallet request expired");
+        throw new Error('Wallet request expired');
       }
-      if (
-        record === undefined ||
-        !record.enabled ||
-        record.encrypted === undefined ||
-        record.revision !== revision
-      ) {
-        throw conflict("Wallet changed while saving its verified identity.");
+      if (record === undefined || !record.enabled || record.encrypted === undefined || record.revision !== revision) {
+        throw conflict('Wallet changed while saving its verified identity.');
       }
       commit();
     } finally {

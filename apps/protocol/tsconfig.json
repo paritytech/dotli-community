@@ -1,7 +1,4 @@
 {
-  "extends": [
-    "@dotli/typescript-config/base.json",
-    "@dotli/typescript-config/paths.json"
-  ],
-  "include": ["src"]
+  "extends": "@dotli/typescript-config/base.json",
+  "include": ["src", "vite.config.ts", "eslint.config.js"]
 }

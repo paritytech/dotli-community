@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
-import { raceSyncTimeout, withSyncBudget } from "./sync-deadline";
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
+import { raceSyncTimeout, withSyncBudget } from './sync-deadline.js';
 
 const CAP_MS = 180_000;
 
-describe("raceSyncTimeout", () => {
+describe('raceSyncTimeout', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -15,17 +15,17 @@ describe("raceSyncTimeout", () => {
     vi.useRealTimers();
   });
 
-  it("As a caller whose chain never syncs, I get a typed sync-timeout rejection", async () => {
+  it('As a caller whose chain never syncs, I get a typed sync-timeout rejection', async () => {
     // Given
     const never = new Promise<string>(() => {
       /* never settles, like whenReady() with no reachable peers */
     });
 
     // When
-    const raced = raceSyncTimeout(never, "Asset Hub Paseo", 5_000);
+    const raced = raceSyncTimeout(never, 'Asset Hub Paseo', 5_000);
     const assertion = expect(raced).rejects.toMatchObject({
-      name: "NetworkSyncTimeoutError",
-      chain: "Asset Hub Paseo",
+      name: 'NetworkSyncTimeoutError',
+      chain: 'Asset Hub Paseo',
       timeoutMs: 5_000,
     });
     await vi.advanceTimersByTimeAsync(5_000);
@@ -36,64 +36,62 @@ describe("raceSyncTimeout", () => {
 
   it("As a caller whose chain syncs in time, I get the work's value", async () => {
     // Given
-    const work = Promise.resolve("synced");
+    const work = Promise.resolve('synced');
 
     // When
-    const result = await raceSyncTimeout(work, "Asset Hub Paseo", 5_000);
+    const result = await raceSyncTimeout(work, 'Asset Hub Paseo', 5_000);
 
     // Then
-    expect(result).toBe("synced");
+    expect(result).toBe('synced');
   });
 
-  it("As a caller whose work settles first, the timer is cleared rather than left running", async () => {
+  it('As a caller whose work settles first, the timer is cleared rather than left running', async () => {
     // Given
-    const work = Promise.resolve("synced");
+    const work = Promise.resolve('synced');
 
     // When
-    await raceSyncTimeout(work, "Asset Hub Paseo", CAP_MS);
+    await raceSyncTimeout(work, 'Asset Hub Paseo', CAP_MS);
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("As a caller whose work rejects first, the timer is cleared rather than left running", async () => {
+  it('As a caller whose work rejects first, the timer is cleared rather than left running', async () => {
     // Given
-    const work = Promise.reject(new Error("provider died"));
+    const work = Promise.reject(new Error('provider died'));
 
     // When
-    await expect(
-      raceSyncTimeout(work, "Asset Hub Paseo", CAP_MS),
-    ).rejects.toThrow("provider died");
+    await expect(raceSyncTimeout(work, 'Asset Hub Paseo', CAP_MS)).rejects.toThrow('provider died');
 
     // Then
     expect(vi.getTimerCount()).toBe(0);
   });
 });
 
-describe("withSyncBudget", () => {
-  it("As a caller with no deadline, my wait keeps the cap the work already enforces", () => {
+describe('withSyncBudget', () => {
+  it('As a caller with no deadline, my wait keeps the cap the work already enforces', () => {
     // Given
-    const work = Promise.resolve("synced");
+    const work = Promise.resolve('synced');
 
     // When
-    const bounded = withSyncBudget(work, "Asset Hub Paseo", undefined, CAP_MS);
+    const bounded = withSyncBudget(work, 'Asset Hub Paseo', undefined, CAP_MS);
 
     // Then
     expect(bounded).toBe(work);
   });
 
-  it("As a caller whose budget is looser than the cap, my wait is left untouched", () => {
+  it('As a caller whose budget is looser than the cap, my wait is left untouched', () => {
     // Given
-    const work = Promise.resolve("synced");
+    const work = Promise.resolve('synced');
 
     // When
-    const bounded = withSyncBudget(work, "Asset Hub Paseo", CAP_MS, CAP_MS);
+    const bounded = withSyncBudget(work, 'Asset Hub Paseo', CAP_MS, CAP_MS);
 
     // Then
     expect(bounded).toBe(work);
   });
 
-  it("As a caller whose budget is tighter than the cap, my wait fails at my budget", async () => {
+  it('As a caller whose budget is tighter than the cap, my wait fails at my budget', async () => {
     // Given
     vi.useFakeTimers();
     const never = new Promise<string>(() => {
@@ -101,9 +99,9 @@ describe("withSyncBudget", () => {
     });
 
     // When
-    const bounded = withSyncBudget(never, "Asset Hub Paseo", 5_000, CAP_MS);
+    const bounded = withSyncBudget(never, 'Asset Hub Paseo', 5_000, CAP_MS);
     const assertion = expect(bounded).rejects.toMatchObject({
-      name: "NetworkSyncTimeoutError",
+      name: 'NetworkSyncTimeoutError',
       timeoutMs: 5_000,
     });
     await vi.advanceTimersByTimeAsync(5_000);
@@ -114,26 +112,26 @@ describe("withSyncBudget", () => {
   });
 
   // The property that lets `ensureClient` share one in-flight client promise.
-  it("As two callers sharing one sync, the tighter budget failing leaves the looser one alive", async () => {
+  it('As two callers sharing one sync, the tighter budget failing leaves the looser one alive', async () => {
     // Given
     vi.useFakeTimers();
     let settleShared: (value: string) => void = () => undefined;
-    const shared = new Promise<string>((resolve) => {
+    const shared = new Promise<string>(resolve => {
       settleShared = resolve;
     });
 
     // When
-    const impatient = withSyncBudget(shared, "Asset Hub Paseo", 20, CAP_MS);
-    const patient = withSyncBudget(shared, "Asset Hub Paseo", 5_000, CAP_MS);
+    const impatient = withSyncBudget(shared, 'Asset Hub Paseo', 20, CAP_MS);
+    const patient = withSyncBudget(shared, 'Asset Hub Paseo', 5_000, CAP_MS);
     const rejection = expect(impatient).rejects.toMatchObject({
-      name: "NetworkSyncTimeoutError",
+      name: 'NetworkSyncTimeoutError',
     });
     await vi.advanceTimersByTimeAsync(20);
     await rejection;
-    settleShared("synced");
+    settleShared('synced');
 
     // Then
-    await expect(patient).resolves.toBe("synced");
+    await expect(patient).resolves.toBe('synced');
     vi.useRealTimers();
   });
 });

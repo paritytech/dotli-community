@@ -1,10 +1,10 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProductContext } from "@parity/truapi-host";
-import { createSubmitRateLimiter } from "@dotli/ui/host-callbacks/rate-limit";
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ProductContext } from '@parity/truapi-host';
+import { createSubmitRateLimiter } from '../src/host-callbacks/rate-limit.js';
 
 const PRODUCT: ProductContext = {
-  productId: "myapp.paseo",
-  executionKind: "App",
+  productId: 'myapp.paseo',
+  executionKind: 'App',
 };
 
 const mocks = vi.hoisted(() => ({
@@ -13,12 +13,12 @@ const mocks = vi.hoisted(() => ({
   showPermissionRequestModal: vi.fn(),
 }));
 
-vi.mock("@dotli/ui/scheduled-notifications", () => ({
+vi.mock('../src/scheduled-notifications.js', () => ({
   scheduleNotification: mocks.scheduleNotification,
   cancelNotification: mocks.cancelNotification,
 }));
 
-vi.mock("@dotli/ui/permission-modal", () => ({
+vi.mock('../src/permission-modal.js', () => ({
   showPermissionRequestModal: mocks.showPermissionRequestModal,
 }));
 
@@ -26,7 +26,7 @@ vi.mock("@dotli/ui/permission-modal", () => ({
 const WINDOW_MS = 10_000;
 const MAX_PER_WINDOW = 20;
 
-describe("createSubmitRateLimiter", () => {
+describe('createSubmitRateLimiter', () => {
   beforeEach(() => {
     vi.useFakeTimers();
   });
@@ -35,7 +35,7 @@ describe("createSubmitRateLimiter", () => {
     vi.useRealTimers();
   });
 
-  it("As a dotli integrator, the host allows prompts up to the window budget and denies the next", () => {
+  it('As a dotli integrator, the host allows prompts up to the window budget and denies the next', () => {
     // Given
     const limiter = createSubmitRateLimiter();
 
@@ -46,7 +46,7 @@ describe("createSubmitRateLimiter", () => {
     expect(limiter.allow()).toBe(false);
   });
 
-  it("As a dotli integrator, the host frees budget as prompts age out of the sliding window", () => {
+  it('As a dotli integrator, the host frees budget as prompts age out of the sliding window', () => {
     // Given: half the budget spent now, the other half just before the
     // window boundary.
     const limiter = createSubmitRateLimiter();
@@ -71,7 +71,7 @@ describe("createSubmitRateLimiter", () => {
     expect(limiter.allow()).toBe(false);
   });
 
-  it("As a dotli integrator, the host denials do not consume budget", () => {
+  it('As a dotli integrator, the host denials do not consume budget', () => {
     // Given: a full window.
     const limiter = createSubmitRateLimiter();
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
@@ -89,12 +89,12 @@ describe("createSubmitRateLimiter", () => {
   });
 });
 
-describe("prompt rate limiting across host callbacks", () => {
+describe('prompt rate limiting across host callbacks', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
-    document.body.innerHTML = "";
-    mocks.showPermissionRequestModal.mockResolvedValue("granted");
+    document.body.innerHTML = '';
+    mocks.showPermissionRequestModal.mockResolvedValue('granted');
     mocks.scheduleNotification.mockResolvedValue({
       ok: true,
       id: 7,
@@ -102,44 +102,38 @@ describe("prompt rate limiting across host callbacks", () => {
     });
   });
 
-  it("As a dotli integrator, the host rate limits permission prompts per callback surface", async () => {
+  it('As a dotli integrator, the host rate limits permission prompts per callback surface', async () => {
     // Given: a single host callback surface. No authorization provider is
     // registered, so every prompt reaches the "ask" path and the limiter.
-    const { createHostCallbacks } =
-      await import("@dotli/ui/host-callbacks/handlers");
-    const { permissions } = createHostCallbacks({ label: "myapp" });
+    const { createHostCallbacks } = await import('../src/host-callbacks/handlers.js');
+    const { permissions } = createHostCallbacks({ label: 'myapp' });
 
     // When: camera prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission(PRODUCT, "Camera");
+      await permissions.devicePermission(PRODUCT, 'Camera');
     }
 
     // Then: a different permission shares that budget and is rate limited
     // instead of showing a 21st modal.
-    await expect(
-      permissions.devicePermission(PRODUCT, "Notifications"),
-    ).rejects.toThrow("Permission prompt rate limited");
-    expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(
-      MAX_PER_WINDOW,
+    await expect(permissions.devicePermission(PRODUCT, 'Notifications')).rejects.toThrow(
+      'Permission prompt rate limited',
     );
+    expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(MAX_PER_WINDOW);
   });
 
-  it("As a dotli user, delivering notifications never spends the prompt budget", async () => {
+  it('As a dotli user, delivering notifications never spends the prompt budget', async () => {
     // Given
-    const { createHostCallbacks } =
-      await import("@dotli/ui/host-callbacks/handlers");
+    const { createHostCallbacks } = await import('../src/host-callbacks/handlers.js');
     const { permissions, notifications } = createHostCallbacks({
-      label: "myapp",
+      label: 'myapp',
     });
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission(PRODUCT, "Camera");
+      await permissions.devicePermission(PRODUCT, 'Camera');
     }
 
     // When
     const delivered = notifications.pushNotification({
-      text: "hello",
-      deeplink: undefined,
-      scheduledAt: undefined,
+      text: 'hello',
     });
 
     // Then

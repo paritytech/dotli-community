@@ -23,16 +23,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.13"
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
+      # With metrics on, as the deploys build: with them off the Sentry SDK
+      # is swapped for a no-op (stripAnalytics), and the sizes would leave it
+      # out.
       - name: Build
-        run: bunx --bun turbo run build:prod
+        env:
+          VITE_METRICS: "true"
+        run: npx turbo run build:prod
 
       - name: Remove source maps
         run: find apps/*/dist -name '*.map' -delete
@@ -79,8 +79,33 @@ jobs:
           # Host shell main entry — must not regress more than ~20% above
           # its current ~460 KB raw size.
           check "host-entry" \
-                "apps/host/dist/assets/index-*.js" \
+                "apps/host/dist/assets/index.astro_astro_type_script_index_0_lang.*.js" \
                 $((600 * 1024))
+
+          # Eager path = module entry + every modulepreloaded chunk, and the
+          # host's client:load islands with their static imports, gzip, with
+          # metrics on (the Sentry SDK included), as the deploys build. Each
+          # budget is its measured size + about 10%: the host 152,746 B (the
+          # Solid runtime and the client:load islands among it), the
+          # sandbox 79,325 B.
+          check_eager() {
+            local label=$1 dist=$2 max=$3
+            local json gz
+            if ! json=$(node scripts/eager-path-size.ts "$dist"); then
+              echo "::warning::${label}: could not measure the eager path in ${dist}"
+              echo "- \`${label}\`: could not measure the eager path in \`${dist}\`" >> /tmp/budget-warnings.md
+              return
+            fi
+            gz=$(echo "$json" | python3 -c "import json,sys; print(json.load(sys.stdin)['gz'])")
+            if (( gz > max )); then
+              echo "::warning::${label} exceeded budget: ${gz} B gzip > ${max} B"
+              echo "- \`${label}\` exceeded budget: **${gz} B gzip** > ${max} B" >> /tmp/budget-warnings.md
+            else
+              echo "${label}: ${gz} B gzip (budget ${max} B) — ok"
+            fi
+          }
+          check_eager "host-eager-path" apps/host/dist 168000
+          check_eager "sandbox-eager-path" apps/sandbox/dist 87000
 
       # ── PR: download baseline from main ────────────────────────
       - name: Download baseline from main
@@ -110,7 +135,7 @@ jobs:
 
           # Strip content hashes: "fetch-CMRV9u5T.js" → "fetch.js"
           strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
+            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
           }
 
           fmt() {
@@ -236,6 +261,15 @@ jobs:
           total_gz_fmt="$(fmt $total_gz)${total_gz_diff}"
           br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $total_br/$total_raw) * 100}")
 
+          eager_rows=""
+          for app in host sandbox; do
+            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || continue
+            read -r e_raw e_br e_gz < <(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['raw'], d['br'], d['gz'])")
+            name="${app}/(eager path)"
+            e_row="| \`${name}\` | $(fmt $e_raw)$(fmt_diff $e_raw "$(baseline_val "$name" raw)") | $(fmt $e_br)$(fmt_diff $e_br "$(baseline_val "$name" br)") | $(fmt $e_gz)$(fmt_diff $e_gz "$(baseline_val "$name" gz)") |"
+            eager_rows="${eager_rows}${e_row}"$'\n'
+          done
+
           {
             echo "## Bundle Size Report"
             echo ""
@@ -248,6 +282,15 @@ jobs:
             fi
             if ! $HAS_BASELINE; then
               echo "> No baseline found on \`main\`. Merge to \`main\` to establish a baseline."
+              echo ""
+            fi
+
+            if [[ -n "$eager_rows" ]]; then
+              echo "**Eager path** (module entry + modulepreloaded chunks):"
+              echo ""
+              echo "| Path | Raw | Brotli | Gzip |"
+              echo "|------|----:|-------:|-----:|"
+              echo -n "$eager_rows"
               echo ""
             fi
 
@@ -320,7 +363,7 @@ jobs:
         run: |
           # Strip content hashes from filenames: "fetch-CMRV9u5T.js" → "fetch.js"
           strip_hash() {
-            echo "$1" | sed -E 's/-[A-Za-z0-9_-]{8}\./\./'
+            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
           }
 
           echo "{" > /tmp/bundle-baseline.json
@@ -343,6 +386,12 @@ jobs:
               first=false
               printf '  "%s": {"raw": %d, "br": %d, "gz": %d}' "$name" "$raw" "$br" "$gz" >> /tmp/bundle-baseline.json
             done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
+          done
+          for app in host sandbox; do
+            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || { echo "::warning::${app}: could not measure the eager path for the baseline"; continue; }
+            printf ',\n  "%s/(eager path)": %s' "$app" \
+              "$(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'raw': d['raw'], 'br': d['br'], 'gz': d['gz']}))")" \
+              >> /tmp/bundle-baseline.json
           done
           echo "" >> /tmp/bundle-baseline.json
           echo "}" >> /tmp/bundle-baseline.json

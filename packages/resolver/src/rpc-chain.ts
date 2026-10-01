@@ -19,13 +19,10 @@
  * mode. Bulletin is reachable so in-core preimage submission can use its
  * `TransactionStorage` runtime API over the same trusted RPC posture.
  */
-import { getWsProvider } from "polkadot-api/ws";
-import type { JsonRpcProvider } from "polkadot-api";
-import {
-  getActiveCoreGatewayChains,
-  getActiveGatewayChains,
-} from "@dotli/config/network";
-import type { ChainService } from "@dotli/config/network";
+import { getWsProvider } from 'polkadot-api/ws';
+import type { JsonRpcProvider } from 'polkadot-api';
+import { getActiveCoreGatewayChains, getActiveGatewayChains } from '@dotli/config';
+import type { ChainService } from '@dotli/config';
 
 /**
  * Resolve a genesis hash to its active-network chain, or `null` when gateway
@@ -35,19 +32,12 @@ import type { ChainService } from "@dotli/config/network";
  */
 function gatewayChain(genesisHash: string): ChainService | null {
   const key = genesisHash.toLowerCase();
-  return (
-    getActiveGatewayChains().find((c) => c.genesis.toLowerCase() === key) ??
-    null
-  );
+  return getActiveGatewayChains().find(c => c.genesis.toLowerCase() === key) ?? null;
 }
 
 function coreGatewayChain(genesisHash: string): ChainService | null {
   const key = genesisHash.toLowerCase();
-  return (
-    getActiveCoreGatewayChains().find(
-      (chain) => chain.genesis.toLowerCase() === key,
-    ) ?? null
-  );
+  return getActiveCoreGatewayChains().find(chain => chain.genesis.toLowerCase() === key) ?? null;
 }
 
 /** Whether gateway mode can serve chain calls for `genesisHash`. */
@@ -56,9 +46,7 @@ export function isRpcChainSupported(genesisHash: string): boolean {
 }
 
 /** A WSS JSON-RPC provider for `genesisHash`, or `null` when gateway mode does not support that chain. */
-export function createRpcChainProvider(
-  genesisHash: string,
-): JsonRpcProvider | null {
+export function createRpcChainProvider(genesisHash: string): JsonRpcProvider | null {
   return createGatewayProvider(gatewayChain(genesisHash));
 }
 
@@ -68,15 +56,11 @@ export function isCoreRpcChainSupported(genesisHash: string): boolean {
 }
 
 /** Gateway provider for host-owned Rust-core traffic, including Bulletin. */
-export function createCoreRpcChainProvider(
-  genesisHash: string,
-): JsonRpcProvider | null {
+export function createCoreRpcChainProvider(genesisHash: string): JsonRpcProvider | null {
   return createGatewayProvider(coreGatewayChain(genesisHash));
 }
 
-function createGatewayProvider(
-  chain: ChainService | null,
-): JsonRpcProvider | null {
+function createGatewayProvider(chain: ChainService | null): JsonRpcProvider | null {
   if (chain === null) {
     return null;
   }

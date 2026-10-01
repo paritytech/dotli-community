@@ -1,5 +1,6 @@
-> [!WARNING]
-> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+> [!WARNING] The following is a prototype, reference implementation, and proof-of-concept. This open source code is
+> provided for research, experimentation, and developer education only. This code has not been audited, is actively
+> experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
 
 <div align="center">
 
@@ -10,7 +11,8 @@
 [![TypeScript](https://img.shields.io/badge/typescript-strict-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
 [![Polkadot](https://img.shields.io/badge/polkadot-ecosystem-E6007A?style=flat-square&logo=polkadot)](https://polkadot.com)
 
-A decentralized web browser that runs in your browser. Visit any Polkadot application with fully trustless, client-side resolution — no servers in the loop.
+A decentralized web browser that runs in your browser. Visit any Polkadot application with fully trustless, client-side
+resolution — no servers in the loop.
 
 [Website](https://paseo.li) | [Report an Issue](https://github.com/paritytech/dotli-community/issues)
 
@@ -38,7 +40,8 @@ The topbar is hidden on the landing page and only appears when viewing an app.
 
 ## Architecture
 
-dotli uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the app content layer:
+dotli uses a **two-build, per-product subdomain architecture** that separates concerns between the host shell and the
+app content layer:
 
 ```
 name.paseo.li            Host build (topbar, dotns resolution, smoldot, bridge)
@@ -55,13 +58,17 @@ name.app.paseo.li        App build (CID from URL contract, content fetch, render
 | `host-playground.app.paseo.li` | App content  | Reads CID from URL contract, fetches content, renders                                   |
 | `paseo.li`                     | Landing page | Search bar, recent apps                                                                 |
 
-Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different products stay isolated for SW/storage/security purposes.
+Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
+products stay isolated for SW/storage/security purposes.
 
 ### What it does
 
-1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected to Asset Hub Paseo, querying dotNS contracts.
-2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot `bitswap_v1_get` JSON-RPC or an IPFS gateway.
-3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request accounts, sign transactions, connect to chains, and use scoped storage.
+1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected
+   to Asset Hub Paseo, querying dotNS contracts.
+2. **Fetches** content from the [Bulletin Chain](https://github.com/paritytech/polkadot-bulletin-chain) via smoldot
+   `bitswap_v1_get` JSON-RPC or an IPFS gateway.
+3. **Renders** the content in a sandboxed iframe with the Rust-backed TrUAPI bridge, so loaded SPAs can request
+   accounts, sign transactions, connect to chains, and use scoped storage.
 
 ```
 host-playground.paseo.li
@@ -71,24 +78,31 @@ host-playground.paseo.li
     -> App:  renders dApp in sandboxed iframe with container bridge
 ```
 
-Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served through a Service Worker that acts as a virtual file system.
+Single-file apps are served as blob URLs. Multi-file SPAs (directories) are fetched as CAR archives, parsed, and served
+through a Service Worker that acts as a virtual file system.
 
 ### What it doesn't do
 
-- Production builds are **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation, and signing is delegated to the connected Polkadot App session. Debug builds also offer an explicitly experimental [test wallet](#experimental-test-wallet).
-- It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and dotNS records are read directly from the contract storage.
-- It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally per session.
+- Production builds are **not** a wallet or key custodian. Per-app keys are derived on demand via HDKD soft derivation,
+  and signing is delegated to the connected Polkadot App session. Debug builds also offer an explicitly experimental
+  [test wallet](#experimental-test-wallet).
+- It does **not** run its own RPC servers or backends. Chain access is through an in-browser smoldot light client, and
+  dotNS records are read directly from the contract storage.
+- It does **not** pin or host content. Content is fetched from the Bulletin Chain or an IPFS gateway and served locally
+  per session.
 - It is **not** a production-hardened product. Treat it as a reference blueprint (see [Security](#security)).
 
 ## How resolution works
 
 1. Parse the label from the subdomain (`host-playground.paseo.li` -> `host-playground`)
-2. Compute the ENS-style namehash (`node`) of the name — the resolver tries `app.<label>.dot` first and falls back to `<label>.dot`
+2. Compute the ENS-style namehash (`node`) of the name — the resolver tries `app.<label>.dot` first and falls back to
+   `<label>.dot`
 3. Read the `contenthash` bytes for `node` directly from the dotNS ContentResolver contract storage
 4. Decode the contenthash bytes to an IPFS CID (using `@ensdomains/content-hash`)
 5. Create an iframe to `<label>.app.paseo.li?cid=<cid>` which fetches and renders the content
 
-All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional gateway backend reads the same storage over a public RPC node instead.)
+All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
+gateway backend reads the same storage over a public RPC node instead.)
 
 ## How multi-file SPAs work
 
@@ -97,7 +111,8 @@ When a CID points to an IPFS directory (not a single file):
 1. The gateway returns a CAR (Content-Addressable aRchive) containing all files
 2. `archive.ts` parses the CAR using `@ipld/car` + `@ipld/dag-pb` + `ipfs-unixfs` to extract a file map
 3. The file map is sent to the app Service Worker via `postMessage`
-4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory archive
+4. The iframe loads from `/dotli-app/index.html` — the SW intercepts all requests and serves files from the in-memory
+   archive
 5. Relative imports (`<script src="main.js">`, `<link href="styles.css">`) just work
 
 ## Caching and verification
@@ -105,16 +120,20 @@ When a CID points to an IPFS directory (not a single file):
 dotli uses a two-layer cache for fast repeat visits:
 
 1. **CID cache** (IndexedDB) — maps `.dot` labels to their last-known CID
-2. **Archive cache** (Service Worker) — stores fetched file maps keyed by domain; a cache hit additionally requires the stored CID (and content backend) to match
+2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against
+   their CIDs, so a repeat visit loads without the network. The sandbox keeps nothing itself: its iframe is
+   credentialless, so its storage is dropped on reload
 
-On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield shows how the current page was loaded:
+On repeat visits, content renders instantly from the cache while it is resolved in the background. The topbar shield
+shows how the current page was loaded:
 
 | Shield           | Meaning                                                                       |
 | ---------------- | ----------------------------------------------------------------------------- |
 | Green (Verified) | Checked by your in-browser light client (the default smoldot backend)         |
 | Orange (Trusted) | Served by an external RPC provider or IPFS gateway, not light-client verified |
 
-If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification with a **Reload** action rather than swapping content silently.
+If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
+with a **Reload** action rather than swapping content silently.
 
 ## TrUAPI bridge
 
@@ -134,75 +153,68 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 
 ### Product chat
 
-Products that declare `includes.chat` in their `worker.<label>.<tld>`
-executable manifest get a Worker-kind TrUAPI execution and a chat button in
-the topbar. The product drives the conversation over the core's chat
-surface (`chat.create_room`, `chat.register_bot`, `chat.post_message`,
-`chat.list_subscribe`, `chat.action_subscribe`); the user replies from the
-docked chat panel, and each reply reaches the product as a `MessagePosted`
-action. Rooms and messages persist in IndexedDB on the product origin and
-never leave the device. The core denies chat calls without an active
-session, so chat requires being logged in. The localhost debug paths enable
-chat unconditionally so local products can be tested without publishing a
-manifest.
+Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
+execution and a chat button in the topbar. The product drives the conversation over the core's chat surface
+(`chat.create_room`, `chat.register_bot`, `chat.post_message`, `chat.list_subscribe`, `chat.action_subscribe`); the user
+replies from the docked chat panel, and each reply reaches the product as a `MessagePosted` action. Rooms and messages
+persist in IndexedDB on the product origin and never leave the device. The core denies chat calls without an active
+session, so chat requires being logged in. The localhost debug paths enable chat unconditionally so local products can
+be tested without publishing a manifest.
 
-Custom messages (`ChatMessageContent::Custom`) render live: when a custom
-message cell scrolls into view, the panel asks the product to draw it
-through the Renderer service (`renderer.render`, with a `ChatMessage`
-render context) and renders the streamed tree with the host's own design
-system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
-layouts and design tokens, so a product can never inject markup, styles, or
-URLs. Button taps and text-field edits inside a rendered tree flow back on
-`renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
+Custom messages (`ChatMessageContent::Custom`) render live: when a custom message cell scrolls into view, the panel asks
+the product to draw it through the Renderer service (`renderer.render`, with a `ChatMessage` render context) and renders
+the streamed tree with the host's own design system (`src/chat/custom-renderer.ts`). The tree is a closed vocabulary of
+layouts and design tokens, so a product can never inject markup, styles, or URLs. Button taps and text-field edits
+inside a rendered tree flow back on `renderer.action_subscribe`; taps on `Actions`-content buttons flow back as
 `ActionTriggered` chat actions.
 
 ### App iframe model
 
-The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
+The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must
+use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
 
-The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app replaces its own document with the dApp content so the dApp occupies the iframe directly.
+The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
+replaces its own document with the dApp content so the dApp occupies the iframe directly.
 
 ## Development
 
 ### Prerequisites
 
-- [Bun](https://bun.sh) 1.3+ and Node 22+ to build locally.
-- **No funded account is required** to browse and resolve `.dot` names - resolution is trustless, client-side, and read-only.
+- Node 26 (see `.nvmrc`) and npm 12+ to build locally.
+- **No funded account is required** to browse and resolve `.dot` names - resolution is trustless, client-side, and
+  read-only.
 - The Polkadot App is only needed to log in and sign transactions inside a loaded dApp.
-- The app targets **Paseo testnet** out of the box (see [Network configuration](#network-configuration)); point it at another chain by editing `packages/config`.
+- The app targets **Paseo testnet** out of the box (see [Network configuration](#network-configuration)); point it at
+  another chain by editing `packages/config`.
 
-The project uses [Bun](https://bun.sh) and [Turborepo](https://turbo.build).
+The project uses npm workspaces and [Turborepo](https://turbo.build).
 
 ```bash
-curl -fsSL https://bun.sh/install | bash
-bun install
-bun run preview          # Build + serve both apps on localhost:5173
+nvm use                  # or any Node 26 install
+npm install -g npm@latest
+npm install
+npm run preview          # Build + serve both apps on localhost:5173
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages
-from the unified host-rust-core runtime. `vendor/truapi-host.lock.json` records
-the source revisions, archive hashes, `dist/generated/client.js` digest, and
-signing-host WASM digest. The browser wallet artifact enables
-`wasm-signing-host`, without `test-host`.
-After changing these vendored packages, run `bun install --frozen-lockfile --force`
-to refresh Bun's cached local-package copies even when their versions are unchanged.
-To iterate against a local truapi checkout instead, run:
+This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the unified host-rust-core
+runtime. `vendor/truapi-host.lock.json` records the source revisions, archive hashes, `dist/generated/client.js` digest,
+and signing-host WASM digest. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
+dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
 
 ```bash
-bun run link:truapi
+npm run link:truapi
 ```
 
-When dotli is not checked out under `truapi/hosts/dotli`, point the script at
-the truapi repo:
+When dotli is not checked out under `truapi/hosts/dotli`, point the script at the truapi repo:
 
 ```bash
-TRUAPI_REPO=/path/to/truapi bun run link:truapi
+TRUAPI_REPO=/path/to/truapi npm run link:truapi
 ```
 
-Return to the package versions recorded in `bun.lock` with:
+Return to the package versions recorded in `package-lock.json` with:
 
 ```bash
-bun run unlink:truapi
+npm run unlink:truapi
 ```
 
 Local development uses wildcard subdomains:
@@ -211,106 +223,177 @@ Local development uses wildcard subdomains:
 
 ### Running the host-playground E2E locally
 
-The product E2E suite can load the source checkout directly through dotli's
-localhost proxy instead of resolving the published `host-playground.dot` CID.
-By default it expects the product at `../../../host-playground` relative to
-this repository, and the `truapi-host` CLI from
-[host-rust-core](https://github.com/paritytech/host-rust-core) on `PATH`:
+The product E2E suite can load a source checkout through dotli's localhost proxy instead of resolving the published
+`host-playground.dot` CID. Use a `truapi-host` CLI built from the exact `upstreamRevision` in
+`vendor/truapi-host.lock.json`; an installed release or another feature branch may have a different wire contract. CI
+checks out that immutable revision from [host-rust-core](https://github.com/paritytech/host-rust-core), generates its
+sources, and builds the CLI. In a checkout of that revision, with its codegen Rust toolchain and stable Rust installed:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/paritytech/host-rust-core/main/scripts/truapi-host-installer.sh | bash
+npm ci --ignore-scripts
+TRUAPI_SKIP_PACKAGE_BUILD=1 ./scripts/codegen.sh
+cargo build --locked -p truapi-host-cli --bin truapi-host
 ```
 
-```bash
-bun run test:e2e:local
-```
-
-Override either checkout or server when needed:
+To qualify this branch's vendored SDKs, build dotli without linking a different SDK checkout, then run the host
+workspace suite with explicit CLI and product paths:
 
 ```bash
+VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
+SIGNING_HOST_BIN=/path/to/pinned-host-rust-core/target/debug/truapi-host \
 E2E_PRODUCT_REPO=/path/to/host-playground \
 E2E_PRODUCT_URL=http://localhost:5199 \
-bun run test:e2e:local
+npm run --workspace apps/host test:e2e:local
 ```
 
-The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND` to run the same
-flow through either light-client backend:
+The root `npm run test:e2e:local` shortcut instead links a local SDK checkout through `npm run link:truapi`; use it only
+when deliberately developing against that checkout. Set `TRUAPI_REPO` to select it.
 
-```bash
-E2E_CHAIN_BACKEND=smoldot-shared-worker bun run test:e2e:local
-```
-
-Set `SIGNING_HOST_BIN` to a locally built binary (e.g.
-`../host-rust-core/target/debug/truapi-host`) instead of installing, and
-`SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI
-keeps its account state under `apps/host/tests/e2e/.auth/signing-host`, so
-repeat runs reuse one test account; the first run registers a fresh lite
+The suite defaults to `rpc-gateway`. Set `E2E_CHAIN_BACKEND=smoldot-shared-worker` to exercise the SharedWorker light
+client, and `SIGNING_HOST_NETWORK` when testing against a non-default network. The CLI keeps its account state under
+`apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the first run registers a fresh Lite
 username on-chain and can take a few minutes.
 
-The command builds dotli with its debug-only localhost proxy enabled, starts
-both preview servers through Playwright, extracts the login QR deeplink, pairs
-a headless `truapi-host signing-host` process that auto-signs for the rest of
-the run, and runs the same host-product suite used in CI.
+Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
+process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
 
 ### Running an approved build
 
-Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment runs). To reproduce a specific approved version from a fresh checkout:
+Releases are published as GitHub Releases tagged `vX.Y.Z` (the latest published tag is what the hosted dotli deployment
+runs). To reproduce a specific approved version from a fresh checkout:
 
 ```bash
 git checkout v0.5.0       # any published release tag
-bun install
-bun run build:prod        # production build of both apps
+npm ci
+npm run build:prod        # production build of both apps
 ```
 
-The published tag on the [Releases page](https://github.com/paritytech/dotli/releases) is the source of truth for what is deployed; rebuild from that tag to verify a deployment.
+The published tag on the [Releases page](https://github.com/paritytech/dotli/releases) is the source of truth for what
+is deployed; rebuild from that tag to verify a deployment.
 
 ## Debug panel
 
-dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so users who never see it pay no download cost.
+dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI
+host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so
+users who never see it pay no download cost.
 
-In builds compiled with `VITE_APP_DEBUG=true` (local `bun run preview:debug`, and the staging dev deploy at `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab clears it. Use `?debug=off` to silence it explicitly within the same session.
+In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
+`paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in
+the host Settings menu (or append `?debug=true` to any URL). The choice is sessionStorage-scoped — closing the tab
+clears it. Use `?debug=off` to silence it explicitly within the same session.
 
-See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources, views, filters, correlation keys, and how to add a new instrumentation hook.
+See [packages/truapi-debug/DEBUG_PANEL.md](packages/truapi-debug/DEBUG_PANEL.md) for the full reference — event sources,
+views, filters, correlation keys, and how to add a new instrumentation hook.
 
 ### Experimental test wallet
 
-Only builds compiled with `VITE_APP_DEBUG=true` offer the **Wallet** tab in the debug pane. Its compact header button shows a wallet icon until an active full/Lite username is known, then only the username; click it to expand the pane and select Wallet. Status changes do not change this button; verification, pending claims, and errors appear inside the Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page width for both the landing page and product content. There is no separate wallet window or docking preference. Normal login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does **not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
+Only builds compiled with `VITE_APP_DEBUG=true` offer the **Wallet** tab in the debug pane. Its compact header button
+shows a wallet icon until an active full/Lite username is known, then only the username; click it to expand the pane and
+select Wallet. Status changes do not change this button; verification, pending claims, and errors appear inside the
+Wallet tab. Wallet shares the pane's existing bottom/right docking and resizing controls. Right docking reserves page
+width for both the landing page and product content. There is no separate wallet window or docking preference. Normal
+login continues to use Polkadot Mobile. Opening diagnostics with `?debug=true` or Settings in a production build does
+**not** enable wallet creation or restoration; existing experimental wallet storage is ignored and preserved.
 
-Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain automatically once; if that lookup fails, the next load retries it. An existing Lite username replaces the claim form; **Check username** verifies its on-chain ownership without submitting another registration. Account identifiers are collapsed under **Account details**. While active, the account badge also opens the Wallet tab. Choose **Switch back to Mobile** to stop using the test wallet without deleting it. The normal login button then signs in with Polkadot Mobile. Mode changes reload the page to terminate the previous signing workers. Wallet tracks one active identity; it is not a multi-identity wallet manager.
+Start with **Use test wallet** and accept the warning to create or reuse a browser-local test identity. Username
+controls appear only after activation completes. A newly created or imported wallet looks up its Lite username on chain
+automatically once; if that lookup fails, the next load retries it. An existing Lite username replaces the claim form;
+**Check username** verifies its on-chain ownership without submitting another registration. Account identifiers are
+collapsed under **Account details**. While active, the account badge also opens the Wallet tab. Choose **Switch back to
+Mobile** to stop using the test wallet without deleting it. The normal login button then signs in with Polkadot Mobile.
+Mode changes reload the page to terminate the previous signing workers. Wallet tracks one active identity; it is not a
+multi-identity wallet manager.
 
-The encrypted wallet is shared by trusted product hosts under the same root domain, through the protocol origin's IndexedDB. Browser profiles and different root domains remain isolated; moving an identity between them requires an explicit recovery-phrase import. Existing origin-local wallets migrate only into an empty shared store or when they match it. Conflicting wallets are preserved for recovery, and a deleted shared wallet cannot be silently restored by an old origin-local copy.
+The encrypted wallet is shared by trusted product hosts under the same root domain, through the protocol origin's
+IndexedDB. Browser profiles and different root domains remain isolated; moving an identity between them requires an
+explicit recovery-phrase import. Existing origin-local wallets migrate only into an empty shared store or when they
+match it. Conflicting wallets are preserved for recovery, and a deleted shared wallet cannot be silently restored by an
+old origin-local copy.
 
-Wallet identity belongs to a persistent host-owned native session, not the current product. It is available on the landing page before any product loads. Product startup, replacement, or failure cannot publish a temporary username-less wallet state or invalidate an identity query. Product accounts and permissions remain isolated in their own native sessions.
+Wallet identity belongs to the page's single host-owned native core, not the current product. It is available on the
+landing page before any product loads. Product startup or replacement preserves wallet identity queries and claim
+monitoring. Product accounts and permissions remain isolated by their native product connections within that core.
 
-A full page reload restarts the native session. If this origin previously received an identity, the Wallet tab and account badge immediately restore its public display metadata for the current wallet revision and network. The Wallet tab marks it **verifying**, while the debug header button retains only the known username. This cache does not authenticate the wallet or authorize claims, signing, or product permissions. Native verification replaces the cached identity and names, including confirmed absence; a failed check retains the last-known display with an explicit failure state in the Wallet tab. First visits without cached metadata still require native initialization.
+A full page reload restarts the native session. If this origin previously received an identity, the Wallet tab and
+account badge immediately restore its public display metadata for the current wallet revision and network. The Wallet
+tab marks it **verifying**, while the debug header button retains only the known username. This cache does not
+authenticate the wallet or authorize claims, signing, or product permissions. Native verification replaces the cached
+identity and names, including confirmed absence; a failed check retains the last-known display with an explicit failure
+state in the Wallet tab. First visits without cached metadata still require native initialization.
 
-If the wallet's native worker fails, the host retires that session and marks its cached identity as display-only; healthy product sessions are not disposed. Wallet verification failures do not open a Mobile pairing dialog or silently restart the wallet. **Retry wallet verification** explicitly creates a fresh native session before enabling username and resource operations again.
+If the native worker fails, the host retires the entire page core, including its product connections, and marks the
+cached wallet identity as display-only. The product iframe remains visible, but its native connection is unavailable.
+Verification failures do not open a Mobile pairing dialog or silently restart the wallet. **Retry wallet verification**
+explicitly creates and verifies a fresh page core before enabling username and resource operations again; reload or
+rerender the product to reconnect its iframe.
 
-**Claim username** submits an explicitly confirmed registration on the selected network through the same-origin identity proxy. The Wallet tab reports actual checking, authentication, submission, and confirmation stages with elapsed time. A failed confirmation read shows an automatic retry state with expandable technical details; acceptance alone is never shown as success. Switching tabs, collapsing the pane, or replacing a product does not cancel monitoring. The header button shows the name only once it is reported by the wallet identity, not while a claim is pending. An accepted claim is not resubmitted or reported as failed merely because confirmation is slow. Chain confirmation updates the claimed state and shows a notification, including while another tab is selected. Disconnecting, replacing the wallet, or reloading the entire page ends that session's monitoring. **Check username** discovers an existing registration, including after importing a phrase in another profile; it is not needed to poll an in-progress claim. Unknown, last-known, confirmed-unclaimed, pending, confirmed-claimed, and failed states are distinguished. Confirmed public metadata is shared with other product hosts; live native sessions refresh in place without resetting their permissions. A product-account refresh failure is reported separately from the confirmed wallet claim. Cached names are rechecked on chain before being restored to a native session.
+**Claim username** submits an explicitly confirmed registration on the selected network through the same-origin identity
+proxy. The Wallet tab reports actual checking, authentication, submission, and confirmation stages with elapsed time. A
+failed confirmation read shows an automatic retry state with expandable technical details; acceptance alone is never
+shown as success. Switching tabs, collapsing the pane, or replacing a product does not cancel monitoring. The header
+button shows the name only once it is reported by the wallet identity, not while a claim is pending. An accepted claim
+is not resubmitted or reported as failed merely because confirmation is slow. Chain confirmation updates the claimed
+state and shows a notification, including while another tab is selected. Disconnecting, replacing the wallet, or
+reloading the entire page ends that session's monitoring. **Check username** discovers an existing registration,
+including after importing a phrase in another profile; it is not needed to poll an in-progress claim. Unknown,
+last-known, confirmed-unclaimed, pending, confirmed-claimed, and failed states are distinguished. Confirmed public
+metadata is shared with other product hosts; live native sessions refresh in place without resetting their permissions.
+A product-account refresh failure is reported separately from the confirmed wallet claim. Cached names are rechecked on
+chain before being restored to a native session.
 
-**Wallet** shows the network and wallet identity independently of the **Current product** section, which shows the product account public key, native derivation context, and permissions. Allowance controls use the running product's native resource-allocation API and require an explicit request confirmation; native approval remains in charge. The API exposes allocation outcomes, not remaining quota, balances, amounts or fees. Results are labeled as last observed outcomes, and uncertain results are not retried automatically.
+**Wallet** shows the network and wallet identity independently of the **Current product** section, which shows the
+product account public key, native derivation context, and permissions. Allowance controls use the running product's
+native resource-allocation API and require an explicit request confirmation; native approval remains in charge. The API
+exposes allocation outcomes, not remaining quota, balances, amounts or fees. Results are labeled as last observed
+outcomes, and uncertain results are not retried automatically.
 
-Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate their event viewer or capture controls.
+Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
+their event viewer or capture controls.
 
-Under **Debug → Wallet → Recovery**, **Reveal recovery phrase** requires confirmation before displaying a selectable phrase for manual backup. Recovery is collapsed by default. Existing 32-byte wallets export as 24 English BIP-39 words without changing their identity. Nothing is automatically copied or downloaded; hiding the phrase, closing Recovery, switching away from Wallet, collapsing or closing the pane, or hiding the page clears sensitive controls. Import and deletion controls are confined to Recovery.
+Under **Debug → Wallet → Recovery**, **Reveal recovery phrase** requires confirmation before displaying a selectable
+phrase for manual backup. Recovery is collapsed by default. Existing 32-byte wallets export as 24 English BIP-39 words
+without changing their identity. Nothing is automatically copied or downloaded; hiding the phrase, closing Recovery,
+switching away from Wallet, collapsing or closing the pane, or hiding the page clears sensitive controls. Import and
+deletion controls are confined to Recovery.
 
-**Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed derivation. Importing an exported phrase restores the same account keys on the same network, but not permissions; use **Check username** to rediscover its registered name. Back up the previous test wallet before replacing it. Successful import replaces the shared wallet for trusted product hosts, clears wallet-bound experimental session/signing grants, activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
+**Import / replace test wallet** accepts checksum-valid English BIP-39 phrases of 12, 15, 18, 21 or 24 words, without a
+passphrase or custom derivation path. It uses native Polkadot host/Substrate derivation, not Bitcoin/Ethereum seed
+derivation. Importing an exported phrase restores the same account keys on the same network, but not permissions; use
+**Check username** to rediscover its registered name. Back up the previous test wallet before replacing it. Successful
+import replaces the shared wallet for trusted product hosts, clears wallet-bound experimental session/signing grants,
+activates the imported wallet and reloads open tabs; Mobile pairing and grants remain separate.
 
-**Delete test wallet** requires confirmation and removes the shared wallet's stored entropy, experimental session/signing grants and this origin's preserved legacy copy. Without a recovery phrase backup, deleting the wallet or clearing site data permanently loses access.
+**Delete test wallet** requires confirmation and removes the shared wallet's stored entropy, experimental
+session/signing grants and this origin's preserved legacy copy. Without a recovery phrase backup, deleting the wallet or
+clearing site data permanently loses access.
 
-Only one tab of a browser profile runs the test wallet at a time, because two tabs starting their own wallet cores would claim allowances twice and overwrite each other's state. Opening an app with the test wallet in another tab moves it there automatically: the tab that had it stops its wallet first, then hands it over. That tab keeps its app on screen with a **Paused** banner and takes the wallet back the next time you click or type in it; background activity never moves the wallet, so two tabs cannot bounce it between them. If the tab that has it does not respond, the new tab shows **Test wallet is open in another tab**; close the other tab and reload.
+Only one tab of a browser profile runs the test wallet at a time, because two tabs starting their own wallet cores would
+claim allowances twice and overwrite each other's state. Opening an app with the test wallet in another tab moves it
+there automatically: the tab that had it stops its wallet first, then hands it over. That tab keeps its app on screen
+with a **Paused** banner and takes the wallet back the next time you click or type in it; background activity never
+moves the wallet, so two tabs cannot bounce it between them. If the tab that has it does not respond, the new tab shows
+**Test wallet is open in another tab**; close the other tab and reload. Ownership requires the browser's Web Locks API;
+there is no unlocked fallback. A handover acknowledges release only after the previous owner's signing workers,
+including workers still booting, have stopped. An unresponsive owner is never forcibly bypassed after a timeout.
 
-Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing coordinating them; avoid using both at once. When another app already has a wallet, the wallet panel warns that **Use test wallet** would start a different one. Chrome, Brave and other Chromium browsers share one wallet across apps.
+Safari keeps each app's storage separate, so there every app has its own test wallet and the one-tab rule only covers
+tabs of the same app. Importing the same recovery phrase into two apps runs two copies of one wallet with nothing
+coordinating them; avoid using both at once. When another app already has a wallet, the wallet panel warns that **Use
+test wallet** would start a different one. Chrome, Brave and other Chromium browsers share one wallet across apps.
 
-This is experimental custody, not a secure vault: malicious scripts on any trusted host origin can recover the shared keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode synchronization. Never use valuable funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
+This is experimental custody, not a secure vault: malicious scripts on any trusted host origin can recover the shared
+keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode synchronization. Never use valuable
+funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
 
 Keep `VITE_APP_DEBUG` unset or false in production builds.
 
 ## Sandbox API Checker
 
-dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage), not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
+dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage),
+not use web APIs directly. The sandbox checker detects restricted API usage and reports violations in a UI panel.
 
-The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. `=true`). When the env var is unset, the gated import is statically eliminated, so the checker is tree-shaken out of production builds entirely.
+The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. `=true`). When the env var is unset, the
+gated import is statically eliminated, so the checker is tree-shaken out of production builds entirely.
 
 ### Monitored APIs
 
@@ -322,24 +405,29 @@ The checker is activated by defining `VITE_SANDBOX_CHECKER` at build time (e.g. 
 | DOM      | `document.createElement('iframe')`                                                       |
 | Wallet   | `window.injectedWeb3`, `window.polkadot`, `window.ethereum`                              |
 
-Same-origin requests (static dApp files served by the Service Worker) are excluded from reporting for `fetch` and `XMLHttpRequest`. Violations are logged, but calls still proceed (log-and-forward pattern).
+Same-origin requests (static dApp files served by the Service Worker) are excluded from reporting for `fetch` and
+`XMLHttpRequest`. Violations are logged, but calls still proceed (log-and-forward pattern).
 
-The violation panel appears at the bottom of the viewport when the first violation is detected, showing the API name, details, and timestamp for each call.
+The violation panel appears at the bottom of the viewport when the first violation is detected, showing the API name,
+details, and timestamp for each call.
 
 ## Network configuration
 
-A build offers the networks listed in the required `VITE_NETWORKS` env var, set at deploy time (see `packages/config/src/network.ts`). The first entry is the default returned by `defaultNetwork()`.
+A build offers the networks listed in the required `VITE_NETWORKS` env var, set at deploy time (see
+`packages/config/src/network.ts`). The first entry is the default returned by `defaultNetwork()`.
 
 - **dotNS Registry**: `0xa1b2b939E82b2ecE55Bd8a0E283818BfC1CA6CDc`
 - **dotNS ContentResolver**: `0x8A26480b0B5Df3d4D9b95adc24a5Ecb33A5b8F64`
 - **Bulletin Chain RPC**: `wss://paseo-bulletin-next-rpc.polkadot.io` (WebSocket)
 - **IPFS gateway**: `https://paseo-bulletin-next-ipfs.polkadot.io`
 
-All addresses, endpoints, and selector labels live in `packages/config/src/network.ts` (`NETWORK_NAME_TO_SERVICES_CONFIG`).
+All addresses, endpoints, and selector labels live in `packages/config/src/network.ts`
+(`NETWORK_NAME_TO_SERVICES_CONFIG`).
 
 ### Prebuilt bundles
 
-Each release also publishes two prebuilt artifacts, so a forked dev chain can be browsed without building anything. Both take the same network override at **run time**, so one artifact works against any chain:
+Each release also publishes two prebuilt artifacts, so a forked dev chain can be browsed without building anything. Both
+take the same network override at **run time**, so one artifact works against any chain:
 
 ```bash
 # container
@@ -349,7 +437,9 @@ docker run -p 5173:5173 -e DOTLI_NETWORK='{…}' ghcr.io/paritytech/dotli-commun
 DOTLI_NETWORK='{…}' node serve.mjs
 ```
 
-Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and contract addresses stay fixed at build time, because they are the trust root for name resolution. See [docs/docker.md](docs/docker.md).
+Overrides patch the tables above and reach endpoints only — `label`, `rpcs` and `ipfsGateways`. Genesis hashes and
+contract addresses stay fixed at build time, because they are the trust root for name resolution. See
+[docs/docker.md](docs/docker.md).
 
 ## Security
 
@@ -358,16 +448,19 @@ Before deploying it for real use cases, **you are responsible** for:
 - **Reviewing** the code yourself, we publish a reference, not a hardened production build
 - **Checking** that the dependencies are up to date and free of known vulnerabilities
 - **Securing** your own fork or deployment environment (keys, secrets, network configuration)
-- **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might apply)
+- **Tracking** the latest tagged release/commits for security fixes; older releases are not backported (exceptions might
+  apply)
 
 For Parity's security disclosure process, and **Bug Bounty** program, feel free to visit: https://parity.io/bug-bounty
 
 ### Reporting a vulnerability
 
-This repository inherits the organization-wide security policy. **Do not** open a public issue for security reports. Follow the Parity security policy at [SECURITY](./SECURITY.md).
+This repository inherits the organization-wide security policy. **Do not** open a public issue for security reports.
+Follow the Parity security policy at [SECURITY](./SECURITY.md).
 
 ## License
 
 dotli is licensed under the **GNU Affero General Public License v3.0** (`AGPL-3.0-only`). See [LICENSE](./LICENSE).
 
-Third-party dependencies are distributed under their own licenses; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+Third-party dependencies are distributed under their own licenses; see
+[THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
