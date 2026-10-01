@@ -140,6 +140,49 @@ describe('createChainPool', () => {
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
   });
 
+  it('As a dotli integrator, a destroyDelay function sets the delay per chain', async () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({
+      createTransport,
+      destroyDelay: genesisHash => (genesisHash === '0xaa' ? Infinity : 1_000),
+    });
+    const kept = lease(pool, '0xaa');
+    const closing = lease(pool, '0xbb');
+
+    // When
+    kept.disconnect();
+    closing.disconnect();
+    await vi.advanceTimersByTimeAsync(5_000);
+
+    // Then
+    expect(must(built[0], 'kept transport').disconnect).not.toHaveBeenCalled();
+    expect(must(built[1], 'closing transport').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, a throwing status listener neither stops the others nor reaches the transport', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    lease(pool, '0xaa');
+    const seen: string[] = [];
+    pool.onStatusChanged('0xaa', () => {
+      throw new Error('listener bug');
+    });
+    pool.onStatusChanged('0xaa', status => {
+      seen.push(status);
+    });
+
+    // When
+    const report = (): void => {
+      must(built[0], 'transport').hooks.onStatus('connected');
+    };
+
+    // Then
+    expect(report).not.toThrow();
+    expect(seen).toEqual(['connected']);
+  });
+
   it('As a dotli integrator, a provider nobody calls does not keep its chain', async () => {
     // Given
     const { createTransport, built } = createTransports();

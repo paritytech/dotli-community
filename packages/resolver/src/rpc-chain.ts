@@ -50,7 +50,9 @@ const WS_CLOSING = 2;
  * the socket's listeners and opens a new one, but never closes the old one,
  * which stays open and keeps receiving. The provider builds its sockets one
  * at a time, so the previous socket is always the abandoned one. Read from
- * `globalThis` per provider, so a test's stub applies.
+ * `globalThis` per provider, so a test's stub applies. It assumes one live
+ * connection per provider (the pool opens one per chain): a second concurrent
+ * connection on the same provider would close the first one's socket.
  */
 function closingWebSocketClass(): typeof WebSocket {
   const Base = globalThis.WebSocket;

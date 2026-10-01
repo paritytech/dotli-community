@@ -26,8 +26,11 @@ export type LeaseProvider = (
 export interface ChainPoolOptions {
   /** Build a chain's transport, or `null` when this context cannot reach it. */
   createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
-  /** How long a chain outlives its last lease, in ms. `Infinity` keeps it. */
-  destroyDelay?: number;
+  /**
+   * How long a chain outlives its last lease, in ms. `Infinity` keeps it. A
+   * function is asked for the chain's genesis hash when its countdown starts.
+   */
+  destroyDelay?: number | ((genesisHash: string) => number);
 }
 
 export interface ChainPool extends ChainBrokerManager {
@@ -75,7 +78,7 @@ function isPausable(transport: JsonRpcProvider): transport is PausableProvider {
 }
 
 export function createChainPool(options: ChainPoolOptions): ChainPool {
-  const destroyDelay = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
+  const destroyDelayOption = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
   const entries = new Map<string, Entry>();
   const statuses = new Map<string, ConnectionStatus>();
   const listeners = new Map<string, Set<(status: ConnectionStatus) => void>>();
@@ -89,7 +92,12 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     }
     statuses.set(key, status);
     for (const callback of [...(listeners.get(key) ?? [])]) {
-      callback(status);
+      try {
+        callback(status);
+        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one listener's throw must not keep the others from the status, nor reach the transport's status callback.
+      } catch {
+        /* the listener threw; the remaining listeners still hear the status */
+      }
     }
   }
 
@@ -173,6 +181,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     if (entry.leases > 0 || !entry.live || entry.destroyTimer !== null) {
       return;
     }
+    const destroyDelay = typeof destroyDelayOption === 'function' ? destroyDelayOption(entry.key) : destroyDelayOption;
     if (destroyDelay <= 0) {
       destroy(entry, null);
       return;
