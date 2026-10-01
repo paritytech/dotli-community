@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { Subject } from 'rxjs';
+import { setBackend } from '@dotli/config';
 
 type OnHalt = (reason: 'chain' | 'frame') => void;
 type Remote = (onMessage: (message: string) => void, onHalt?: OnHalt) => unknown;
@@ -75,6 +76,7 @@ describe('network block source', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    localStorage.clear();
   });
 
   async function start(): Promise<() => void> {
@@ -183,6 +185,22 @@ describe('network block source', () => {
     expect(clients).toHaveLength(2);
     expect(live()).toBe(1);
     expect(unreadied).toHaveBeenCalled();
+  });
+
+  it('As a dotli user on Trusted Providers, a bar retries a halted chain without waiting for a protocol frame it does not use', async () => {
+    // Given: the host pool's own sockets, and no protocol frame up.
+    setBackend('rpc-gateway');
+    mocks.isProtocolReady.mockReturnValue(false);
+    await start();
+
+    // When: the chain halts and the backoff runs out.
+    halt('chain');
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then: the bar dialled again, and never waited for a frame.
+    expect(clients).toHaveLength(2);
+    expect(live()).toBe(1);
+    expect(mocks.onProtocolReady).not.toHaveBeenCalled();
   });
 
   it('As a dotli integrator, an unsubscribed bar stops reconnecting', async () => {

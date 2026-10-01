@@ -6,6 +6,7 @@
 // eager path: `block-source.ts` is what the shell holds at boot.
 
 import { createClient } from 'polkadot-api';
+import { getBackend } from '@dotli/config';
 import { log } from '@dotli/shared';
 import { isProtocolReady, onProtocolReady, type RemoteChainHalt } from '@dotli/protocol';
 import { hostChainProvider } from './host-callbacks/Chain.js';
@@ -27,7 +28,9 @@ const MAX_RETRY_MS = 30_000;
  * there is nothing to dial until it reports ready again, so the watch waits
  * for that. A first connect that a live frame refuses (its connection limit)
  * waits the same way, so that bar stays empty until the frame is replaced.
- * Returns a stop.
+ * All of that is on the smoldot backends, where the host pool reaches the
+ * chain through the frame. In `rpc-gateway` the host pool's own socket serves
+ * the bar, so a halt is only ever retried after the wait. Returns a stop.
  */
 export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => void): () => void {
   // A record rather than locals: the returned stop runs after this function
@@ -41,6 +44,8 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
     unready: null as (() => void) | null,
   };
   const short = genesis.slice(0, 10);
+  // Read once: every backend switch reloads the page.
+  const viaFrame = getBackend() !== 'rpc-gateway';
 
   const clearWaiting = (): void => {
     if (live.timer !== null) {
@@ -77,7 +82,7 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
         }
         live.teardown?.();
         clearWaiting();
-        if (reason === 'frame') {
+        if (reason === 'frame' && viaFrame) {
           awaitFrame();
           return;
         }
@@ -90,7 +95,7 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
           }
           // A frame that died during the wait told only the connections it
           // had, and dialling now would boot a new one.
-          if (isProtocolReady()) {
+          if (!viaFrame || isProtocolReady()) {
             connect();
           } else {
             awaitFrame();
