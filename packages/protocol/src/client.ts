@@ -1,12 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type {
-  JsonRpcConnection,
-  JsonRpcMessage,
-  JsonRpcProvider,
-  JsonRpcRequest,
-} from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
@@ -46,6 +41,8 @@ interface PendingRequest {
 
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
+  /** Told once when the chain behind this connection halts. */
+  onHalt: (() => void) | null;
   pendingMessages: JsonRpcRequest[];
   connected: boolean;
 }
@@ -330,9 +327,19 @@ function bindMessageListener(): void {
         }
         return;
       }
-      case 'chain-halt':
+      case 'chain-halt': {
+        const halted = chainConnections.get(msg.connectionId);
         chainConnections.delete(msg.connectionId);
+        try {
+          halted?.onHalt?.();
+        } catch (err: unknown) {
+          log.error(
+            `[dot.li protocol] onHalt threw (conn=${msg.connectionId.slice(-8)}):`,
+            err instanceof Error ? err.message : err,
+          );
+        }
         return;
+      }
       case 'request':
         // Ignore inbound requests on the client side
         return;
@@ -759,15 +766,26 @@ function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string): JsonR
   };
 }
 
-export function createRemoteChainProvider(genesisHash: string): JsonRpcProvider | null {
+/**
+ * A remote chain provider. Its connections may also hear `onHalt` when the
+ * chain behind them halts: in-flight requests have their errors and follows
+ * their `stop` by then, and later sends fail with `Chain connection is closed`.
+ */
+export type RemoteChainProvider = (
+  onMessage: (message: JsonRpcMessage) => void,
+  onHalt?: () => void,
+) => JsonRpcConnection;
+
+export function createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null {
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
   }
 
-  return (onMessage): JsonRpcConnection => {
+  return (onMessage, onHalt): JsonRpcConnection => {
     const connectionId = createRequestId();
     const remote: RemoteChainConnection = {
       onMessage,
+      onHalt: onHalt ?? null,
       pendingMessages: [],
       connected: false,
     };

@@ -43,6 +43,7 @@ export {
   resolveRootManifestRemote,
   setProtocolSubMode,
   subscribeSharedAuthStorage,
+  type RemoteChainProvider,
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,
