@@ -28,7 +28,7 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   The host tears the protocol iframe down, every remote connection is told
   `'frame'`, and nothing redials by itself, except a product's own requests,
   which may boot a new frame at most once per backoff window (1 s, doubling
-  to 30 s, back to 1 s only once a rebooted frame's chain answers).
+  to 30 s, back to 1 s only for a frame that stayed up more than 30 s).
 
 ## Where chains are used
 
@@ -314,11 +314,15 @@ sequenceDiagram
   - it opens one delay (first 1 s) after a frame halt; a window left in the
     past, by a live frame's refusal long ago, is armed again from the halt;
   - each dial through it shuts it again and doubles the delay, up to 30 s;
-  - a frame reporting ready ends the wait but keeps the delay: in
+  - a frame reporting ready ends the wait but keeps the delay. In
     `smoldot-direct` a new frame is ready before its light client has
-    connected a chain, so a light client that keeps failing keeps doubling;
-  - the delay goes back to 1 s only when a product's lease delivers a chain
-    answer, as a block bar's backoff resets on a block;
+    connected a chain, and may answer for a while before it fails, so neither
+    ready nor an answer proves it works: a light client that keeps failing
+    keeps doubling;
+  - only uptime resets it: a frame halt more than 30 s after the last dial
+    through the gate opens the next window 1 s later, and the delay starts
+    again at 1 s. Once the backoff has grown, reboots come at most about once
+    per 31 s, whatever the frame does;
   - a re-lease that finds no transport keeps the connection behind the gate.
 
   A request the gate refuses, or one no lease can be taken for, is answered at

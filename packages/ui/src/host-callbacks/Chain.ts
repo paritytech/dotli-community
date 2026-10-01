@@ -127,13 +127,15 @@ const FRAME_RETRY_MAX_MS = 30_000;
  *
  * A frame that reports ready ends the wait but keeps the delay: in
  * smoldot-direct a new frame reports ready before its light client has
- * connected a chain, so ready proves nothing. The delay goes back to 1 s only
- * when a product's lease delivers a chain answer, as a block bar's backoff
- * resets on a block.
+ * connected a chain, and may answer for a while before it fails, so neither
+ * proves it works. Only uptime does: a frame halt more than 30 s after the
+ * last dial through the gate starts again at 1 s.
  */
 const frameGate = {
   opensAt: null as number | null,
   delay: FRAME_RETRY_FIRST_MS,
+  /** When the last dial went through the gate. */
+  dialedAt: null as number | null,
   subscribed: false,
 };
 
@@ -145,6 +147,13 @@ function noteFrameHalt(): void {
     });
   }
   const now = Date.now();
+  // The frame the last dial booted lived past the longest wait: it recovered.
+  if (frameGate.dialedAt !== null && now - frameGate.dialedAt > FRAME_RETRY_MAX_MS) {
+    frameGate.dialedAt = null;
+    frameGate.delay = FRAME_RETRY_FIRST_MS;
+    frameGate.opensAt = now + frameGate.delay;
+    return;
+  }
   // A window already shut by a dial stays; one left in the past (by a live
   // frame's refusal, say) is armed again from this halt.
   if (frameGate.opensAt === null || frameGate.opensAt <= now) {
@@ -152,17 +161,11 @@ function noteFrameHalt(): void {
   }
 }
 
-/** A successful answer is evidence that the chain behind a frame works. */
-function noteChainAnswer(message: unknown): void {
-  if (typeof message === 'object' && message !== null && 'result' in message) {
-    frameGate.delay = FRAME_RETRY_FIRST_MS;
-  }
-}
-
 /** The gate as a fresh page has it. */
 export function resetFrameGateForTests(): void {
   frameGate.opensAt = null;
   frameGate.delay = FRAME_RETRY_FIRST_MS;
+  frameGate.dialedAt = null;
 }
 
 /** Whether a product may take a new lease now, after its last one heard `'frame'`. */
@@ -177,6 +180,7 @@ function mayDialAfterFrameHalt(): boolean {
   }
   frameGate.delay = Math.min(frameGate.delay * 2, FRAME_RETRY_MAX_MS);
   frameGate.opensAt = now + frameGate.delay;
+  frameGate.dialedAt = now;
   return true;
 }
 
@@ -213,11 +217,7 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
     // Per lease, so a halt heard while `provider` is still running, or a late
     // one from a replaced lease, never touches another lease.
     const slot = { connection: null as JsonRpcConnection | null, halted: false };
-    const fromLease = (message: unknown): void => {
-      noteChainAnswer(message);
-      deliver(message);
-    };
-    const connection = provider(fromLease, error => {
+    const connection = provider(deliver, error => {
       slot.halted = true;
       if (slot.connection !== null && lease === slot.connection) {
         lease = null;

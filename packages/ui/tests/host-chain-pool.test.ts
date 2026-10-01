@@ -62,7 +62,9 @@ describe('host chain pool on a light client backend', () => {
   // How each new remote connection fares. `worker`: refused, as the
   // SharedWorker after a permanent fatal refuses it. `direct`: its frame
   // reports ready, then its light client fails, as in smoldot-direct.
-  let refuse: 'none' | 'worker' | 'direct';
+  // `answering`: its frame reports ready and answers the first request, then
+  // its light client fails 1.5 s later.
+  let refuse: 'none' | 'worker' | 'direct' | 'answering';
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -82,6 +84,18 @@ describe('host chain pool on a light client backend', () => {
       if (refuse !== 'none') {
         const mode = refuse;
         queueMicrotask(() => {
+          if (mode === 'answering') {
+            frameReady();
+            const id = remote.sent[0]?.id;
+            if (id !== undefined && id !== null) {
+              remote.emit({ jsonrpc: '2.0', id, result: 'People' });
+            }
+            setTimeout(() => {
+              mocks.isProtocolReady.mockReturnValue(false);
+              remote.halt('frame');
+            }, 1_500);
+            return;
+          }
           if (mode === 'direct') {
             frameReady();
             mocks.isProtocolReady.mockReturnValue(false);
@@ -228,16 +242,16 @@ describe('host chain pool on a light client backend', () => {
     must(remotes[0], 'first remote').halt('frame');
     refuse = 'worker';
 
-    // When: the product's papi client retries every 250 ms for a minute.
-    for (let i = 0; i < 240; i++) {
+    // When: the product's papi client retries every 250 ms for two minutes.
+    for (let i = 0; i < 480; i++) {
       connection.send(
         JSON.stringify({ jsonrpc: '2.0', id: `truapi:${String(i)}`, method: 'chainHead_v1_follow', params: [true] }),
       );
       await vi.advanceTimersByTimeAsync(250);
     }
 
-    // Then: a new frame is tried at 1 s, 3 s, 7 s, 15 s and 31 s, and no more.
-    expect(remotes).toHaveLength(6);
+    // Then: a new frame is tried at 1, 3, 7, 15, 31, 61 and 91 s, and no more.
+    expect(remotes).toHaveLength(8);
     connection.close();
   });
 
@@ -299,41 +313,46 @@ describe('host chain pool on a light client backend', () => {
     connection.close();
   });
 
-  it("As a dotli user, a chain answer from a rebooted frame resets the backoff, and a frame's ready alone does not", async () => {
+  it('As a dotli user on smoldot-direct, a light client that answers and then fails soon after keeps the doubled backoff', async () => {
+    // Given: the frame died, and every new frame comes up, answers, and dies 1.5 s later.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('frame');
+    refuse = 'answering';
+
+    // When: the product's papi client retries every 250 ms for two minutes.
+    for (let i = 0; i < 480; i++) {
+      ask(connection, `truapi:${String(i)}`);
+      await vi.advanceTimersByTimeAsync(250);
+    }
+
+    // Then: the answers reset nothing; a new frame is tried at 1, 4.5, 10,
+    // 19.5, 37, 68.5 and 100 s, the same count as a frame that never answers.
+    expect(remotes).toHaveLength(8);
+    connection.close();
+  });
+
+  it('As a dotli user, a frame that lived past 30 s gets its next window after 1 s', async () => {
     // Given: a frame halt, and a retry through the 1 s window that boots a
-    // frame (the delay is now 2 s); that frame comes up and answers.
+    // frame (the delay is now 2 s); that frame comes up and stays up 31 s.
     const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
     must(remotes[0], 'first remote').halt('frame');
     await vi.advanceTimersByTimeAsync(1_000);
     ask(connection, 'truapi:1');
+    expect(remotes).toHaveLength(2);
     frameReady();
-    const second = must(remotes[1], 'second remote');
-    second.emit({ jsonrpc: '2.0', id: must(must(second.sent[0], 'request').id, 'id'), result: 'People' });
+    await vi.advanceTimersByTimeAsync(31_000);
 
     // When: that frame dies.
     mocks.isProtocolReady.mockReturnValue(false);
-    second.halt('frame');
+    must(remotes[1], 'second remote').halt('frame');
 
-    // Then: the next window is 1 s away again.
+    // Then: the next window is 1 s away, not 2 s.
     await vi.advanceTimersByTimeAsync(999);
     ask(connection, 'truapi:2');
     expect(remotes).toHaveLength(2);
     await vi.advanceTimersByTimeAsync(1);
     ask(connection, 'truapi:3');
     expect(remotes).toHaveLength(3);
-
-    // When: the frame that dial booted reports ready, answers nothing, and dies.
-    frameReady();
-    mocks.isProtocolReady.mockReturnValue(false);
-    must(remotes[2], 'third remote').halt('frame');
-
-    // Then: the window doubled to 2 s.
-    await vi.advanceTimersByTimeAsync(1_999);
-    ask(connection, 'truapi:4');
-    expect(remotes).toHaveLength(3);
-    await vi.advanceTimersByTimeAsync(1);
-    ask(connection, 'truapi:5');
-    expect(remotes).toHaveLength(4);
     connection.close();
   });
 
