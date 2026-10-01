@@ -842,11 +842,14 @@ function haltRemote(connectionId: string, connection: RemoteChainConnection, rea
  *   next connect. By then each request the chain had in flight, and each one
  *   not yet sent, has an error whose `data` is `CHAIN_HALTED_ERROR_DATA`, and
  *   each follow its `stop`.
- * - `'frame'`: the protocol frame died. Only the requests not yet sent are
+ * - `'frame'`: the protocol frame died, or none came up for this connection,
+ *   or it refused the connection. Only the requests not yet sent are
  *   answered, with `Chain connection is closed`. Requests already sent are
- *   never answered, so a consumer without `onHalt` waits on them forever.
+ *   not, so a consumer without `onHalt` may wait on them forever.
  *
- * Either way, later sends fail with `Chain connection is closed`.
+ * Either way, later sends fail with `Chain connection is closed`. An answer
+ * can still reach the consumer after `onHalt`, from a chain message already
+ * on its way; it should be ignored.
  */
 export type RemoteChainProvider = (
   onMessage: (message: JsonRpcMessage) => void,
@@ -878,6 +881,10 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
             connectionId,
             message: JSON.stringify(message),
           }).catch((error: unknown) => {
+            // Already halted or disconnected: whoever removed it has told the consumer.
+            if (chainConnections.get(connectionId) !== remote) {
+              return;
+            }
             const errResponse = buildJsonRpcError(message, serializeError(error));
             if (errResponse !== null) {
               onMessage(errResponse);
@@ -891,19 +898,14 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         if (chainConnections.get(connectionId) !== remote) {
           return;
         }
-        // Connection failed. Send JSON-RPC error responses for all
-        // pending messages so polkadot-api's client knows the connection
-        // died instead of hanging on "Not connected" forever.
-        const reason = serializeError(error);
+        // No frame came up, or it refused the connection. Either way the
+        // connection is as dead as one whose frame died, and halts the same
+        // way, so a consumer that caches it drops it instead of sending on it
+        // for good. Removed first, as the other halts do: a send made while
+        // the halt is being heard is answered at once, not queued and lost.
         log.error('[dot.li protocol] Failed to connect remote chain:', error);
-        for (const pending of remote.pendingMessages) {
-          const errResponse = buildJsonRpcError(pending, reason);
-          if (errResponse !== null) {
-            onMessage(errResponse);
-          }
-        }
-        remote.pendingMessages = [];
         chainConnections.delete(connectionId);
+        haltRemote(connectionId, remote, 'frame');
       });
 
     return {
@@ -926,6 +928,13 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
           connectionId,
           message: JSON.stringify(message),
         }).catch((error: unknown) => {
+          // Already halted or disconnected: whoever removed it has told the
+          // consumer. A papi client re-follows on the `stop` that comes before
+          // `chain-halt`, and the frame refuses that send for a connection it
+          // has already forgotten.
+          if (chainConnections.get(connectionId) !== current) {
+            return;
+          }
           const reason = serializeError(error);
           log.error('[dot.li protocol] Remote chain send failed:', error);
           const errResponse = buildJsonRpcError(message, reason);

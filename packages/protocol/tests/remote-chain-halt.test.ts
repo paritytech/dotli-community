@@ -346,4 +346,90 @@ describe('createRemoteChainProvider halts', () => {
     expect(secondHalt).toHaveBeenCalledWith('frame');
     expect(document.querySelector('iframe')).toBeNull();
   });
+
+  it('As a dotli integrator, a send the frame refuses after its chain halted is neither logged nor answered', async () => {
+    // Given: a re-follow sent while the halt was on its way
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const { frame, received, connection, connectionId } = await connectRemote(onHalt);
+    connection.send({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] });
+    await flush();
+    const chainSend = frame.posted.find(envelope => envelope.method === 'chainSend');
+    if (chainSend === undefined) {
+      throw new Error('no chainSend posted');
+    }
+
+    // When: the halt arrives, then the frame refuses the send for a connection it forgot
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+    frame.deliver({
+      namespace: 'dotli:protocol',
+      kind: 'response',
+      id: chainSend.id,
+      ok: false,
+      error: 'Unknown chain connection',
+    });
+    await flush();
+
+    // Then
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(received).toEqual([]);
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, a send still unacknowledged when the frame dies is neither logged nor answered', async () => {
+    // Given
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const { frame, received, connection } = await connectRemote(onHalt);
+    connection.send({ jsonrpc: '2.0', id: 3, method: 'chainSpec_v1_genesisHash', params: [] });
+    await flush();
+
+    // When
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    await flush();
+
+    // Then
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(onHalt).toHaveBeenCalledWith('frame');
+    expect(received).toEqual([]);
+    expect(logError).not.toHaveBeenCalledWith('[dot.li protocol] Remote chain send failed:', expect.anything());
+  });
+
+  it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
+    // Given: a send queued before the frame answers the connect
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const received: JsonRpcMessage[] = [];
+    const connection = provider(message => received.push(message), onHalt);
+    connection.send({ jsonrpc: '2.0', id: 6, method: 'chainSpec_v1_genesisHash', params: [] });
+    const frame = await bootFrame();
+    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (chainConnect === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+
+    // When
+    frame.deliver({
+      namespace: 'dotli:protocol',
+      kind: 'response',
+      id: chainConnect.id,
+      ok: false,
+      error: 'Too many chain connections',
+    });
+    await flush();
+    connection.send({ jsonrpc: '2.0', id: 7, method: 'chainSpec_v1_genesisHash', params: [] });
+
+    // Then
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(onHalt).toHaveBeenCalledWith('frame');
+    expect(received).toEqual([
+      { jsonrpc: '2.0', id: 6, error: { code: -32603, message: 'Chain connection is closed' } },
+      { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
+    expect(logError).toHaveBeenCalledWith('[dot.li protocol] Failed to connect remote chain:', expect.any(Error));
+  });
 });

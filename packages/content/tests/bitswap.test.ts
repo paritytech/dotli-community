@@ -333,6 +333,69 @@ describe('bitswapGet after a halt', () => {
     await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
     expect(chain.dialled).toHaveLength(2);
   });
+
+  interface ManualDial {
+    onMessage: (m: unknown) => void;
+    onHalt: (reason: 'chain' | 'frame') => void;
+    /** The ids sent on this connection, in order. Nothing is answered unasked. */
+    sent: number[];
+  }
+
+  /** One fake connection per dial, each answered only by the test. */
+  function stubManualChain(): ManualDial[] {
+    const dials: ManualDial[] = [];
+    mocks.createRemoteChainProvider.mockImplementation(
+      () => (onMessage: (m: unknown) => void, onHalt?: (reason: 'chain' | 'frame') => void) => {
+        const dial: ManualDial = { onMessage, onHalt: onHalt ?? (() => undefined), sent: [] };
+        dials.push(dial);
+        return {
+          send: (request: { id: number }) => {
+            dial.sent.push(request.id);
+          },
+          disconnect: () => undefined,
+        };
+      },
+    );
+    return dials;
+  }
+
+  function manualDial(dials: ManualDial[], index: number): ManualDial {
+    const dial = dials[index];
+    if (dial === undefined) {
+      throw new Error(`no connection ${String(index)}`);
+    }
+    return dial;
+  }
+
+  it('As a dotli user, a fetch after a connection that never opened dials again', async () => {
+    // Given a fetch on a connection the protocol frame never opened, closed the
+    // way the client closes it: the queued request answered, then a dead frame
+    const dials = stubManualChain();
+    vi.resetModules();
+    const { bitswapGet } = await import('../src/bitswap.js');
+    const failed = bitswapGet('bafyNoFrame');
+    const settled = expect(failed).rejects.toThrow('Chain connection is closed');
+    await vi.advanceTimersByTimeAsync(100);
+    const dead = manualDial(dials, 0);
+    dead.onMessage({
+      jsonrpc: '2.0',
+      id: dead.sent[0],
+      error: { code: -32603, message: 'Chain connection is closed' },
+    });
+    dead.onHalt('frame');
+    await settled;
+
+    // When
+    const next = bitswapGet('bafyNoFrame');
+    await vi.advanceTimersByTimeAsync(100);
+    const redialled = manualDial(dials, 1);
+    redialled.onMessage({ jsonrpc: '2.0', id: redialled.sent[0], result: '0xabcd' });
+
+    // Then
+    await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(dials).toHaveLength(2);
+    expect(dead.sent).toHaveLength(1);
+  });
 });
 
 describe('listenForSandboxBitswap', () => {

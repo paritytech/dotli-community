@@ -20,8 +20,9 @@ const MAX_RETRY_MS = 30_000;
  *
  * When the chain halts the client is destroyed and a new one is dialled after
  * a doubling wait, reset by a block. When the protocol frame dies, before the
- * halt or during that wait, there is nothing to dial until it reports ready
- * again, so the watch waits for that. Returns a stop.
+ * halt or during that wait, or never comes up for the very first connect,
+ * there is nothing to dial until it reports ready again, so the watch waits
+ * for that. Returns a stop.
  */
 export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => void): () => void {
   // A record rather than locals: the returned stop runs after this function
