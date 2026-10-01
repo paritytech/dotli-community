@@ -38,7 +38,6 @@ export function createWorkerChainSessions(
   log: (...args: unknown[]) => void,
 ): WorkerChainSessions {
   const sessions = new Map<string, Session>();
-  const portConnections = new Map<MessagePort, Set<string>>();
 
   /** Connection ids are the client's own, so each origin has its own namespace (origins contain no spaces). */
   function connectionKey(origin: string, connectionId: string): string {
@@ -47,16 +46,8 @@ export function createWorkerChainSessions(
 
   function forget(key: string): Session | null {
     const session = sessions.get(key);
-    if (session === undefined) {
-      return null;
-    }
     sessions.delete(key);
-    const owned = portConnections.get(session.port);
-    owned?.delete(key);
-    if (owned?.size === 0) {
-      portConnections.delete(session.port);
-    }
-    return session;
+    return session ?? null;
   }
 
   return {
@@ -65,8 +56,8 @@ export function createWorkerChainSessions(
       if (sessions.has(key)) {
         throw new Error(`Duplicate chain connection: ${connectionId}`);
       }
-      const portConns = portConnections.get(port) ?? new Set<string>();
-      if (portConns.size >= MAX_CHAIN_CONNECTIONS) {
+      const portConns = [...sessions.values()].filter(session => session.port === port);
+      if (portConns.length >= MAX_CHAIN_CONNECTIONS) {
         throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
       }
       if (!isChainSupported(genesisHash)) {
@@ -104,8 +95,6 @@ export function createWorkerChainSessions(
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
       sessions.set(key, { connection, port });
-      portConns.add(key);
-      portConnections.set(port, portConns);
       log(`Chain connected: ${connectionId} (${String(sessions.size)} total)`);
     },
 

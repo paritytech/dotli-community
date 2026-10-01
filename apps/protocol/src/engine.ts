@@ -85,11 +85,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   /** Drop a connection from the engine's books, freeing its slot. */
   function forget(key: string): StringJsonRpcConnection | null {
     const connection = connections.get(key);
-    if (connection === undefined) {
-      return null;
-    }
     connections.delete(key);
-    return connection;
+    return connection ?? null;
   }
 
   function assertStr(value: unknown, name: string): asserts value is string {
