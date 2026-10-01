@@ -159,7 +159,7 @@ function ensureConnection(): JsonRpcConnection {
   if (provider === null) {
     throw new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`);
   }
-  connection = provider(
+  const opened = provider(
     (message: JsonRpcMessage) => {
       if (!isResponse(message)) {
         return;
@@ -197,7 +197,11 @@ function ensureConnection(): JsonRpcConnection {
       // The next attempt dials again. After a dead frame that only happens
       // because a fetch is running, so nothing reconnects on its own. What
       // the halt answers did not reach (a dead frame answers nothing already
-      // sent) is rejected here.
+      // sent) is rejected here. A halt from a connection already replaced
+      // must not touch the one that replaced it.
+      if (connection !== opened) {
+        return;
+      }
       connection = null;
       for (const [id, entry] of pending) {
         pending.delete(id);
@@ -211,7 +215,8 @@ function ensureConnection(): JsonRpcConnection {
       }
     },
   );
-  return connection;
+  connection = opened;
+  return opened;
 }
 
 function errorCode(err: unknown): number | null {
