@@ -106,6 +106,7 @@ describe('createRemoteChainProvider halts', () => {
   afterEach(() => {
     resetProtocolFrame();
     vi.restoreAllMocks();
+    vi.useRealTimers();
   });
 
   it('As a dotli integrator, a chain-halt tells the connection once and closes it', async () => {
@@ -349,6 +350,30 @@ describe('createRemoteChainProvider halts', () => {
     frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
 
     // Then
+    expect(isProtocolBooting()).toBe(false);
+  });
+
+  it('As a dotli integrator, a frame whose ready wait gave up is no longer on its way up', async () => {
+    // Given: a connection starts a frame, which loads but never reports ready.
+    vi.useFakeTimers();
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    provider(() => undefined, onHalt);
+    await vi.advanceTimersByTimeAsync(0);
+    document.querySelector('iframe')?.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(0);
+    const booting = isProtocolBooting();
+
+    // When: its ready wait times out.
+    await vi.advanceTimersByTimeAsync(240_000);
+
+    // Then
+    expect(booting).toBe(true);
+    expect(onHalt).toHaveBeenCalledWith('frame');
     expect(isProtocolBooting()).toBe(false);
   });
 

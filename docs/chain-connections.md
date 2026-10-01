@@ -361,7 +361,7 @@ a dial:
 | | Frame gate | Chain gate |
 | --- | --- | --- |
 | After the first halt, or a reset | waits 1 s | goes at once |
-| A lease passes without dialing when | a frame is up (`isProtocolReady()`), or booting (`isProtocolBooting()`): the lease waits on it | the chain is in the host pool again (another connection rebuilt it) |
+| A lease passes without dialing when | a frame is up (`isProtocolReady()`), or booting (`isProtocolBooting()`: started, not yet ready, and its ready wait has not timed out or failed): the lease waits on it | the chain is in the host pool again (another connection rebuilt it) |
 | The wait also ends when | a frame reports ready (the delay stays) | never |
 
 A frame reporting ready keeps the delay because in `smoldot-direct` a new

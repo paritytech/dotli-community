@@ -30,6 +30,8 @@ const mocks = vi.hoisted(() => {
     createRemoteChainProvider: vi.fn<(genesisHash: string) => RemoteChainProvider | null>(),
     isProtocolReady: vi.fn<() => boolean>(),
     isProtocolBooting: vi.fn<() => boolean>(),
+    // The real client of the current module graph, for a test that boots a frame.
+    actualClient: null as typeof ClientModule | null,
     readyListeners,
     onProtocolReady: vi.fn<(listener: () => void) => () => void>(listener => {
       readyListeners.push(listener);
@@ -38,13 +40,23 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock('../../protocol/src/client.js', async importOriginal => ({
-  ...(await importOriginal<typeof ClientModule>()),
-  createRemoteChainProvider: mocks.createRemoteChainProvider,
-  isProtocolReady: mocks.isProtocolReady,
-  isProtocolBooting: mocks.isProtocolBooting,
-  onProtocolReady: mocks.onProtocolReady,
-}));
+vi.mock('../../protocol/src/client.js', async importOriginal => {
+  const actual = await importOriginal<typeof ClientModule>();
+  mocks.actualClient = actual;
+  return {
+    ...actual,
+    createRemoteChainProvider: mocks.createRemoteChainProvider,
+    isProtocolReady: mocks.isProtocolReady,
+    isProtocolBooting: mocks.isProtocolBooting,
+    onProtocolReady: mocks.onProtocolReady,
+  };
+});
+
+// The real client's protocol iframe points at a host that does not exist here;
+// keep happy-dom from fetching it but keep `contentWindow`.
+(
+  window as unknown as { happyDOM: { settings: { navigation: { disableChildFrameNavigation: boolean } } } }
+).happyDOM.settings.navigation.disableChildFrameNavigation = true;
 
 /** The protocol frame reports ready, which ends the host pool's frame-gate wait. */
 function frameReady(): void {
@@ -347,6 +359,36 @@ describe('host chain pool on a light client backend', () => {
     expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'a:1', result: 'Asset Hub' });
     onPeople.close();
     onAssetHub.close();
+  });
+
+  it('As a dotli user, a product asking after the frame it waited on gave up waits for the frame gate', async () => {
+    // Given: the frame died, and a new one, started by the real client, loads
+    // but never reports ready; the product's retry waits on it.
+    const client = must(mocks.actualClient, 'protocol client');
+    mocks.isProtocolBooting.mockImplementation(client.isProtocolBooting);
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('frame');
+    const boot = client.ensureProtocolFrame().catch(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    document.querySelector('iframe')?.dispatchEvent(new Event('load'));
+    await vi.advanceTimersByTimeAsync(0);
+    ask(connection, 'truapi:1');
+    expect(remotes).toHaveLength(2);
+
+    // When: its ready wait times out, which halts the connection waiting on it.
+    await vi.advanceTimersByTimeAsync(240_000);
+    await boot;
+    must(remotes[1], 'second remote').halt('frame');
+    ask(connection, 'truapi:2');
+
+    // Then: the frame gate is asked, not passed: shut for 1 s, then open.
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+    ask(connection, 'truapi:3');
+    expect(remotes).toHaveLength(3);
+    connection.close();
+    client.resetProtocolFrame();
   });
 
   it('As a dotli user on smoldot-direct, a light client that fails right after its frame comes back keeps the doubled backoff', async () => {

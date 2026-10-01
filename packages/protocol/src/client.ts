@@ -61,6 +61,9 @@ export type SharedAuthStorageListener = (change: SharedAuthStorageChange) => voi
 let protocolIframe: HTMLIFrameElement | null = null;
 let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
+// The frame's last ready wait timed out or failed, and the frame was not reset
+// since: it is not on its way up any more.
+let protocolReadyWaitFailed = false;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
 const protocolReadyListeners = new Set<() => void>();
@@ -178,6 +181,7 @@ function resetProtocolFrameState(reason?: Error): void {
   lastNetBytesTotal = 0;
   hostFramePromise = null;
   protocolReadyPromise = null;
+  protocolReadyWaitFailed = false;
   protocolReady = false;
   // Reject any callers blocked on `waitForProtocolReady()` before we drop the
   // resolvers. Otherwise their promises would hang until the 120s timeout.
@@ -536,6 +540,7 @@ export async function ensureProtocolFrame(): Promise<void> {
     return protocolReadyPromise;
   }
 
+  protocolReadyWaitFailed = false;
   protocolReadyPromise = (async () => {
     try {
       await waitForProtocolReady();
@@ -555,6 +560,7 @@ export async function ensureProtocolFrame(): Promise<void> {
       });
       log.error('[dot.li protocol] Ready wait failed:', error);
       protocolReadyPromise = null;
+      protocolReadyWaitFailed = true;
       throw error;
     }
   })();
@@ -738,12 +744,13 @@ export function isProtocolReady(): boolean {
 }
 
 /**
- * Whether a protocol frame is on its way up: one has been started and has not
- * signalled ready, been reset or died since. A dial now waits on that frame
- * rather than booting another. Does not start a frame.
+ * Whether a protocol frame is on its way up: one has been started, and since
+ * then has not signalled ready, been reset or died, nor had its ready wait
+ * time out or fail. A dial now waits on that frame rather than booting
+ * another. Does not start a frame.
  */
 export function isProtocolBooting(): boolean {
-  return !protocolReady && (hostFramePromise !== null || protocolReadyPromise !== null);
+  return !protocolReady && !protocolReadyWaitFailed && (hostFramePromise !== null || protocolReadyPromise !== null);
 }
 
 /**
