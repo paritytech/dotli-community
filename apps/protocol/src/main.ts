@@ -89,6 +89,7 @@ import {
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 
 initSentry('host');
@@ -621,7 +622,7 @@ async function initDirectMode(): Promise<void> {
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
   const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
-  const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome, observeChain } = provider;
+  const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } = provider;
   const {
     resolveDotName,
     resolveExecutableManifest,
@@ -665,12 +666,6 @@ async function initDirectMode(): Promise<void> {
   // chain. The cost is one chain connection on loads that turn out to be
   // served from the archive cache and never needed Bulletin at all.
   const services = getActiveServicesConfig();
-  const stopWatching = [services.relay.genesis, services.bulletin.genesis].map(genesis => observeChain(genesis));
-  window.addEventListener('pagehide', () => {
-    for (const stop of stopWatching) {
-      stop();
-    }
-  });
 
   // Direct mode has no SharedWorker in the loop, so a dead chain is posted
   // straight up to the host shell.
@@ -763,6 +758,10 @@ async function initDirectMode(): Promise<void> {
     // Releasing a smoldot chain makes the light client drop it and re-sync later.
     destroyDelay: Infinity,
     onBrokerReady: broker => {
+      // Leases on the pool, so the watched chains are the very connections
+      // everything else on these chains shares.
+      const stopWatching = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
+      window.addEventListener('pagehide', stopWatching);
       // Route the resolver's Asset Hub reads AND the People warm-keep through
       // the broker's shared follows so they reuse the broker's single follow per
       // chain instead of opening their own (see protocol-shared-worker).

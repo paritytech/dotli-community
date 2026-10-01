@@ -403,31 +403,3 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
     };
   };
 }
-
-/**
- * Open a connection to a chain for no reason but to watch it.
- *
- * Every other connection exists because something reads that chain. The relay
- * is the exception: smoldot runs it as the parent of the parachains, so papi
- * never dials it and no sync tap would ever attach. Its warp sync is both the
- * slowest part of a cold start and the only one that reports a true
- * percentage, which is worth one otherwise idle connection to observe.
- *
- * Returns a stop function. No-op for a genesis this network does not define.
- */
-export function observeChain(genesisHash: string): () => void {
-  const factory = createChainProvider(genesisHash);
-  if (factory === null) {
-    return () => {
-      /* nothing was opened */
-    };
-  }
-  const connection = factory(() => {
-    // Nothing reads this chain. Responses to the requests the tap itself sent are
-    // consumed before they reach here. Anything else is chain chatter we
-    // opened the connection to provoke, not to handle.
-  });
-  return () => {
-    connection.disconnect();
-  };
-}
