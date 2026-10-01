@@ -41,7 +41,7 @@ export function signingHostVersion(binary: string): string | null {
 
 export function sanitizeSigningHostOutput(text: string): string {
   const mnemonic = process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim();
-  const scrubbed = mnemonic ? text.replaceAll(mnemonic, '<recovery phrase>') : text;
+  const scrubbed = mnemonic !== undefined && mnemonic !== '' ? text.replaceAll(mnemonic, '<recovery phrase>') : text;
   return scrubbed.replace(PAIRING_DEEPLINK, '<pairing deeplink>').replace(RECOVERY_PHRASE, '$1<redacted>');
 }
 
