@@ -77,7 +77,11 @@ async function settle(): Promise<void> {
 /** Show the landing page, as boot does on the bare host, and wait for it. */
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
+  const { flush } = await import('solid-js');
+  flush();
+  await vi.dynamicImportSettled();
   await vi.waitFor(() => {
+    flush();
     expect(document.querySelector('.landing, .error-page')).not.toBeNull();
   });
   await settle();
@@ -137,9 +141,10 @@ describe('landing page island', () => {
     expect(must(byId('landing-slot'), 'slot').firstElementChild?.className).toBe('landing');
     // The page renders its own auth and theme buttons, whose menus it
     // portals into the body, so every id is there once.
-    expect(
-      [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
-    ).toEqual(['auth', 'theme']);
+    expect([...must(byId('landing-auth'), '#landing-auth').children].map(el => el.getAttribute('data-item'))).toEqual([
+      'auth',
+      'theme',
+    ]);
     for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
@@ -256,7 +261,7 @@ describe('landing page island', () => {
     expect(document.querySelectorAll('.error-page')).toHaveLength(1);
 
     // When
-    (byId('error-retry-btn') as HTMLButtonElement).click();
+    must(byId('error-retry-btn'), 'reload button').click();
 
     // Then
     expect(reload).toHaveBeenCalledTimes(1);

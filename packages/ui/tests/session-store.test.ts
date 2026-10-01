@@ -398,7 +398,7 @@ describe('session-store host callbacks', () => {
 
   it('As a dotli user, my profile references stay with the wallet and chain they were disclosed on', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const scope = {
       rootPublicKey: new Uint8Array(32).fill(1),
       genesisHash: new Uint8Array(32).fill(2),
@@ -430,11 +430,11 @@ describe('session-store host callbacks', () => {
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(disclosure, new Uint8Array([21]));
-    await writeCoreStorage(otherWallet, new Uint8Array([22]));
-    await writeCoreStorage(received, new Uint8Array([23]));
-    await writeCoreStorage(otherChain, new Uint8Array([24]));
-    await writeCoreStorage(personal, new Uint8Array([25]));
+    await storage.writeCoreStorage(disclosure, new Uint8Array([21]));
+    await storage.writeCoreStorage(otherWallet, new Uint8Array([22]));
+    await storage.writeCoreStorage(received, new Uint8Array([23]));
+    await storage.writeCoreStorage(otherChain, new Uint8Array([24]));
+    await storage.writeCoreStorage(personal, new Uint8Array([25]));
 
     // Then
     // The references are bearer capabilities, so every slot is encrypted.
@@ -442,22 +442,22 @@ describe('session-store host callbacks', () => {
     for (let index = 0; index < localStorage.length; index += 1) {
       expect(localStorage.getItem(localStorage.key(index) ?? '')).toMatch(/^enc1:0x/);
     }
-    expect(Array.from((await readCoreStorage(disclosure)) ?? [])).toEqual([21]);
-    expect(Array.from((await readCoreStorage(otherWallet)) ?? [])).toEqual([22]);
-    expect(Array.from((await readCoreStorage(received)) ?? [])).toEqual([23]);
-    expect(Array.from((await readCoreStorage(otherChain)) ?? [])).toEqual([24]);
-    expect(Array.from((await readCoreStorage(personal)) ?? [])).toEqual([25]);
+    expect(Array.from((await storage.readCoreStorage(disclosure)) ?? [])).toEqual([21]);
+    expect(Array.from((await storage.readCoreStorage(otherWallet)) ?? [])).toEqual([22]);
+    expect(Array.from((await storage.readCoreStorage(received)) ?? [])).toEqual([23]);
+    expect(Array.from((await storage.readCoreStorage(otherChain)) ?? [])).toEqual([24]);
+    expect(Array.from((await storage.readCoreStorage(personal)) ?? [])).toEqual([25]);
 
     // When
-    await clearCoreStorage(disclosure);
-    await clearCoreStorage(received);
+    await storage.clearCoreStorage(disclosure);
+    await storage.clearCoreStorage(received);
 
     // Then
-    expect(await readCoreStorage(disclosure)).toBeUndefined();
-    expect(await readCoreStorage(received)).toBeUndefined();
-    expect(Array.from((await readCoreStorage(otherWallet)) ?? [])).toEqual([22]);
-    expect(Array.from((await readCoreStorage(otherChain)) ?? [])).toEqual([24]);
-    expect(Array.from((await readCoreStorage(personal)) ?? [])).toEqual([25]);
+    expect(await storage.readCoreStorage(disclosure)).toBeUndefined();
+    expect(await storage.readCoreStorage(received)).toBeUndefined();
+    expect(Array.from((await storage.readCoreStorage(otherWallet)) ?? [])).toEqual([22]);
+    expect(Array.from((await storage.readCoreStorage(otherChain)) ?? [])).toEqual([24]);
+    expect(Array.from((await storage.readCoreStorage(personal)) ?? [])).toEqual([25]);
   });
 
   it('As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer', async () => {

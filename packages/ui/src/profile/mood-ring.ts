@@ -147,10 +147,14 @@ export function animateMoodRing(canvas: HTMLCanvasElement, mood: Mood, avatarPx:
   const vs = compile(gl.VERTEX_SHADER, VS);
   const fs = compile(gl.FRAGMENT_SHADER, FS);
   const program = gl.createProgram();
-  if (vs === null || fs === null || program === null) {
-    if (vs !== null) gl.deleteShader(vs);
-    if (fs !== null) gl.deleteShader(fs);
-    if (program !== null) gl.deleteProgram(program);
+  if (vs === null || fs === null) {
+    if (vs !== null) {
+      gl.deleteShader(vs);
+    }
+    if (fs !== null) {
+      gl.deleteShader(fs);
+    }
+    gl.deleteProgram(program);
     gl.getExtension('WEBGL_lose_context')?.loseContext();
     return null;
   }

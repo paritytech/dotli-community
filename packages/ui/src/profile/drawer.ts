@@ -36,7 +36,7 @@ export interface ProfileDrawerOptions {
 }
 
 export interface ProfileDrawerHandle {
-  close(): void;
+  readonly close: () => void;
 }
 
 let current: ProfileDrawerHandle | null = null;

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ProductContext } from '@parity/truapi-host';
+import type { PlacedAvatar, ProductContext } from '@parity/truapi-host';
 import { fromHex } from '@dotli/shared';
 import { createContactAvatars, createProfilePlatform } from '../src/host-callbacks/Profile.js';
 import {
@@ -26,7 +26,7 @@ const VECTOR = {
 const WRONG_KEY_REFERENCE = VECTOR.reference.replace('#01', '#ff');
 
 const mocks = vi.hoisted(() => ({
-  bitswapGet: vi.fn(async (): Promise<Uint8Array> => new Uint8Array()),
+  bitswapGet: vi.fn((): Promise<Uint8Array> => Promise.resolve(new Uint8Array())),
 }));
 
 vi.mock('@dotli/content', async importOriginal => ({
@@ -75,16 +75,19 @@ describe('Seity blob references', () => {
   });
 
   it.each([
-    ['no fragment', VECTOR.reference.split('#')[0]],
+    ['no fragment', VECTOR.reference.slice(0, VECTOR.reference.indexOf('#'))],
     ['a short fragment', VECTOR.reference.slice(0, -2)],
     ['two fragments', `${VECTOR.reference}#00`],
-    ['a sha2-256 CID', `bafkreigh2akiscaildc6ybwhxslp6rx2u4m2vpbhgvzhpsfkyzxiezxcnq#${VECTOR.reference.split('#')[1]}`],
+    [
+      'a sha2-256 CID',
+      `bafkreigh2akiscaildc6ybwhxslp6rx2u4m2vpbhgvzhpsfkyzxiezxcnq#${VECTOR.reference.slice(VECTOR.reference.indexOf('#') + 1)}`,
+    ],
   ])('rejects %s without echoing the capability', (_case, reference) => {
     expect(() => parseSeityBlobReference(reference)).toThrow(InvalidProfileReferenceError);
     try {
       parseSeityBlobReference(reference);
     } catch (error) {
-      expect(String(error)).not.toContain(VECTOR.reference.split('#')[1]);
+      expect(String(error)).not.toContain(VECTOR.reference.slice(VECTOR.reference.indexOf('#') + 1));
     }
   });
 });
@@ -233,9 +236,10 @@ describe('placed contact avatars', () => {
     document.body.appendChild(iframe);
     const avatars = createContactAvatars();
     avatars.attach(iframe, 'viewport');
-    const at = (slot: number, reference: string) => ({
+    const at = (slot: number, reference: string): PlacedAvatar => ({
       slot,
       reference,
+      sharedAt: 1n,
       rect: { x: 0, y: slot * 50, width: 44, height: 44 },
       clip: { x: 0, y: 0, width: 400, height: 800 },
     });

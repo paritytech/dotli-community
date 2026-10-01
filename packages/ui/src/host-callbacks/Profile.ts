@@ -46,7 +46,9 @@ async function fetchCiphertext(preimageKey: `0x${string}`, signal: AbortSignal):
   let abort: (() => void) | undefined;
   const stopped = new Promise<never>((_, reject) => {
     abort = () => {
-      reject(deadline.reason);
+      reject(
+        deadline.reason instanceof Error ? deadline.reason : new DOMException('Profile load cancelled', 'AbortError'),
+      );
     };
     if (deadline.aborted) {
       abort();
@@ -213,9 +215,11 @@ export function createProfilePlatform(
     presentContactProfile(product, presented) {
       return presentContactProfileReference(product.productId, presented.reference, presented.username, signal);
     },
-    async placeContactAvatars(_product, placed) {
-      signal?.throwIfAborted();
-      avatars?.place(placed);
+    placeContactAvatars(_product, placed) {
+      return Promise.resolve().then(() => {
+        signal?.throwIfAborted();
+        avatars?.place(placed);
+      });
     },
   };
 }

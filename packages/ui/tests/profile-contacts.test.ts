@@ -34,8 +34,8 @@ const VECTOR = JSON.parse(
 };
 
 const mocks = vi.hoisted(() => ({
-  backend: 'smoldot-direct' as string,
-  bitswapGet: vi.fn(async (_cid: string): Promise<Uint8Array> => new Uint8Array()),
+  backend: 'smoldot-direct',
+  bitswapGet: vi.fn((_cid: string): Promise<Uint8Array> => Promise.resolve(new Uint8Array())),
   resolveSeitySlotRemote: vi.fn(),
   resolveSeitySlotViaRpc: vi.fn(),
 }));
@@ -55,9 +55,10 @@ vi.mock('@dotli/protocol', async importOriginal => ({
 }));
 vi.mock('@dotli/resolver', async importOriginal => ({
   ...(await importOriginal<typeof Resolver>()),
-  loadRpcResolve: async () => ({
-    resolveSeitySlotViaRpc: mocks.resolveSeitySlotViaRpc,
-  }),
+  loadRpcResolve: () =>
+    Promise.resolve({
+      resolveSeitySlotViaRpc: mocks.resolveSeitySlotViaRpc,
+    }),
 }));
 
 const product: ProductContext = {
@@ -94,24 +95,25 @@ describe('Seity contacts references', () => {
     // An hour after the vector's mood was set, so it is still current.
     vi.setSystemTime((VECTOR.expect.mood.setAt + 3600) * 1000);
     mocks.bitswapGet.mockReset();
-    mocks.bitswapGet.mockImplementation(async (cid: string) => {
+    mocks.bitswapGet.mockImplementation((cid: string) => {
       const bytes = BLOBS_BY_CID.get(cid);
-      if (bytes === undefined) throw new Error(`no blob for ${cid}`);
-      return bytes;
+      return bytes === undefined ? Promise.reject(new Error(`no blob for ${cid}`)) : Promise.resolve(bytes);
     });
     mocks.resolveSeitySlotRemote.mockReset();
-    mocks.resolveSeitySlotRemote.mockImplementation(async (lookupKey: string) =>
-      lookupKey === VECTOR.registry.lookupKey
-        ? {
-            owner: `0x${'aa'.repeat(20)}`,
-            cidDigest: VECTOR.registry.cidDigest,
-            version: '1',
-          }
-        : {
-            owner: `0x${'00'.repeat(20)}`,
-            cidDigest: `0x${'00'.repeat(32)}`,
-            version: '0',
-          },
+    mocks.resolveSeitySlotRemote.mockImplementation((lookupKey: string) =>
+      Promise.resolve(
+        lookupKey === VECTOR.registry.lookupKey
+          ? {
+              owner: `0x${'aa'.repeat(20)}`,
+              cidDigest: VECTOR.registry.cidDigest,
+              version: '1',
+            }
+          : {
+              owner: `0x${'00'.repeat(20)}`,
+              cidDigest: `0x${'00'.repeat(32)}`,
+              version: '0',
+            },
+      ),
     );
   });
 
@@ -160,11 +162,11 @@ describe('Seity contacts references', () => {
 
   it('reads the slot over the gateway RPC on the Trusted Providers backend', async () => {
     mocks.backend = 'rpc-gateway';
-    mocks.resolveSeitySlotViaRpc.mockImplementation(async () => ({
+    mocks.resolveSeitySlotViaRpc.mockResolvedValue({
       owner: `0x${'aa'.repeat(20)}`,
       cidDigest: VECTOR.registry.cidDigest,
       version: 1n,
-    }));
+    });
     await createProfilePlatform().presentProfile(product, {
       reference: VECTOR.reference,
     });
