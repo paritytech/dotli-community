@@ -19,8 +19,10 @@
  * mode. Bulletin is reachable so in-core preimage submission can use its
  * `TransactionStorage` runtime API over the same trusted RPC posture.
  */
-import { getWsProvider } from 'polkadot-api/ws';
+import { getWsProvider } from '@polkadot-api/ws-provider';
+import { middleware as substrateCompatibility } from '@polkadot-api/ws-middleware';
 import type { JsonRpcProvider } from 'polkadot-api';
+import type { JsonRpcConnection } from '@polkadot-api/json-rpc-provider';
 import { getActiveCoreGatewayChains, getActiveGatewayChains } from '@dotli/config';
 import type { ChainService } from '@dotli/config';
 
@@ -45,9 +47,9 @@ export function isRpcChainSupported(genesisHash: string): boolean {
   return gatewayChain(genesisHash) !== null;
 }
 
-/** A WSS JSON-RPC provider for `genesisHash`, or `null` when gateway mode does not support that chain. */
-export function createRpcChainProvider(genesisHash: string): JsonRpcProvider | null {
-  return createGatewayProvider(gatewayChain(genesisHash));
+/** Gateway provider whose owner must interrupt its consumers when `onHalt` fires. */
+export function createRpcChainProvider(genesisHash: string, onHalt: () => void): JsonRpcProvider | null {
+  return createGatewayProvider(gatewayChain(genesisHash), onHalt);
 }
 
 /** Whether the host-owned Rust core can reach `genesisHash` in gateway mode. */
@@ -56,17 +58,122 @@ export function isCoreRpcChainSupported(genesisHash: string): boolean {
 }
 
 /** Gateway provider for host-owned Rust-core traffic, including Bulletin. */
-export function createCoreRpcChainProvider(genesisHash: string): JsonRpcProvider | null {
-  return createGatewayProvider(coreGatewayChain(genesisHash));
+export function createCoreRpcChainProvider(genesisHash: string, onHalt: () => void): JsonRpcProvider | null {
+  return createGatewayProvider(coreGatewayChain(genesisHash), onHalt);
 }
 
-function createGatewayProvider(chain: ChainService | null): JsonRpcProvider | null {
+function createGatewayProvider(chain: ChainService | null, onHalt: () => void): JsonRpcProvider | null {
   if (chain === null) {
     return null;
   }
-  // Public RPC endpoints are occasionally tunnel-gated, so the default 40s
-  // heartbeat is too tight. Match the timeout used in `./rpc-resolve.ts`.
-  return getWsProvider([...chain.rpcs], {
-    heartbeatTimeout: 120_000,
-  });
+  return onMessage => {
+    const state: { socket: WebSocket | null; connected: boolean; closed: boolean } = {
+      socket: null,
+      connected: false,
+      closed: false,
+    };
+    let connection: JsonRpcConnection | null = null;
+    const healthRequest = {
+      jsonrpc: '2.0' as const,
+      id: `dotli-health:${crypto.randomUUID()}`,
+      method: 'system_health',
+      params: [],
+    };
+    const closeSocket = (): void => {
+      if (state.socket !== null && state.socket.readyState < WebSocket.CLOSING) {
+        state.socket.close();
+      }
+      state.socket = null;
+    };
+    const disconnect = (): void => {
+      if (state.closed) {
+        return;
+      }
+      state.closed = true;
+      connection?.disconnect();
+      closeSocket();
+    };
+    // ws-provider detaches listeners on a heartbeat timeout without closing
+    // the socket. Retain ownership so a failed transport cannot leak it.
+    class GatewaySocket extends WebSocket {
+      constructor(url: string | URL, protocols?: string | string[]) {
+        super(url, protocols);
+        state.socket = this;
+        this.addEventListener(
+          'open',
+          () => {
+            state.connected = true;
+          },
+          { once: true },
+        );
+      }
+    }
+    const provider = getWsProvider([...chain.rpcs], {
+      heartbeatTimeout: 120_000,
+      websocketClass: GatewaySocket,
+      // polkadot-api/ws installs this middleware unconditionally, so compose
+      // its compatibility layer explicitly around our raw transport lifecycle.
+      middleware: base =>
+        substrateCompatibility((deliver, retryConnection) => {
+          let healthTimer: ReturnType<typeof setTimeout> | undefined;
+          const stopHealth = (): void => {
+            clearTimeout(healthTimer);
+            healthTimer = undefined;
+          };
+          const scheduleHealth = (): void => {
+            stopHealth();
+            healthTimer = setTimeout(() => {
+              // Silence is normal for subscriptions. A reply (including an RPC
+              // error) proves liveness; no reply leaves the 120s deadline intact.
+              transport.send(healthRequest);
+            }, 60_000);
+          };
+          const transport = base(
+            message => {
+              scheduleHealth();
+              if (!('id' in message) || message.id !== healthRequest.id) {
+                deliver(message);
+              }
+            },
+            () => {
+              stopHealth();
+              closeSocket();
+              if (!state.connected) {
+                // Keep endpoint failover while establishing the first connection.
+                retryConnection();
+                return;
+              }
+              // The proxy only recovers some subscription families. Never let it
+              // replace an established raw RPC session behind its owner's back.
+              disconnect();
+              onHalt();
+            },
+          );
+          scheduleHealth();
+          return {
+            send: message => {
+              transport.send(message);
+            },
+            disconnect: () => {
+              stopHealth();
+              transport.disconnect();
+            },
+          };
+        }),
+    });
+    const active = provider(onMessage);
+    connection = active;
+    if (state.closed) {
+      active.disconnect();
+    }
+    return {
+      send: message => {
+        if (state.closed) {
+          throw new Error('RPC chain connection is closed');
+        }
+        active.send(message);
+      },
+      disconnect,
+    };
+  };
 }
