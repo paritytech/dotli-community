@@ -1013,12 +1013,8 @@ export function dispatchHostFrame(
     if (request.byteLength > JAM_PEER_TRANSPORT_MAX_FRAME_BYTES) {
       return false;
     }
-    peerSession.handleFrame(request).then(onPeerResponse, (error: unknown) => {
-      onPeerError(
-        error instanceof Error
-          ? error
-          : new Error("JamPeerTransport frame dispatch failed"),
-      );
+    void peerSession.handleFrame(request).then(onPeerResponse, (error: unknown) => {
+      onPeerError(error instanceof Error ? error : new Error('JamPeerTransport frame dispatch failed'));
     });
     return true;
   }
@@ -2808,7 +2804,7 @@ async function startPolkaVmApplication(
         return;
       }
     } catch (error) {
-      failHostFrame(error);
+      failHostFrame(error instanceof Error ? error : new Error(String(error)));
       return;
     }
     canvas.dataset['polkavmHostFrameResponses'] = String(Number(canvas.dataset['polkavmHostFrameResponses']) + 1);
@@ -3542,7 +3538,9 @@ async function startPolkaVmApplication(
             if (stopped || response.byteLength === 0) {
               return;
             }
-            canvas.dataset['polkavmHostFrameResponses'] = String(Number(canvas.dataset['polkavmHostFrameResponses']) + 1);
+            canvas.dataset['polkavmHostFrameResponses'] = String(
+              Number(canvas.dataset['polkavmHostFrameResponses']) + 1,
+            );
             hostFrameQueue.enqueue(response);
           },
           failRuntime,

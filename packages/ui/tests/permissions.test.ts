@@ -426,6 +426,7 @@ describe('three-way permission prompts', () => {
       ['Allow once', 'AllowOnce'],
       ['Deny', 'Deny'],
     ] as const) {
+      // Given
       const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
         permission: { tag: 'JamPeers', value: { genesis } },
       });
@@ -435,6 +436,7 @@ describe('three-way permission prompts', () => {
       const values = [...document.querySelectorAll<HTMLElement>('.signing-field-value')];
       expect(values.some(field => field.textContent === genesis)).toBe(true);
       expect(document.querySelector('.permission-modal-notice')).toBeNull();
+      // When
       await clickPromptButton(button);
       await expect(response).resolves.toBe(decision);
     }

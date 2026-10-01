@@ -61,29 +61,26 @@ export function installPolkaVmMenu(
     list.append(item);
   }
   help.append(summary, list);
-  const network = document.createElement("details");
-  network.className = "dotli-polkavm-network";
-  const networkSummary = document.createElement("summary");
-  networkSummary.textContent = "Network access";
-  const networkList = document.createElement("ul");
+  const network = document.createElement('details');
+  network.className = 'dotli-polkavm-network';
+  const networkSummary = document.createElement('summary');
+  networkSummary.textContent = 'Network access';
+  const networkList = document.createElement('ul');
   network.append(networkSummary, networkList);
   const renderGrants = (): void => {
     const grants = options.grants();
     networkList.replaceChildren(
-      ...(grants.length === 0
-        ? ["This app has no network access beyond the host's own services."]
-        : grants
-      ).map((grant) => {
-        const item = document.createElement("li");
-        item.textContent = grant;
-        return item;
-      }),
+      ...(grants.length === 0 ? ["This app has no network access beyond the host's own services."] : grants).map(
+        grant => {
+          const item = document.createElement('li');
+          item.textContent = grant;
+          return item;
+        },
+      ),
     );
   };
   renderGrants();
-  const changeFile = options.hasFileInput
-    ? button("Change Game / Choose file")
-    : null;
+  const changeFile = options.hasFileInput ? button('Change Game / Choose file') : null;
   if (changeFile !== null) {
     changeFile.id = 'dotli-polkavm-file-open';
   }

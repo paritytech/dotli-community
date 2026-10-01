@@ -3,12 +3,12 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 //
-// "Always allow" and "Deny" are durable, matching the grant the topbar
-// permissions menu shows and resets. "Allow once" is kept by the core for the
-// current execution and consumed by the next operation that needs it, so it
-// is offered only where the core is that gate: the submit permissions and
-// Notifications. A grant gated by the iframe `allow` attribute reloads the
-// product into a new execution, which would drop a one-time grant.
+// "Always allow" and "Deny" are durable. Generic permission grants appear in
+// the topbar permissions menu; JAM peer decisions are keyed by product and
+// genesis in the core. Submit and notification one-time grants are consumed
+// by the next operation. A JAM peer one-time grant authorizes the running
+// peer session. Iframe `allow`-gated permissions offer no one-time grant:
+// granting reloads the product into a new execution.
 // Auto-grants answer `AllowOnce` so the core records nothing the user never
 // saw. Each instance serves one product, so the product the core passes is
 // already known as `label`.
@@ -65,7 +65,12 @@ export function createPromptPermission(
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
     const { permission } = request;
     if (permission.tag === 'JamPeers') {
-      return modalScope.enqueue(signal => decideJamPeersPermission(label, permission.value.genesis, { limiter, signal }));
+      return modalScope.enqueue(signal =>
+        decideJamPeersPermission(label, permission.value.genesis, {
+          limiter,
+          signal,
+        }),
+      );
     }
     const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {
@@ -93,14 +98,14 @@ async function decideJamPeersPermission(
   const decision = await showJamPeersPermissionModal(label, genesis, signal);
   throwIfAborted(signal);
   switch (decision) {
-    case "dismissed":
+    case 'dismissed':
       throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
-    case "denied":
-      return "Deny";
-    case "granted":
-      return "AllowAlways";
-    case "granted-once":
-      return "AllowOnce";
+    case 'denied':
+      return 'Deny';
+    case 'granted':
+      return 'AllowAlways';
+    case 'granted-once':
+      return 'AllowOnce';
   }
 }
 
