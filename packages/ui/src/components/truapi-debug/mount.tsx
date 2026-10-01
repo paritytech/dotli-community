@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Entry of the lazily loaded TrUAPI debug panel. The host imports it
-// dynamically, only in debug mode.
+// Entry of the lazily loaded TrUAPI debug panel. The host imports the chunk
+// with its stylesheet, so dock measurements run only after CSS is ready.
 
 import { flush } from 'solid-js';
 import { DEBUG } from '@dotli/config';
 import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
-import stylesheetUrl from '@dotli/truapi-debug/styles.css?url';
+import '@dotli/truapi-debug/styles.css';
 import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutionRecorder } from '@dotli/truapi-debug';
 
 import { mountRoot } from '../../mount/root.js';
@@ -15,7 +15,6 @@ import { Panel, PANEL_ID } from './Panel.js';
 
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
-const STYLE_ID = 'truapi-debug-styles';
 
 export interface SetupOptions {
   /** Hard cap on retained events before oldest are evicted. */
@@ -33,18 +32,6 @@ export interface SetupOptions {
 
 function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
   return 'kind' in ev;
-}
-
-/** Link the panel stylesheet once per document. */
-function injectStyles(): void {
-  if (document.getElementById(STYLE_ID) !== null) {
-    return;
-  }
-  const link = document.createElement('link');
-  link.id = STYLE_ID;
-  link.rel = 'stylesheet';
-  link.href = stylesheetUrl;
-  document.head.appendChild(link);
 }
 
 /**
@@ -66,8 +53,6 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
       /* already mounted; owner should dispose the original handle */
     };
   }
-
-  injectStyles();
 
   const store = new EventStore({
     capacity: options.capacity ?? DEFAULT_CAPACITY,
