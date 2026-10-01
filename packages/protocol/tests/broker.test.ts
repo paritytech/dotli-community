@@ -993,7 +993,7 @@ describe('ChainBroker.halt', () => {
     ]);
   });
 
-  it('As a dotli integrator, a session whose handler throws does not keep the others from their messages and halt', () => {
+  it('As a dotli integrator, a session whose handler throws still hears its halt and does not keep the others from theirs', () => {
     // Given
     const { broker, open } = setup();
     const log: string[] = [];
@@ -1010,6 +1010,7 @@ describe('ChainBroker.halt', () => {
     // Then
     expect(halt).not.toThrow();
     expect(healthy.messages).toHaveLength(1);
+    expect(log).toContain('a:halt');
     expect(log).toContain('b:halt');
   });
 

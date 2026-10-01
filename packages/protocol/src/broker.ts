@@ -307,13 +307,16 @@ export class ChainBroker {
     for (const session of sessions) {
       try {
         this.answerHaltedSession(session);
-        session.connected = false;
+        // eslint-disable-next-line no-restricted-syntax -- a throwing message handler must not keep its session from hearing the halt.
+      } catch {
+        /* the handler threw; the session still hears the halt */
+      }
+      session.connected = false;
+      try {
         session.onHalt?.(error);
         // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one session's handler must not keep the others from hearing the halt.
       } catch {
         /* the handler threw; the remaining sessions still hear the halt */
-      } finally {
-        session.connected = false;
       }
     }
     this.disconnectUpstream();
