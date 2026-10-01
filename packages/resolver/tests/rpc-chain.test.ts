@@ -7,8 +7,8 @@ import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
   createRpcChainProvider,
+  getConnectedRpcEndpoint,
   isCoreRpcChainSupported,
-  isRpcChainSupported,
   type RpcChainProvider,
 } from '../src/rpc-chain.js';
 import { FakeWebSocket } from './fake-websocket.js';
@@ -58,14 +58,13 @@ describe('rpc-chain', () => {
     const { socket } = await connect(provider);
 
     // Then
-    expect(isRpcChainSupported(people.genesis)).toBe(true);
     expect(people.rpcs).toContain(socket.url);
     expect(typeof provider.pause).toBe('function');
     expect(typeof provider.resume).toBe('function');
   });
 
   it('rejects unknown genesis hashes', () => {
-    expect(isRpcChainSupported('0xdeadbeef')).toBe(false);
+    expect(isCoreRpcChainSupported('0xdeadbeef')).toBe(false);
     expect(createRpcChainProvider('0xdeadbeef')).toBeNull();
   });
 
@@ -74,13 +73,11 @@ describe('rpc-chain', () => {
     const bulletin = getActiveServicesConfig().bulletin;
 
     // When
-    const productSupported = isRpcChainSupported(bulletin.genesis);
     const productProvider = createRpcChainProvider(bulletin.genesis);
     const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
     const coreProvider = createCoreRpcChainProvider(bulletin.genesis);
 
     // Then
-    expect(productSupported).toBe(false);
     expect(productProvider).toBeNull();
     expect(coreSupported).toBe(true);
     expect(coreProvider).not.toBeNull();
@@ -99,6 +96,65 @@ describe('rpc-chain', () => {
 
     // Then
     expect(onStatus.mock.calls.map(([status]: unknown[]) => status)).toEqual(['connecting', 'connected']);
+  });
+
+  it('As a dotli user on Trusted Providers, diagnostics show the node my chain is talking to right now', async () => {
+    // Given
+    const { genesis } = getActiveServicesConfig().assethub;
+    const provider = must(createCoreRpcChainProvider(genesis), 'provider');
+
+    // When
+    const connection = provider(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    const first = must(FakeWebSocket.instances.at(-1), 'first socket');
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBe(first.url);
+
+    // When
+    first.open();
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBe(first.url);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+    const second = must(FakeWebSocket.instances.at(-1), 'second socket');
+
+    // Then
+    expect(second).not.toBe(first);
+    expect(getConnectedRpcEndpoint(genesis)).toBe(second.url);
+    expect(getConnectedRpcEndpoint('0xdeadbeef')).toBeNull();
+    connection.disconnect();
+  });
+
+  it('As a dotli user on Trusted Providers, diagnostics show no node once the chain connection is closed or paused', async () => {
+    // Given
+    const { genesis } = getActiveServicesConfig().assethub;
+    const provider = must(createCoreRpcChainProvider(genesis), 'provider');
+    const { socket, connection } = await connect(provider);
+    expect(getConnectedRpcEndpoint(genesis)).toBe(socket.url);
+
+    // When
+    connection.disconnect();
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
+
+    // When
+    await connect(provider);
+    const dialed = getConnectedRpcEndpoint(genesis);
+    provider.pause();
+
+    // Then
+    expect(dialed).not.toBeNull();
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
   });
 
   it('As a dotli user on Trusted Providers, a socket counts as dead only after 120 seconds without a message', async () => {

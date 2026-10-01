@@ -53,19 +53,9 @@ window.addEventListener('vite:preloadError', event => {
     );
   }
 });
-import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
-import type { StringJsonRpcConnection } from '@dotli/protocol';
-import type {
-  ChainTransportHooks,
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-  ResolveOptions,
-} from '@dotli/resolver';
 
-import { isExecutableKind, log, errorName, serializeError } from '@dotli/shared';
+import { log, errorName, serializeError } from '@dotli/shared';
 import {
-  MAX_CONNECTIONS_PER_ORIGIN,
   DEBUG,
   SITE_ID,
   TIMEOUTS,
@@ -83,9 +73,7 @@ import {
 // `./protocol-shared-worker.ts`, which is already a separate bundle.
 
 import {
-  createChainBrokerManager,
   requireBrokerLocalProvider,
-  type ChainBrokerManager,
   buildSharedAuthStorageKey,
   buildSharedModeStorageKey,
   isSharedAuthOriginAllowed,
@@ -94,7 +82,6 @@ import {
   isSharedModeRequestMethod,
   isValidSharedAuthKey,
   isValidSharedModeKey,
-  getRequestSyncTimeoutMs,
   isProtocolEnvelope,
   type ProtocolEnvelope,
   type ProtocolRequestEnvelope,
@@ -109,6 +96,8 @@ import { handleWalletOperation, WALLET_DB_NAME, withSharedWalletRevision } from 
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { observeChains } from './observe-chains.js';
+import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 
 initSentry('host');
 installGlobalErrorHandlers('host');
@@ -791,7 +780,7 @@ async function initDirectMode(): Promise<void> {
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
   const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
-  const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome, observeChain } = provider;
+  const { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } = provider;
   const {
     resolveDotName,
     resolveExecutableManifest,
@@ -821,29 +810,10 @@ async function initDirectMode(): Promise<void> {
   ]);
   const { onChainSync } = resolve;
 
-  // Two chains nothing else opens in time, for two different reasons.
-  //
-  // The relay reports the warp progress the loading bar moves on, but papi
-  // never reads it: smoldot runs it as the parent of the parachains, so
-  // without this no tap ever attaches to it.
-  //
-  // Bulletin serves the content, and is otherwise created by the first
-  // `bitswap_v1_get` after the name resolves. That request goes out before
-  // the chain has a single peer and always loses its first attempt to
-  // "No Bitswap peers connected". Opening it here lets it find peers while
-  // the name is still resolving, so the content fetch starts against a warm
-  // chain. The cost is one chain connection on loads that turn out to be
-  // served from the archive cache and never needed Bulletin at all.
   const services = getActiveServicesConfig();
-  const stopWatching = [services.relay.genesis, services.bulletin.genesis].map(genesis => observeChain(genesis));
-  window.addEventListener('pagehide', () => {
-    for (const stop of stopWatching) {
-      stop();
-    }
-  });
 
-  // Direct mode has no SharedWorker in the loop, so a dead chain is posted
-  // straight up to the host shell.
+  // Direct mode has no SharedWorker in the loop, so a light client that cannot
+  // connect a chain is posted straight up to the host shell.
   onProviderFatal(message => {
     log.error('[dot.li protocol] Chain death detected, signaling fatal');
     if (window.parent !== window) {
@@ -930,7 +900,27 @@ async function initDirectMode(): Promise<void> {
   const engine = createEngine({
     createChainProvider,
     isChainSupported,
+    // Releasing a smoldot chain makes the light client drop it and re-sync later.
+    destroyDelay: Infinity,
     onBrokerReady: broker => {
+      // Two chains nothing else opens in time, for two different reasons.
+      //
+      // The relay reports the warp progress the loading bar moves on, but papi
+      // never reads it: smoldot runs it as the parent of the parachains, so
+      // without this no tap ever attaches to it.
+      //
+      // Bulletin serves the content, and is otherwise created by the first
+      // `bitswap_v1_get` after the name resolves. That request goes out before
+      // the chain has a single peer and always loses its first attempt to
+      // "No Bitswap peers connected". Opening it here lets it find peers while
+      // the name is still resolving, so the content fetch starts against a warm
+      // chain. The cost is one chain connection on loads that turn out to be
+      // served from the archive cache and never needed Bulletin at all.
+      //
+      // Leases on the pool, so the watched chains are the very connections
+      // everything else on these chains shares.
+      const stopWatching = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
+      window.addEventListener('pagehide', stopWatching);
       // Route the resolver's Asset Hub reads AND the People warm-keep through
       // the broker's shared follows so they reuse the broker's single follow per
       // chain instead of opening their own (see protocol-shared-worker).
@@ -980,6 +970,8 @@ function initRpcMode(): void {
     // stays curated separately in `isRemoteChainSupported`.
     createChainProvider: createCoreRpcChainProvider,
     isChainSupported: isCoreRpcChainSupported,
+    // An unused RPC chain's socket closes a minute after its last connection.
+    destroyDelay: 60_000,
     // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 
@@ -1028,8 +1020,6 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
       });
   });
 }
-
-type ResponseCallback = (envelope: ProtocolEnvelope) => void;
 
 function assertSharedAuthSiteId(value: unknown): asserts value is SiteId {
   if (typeof value !== 'string' || !isSharedAuthSiteId(value)) {
@@ -1221,269 +1211,6 @@ async function handleSharedAuthRequest(
       return;
     }
   }
-}
-
-interface ProtocolEngine {
-  handleRequest: (request: ProtocolRequestEnvelope, origin: string, respond: ResponseCallback) => Promise<void>;
-  cleanup: () => void;
-}
-
-interface EngineOptions {
-  /** Factory keyed by genesis hash, reporting terminal upstream connection loss. */
-  createChainProvider: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
-  /** Whether the given genesis hash is handled by this engine. */
-  isChainSupported: (genesisHash: string) => boolean;
-  /**
-   * Called once right after the broker is created. Smoldot modes use this to
-   * route the resolver's Asset Hub reads through the broker's shared follow.
-   */
-  onBrokerReady?: (broker: ChainBrokerManager) => void;
-  /** Called on `warmup` requests. If omitted, `warmup` resolves immediately. */
-  onWarmup?: () => Promise<void>;
-  /** Resolver implementations. If omitted, resolution methods reject with a
-   *  clear error so hanging callers surface fast. Signatures mirror the
-   *  `@dotli/resolver` entry points so they can be wired by reference. */
-  resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
-  resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
-  /**
-   * Product-manifest readers.
-   *
-   * `rpc-gateway` mode resolves manifests in the host process, not via the
-   * iframe engine, so these stay unwired there.
-   */
-  resolveExecutableManifest?: (
-    label: string,
-    kind: 'app' | 'widget' | 'worker',
-    opts?: ResolveOptions,
-  ) => Promise<ManifestResult<ExecutableManifest>>;
-  resolveRootManifest?: (label: string, opts?: ResolveOptions) => Promise<ManifestResult<RootManifest>>;
-}
-
-function createEngine(options: EngineOptions): ProtocolEngine {
-  const MAX_CONNS = 10;
-  const connections = new Map<string, StringJsonRpcConnection>();
-  const originConns = new Map<string, Set<string>>();
-  const broker = createChainBrokerManager(options.createChainProvider);
-  options.onBrokerReady?.(broker);
-
-  function assertStr(value: unknown, name: string): asserts value is string {
-    if (typeof value !== 'string' || value.length === 0) {
-      throw new Error(`Invalid ${name}: expected non-empty string`);
-    }
-  }
-
-  async function handleRequest(
-    request: ProtocolRequestEnvelope,
-    origin: string,
-    respond: ResponseCallback,
-  ): Promise<void> {
-    // Both engine-facing listeners filter shared-auth/shared-mode out;
-    // reaching the engine means one of those filters is broken.
-    if (
-      isSharedAuthRequestMethod(request.method) ||
-      isSharedModeRequestMethod(request.method) ||
-      request.method === 'walletStorage' ||
-      request.method === 'walletOwner'
-    ) {
-      throw new Error(`Shared storage request reached the chain engine: ${request.method}`);
-    }
-
-    const syncTimeoutMs = getRequestSyncTimeoutMs(request);
-    const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
-
-    switch (request.method) {
-      case 'warmup': {
-        if (options.onWarmup) {
-          await options.onWarmup();
-        }
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'resolveDotName': {
-        if (!options.resolveDotName) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_DOT_NAME_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveDotName'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveDotName(payload.label, {
-          onStatus: message => {
-            respond({
-              namespace: 'dotli:protocol',
-              kind: 'progress',
-              id: request.id,
-              message,
-            });
-          },
-          ...syncOptions,
-        });
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveOwner': {
-        if (!options.resolveOwner) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_OWNER_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveOwner'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveOwner(payload.label, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveExecutableManifest': {
-        if (!options.resolveExecutableManifest) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_EXECUTABLE_MANIFEST_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveExecutableManifest'];
-        assertStr(payload.label, 'label');
-        const kind: string = payload.kind;
-        if (!isExecutableKind(kind)) {
-          throw new Error(`Unsupported executable kind: ${kind}`);
-        }
-        const result = await options.resolveExecutableManifest(payload.label, payload.kind, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'resolveRootManifest': {
-        if (!options.resolveRootManifest) {
-          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_ROOT_MANIFEST_UNSUPPORTED);
-        }
-        const payload = request.payload as ProtocolRequestMap['resolveRootManifest'];
-        assertStr(payload.label, 'label');
-        const result = await options.resolveRootManifest(payload.label, syncOptions);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result,
-        });
-        return;
-      }
-
-      case 'chainConnect': {
-        const payload = request.payload as ProtocolRequestMap['chainConnect'];
-        assertStr(payload.genesisHash, 'genesisHash');
-        assertStr(payload.connectionId, 'connectionId');
-        if (connections.size >= MAX_CONNS) {
-          throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
-        }
-        const oc = originConns.get(origin) ?? new Set<string>();
-        if (oc.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-          throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
-        }
-        if (!options.isChainSupported(payload.genesisHash)) {
-          throw new Error(`Unsupported chain: ${payload.genesisHash}`);
-        }
-        const connection = broker.connectRemote(payload.genesisHash, payload.connectionId, message => {
-          respond({
-            namespace: 'dotli:protocol',
-            kind: 'chain-message',
-            connectionId: payload.connectionId,
-            message,
-          });
-        });
-        if (connection === null) {
-          throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
-        }
-        connections.set(payload.connectionId, connection);
-        oc.add(payload.connectionId);
-        originConns.set(origin, oc);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'chainSend': {
-        const payload = request.payload as ProtocolRequestMap['chainSend'];
-        assertStr(payload.connectionId, 'connectionId');
-        assertStr(payload.message, 'message');
-        const conn = connections.get(payload.connectionId);
-        if (conn === undefined) {
-          throw new Error(`Unknown chain connection: ${payload.connectionId}`);
-        }
-        conn.send(payload.message);
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      case 'chainDisconnect': {
-        const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
-        assertStr(payload.connectionId, 'connectionId');
-        const conn = connections.get(payload.connectionId);
-        conn?.disconnect();
-        connections.delete(payload.connectionId);
-        for (const [orig, conns] of originConns) {
-          conns.delete(payload.connectionId);
-          if (conns.size === 0) {
-            originConns.delete(orig);
-          }
-        }
-        respond({
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: request.id,
-          ok: true,
-          result: true,
-        });
-        return;
-      }
-
-      default: {
-        const _method: never = request.method;
-        throw new Error(`Unknown protocol method: ${_method as string}`);
-      }
-    }
-  }
-
-  function cleanup(): void {
-    for (const conn of connections.values()) {
-      conn.disconnect();
-    }
-    connections.clear();
-    originConns.clear();
-    broker.disconnectAll();
-  }
-
-  return { handleRequest, cleanup };
 }
 
 bindSharedAuthListener();

@@ -4,7 +4,7 @@
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { hexToBytes } from '@noble/hashes/utils.js';
-import { createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
+import { CHAIN_HALTED_ERROR_DATA, createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
 import { isSandboxOrigin, getBackend, getActiveServicesConfig } from '@dotli/config';
 
 import { log, serializeError } from '@dotli/shared';
@@ -159,36 +159,64 @@ function ensureConnection(): JsonRpcConnection {
   if (provider === null) {
     throw new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`);
   }
-  connection = provider((message: JsonRpcMessage) => {
-    if (!isResponse(message)) {
-      return;
-    }
-    if (typeof message.id !== 'number') {
-      return;
-    }
-    const entry = pending.get(message.id);
-    if (entry === undefined) {
-      return;
-    }
-    pending.delete(message.id);
-    if ('error' in message) {
-      const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
-      (err as { code?: number }).code = message.error.code;
-      entry.reject(err);
-      return;
-    }
-    if (typeof message.result !== 'string') {
-      entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
-      return;
-    }
-    // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
-    // transferred zero-copy via postMessage instead of cloning an 8 MB
-    // hex string and re-parsing on the other side.
-    const hex = message.result;
-    const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
-    entry.resolve(hexToBytes(stripped));
-  });
-  return connection;
+  const opened = provider(
+    (message: JsonRpcMessage) => {
+      if (!isResponse(message)) {
+        return;
+      }
+      if (typeof message.id !== 'number') {
+        return;
+      }
+      const entry = pending.get(message.id);
+      if (entry === undefined) {
+        return;
+      }
+      pending.delete(message.id);
+      if ('error' in message) {
+        const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
+        // The chain halted under this request. The pool answers it before the
+        // connection hears `onHalt`, which then drops it, so the retry loop's
+        // next attempt redials a rebuilt chain.
+        const halted = message.error.data === CHAIN_HALTED_ERROR_DATA;
+        (err as { code?: number }).code = halted ? ERR_FAIL_RETRY : message.error.code;
+        entry.reject(err);
+        return;
+      }
+      if (typeof message.result !== 'string') {
+        entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
+        return;
+      }
+      // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
+      // transferred zero-copy via postMessage instead of cloning an 8 MB
+      // hex string and re-parsing on the other side.
+      const hex = message.result;
+      const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
+      entry.resolve(hexToBytes(stripped));
+    },
+    reason => {
+      // The next attempt dials again. After a dead frame that only happens
+      // because a fetch is running, so nothing reconnects on its own. What
+      // the halt answers did not reach (a dead frame answers nothing already
+      // sent) is rejected here. A halt from a connection already replaced
+      // must not touch the one that replaced it.
+      if (connection !== opened) {
+        return;
+      }
+      connection = null;
+      for (const [id, entry] of pending) {
+        pending.delete(id);
+        const err = new Error('Bulletin connection halted');
+        // A halted chain is rebuilt on the next connect, so the retry loop
+        // redials. A dead frame is fatal and is never retried inside a fetch.
+        if (reason === 'chain') {
+          (err as { code?: number }).code = ERR_FAIL_RETRY;
+        }
+        entry.reject(err);
+      }
+    },
+  );
+  connection = opened;
+  return opened;
 }
 
 function errorCode(err: unknown): number | null {
