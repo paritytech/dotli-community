@@ -22,7 +22,9 @@ const MAX_RETRY_MS = 30_000;
  * a doubling wait, reset by a block. When the protocol frame dies, before the
  * halt or during that wait, or never comes up for the very first connect,
  * there is nothing to dial until it reports ready again, so the watch waits
- * for that. Returns a stop.
+ * for that. A first connect that a live frame refuses (its connection limit)
+ * waits the same way, so that bar stays empty until the frame is replaced.
+ * Returns a stop.
  */
 export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => void): () => void {
   // A record rather than locals: the returned stop runs after this function

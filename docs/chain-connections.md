@@ -264,8 +264,10 @@ sequenceDiagram
 - A connection that never reaches a frame halts with `'frame'` too: the frame
   did not come up in time, its iframe failed to load, or it refused the
   `chainConnect` (for example at its connection limit). So bitswap drops that
-  connection and dials again on the next fetch, and a block bar whose very
-  first connect fails waits for `onProtocolReady` like any other.
+  connection and dials again on the next fetch. A block bar whose first
+  connect fails waits for `onProtocolReady`: it comes back when a frame next
+  comes up, but stays empty if a live frame refused it, until that frame is
+  replaced.
 - A papi client re-follows on the `stop` that comes before `chain-halt`. The
   frame refuses that send, because it has already forgotten the connection.
   Such late failures, and those of sends still unacknowledged when a fatal
