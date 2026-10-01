@@ -62,29 +62,38 @@ const HEARTBEAT_TIMEOUT_MS = 120_000;
 const WS_CLOSING = 2;
 
 /**
- * A WebSocket class whose every new instance closes the one before it.
+ * A WebSocket class that closes the sockets ws-provider abandons.
  *
- * ws-provider counts a socket silent for `heartbeatTimeout` as dead: it drops
- * the socket's listeners and opens a new one, but never closes the old one,
- * which stays open and keeps receiving. The provider builds its sockets one
- * at a time, so the previous socket is always the abandoned one. Read from
- * `globalThis` per provider, so a test's stub applies. It assumes one live
- * connection per provider (the pool opens one per chain): a second concurrent
- * connection on the same provider would close the first one's socket.
+ * ws-provider counts a socket silent for `heartbeatTimeout` (or one that does
+ * not open within the connect timeout) as dead: it drops the socket's
+ * listeners, reports an error and opens a new one after the proxy's backoff,
+ * but never closes the old socket, which stays open and keeps receiving.
+ * `closeLatest` closes it at once. Call it when the provider reports
+ * `disconnected`: the listeners are already gone then, so closing raises no
+ * further status event. Each new instance also closes the one before it, as a
+ * backstop. The provider builds its sockets one at a time, so the latest
+ * socket is always the abandoned one. Read from `globalThis` per provider, so
+ * a test's stub applies. It assumes one live connection per provider (the
+ * pool opens one per chain): a second concurrent connection on the same
+ * provider would close the first one's socket.
  */
-function closingWebSocketClass(): typeof WebSocket {
+function closingWebSocketClass(): { WebSocketClass: typeof WebSocket; closeLatest: () => void } {
   const Base = globalThis.WebSocket;
-  let previous: WebSocket | null = null;
-  return class ClosingWebSocket extends Base {
-    constructor(url: string | URL, protocols?: string | string[]) {
-      super(url, protocols);
-      if (previous !== null && previous.readyState < WS_CLOSING) {
-        previous.close();
-      }
-      // eslint-disable-next-line @typescript-eslint/no-this-alias -- the next socket this provider builds closes this one.
-      previous = this;
+  let latest: WebSocket | null = null;
+  const closeLatest = (): void => {
+    if (latest !== null && latest.readyState < WS_CLOSING) {
+      latest.close();
     }
   };
+  const WebSocketClass = class ClosingWebSocket extends Base {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      closeLatest();
+      // eslint-disable-next-line @typescript-eslint/no-this-alias -- the next socket this provider builds closes this one.
+      latest = this;
+    }
+  };
+  return { WebSocketClass, closeLatest };
 }
 
 /**
@@ -162,9 +171,10 @@ function createGatewayProvider(
   }
   let replay: () => void = () => undefined;
   const pauseController = createPauseController();
+  const { WebSocketClass, closeLatest } = closingWebSocketClass();
   const socket = getWsProvider([...chain.rpcs], {
     heartbeatTimeout: HEARTBEAT_TIMEOUT_MS,
-    websocketClass: closingWebSocketClass(),
+    websocketClass: WebSocketClass,
     // ws-middleware below the pause controller: the controller calls it afresh
     // for every socket, so its rpc_methods probe and chainHead fixes start
     // over with each one. `withOwnMessages` sits between them.
@@ -173,6 +183,10 @@ function createGatewayProvider(
       const status = STATUS_BY_WS_EVENT[event.type];
       if (status === 'connected') {
         replay();
+      }
+      if (status === 'disconnected') {
+        // ws-provider abandoned its socket without closing it.
+        closeLatest();
       }
       hooks?.onStatus(status);
     },

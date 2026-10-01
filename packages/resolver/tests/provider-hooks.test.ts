@@ -155,6 +155,28 @@ describe('smoldot chain provider hooks', () => {
     expect(chainHooks.onStatus).toHaveBeenLastCalledWith('disconnected');
   });
 
+  it('As a dotli integrator, a halt listener that throws on the end of the stream is called once', async () => {
+    // Given
+    const chainHooks = hooks();
+    chainHooks.onHalt.mockImplementation(() => {
+      throw new Error('listener failed');
+    });
+    open(people, chainHooks);
+    await vi.waitFor(() => {
+      expect(chainHooks.onStatus).toHaveBeenLastCalledWith('connected');
+    });
+
+    // When
+    truapi.connections[0]?.end();
+    await vi.waitFor(() => {
+      expect(chainHooks.onHalt).toHaveBeenCalled();
+    });
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Then
+    expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
+  });
+
   it('As a dotli integrator, a light-client connection closed by its owner does not halt', async () => {
     // Given
     const chainHooks = hooks();

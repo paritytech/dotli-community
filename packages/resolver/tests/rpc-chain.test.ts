@@ -116,7 +116,7 @@ describe('rpc-chain', () => {
     expect(onStatus).toHaveBeenCalledWith('disconnected');
   });
 
-  it('As a dotli user on Trusted Providers, the socket abandoned by a heartbeat kill is closed when the next one opens', async () => {
+  it('As a dotli user on Trusted Providers, the socket abandoned by a heartbeat kill is closed, and stays closed when the next one opens', async () => {
     // Given
     const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
     const { socket: first } = await connect(provider);
@@ -124,14 +124,42 @@ describe('rpc-chain', () => {
     // When
     await vi.advanceTimersByTimeAsync(120_000);
 
-    // Then: ws-provider dropped its listeners but left the socket open.
-    expect(first.readyState).toBe(FakeWebSocket.OPEN);
+    // Then: ws-provider dropped its listeners and left the socket open; the provider closes it.
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
 
     // When
     await vi.advanceTimersByTimeAsync(1_000);
 
     // Then
     expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('As a dotli user on Trusted Providers, a heartbeat-killed socket is closed at once when the connection is disconnected', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first, connection } = await connect(provider);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+    connection.disconnect();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Then
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('As a dotli user on Trusted Providers, a heartbeat-killed socket is closed at once when the provider is paused', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first } = await connect(provider);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+    provider.pause();
+
+    // Then
     expect(first.readyState).toBe(FakeWebSocket.CLOSED);
   });
 

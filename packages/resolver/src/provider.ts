@@ -314,6 +314,9 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
     hooks?.onStatus('connecting');
 
     void (async () => {
+      // Set when the response stream ends, so the halt runs once, outside the
+      // `try`: a throwing hook must not reach the `catch` and halt again.
+      let streamEnded = false;
       try {
         const handle = await getHandle();
         // Must precede `connect`: only a chain's first add consumes a blob.
@@ -347,13 +350,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
         for (;;) {
           const response = await candidate.nextResponse();
           if (response === undefined) {
-            // Only `disconnect()` makes this an orderly end. Otherwise the
-            // transport died or overflowed its send budget, and no further
-            // response will ever arrive on this chain.
-            if (!isClosed()) {
-              markFatal(`chain ${key} stopped responding`);
-              fail(new Error(`chain ${key} stopped responding`));
-            }
+            streamEnded = true;
             break;
           }
           const parsed = JSON.parse(response) as JsonRpcMessage;
@@ -368,6 +365,19 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
         markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
         if (!isClosed()) {
           fail(error);
+        }
+      }
+      // Only `disconnect()` makes the end of the stream orderly. Otherwise the
+      // transport died or overflowed its send budget, and no further response
+      // will ever arrive on this chain.
+      if (streamEnded && !isClosed()) {
+        markFatal(`chain ${key} stopped responding`);
+        try {
+          fail(new Error(`chain ${key} stopped responding`));
+        } catch (error) {
+          // A throwing listener is its owner's bug, and nothing awaits this
+          // loop to hear it.
+          log.warn(`[dot.li provider] halt listener for chain ${key} threw`, error);
         }
       }
     })();
