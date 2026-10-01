@@ -558,6 +558,9 @@ function createCore(product: PageProduct): Core {
         callbacks.nativeChatFiles = nativeChatFiles;
       }
       const dispose = (): void => {
+        if (closed) {
+          return;
+        }
         closed = true;
         connectionLifetime.abort();
         options.contactAvatars?.dispose();

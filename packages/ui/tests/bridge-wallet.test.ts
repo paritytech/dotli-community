@@ -1,6 +1,6 @@
 // @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AuthState, RequiredHostCallbacks } from '@parity/truapi-host';
+import type { AuthState, ProductExecutionKind, RequiredHostCallbacks } from '@parity/truapi-host';
 import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
 import type { DotliAuthState } from '../src/host-callbacks/AuthState.js';
 import type * as BridgeModule from '../src/bridge.js';
@@ -24,6 +24,11 @@ const wallet = vi.hoisted(() => {
     snapshotStarted: false,
     failNextProduct: false,
     closeNextProvider: false,
+    productGate: undefined as Promise<void> | undefined,
+    connections: [] as {
+      callbacks: RequiredHostCallbacks;
+      close: (error: Error) => void;
+    }[],
     sessions: [] as {
       disposed: boolean;
       username?: string | undefined;
@@ -203,9 +208,27 @@ vi.mock('@parity/truapi-host/web', () => ({
         publish(wallet.username);
         return identity();
       },
-      createProvider: () =>
-        Promise.resolve().then(() => {
+      createProvider: (
+        product: { productId: string; executionKind?: ProductExecutionKind },
+        connectionCallbacks?: RequiredHostCallbacks,
+      ) =>
+        Promise.resolve().then(async () => {
           assertLive();
+          const listeners = new Set<(error: Error) => void>();
+          const connection = {
+            callbacks: connectionCallbacks ?? callbacks,
+            close: (error: Error) => {
+              for (const callback of listeners) {
+                closeCallbacks.delete(callback);
+                callback(error);
+              }
+              listeners.clear();
+            },
+          };
+          if (product.executionKind !== undefined) {
+            wallet.connections.push(connection);
+            await wallet.productGate;
+          }
           if (wallet.failNextProduct) {
             wallet.failNextProduct = false;
             throw new Error('Product startup failed');
@@ -214,7 +237,6 @@ vi.mock('@parity/truapi-host/web', () => ({
             wallet.closeNextProvider = false;
             session.close(new Error('Wallet provider already closed'));
           }
-          const connectionCallbacks = new Set<(error: Error) => void>();
           return {
             postMessage: () => {
               assertLive();
@@ -225,11 +247,11 @@ vi.mock('@parity/truapi-host/web', () => ({
                 callback(closeError);
               } else {
                 closeCallbacks.add(callback);
-                connectionCallbacks.add(callback);
+                listeners.add(callback);
               }
               return () => {
                 closeCallbacks.delete(callback);
-                connectionCallbacks.delete(callback);
+                listeners.delete(callback);
               };
             },
             disconnectSession: async () => {},
@@ -238,11 +260,7 @@ vi.mock('@parity/truapi-host/web', () => ({
               Promise.resolve(requests.map(() => 'NotDetermined')),
             setPermissionAuthorizationStatus: async () => {},
             dispose: () => {
-              for (const callback of connectionCallbacks) {
-                closeCallbacks.delete(callback);
-                callback(new Error('Native provider disposed'));
-              }
-              connectionCallbacks.clear();
+              connection.close(new Error('Native provider disposed'));
             },
           };
         }),
@@ -293,6 +311,8 @@ describe('host-owned experimental identity', () => {
     wallet.snapshotStarted = false;
     wallet.failNextProduct = false;
     wallet.closeNextProvider = false;
+    wallet.productGate = undefined;
+    wallet.connections.length = 0;
     wallet.sessions.length = 0;
     owner.requests.length = 0;
     owner.revoked.clear();
@@ -322,6 +342,8 @@ describe('host-owned experimental identity', () => {
     await vi.waitFor(() => {
       expect(owner.custody).toBeUndefined();
     });
+    const { resetOverlays } = await import('./helpers/overlays.js');
+    resetOverlays();
     for (const [type, listener] of pageListeners) {
       window.removeEventListener(type, listener);
     }
@@ -365,6 +387,126 @@ describe('host-owned experimental identity', () => {
     });
     expect(document.querySelector('iframe')).toBeNull();
   });
+
+  it.each(['expected', 'unexpected'] as const)(
+    'retires old active and queued consent on %s connection close without authorizing its replacement',
+    async kind => {
+      const { experimentalWalletControls: controls } = boot();
+      // Use the same module generation as the bridge after resetModules.
+      const { acquireCore } = await import('../src/page-core.js');
+      const { overlaysReady } = await import('./helpers/overlays.js');
+      const oldLease = await acquireCore();
+      const old = await oldLease.connect();
+      const replacementLease = await acquireCore();
+      const replacement = await replacementLease.connect();
+      const first = nth(wallet.connections, 0);
+      const next = nth(wallet.connections, 1);
+      const active = first.callbacks.userConfirmation.confirmUserAction({
+        tag: 'IdentityDisclosure',
+        value: { productId: 'old-active.dot' },
+      });
+      const activeRejected = expect(active).rejects.toMatchObject({ name: 'AbortError' });
+      const queued = first.callbacks.userConfirmation.confirmUserAction({
+        tag: 'IdentityDisclosure',
+        value: { productId: 'old-queued.dot' },
+      });
+      const queuedRejected = expect(queued).rejects.toMatchObject({ name: 'AbortError' });
+      const fresh = next.callbacks.userConfirmation.confirmUserAction({
+        tag: 'IdentityDisclosure',
+        value: { productId: 'replacement.dot' },
+      });
+      let authorized = false;
+      void fresh.then(accepted => {
+        authorized = accepted;
+      });
+      await overlaysReady();
+      expect(document.querySelector('.signing-field-value')?.textContent).toBe('old-active.dot');
+      const staleButton = document.querySelector<HTMLButtonElement>('.signing-btn-sign');
+      expect(staleButton).not.toBeNull();
+
+      if (kind === 'expected') {
+        old.close();
+      } else {
+        first.close(new Error('Product port lost'));
+      }
+      oldLease.release();
+      await Promise.all([activeRejected, queuedRejected]);
+      await overlaysReady();
+      expect(document.querySelector('.signing-field-value')?.textContent).toBe('replacement.dot');
+      staleButton?.click();
+      await overlaysReady();
+      expect(authorized).toBe(false);
+      expect(document.querySelector('.signing-field-value')?.textContent).toBe('replacement.dot');
+      await expect(
+        first.callbacks.userConfirmation.confirmUserAction({
+          tag: 'IdentityDisclosure',
+          value: { productId: 'late-old.dot' },
+        }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+
+      const before = auth.slice();
+      first.callbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: wallet.account, identityAccountId: wallet.account, liteUsername: 'stale.westend' },
+      });
+      expect(auth).toEqual(before);
+      document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+      await expect(fresh).resolves.toBe(true);
+      await expect(replacement.wallet?.runtime.refreshLocalIdentity()).resolves.toMatchObject({
+        identityAccountId: wallet.account,
+      });
+      expect(nth(wallet.sessions, 0).disposed).toBe(false);
+      replacement.close();
+      replacementLease.release();
+      if (kind === 'expected') {
+        await expect(controls.claimLiteUsername('alice')).resolves.toMatchObject({
+          liteUsername: 'alice.westend',
+        });
+      }
+    },
+  );
+
+  it.each(['failure', 'retirement'] as const)(
+    'disposes consent on provider %s even while provider creation is pending',
+    async kind => {
+      boot();
+      // Static imports would retain an older page core and modal state.
+      const { acquireCore, disposePageCores } = await import('../src/page-core.js');
+      const { overlaysReady } = await import('./helpers/overlays.js');
+      const lease = await acquireCore();
+      const gate = Promise.withResolvers<undefined>();
+      wallet.productGate = gate.promise;
+      const connecting = lease.connect();
+      const rejected = expect(connecting).rejects.toThrow(
+        kind === 'failure' ? 'Product startup failed' : 'Page core closed while connecting the product',
+      );
+      await vi.waitFor(() => {
+        expect(wallet.connections).toHaveLength(1);
+      });
+      const connection = nth(wallet.connections, 0);
+      const active = connection.callbacks.userConfirmation.confirmUserAction({
+        tag: 'IdentityDisclosure',
+        value: { productId: 'pending.dot' },
+      });
+      const activeRejected = expect(active).rejects.toMatchObject({ name: 'AbortError' });
+      await overlaysReady();
+      expect(document.querySelector('.signing-field-value')?.textContent).toBe('pending.dot');
+      if (kind === 'retirement') {
+        disposePageCores();
+        await activeRejected;
+        await overlaysReady();
+        expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      } else {
+        wallet.failNextProduct = true;
+      }
+      gate.resolve(undefined);
+      await rejected;
+      await activeRejected;
+      await overlaysReady();
+      expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      lease.release();
+    },
+  );
 
   it('takes one tab lease before starting any wallet core, shared by the page', async () => {
     const { experimentalWalletControls: controls, renderIframe } = boot();
