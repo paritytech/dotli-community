@@ -420,3 +420,8 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
   and transaction broadcasts stop silently: the broker has no terminal event
   to send them, while the same connection keeps serving new requests on its
   new lease. The core does not know to subscribe again.
+- A live frame that refuses every connection (for example at its connection
+  limit) gets one `chainConnect` per product retry: the frame gate lets a
+  lease through while a frame is up, so nothing backs those retries off.
+- A block bar a live frame refuses stays empty until that frame is replaced:
+  it waits for `onProtocolReady`, which a frame already up does not fire again.
