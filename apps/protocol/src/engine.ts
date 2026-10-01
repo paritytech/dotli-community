@@ -13,7 +13,6 @@ import type {
   ResolveOptions,
 } from '@dotli/resolver';
 import { isExecutableKind } from '@dotli/shared';
-import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import {
   createChainPool,
   type ChainBrokerManager,
@@ -67,10 +66,11 @@ export interface EngineOptions {
   resolveRootManifest?: (label: string, opts?: ResolveOptions) => Promise<ManifestResult<RootManifest>>;
 }
 
+/** Chain connections one protocol iframe holds: one tab's budget. */
+export const MAX_CONNS = 10;
+
 export function createEngine(options: EngineOptions): ProtocolEngine {
-  const MAX_CONNS = 10;
-  const connections = new Map<string, { connection: StringJsonRpcConnection; origin: string }>();
-  const originConns = new Map<string, Set<string>>();
+  const connections = new Map<string, StringJsonRpcConnection>();
   const broker = createChainPool({
     createTransport: options.createChainProvider,
     destroyDelay: options.destroyDelay,
@@ -84,17 +84,12 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
 
   /** Drop a connection from the engine's books, freeing its slot. */
   function forget(key: string): StringJsonRpcConnection | null {
-    const entry = connections.get(key);
-    if (entry === undefined) {
+    const connection = connections.get(key);
+    if (connection === undefined) {
       return null;
     }
     connections.delete(key);
-    const held = originConns.get(entry.origin);
-    held?.delete(key);
-    if (held?.size === 0) {
-      originConns.delete(entry.origin);
-    }
-    return entry.connection;
+    return connection;
   }
 
   function assertStr(value: unknown, name: string): asserts value is string {
@@ -225,10 +220,6 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         if (connections.size >= MAX_CONNS) {
           throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
         }
-        const oc = originConns.get(origin) ?? new Set<string>();
-        if (oc.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-          throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
-        }
         if (!options.isChainSupported(payload.genesisHash)) {
           throw new Error(`Unsupported chain: ${payload.genesisHash}`);
         }
@@ -256,9 +247,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         if (connection === null) {
           throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
-        connections.set(key, { connection, origin });
-        oc.add(key);
-        originConns.set(origin, oc);
+        connections.set(key, connection);
         respond({
           namespace: 'dotli:protocol',
           kind: 'response',
@@ -273,7 +262,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         const payload = request.payload as ProtocolRequestMap['chainSend'];
         assertStr(payload.connectionId, 'connectionId');
         assertStr(payload.message, 'message');
-        const conn = connections.get(connectionKey(origin, payload.connectionId))?.connection;
+        const conn = connections.get(connectionKey(origin, payload.connectionId));
         if (conn === undefined) {
           throw new Error(`Unknown chain connection: ${payload.connectionId}`);
         }
@@ -310,11 +299,10 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   }
 
   function cleanup(): void {
-    for (const { connection } of connections.values()) {
+    for (const connection of connections.values()) {
       connection.disconnect();
     }
     connections.clear();
-    originConns.clear();
     broker.disconnectAll();
   }
 

@@ -10,9 +10,8 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope, ProtocolRequestMap } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
-import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import { log } from '@dotli/shared';
-import { createEngine, type EngineOptions, type ProtocolEngine } from '../src/engine.js';
+import { createEngine, MAX_CONNS, type EngineOptions, type ProtocolEngine } from '../src/engine.js';
 
 const ORIGIN_A = 'https://a.example';
 const ORIGIN_B = 'https://b.example';
@@ -202,8 +201,8 @@ describe('createEngine halts', () => {
 
     // Then
     await expect(send).rejects.toThrow('Unknown chain connection: c1');
-    // The halted connection's slot is free: the origin can fill its whole quota again.
-    for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i += 1) {
+    // The halted connection's slot is free: the whole quota can be filled again.
+    for (let i = 0; i < MAX_CONNS; i += 1) {
       await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: `n${String(i)}` });
     }
   });
