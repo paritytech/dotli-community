@@ -835,9 +835,18 @@ function haltRemote(connectionId: string, connection: RemoteChainConnection, rea
 }
 
 /**
- * A remote chain provider. Its connections may also hear `onHalt` when the
- * chain behind them halts: in-flight requests have their errors and follows
- * their `stop` by then, and later sends fail with `Chain connection is closed`.
+ * A remote chain provider. Its connections may also hear `onHalt`, once, with
+ * the reason:
+ *
+ * - `'chain'`: the chain behind the connection halted, and is rebuilt on the
+ *   next connect. By then each request the chain had in flight, and each one
+ *   not yet sent, has an error whose `data` is `CHAIN_HALTED_ERROR_DATA`, and
+ *   each follow its `stop`.
+ * - `'frame'`: the protocol frame died. Only the requests not yet sent are
+ *   answered, with `Chain connection is closed`. Requests already sent are
+ *   never answered, so a consumer without `onHalt` waits on them forever.
+ *
+ * Either way, later sends fail with `Chain connection is closed`.
  */
 export type RemoteChainProvider = (
   onMessage: (message: JsonRpcMessage) => void,

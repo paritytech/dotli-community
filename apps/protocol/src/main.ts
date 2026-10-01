@@ -652,23 +652,10 @@ async function initDirectMode(): Promise<void> {
   ]);
   const { onChainSync } = resolve;
 
-  // Two chains nothing else opens in time, for two different reasons.
-  //
-  // The relay reports the warp progress the loading bar moves on, but papi
-  // never reads it: smoldot runs it as the parent of the parachains, so
-  // without this no tap ever attaches to it.
-  //
-  // Bulletin serves the content, and is otherwise created by the first
-  // `bitswap_v1_get` after the name resolves. That request goes out before
-  // the chain has a single peer and always loses its first attempt to
-  // "No Bitswap peers connected". Opening it here lets it find peers while
-  // the name is still resolving, so the content fetch starts against a warm
-  // chain. The cost is one chain connection on loads that turn out to be
-  // served from the archive cache and never needed Bulletin at all.
   const services = getActiveServicesConfig();
 
-  // Direct mode has no SharedWorker in the loop, so a dead chain is posted
-  // straight up to the host shell.
+  // Direct mode has no SharedWorker in the loop, so a light client that cannot
+  // connect a chain is posted straight up to the host shell.
   onProviderFatal(message => {
     log.error('[dot.li protocol] Chain death detected, signaling fatal');
     if (window.parent !== window) {
@@ -758,6 +745,20 @@ async function initDirectMode(): Promise<void> {
     // Releasing a smoldot chain makes the light client drop it and re-sync later.
     destroyDelay: Infinity,
     onBrokerReady: broker => {
+      // Two chains nothing else opens in time, for two different reasons.
+      //
+      // The relay reports the warp progress the loading bar moves on, but papi
+      // never reads it: smoldot runs it as the parent of the parachains, so
+      // without this no tap ever attaches to it.
+      //
+      // Bulletin serves the content, and is otherwise created by the first
+      // `bitswap_v1_get` after the name resolves. That request goes out before
+      // the chain has a single peer and always loses its first attempt to
+      // "No Bitswap peers connected". Opening it here lets it find peers while
+      // the name is still resolving, so the content fetch starts against a warm
+      // chain. The cost is one chain connection on loads that turn out to be
+      // served from the archive cache and never needed Bulletin at all.
+      //
       // Leases on the pool, so the watched chains are the very connections
       // everything else on these chains shares.
       const stopWatching = observeChains(broker, [services.relay.genesis, services.bulletin.genesis]);
