@@ -257,6 +257,13 @@ and tree resources.
 The host creates one TrUAPI bridge for the rendered product iframe. dApp-in-dApp iframes are opaque to the host and must
 use the top-level product's shared Rust core/provider context rather than separate host-created bridges.
 
+Product connections share one page core, including its authentication, session storage, and native Wallet owner. Each
+connection has its own interactive callbacks and blocking-modal scope. Closing a connection, losing its port, or failing
+provider creation disposes its active and queued consent immediately, even while a replacement connection keeps the core
+alive. Late consent responses and auth changes from the retired connection cannot authorize or update the replacement.
+Core retirement also disposes pending connection scopes before provider creation finishes; replacing an iframe does not
+recreate the native Wallet or reset its signing watermark.
+
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
 

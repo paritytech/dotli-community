@@ -50,17 +50,22 @@ async function mountIsland(): Promise<void> {
   solid.flush();
 }
 
-/** Hold the landing chunk back until the returned function is called. */
-function gateChunk(): () => void {
-  let release = (): void => {};
-  const gate = new Promise<void>(resolve => {
-    release = resolve;
-  });
+/** Hold the landing chunk back, then await the real chunk when releasing it. */
+function gateChunk(): () => Promise<void> {
+  const gate = Promise.withResolvers<undefined>();
+  const loaded = Promise.withResolvers<undefined>();
   vi.doMock(CHUNK, async () => {
-    await gate;
-    return vi.importActual(CHUNK);
+    await gate.promise;
+    try {
+      return await vi.importActual(CHUNK);
+    } finally {
+      loaded.resolve(undefined);
+    }
   });
-  return release;
+  return async () => {
+    gate.resolve(undefined);
+    await loaded.promise;
+  };
 }
 
 function byId(id: string): HTMLElement | null {
@@ -133,7 +138,7 @@ describe('landing page island', () => {
     expect(document.querySelector('.landing')).toBeNull();
 
     // When
-    release();
+    await release();
     await showLanding();
 
     // Then the loading screen is gone
