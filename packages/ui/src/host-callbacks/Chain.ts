@@ -112,8 +112,8 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
 
 /**
  * When a product may boot a protocol frame after one died, shared by every
- * core connection. It opens 1 s after a frame halt. A lease while a frame is
- * up or booting boots nothing, so it does not ask the gate.
+ * core connection. It first opens 1 s after a frame halt. A lease while a
+ * frame is up or booting boots nothing, so it does not ask the gate.
  *
  * A frame that reports ready ends the wait but keeps the delay: in
  * smoldot-direct a new frame reports ready before its light client has
