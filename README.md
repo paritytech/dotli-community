@@ -405,12 +405,12 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:l
 revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
 switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
 CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. The adapter uses canonical `--session`
-selection, defaulting to the bare stem `dotlitest`; set `SIGNING_HOST_SESSION` to choose another stem or an existing
-exact numbered username. A new stem must contain at least six lowercase ASCII letters (digits and separators do not
-count). Repeated pairing attempts and runs reuse the same base path and session, including unfinished setup. The first
-run provisions an account and can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
-Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
-the CLI's private account/session files to reports.
+selection with a unique bare username stem saved in `.dotli-e2e-session` under that state directory. Set
+`SIGNING_HOST_SESSION` to choose a stem or an existing exact numbered username. A new stem must contain at least six
+lowercase ASCII letters (digits and separators do not count). Repeated pairing attempts and runs reuse the same base
+path and session, including unfinished setup. The first run provisions an account and can take a few minutes. With
+`HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed. Captured CLI diagnostics redact pairing deeplinks, the configured
+mnemonic, and labeled recovery phrases; never attach the CLI's private account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
