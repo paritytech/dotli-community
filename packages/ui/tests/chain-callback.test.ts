@@ -1,26 +1,29 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getActiveServicesConfig } from '@dotli/config';
-import { createChainConnect } from '../src/host-callbacks/Chain.js';
-import { yielded } from './support.js';
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
 
-const mocks = vi.hoisted(() => {
-  const smoldotBrokerProvider = vi.fn();
-  return {
-    backend: 'smoldot-shared-worker',
-    smoldotProvider: vi.fn(),
-    rpcProvider: vi.fn(),
-    smoldotBrokerProvider,
-    createSmoldotChainProvider: vi.fn(),
-    createRpcChainProvider: vi.fn(),
-    isSmoldotChainSupported: vi.fn(),
-    isCoreRpcChainSupported: vi.fn(),
-    createChainBrokerManager: vi.fn(() => ({
-      connectRemote: vi.fn(),
-      getLocalProvider: smoldotBrokerProvider,
-      disconnectAll: vi.fn(),
-    })),
-  };
-});
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import { getActiveServicesConfig } from '@dotli/config';
+import type { ChainTransportHooks } from '@dotli/resolver';
+import { createChainConnect, createHostChainPool } from '../src/host-callbacks/Chain.js';
+import { hexBytes, must, yielded } from './support.js';
+
+interface Upstream {
+  sent: JsonRpcRequest[];
+  emit: (message: JsonRpcMessage) => void;
+  disconnect: Mock<() => void>;
+  hooks: ChainTransportHooks;
+  opened: number;
+}
+
+const mocks = vi.hoisted(() => ({
+  backend: 'smoldot-shared-worker',
+  upstreams: [] as Upstream[],
+  createSmoldotChainProvider: vi.fn(),
+  createCoreRpcChainProvider: vi.fn(),
+  isSmoldotChainSupported: vi.fn(),
+  isCoreRpcChainSupported: vi.fn(),
+}));
 
 vi.mock('../../config/src/mode.js', () => ({
   getBackend: () => mocks.backend,
@@ -32,132 +35,145 @@ vi.mock('../../resolver/src/provider.js', () => ({
 }));
 
 vi.mock('../../resolver/src/rpc-chain.js', () => ({
-  createCoreRpcChainProvider: mocks.createRpcChainProvider,
+  createCoreRpcChainProvider: mocks.createCoreRpcChainProvider,
   isCoreRpcChainSupported: mocks.isCoreRpcChainSupported,
 }));
 
-vi.mock('../../protocol/src/chain-pool.js', () => ({
-  createChainBrokerManager: mocks.createChainBrokerManager,
-}));
-
-function hexBytes(hex: string): Uint8Array {
-  const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
-  const bytes = new Uint8Array(clean.length / 2);
-  for (let i = 0; i < bytes.length; i += 1) {
-    bytes[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
-  }
-  return bytes;
+/** A transport factory that records each transport it builds. */
+function recordingTransport(_genesisHash: string, hooks: ChainTransportHooks): (onMessage: (message: JsonRpcMessage) => void) => JsonRpcConnection {
+  let listener: ((message: JsonRpcMessage) => void) | null = null;
+  const upstream: Upstream = {
+    sent: [],
+    emit(message) {
+      listener?.(message);
+    },
+    disconnect: vi.fn<() => void>(),
+    hooks,
+    opened: 0,
+  };
+  mocks.upstreams.push(upstream);
+  return onMessage => {
+    listener = onMessage;
+    upstream.opened += 1;
+    return {
+      send(message) {
+        upstream.sent.push(message);
+      },
+      disconnect: upstream.disconnect,
+    };
+  };
 }
 
 describe('createChainConnect', () => {
+  const people = getActiveServicesConfig().people.genesis;
+  const assetHub = getActiveServicesConfig().assethub.genesis;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.backend = 'smoldot-shared-worker';
-    mocks.smoldotProvider.mockReturnValue({
-      send: vi.fn(),
-      disconnect: vi.fn(),
-    });
-    mocks.rpcProvider.mockReturnValue({
-      send: vi.fn(),
-      disconnect: vi.fn(),
-    });
-    mocks.createSmoldotChainProvider.mockReturnValue(mocks.smoldotProvider);
-    mocks.createRpcChainProvider.mockReturnValue(mocks.rpcProvider);
-    mocks.smoldotBrokerProvider.mockReturnValue(mocks.smoldotProvider);
+    mocks.upstreams = [];
+    mocks.createSmoldotChainProvider.mockImplementation(recordingTransport);
+    mocks.createCoreRpcChainProvider.mockImplementation(recordingTransport);
     mocks.isSmoldotChainSupported.mockReturnValue(true);
     mocks.isCoreRpcChainSupported.mockReturnValue(true);
   });
 
-  it('As a dotli integrator, the host routes People-chain connections through the selected smoldot backend', async () => {
-    // Given
-    const peopleGenesis = getActiveServicesConfig().people.genesis;
-
+  it('As a dotli integrator, the host routes chain connections through the selected smoldot backend', async () => {
     // When
-    await createChainConnect()(hexBytes(peopleGenesis));
+    await createChainConnect(createHostChainPool(0))(hexBytes(people));
 
     // Then
-    expect(mocks.smoldotBrokerProvider).toHaveBeenCalledWith(peopleGenesis);
-    expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
+    expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
+      people.toLowerCase(),
+      expect.objectContaining({ onStatus: expect.any(Function) as unknown, onHalt: expect.any(Function) as unknown }),
+    );
+    expect(mocks.createCoreRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, the host keeps non-People chain connections on the selected smoldot backend', async () => {
+  it('As a dotli user on Trusted Providers, the host routes chain connections through the core RPC transport', async () => {
     // Given
-    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
+    mocks.backend = 'rpc-gateway';
 
     // When
-    await createChainConnect()(hexBytes(assetHubGenesis));
+    await createChainConnect(createHostChainPool(0))(hexBytes(assetHub));
 
     // Then
-    expect(mocks.smoldotBrokerProvider).toHaveBeenCalledWith(assetHubGenesis);
-    expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
+    expect(mocks.createCoreRpcChainProvider).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
+    expect(mocks.createSmoldotChainProvider).not.toHaveBeenCalled();
   });
 
-  it('As a dotli integrator, the host adapts brokered statement-store traffic to a platform connection', async () => {
+  it('As a dotli integrator, core connections to one chain share one transport', async () => {
     // Given
-    let onMessage: ((message: unknown) => void) | undefined;
-    const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation((handler: (message: unknown) => void) => {
-      onMessage = handler;
-      return {
-        send: (request: unknown) => {
-          sent.push(request);
-        },
-        disconnect: vi.fn(),
-      };
-    });
-    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
-
-    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
-    const query = {
-      jsonrpc: '2.0',
-      id: 'opaque-query-request',
-      method: 'statement_subscribeStatement',
-      params: [{ matchAll: [] }],
-    };
+    const connect = createChainConnect(createHostChainPool(0));
 
     // When
-    connection.send(JSON.stringify(query));
+    await connect(hexBytes(people));
+    await connect(hexBytes(people));
 
     // Then
-    expect(sent).toEqual([query]);
+    expect(mocks.upstreams).toHaveLength(1);
+    expect(must(mocks.upstreams[0], 'upstream').opened).toBe(1);
+  });
+
+  it('As a dotli integrator, two core connections using the same request id each get only their own response', async () => {
+    // Given
+    const connect = createChainConnect(createHostChainPool(0));
+    const first = await connect(hexBytes(people));
+    const second = await connect(hexBytes(people));
+    const request = { jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_genesisHash', params: [] };
+    first.send(JSON.stringify(request));
+    second.send(JSON.stringify(request));
+    const upstream = must(mocks.upstreams[0], 'upstream');
+    const [toFirst, toSecond] = upstream.sent;
 
     // When
-    const ack = {
-      jsonrpc: '2.0',
-      id: 'opaque-query-request',
-      result: 'remote-sub',
-    };
-    onMessage?.(ack);
+    upstream.emit({ jsonrpc: '2.0', id: must(must(toSecond, 'second request').id, 'id'), result: 'second' });
+    upstream.emit({ jsonrpc: '2.0', id: must(must(toFirst, 'first request').id, 'id'), result: 'first' });
 
     // Then
+    const firstResponses = first.responses()[Symbol.asyncIterator]();
+    const secondResponses = second.responses()[Symbol.asyncIterator]();
+    expect(JSON.parse(yielded(await firstResponses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'first' });
+    expect(JSON.parse(yielded(await secondResponses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'second' });
+    first.close();
+    second.close();
+  });
+
+  it('As a dotli integrator, a halted chain transport ends the core connection stream', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse(yielded(await responses.next()))).toEqual(ack);
-    await responses.return?.();
-  });
-
-  it('As a dotli integrator, the host does not rewrite core chain RPC requests', async () => {
-    // Given
-    const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation((_handler: (message: unknown) => void) => ({
-      send: (request: unknown) => {
-        sent.push(request);
-      },
-      disconnect: vi.fn(),
-    }));
-    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
-    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
-    const unpin = {
-      jsonrpc: '2.0',
-      id: 'core-unpin',
-      method: 'chainHead_v1_unpin',
-      params: ['REMOTE-FOLLOW', '0xabc'],
-    };
+    const pending = responses.next();
 
     // When
-    connection.send(JSON.stringify(unpin));
+    must(mocks.upstreams[0], 'upstream').hooks.onHalt(new Error('chain stopped responding'));
 
     // Then
-    expect(sent).toEqual([unpin]);
+    expect((await pending).done).toBe(true);
+  });
+
+  it('As a dotli integrator, closing a core connection releases its lease once', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+
+    // When
     connection.close();
+    connection.close();
+
+    // Then
+    expect(must(mocks.upstreams[0], 'upstream').disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, a chain the RPC backend cannot reach is refused before any transport is built', () => {
+    // Given
+    mocks.backend = 'rpc-gateway';
+    mocks.isCoreRpcChainSupported.mockReturnValue(false);
+
+    // When
+    const connect = (): unknown => createChainConnect(createHostChainPool(0))(hexBytes(people));
+
+    // Then
+    expect(connect).toThrow(`Unsupported RPC chain: ${people.toLowerCase()}`);
+    expect(mocks.createCoreRpcChainProvider).not.toHaveBeenCalled();
   });
 });

@@ -9,13 +9,18 @@
 // light-client footprint, and rebuild a fresh chain alongside the one
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
+//
+// Every core connection is a lease on the host page's chain pool: one
+// connection per chain, shared through the broker, which keeps each core
+// connection's ids apart. Over RPC the socket replays its subscriptions when
+// it reconnects. A transport that dies for good ends its connections' streams.
 
 import { bytesToHex } from '@parity/truapi/scale';
-import type { JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getBackend } from '@dotli/config';
-import { createChainBrokerManager } from '@dotli/protocol';
+import { createChainPool, type ChainPool, type LeaseProvider } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -26,11 +31,22 @@ import {
 import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 
-// `createSmoldotChainProvider` returns wrappers around singleton smoldot
-// chains. Every wrapper drains the same response queue, so independent core
-// connections must share one broker that assigns responses and subscription
-// notifications to their owning connection.
-const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
+/**
+ * The host page's chain pool. A chain's transport follows the backend when
+ * its entry is built: a WebSocket in `rpc-gateway`, smoldot otherwise. Every
+ * backend switch reloads the page, so an entry never outlives its backend.
+ */
+export function createHostChainPool(destroyDelay?: number): ChainPool {
+  return createChainPool({
+    createTransport: (genesisHash, hooks) =>
+      getBackend() === 'rpc-gateway'
+        ? createCoreRpcChainProvider(genesisHash, hooks)
+        : createSmoldotChainProvider(genesisHash, hooks),
+    ...(destroyDelay !== undefined && { destroyDelay }),
+  });
+}
+
+const hostChainPool = createHostChainPool();
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -45,7 +61,7 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   );
 }
 
-function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRpcConnection {
+function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection {
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -53,6 +69,13 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
   let wake: (() => void) | null = null;
   let stopped = false;
   let closed = false;
+  // The chain's transport is gone for good: end the stream, so the core
+  // interrupts what rides on it instead of waiting.
+  const halt = (): void => {
+    stopped = true;
+    wake?.();
+    wake = null;
+  };
   const conn = provider((message: unknown) => {
     if (closed) {
       return;
@@ -60,7 +83,9 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  });
+  }, halt);
+  // A call, so the check after the drain isn't narrowed by the loop condition.
+  const isStopped = (): boolean => stopped;
   const close = (): void => {
     if (closed) {
       return;
@@ -89,6 +114,9 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
               yield response;
             }
           }
+          if (isStopped()) {
+            break;
+          }
           await new Promise<void>(resolve => {
             wake = resolve;
           });
@@ -101,7 +129,7 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
   };
 }
 
-export function createChainConnect(): ChainProvider['connect'] {
+export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvider['connect'] {
   return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
@@ -113,14 +141,13 @@ export function createChainConnect(): ChainProvider['connect'] {
         log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      const connection = toConnection(createCoreRpcChainProvider(genesisHash));
-      return Promise.resolve(connection);
+      return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(smoldotChainBroker.getLocalProvider(genesisHash)));
+    return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
   };
 }
