@@ -8,6 +8,12 @@ import { log } from '@dotli/shared';
 import { createRemoteChainProvider, getProtocolOrigin, resetProtocolFrame } from '../src/client.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
+// The client's protocol iframe points at a host that does not exist here; keep
+// happy-dom from fetching it (which logs ECONNREFUSED) but keep `contentWindow`.
+(
+  window as unknown as { happyDOM: { settings: { navigation: { disableChildFrameNavigation: boolean } } } }
+).happyDOM.settings.navigation.disableChildFrameNavigation = true;
+
 interface Frame {
   posted: ProtocolRequestEnvelope[];
   deliver: (envelope: ProtocolEnvelope) => void;
@@ -42,12 +48,34 @@ async function bootFrame(): Promise<Frame> {
   return { posted, deliver };
 }
 
-async function connectRemote(onHalt?: () => void): Promise<{
+interface Remote {
   frame: Frame;
   received: JsonRpcMessage[];
   connection: JsonRpcConnection;
   connectionId: string;
-}> {
+}
+
+/** Opens another connection against a frame that is already booted. */
+async function connectMore(frame: Frame, onHalt?: () => void): Promise<Remote> {
+  const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+  if (provider === null) {
+    throw new Error('People is not remote-connectable');
+  }
+  const received: JsonRpcMessage[] = [];
+  const known = frame.posted.length;
+  const connection = provider(message => received.push(message), onHalt);
+  await flush();
+  const request = frame.posted.slice(known).find(envelope => envelope.method === 'chainConnect');
+  if (request === undefined) {
+    throw new Error('no chainConnect posted');
+  }
+  frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: request.id, ok: true, result: true });
+  await flush();
+  const { connectionId } = request.payload as { connectionId: string };
+  return { frame, received, connection, connectionId };
+}
+
+async function connectRemote(onHalt?: () => void): Promise<Remote> {
   const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
   if (provider === null) {
     throw new Error('People is not remote-connectable');
@@ -106,16 +134,20 @@ describe('createRemoteChainProvider halts', () => {
     ]);
   });
 
-  it('As a dotli integrator, a connection closed before its chain halts hears nothing', async () => {
+  it('As a dotli integrator, a connection closed before its chain halts hears nothing, while an open one still does', async () => {
     // Given
     const onHalt: Mock<() => void> = vi.fn<() => void>();
-    const { frame, connection, connectionId } = await connectRemote(onHalt);
-    connection.disconnect();
+    const openHalt: Mock<() => void> = vi.fn<() => void>();
+    const closed = await connectRemote(onHalt);
+    const open = await connectMore(closed.frame, openHalt);
+    closed.connection.disconnect();
 
     // When
-    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: closed.connectionId });
+    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: open.connectionId });
 
     // Then
     expect(onHalt).not.toHaveBeenCalled();
+    expect(openHalt).toHaveBeenCalledTimes(1);
   });
 });
