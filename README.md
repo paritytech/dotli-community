@@ -283,7 +283,8 @@ npm run unlink:truapi
 ```
 
 UI test fixtures await `overlaysReady()` before interacting with lazy permission dialogs. Rate-limit cases use a
-controlled clock so module loading and machine load do not consume the permission window.
+controlled clock so module loading and machine load do not consume the permission window. Retention behavior uses a
+small explicit capacity; large timeline workloads have separate work-bound tests.
 
 Local development uses wildcard subdomains:
 
