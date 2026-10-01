@@ -86,12 +86,14 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       entry.destroyTimer = null;
     }
     entries.delete(entry.key);
+    // Before the broker call: a halt handler may lease the chain again, and
+    // the rebuilt entry's status must not be overwritten afterwards.
+    setStatus(entry.key, 'disconnected');
     if (halt === null) {
       entry.broker.disconnectAll();
     } else {
       entry.broker.halt(halt.error);
     }
-    setStatus(entry.key, 'disconnected');
   }
 
   function build(key: string): Entry | null {

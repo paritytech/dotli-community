@@ -292,4 +292,25 @@ describe('createChainPool', () => {
       },
     ]);
   });
+
+  it('As a dotli integrator, a chain rebuilt by a halt handler reports its own status', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 0 });
+    const seen: string[] = [];
+    pool.onStatusChanged('0xaa', status => {
+      seen.push(status);
+    });
+    lease(pool, '0xaa', undefined, () => {
+      lease(pool, '0xaa');
+    });
+
+    // When
+    must(built[0], 'transport').hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(built).toHaveLength(2);
+    expect(pool.status('0xaa')).toBe('connecting');
+    expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
+  });
 });

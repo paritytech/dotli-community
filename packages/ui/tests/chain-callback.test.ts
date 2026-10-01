@@ -36,7 +36,7 @@ vi.mock('../../resolver/src/rpc-chain.js', () => ({
   isCoreRpcChainSupported: mocks.isCoreRpcChainSupported,
 }));
 
-vi.mock('../../protocol/src/broker.js', () => ({
+vi.mock('../../protocol/src/chain-pool.js', () => ({
   createChainBrokerManager: mocks.createChainBrokerManager,
 }));
 
