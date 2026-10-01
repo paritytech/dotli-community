@@ -42,7 +42,14 @@ const MIME: Record<string, string> = {
   ".ico": "image/x-icon",
 };
 
-async function serveUpgrade(initial: "legacy" | "current") {
+interface UpgradeFixture {
+  origin: string;
+  publishHtml(): void;
+  publishWorker(): void;
+  close(): Promise<void>;
+}
+
+async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixture> {
   // Fail before launching the fixture if the production build is missing.
   const [html, worker] = await Promise.all([
     readFile(resolve(DIST, "index.html")),
@@ -57,23 +64,23 @@ async function serveUpgrade(initial: "legacy" | "current") {
       response.setHeader("Cache-Control", "no-store");
       response.setHeader("Service-Worker-Allowed", "/");
       if (pathname === "/host-sw.js") {
-        response.setHeader("Content-Type", MIME[".js"]!);
+        response.setHeader('Content-Type', 'text/javascript');
         // A byte-only release marker creates a genuine browser SW update
         // without copying, patching, or substituting the generated worker.
         response.end(
           currentWorker
-            ? `${worker}\n// test release ${release}\n`
+            ? `${worker}\n// test release ${String(release)}\n`
             : LEGACY_WORKER,
         );
         return;
       }
       if (pathname === "/" || pathname === "/index.html") {
-        response.setHeader("Content-Type", MIME[".html"]!);
+        response.setHeader('Content-Type', 'text/html; charset=utf-8');
         response.end(currentHtml ? html : LEGACY_HTML);
         return;
       }
       if (pathname === "/dotli-network.js") {
-        response.setHeader("Content-Type", MIME[".js"]!);
+        response.setHeader('Content-Type', 'text/javascript');
         response.end("window.__DOTLI_NETWORK__ = {};\n");
         return;
       }
@@ -93,23 +100,27 @@ async function serveUpgrade(initial: "legacy" | "current") {
     });
   });
   const listening = Promise.withResolvers<void>();
-  server.once("error", listening.reject);
-  server.listen(0, "127.0.0.1", listening.resolve);
+  server.once('error', (error: Error) => {
+    listening.reject(error);
+  });
+  server.listen(0, '127.0.0.1', () => {
+    listening.resolve();
+  });
   await listening.promise;
   const address = server.address();
   if (!address || typeof address === "string") {
     throw new Error("Expected an ephemeral TCP listener");
   }
   return {
-    origin: `http://localhost:${address.port}`,
-    publishHtml() {
+    origin: `http://localhost:${String(address.port)}`,
+    publishHtml(): void {
       currentHtml = true;
     },
-    publishWorker() {
+    publishWorker(): void {
       currentWorker = true;
       release += 1;
     },
-    async close() {
+    async close(): Promise<void> {
       const closed = Promise.withResolvers<void>();
       server.close((error) =>
         error ? closed.reject(error) : closed.resolve(),
@@ -120,24 +131,34 @@ async function serveUpgrade(initial: "legacy" | "current") {
   };
 }
 
-async function seedUserData(page: Page) {
+async function seedUserData(page: Page): Promise<void> {
   await page.evaluate(async () => {
     localStorage.setItem("dotli-theme", "dark");
     localStorage.setItem("upgrade-user-setting", "keep my settings");
     const opened = Promise.withResolvers<IDBDatabase>();
     const request = indexedDB.open("upgrade-user-data", 1);
     request.onupgradeneeded = () => request.result.createObjectStore("records");
-    request.onsuccess = () => opened.resolve(request.result);
-    request.onerror = () => opened.reject(request.error);
+    request.onsuccess = () => {
+      opened.resolve(request.result);
+    };
+    request.onerror = () => {
+      opened.reject(new Error('Could not open upgrade user data', { cause: request.error }));
+    };
     const db = await opened.promise;
     const written = Promise.withResolvers<void>();
     const transaction = db.transaction("records", "readwrite");
     transaction
       .objectStore("records")
       .put({ message: "keep my saved record" }, "saved");
-    transaction.oncomplete = () => written.resolve();
-    transaction.onerror = () => written.reject(transaction.error);
-    transaction.onabort = () => written.reject(transaction.error);
+    transaction.oncomplete = () => {
+      written.resolve();
+    };
+    transaction.onerror = () => {
+      written.reject(new Error('Could not save upgrade user data', { cause: transaction.error }));
+    };
+    transaction.onabort = () => {
+      written.reject(new Error('Saving upgrade user data was aborted', { cause: transaction.error }));
+    };
     await written.promise;
     db.close();
     const cache = await caches.open("upgrade-product-data");
@@ -145,12 +166,16 @@ async function seedUserData(page: Page) {
   });
 }
 
-async function expectUserData(page: Page) {
+async function expectUserData(page: Page): Promise<void> {
   const saved = await page.evaluate(async () => {
     const opened = Promise.withResolvers<IDBDatabase>();
     const openRequest = indexedDB.open("upgrade-user-data", 1);
-    openRequest.onsuccess = () => opened.resolve(openRequest.result);
-    openRequest.onerror = () => opened.reject(openRequest.error);
+    openRequest.onsuccess = () => {
+      opened.resolve(openRequest.result);
+    };
+    openRequest.onerror = () => {
+      opened.reject(new Error('Could not open saved upgrade data', { cause: openRequest.error }));
+    };
     const db = await opened.promise;
     try {
       const savedRecord = Promise.withResolvers<unknown>();
@@ -158,8 +183,12 @@ async function expectUserData(page: Page) {
         .transaction("records")
         .objectStore("records")
         .get("saved");
-      request.onsuccess = () => savedRecord.resolve(request.result);
-      request.onerror = () => savedRecord.reject(request.error);
+      request.onsuccess = () => {
+        savedRecord.resolve(request.result);
+      };
+      request.onerror = () => {
+        savedRecord.reject(new Error('Could not read saved upgrade data', { cause: request.error }));
+      };
       const record = await savedRecord.promise;
       return {
         theme: localStorage.getItem("dotli-theme"),
@@ -179,7 +208,7 @@ async function expectUserData(page: Page) {
   });
 }
 
-async function updateWorker(page: Page) {
+async function updateWorker(page: Page): Promise<void> {
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.ready;
     // Return before activation can replace this execution context.
@@ -221,7 +250,9 @@ test.describe("host service worker contract upgrades", () => {
       await expectUserData(page);
       let navigations = 0;
       page.on("framenavigated", (frame) => {
-        if (frame === page.mainFrame()) navigations += 1;
+        if (frame === page.mainFrame()) {
+          navigations += 1;
+        }
       });
 
       fixture.publishWorker();
@@ -263,7 +294,9 @@ test.describe("host service worker contract upgrades", () => {
       const page = await context.newPage();
       let navigations = 0;
       page.on("framenavigated", (frame) => {
-        if (frame === page.mainFrame()) navigations += 1;
+        if (frame === page.mainFrame()) {
+          navigations += 1;
+        }
       });
       await page.goto(fixture.origin);
       await page.evaluate(() =>
@@ -278,13 +311,17 @@ test.describe("host service worker contract upgrades", () => {
       await seedUserData(page);
       const beforeUpdate = navigations;
       await page.evaluate(() => {
-        document.documentElement.dataset.contractQueries = "0";
-        navigator.serviceWorker.addEventListener("message", (event) => {
-          if (event.data?.type === "dotli:host-contract-version") {
+        document.documentElement.dataset['contractQueries'] = '0';
+        navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+          const data = event.data;
+          if (
+            typeof data === 'object' &&
+            data !== null &&
+            'type' in data &&
+            data.type === 'dotli:host-contract-version'
+          ) {
             const root = document.documentElement;
-            root.dataset.contractQueries = String(
-              Number(root.dataset.contractQueries) + 1,
-            );
+            root.dataset['contractQueries'] = String(Number(root.dataset['contractQueries']) + 1);
           }
         });
       });
@@ -296,7 +333,7 @@ test.describe("host service worker contract upgrades", () => {
       await expect
         .poll(() =>
           page.evaluate(() =>
-            Number(document.documentElement.dataset.contractQueries),
+            Number(document.documentElement.dataset['contractQueries']),
           ),
         )
         .toBeGreaterThan(0);
