@@ -190,6 +190,12 @@ async function presync(): Promise<void> {
     m.distribution(S.SMOLDOT_PRESYNC, totalMs);
     swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
 
+    // A light client that failed while Asset Hub synced stays dead: the
+    // waiting ports were told by the fatal broadcast, and must not hear ready.
+    if (presyncFailureMessage !== null) {
+      return;
+    }
+
     // Success: mark ready.
     swLog('Pre-sync complete, engine ready');
     engineReady = true;
