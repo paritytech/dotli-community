@@ -584,7 +584,9 @@ async function postRequest<M extends ProtocolRequestMethod>(
     payload,
     ...(timeoutMs === null ? {} : { deadlineMs: Date.now() + timeoutMs }),
   };
-  const stopReq = m.timer(S.PROTOCOL_REQUEST);
+  // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it
+  // would swamp the resolution and connect round trips this span measures.
+  const stopReq = method === 'chainSend' ? (): void => undefined : m.timer(S.PROTOCOL_REQUEST);
 
   return new Promise((resolve, reject) => {
     const timer =

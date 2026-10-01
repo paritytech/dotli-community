@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { log } from '@dotli/shared';
+import { m, spans as S } from '@dotli/metrics';
 import {
   createRemoteChainProvider,
   getProtocolOrigin,
@@ -431,6 +432,23 @@ describe('createRemoteChainProvider halts', () => {
     expect(onHalt).toHaveBeenCalledWith('frame');
     expect(received).toEqual([]);
     expect(logError).not.toHaveBeenCalledWith('[dot.li protocol] Remote chain send failed:', expect.anything());
+  });
+
+  it("As a dotli integrator, a chain connection's sends are not timed as protocol requests, while its connect is", async () => {
+    // Given
+    const timer = vi.spyOn(m, 'timer');
+    const { connection } = await connectRemote();
+    const timedRequests = (): number => timer.mock.calls.filter(([span]) => span === S.PROTOCOL_REQUEST).length;
+    const afterConnect = timedRequests();
+
+    // When
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
+    await flush();
+
+    // Then
+    expect(afterConnect).toBe(1);
+    expect(timedRequests()).toBe(1);
   });
 
   it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
