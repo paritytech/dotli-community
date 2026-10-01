@@ -26,7 +26,7 @@ import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getBackend } from '@dotli/config';
 import {
-  CHAIN_HALTED_ERROR_DATA,
+  chainHaltedError,
   createChainPool,
   haltReasonOf,
   isProtocolBooting,
@@ -108,15 +108,6 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
     typeof record['method'] === 'string' &&
     (id === undefined || id === null || typeof id === 'string' || typeof id === 'number')
   );
-}
-
-/** What a request after a halt gets when no new lease can be taken, so it does not hang. */
-function haltedAnswer(id: string | number): unknown {
-  return {
-    jsonrpc: '2.0',
-    id,
-    error: { code: -32603, message: 'Chain transport halted', data: CHAIN_HALTED_ERROR_DATA },
-  };
 }
 
 /**
@@ -259,7 +250,7 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
       if (connection === null) {
         // Notifications have nothing to answer.
         if (parsed.id !== undefined && parsed.id !== null) {
-          deliver(haltedAnswer(parsed.id));
+          deliver({ jsonrpc: '2.0', id: parsed.id, error: chainHaltedError() });
         }
         return;
       }

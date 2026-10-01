@@ -11,6 +11,11 @@
  */
 export const CHAIN_HALTED_ERROR_DATA = 'dotli:chain-halted';
 
+/** The JSON-RPC error a request gets when its chain halted under it, or none can be had after a halt. */
+export function chainHaltedError(): { code: number; message: string; data: string } {
+  return { code: -32603, message: 'Chain transport halted', data: CHAIN_HALTED_ERROR_DATA };
+}
+
 /** Why a remote connection halted: its own chain died, or the whole frame did. */
 export type RemoteChainHalt = 'chain' | 'frame';
 

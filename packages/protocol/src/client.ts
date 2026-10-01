@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { CHAIN_HALTED_ERROR_DATA, type RemoteChainHalt } from './chain-halted.js';
+import { chainHaltedError, type RemoteChainHalt } from './chain-halted.js';
 import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
@@ -807,14 +807,17 @@ export function isRemoteChainSupported(genesisHash: string): boolean {
 /**
  * Notification-style requests (no `id`) get `null`, nothing to respond to.
  */
-function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string, data?: string): JsonRpcMessage | null {
+function buildJsonRpcError(
+  request: JsonRpcRequest,
+  error: string | ReturnType<typeof chainHaltedError>,
+): JsonRpcMessage | null {
   if (request.id === undefined || request.id === null) {
     return null;
   }
   return {
     jsonrpc: '2.0',
     id: request.id,
-    error: data === undefined ? { code: -32603, message: errorMessage } : { code: -32603, message: errorMessage, data },
+    error: typeof error === 'string' ? { code: -32603, message: error } : error,
   };
 }
 
@@ -825,10 +828,10 @@ function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string, data?:
  */
 function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
   for (const message of connection.pendingMessages) {
-    const errResponse =
-      reason === 'chain'
-        ? buildJsonRpcError(message, 'Chain transport halted', CHAIN_HALTED_ERROR_DATA)
-        : buildJsonRpcError(message, 'Chain connection is closed');
+    const errResponse = buildJsonRpcError(
+      message,
+      reason === 'chain' ? chainHaltedError() : 'Chain connection is closed',
+    );
     if (errResponse !== null) {
       try {
         connection.onMessage(errResponse);
