@@ -175,6 +175,24 @@ describe('createChainConnect', () => {
     expect((await responses.next()).done).toBe(true);
   });
 
+  it('As a dotli integrator, closing a halted core connection releases its lease once', async () => {
+    // Given
+    const pool = createHostChainPool(0);
+    const connection = await createChainConnect(pool)(hexBytes(people));
+    const upstream = must(mocks.upstreams[0], 'upstream');
+    upstream.hooks.onHalt(new Error('chain stopped responding'));
+
+    // When
+    connection.close();
+    connection.close();
+
+    // Then: the transport is torn down once, and a new lease builds a fresh one
+    expect(upstream.disconnect).toHaveBeenCalledTimes(1);
+    await createChainConnect(pool)(hexBytes(people));
+    expect(mocks.upstreams).toHaveLength(2);
+    expect(upstream.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   describe('with the default pool settings', () => {
     beforeEach(() => {
       vi.useFakeTimers();
