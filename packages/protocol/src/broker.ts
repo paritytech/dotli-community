@@ -222,7 +222,9 @@ function brokerWarn(...args: unknown[]): void {
 }
 
 class ChainBroker {
-  private readonly provider: JsonRpcProvider;
+  private readonly createProvider: (onHalt: () => void) => JsonRpcProvider | null;
+  private provider: JsonRpcProvider | null = null;
+  private upstreamGeneration = 0;
   private readonly onEmpty: () => void;
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
@@ -236,8 +238,8 @@ class ChainBroker {
   private requestCounter = 0;
   private tokenCounter = 0;
 
-  constructor(provider: JsonRpcProvider, onEmpty: () => void) {
-    this.provider = provider;
+  constructor(createProvider: (onHalt: () => void) => JsonRpcProvider | null, onEmpty: () => void) {
+    this.createProvider = createProvider;
     this.onEmpty = onEmpty;
   }
 
@@ -247,7 +249,12 @@ class ChainBroker {
   }
 
   private sendUpstream(obj: unknown): void {
-    this.upstream?.send(obj as UpstreamJsonRpcRequest);
+    const generation = this.upstreamGeneration;
+    try {
+      this.upstream?.send(obj as UpstreamJsonRpcRequest);
+    } catch {
+      this.handleUpstreamHalt(generation);
+    }
   }
 
   connect(
@@ -287,17 +294,112 @@ class ChainBroker {
     this.onEmpty();
   }
 
-  private ensureUpstream(): void {
+  prepareProvider(): boolean {
+    if (this.provider !== null) {
+      return true;
+    }
+    const generation = ++this.upstreamGeneration;
+    const provider = this.createProvider(() => {
+      this.handleUpstreamHalt(generation);
+    });
+    if (generation !== this.upstreamGeneration) {
+      return false;
+    }
+    this.provider = provider;
+    return provider !== null;
+  }
+
+  private ensureUpstream(): boolean {
     if (this.upstream !== null) {
+      return true;
+    }
+    if (!this.prepareProvider() || this.provider === null) {
+      return false;
+    }
+    const generation = this.upstreamGeneration;
+    brokerLog(`Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(',')}])`);
+    const connection = this.provider(message => {
+      if (generation === this.upstreamGeneration) {
+        this.handleUpstreamMessage(message);
+      }
+    });
+    // A provider may halt synchronously while opening. Never resurrect it.
+    if (generation !== this.upstreamGeneration) {
+      connection.disconnect();
+      return false;
+    }
+    this.upstream = connection;
+    return true;
+  }
+
+  private handleUpstreamHalt(generation: number): void {
+    if (generation !== this.upstreamGeneration) {
       return;
     }
-    brokerLog(`Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(',')}])`);
-    this.upstream = this.provider(message => {
-      this.handleUpstreamMessage(message);
-    });
-    brokerLog(
-      `Upstream provider connected (send=${typeof this.upstream.send}, disconnect=${typeof this.upstream.disconnect})`,
-    );
+    const deliveries: { session: Session; message: unknown }[] = [];
+    const enqueue = (sessionId: string, message: unknown): void => {
+      const session = this.sessions.get(sessionId);
+      if (session?.connected === true) {
+        deliveries.push({ session, message });
+      }
+    };
+    const reason = 'Upstream chain connection lost';
+    for (const pending of this.pending.values()) {
+      if (pending.method !== 'chainHead_v1_follow') {
+        enqueue(pending.sessionId, buildJsonRpcError(pending.clientId, reason));
+      }
+    }
+    for (const follow of this.sharedFollows.values()) {
+      const awaitingTokens = new Set(follow.pendingLocals.map(local => local.localToken));
+      for (const local of follow.pendingLocals) {
+        enqueue(local.sessionId, buildJsonRpcError(local.requestId, reason));
+      }
+      for (const localToken of follow.localTokens) {
+        const local = this.localFollowTokens.get(localToken);
+        if (local !== undefined && !awaitingTokens.has(localToken)) {
+          enqueue(local.sessionId, {
+            jsonrpc: '2.0',
+            method: 'chainHead_v1_followEvent',
+            params: { subscription: localToken, result: { event: 'stop' } },
+          });
+        }
+      }
+    }
+    for (const owned of this.localToOwned.values()) {
+      let method: string;
+      let payload: { result: unknown } | { error: { code: number; message: string } };
+      switch (owned.releaseMethod) {
+        case 'statement_unsubscribeStatement':
+          // jsonrpsee SubscriptionPayloadError, not a StatementEvent.
+          method = 'statement_statement';
+          payload = { error: { code: -32603, message: reason } };
+          break;
+        case 'author_unwatchExtrinsic':
+          method = 'author_extrinsicUpdate';
+          payload = { result: 'dropped' };
+          break;
+        case 'transactionWatch_v1_unwatch':
+          method = 'transactionWatch_v1_watchEvent';
+          payload = { result: { event: 'error', error: reason } };
+          break;
+        default:
+          // transaction_v1_broadcast returns a cancellation handle, not a subscription.
+          continue;
+      }
+      enqueue(owned.sessionId, {
+        jsonrpc: '2.0',
+        method,
+        params: { subscription: owned.localToken, ...payload },
+      });
+    }
+    // Invalidate callbacks and clear ownership before consumers can synchronously
+    // re-subscribe from a terminal notification. No old snapshots are replayed.
+    this.disconnectUpstream();
+    for (const { session, message } of deliveries) {
+      if (session.connected && this.sessions.get(session.id) === session) {
+        this.sendToSession(session, message);
+      }
+    }
   }
 
   private sendFromSession(sessionId: string, message: unknown): void {
@@ -332,6 +434,13 @@ class ChainBroker {
     if (!isRequestMessage(parsed)) {
       brokerWarn(`sendFromSession: not a request from session ${sessionId}:`, parsed);
       this.sendToSession(session, buildJsonRpcError(null, 'Invalid JSON-RPC request'));
+      return;
+    }
+
+    if (!this.ensureUpstream()) {
+      if (parsed.id !== undefined) {
+        this.sendToSession(session, buildJsonRpcError(parsed.id, 'Upstream chain connection unavailable'));
+      }
       return;
     }
 
@@ -960,6 +1069,13 @@ class ChainBroker {
   }
 
   private disconnectUpstream(): void {
+    this.upstreamGeneration += 1;
+    this.provider = null;
+    const upstream = this.upstream;
+    this.upstream = null;
+    for (const session of this.sessions.values()) {
+      session.ownedTokens.clear();
+    }
     this.pending.clear();
     this.localToOwned.clear();
     this.upstreamToOwned.clear();
@@ -967,8 +1083,7 @@ class ChainBroker {
     this.localFollowTokens.clear();
     this.sharedFollows.clear();
     this.upstreamFollowTokens.clear();
-    this.upstream?.disconnect();
-    this.upstream = null;
+    upstream?.disconnect();
   }
 
   private handleLocalFollowRequest(session: Session, request: JsonRpcRequest): void {
@@ -1234,7 +1349,7 @@ class ChainBroker {
 }
 
 export function createChainBrokerManager(
-  createProvider: (genesisHash: string) => JsonRpcProvider | null,
+  createProvider: (genesisHash: string, onHalt: () => void) => JsonRpcProvider | null,
 ): ChainBrokerManager {
   const brokers = new Map<string, ChainBroker>();
   let localConnectionCounter = 0;
@@ -1247,16 +1362,17 @@ export function createChainBrokerManager(
     }
 
     brokerLog(`Creating new broker for chain ${genesisHash.slice(0, 10)}…`);
-    const provider = createProvider(genesisHash);
-    if (provider === null) {
+    broker = new ChainBroker(
+      onHalt => createProvider(genesisHash, onHalt),
+      () => {
+        brokerLog(`Broker emptied, removing for chain ${genesisHash.slice(0, 10)}…`);
+        brokers.delete(genesisHash);
+      },
+    );
+    if (!broker.prepareProvider()) {
       brokerLog(`No provider available for chain ${genesisHash.slice(0, 10)}…`);
       return null;
     }
-
-    broker = new ChainBroker(provider, () => {
-      brokerLog(`Broker emptied, removing for chain ${genesisHash.slice(0, 10)}…`);
-      brokers.delete(genesisHash);
-    });
     brokers.set(genesisHash, broker);
     return broker;
   }
