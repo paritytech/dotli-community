@@ -23,8 +23,9 @@ import { bytesToHex } from '@parity/truapi/scale';
 import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
-import { getBackend } from '@dotli/config';
-import { createChainPool, type ChainPool, type LeaseProvider } from '@dotli/protocol';
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import { getActiveServicesConfig, getBackend } from '@dotli/config';
+import { createChainPool, requireBrokerLocalProvider, type ChainPool, type LeaseProvider } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -55,6 +56,15 @@ export function createHostChainPool(destroyDelay?: number): ChainPool {
 }
 
 const hostChainPool = createHostChainPool();
+
+/**
+ * A new lease on the host pool's Asset Hub connection, shaped for papi's
+ * `createClient`. Disconnecting it releases the lease. The rpc-gateway name
+ * resolver reads through this instead of dialing its own socket.
+ */
+export function hostAssetHubProvider(): JsonRpcProvider {
+  return requireBrokerLocalProvider(hostChainPool, getActiveServicesConfig().assethub.genesis, 'Asset Hub');
+}
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== 'object' || value === null) {

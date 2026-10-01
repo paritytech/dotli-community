@@ -60,6 +60,7 @@ import {
   prefetchOverlays,
   initScheduledNotifications,
   loadSharedMode,
+  loadHostChain,
   loadTruapiDebugMount,
   loadBridge,
 } from '@dotli/ui';
@@ -431,7 +432,25 @@ function setFavicon(href: string, format: 'jpeg' | 'png'): void {
   }
 }
 import { loadDotliDebugBus } from '@dotli/truapi-debug';
-import { loadRpcResolve, loadResolve } from '@dotli/resolver';
+import { loadRpcResolve as loadRpcResolveModule, loadResolve } from '@dotli/resolver';
+import type { RpcResolveModule } from '@dotli/resolver';
+
+let rpcResolveReady: Promise<RpcResolveModule> | null = null;
+
+/**
+ * The gateway resolver, wired to the host pool's Asset Hub connection before
+ * its first use. The resolver cannot import the pool itself.
+ */
+function loadRpcResolve(): Promise<RpcResolveModule> {
+  rpcResolveReady ??= Promise.all([loadRpcResolveModule(), loadHostChain()]).then(([mod, chain]) => {
+    mod.setRpcAssetHubProvider(chain.hostAssetHubProvider);
+    return mod;
+  });
+  rpcResolveReady.catch(() => {
+    rpcResolveReady = null;
+  });
+  return rpcResolveReady;
+}
 type RenderChunk = RenderModule;
 
 /**

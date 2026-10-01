@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import type { ChainTransportHooks } from '@dotli/resolver';
-import { createChainConnect, createHostChainPool } from '../src/host-callbacks/Chain.js';
+import { createChainConnect, createHostChainPool, hostAssetHubProvider } from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface Upstream {
@@ -292,5 +292,22 @@ describe('createChainConnect', () => {
     // Then
     expect(connect).toThrow(`Unsupported RPC chain: ${people.toLowerCase()}`);
     expect(mocks.createCoreRpcChainProvider).not.toHaveBeenCalled();
+  });
+
+  it("As a dotli user on Trusted Providers, name resolution leases the pool's one Asset Hub transport", () => {
+    // Given
+    mocks.backend = 'rpc-gateway';
+    const received: JsonRpcMessage[] = [];
+
+    // When
+    const first = hostAssetHubProvider()(message => received.push(message));
+    const second = hostAssetHubProvider()(message => received.push(message));
+
+    // Then
+    expect(mocks.createCoreRpcChainProvider).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
+    expect(mocks.upstreams).toHaveLength(1);
+    expect(must(mocks.upstreams[0], 'upstream').opened).toBe(1);
+    first.disconnect();
+    second.disconnect();
   });
 });

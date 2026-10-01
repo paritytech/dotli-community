@@ -15,8 +15,8 @@
 // Intentionally does NOT import from `./smoldot` so Vite can tree-shake the
 // smoldot worker out of any bundle that only pulls in this module.
 
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
-import { getWsProvider } from 'polkadot-api/ws';
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { log, dur } from '@dotli/shared';
@@ -27,25 +27,27 @@ import { raceSyncTimeout } from './sync-deadline.js';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
 import type { StatusCallback } from './access-raw-storage.js';
 import { createRawApi, type Api } from './api.js';
+import { getConnectedRpcEndpoint } from './rpc-chain.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
 
+let assetHubProviderFactory: (() => JsonRpcProvider) | null = null;
+
 /**
- * `WsJsonRpcProvider` from `polkadot-api/ws-provider`. Its type is not
- * re-exported from the top-level entry point, so we derive it here.
- * Gives us `.getStatus()` which returns `{ type: "CONNECTED"|..., uri }`
- * so callers can read which node we actually dialed (the round-robin
- * rotates on failure, so the first entry of the candidate list may not
- * be the currently answering endpoint).
+ * Install the factory that opens a connection to Asset Hub. The resolver
+ * cannot import the host's chain pool, so the host injects a lease on it
+ * (mirrors `setResolverAssetHubProvider` in `resolve.ts`). Each client takes
+ * a fresh provider from it, and tearing the client down releases it.
  */
-type WsProviderHandle = ReturnType<typeof getWsProvider>;
+export function setRpcAssetHubProvider(factory: () => JsonRpcProvider): void {
+  assetHubProviderFactory = factory;
+}
 
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
-let providerInstance: WsProviderHandle | null = null;
 
 function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (apiInstance !== null) {
@@ -63,12 +65,10 @@ function ensureClient(onStatus?: StatusCallback): Promise<Api> {
 async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   const t0 = performance.now();
   onStatus?.(`Connecting to Asset Hub RPC...`);
-  const provider = getWsProvider([...getActiveServicesConfig().assethub.rpcs], {
-    // Public RPC endpoints can be tunnel-gated. The default 40s heartbeat
-    // is occasionally too tight.
-    heartbeatTimeout: 120_000,
-  });
-  providerInstance = provider;
+  if (assetHubProviderFactory === null) {
+    throw new Error('No Asset Hub provider for RPC resolution');
+  }
+  const provider = assetHubProviderFactory();
 
   const client = createClient(provider);
   const api = createRawApi(client);
@@ -92,7 +92,6 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
       /* already dead */
     }
     log.error(`[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`);
-    providerInstance = null;
     throw err;
   }
 
@@ -201,30 +200,14 @@ export async function resolveOwnerViaRpc(label: string): Promise<string | null> 
 }
 
 /**
- * Return the Asset Hub RPC endpoint URI the shared ws-provider is
- * currently dialing, or `null` when no client has been instantiated
- * yet. The URI may not be the first entry of the candidate list,
- * because polkadot-api's ws-provider rotates on failure. Callers that
- * want to display which node is actually answering (e.g. the
+ * Return the Asset Hub RPC endpoint URI the shared chain connection is
+ * currently on, or `null` while none is open. The URI may not be the first
+ * entry of the candidate list, because the transport rotates on failure.
+ * Callers that want to display which node is actually answering (e.g. the
  * diagnostics popover) should read this instead of the config list.
- *
- * Returns `null` while in CONNECTING / ERROR / CLOSE states too, so
- * the caller can decide whether to fall back to a placeholder.
  */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
-  if (providerInstance === null) {
-    return null;
-  }
-  const status = providerInstance.getStatus();
-  // Discriminated union: the CONNECTED and CONNECTING variants carry a
-  // `uri` field, ERROR and CLOSE don't. `"uri" in status` is the
-  // narrowing path that doesn't require importing the `WsEvent` enum.
-  // We surface CONNECTING too so the popover shows the URI the provider
-  // is currently trying, not a stale "n/a" during transient reconnects.
-  if ('uri' in status) {
-    return status.uri;
-  }
-  return null;
+  return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
 
 /**
@@ -243,6 +226,5 @@ export function destroyRpcClient(): void {
     }
     clientInstance = null;
     apiInstance = null;
-    providerInstance = null;
   }
 }

@@ -7,6 +7,7 @@
 // optimization needs to leave unused re-exports out of an importer's chunk.
 
 import type * as BridgeNamespace from './bridge.js';
+import type * as HostChainNamespace from './host-callbacks/Chain.js';
 import type * as SharedModeNamespace from './shared-mode.js';
 import type * as TruapiDebugMountNamespace from './components/truapi-debug/mount.js';
 
@@ -16,3 +17,5 @@ export type TruapiDebugMountModule = typeof TruapiDebugMountNamespace;
 export const loadTruapiDebugMount = (): Promise<TruapiDebugMountModule> => import('./components/truapi-debug/mount.js');
 export type SharedModeModule = typeof SharedModeNamespace;
 export const loadSharedMode = (): Promise<SharedModeModule> => import('./shared-mode.js');
+export type HostChainModule = typeof HostChainNamespace;
+export const loadHostChain = (): Promise<HostChainModule> => import('./host-callbacks/Chain.js');
