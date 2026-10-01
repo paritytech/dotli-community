@@ -226,6 +226,82 @@ describe('bitswapGet retry policy', () => {
   });
 });
 
+describe('bitswapGet after a halt', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.isRemoteChainSupported.mockReturnValue(true);
+    mocks.getActiveServicesConfig.mockReturnValue({
+      bulletin: { genesis: '0xbull' },
+    });
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** One fake connection per dial; the first never replies, later ones answer. */
+  function stubHaltableChain(): { halts: ((reason: 'chain' | 'frame') => void)[]; dials: () => number } {
+    const halts: ((reason: 'chain' | 'frame') => void)[] = [];
+    mocks.createRemoteChainProvider.mockImplementation(
+      () => (onMessage: (m: unknown) => void, onHalt?: (reason: 'chain' | 'frame') => void) => {
+        const first = halts.length === 0;
+        if (onHalt !== undefined) {
+          halts.push(onHalt);
+        }
+        return {
+          send: (request: { id: number }) => {
+            if (first) {
+              return;
+            }
+            queueMicrotask(() => {
+              onMessage({ jsonrpc: '2.0', id: request.id, result: '0xabcd' });
+            });
+          },
+          disconnect: () => undefined,
+        };
+      },
+    );
+    return { halts, dials: () => halts.length };
+  }
+
+  it('As a dotli user, content still loads after the Bulletin chain halts', async () => {
+    // Given a request in flight on a connection that then halts
+    const chain = stubHaltableChain();
+    vi.resetModules();
+    const { bitswapGet } = await import('../src/bitswap.js');
+    const inFlight = bitswapGet('bafyHalt');
+    const settled = expect(inFlight).rejects.toThrow('Bulletin connection halted');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // When the chain halts
+    chain.halts[0]?.('chain');
+    await settled;
+
+    // Then the next fetch dials a new connection and succeeds
+    const next = bitswapGet('bafyHalt');
+    await vi.advanceTimersByTimeAsync(100);
+    await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+    expect(chain.dials()).toBe(2);
+  });
+
+  it('As a dotli user, a request in flight when the protocol frame dies fails at once', async () => {
+    // Given a request in flight on a connection that never replies
+    const chain = stubHaltableChain();
+    vi.resetModules();
+    const { bitswapGet } = await import('../src/bitswap.js');
+    const inFlight = bitswapGet('bafyFrame');
+    const settled = expect(inFlight).rejects.toThrow('Bulletin connection halted');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // When the frame dies
+    chain.halts[0]?.('frame');
+
+    // Then it fails without waiting for the 60s per-call timeout
+    await settled;
+  });
+});
+
 describe('listenForSandboxBitswap', () => {
   beforeEach(() => {
     vi.clearAllMocks();

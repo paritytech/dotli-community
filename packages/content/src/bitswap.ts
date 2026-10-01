@@ -159,35 +159,46 @@ function ensureConnection(): JsonRpcConnection {
   if (provider === null) {
     throw new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`);
   }
-  connection = provider((message: JsonRpcMessage) => {
-    if (!isResponse(message)) {
-      return;
-    }
-    if (typeof message.id !== 'number') {
-      return;
-    }
-    const entry = pending.get(message.id);
-    if (entry === undefined) {
-      return;
-    }
-    pending.delete(message.id);
-    if ('error' in message) {
-      const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
-      (err as { code?: number }).code = message.error.code;
-      entry.reject(err);
-      return;
-    }
-    if (typeof message.result !== 'string') {
-      entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
-      return;
-    }
-    // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
-    // transferred zero-copy via postMessage instead of cloning an 8 MB
-    // hex string and re-parsing on the other side.
-    const hex = message.result;
-    const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
-    entry.resolve(hexToBytes(stripped));
-  });
+  connection = provider(
+    (message: JsonRpcMessage) => {
+      if (!isResponse(message)) {
+        return;
+      }
+      if (typeof message.id !== 'number') {
+        return;
+      }
+      const entry = pending.get(message.id);
+      if (entry === undefined) {
+        return;
+      }
+      pending.delete(message.id);
+      if ('error' in message) {
+        const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
+        (err as { code?: number }).code = message.error.code;
+        entry.reject(err);
+        return;
+      }
+      if (typeof message.result !== 'string') {
+        entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
+        return;
+      }
+      // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
+      // transferred zero-copy via postMessage instead of cloning an 8 MB
+      // hex string and re-parsing on the other side.
+      const hex = message.result;
+      const stripped = hex.startsWith('0x') ? hex.slice(2) : hex;
+      entry.resolve(hexToBytes(stripped));
+    },
+    () => {
+      // The next attempt dials again. After a dead frame that only happens
+      // because a fetch is running, so nothing reconnects on its own.
+      connection = null;
+      for (const [id, entry] of pending) {
+        pending.delete(id);
+        entry.reject(new Error('Bulletin connection halted'));
+      }
+    },
+  );
   return connection;
 }
 
