@@ -451,6 +451,65 @@ describe('createRemoteChainProvider halts', () => {
     expect(timedRequests()).toBe(1);
   });
 
+  it('As a dotli integrator, a connection closed while its frame boots is closed in the frame once it opens there, and sends nothing', async () => {
+    // Given: a connection with a send queued, closed before its frame is up.
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const received: JsonRpcMessage[] = [];
+    const connection = provider(message => received.push(message));
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    connection.disconnect();
+
+    // When: the frame comes up and accepts the connection.
+    const frame = await bootFrame();
+    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (chainConnect === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: chainConnect.id, ok: true, result: true });
+    await flush();
+
+    // Then
+    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect', 'chainDisconnect']);
+    expect(frame.posted.map(envelope => (envelope.payload as { connectionId: string }).connectionId)).toEqual([
+      (chainConnect.payload as { connectionId: string }).connectionId,
+      (chainConnect.payload as { connectionId: string }).connectionId,
+    ]);
+    expect(received).toEqual([]);
+  });
+
+  it('As a dotli integrator, a connection closed while its frame boots, which the frame then refuses, posts nothing more', async () => {
+    // Given
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const connection = provider(() => undefined);
+    connection.disconnect();
+
+    // When
+    const frame = await bootFrame();
+    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (chainConnect === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+    frame.deliver({
+      namespace: 'dotli:protocol',
+      kind: 'response',
+      id: chainConnect.id,
+      ok: false,
+      error: 'Too many chain connections',
+    });
+    await flush();
+
+    // Then
+    expect(frame.posted.map(envelope => envelope.method)).toEqual(['chainConnect']);
+    expect(logError).not.toHaveBeenCalled();
+  });
+
   it('As a dotli integrator, a connection the frame refuses to open halts as a dead frame', async () => {
     // Given: a send queued before the frame answers the connect
     const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);

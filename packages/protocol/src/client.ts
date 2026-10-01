@@ -866,6 +866,12 @@ export type RemoteChainProvider = (
   onHalt?: (reason: RemoteChainHalt) => void,
 ) => JsonRpcConnection;
 
+function postDisconnect(connectionId: string): void {
+  void postRequest('chainDisconnect', { connectionId }).catch((error: unknown) => {
+    log.warn('[dot.li protocol] Remote disconnect failed:', error);
+  });
+}
+
 export function createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null {
   if (!isRemoteChainConnectable(genesisHash)) {
     return null;
@@ -881,10 +887,18 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
     };
 
     chainConnections.set(connectionId, remote);
+    // Disconnected before the frame accepted the connection: it is closed in
+    // the frame once the connect settles, not before, or the frame would keep
+    // a connection opened after its disconnect.
+    let disconnectedEarly = false;
 
     void ensureProtocolFrame()
       .then(async () => {
         await postRequest('chainConnect', { genesisHash, connectionId });
+        if (disconnectedEarly) {
+          postDisconnect(connectionId);
+          return;
+        }
         remote.connected = true;
         for (const message of remote.pendingMessages) {
           void postRequest('chainSend', {
@@ -959,9 +973,13 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         if (!current) {
           return;
         }
-        void postRequest('chainDisconnect', { connectionId }).catch((error: unknown) => {
-          log.warn('[dot.li protocol] Remote disconnect failed:', error);
-        });
+        if (!current.connected) {
+          // Nothing queued is sent; the connect still settles first.
+          current.pendingMessages = [];
+          disconnectedEarly = true;
+          return;
+        }
+        postDisconnect(connectionId);
       },
     };
   };
