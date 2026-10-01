@@ -39,10 +39,13 @@ interface PendingRequest {
   onProgress?: ((message: string) => void) | undefined;
 }
 
+/** Why a remote connection halted: its own chain died, or the whole frame did. */
+export type RemoteChainHalt = 'chain' | 'frame';
+
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
   /** Told once when the chain behind this connection halts. */
-  onHalt: (() => void) | null;
+  onHalt: ((reason: RemoteChainHalt) => void) | null;
   pendingMessages: JsonRpcRequest[];
   connected: boolean;
 }
@@ -60,6 +63,7 @@ let hostFramePromise: Promise<void> | null = null;
 let protocolReadyPromise: Promise<void> | null = null;
 const pendingRequests = new Map<string, PendingRequest>();
 const chainConnections = new Map<string, RemoteChainConnection>();
+const protocolReadyListeners = new Set<() => void>();
 const sharedAuthListeners = new Set<SharedAuthStorageListener>();
 const chainSyncListeners = new Set<(event: ProtocolChainSyncEnvelope) => void>();
 let lastNetBytesTotal = 0;
@@ -294,6 +298,11 @@ function bindMessageListener(): void {
         // `ensureProtocolFrame()` call can attempt a clean re-boot (e.g.
         // after the user switches settings) instead of being stuck on a
         // poisoned cached rejection.
+        const orphaned = [...chainConnections];
+        chainConnections.clear();
+        for (const [id, connection] of orphaned) {
+          haltRemote(id, connection, 'frame');
+        }
         resetProtocolFrameState(err);
         return;
       }
@@ -330,13 +339,8 @@ function bindMessageListener(): void {
       case 'chain-halt': {
         const halted = chainConnections.get(msg.connectionId);
         chainConnections.delete(msg.connectionId);
-        try {
-          halted?.onHalt?.();
-        } catch (err: unknown) {
-          log.error(
-            `[dot.li protocol] onHalt threw (conn=${msg.connectionId.slice(-8)}):`,
-            err instanceof Error ? err.message : err,
-          );
+        if (halted !== undefined) {
+          haltRemote(msg.connectionId, halted, 'chain');
         }
         return;
       }
@@ -345,6 +349,13 @@ function bindMessageListener(): void {
         return;
       case 'ready':
         resolveProtocolReady();
+        for (const listener of [...protocolReadyListeners]) {
+          try {
+            listener();
+          } catch (err: unknown) {
+            log.error('[dot.li protocol] onProtocolReady listener threw:', err instanceof Error ? err.message : err);
+          }
+        }
         return;
       case 'smoldot-db':
         // `isProtocolEnvelope` validates only namespace and kind, and these
@@ -713,6 +724,18 @@ export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope)
   };
 }
 
+/**
+ * Subscribe to each time the protocol frame comes up. Does not start a frame.
+ * Returns an unsubscribe function.
+ */
+export function onProtocolReady(listener: () => void): () => void {
+  bindMessageListener();
+  protocolReadyListeners.add(listener);
+  return () => {
+    protocolReadyListeners.delete(listener);
+  };
+}
+
 /** Subscribe to per-chain telemetry facts from the light client. */
 export function onProtocolChainDetail(listener: (event: ProtocolChainDetailEnvelope) => void): () => void {
   bindMessageListener();
@@ -766,6 +789,25 @@ function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string): JsonR
   };
 }
 
+/** Tell one remote connection its chain is gone, once; a throwing listener is logged. */
+function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
+  for (const message of connection.pendingMessages) {
+    const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
+    if (errResponse !== null) {
+      connection.onMessage(errResponse);
+    }
+  }
+  connection.pendingMessages = [];
+  try {
+    connection.onHalt?.(reason);
+  } catch (err: unknown) {
+    log.error(
+      `[dot.li protocol] onHalt threw (conn=${connectionId.slice(-8)}):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 /**
  * A remote chain provider. Its connections may also hear `onHalt` when the
  * chain behind them halts: in-flight requests have their errors and follows
@@ -773,7 +815,7 @@ function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string): JsonR
  */
 export type RemoteChainProvider = (
   onMessage: (message: JsonRpcMessage) => void,
-  onHalt?: () => void,
+  onHalt?: (reason: RemoteChainHalt) => void,
 ) => JsonRpcConnection;
 
 export function createRemoteChainProvider(genesisHash: string): RemoteChainProvider | null {

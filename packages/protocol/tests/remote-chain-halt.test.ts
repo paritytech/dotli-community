@@ -5,7 +5,13 @@ import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import { log } from '@dotli/shared';
-import { createRemoteChainProvider, getProtocolOrigin, resetProtocolFrame } from '../src/client.js';
+import {
+  createRemoteChainProvider,
+  getProtocolOrigin,
+  onProtocolReady,
+  resetProtocolFrame,
+  type RemoteChainHalt,
+} from '../src/client.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
 // The client's protocol iframe points at a host that does not exist here; keep
@@ -56,7 +62,7 @@ interface Remote {
 }
 
 /** Opens another connection against a frame that is already booted. */
-async function connectMore(frame: Frame, onHalt?: () => void): Promise<Remote> {
+async function connectMore(frame: Frame, onHalt?: (reason: RemoteChainHalt) => void): Promise<Remote> {
   const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
   if (provider === null) {
     throw new Error('People is not remote-connectable');
@@ -75,7 +81,7 @@ async function connectMore(frame: Frame, onHalt?: () => void): Promise<Remote> {
   return { frame, received, connection, connectionId };
 }
 
-async function connectRemote(onHalt?: () => void): Promise<Remote> {
+async function connectRemote(onHalt?: (reason: RemoteChainHalt) => void): Promise<Remote> {
   const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
   if (provider === null) {
     throw new Error('People is not remote-connectable');
@@ -101,7 +107,7 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a chain-halt tells the connection once and closes it', async () => {
     // Given
-    const onHalt: Mock<() => void> = vi.fn<() => void>();
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const { frame, received, connection, connectionId } = await connectRemote(onHalt);
 
     // When
@@ -111,6 +117,7 @@ describe('createRemoteChainProvider halts', () => {
 
     // Then
     expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(onHalt).toHaveBeenCalledWith('chain');
     expect(received).toEqual([
       { jsonrpc: '2.0', id: 7, error: { code: -32603, message: 'Chain connection is closed' } },
     ]);
@@ -136,11 +143,18 @@ describe('createRemoteChainProvider halts', () => {
 
   it('As a dotli integrator, a connection closed before its chain halts hears nothing, while an open one still does', async () => {
     // Given
-    const onHalt: Mock<() => void> = vi.fn<() => void>();
-    const openHalt: Mock<() => void> = vi.fn<() => void>();
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const openHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
     const closed = await connectRemote(onHalt);
     const open = await connectMore(closed.frame, openHalt);
     closed.connection.disconnect();
+    await flush();
+    const disconnect = closed.frame.posted.find(envelope => envelope.method === 'chainDisconnect');
+    if (disconnect === undefined) {
+      throw new Error('no chainDisconnect posted');
+    }
+    closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: disconnect.id, ok: true, result: true });
+    await flush();
 
     // When
     closed.frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: closed.connectionId });
@@ -149,5 +163,92 @@ describe('createRemoteChainProvider halts', () => {
     // Then
     expect(onHalt).not.toHaveBeenCalled();
     expect(openHalt).toHaveBeenCalledTimes(1);
+    expect(openHalt).toHaveBeenCalledWith('chain');
+  });
+
+  it('As a dotli integrator, a dead protocol frame halts every open chain connection once', async () => {
+    // Given
+    const firstHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const secondHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const first = await connectRemote(firstHalt);
+    const second = await connectMore(first.frame, secondHalt);
+
+    // When
+    first.frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    first.connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    second.connection.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
+
+    // Then
+    expect(firstHalt).toHaveBeenCalledTimes(1);
+    expect(firstHalt).toHaveBeenCalledWith('frame');
+    expect(secondHalt).toHaveBeenCalledTimes(1);
+    expect(secondHalt).toHaveBeenCalledWith('frame');
+    expect(first.received).toEqual([
+      { jsonrpc: '2.0', id: 1, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
+    expect(second.received).toEqual([
+      { jsonrpc: '2.0', id: 2, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
+  });
+
+  it('As a dotli integrator, a dead protocol frame closes what a connection had not sent yet', async () => {
+    // Given
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const received: JsonRpcMessage[] = [];
+    const connection = provider(message => received.push(message), onHalt);
+    connection.send({ jsonrpc: '2.0', id: 5, method: 'chainSpec_v1_genesisHash', params: [] });
+    const frame = await bootFrame();
+
+    // When
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    await flush();
+
+    // Then
+    expect(received).toEqual([
+      { jsonrpc: '2.0', id: 5, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(onHalt).toHaveBeenCalledWith('frame');
+  });
+
+  it('As a dotli integrator, I hear each time the protocol frame comes up, without starting one', async () => {
+    // Given
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const listener: Mock<() => void> = vi.fn<() => void>();
+
+    // When
+    const unsubscribe = onProtocolReady(listener);
+    await flush();
+
+    // Then
+    expect(document.querySelector('iframe')).toBeNull();
+    expect(listener).not.toHaveBeenCalled();
+
+    // When
+    const first = await connectRemote();
+
+    // Then
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    // When
+    first.frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    await connectRemote();
+
+    // Then
+    expect(listener).toHaveBeenCalledTimes(2);
+
+    // When
+    unsubscribe();
+    resetProtocolFrame();
+    await connectRemote();
+
+    // Then
+    expect(listener).toHaveBeenCalledTimes(2);
   });
 });
