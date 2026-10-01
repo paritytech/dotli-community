@@ -29,6 +29,7 @@ import {
   CHAIN_HALTED_ERROR_DATA,
   createChainPool,
   haltReasonOf,
+  isProtocolBooting,
   isProtocolReady,
   isRemoteChainConnectable,
   onProtocolReady,
@@ -121,7 +122,8 @@ function haltedAnswer(id: string | number): unknown {
 /**
  * When a product may boot a protocol frame after one died, shared by every
  * core connection. It opens 1 s after a frame halt; each dial through it shuts
- * it again and doubles the delay, up to 30 s.
+ * it again and doubles the delay, up to 30 s. A lease while a frame is up or
+ * booting boots nothing, so it does not ask the gate.
  *
  * A frame that reports ready ends the wait but keeps the delay: in
  * smoldot-direct a new frame reports ready before its light client has
@@ -144,8 +146,9 @@ function noteFrameHalt(): void {
 
 /** Whether a product may take a new lease now, after its last one heard `'frame'`. */
 function mayDialAfterFrameHalt(): boolean {
-  // A frame something else started is up: a lease boots nothing.
-  if (isProtocolReady()) {
+  // A frame something else started is up, or on its way up: a lease boots
+  // nothing, and waits on that frame.
+  if (isProtocolReady() || isProtocolBooting()) {
     return true;
   }
   return frameGate.tryDial();

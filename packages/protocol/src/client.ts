@@ -736,6 +736,15 @@ export function isProtocolReady(): boolean {
 }
 
 /**
+ * Whether a protocol frame is on its way up: one has been started and has not
+ * signalled ready, been reset or died since. A dial now waits on that frame
+ * rather than booting another. Does not start a frame.
+ */
+export function isProtocolBooting(): boolean {
+  return !protocolReady && (hostFramePromise !== null || protocolReadyPromise !== null);
+}
+
+/**
  * Subscribe to each time the protocol frame comes up. Does not start a frame.
  * Returns an unsubscribe function.
  */

@@ -25,6 +25,7 @@ export {
   ensureProtocolFrame,
   getProtocolOrigin,
   getSmoldotDbOutcome,
+  isProtocolBooting,
   isProtocolReady,
   isRemoteChainConnectable,
   isRemoteChainSupported,

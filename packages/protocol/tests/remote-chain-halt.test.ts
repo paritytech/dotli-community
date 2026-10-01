@@ -8,6 +8,7 @@ import { log } from '@dotli/shared';
 import {
   createRemoteChainProvider,
   getProtocolOrigin,
+  isProtocolBooting,
   isProtocolReady,
   onProtocolReady,
   resetProtocolFrame,
@@ -311,6 +312,43 @@ describe('createRemoteChainProvider halts', () => {
 
     // Then
     expect(isProtocolReady()).toBe(false);
+  });
+
+  it('As a dotli integrator, I can tell whether a protocol frame is on its way up, without starting one', async () => {
+    // Given
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+
+    // Then
+    expect(isProtocolBooting()).toBe(false);
+    expect(document.querySelector('iframe')).toBeNull();
+
+    // When: a connection starts a frame, and another connects while it boots.
+    provider(() => undefined);
+    await flush();
+    const booting = isProtocolBooting();
+    provider(() => undefined);
+    await flush();
+
+    // Then: both wait on the one frame.
+    expect(booting).toBe(true);
+    expect(document.querySelectorAll('iframe')).toHaveLength(1);
+
+    // When
+    const frame = await bootFrame();
+
+    // Then
+    expect(isProtocolBooting()).toBe(false);
+    expect(frame.posted.filter(envelope => envelope.method === 'chainConnect')).toHaveLength(2);
+
+    // When
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+
+    // Then
+    expect(isProtocolBooting()).toBe(false);
   });
 
   it('As a dotli integrator, a consumer that throws while its queued send is closed cannot stop the rest from halting', async () => {

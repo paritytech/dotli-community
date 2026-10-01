@@ -29,6 +29,7 @@ const mocks = vi.hoisted(() => {
   return {
     createRemoteChainProvider: vi.fn<(genesisHash: string) => RemoteChainProvider | null>(),
     isProtocolReady: vi.fn<() => boolean>(),
+    isProtocolBooting: vi.fn<() => boolean>(),
     readyListeners,
     onProtocolReady: vi.fn<(listener: () => void) => () => void>(listener => {
       readyListeners.push(listener);
@@ -41,11 +42,13 @@ vi.mock('../../protocol/src/client.js', async importOriginal => ({
   ...(await importOriginal<typeof ClientModule>()),
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isProtocolReady: mocks.isProtocolReady,
+  isProtocolBooting: mocks.isProtocolBooting,
   onProtocolReady: mocks.onProtocolReady,
 }));
 
 /** The protocol frame reports ready, which ends the host pool's frame-gate wait. */
 function frameReady(): void {
+  mocks.isProtocolBooting.mockReturnValue(false);
   mocks.isProtocolReady.mockReturnValue(true);
   for (const listener of mocks.readyListeners) {
     listener();
@@ -85,6 +88,7 @@ describe('host chain pool on a light client backend', () => {
     remotes = [];
     refuse = 'none';
     mocks.isProtocolReady.mockReturnValue(false);
+    mocks.isProtocolBooting.mockReturnValue(false);
     mocks.createRemoteChainProvider.mockReset().mockImplementation(genesisHash => (onMessage, onHalt) => {
       const remote: RemoteConnection = {
         genesisHash,
@@ -294,15 +298,18 @@ describe('host chain pool on a light client backend', () => {
   });
 
   it('As a dotli user, two products after the protocol frame died boot one frame per backoff window', async () => {
-    // Given
+    // Given: the frame died, and every new frame refuses the connection.
     const connect = createChainConnect(createHostChainPool());
     const first = await connect(hexBytes(people));
     const second = await connect(hexBytes(people));
     must(remotes[0], 'first remote').halt('frame');
+    refuse = 'worker';
 
-    // When: the window opens, and both products ask.
+    // When: the window opens, the first product's request boots a frame that
+    // fails, and then the second product asks.
     await vi.advanceTimersByTimeAsync(1_000);
     first.send(JSON.stringify({ jsonrpc: '2.0', id: 'a:1', method: 'chainSpec_v1_chainName', params: [] }));
+    await vi.advanceTimersByTimeAsync(0);
     second.send(JSON.stringify({ jsonrpc: '2.0', id: 'b:1', method: 'chainSpec_v1_chainName', params: [] }));
 
     // Then: only the first one dialled.
@@ -310,6 +317,36 @@ describe('host chain pool on a light client backend', () => {
     expect(must(remotes[1], 'second remote').sent).toHaveLength(1);
     first.close();
     second.close();
+  });
+
+  it('As a dotli user, a product asking while another boots a protocol frame is answered once the frame is up', async () => {
+    // Given: the frame died, and the first product's retry through the window
+    // boots a new one.
+    const connect = createChainConnect(createHostChainPool());
+    const onPeople = await connect(hexBytes(people));
+    const onAssetHub = await connect(hexBytes(assetHub));
+    const responses = onAssetHub.responses()[Symbol.asyncIterator]();
+    must(remotes[0], 'People').halt('frame');
+    must(remotes[1], 'Asset Hub').halt('frame');
+    await vi.advanceTimersByTimeAsync(1_000);
+    ask(onPeople, 'p:1');
+    expect(remotes).toHaveLength(3);
+    mocks.isProtocolBooting.mockReturnValue(true);
+
+    // When: the second product asks during that boot.
+    ask(onAssetHub, 'a:1');
+
+    // Then: its request goes out at once, to wait on the frame that is
+    // booting, and is answered once that frame is up.
+    expect(remotes).toHaveLength(4);
+    const waiting = must(remotes[3], 'Asset Hub on the booting frame');
+    expect(waiting.genesisHash).toBe(assetHub.toLowerCase());
+    expect(waiting.sent).toHaveLength(1);
+    frameReady();
+    waiting.emit({ jsonrpc: '2.0', id: must(must(waiting.sent[0], 'request').id, 'id'), result: 'Asset Hub' });
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'a:1', result: 'Asset Hub' });
+    onPeople.close();
+    onAssetHub.close();
   });
 
   it('As a dotli user on smoldot-direct, a light client that fails right after its frame comes back keeps the doubled backoff', async () => {
