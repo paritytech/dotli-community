@@ -166,4 +166,66 @@ describe('rpc-chain', () => {
       },
     ]);
   });
+
+  it('As a dotli user on Trusted Providers, every new chain socket first asks the node which methods it serves', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first, connection } = await connect(provider);
+    connection.send({ jsonrpc: '2.0', id: 'a', method: 'chainSpec_v1_genesisHash', params: [] });
+
+    // When
+    await vi.advanceTimersByTimeAsync(121_000);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
+
+    // Then
+    expect(first.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
+    expect(second.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
+  });
+
+  it('As a dotli integrator, requests reach the node with numeric ids and their responses keep the caller\'s id', async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket, connection } = await connect(provider, received);
+
+    // When
+    connection.send({ jsonrpc: '2.0', id: 'core-1', method: 'chainSpec_v1_genesisHash', params: [] });
+    const sent = must(socket.requests('chainSpec_v1_genesisHash')[0], 'request');
+    socket.deliver({ jsonrpc: '2.0', id: sent.id, result: '0x01' });
+
+    // Then
+    expect(typeof sent.id).toBe('number');
+    expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
+  });
+
+  it('As a dotli user on Trusted Providers, a node without chainHead_v1 is served through legacy RPC', async () => {
+    // Given
+    const methods = FakeWebSocket.methods;
+    FakeWebSocket.methods = [
+      'chain_getBlockHash',
+      'chain_getHeader',
+      'chain_subscribeNewHeads',
+      'chain_unsubscribeNewHeads',
+      'chain_subscribeFinalizedHeads',
+      'chain_unsubscribeFinalizedHeads',
+      'state_getRuntimeVersion',
+      'state_getMetadata',
+      'rpc_methods',
+    ];
+    try {
+      const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+      const { socket, connection } = await connect(provider);
+
+      // When
+      connection.send({ jsonrpc: '2.0', id: 'f', method: 'chainHead_v1_follow', params: [true] });
+
+      // Then
+      const methodsSent = socket.sent.map(raw => (JSON.parse(raw) as { method: string }).method);
+      expect(socket.requests('chainHead_v1_follow')).toHaveLength(0);
+      expect(methodsSent.some(method => method.startsWith('chain_'))).toBe(true);
+    } finally {
+      FakeWebSocket.methods = methods;
+    }
+  });
 });

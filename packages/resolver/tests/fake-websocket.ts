@@ -4,6 +4,9 @@
 // A browser WebSocket stand-in for driving @polkadot-api/ws-provider in
 // tests. Install it with `vi.stubGlobal('WebSocket', FakeWebSocket)` before
 // building a provider, and reset `FakeWebSocket.instances` between tests.
+// It plays a node that answers `rpc_methods` with `FakeWebSocket.methods`,
+// which @polkadot-api/ws-middleware probes on every new socket before it lets
+// other traffic through. Restore `methods` if a test changes it.
 
 import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 
@@ -16,6 +19,29 @@ export class FakeWebSocket {
   static readonly CLOSED = 3;
   /** Every socket constructed since the last reset, oldest first. */
   static instances: FakeWebSocket[] = [];
+  /** The methods the fake server reports for `rpc_methods`. */
+  static methods: string[] = [
+    'chainHead_v1_follow',
+    'chainHead_v1_unfollow',
+    'chainHead_v1_header',
+    'chainHead_v1_body',
+    'chainHead_v1_call',
+    'chainHead_v1_storage',
+    'chainHead_v1_unpin',
+    'chainHead_v1_continue',
+    'chainHead_v1_stopOperation',
+    'chainSpec_v1_genesisHash',
+    'chainSpec_v1_chainName',
+    'chainSpec_v1_properties',
+    'transaction_v1_broadcast',
+    'transaction_v1_stop',
+    'transactionWatch_v1_submitAndWatch',
+    'transactionWatch_v1_unwatch',
+    'statement_subscribeStatement',
+    'statement_unsubscribeStatement',
+    'statement_submit',
+    'rpc_methods',
+  ];
 
   readonly url: string;
   readonly sent: string[] = [];
@@ -39,6 +65,10 @@ export class FakeWebSocket {
 
   send(data: string): void {
     this.sent.push(data);
+    const message = JSON.parse(data) as JsonRpcRequest;
+    if (message.method === 'rpc_methods') {
+      this.deliver({ jsonrpc: '2.0', id: message.id, result: { methods: [...FakeWebSocket.methods] } });
+    }
   }
 
   close(): void {

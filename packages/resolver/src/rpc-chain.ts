@@ -19,14 +19,24 @@
  * mode. Bulletin is reachable so in-core preimage submission can use its
  * `TransactionStorage` runtime API over the same trusted RPC posture.
  *
- * Each provider is the replaying, pausable ws provider from
- * `@novasamatech/host-substrate-chain-connection`, the one polkadot-desktop
- * runs: a socket the heartbeat replaces comes back with its subscriptions.
+ * Each provider is polkadot-api's raw ws provider with ws-middleware (node
+ * compatibility: the `rpc_methods` probe, the legacy RPC fallback for nodes
+ * without `chainHead_v1` or refusing follows with `-32800`, numeric ids and
+ * the chainHead event fixes), a pause controller and the subscription replay
+ * of `@novasamatech/host-substrate-chain-connection`. It is the same
+ * composition as polkadot-desktop's provider plus the ws-middleware this
+ * module always had: a socket the heartbeat replaces comes back with its
+ * subscriptions.
  */
-import { createWsJsonRpcProvider } from '@novasamatech/host-substrate-chain-connection';
+import { withSubscriptionReplay } from '@novasamatech/host-substrate-chain-connection';
+import { middleware as compatibilityMiddleware } from '@polkadot-api/ws-middleware';
+import type { InnerJsonRpcProvider } from '@polkadot-api/json-rpc-provider-proxy';
+import type { JsonRpcProvider } from 'polkadot-api';
+import { getWsProvider, WsEvent } from '@polkadot-api/ws-provider';
 import { getActiveCoreGatewayChains, getActiveGatewayChains } from '@dotli/config';
 import type { ChainService } from '@dotli/config';
-import type { ChainTransportHooks } from './transport-hooks.js';
+import { createPauseController } from './pause-controller.js';
+import type { ChainTransportHooks, ConnectionStatus } from './transport-hooks.js';
 
 /**
  * A chain's WebSocket transport: polkadot-api's ws provider with
@@ -35,7 +45,14 @@ import type { ChainTransportHooks } from './transport-hooks.js';
  * subscription id back to the one its consumer saw. It can be paused (the
  * socket closes, sends buffer) and resumed.
  */
-export type RpcChainProvider = ReturnType<typeof createWsJsonRpcProvider>;
+export type RpcChainProvider = JsonRpcProvider & { pause: () => void; resume: () => void };
+
+const STATUS_BY_WS_EVENT: Record<WsEvent, ConnectionStatus> = {
+  [WsEvent.CONNECTING]: 'connecting',
+  [WsEvent.CONNECTED]: 'connected',
+  [WsEvent.ERROR]: 'disconnected',
+  [WsEvent.CLOSE]: 'disconnected',
+};
 
 // Public RPC endpoints are occasionally tunnel-gated, so the default 40s
 // heartbeat is too tight. Match the timeout used in `./rpc-resolve.ts`.
@@ -66,6 +83,28 @@ function closingWebSocketClass(): typeof WebSocket {
       // eslint-disable-next-line @typescript-eslint/no-this-alias -- the next socket this provider builds closes this one.
       previous = this;
     }
+  };
+}
+
+/**
+ * Hands the layers below a copy of every request.
+ *
+ * ws-middleware's numeric ids rewrite `id` on the request object itself, but
+ * the subscription replay keeps its subscribe payloads and the provider proxy
+ * its in-flight requests, to send again after a reconnect. A rewritten id
+ * would come back on the new socket as the numeric one, not the caller's.
+ */
+function withOwnMessages(inner: InnerJsonRpcProvider): InnerJsonRpcProvider {
+  return (onMessage, onHalt) => {
+    const connection = inner(onMessage, onHalt);
+    return {
+      send: message => {
+        connection.send({ ...message });
+      },
+      disconnect: () => {
+        connection.disconnect();
+      },
+    };
   };
 }
 
@@ -118,10 +157,28 @@ function createGatewayProvider(
   if (chain === null) {
     return null;
   }
-  return createWsJsonRpcProvider({
-    endpoints: [...chain.rpcs],
+  let replay: () => void = () => undefined;
+  const pauseController = createPauseController();
+  const socket = getWsProvider([...chain.rpcs], {
     heartbeatTimeout: HEARTBEAT_TIMEOUT_MS,
     websocketClass: closingWebSocketClass(),
-    ...(hooks !== undefined && { onStatusChanged: hooks.onStatus }),
+    // ws-middleware below the pause controller: the controller calls it afresh
+    // for every socket, so its rpc_methods probe and chainHead fixes start
+    // over with each one. `withOwnMessages` sits between them.
+    middleware: inner => pauseController.middleware(withOwnMessages(compatibilityMiddleware(inner))),
+    onStatusChanged: event => {
+      const status = STATUS_BY_WS_EVENT[event.type];
+      if (status === 'connected') {
+        replay();
+      }
+      hooks?.onStatus(status);
+    },
   });
+  const replaying = withSubscriptionReplay(socket, callback => {
+    replay = callback;
+    return () => {
+      replay = () => undefined;
+    };
+  });
+  return Object.assign(replaying, { pause: pauseController.pause, resume: pauseController.resume });
 }
