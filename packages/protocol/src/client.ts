@@ -332,14 +332,9 @@ function bindMessageListener(): void {
           );
           return;
         }
-        try {
+        guardConsumer(msg.connectionId, 'onMessage', () => {
           conn.onMessage(parsed);
-        } catch (err: unknown) {
-          log.error(
-            `[dot.li protocol] onMessage threw (conn=${msg.connectionId.slice(-8)}):`,
-            err instanceof Error ? err.message : err,
-          );
-        }
+        });
         return;
       }
       case 'chain-halt': {
@@ -815,6 +810,18 @@ function buildJsonRpcError(
   };
 }
 
+/** Call one of a remote connection's consumer callbacks; one that throws is logged. */
+function guardConsumer(connectionId: string, label: string, call: () => void): void {
+  try {
+    call();
+  } catch (err: unknown) {
+    log.error(
+      `[dot.li protocol] ${label} threw (conn=${connectionId.slice(-8)}):`,
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 /**
  * Tell one remote connection its chain is gone, once; a throwing listener is
  * logged. What it had not sent yet is answered as the broker answers what it
@@ -827,25 +834,15 @@ function haltRemote(connectionId: string, connection: RemoteChainConnection, rea
       reason === 'chain' ? chainHaltedError() : 'Chain connection is closed',
     );
     if (errResponse !== null) {
-      try {
+      guardConsumer(connectionId, 'onMessage', () => {
         connection.onMessage(errResponse);
-      } catch (err: unknown) {
-        log.error(
-          `[dot.li protocol] onMessage threw (conn=${connectionId.slice(-8)}):`,
-          err instanceof Error ? err.message : err,
-        );
-      }
+      });
     }
   }
   connection.pendingMessages = [];
-  try {
+  guardConsumer(connectionId, 'onHalt', () => {
     connection.onHalt?.(reason);
-  } catch (err: unknown) {
-    log.error(
-      `[dot.li protocol] onHalt threw (conn=${connectionId.slice(-8)}):`,
-      err instanceof Error ? err.message : err,
-    );
-  }
+  });
 }
 
 /**
