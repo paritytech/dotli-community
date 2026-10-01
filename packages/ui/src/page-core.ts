@@ -548,6 +548,9 @@ function createCore(product: PageProduct): Core {
         callbacks.nativeChatFiles = nativeChatFiles;
       }
       const dispose = (): void => {
+        if (closed) {
+          return;
+        }
         closed = true;
         connectionDisposers.delete(dispose);
         contacts?.dispose();
