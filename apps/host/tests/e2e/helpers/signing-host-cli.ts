@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { Readable, Writable } from 'node:stream';
 
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
@@ -27,6 +30,23 @@ export interface SigningHostProcess {
   child: ChildProcess;
   completed: Promise<SigningHostExit>;
   output: () => string;
+}
+
+/** Keep one unique bare username stem for every run using this state directory. */
+export function persistentSigningHostSession(basePath: string): string {
+  const path = join(basePath, '.dotli-e2e-session');
+  if (existsSync(path)) {
+    return readFileSync(path, 'utf8').trim();
+  }
+  // Letters avoid the CLI's exact-numbered-username selection mode.
+  const suffix = randomUUID()
+    .replaceAll('-', '')
+    .slice(0, 20)
+    .replace(/\d/g, digit => String.fromCharCode(103 + Number(digit)));
+  const session = `dotlitest${suffix}`;
+  mkdirSync(basePath, { recursive: true });
+  writeFileSync(path, `${session}\n`, { flag: 'wx', mode: 0o600 });
+  return session;
 }
 
 // Preflight so a missing binary fails with install guidance instead of a
