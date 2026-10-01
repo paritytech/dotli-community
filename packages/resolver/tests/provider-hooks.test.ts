@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { getActiveServicesConfig } from '@dotli/config';
+import type * as ProviderModule from '../src/provider.js';
 import type { ChainTransportHooks } from '../src/transport-hooks.js';
 
 // A truapi-provider connection whose response stream the test drives.
@@ -207,5 +208,54 @@ describe('smoldot chain provider hooks', () => {
       expect(chainHooks.onHalt).toHaveBeenCalledWith(failure);
     });
     expect(chainHooks.onStatus).toHaveBeenLastCalledWith('disconnected');
+  });
+
+  // `fatalMessage` latches for the life of the module, so each fatal check
+  // loads its own copy of the provider instead of the file-wide import.
+  describe('fatal reporting', () => {
+    async function freshProvider(): Promise<typeof ProviderModule> {
+      vi.resetModules();
+      return import('../src/provider.js');
+    }
+
+    it('As a dotli user on a light client, one chain that stops responding halts on its own without failing the app', async () => {
+      // Given
+      const provider = await freshProvider();
+      const onFatal = vi.fn<(message: string) => void>();
+      provider.onProviderFatal(onFatal);
+      const chainHooks = hooks();
+      provider.createChainProvider(people, chainHooks)?.(() => undefined);
+      await vi.waitFor(() => {
+        expect(chainHooks.onStatus).toHaveBeenLastCalledWith('connected');
+      });
+
+      // When
+      truapi.connections[0]?.end();
+
+      // Then
+      await vi.waitFor(() => {
+        expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
+      });
+      expect(onFatal).not.toHaveBeenCalled();
+    });
+
+    it('As a dotli user on a light client, a light client that cannot open a chain still fails the app', async () => {
+      // Given
+      const provider = await freshProvider();
+      const onFatal = vi.fn<(message: string) => void>();
+      provider.onProviderFatal(onFatal);
+      truapi.connect = () => Promise.reject(new Error('catalog has no such chain'));
+      const chainHooks = hooks();
+
+      // When
+      provider.createChainProvider(people, chainHooks)?.(() => undefined);
+
+      // Then
+      await vi.waitFor(() => {
+        expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
+      });
+      expect(onFatal).toHaveBeenCalledTimes(1);
+      expect(onFatal.mock.calls[0]?.[0]).toContain('connection failed');
+    });
   });
 });

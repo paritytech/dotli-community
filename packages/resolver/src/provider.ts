@@ -147,11 +147,9 @@ function getHandle(): Promise<ChainProviderHandle> {
   return handlePromise;
 }
 
-// A connection that ends without `disconnect()` leaves every in-flight
-// request on that chain waiting forever: papi has no error channel on a
-// `JsonRpcProvider`, so a half-open transport is indistinguishable from a
-// quiet one. Surface it here and let the protocol layer reject pending work
-// the way the smoldot panic broadcast used to.
+// Reports a light client that cannot connect a chain, which leaves the app
+// with no way to reach any chain. A single chain that stops responding is not
+// reported here: it halts alone through its `onHalt` hook.
 type FatalCallback = (message: string) => void;
 const fatalListeners = new Set<FatalCallback>();
 let fatalMessage: string | null = null;
@@ -369,9 +367,10 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
       }
       // Only `disconnect()` makes the end of the stream orderly. Otherwise the
       // transport died or overflowed its send budget, and no further response
-      // will ever arrive on this chain.
+      // will ever arrive on this chain. That halts this chain through the
+      // pool; a crashed light client surfaces as `fatal` when the next
+      // connect fails.
       if (streamEnded && !isClosed()) {
-        markFatal(`chain ${key} stopped responding`);
         try {
           fail(new Error(`chain ${key} stopped responding`));
         } catch (error) {
