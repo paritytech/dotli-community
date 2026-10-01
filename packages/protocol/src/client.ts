@@ -350,7 +350,13 @@ function bindMessageListener(): void {
         return;
       case 'ready':
         resolveProtocolReady();
-        broadcast(protocolReadyListeners, undefined, 'onProtocolReady');
+        for (const listener of [...protocolReadyListeners]) {
+          try {
+            listener();
+          } catch (err: unknown) {
+            log.error('[dot.li protocol] onProtocolReady listener threw:', err instanceof Error ? err.message : err);
+          }
+        }
         return;
       case 'smoldot-db':
         // `isProtocolEnvelope` validates only namespace and kind, and these
