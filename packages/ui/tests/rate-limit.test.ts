@@ -93,6 +93,7 @@ describe('createSubmitRateLimiter', () => {
 
 describe('prompt rate limiting across host callbacks', () => {
   beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.clearAllMocks();
     localStorage.clear();
     document.body.innerHTML = '';
@@ -102,6 +103,10 @@ describe('prompt rate limiting across host callbacks', () => {
       id: 7,
       immediate: false,
     });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('As a dotli integrator, the host counts permission and notification prompts against one shared budget', async () => {
