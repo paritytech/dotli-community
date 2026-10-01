@@ -48,6 +48,7 @@ import { EventList, type Selection } from './EventList.js';
 import { Filters } from './Filters.js';
 import { Header } from './Header.js';
 import { BodySplitter, ResizeHandle } from './Resizers.js';
+import { ArchiveView } from './ArchiveView.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
@@ -417,6 +418,7 @@ export function Panel(props: {
         collapsed: collapsed(),
         'docked-right': dock() === 'right',
         'res-view': view() === 'resolution',
+        'archive-view': view() === 'archive',
       }}
       ref={el => {
         panelEl = el;
@@ -508,6 +510,7 @@ export function Panel(props: {
             tooltip={() => tooltipEl}
             panel={() => panelEl}
           />
+          <ArchiveView active={view() === 'archive'} />
         </div>
         <BodySplitter panel={() => panelEl} dock={dock()} />
         <DetailPane
