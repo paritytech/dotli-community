@@ -27,13 +27,10 @@ export class ChainHaltError extends Error {
 
 /**
  * Why the chain behind a halt error halted. Anything but a `ChainHaltError`
- * (a smoldot or socket death) is the chain's own halt. Matched by name as
- * well, for an error from another realm.
+ * (a smoldot or socket death) is the chain's own halt. Matched by name, so an
+ * error from another realm is read too.
  */
 export function haltReasonOf(error: unknown): RemoteChainHalt {
-  const isHaltError = error instanceof ChainHaltError || (error instanceof Error && error.name === 'ChainHaltError');
-  if (!isHaltError) {
-    return 'chain';
-  }
-  return (error as Partial<ChainHaltError>).reason === 'frame' ? 'frame' : 'chain';
+  const isHaltError = error instanceof Error && error.name === 'ChainHaltError';
+  return isHaltError && (error as Partial<ChainHaltError>).reason === 'frame' ? 'frame' : 'chain';
 }
