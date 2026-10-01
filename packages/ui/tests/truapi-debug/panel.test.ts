@@ -182,7 +182,7 @@ function selectedRows(): HTMLElement[] {
   return rows().filter(r => r.classList.contains('selected'));
 }
 
-function tab(view: 'list' | 'timeline' | 'resolution'): HTMLElement {
+function tab(view: 'list' | 'timeline' | 'resolution' | 'archive'): HTMLElement {
   return q(`.td-tab[data-view="${view}"]`);
 }
 
@@ -302,12 +302,13 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(query(panel(), '.td-exclude-input', HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('.td-tabs .td-tab')];
-    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution']);
-    expect(tabs.map(t => t.classList.contains('active'))).toEqual([true, false, false]);
+    expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive']);
+    expect(tabs.map(t => t.classList.contains('active'))).toEqual([true, false, false, false]);
     expect(q('.td-list').classList.contains('hidden')).toBe(false);
     expect(q('.td-list .td-empty').textContent).toBe('No events match the current filter.');
     expect(q('.td-timeline').classList.contains('hidden')).toBe(true);
     expect(q('.td-res').classList.contains('hidden')).toBe(true);
+    expect(q('.td-archive').classList.contains('hidden')).toBe(true);
     expect(root.querySelector('.td-body-splitter')).not.toBeNull();
     expect(q('.td-detail .td-detail-empty').textContent).toBe('Select an event on the left to inspect its payload.');
     expect(root.querySelector('.td-tooltip')).not.toBeNull();
@@ -1085,6 +1086,28 @@ describe('truapi debug panel: views', () => {
     expect(q('.td-res').classList.contains('hidden')).toBe(true);
     expect(panel().classList.contains('res-view')).toBe(false);
     expect(rows()).toHaveLength(3);
+  });
+
+  it('As a dotli developer, the Archive tab takes the whole width and, with no product, says so', () => {
+    // Given
+    mount();
+
+    // When
+    click(tab('archive'));
+
+    // Then
+    expect(tab('archive').classList.contains('active')).toBe(true);
+    expect(q('.td-list').classList.contains('hidden')).toBe(true);
+    expect(q('.td-archive').classList.contains('hidden')).toBe(false);
+    expect(panel().classList.contains('archive-view')).toBe(true);
+    expect(q('.td-archive').textContent).toContain('No product loaded');
+
+    // When
+    click(tab('list'));
+
+    // Then
+    expect(q('.td-archive').classList.contains('hidden')).toBe(true);
+    expect(panel().classList.contains('archive-view')).toBe(false);
   });
 
   it('As a dotli developer, clicking a timeline box shows its whole group in the detail pane', () => {
