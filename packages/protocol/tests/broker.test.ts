@@ -9,7 +9,12 @@ import type {
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import { ChainBroker } from '../src/broker.js';
-import { createChainBrokerManager } from '../src/chain-pool.js';
+import { createChainPool, type ChainPool, type ChainPoolOptions } from '../src/chain-pool.js';
+
+/** The broker suites' manager: the canonical pool, keeping chains until explicitly closed. */
+function createManager(createTransport: ChainPoolOptions['createTransport']): ChainPool {
+  return createChainPool({ createTransport, destroyDelay: Infinity });
+}
 
 interface ProviderHarness {
   provider: JsonRpcProvider;
@@ -65,10 +70,10 @@ function required<T>(value: T | undefined): T {
   return value;
 }
 
-describe('createChainBrokerManager', () => {
+describe('chain pool brokering', () => {
   it('remaps request ids and routes responses back to the correct client', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(genesisHash => (genesisHash === 'asset-hub' ? harness.provider : null));
+    const manager = createManager(genesisHash => (genesisHash === 'asset-hub' ? harness.provider : null));
 
     const messagesA: string[] = [];
     const messagesB: string[] = [];
@@ -111,7 +116,7 @@ describe('createChainBrokerManager', () => {
 
   it('rewrites subscription tokens per client and routes follow events', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
@@ -176,7 +181,7 @@ describe('createChainBrokerManager', () => {
 
   it('releases owned subscriptions on disconnect but keeps the upstream warm until disconnectAll', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const connection = manager.connectRemote('asset-hub', 'conn-a', () => {});
 
     connection?.send(
@@ -204,7 +209,7 @@ describe('createChainBrokerManager', () => {
 
   it('releases transactionWatch subscriptions on disconnect', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const connection = manager.connectRemote('asset-hub', 'conn-a', () => {});
 
     connection?.send(
@@ -229,7 +234,7 @@ describe('createChainBrokerManager', () => {
 
   it('delivers transactionWatch events received before the subscribe response', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messages: string[] = [];
     const connection = manager.connectRemote('asset-hub', 'conn-a', message => messages.push(message));
 
@@ -272,7 +277,7 @@ describe('createChainBrokerManager', () => {
 
   it('routes legacy author_submitAndWatchExtrinsic updates and unwatch', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messages: string[] = [];
     const connection = manager.connectRemote('people', 'conn-a', message => messages.push(message));
 
@@ -315,7 +320,7 @@ describe('createChainBrokerManager', () => {
 
   it('fans out same-token statement notifications to every local owner', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
@@ -394,7 +399,7 @@ describe('createChainBrokerManager', () => {
 
   it('ref-counts same-token statement unsubscribe requests', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
@@ -494,7 +499,7 @@ describe('createChainBrokerManager', () => {
 
   it('reuses the warm upstream when a new session attaches after every previous one disconnected', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
 
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => {});
     connectionA?.disconnect();
@@ -520,7 +525,7 @@ describe('createChainBrokerManager', () => {
 
   it('replays a coherent cached follow snapshot to later subscribers', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
@@ -652,7 +657,7 @@ describe('createChainBrokerManager', () => {
 
   it('provides a local provider that uses the same upstream broker', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const localProvider = manager.getLocalProvider('asset-hub');
     const remoteMessages: string[] = [];
 
@@ -708,7 +713,7 @@ describe('createChainBrokerManager', () => {
 
   it('isolates concurrent statement-store subscriptions with duplicate client ids', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const localProvider = manager.getLocalProvider('people');
     const messagesA: JsonRpcMessage[] = [];
     const messagesB: JsonRpcMessage[] = [];
@@ -777,7 +782,7 @@ describe('createChainBrokerManager', () => {
 
   it('forwards exactly one upstream unpin when two sessions unpin the same shared block', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => {
@@ -864,7 +869,7 @@ describe('createChainBrokerManager', () => {
 
   it('unpins a block upstream when its last holder disconnects (other sessions remain)', () => {
     const harness = createProviderHarness();
-    const manager = createChainBrokerManager(() => harness.provider);
+    const manager = createManager(() => harness.provider);
     const messagesA: string[] = [];
     const messagesB: string[] = [];
     const connectionA = manager.connectRemote('asset-hub', 'conn-a', m => messagesA.push(m));
@@ -927,7 +932,7 @@ describe('createChainBrokerManager', () => {
   it('fails pending reads and shared follows once, without notifying closed sessions', () => {
     const harness = createProviderHarness();
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, hooks) => {
+    const manager = createManager((_genesis, hooks) => {
       halt = hooks.onHalt;
       return harness.provider;
     });
@@ -964,7 +969,7 @@ describe('createChainBrokerManager', () => {
   it('terminates statement and transaction watches using their protocol terminal forms', () => {
     const harness = createProviderHarness();
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, hooks) => {
+    const manager = createManager((_genesis, hooks) => {
       halt = hooks.onHalt;
       return harness.provider;
     });
@@ -1003,7 +1008,7 @@ describe('createChainBrokerManager', () => {
 
   it('isolates replacement leases when a halted server reuses its subscription token', () => {
     const generations: { harness: ProviderHarness; halt: () => void }[] = [];
-    const manager = createChainBrokerManager((_genesis, hooks) => {
+    const manager = createManager((_genesis, hooks) => {
       const harness = createProviderHarness();
       generations.push({ harness, halt: hooks.onHalt });
       return harness.provider;
@@ -1054,7 +1059,7 @@ describe('createChainBrokerManager', () => {
 
   it('stops every shared follow and allows synchronous refollow without replaying the old snapshot', () => {
     const generations: { harness: ProviderHarness; halt: () => void }[] = [];
-    const manager = createChainBrokerManager((_genesis, hooks) => {
+    const manager = createManager((_genesis, hooks) => {
       const harness = createProviderHarness();
       generations.push({ harness, halt: hooks.onHalt });
       return harness.provider;
@@ -1114,7 +1119,7 @@ describe('createChainBrokerManager', () => {
     const fresh = createProviderHarness();
     let generation = 0;
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, hooks) => {
+    const manager = createManager((_genesis, hooks) => {
       halt = hooks.onHalt;
       generation += 1;
       if (generation === 1) {
@@ -1143,7 +1148,7 @@ describe('createChainBrokerManager', () => {
 
   it.each(['halt', 'throw'])('fails pending requests and retires the lease when send reports %s', failure => {
     const disconnect = vi.fn();
-    const manager = createChainBrokerManager((_genesis, hooks) => () => ({
+    const manager = createManager((_genesis, hooks) => () => ({
       send: () => {
         if (failure === 'throw') {
           throw new Error('transport send failed');
@@ -1240,7 +1245,13 @@ describe('ChainBroker.halt', () => {
     broker.halt(new Error('gone'));
 
     // Then
-    expect(session.messages).toMatchObject([{ jsonrpc: '2.0', id: 'req-1', error: { code: -32603 } }]);
+    expect(session.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'req-1',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
+    ]);
     expect(log).toEqual(['a:message', 'a:halt']);
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
@@ -1281,7 +1292,7 @@ describe('ChainBroker.halt', () => {
     const error = (id: number): unknown => ({
       jsonrpc: '2.0',
       id,
-      error: { code: -32603 },
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     expect(first.messages).toMatchObject([error(11)]);
     expect(second.messages).toMatchObject([error(22)]);
@@ -1308,7 +1319,13 @@ describe('ChainBroker.halt', () => {
         params: { subscription: a.token, result: { event: 'stop' } },
       },
     ]);
-    expect(b.messages).toMatchObject([{ jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } }]);
+    expect(b.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'b-req',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
+    ]);
   });
 
   it('As a dotli integrator, a session whose handler throws still hears its halt and does not keep the others from theirs', () => {
@@ -1348,6 +1365,12 @@ describe('ChainBroker.halt', () => {
 
     // Then
     expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
-    expect(staying.messages).toMatchObject([{ jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } }]);
+    expect(staying.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 'b-req',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
+    ]);
   });
 });
