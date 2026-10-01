@@ -3,8 +3,6 @@
 
 // Timeouts (ms)
 export const TIMEOUTS = {
-  /** SW cache lookup before falling through */
-  SW_CACHE_LOOKUP: 3_000,
   /** Host recover-request grace before the sandbox falls back to the
    * contract error. Must exceed the host's recover rate-limit window so
    * a rate-limited request fails visibly instead of hanging. */

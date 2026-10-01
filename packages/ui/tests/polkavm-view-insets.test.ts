@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installPolkaVmViewInsetsRelay,
   keyboardInsetsForFrame,
   POLKAVM_VIEW_INSETS,
   POLKAVM_VIEW_INSETS_REQUEST,
-} from "@dotli/ui/polkavm-view-insets";
+} from '../src/polkavm-view-insets.js';
 
 const frame = {
   left: 0,
@@ -23,8 +23,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-describe("PolkaVM visual viewport insets", () => {
-  it("reports no residual inset when the product is fully visible", () => {
+describe('PolkaVM visual viewport insets', () => {
+  it('reports no residual inset when the product is fully visible', () => {
     expect(
       keyboardInsetsForFrame(
         frame,
@@ -40,7 +40,7 @@ describe("PolkaVM visual viewport insets", () => {
     ).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
-  it("reports keyboard overlap in physical pixels", () => {
+  it('reports keyboard overlap in physical pixels', () => {
     expect(
       keyboardInsetsForFrame(
         frame,
@@ -56,7 +56,7 @@ describe("PolkaVM visual viewport insets", () => {
     ).toEqual({ left: 0, top: 0, right: 0, bottom: 732 });
   });
 
-  it("does not double count a layout viewport already resized above the keyboard", () => {
+  it('does not double count a layout viewport already resized above the keyboard', () => {
     expect(
       keyboardInsetsForFrame(
         { ...frame, bottom: 600, height: 544 },
@@ -72,7 +72,7 @@ describe("PolkaVM visual viewport insets", () => {
     ).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
-  it("maps every residual visual viewport edge to the product frame", () => {
+  it('maps every residual visual viewport edge to the product frame', () => {
     expect(
       keyboardInsetsForFrame(
         { left: 0, top: 0, right: 400, bottom: 800, width: 400, height: 800 },
@@ -88,7 +88,7 @@ describe("PolkaVM visual viewport insets", () => {
     ).toEqual({ left: 20, top: 80, right: 20, bottom: 320 });
   });
 
-  it("does not reinterpret pinch zoom as application occlusion", () => {
+  it('does not reinterpret pinch zoom as application occlusion', () => {
     expect(
       keyboardInsetsForFrame(
         frame,
@@ -104,7 +104,7 @@ describe("PolkaVM visual viewport insets", () => {
     ).toEqual({ left: 0, top: 0, right: 0, bottom: 0 });
   });
 
-  it("clamps values to the guest input record limit", () => {
+  it('clamps values to the guest input record limit', () => {
     expect(
       keyboardInsetsForFrame(
         {
@@ -128,8 +128,8 @@ describe("PolkaVM visual viewport insets", () => {
   });
 });
 
-describe("PolkaVM visual viewport relay", () => {
-  it("sends measured occlusion only to the matching product origin", () => {
+describe('PolkaVM visual viewport relay', () => {
+  it('sends measured occlusion only to the matching product origin', () => {
     const visualViewport = Object.assign(new EventTarget(), {
       offsetLeft: 0,
       offsetTop: 0,
@@ -137,13 +137,13 @@ describe("PolkaVM visual viewport relay", () => {
       height: 600,
       scale: 1,
     }) as unknown as VisualViewport;
-    vi.stubGlobal("visualViewport", visualViewport);
-    vi.stubGlobal("devicePixelRatio", 2);
-    vi.stubGlobal("ResizeObserver", undefined);
+    vi.stubGlobal('visualViewport', visualViewport);
+    vi.stubGlobal('devicePixelRatio', 2);
+    vi.stubGlobal('ResizeObserver', undefined);
 
-    const iframe = document.createElement("iframe");
+    const iframe = document.createElement('iframe');
     document.body.appendChild(iframe);
-    vi.spyOn(iframe, "getBoundingClientRect").mockReturnValue({
+    vi.spyOn(iframe, 'getBoundingClientRect').mockReturnValue({
       left: 0,
       top: 0,
       right: 400,
@@ -153,38 +153,33 @@ describe("PolkaVM visual viewport relay", () => {
     } as DOMRect);
     const target = iframe.contentWindow;
     if (target === null) {
-      throw new Error("test iframe has no content window");
+      throw new Error('test iframe has no content window');
     }
-    const postMessage = vi
-      .spyOn(target, "postMessage")
-      .mockImplementation(() => {});
-    const dispose = installPolkaVmViewInsetsRelay(
-      iframe,
-      "https://product.test",
-    );
+    const postMessage = vi.spyOn(target, 'postMessage').mockImplementation(() => {});
+    const dispose = installPolkaVmViewInsetsRelay(iframe, 'https://product.test');
 
-    iframe.dispatchEvent(new Event("load"));
+    iframe.dispatchEvent(new Event('load'));
     expect(postMessage).toHaveBeenLastCalledWith(
       {
         type: POLKAVM_VIEW_INSETS,
         keyboard: { left: 0, top: 0, right: 0, bottom: 400 },
       },
-      "https://product.test",
+      'https://product.test',
     );
 
     window.dispatchEvent(
-      new MessageEvent("message", {
+      new MessageEvent('message', {
         data: { type: POLKAVM_VIEW_INSETS_REQUEST },
-        origin: "https://attacker.test",
+        origin: 'https://attacker.test',
         source: target,
       }),
     );
     expect(postMessage).toHaveBeenCalledTimes(1);
 
     window.dispatchEvent(
-      new MessageEvent("message", {
+      new MessageEvent('message', {
         data: { type: POLKAVM_VIEW_INSETS_REQUEST },
-        origin: "https://product.test",
+        origin: 'https://product.test',
         source: target,
       }),
     );
@@ -192,9 +187,9 @@ describe("PolkaVM visual viewport relay", () => {
 
     dispose();
     window.dispatchEvent(
-      new MessageEvent("message", {
+      new MessageEvent('message', {
         data: { type: POLKAVM_VIEW_INSETS_REQUEST },
-        origin: "https://product.test",
+        origin: 'https://product.test',
         source: target,
       }),
     );

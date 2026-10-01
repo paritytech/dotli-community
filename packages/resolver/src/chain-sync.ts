@@ -3,31 +3,30 @@
 
 // What each chain reports about its own sync, for the loading screen.
 //
-// The light client is embedded in `@parity/truapi-provider` and speaks only
-// JSON-RPC over `Connection.send` / `Connection.nextResponse`. That pipe is
-// the whole side channel: this module writes requests under reserved string
-// ids and claims their replies out of the response stream in `./provider`
-// before polkadot-api sees them, so our traffic never reaches papi and papi's
-// numeric ids can never collide with ours.
+// The light client is embedded in `@parity/truapi-provider`, whose
+// `lifecycle(genesis)` watch reports each chain's phase, peer count and health
+// on every change. This module diffs those snapshots into the milestones the
+// loading screen reacts to.
 //
-// Two sources feed the events. `lifecycle_unstable_follow` reports sync
-// milestones where the light client implements it, and `system_health` is
-// polled during bootstrap for a live peer count. The follow is optional by
-// design: a light client that answers it with a method-not-found error leaves
-// peer counts working on their own.
+// The one question the watch does not answer, which peers a chain held when it
+// came up, still rides the chain's JSON-RPC pipe: the request goes out under a
+// reserved string id and `./provider` hands its reply here before
+// polkadot-api sees it, so papi's numeric ids can never collide with ours.
 
-import { log } from "@dotli/shared/log";
-import { chainRoleForGenesis, type ChainRole } from "@dotli/config/network";
+import type { ChainLifecycle } from '@parity/truapi-provider';
+import { m } from '@dotli/metrics';
+import { log } from '@dotli/shared';
+import { chainRoleForGenesis, type ChainRole } from '@dotli/config';
 
 /** The chains the resolver runs, named by role rather than by chain spec. */
-export const CHAIN_KEYS = ["relay", "asset-hub", "bulletin", "people"] as const;
+export const CHAIN_KEYS = ['relay', 'asset-hub', 'bulletin', 'people'] as const;
 export type ChainKey = (typeof CHAIN_KEYS)[number];
 
 const CHAIN_KEY_BY_ROLE: Record<ChainRole, ChainKey> = {
-  relay: "relay",
-  assethub: "asset-hub",
-  bulletin: "bulletin",
-  people: "people",
+  relay: 'relay',
+  assethub: 'asset-hub',
+  bulletin: 'bulletin',
+  people: 'people',
 };
 
 /**
@@ -44,23 +43,22 @@ export function chainKeyForGenesis(genesisHash: string): ChainKey | null {
 /**
  * What a chain reports about its own sync.
  *
- * Smoldot emits two more milestones (modeDecision and stopped) that the
- * loading UI has nothing to say about. `peers` is our own addition, sampled
- * while the chain bootstraps rather than reported by smoldot.
+ * `peers` is our own addition: the watch reports a peer count with every
+ * state, and it goes out whenever the count changes.
  *
  * `warpSyncProgress` is the only true percentage in here, and it only arrives
  * when a relay has a real warp distance to cover. `warpSyncFinished` closes
  * that run. A chain that never warped emits neither.
  */
 export const CHAIN_SYNC_KINDS = [
-  "firstPeer",
-  "bootstrapComplete",
-  "stalled",
-  "recovered",
-  "peers",
-  "connecting",
-  "warpSyncProgress",
-  "warpSyncFinished",
+  'firstPeer',
+  'bootstrapComplete',
+  'stalled',
+  'recovered',
+  'peers',
+  'connecting',
+  'warpSyncProgress',
+  'warpSyncFinished',
 ] as const;
 export type ChainSyncKind = (typeof CHAIN_SYNC_KINDS)[number];
 
@@ -104,7 +102,7 @@ export interface ChainPeer {
 export interface ChainDetail {
   chain: ChainKey;
   /** Whether the light client resumed this chain from its stored database. */
-  dbCache?: "hit" | "miss";
+  dbCache?: 'hit' | 'miss';
   /** Peers held at the moment the chain reported ready. */
   peers?: ChainPeer[];
 }
@@ -138,7 +136,7 @@ export function onChainDetail(cb: DetailCallback): () => void {
 }
 
 function emitChainDetail(detail: ChainDetail): void {
-  const kind = detail.dbCache === undefined ? "peers" : "dbCache";
+  const kind = detail.dbCache === undefined ? 'peers' : 'dbCache';
   detailHistory.set(`${detail.chain}:${kind}`, detail);
   for (const cb of detailListeners) {
     try {
@@ -166,7 +164,7 @@ export function reportDbCache(genesisHash: string, warm: boolean): void {
   if (detailHistory.has(`${chain}:dbCache`)) {
     return;
   }
-  emitChainDetail({ chain, dbCache: warm ? "hit" : "miss" });
+  emitChainDetail({ chain, dbCache: warm ? 'hit' : 'miss' });
 }
 
 type SyncCallback = (event: ChainSyncEvent) => void;
@@ -198,23 +196,19 @@ export function onChainSync(cb: SyncCallback): () => void {
 }
 
 function emitChainSync(event: ChainSyncEvent): void {
-  if (event.kind === "peers") {
+  if (event.kind === 'peers') {
     // Repeating an unchanged report would wake every listener once a second
     // for nothing. `isSyncing` is part of the report, so a flip with a stable
     // count still goes out.
     const prev = syncHistory.get(`${event.chain}:peers`);
-    if (
-      prev !== undefined &&
-      prev.peers === event.peers &&
-      prev.isSyncing === event.isSyncing
-    ) {
+    if (prev !== undefined && prev.peers === event.peers && prev.isSyncing === event.isSyncing) {
       return;
     }
-  } else if (event.kind === "stalled") {
+  } else if (event.kind === 'stalled') {
     // `stalled` and `recovered` describe one condition. Keeping both in the
     // replay history would let a late subscriber end on the outdated half.
     syncHistory.delete(`${event.chain}:recovered`);
-  } else if (event.kind === "recovered") {
+  } else if (event.kind === 'recovered') {
     syncHistory.delete(`${event.chain}:stalled`);
   }
   syncHistory.set(`${event.chain}:${event.kind}`, event);
@@ -228,55 +222,33 @@ function emitChainSync(event: ChainSyncEvent): void {
   }
 }
 
-/** Which chains report sync, and which of those are sampled for peers. */
-export interface SyncReportingConfig {
-  milestones: readonly ChainKey[];
-  peerCounts: readonly ChainKey[];
-}
-
 // Sync reporting is opt-in per process and per chain, because it costs a
-// subscription plus an interceptor on every response the chain yields. The
-// protocol iframe, in direct mode, enables it for the chains its loading
-// screen actually shows. The SharedWorker never does, so its long-lived
-// provider does no work for a UI that cannot observe it.
-const milestoneChains = new Set<ChainKey>();
-const peerCountChains = new Set<ChainKey>();
+// lifecycle watch on every connection to the chain. The protocol iframe, in
+// direct mode, enables it for the chains its loading screen and network panel
+// show. The SharedWorker never does, so its long-lived provider does no work
+// for a UI that cannot observe it.
+const reportingChains = new Set<ChainKey>();
 
-export function enableSyncReporting(config: SyncReportingConfig): void {
-  for (const chain of config.milestones) {
-    milestoneChains.add(chain);
-  }
-  for (const chain of config.peerCounts) {
-    peerCountChains.add(chain);
-    // A peer count is useless without the milestone that ends it.
-    milestoneChains.add(chain);
+export function enableSyncReporting(chains: readonly ChainKey[]): void {
+  for (const chain of chains) {
+    reportingChains.add(chain);
   }
 }
 
-// Reserved id prefixes for our internal JSON-RPC requests. Chosen so they
-// cannot collide with the numeric ids polkadot-api uses, and so the tap can
-// recognize and consume the responses before they reach polkadot-api.
-const FOLLOW_ID_PREFIX = "__dotli_lifecycle_follow__:";
-const HEALTH_ID_PREFIX = "__dotli_health__:";
-const PEERS_ID_PREFIX = "__dotli_peers__:";
+// Reserved id prefix for our internal JSON-RPC request. Chosen so it cannot
+// collide with the numeric ids polkadot-api uses, and so the tap can recognize
+// and consume the response before it reaches polkadot-api.
+const PEERS_ID_PREFIX = '__dotli_peers__:';
 
 // A peer list is a forensic snapshot, not a readout: it answers "who was this
 // chain talking to, and were they themselves caught up" after the fact. Asked
 // once, when the chain reports ready, because that is the moment the answer
 // explains the time the bootstrap took.
+//
+// Only asked when metrics are on, since telemetry is its only reader.
+// `system_peers` is legacy JSON-RPC, and smoldot warns once per chain on the
+// first legacy call. The new API has no peer list to ask instead.
 const MAX_PEERS_RECORDED = 25;
-
-// Bootstrap is the impatient phase: the loading screen is on screen and a
-// second-old peer count is already stale. Once the chain is up the count only
-// feeds the network panel, which nobody watches tick by tick, so the poll
-// drops to a rate that keeps the number honest without holding the chain busy.
-const HEALTH_POLL_INTERVAL_MS = 1_000;
-const HEALTH_POLL_SETTLED_INTERVAL_MS = 15_000;
-const HEALTH_POLL_TIMEOUT_MS = 2_000;
-// How many fast polls a chain gets before the poller drops to the slow rate.
-// Only reached when the light client has no `lifecycle_unstable_follow`, since
-// a working follow pushes peer counts and stands the poller down.
-const HEALTH_POLL_BURST = 120;
 
 /** The fields of a JSON-RPC frame the tap itself looks at. */
 export interface ParsedRpcMessage {
@@ -285,6 +257,12 @@ export interface ParsedRpcMessage {
   result?: unknown;
   error?: unknown;
   params?: unknown;
+}
+
+/** The part of truapi-provider's `LifecycleWatch` the tap uses. */
+export interface ChainLifecycleWatch {
+  next(): Promise<ChainLifecycle | undefined>;
+  close(): void;
 }
 
 export interface ChainSyncTap {
@@ -296,63 +274,25 @@ export interface ChainSyncTap {
   stop(): void;
 }
 
-// A timer that keeps a Node test process alive is a hang, and the poller is
-// best-effort either way.
-function unrefHandle(handle: ReturnType<typeof setTimeout>): void {
-  (handle as unknown as { unref?: () => void }).unref?.();
-}
-
-let sideChannelResponseSeen = false;
-
 /**
- * Warn once per session if our reserved-id requests go unanswered.
+ * Report the sync of one chain from its lifecycle watch.
  *
- * The whole side channel depends on the light client replying to them. If a
- * provider bump breaks that, milestones and peer counts both go silently
- * dead.
- */
-const armSideChannelWatchdog = (() => {
-  let armed = false;
-  return (): void => {
-    if (armed) {
-      return;
-    }
-    armed = true;
-    const watchdog = setTimeout(() => {
-      if (!sideChannelResponseSeen) {
-        log.warn(
-          "[dot.li chain-sync] sync side-channel not observed within 5s, loading detail will not update",
-        );
-      }
-    }, 5_000);
-    unrefHandle(watchdog);
-  };
-})();
-
-/**
- * Attach the sync side channel to the JSON-RPC pipe of one chain.
- *
- * `send` writes a raw JSON-RPC string onto the connection of that chain. The
- * returned tap must see every response, in order, before polkadot-api does.
- * Returns `null` for a chain nobody asked to report, so an unobserved chain
- * costs neither a subscription nor a per-response check.
+ * `send` writes a raw JSON-RPC string onto the connection of that chain, and
+ * the returned tap must see every response, in order, before polkadot-api
+ * does. `watchLifecycle` opens the watch, and is only called for a chain
+ * somebody asked to report. Returns `null` for any other chain, so an
+ * unobserved chain costs neither a watch nor a per-response check.
  */
 export function attachChainSync(
   chain: ChainKey,
   send: (message: string) => void,
+  watchLifecycle: () => ChainLifecycleWatch,
 ): ChainSyncTap | null {
-  if (!milestoneChains.has(chain)) {
+  if (!reportingChains.has(chain)) {
     return null;
   }
 
   let stopped = false;
-  // Subscription id of the `lifecycle_unstable_follow` for this chain, learned from
-  // the follow reply. Notifications carry no request id, so this is how the
-  // tap tells the events of our subscription apart from any other traffic.
-  let followSubscription: string | null = null;
-
-  let polls = 0;
-  let healthTimer: ReturnType<typeof setTimeout> | null = null;
   // Last snapshot, so the next one can be diffed into transitions.
   let lastPhase: string | null = null;
   let lastHealth: string | null = null;
@@ -364,168 +304,80 @@ export function attachChainSync(
   // Latched: a chain that drops to zero peers and finds them again has not
   // found its first peer twice.
   let firstPeerEmitted = false;
-  // Object-held so control-flow analysis does not narrow it to `false` inside
-  // the response handler: only the follow callback ever sets it, and TS cannot
-  // see that ordering across closures.
-  const follow = { works: false };
-
-  const stopHealth = (): void => {
-    if (healthTimer !== null) {
-      clearTimeout(healthTimer);
-      healthTimer = null;
-    }
-  };
-
-  const scheduleHealth = (delayMs: number): void => {
-    stopHealth();
-    healthTimer = setTimeout(sendHealth, delayMs);
-    unrefHandle(healthTimer);
-  };
-
-  // Polling is sequential by design. The next poll goes out one interval
-  // after the previous response arrives, so a busy chain is never flooded,
-  // and a 2s timeout resends when a response never surfaces. Stops on chain
-  // teardown, a dead chain, or the bootstrap cap before the chain settles.
-  function sendHealth(): void {
-    if (stopped) {
-      stopHealth();
-      return;
-    }
-    polls += 1;
-    try {
-      send(
-        JSON.stringify({
-          jsonrpc: "2.0",
-          id: `${HEALTH_ID_PREFIX}${chain}:${String(polls)}`,
-          method: "system_health",
-          params: [],
-        }),
-      );
-    } catch {
-      // The connection was closed under us. Polling is best-effort and
-      // simply ends.
-      stopped = true;
-      stopHealth();
-      return;
-    }
-    scheduleHealth(HEALTH_POLL_TIMEOUT_MS);
-  }
-
-  /** Fast while the chain is bootstrapping, slow once the burst is spent. */
-  function healthInterval(): number {
-    return polls >= HEALTH_POLL_BURST
-      ? HEALTH_POLL_SETTLED_INTERVAL_MS
-      : HEALTH_POLL_INTERVAL_MS;
-  }
 
   /**
-   * Apply one `lifecycle_unstable_follow` state snapshot.
+   * Apply one lifecycle snapshot.
    *
-   * The subscription reports the whole chain state on every change rather
-   * than a milestone, so the transitions the loading screen cares about are
-   * derived by diffing against the last snapshot. `numPeers` rides along on
-   * every event, which is why a chain with a working follow needs no
-   * `system_health` polling at all.
+   * The watch reports the whole chain state on every change rather than a
+   * milestone, so the transitions the loading screen cares about are derived
+   * by diffing against the last snapshot.
    */
-  const applyLifecycleState = (result: unknown): void => {
-    const state = result as
-      | {
-          phase?: { kind?: string; target?: number; at?: number };
-          numPeers?: number;
-          health?: { kind?: string; reason?: string };
-        }
-      | undefined;
-    if (state === undefined) {
-      return;
+  const applyLifecycleState = (state: ChainLifecycle): void => {
+    const { peers, phase, health } = state;
+    if (peers > 0 && !firstPeerEmitted) {
+      firstPeerEmitted = true;
+      emitChainSync({ chain, kind: 'firstPeer' });
     }
-    follow.works = true;
-    // The provider holds system_health until sync completes, but lifecycle
-    // snapshots already prove the side channel is feeding the loading screen.
-    sideChannelResponseSeen = true;
-    // The follow supersedes the poller: its peer counts are pushed rather
-    // than sampled, so they are both fresher and cheaper.
-    stopHealth();
-
-    const peers = state.numPeers;
-    if (typeof peers === "number" && Number.isInteger(peers) && peers >= 0) {
-      if (peers > 0 && !firstPeerEmitted) {
-        firstPeerEmitted = true;
-        emitChainSync({ chain, kind: "firstPeer" });
-      }
-      if (peers !== lastPeers) {
-        emitChainSync({
-          chain,
-          kind: "peers",
-          peers,
-          isSyncing: state.phase?.kind !== "ready",
-        });
-      }
-      lastPeers = peers;
+    if (peers !== lastPeers) {
+      emitChainSync({
+        chain,
+        kind: 'peers',
+        peers,
+        isSyncing: phase.kind !== 'ready',
+      });
     }
+    lastPeers = peers;
 
-    const phase = state.phase?.kind;
-    if (phase !== undefined && phase !== lastPhase) {
-      if (phase === "connecting") {
-        emitChainSync({ chain, kind: "connecting" });
-      } else if (phase === "ready") {
+    if (phase.kind !== lastPhase) {
+      if (phase.kind === 'connecting') {
+        emitChainSync({ chain, kind: 'connecting' });
+      } else if (phase.kind === 'ready') {
         // Ordered before `bootstrapComplete` so a listener reading milestones
         // in sequence never sees the warp finish after the chain is already up.
         if (lastWarpAt !== null) {
           emitChainSync({
             chain,
-            kind: "warpSyncFinished",
+            kind: 'warpSyncFinished',
             finalized: lastWarpAt,
           });
         }
-        emitChainSync({ chain, kind: "bootstrapComplete" });
+        emitChainSync({ chain, kind: 'bootstrapComplete' });
         requestPeers();
       }
-      lastPhase = phase;
+      lastPhase = phase.kind;
     }
     // Warp progress repeats while the target moves, so it is emitted on every
     // syncing snapshot rather than only on a phase change.
-    if (phase === "syncing") {
-      const target = state.phase?.target;
-      const at = state.phase?.at;
-      if (typeof at === "number") {
-        lastWarpAt = at;
-      }
+    if (phase.kind === 'syncing') {
+      lastWarpAt = phase.at;
       emitChainSync({
         chain,
-        kind: "warpSyncProgress",
-        ...(typeof at === "number" ? { at } : {}),
-        ...(typeof target === "number" ? { target } : {}),
+        kind: 'warpSyncProgress',
+        at: phase.at,
+        target: phase.target,
       });
     }
 
-    // `health` is `{kind:"ok"}` or `{kind:"stalled", reason:"noPeers"|
-    // "noProgress"}`. The reason is the half worth showing, and it can change
-    // while the chain stays stalled, so the pair is what gets compared.
-    const healthKind = state.health?.kind;
-    const reason = state.health?.reason;
-    const healthKey =
-      healthKind === "stalled" ? `stalled:${reason ?? ""}` : healthKind;
-    if (healthKind !== undefined && healthKey !== lastHealth) {
-      if (healthKind === "ok") {
+    // The reason is the half of a stall worth showing, and it can change while
+    // the chain stays stalled, so the pair is what gets compared.
+    const healthKey = health.kind === 'stalled' ? `stalled:${health.reason}` : health.kind;
+    if (healthKey !== lastHealth) {
+      if (health.kind === 'ok') {
         // Only a chain that was previously unwell can recover, so the first
         // `ok` of a session is not an event.
         if (lastStallReason !== null) {
           emitChainSync({
             chain,
-            kind: "recovered",
+            kind: 'recovered',
             reason: lastStallReason,
           });
         }
         lastStallReason = null;
-      } else if (healthKind === "stalled") {
-        emitChainSync({
-          chain,
-          kind: "stalled",
-          ...(typeof reason === "string" ? { reason } : {}),
-        });
-        lastStallReason = reason ?? null;
+      } else {
+        emitChainSync({ chain, kind: 'stalled', reason: health.reason });
+        lastStallReason = health.reason;
       }
-      lastHealth = healthKey ?? null;
+      lastHealth = healthKey;
     }
   };
 
@@ -533,16 +385,16 @@ export function attachChainSync(
   // not terminal, so a chain that warps again returns to it later.
   let peersRequested = false;
   const requestPeers = (): void => {
-    if (peersRequested || stopped) {
+    if (peersRequested || stopped || !m.enabled) {
       return;
     }
     peersRequested = true;
     try {
       send(
         JSON.stringify({
-          jsonrpc: "2.0",
+          jsonrpc: '2.0',
           id: `${PEERS_ID_PREFIX}${chain}`,
-          method: "system_peers",
+          method: 'system_peers',
           params: [],
         }),
       );
@@ -567,123 +419,77 @@ export function attachChainSync(
         roles?: unknown;
         bestNumber?: unknown;
       };
-      if (typeof peer.peerId !== "string") {
+      if (typeof peer.peerId !== 'string') {
         continue;
       }
       peers.push({
         peerId: peer.peerId,
-        roles: typeof peer.roles === "string" ? peer.roles : "UNKNOWN",
-        bestNumber:
-          typeof peer.bestNumber === "number" &&
-          Number.isFinite(peer.bestNumber)
-            ? peer.bestNumber
-            : 0,
+        roles: typeof peer.roles === 'string' ? peer.roles : 'UNKNOWN',
+        bestNumber: typeof peer.bestNumber === 'number' && Number.isFinite(peer.bestNumber) ? peer.bestNumber : 0,
       });
     }
     emitChainDetail({ chain, peers });
   };
 
-  const handleHealthResponse = (result: unknown): void => {
-    sideChannelResponseSeen = true;
-    if (follow.works) {
-      // The follow started reporting while this poll was in flight. Let it
-      // own the peer count from here.
-      stopHealth();
-      return;
-    }
-    if (!stopped) {
-      scheduleHealth(healthInterval());
-    }
-    const health = result as { peers?: unknown; isSyncing?: unknown } | null;
-    if (
-      health === null ||
-      typeof health !== "object" ||
-      typeof health.peers !== "number" ||
-      !Number.isInteger(health.peers) ||
-      health.peers < 0 ||
-      typeof health.isSyncing !== "boolean"
-    ) {
-      return;
-    }
-    emitChainSync({
-      chain,
-      kind: "peers",
-      peers: health.peers,
-      isSyncing: health.isSyncing,
-    });
-  };
-
   const intercept = (parsed: ParsedRpcMessage): boolean => {
-    if (typeof parsed.id === "string") {
-      if (parsed.id.startsWith(FOLLOW_ID_PREFIX)) {
-        // Reply to our follow request: remember the subscription id so
-        // notifications (which carry no request id) can be matched below.
-        if (typeof parsed.result === "string") {
-          followSubscription = parsed.result;
-        } else if (parsed.error !== undefined) {
-          // This light client does not implement the lifecycle follow. Peer
-          // counts carry the loading detail on their own, so say it once at
-          // debug and stop expecting milestones.
-          log.debug(
-            `[dot.li chain-sync] ${chain} has no lifecycle follow, peer counts only`,
-          );
-        }
-        return true;
-      }
-      if (parsed.id.startsWith(HEALTH_ID_PREFIX)) {
-        handleHealthResponse(parsed.result);
-        return true;
-      }
-      if (parsed.id.startsWith(PEERS_ID_PREFIX)) {
-        handlePeersResponse(parsed.result);
-        return true;
-      }
-      return false;
-    }
-    if (parsed.method === "lifecycle_unstable_followEvent") {
-      const params = parsed.params as
-        { subscription?: unknown; result?: unknown } | undefined;
-      // The follow reply always precedes its notifications, so an unknown
-      // subscription id means the event belongs to someone else: forward it.
-      if (
-        params === undefined ||
-        followSubscription === null ||
-        params.subscription !== followSubscription
-      ) {
-        return false;
-      }
-      applyLifecycleState(params.result);
+    if (typeof parsed.id === 'string' && parsed.id.startsWith(PEERS_ID_PREFIX)) {
+      handlePeersResponse(parsed.result);
       return true;
     }
     return false;
   };
 
-  const stop = (): void => {
-    stopped = true;
-    stopHealth();
-  };
-
+  let watch: ChainLifecycleWatch;
   try {
-    send(
-      JSON.stringify({
-        jsonrpc: "2.0",
-        id: `${FOLLOW_ID_PREFIX}${chain}`,
-        method: "lifecycle_unstable_follow",
-        params: [],
-      }),
-    );
+    watch = watchLifecycle();
   } catch (err: unknown) {
+    // Only a chain nothing is connected to refuses a watch, and the caller
+    // opens this one right after connecting. The loading screen falls back to
+    // its own timings, so this is worth a warning rather than a failure.
     log.warn(
-      `[dot.li chain-sync] lifecycle follow send failed for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
+      `[dot.li chain-sync] lifecycle watch unavailable for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
     );
+    return { intercept, stop: () => undefined };
   }
 
-  if (peerCountChains.has(chain)) {
-    armSideChannelWatchdog();
-    // Poll immediately: on a warm start the chain bootstraps in well under a
-    // second and a delayed first poll would never produce a sample.
-    scheduleHealth(0);
+  // 0.3.1 queues ordinary health RPCs until ready. Lifecycle snapshots prove
+  // that loading detail is working even while the chain is still syncing.
+  const watchdog = setTimeout(() => {
+    log.warn(`[dot.li chain-sync] lifecycle not observed for ${chain} within 5s, loading detail will not update`);
+  }, 5_000);
+  if (typeof watchdog === 'object' && 'unref' in watchdog) {
+    watchdog.unref();
   }
+
+  const consumeLifecycle = async (): Promise<void> => {
+    try {
+      // `undefined` once the watch is closed, which `stop` does, or once the
+      // chain is gone.
+      for (let state; (state = await watch.next()) !== undefined;) {
+        clearTimeout(watchdog);
+        if (stopped) {
+          break;
+        }
+        applyLifecycleState(state);
+      }
+    } catch (err: unknown) {
+      log.warn(
+        `[dot.li chain-sync] lifecycle watch failed for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    } finally {
+      clearTimeout(watchdog);
+    }
+  };
+  void consumeLifecycle();
+
+  const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    clearTimeout(watchdog);
+    watch.close();
+  };
 
   return { intercept, stop };
 }

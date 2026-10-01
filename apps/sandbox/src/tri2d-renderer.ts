@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-const MAGIC = "ETD1";
+const MAGIC = 'ETD1';
 const VERSION = 1;
 const HEADER_BYTES = 24;
 const VERTEX_BYTES = 20;
@@ -28,7 +28,7 @@ interface TextureState {
 }
 
 interface TextureCreate {
-  kind: "texture-create";
+  kind: 'texture-create';
   handle: number;
   width: number;
   height: number;
@@ -37,7 +37,7 @@ interface TextureCreate {
 }
 
 interface TextureUpdate {
-  kind: "texture-update";
+  kind: 'texture-update';
   handle: number;
   x: number;
   y: number;
@@ -47,12 +47,12 @@ interface TextureUpdate {
 }
 
 interface TextureDestroy {
-  kind: "texture-destroy";
+  kind: 'texture-destroy';
   handle: number;
 }
 
 interface Draw {
-  kind: "draw";
+  kind: 'draw';
   handle: number;
   clipX: number;
   clipY: number;
@@ -91,12 +91,8 @@ class Reader {
   }
 
   bytes(length: number): Uint8Array {
-    if (
-      !Number.isSafeInteger(length) ||
-      length < 0 ||
-      length > this.remaining
-    ) {
-      throw new Error("truncated Tri2D stream");
+    if (!Number.isSafeInteger(length) || length < 0 || length > this.remaining) {
+      throw new Error('truncated Tri2D stream');
     }
     const start = this.#offset;
     this.#offset += length;
@@ -104,12 +100,15 @@ class Reader {
   }
 
   u8(): number {
-    return this.bytes(1)[0];
+    if (this.remaining < 1) {
+      throw new Error('truncated Tri2D stream');
+    }
+    return this.#view.getUint8(this.#offset++);
   }
 
   u16(): number {
     if (this.remaining < 2) {
-      throw new Error("truncated Tri2D stream");
+      throw new Error('truncated Tri2D stream');
     }
     const value = this.#view.getUint16(this.#offset, true);
     this.#offset += 2;
@@ -118,7 +117,7 @@ class Reader {
 
   u32(): number {
     if (this.remaining < 4) {
-      throw new Error("truncated Tri2D stream");
+      throw new Error('truncated Tri2D stream');
     }
     const value = this.#view.getUint32(this.#offset, true);
     this.#offset += 4;
@@ -131,7 +130,7 @@ function multiply(...values: number[]): number {
   for (const value of values) {
     product *= value;
     if (!Number.isSafeInteger(product)) {
-      throw new Error("Tri2D byte length overflow");
+      throw new Error('Tri2D byte length overflow');
     }
   }
   return product;
@@ -139,7 +138,7 @@ function multiply(...values: number[]): number {
 
 function nonzeroHandle(value: number): number {
   if (value === 0) {
-    throw new Error("Tri2D texture handle must be nonzero");
+    throw new Error('Tri2D texture handle must be nonzero');
   }
   return value;
 }
@@ -154,28 +153,23 @@ export function parseTri2dStream(
   currentTextureBytes = 0,
 ): ParsedTri2dFrame {
   if (bytes.byteLength < HEADER_BYTES || bytes.byteLength > MAX_STREAM_BYTES) {
-    throw new Error("Tri2D stream has invalid byte length");
+    throw new Error('Tri2D stream has invalid byte length');
   }
   const reader = new Reader(bytes);
-  if (new TextDecoder("ascii").decode(reader.bytes(4)) !== MAGIC) {
-    throw new Error("Tri2D stream has invalid magic");
+  if (new TextDecoder('ascii').decode(reader.bytes(4)) !== MAGIC) {
+    throw new Error('Tri2D stream has invalid magic');
   }
   if (reader.u16() !== VERSION || reader.u16() !== HEADER_BYTES) {
-    throw new Error("Tri2D stream has incompatible framing");
+    throw new Error('Tri2D stream has incompatible framing');
   }
   const width = reader.u32();
   const height = reader.u32();
-  if (
-    width === 0 ||
-    height === 0 ||
-    width > MAX_SURFACE_SIZE ||
-    height > MAX_SURFACE_SIZE
-  ) {
-    throw new Error("Tri2D stream has invalid surface dimensions");
+  if (width === 0 || height === 0 || width > MAX_SURFACE_SIZE || height > MAX_SURFACE_SIZE) {
+    throw new Error('Tri2D stream has invalid surface dimensions');
   }
   const commandCount = reader.u32();
   if (commandCount === 0 || commandCount > MAX_COMMANDS) {
-    throw new Error("Tri2D stream has invalid command count");
+    throw new Error('Tri2D stream has invalid command count');
   }
   const clearRgba = reader.u32();
   const textures = new Map(currentTextures);
@@ -189,12 +183,12 @@ export function parseTri2dStream(
   for (let commandIndex = 0; commandIndex < commandCount; commandIndex++) {
     const opcode = reader.u8();
     if (reader.u8() !== 0 || reader.u16() !== 0) {
-      throw new Error("Tri2D command has unsupported flags");
+      throw new Error('Tri2D command has unsupported flags');
     }
     const payloadLength = reader.u32();
     const payload = new Reader(reader.bytes(payloadLength));
     if (presented) {
-      throw new Error("Tri2D command follows present");
+      throw new Error('Tri2D command follows present');
     }
 
     if (opcode === TEXTURE_CREATE) {
@@ -210,19 +204,15 @@ export function parseTri2dStream(
         textureHeight > MAX_TEXTURE_SIZE ||
         filter > 1
       ) {
-        throw new Error("Tri2D texture create has invalid properties");
+        throw new Error('Tri2D texture create has invalid properties');
       }
       const expected = multiply(textureWidth, textureHeight, 4);
       if (byteLength !== expected || payload.remaining !== byteLength) {
-        throw new Error("Tri2D texture create has invalid pixel length");
+        throw new Error('Tri2D texture create has invalid pixel length');
       }
       const pixels = payload.bytes(byteLength).slice();
-      if (
-        textures.has(handle) ||
-        textures.size === MAX_TEXTURES ||
-        textureBytes + byteLength > MAX_TEXTURE_BYTES
-      ) {
-        throw new Error("Tri2D texture limits exceeded");
+      if (textures.has(handle) || textures.size === MAX_TEXTURES || textureBytes + byteLength > MAX_TEXTURE_BYTES) {
+        throw new Error('Tri2D texture limits exceeded');
       }
       textures.set(handle, {
         width: textureWidth,
@@ -231,7 +221,7 @@ export function parseTri2dStream(
       });
       textureBytes += byteLength;
       operations.push({
-        kind: "texture-create",
+        kind: 'texture-create',
         handle,
         width: textureWidth,
         height: textureHeight,
@@ -247,20 +237,17 @@ export function parseTri2dStream(
       const byteLength = payload.u32();
       const texture = textures.get(handle);
       if (texture === undefined) {
-        throw new Error("Tri2D texture update uses an unknown handle");
+        throw new Error('Tri2D texture update uses an unknown handle');
       }
-      if (
-        !validExtent(x, updateWidth, texture.width) ||
-        !validExtent(y, updateHeight, texture.height)
-      ) {
-        throw new Error("Tri2D texture update exceeds texture bounds");
+      if (!validExtent(x, updateWidth, texture.width) || !validExtent(y, updateHeight, texture.height)) {
+        throw new Error('Tri2D texture update exceeds texture bounds');
       }
       const expected = multiply(updateWidth, updateHeight, 4);
       if (byteLength !== expected || payload.remaining !== byteLength) {
-        throw new Error("Tri2D texture update has invalid pixel length");
+        throw new Error('Tri2D texture update has invalid pixel length');
       }
       operations.push({
-        kind: "texture-update",
+        kind: 'texture-update',
         handle,
         x,
         y,
@@ -272,57 +259,50 @@ export function parseTri2dStream(
       const handle = nonzeroHandle(payload.u32());
       const texture = textures.get(handle);
       if (texture === undefined) {
-        throw new Error("Tri2D texture destroy uses an unknown handle");
+        throw new Error('Tri2D texture destroy uses an unknown handle');
       }
       textures.delete(handle);
       textureBytes -= texture.bytes;
-      operations.push({ kind: "texture-destroy", handle });
+      operations.push({ kind: 'texture-destroy', handle });
     } else if (opcode === DRAW) {
       const handle = nonzeroHandle(payload.u32());
       if (!textures.has(handle)) {
-        throw new Error("Tri2D draw uses an unknown texture handle");
+        throw new Error('Tri2D draw uses an unknown texture handle');
       }
       const clipX = payload.u32();
       const clipY = payload.u32();
       const clipWidth = payload.u32();
       const clipHeight = payload.u32();
-      if (
-        !validExtent(clipX, clipWidth, width) ||
-        !validExtent(clipY, clipHeight, height)
-      ) {
-        throw new Error("Tri2D draw has an invalid clip rectangle");
+      if (!validExtent(clipX, clipWidth, width) || !validExtent(clipY, clipHeight, height)) {
+        throw new Error('Tri2D draw has an invalid clip rectangle');
       }
       const vertices = payload.u32();
       const indices = payload.u32();
       if (vertices === 0 || indices === 0 || indices % 3 !== 0) {
-        throw new Error("Tri2D draw has invalid element counts");
+        throw new Error('Tri2D draw has invalid element counts');
       }
       drawCount++;
       vertexCount += vertices;
       indexCount += indices;
-      if (
-        drawCount > MAX_DRAWS ||
-        vertexCount > MAX_VERTICES ||
-        indexCount > MAX_INDICES
-      ) {
-        throw new Error("Tri2D draw limits exceeded");
+      if (drawCount > MAX_DRAWS || vertexCount > MAX_VERTICES || indexCount > MAX_INDICES) {
+        throw new Error('Tri2D draw limits exceeded');
       }
       const vertexBytes = multiply(vertices, VERTEX_BYTES);
       const indexBytes = multiply(indices, 4);
       if (payload.remaining !== vertexBytes + indexBytes) {
-        throw new Error("Tri2D draw has invalid payload length");
+        throw new Error('Tri2D draw has invalid payload length');
       }
       const vertexData = payload.bytes(vertexBytes).slice();
       const indexData = new Uint32Array(indices);
       for (let index = 0; index < indices; index++) {
         const value = payload.u32();
         if (value >= vertices) {
-          throw new Error("Tri2D draw index exceeds vertex count");
+          throw new Error('Tri2D draw index exceeds vertex count');
         }
         indexData[index] = value;
       }
       operations.push({
-        kind: "draw",
+        kind: 'draw',
         handle,
         clipX,
         clipY,
@@ -333,19 +313,19 @@ export function parseTri2dStream(
       });
     } else if (opcode === PRESENT) {
       if (payloadLength !== 0 || commandIndex + 1 !== commandCount) {
-        throw new Error("Tri2D present must be the final empty command");
+        throw new Error('Tri2D present must be the final empty command');
       }
       presented = true;
     } else {
       throw new Error(`Tri2D stream has unknown opcode ${String(opcode)}`);
     }
     if (payload.remaining !== 0) {
-      throw new Error("Tri2D command has trailing payload bytes");
+      throw new Error('Tri2D command has trailing payload bytes');
     }
   }
 
   if (!presented || reader.remaining !== 0) {
-    throw new Error("Tri2D stream has invalid presentation boundary");
+    throw new Error('Tri2D stream has invalid presentation boundary');
   }
   return {
     width,
@@ -364,19 +344,15 @@ interface GpuTexture extends TextureState {
   texture: WebGLTexture;
 }
 
-function shader(
-  gl: WebGL2RenderingContext,
-  type: number,
-  source: string,
-): WebGLShader {
+function shader(gl: WebGL2RenderingContext, type: number, source: string): WebGLShader {
   const value = gl.createShader(type);
   if (value === null) {
-    throw new Error("WebGL could not allocate a Tri2D shader");
+    throw new Error('WebGL could not allocate a Tri2D shader');
   }
   gl.shaderSource(value, source);
   gl.compileShader(value);
   if (gl.getShaderParameter(value, gl.COMPILE_STATUS) !== true) {
-    const message = gl.getShaderInfoLog(value) ?? "unknown shader error";
+    const message = gl.getShaderInfoLog(value) ?? 'unknown shader error';
     gl.deleteShader(value);
     throw new Error(`Tri2D shader compilation failed: ${message}`);
   }
@@ -427,7 +403,7 @@ function program(gl: WebGL2RenderingContext): WebGLProgram {
     gl.attachShader(value, fragment);
     gl.linkProgram(value);
     if (gl.getProgramParameter(value, gl.LINK_STATUS) !== true) {
-      const message = gl.getProgramInfoLog(value) ?? "unknown link error";
+      const message = gl.getProgramInfoLog(value) ?? 'unknown link error';
       throw new Error(`Tri2D shader link failed: ${message}`);
     }
     return value;
@@ -461,22 +437,22 @@ export class Tri2dRenderer {
   #backgroundHeight = 0;
 
   constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext("webgl2", {
+    const gl = canvas.getContext('webgl2', {
       alpha: false,
       antialias: false,
       premultipliedAlpha: true,
       preserveDrawingBuffer: false,
     });
     if (gl === null) {
-      throw new Error("WebGL2 is required for Tri2D");
+      throw new Error('WebGL2 is required for Tri2D');
     }
     const renderProgram = program(gl);
-    const surface = gl.getUniformLocation(renderProgram, "surface");
+    const surface = gl.getUniformLocation(renderProgram, 'surface');
     const vertexBuffer = gl.createBuffer();
     const indexBuffer = gl.createBuffer();
     const vao = gl.createVertexArray();
     if (surface === null) {
-      throw new Error("WebGL could not locate the Tri2D surface uniform");
+      throw new Error('WebGL could not locate the Tri2D surface uniform');
     }
     this.#canvas = canvas;
     this.#gl = gl;
@@ -487,7 +463,7 @@ export class Tri2dRenderer {
     this.#vao = vao;
 
     gl.useProgram(renderProgram);
-    gl.uniform1i(gl.getUniformLocation(renderProgram, "image"), 0);
+    gl.uniform1i(gl.getUniformLocation(renderProgram, 'image'), 0);
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, vertexBuffer);
     gl.enableVertexAttribArray(0);
@@ -516,7 +492,7 @@ export class Tri2dRenderer {
     }
     const gl = this.#gl;
     if (gl.isContextLost()) {
-      throw new Error("Tri2D WebGL context was lost");
+      throw new Error('Tri2D WebGL context was lost');
     }
     const width = this.#backgroundWidth;
     const height = this.#backgroundHeight;
@@ -529,18 +505,7 @@ export class Tri2dRenderer {
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.#backgroundFramebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
     gl.disable(gl.SCISSOR_TEST);
-    gl.blitFramebuffer(
-      0,
-      0,
-      width,
-      height,
-      0,
-      0,
-      width,
-      height,
-      gl.COLOR_BUFFER_BIT,
-      gl.NEAREST,
-    );
+    gl.blitFramebuffer(0, 0, width, height, 0, 0, width, height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.enable(gl.SCISSOR_TEST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.flush();
@@ -570,21 +535,11 @@ export class Tri2dRenderer {
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.#backgroundFramebuffer);
       gl.bindRenderbuffer(gl.RENDERBUFFER, this.#backgroundBuffer);
       gl.renderbufferStorage(gl.RENDERBUFFER, gl.RGBA8, width, height);
-      gl.framebufferRenderbuffer(
-        gl.FRAMEBUFFER,
-        gl.COLOR_ATTACHMENT0,
-        gl.RENDERBUFFER,
-        this.#backgroundBuffer,
-      );
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, this.#backgroundBuffer);
       gl.bindRenderbuffer(gl.RENDERBUFFER, null);
-      if (
-        gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE ||
-        gl.getError() !== gl.NO_ERROR
-      ) {
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE || gl.getError() !== gl.NO_ERROR) {
         this.#releaseBackgroundSurface();
-        throw new Error(
-          "WebGL could not initialize the Tri2D background surface",
-        );
+        throw new Error('WebGL could not initialize the Tri2D background surface');
       }
       this.#backgroundWidth = width;
       this.#backgroundHeight = height;
@@ -605,7 +560,7 @@ export class Tri2dRenderer {
     const frame = parseTri2dStream(bytes, state, this.#textureBytes);
     const gl = this.#gl;
     if (gl.isContextLost()) {
-      throw new Error("Tri2D WebGL context was lost");
+      throw new Error('Tri2D WebGL context was lost');
     }
     if (this.#backgrounded) {
       this.#bindBackgroundSurface(frame.width, frame.height);
@@ -636,7 +591,7 @@ export class Tri2dRenderer {
     gl.enable(gl.SCISSOR_TEST);
 
     for (const operation of frame.operations) {
-      if (operation.kind === "texture-create") {
+      if (operation.kind === 'texture-create') {
         const texture = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, texture);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -662,10 +617,10 @@ export class Tri2dRenderer {
           bytes: operation.pixels.byteLength,
         });
         this.#textureBytes += operation.pixels.byteLength;
-      } else if (operation.kind === "texture-update") {
+      } else if (operation.kind === 'texture-update') {
         const texture = this.#textures.get(operation.handle);
         if (texture === undefined) {
-          throw new Error("Tri2D texture state diverged");
+          throw new Error('Tri2D texture state diverged');
         }
         gl.bindTexture(gl.TEXTURE_2D, texture.texture);
         gl.texSubImage2D(
@@ -679,10 +634,10 @@ export class Tri2dRenderer {
           gl.UNSIGNED_BYTE,
           operation.pixels,
         );
-      } else if (operation.kind === "texture-destroy") {
+      } else if (operation.kind === 'texture-destroy') {
         const texture = this.#textures.get(operation.handle);
         if (texture === undefined) {
-          throw new Error("Tri2D texture state diverged");
+          throw new Error('Tri2D texture state diverged');
         }
         gl.deleteTexture(texture.texture);
         this.#textures.delete(operation.handle);
@@ -690,7 +645,7 @@ export class Tri2dRenderer {
       } else {
         const texture = this.#textures.get(operation.handle);
         if (texture === undefined) {
-          throw new Error("Tri2D texture state diverged");
+          throw new Error('Tri2D texture state diverged');
         }
         gl.bindTexture(gl.TEXTURE_2D, texture.texture);
         gl.scissor(
@@ -700,17 +655,8 @@ export class Tri2dRenderer {
           operation.clipHeight,
         );
         gl.bufferData(gl.ARRAY_BUFFER, operation.vertices, gl.DYNAMIC_DRAW);
-        gl.bufferData(
-          gl.ELEMENT_ARRAY_BUFFER,
-          operation.indices,
-          gl.DYNAMIC_DRAW,
-        );
-        gl.drawElements(
-          gl.TRIANGLES,
-          operation.indices.length,
-          gl.UNSIGNED_INT,
-          0,
-        );
+        gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, operation.indices, gl.DYNAMIC_DRAW);
+        gl.drawElements(gl.TRIANGLES, operation.indices.length, gl.UNSIGNED_INT, 0);
       }
     }
     gl.flush();

@@ -5,26 +5,20 @@
 // A logical read owns one best block across AccountInfoOf and every child slot.
 // Only current fork references and outstanding reads retain finalized history.
 
-import type {
-  FollowResponse,
-  SubstrateClient,
-} from "@polkadot-api/substrate-client";
-import { StopError } from "@polkadot-api/substrate-client";
-import { Twox128, Blake2256, Hex } from "@polkadot-api/substrate-bindings";
-import { fromHex, toHex, mergeUint8 } from "@polkadot-api/utils";
+import type { FollowResponse, SubstrateClient } from '@polkadot-api/substrate-client';
+import { StopError } from '@polkadot-api/substrate-client';
+import { Twox128, Blake2256, Hex } from '@polkadot-api/substrate-bindings';
+import { fromHex, toHex, mergeUint8 } from '@polkadot-api/utils';
 
 const enc = new TextEncoder();
-const ACCOUNT_INFO_OF_PREFIX = mergeUint8([
-  Twox128(enc.encode("Revive")),
-  Twox128(enc.encode("AccountInfoOf")),
-]);
+const ACCOUNT_INFO_OF_PREFIX = mergeUint8([Twox128(enc.encode('Revive')), Twox128(enc.encode('AccountInfoOf'))]);
 const decodeVecU8 = Hex().dec;
 
 /** A dead API generation; the existing resolver owner must redial. */
 export class ApiStoppedError extends Error {
   constructor(cause?: unknown) {
-    super("chainHead follow stopped", { cause });
-    this.name = "ApiStoppedError";
+    super('chainHead follow stopped', { cause });
+    this.name = 'ApiStoppedError';
   }
 }
 
@@ -41,10 +35,7 @@ export interface Api {
    * afresh, and release on callback completion/error. Missing contracts return
    * null without invoking read. A stopped generation rejects outstanding reads.
    */
-  withContract<T>(
-    contractAddress: string,
-    read: (storage: ContractStorage) => Promise<T>,
-  ): Promise<T | null>;
+  withContract<T>(contractAddress: string, read: (storage: ContractStorage) => Promise<T>): Promise<T | null>;
   /** Fires once, including explicit destroy; late subscribers fire immediately. */
   onStop(cb: () => void): () => void;
   /** End this generation, not the caller-owned SubstrateClient. Idempotent. */
@@ -80,8 +71,7 @@ export function createRawApi(client: SubstrateClient): Api {
     if (stopped !== null) {
       return;
     }
-    stopped =
-      cause instanceof ApiStoppedError ? cause : new ApiStoppedError(cause);
+    stopped = cause instanceof ApiStoppedError ? cause : new ApiStoppedError(cause);
     bestHash = finalizedHash = null;
     rejectReady(stopped);
     for (const reject of pending) {
@@ -150,12 +140,12 @@ export function createRawApi(client: SubstrateClient): Api {
 
   follow = client.chainHead(
     false,
-    (event) => {
+    event => {
       if (stopped !== null) {
         return;
       }
       switch (event.type) {
-        case "initialized":
+        case 'initialized':
           for (const hash of event.finalizedBlockHashes) {
             pins.set(hash, { readers: 0 });
             obsolete.add(hash);
@@ -167,13 +157,13 @@ export function createRawApi(client: SubstrateClient): Api {
           }
           resolveReady();
           break;
-        case "newBlock":
+        case 'newBlock':
           pins.set(event.blockHash, { readers: 0 });
           break;
-        case "bestBlockChanged":
+        case 'bestBlockChanged':
           bestHash = event.bestBlockHash;
           break;
-        case "finalized":
+        case 'finalized':
           if (finalizedHash !== null) {
             obsolete.add(finalizedHash);
           }
@@ -205,35 +195,23 @@ export function createRawApi(client: SubstrateClient): Api {
         result = fn();
       } catch (error) {
         pending.delete(reject);
-        reject(
-          error instanceof Error
-            ? error
-            : new Error("Contract storage read failed", { cause: error }),
-        );
+        reject(error instanceof Error ? error : new Error('Contract storage read failed', { cause: error }));
         return;
       }
-      result
+      void result
         .then(resolve, (error: unknown) => {
           if (error instanceof StopError) {
             terminate(error);
           }
           reject(
-            stopped ??
-              (error instanceof Error
-                ? error
-                : new Error("Contract storage read failed", { cause: error })),
+            stopped ?? (error instanceof Error ? error : new Error('Contract storage read failed', { cause: error })),
           );
         })
         .finally(() => pending.delete(reject));
     });
   }
 
-  async function storage(
-    hash: string,
-    pin: Pin,
-    key: string,
-    trie: string | null,
-  ): Promise<string | null> {
+  async function storage(hash: string, pin: Pin, key: string, trie: string | null): Promise<string | null> {
     // An operation also owns a reference: even if a callback throws without
     // awaiting its last read, unpin must wait for that operation to settle.
     pin.readers++;
@@ -244,9 +222,7 @@ export function createRawApi(client: SubstrateClient): Api {
         terminate(error);
         throw error;
       }
-      return await guard(() =>
-        activeFollow.storage(hash, "value", key, trie, operations.signal),
-      );
+      return await guard(() => activeFollow.storage(hash, 'value', key, trie, operations.signal));
     } finally {
       pin.readers--;
       releaseObsolete();
@@ -271,9 +247,7 @@ export function createRawApi(client: SubstrateClient): Api {
       pin.readers++;
       let active = true;
       try {
-        const mainKey = toHex(
-          mergeUint8([ACCOUNT_INFO_OF_PREFIX, fromHex(contractAddress)]),
-        );
+        const mainKey = toHex(mergeUint8([ACCOUNT_INFO_OF_PREFIX, fromHex(contractAddress)]));
         const accountHex = await storage(hash, pin, mainKey, null);
         operations.signal.throwIfAborted();
         if (accountHex === null) {
@@ -290,7 +264,7 @@ export function createRawApi(client: SubstrateClient): Api {
             async readSlot(slotKey) {
               operations.signal.throwIfAborted();
               if (!active) {
-                throw new Error("Contract storage scope has ended");
+                throw new Error('Contract storage scope has ended');
               }
               const key = toHex(Blake2256(fromHex(slotKey)));
               const value = await storage(hash, pin, key, trie);

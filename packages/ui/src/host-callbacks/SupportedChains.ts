@@ -10,27 +10,23 @@
 // served via IPFS gateways. The core-owned Bulletin connection seam in
 // `Chain.ts` is not a product-facing advertisement.
 
-import type { Features } from "@parity/truapi-host";
-import type { ChainIdentifier } from "@parity/truapi";
-import { toHexString } from "@parity/truapi/scale";
-import { getBackend } from "@dotli/config/mode";
-import { getActiveServicesConfig, getNetwork } from "@dotli/config/network";
-import { isChainSupported as isSmoldotChainSupported } from "@dotli/resolver/provider";
-import { isRpcChainSupported } from "@dotli/resolver/rpc-chain";
+import type { Features } from '@parity/truapi-host';
+import type { ChainIdentifier } from '@parity/truapi';
+import { toHexString } from '@parity/truapi/scale';
+import { getBackend, getActiveServicesConfig, getNetwork } from '@dotli/config';
 
-export function createSupportedChains(): Features["supportedChains"] {
+import { isChainSupported as isSmoldotChainSupported, isRpcChainSupported } from '@dotli/resolver';
+
+export function createSupportedChains(): Features['supportedChains'] {
   return () => {
     const cfg = getActiveServicesConfig();
     const slots: { identifier: ChainIdentifier; genesis: string }[] = [
-      { identifier: "Relay", genesis: cfg.relay.genesis },
-      { identifier: "AssetHub", genesis: cfg.assethub.genesis },
-      { identifier: "People", genesis: cfg.people.genesis },
-      { identifier: "Bulletin", genesis: cfg.bulletin.genesis },
+      { identifier: 'Relay', genesis: cfg.relay.genesis },
+      { identifier: 'AssetHub', genesis: cfg.assethub.genesis },
+      { identifier: 'People', genesis: cfg.people.genesis },
+      { identifier: 'Bulletin', genesis: cfg.bulletin.genesis },
     ];
-    const isSupported =
-      getBackend() === "rpc-gateway"
-        ? isRpcChainSupported
-        : isSmoldotChainSupported;
+    const isSupported = getBackend() === 'rpc-gateway' ? isRpcChainSupported : isSmoldotChainSupported;
     return Promise.resolve({
       network: getNetwork(),
       chains: slots

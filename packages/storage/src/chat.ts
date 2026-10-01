@@ -14,12 +14,12 @@
  * bump does not require a migration; readers must tolerate unknown tags.
  */
 
-import { getDb } from "./db";
+import { getDb } from './db.js';
 
-const ROOM_STORE = "chat_rooms";
-const MESSAGE_STORE = "chat_messages";
-const BOT_STORE = "chat_bots";
-const BY_ROOM = "byRoom";
+const ROOM_STORE = 'chat_rooms';
+const MESSAGE_STORE = 'chat_messages';
+const BOT_STORE = 'chat_bots';
+const BY_ROOM = 'byRoom';
 
 export interface ChatRoomRecord {
   productId: string;
@@ -39,7 +39,7 @@ export interface ChatBotRecord {
   createdAt: number;
 }
 
-export type ChatMessageAuthor = "product" | "user";
+export type ChatMessageAuthor = 'product' | 'user';
 
 export interface ChatMessageRecord {
   /** Auto-incremented insertion order, assigned by IDB. */
@@ -53,7 +53,7 @@ export interface ChatMessageRecord {
   timestamp: number;
 }
 
-export type NewChatMessage = Omit<ChatMessageRecord, "seq">;
+export type NewChatMessage = Omit<ChatMessageRecord, 'seq'>;
 
 function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -61,7 +61,7 @@ function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
       resolve(req.result);
     };
     req.onerror = () => {
-      reject(req.error ?? new Error("chat store request failed"));
+      reject(req.error ?? new Error('chat store request failed'));
     };
   });
 }
@@ -72,20 +72,16 @@ function requestAsPromise<T>(req: IDBRequest<T>): Promise<T> {
  * and refreshes the stored name and icon, so a product can rename a room
  * without a new id, same as bot re-registration.
  */
-export async function createRoom(
-  room: Omit<ChatRoomRecord, "createdAt">,
-): Promise<"New" | "Exists"> {
+export async function createRoom(room: Omit<ChatRoomRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
   const db = await getDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(ROOM_STORE, "readwrite");
+    const tx = db.transaction(ROOM_STORE, 'readwrite');
     const store = tx.objectStore(ROOM_STORE);
-    let status: "New" | "Exists" | null = null;
-    const getReq = store.get([room.productId, room.roomId]) as IDBRequest<
-      ChatRoomRecord | undefined
-    >;
+    let status: 'New' | 'Exists' | null = null;
+    const getReq = store.get([room.productId, room.roomId]) as IDBRequest<ChatRoomRecord | undefined>;
     getReq.onsuccess = () => {
       const existing = getReq.result;
-      status = existing === undefined ? "New" : "Exists";
+      status = existing === undefined ? 'New' : 'Exists';
       store.put({
         ...room,
         createdAt: existing?.createdAt ?? Date.now(),
@@ -95,11 +91,11 @@ export async function createRoom(
       if (status !== null) {
         resolve(status);
       } else {
-        reject(new Error("createRoom tx completed without a result"));
+        reject(new Error('createRoom tx completed without a result'));
       }
     };
     tx.onerror = () => {
-      reject(tx.error ?? new Error("createRoom tx errored"));
+      reject(tx.error ?? new Error('createRoom tx errored'));
     };
   });
 }
@@ -110,20 +106,16 @@ export async function createRoom(
  * and refreshes the stored name and icon, so a product can update its bot
  * identity without a new id.
  */
-export async function registerBot(
-  bot: Omit<ChatBotRecord, "createdAt">,
-): Promise<"New" | "Exists"> {
+export async function registerBot(bot: Omit<ChatBotRecord, 'createdAt'>): Promise<'New' | 'Exists'> {
   const db = await getDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(BOT_STORE, "readwrite");
+    const tx = db.transaction(BOT_STORE, 'readwrite');
     const store = tx.objectStore(BOT_STORE);
-    let status: "New" | "Exists" | null = null;
-    const getReq = store.get([bot.productId, bot.botId]) as IDBRequest<
-      ChatBotRecord | undefined
-    >;
+    let status: 'New' | 'Exists' | null = null;
+    const getReq = store.get([bot.productId, bot.botId]) as IDBRequest<ChatBotRecord | undefined>;
     getReq.onsuccess = () => {
       const existing = getReq.result;
-      status = existing === undefined ? "New" : "Exists";
+      status = existing === undefined ? 'New' : 'Exists';
       store.put({
         ...bot,
         createdAt: existing?.createdAt ?? Date.now(),
@@ -133,11 +125,11 @@ export async function registerBot(
       if (status !== null) {
         resolve(status);
       } else {
-        reject(new Error("registerBot tx completed without a result"));
+        reject(new Error('registerBot tx completed without a result'));
       }
     };
     tx.onerror = () => {
-      reject(tx.error ?? new Error("registerBot tx errored"));
+      reject(tx.error ?? new Error('registerBot tx errored'));
     };
   });
 }
@@ -145,48 +137,35 @@ export async function registerBot(
 /** All bots of a product, in registration order. */
 export async function listBots(productId: string): Promise<ChatBotRecord[]> {
   const db = await getDb();
-  const store = db.transaction(BOT_STORE, "readonly").objectStore(BOT_STORE);
-  const range = IDBKeyRange.bound([productId, ""], [productId, "￿"]);
-  const bots = await requestAsPromise(
-    store.getAll(range) as IDBRequest<ChatBotRecord[]>,
-  );
+  const store = db.transaction(BOT_STORE, 'readonly').objectStore(BOT_STORE);
+  const range = IDBKeyRange.bound([productId, ''], [productId, '￿']);
+  const bots = await requestAsPromise(store.getAll(range) as IDBRequest<ChatBotRecord[]>);
   return bots.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** All rooms of a product, in creation order. */
 export async function listRooms(productId: string): Promise<ChatRoomRecord[]> {
   const db = await getDb();
-  const store = db.transaction(ROOM_STORE, "readonly").objectStore(ROOM_STORE);
-  const range = IDBKeyRange.bound([productId, ""], [productId, "￿"]);
-  const rooms = await requestAsPromise(
-    store.getAll(range) as IDBRequest<ChatRoomRecord[]>,
-  );
+  const store = db.transaction(ROOM_STORE, 'readonly').objectStore(ROOM_STORE);
+  const range = IDBKeyRange.bound([productId, ''], [productId, '￿']);
+  const rooms = await requestAsPromise(store.getAll(range) as IDBRequest<ChatRoomRecord[]>);
   return rooms.sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** Append one message. Resolves with the assigned insertion sequence. */
 export async function appendMessage(message: NewChatMessage): Promise<number> {
   const db = await getDb();
-  const store = db
-    .transaction(MESSAGE_STORE, "readwrite")
-    .objectStore(MESSAGE_STORE);
+  const store = db.transaction(MESSAGE_STORE, 'readwrite').objectStore(MESSAGE_STORE);
   const seq = await requestAsPromise(store.add(message));
   return seq as number;
 }
 
 /** Latest message timestamp per room of one product. */
-export async function latestMessageTimestamps(
-  productId: string,
-): Promise<Map<string, number>> {
+export async function latestMessageTimestamps(productId: string): Promise<Map<string, number>> {
   const db = await getDb();
-  const index = db
-    .transaction(MESSAGE_STORE, "readonly")
-    .objectStore(MESSAGE_STORE)
-    .index(BY_ROOM);
-  const range = IDBKeyRange.bound([productId, ""], [productId, "￿"]);
-  const all = await requestAsPromise(
-    index.getAll(range) as IDBRequest<ChatMessageRecord[]>,
-  );
+  const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
+  const range = IDBKeyRange.bound([productId, ''], [productId, '￿']);
+  const all = await requestAsPromise(index.getAll(range) as IDBRequest<ChatMessageRecord[]>);
   const latest = new Map<string, number>();
   for (const message of all) {
     if (message.timestamp > (latest.get(message.roomId) ?? 0)) {
@@ -197,20 +176,11 @@ export async function latestMessageTimestamps(
 }
 
 /** Messages of one room in insertion order, capped at `limit` latest. */
-export async function listMessages(
-  productId: string,
-  roomId: string,
-  limit = 200,
-): Promise<ChatMessageRecord[]> {
+export async function listMessages(productId: string, roomId: string, limit = 200): Promise<ChatMessageRecord[]> {
   const db = await getDb();
-  const index = db
-    .transaction(MESSAGE_STORE, "readonly")
-    .objectStore(MESSAGE_STORE)
-    .index(BY_ROOM);
+  const index = db.transaction(MESSAGE_STORE, 'readonly').objectStore(MESSAGE_STORE).index(BY_ROOM);
   const all = await requestAsPromise(
-    index.getAll(IDBKeyRange.only([productId, roomId])) as IDBRequest<
-      ChatMessageRecord[]
-    >,
+    index.getAll(IDBKeyRange.only([productId, roomId])) as IDBRequest<ChatMessageRecord[]>,
   );
   return all.length > limit ? all.slice(all.length - limit) : all;
 }

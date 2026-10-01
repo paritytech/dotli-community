@@ -16,15 +16,12 @@ import {
   VersionedRemotePermissionError,
   VersionedRemotePermissionRequest,
   VersionedRemotePermissionResponse,
-} from "@parity/truapi";
-import * as S from "@parity/truapi/scale";
-import { PERMISSIONS_REQUEST_REMOTE_PERMISSION } from "@parity/truapi/wire-table";
+} from '@parity/truapi';
+import * as S from '@parity/truapi/scale';
+import { PERMISSIONS_REQUEST_REMOTE_PERMISSION } from '@parity/truapi/wire-table';
 
-const remotePermissionResult = S.Result(
-  VersionedRemotePermissionResponse,
-  S.CallError(VersionedRemotePermissionError),
-);
-const REQUEST_ID_PREFIX = "dotli-jam-peers:";
+const remotePermissionResult = S.Result(VersionedRemotePermissionResponse, S.CallError(VersionedRemotePermissionError));
+const REQUEST_ID_PREFIX = 'dotli-jam-peers:';
 /** Prefix plus 16 random bytes in hex: unguessable by the guest sharing the port. */
 const REQUEST_ID_BYTES = REQUEST_ID_PREFIX.length + 32;
 const textDecoder = new TextDecoder();
@@ -39,10 +36,13 @@ export interface HostPermissionPort {
  * frame never copies its payload.
  */
 function requestIdRange(frame: Uint8Array): [number, number] | null {
-  if (frame.length < 4) {
+  const first = frame[0];
+  const second = frame[1];
+  const third = frame[2];
+  const fourth = frame[3];
+  if (first === undefined || second === undefined || third === undefined || fourth === undefined) {
     return null;
   }
-  const first = frame[0];
   let length: number;
   let start: number;
   switch (first & 3) {
@@ -51,12 +51,11 @@ function requestIdRange(frame: Uint8Array): [number, number] | null {
       start = 1;
       break;
     case 1:
-      length = (first | (frame[1] << 8)) >>> 2;
+      length = (first | (second << 8)) >>> 2;
       start = 2;
       break;
     case 2:
-      length =
-        (first | (frame[1] << 8) | (frame[2] << 16) | (frame[3] << 24)) >>> 2;
+      length = (first | (second << 8) | (third << 16) | (fourth << 24)) >>> 2;
       start = 4;
       break;
     default:
@@ -79,11 +78,11 @@ export function jamPeersGrantText(granted: readonly string[]): string[] {
   }
   return [
     ...granted.map(
-      (genesis) =>
+      genesis =>
         `JAM network ${genesis}: read-only peer access (WebTransport) to its validators, granted for this app and closed when it stops.`,
     ),
-    "Limits: 8 connections, 16 streams per connection, 1 MiB messages. Received bytes are unverified until the app checks them.",
-    "This access carries no account, signing, storage or web access.",
+    'Limits: 8 connections, 16 streams per connection, 1 MiB messages. Received bytes are unverified until the app checks them.',
+    'This access carries no account, signing, storage or web access.',
   ];
 }
 
@@ -108,9 +107,7 @@ export class JamPeersPermissionRequester {
       return Promise.resolve(false);
     }
     const nonce = crypto.getRandomValues(new Uint8Array(16));
-    const requestId =
-      REQUEST_ID_PREFIX +
-      Array.from(nonce, (byte) => byte.toString(16).padStart(2, "0")).join("");
+    const requestId = REQUEST_ID_PREFIX + Array.from(nonce, byte => byte.toString(16).padStart(2, '0')).join('');
     const encoded = encodeWireMessage({
       requestId,
       payload: {
@@ -118,11 +115,11 @@ export class JamPeersPermissionRequester {
         methodId: PERMISSIONS_REQUEST_REMOTE_PERMISSION.method,
         messageType: MESSAGE_TYPE_REQUEST,
         value: VersionedRemotePermissionRequest.enc({
-          tag: "V1",
+          tag: 'V1',
           value: {
             permission: {
-              tag: "JamPeers",
-              value: { genesis: genesis as S.HexString },
+              tag: 'JamPeers',
+              value: { genesis: S.toHexString(genesis) },
             },
           },
         }),
@@ -132,7 +129,7 @@ export class JamPeersPermissionRequester {
       return Promise.reject(encoded.error);
     }
     const { promise, resolve } = Promise.withResolvers<boolean>();
-    this.pending.set(requestId, (granted) => {
+    this.pending.set(requestId, granted => {
       if (granted) {
         this.grantedGenesis.add(genesis);
       }
@@ -179,7 +176,7 @@ export class JamPeersPermissionRequester {
       }
     } catch (error) {
       settle(false);
-      throw new Error("Host returned a malformed JAM peers permission reply", {
+      throw new Error('Host returned a malformed JAM peers permission reply', {
         cause: error,
       });
     }

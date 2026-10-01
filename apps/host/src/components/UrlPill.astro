@@ -1,0 +1,45 @@
+---
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// The topbar's URL bar (`#topbar-url`): the pill's markup, empty and hidden
+// until the host knows what it shows. Its script binds it to the url-pill
+// store main.ts writes (bindUrlPill in @dotli/ui), which fills in the
+// product's label and TLD or a local product's host. The verification
+// shield and its explainer are an island in the pill (UrlPillShield),
+// hydrated once the browser is idle.
+import { UrlPillShield } from '@dotli/ui/islands/UrlPillShield';
+---
+
+<div class="topbar-url" id="topbar-url" hidden>
+  <div class="topbar-url-pill" id="url-pill">
+    <UrlPillShield client:idle />
+    <svg
+      class="localhost-icon"
+      width="12"
+      height="12"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <polyline points="4 17 10 11 4 5"></polyline>
+      <line x1="12" y1="19" x2="20" y2="19"></line>
+    </svg>
+    <span class="topbar-url-text">
+      <span class="dot-domain"></span>
+      <span class="dot-tld"></span>
+    </span>
+  </div>
+</div>
+
+<script>
+  import { bindUrlPill } from '@dotli/ui';
+
+  const bar = document.getElementById('topbar-url');
+  if (bar !== null) {
+    bindUrlPill(bar);
+  }
+</script>

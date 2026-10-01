@@ -3,21 +3,18 @@
 
 // dot.li IndexedDB-backed installed-executable cache.
 //
-// A cached executable is one atomic v1 manifest/contenthash pair, scoped to
+// A cached executable is one atomic manifest/contenthash pair, scoped to
 // the network and executable modality that produced it. Contenthash changes
 // evict the whole pair; a newly resolved hash is never written without the
 // manifest resolved alongside it.
 
-import type { Network } from "@dotli/config/network";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { isValidDotLabel } from "@dotli/shared/html";
-import { log } from "@dotli/shared/log";
-import { captureException } from "@dotli/metrics/sentry";
+import type { Network } from '@dotli/config';
+import { m, captureException, spans as S } from '@dotli/metrics';
+import { isValidDotLabel, log } from '@dotli/shared';
 
-const DB_NAME = "dotli-installed-executables";
+const DB_NAME = 'dotli-installed-executables';
 const DB_VERSION = 1;
-const STORE = "installed_executables";
+const STORE = 'installed_executables';
 let installedDbPromise: Promise<IDBDatabase> | null = null;
 
 function getInstalledExecutableDb(): Promise<IDBDatabase> {
@@ -30,7 +27,7 @@ function getInstalledExecutableDb(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE)) {
         db.createObjectStore(STORE, {
-          keyPath: ["network", "modality", "label"],
+          keyPath: ['network', 'modality', 'label'],
         });
       }
     };
@@ -47,17 +44,17 @@ function getInstalledExecutableDb(): Promise<IDBDatabase> {
     };
     request.onerror = () => {
       installedDbPromise = null;
-      reject(request.error ?? new Error("installed executable DB open failed"));
+      reject(request.error ?? new Error('installed executable DB open failed'));
     };
     request.onblocked = () => {
       installedDbPromise = null;
-      reject(new Error("installed executable DB open blocked"));
+      reject(new Error('installed executable DB open blocked'));
     };
   });
   return installedDbPromise;
 }
 
-export type ExecutableModality = "app" | "widget" | "worker";
+export type ExecutableModality = 'app' | 'widget' | 'worker';
 
 export interface InstalledExecutable {
   contenthash: string;
@@ -72,9 +69,7 @@ interface InstalledExecutableEntry extends InstalledExecutable {
 }
 
 export type InstalledExecutableCacheResult =
-  | { kind: "hit"; executable: InstalledExecutable }
-  | { kind: "miss" }
-  | { kind: "error"; cause: unknown };
+  { kind: 'hit'; executable: InstalledExecutable } | { kind: 'miss' } | { kind: 'error'; cause: unknown };
 
 function cacheKey(
   label: string,
@@ -84,10 +79,7 @@ function cacheKey(
   return [network, modality, label];
 }
 
-function transactionCompletion(
-  tx: IDBTransaction,
-  action: string,
-): Promise<void> {
+function transactionCompletion(tx: IDBTransaction, action: string): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     tx.oncomplete = () => {
       resolve();
@@ -109,17 +101,17 @@ export async function getCachedInstalledExecutable(
   const stop = m.timer(S.CACHE_READ_LATENCY);
   try {
     const db = await getInstalledExecutableDb();
-    return await new Promise<InstalledExecutableCacheResult>((resolve) => {
-      const tx = db.transaction(STORE, "readonly");
+    return await new Promise<InstalledExecutableCacheResult>(resolve => {
+      const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(cacheKey(label, network, modality));
       req.onsuccess = () => {
         const entry = req.result as InstalledExecutableEntry | undefined;
         stop();
         resolve(
           entry === undefined
-            ? { kind: "miss" }
+            ? { kind: 'miss' }
             : {
-                kind: "hit",
+                kind: 'hit',
                 executable: {
                   contenthash: entry.contenthash,
                   executableManifest: entry.executableManifest,
@@ -130,18 +122,18 @@ export async function getCachedInstalledExecutable(
       req.onerror = () => {
         stop();
         resolve({
-          kind: "error",
-          cause: req.error ?? new Error("IDB read error"),
+          kind: 'error',
+          cause: req.error ?? new Error('IDB read error'),
         });
       };
     });
   } catch (cause) {
     stop();
-    return { kind: "error", cause };
+    return { kind: 'error', cause };
   }
 }
 
-export const RECENT_KEY = "dotli_recent";
+export const RECENT_KEY = 'dotli_recent';
 const MAX_RECENT = 8;
 
 /**
@@ -151,7 +143,7 @@ const MAX_RECENT = 8;
  * which holds the same list under the shared-mode store.
  */
 export function parseRecentLabels(raw: string | null): string[] {
-  if (raw === null || raw === "") {
+  if (raw === null || raw === '') {
     return [];
   }
   try {
@@ -159,9 +151,7 @@ export function parseRecentLabels(raw: string | null): string[] {
     if (!Array.isArray(parsed)) {
       return [];
     }
-    return parsed
-      .filter((l): l is string => typeof l === "string" && isValidDotLabel(l))
-      .slice(0, MAX_RECENT);
+    return parsed.filter((l): l is string => typeof l === 'string' && isValidDotLabel(l)).slice(0, MAX_RECENT);
   } catch {
     return [];
   }
@@ -173,7 +163,7 @@ export function serializeRecentLabels(labels: string[]): string {
 
 /** Put `label` at the front of `labels`, deduplicated and length-capped. */
 export function withRecentLabel(labels: string[], label: string): string[] {
-  return [label, ...labels.filter((l) => l !== label)].slice(0, MAX_RECENT);
+  return [label, ...labels.filter(l => l !== label)].slice(0, MAX_RECENT);
 }
 
 /** Read this origin's recent list. The shared store is authoritative. */
@@ -204,7 +194,7 @@ export function removeRecentLabel(label: string): void {
   if (!recent.includes(label)) {
     return;
   }
-  writeRecentLabels(recent.filter((l) => l !== label));
+  writeRecentLabels(recent.filter(l => l !== label));
 }
 
 export function writeRecentLabels(labels: string[]): void {
@@ -225,8 +215,8 @@ export async function setCachedInstalledExecutable(
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getInstalledExecutableDb();
-    const tx = db.transaction(STORE, "readwrite");
-    const completed = transactionCompletion(tx, "write");
+    const tx = db.transaction(STORE, 'readwrite');
+    const completed = transactionCompletion(tx, 'write');
     const entry: InstalledExecutableEntry = {
       label,
       network,
@@ -240,8 +230,8 @@ export async function setCachedInstalledExecutable(
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li installed-executable-cache] write error:", err);
-    captureException(err, { kind: "installed_executable_cache_write_error" });
+    log.error('[dot.li installed-executable-cache] write error:', err);
+    captureException(err, { kind: 'installed_executable_cache_write_error' });
   }
 }
 
@@ -256,15 +246,15 @@ export async function clearInstalledExecutableCache(): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getInstalledExecutableDb();
-    const tx = db.transaction(STORE, "readwrite");
-    const completed = transactionCompletion(tx, "clear");
+    const tx = db.transaction(STORE, 'readwrite');
+    const completed = transactionCompletion(tx, 'clear');
     tx.objectStore(STORE).clear();
     await completed;
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li installed-executable-cache] clear error:", err);
-    captureException(err, { kind: "installed_executable_cache_clear_error" });
+    log.error('[dot.li installed-executable-cache] clear error:', err);
+    captureException(err, { kind: 'installed_executable_cache_clear_error' });
   }
 }
 
@@ -277,22 +267,19 @@ export async function evictCachedInstalledExecutable(
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getInstalledExecutableDb();
-    const tx = db.transaction(STORE, "readwrite");
-    const completed = transactionCompletion(tx, "eviction");
+    const tx = db.transaction(STORE, 'readwrite');
+    const completed = transactionCompletion(tx, 'eviction');
     tx.objectStore(STORE).delete(cacheKey(label, network, modality));
     await completed;
     stop();
   } catch (err) {
     stop();
-    log.error("[dot.li installed-executable-cache] evict error:", err);
-    captureException(err, { kind: "installed_executable_cache_evict_error" });
+    log.error('[dot.li installed-executable-cache] evict error:', err);
+    captureException(err, { kind: 'installed_executable_cache_evict_error' });
   }
 }
 
-export type RevalidateOutcome =
-  | { kind: "match" }
-  | { kind: "update"; contenthash: string }
-  | { kind: "cleared" };
+export type RevalidateOutcome = { kind: 'match' } | { kind: 'update'; contenthash: string } | { kind: 'cleared' };
 
 /**
  * Reconcile a freshly resolved executable pair against its cached copy.
@@ -311,17 +298,14 @@ export async function reconcileInstalledExecutable(
   if (freshContenthash === null) {
     await evictCachedInstalledExecutable(label, network, modality);
     m.count(S.CACHE_REVALIDATE_CLEARED);
-    return { kind: "cleared" };
+    return { kind: 'cleared' };
   }
-  if (
-    freshContenthash === installed.contenthash &&
-    freshExecutableManifest === installed.executableManifest
-  ) {
+  if (freshContenthash === installed.contenthash && freshExecutableManifest === installed.executableManifest) {
     await setCachedInstalledExecutable(label, network, modality, installed);
     m.count(S.CACHE_REVALIDATE_MATCH);
-    return { kind: "match" };
+    return { kind: 'match' };
   }
   await evictCachedInstalledExecutable(label, network, modality);
   m.count(S.CACHE_REVALIDATE_UPDATE);
-  return { kind: "update", contenthash: freshContenthash };
+  return { kind: 'update', contenthash: freshContenthash };
 }

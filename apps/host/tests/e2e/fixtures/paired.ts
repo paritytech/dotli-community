@@ -1,17 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test as base, type Page, type Frame } from "@playwright/test";
-import { existsSync } from "node:fs";
-import { STATE_FILE } from "./paths";
-import {
-  E2E_CHAIN_BACKEND,
-  initializeChainBackend,
-} from "../helpers/chain-backend";
+import { test as base, type Page, type Frame } from '@playwright/test';
+import { existsSync } from 'node:fs';
+import { STATE_FILE } from './paths.js';
+import { E2E_CHAIN_BACKEND, initializeChainBackend } from '../helpers/chain-backend.js';
 
-const PORT = process.env.PORT ?? "5173";
-const HOST = process.env.E2E_HOST ?? "host-playground";
-const PRODUCT_URL = process.env.E2E_PRODUCT_URL;
+const PORT = process.env['PORT'] ?? '5173';
+const HOST = process.env['E2E_HOST'] ?? 'host-playground';
+const PRODUCT_URL = process.env['E2E_PRODUCT_URL'];
 
 // Restored-session badge wait. The signing host was paired once in
 // globalSetup, the storageState restores the host's auth on every context,
@@ -37,15 +34,18 @@ const HOST_MODAL_SETTLE_TIMEOUT_MS = 15_000;
  * loop on fixture teardown.
  */
 function startAutoAllow(page: Page): () => void {
-  let stopped = false;
+  // Read through a function: TypeScript would narrow a plain flag, set only
+  // in the stop closure, to `false` for the whole loop.
+  const stop = new AbortController();
+  const stopped = (): boolean => stop.signal.aborted;
   const POLL_MS = 300;
   void (async () => {
-    while (!stopped) {
+    while (!stopped()) {
       try {
         // Three-way prompts label the lasting grant "Always allow"; two-way
         // ones keep "Allow". Neither picks the one-time grant, so a test's
         // later operations are not prompted again.
-        const allow = page.getByRole("button", {
+        const allow = page.getByRole('button', {
           name: /^(Always allow|Allow)$/,
         });
         const visible = await allow
@@ -61,12 +61,14 @@ function startAutoAllow(page: Page): () => void {
           await page.waitForTimeout(POLL_MS);
         }
       } catch {
-        if (!stopped) await page.waitForTimeout(POLL_MS);
+        if (!stopped()) {
+          await page.waitForTimeout(POLL_MS);
+        }
       }
     }
   })();
   return () => {
-    stopped = true;
+    stop.abort();
   };
 }
 
@@ -75,14 +77,13 @@ function startAutoAllow(page: Page): () => void {
  * Identified by its `<h1>` heading rather than URL because the frame URL
  * lives on a per-CID subdomain that varies between builds.
  */
-export async function waitForHostPlaygroundFrame(
-  page: Page,
-  timeoutMs: number,
-): Promise<Frame> {
+export async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     for (const f of page.frames()) {
-      if (f === page.mainFrame()) continue;
+      if (f === page.mainFrame()) {
+        continue;
+      }
       const ok = await f
         .locator('h1:has-text("Host Playground")')
         .first()
@@ -94,9 +95,7 @@ export async function waitForHostPlaygroundFrame(
     }
     await page.waitForTimeout(250);
   }
-  throw new Error(
-    `host-playground iframe not visible within ${String(timeoutMs)}ms`,
-  );
+  throw new Error(`host-playground iframe not visible within ${String(timeoutMs)}ms`);
 }
 
 /**
@@ -104,7 +103,7 @@ export async function waitForHostPlaygroundFrame(
  * The auto-allow poller answers permission and account prompts meanwhile.
  */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
-  const backdrop = page.locator(".signing-modal-backdrop");
+  const backdrop = page.locator('.signing-modal-backdrop');
   const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
   let quietSince = Date.now();
   while (Date.now() < deadline) {
@@ -115,9 +114,7 @@ async function waitForHostModalsSettled(page: Page): Promise<void> {
     }
     await page.waitForTimeout(100);
   }
-  console.log(
-    `[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`,
-  );
+  console.log(`[productFrame] host modal still open after ${String(HOST_MODAL_SETTLE_TIMEOUT_MS)}ms`);
 }
 
 /**
@@ -133,20 +130,16 @@ export async function openHostPlayground(page: Page): Promise<void> {
   await page.goto(productHostUrl, {
     timeout: 60_000,
   });
-  if (E2E_CHAIN_BACKEND === "rpc-gateway") {
+  if (E2E_CHAIN_BACKEND === 'rpc-gateway') {
     await page
-      .getByRole("button", { name: "Switch to Gateway" })
+      .getByRole('button', { name: 'Switch to Gateway' })
       .click({ timeout: 5_000 })
       .catch(() => {});
   }
 
   const restoreStart = Date.now();
-  await page
-    .locator("#auth-button .user-badge")
-    .waitFor({ state: "visible", timeout: USER_BADGE_TIMEOUT_MS });
-  console.log(
-    `[pairedPage] session restored in ${Date.now() - restoreStart}ms`,
-  );
+  await page.locator('#auth-button .user-badge').waitFor({ state: 'visible', timeout: USER_BADGE_TIMEOUT_MS });
+  console.log(`[pairedPage] session restored in ${String(Date.now() - restoreStart)}ms`);
 }
 
 /**
@@ -168,7 +161,7 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
         throw new Error(
           `pairedPage: ${STATE_FILE} missing — globalSetup must run first. ` +
             `If you ran the test directly, ensure SIGNING_HOST_NETWORK is set ` +
-            `and re-run via \`bun run test:e2e\`.`,
+            `and re-run via \`npm run test:e2e\`.`,
         );
       }
 
@@ -177,26 +170,22 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
 
       // Surface host and iframe console noise filtered to dotli internals so
       // we can diagnose SDK calls that never resolve without flooding logs.
-      page.on("console", (msg) => {
+      page.on('console', msg => {
         const text = msg.text();
         const type = msg.type();
-        if (
-          type === "error" ||
-          type === "warning" ||
-          /\[dotli|\[dot\.li|statement.store|signing/i.test(text)
-        ) {
+        if (type === 'error' || type === 'warning' || /\[dotli|\[dot\.li|statement.store|signing/i.test(text)) {
           const isFullText =
-            type === "error" ||
-            text.includes("polkadotapp://") ||
-            text.includes("dot.li signing") ||
-            text.includes("session info");
+            type === 'error' ||
+            text.includes('polkadotapp://') ||
+            text.includes('dot.li signing') ||
+            text.includes('session info');
           const out = isFullText ? text : text.slice(0, 400);
           console.log(`[browser:${type}] ${out}`);
         }
       });
-      page.on("pageerror", (err) => {
+      page.on('pageerror', err => {
         console.log(`[browser:pageerror] ${err.message}`);
-        if (err.stack) {
+        if (err.stack !== undefined && err.stack !== '') {
           console.log(`[browser:pageerror:stack] ${err.stack}`);
         }
       });
@@ -209,18 +198,16 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       // diagnosing the signing tests. Filtered to avoid chain-head spam.
       try {
         const cdp = await ctx.newCDPSession(page);
-        await cdp.send("Network.enable");
-        cdp.on("Network.webSocketFrameSent", (e) => {
+        await cdp.send('Network.enable');
+        cdp.on('Network.webSocketFrameSent', e => {
           const text = e.response.payloadData;
           if (/statement_submit|statement_store|broadcast/i.test(text)) {
             console.log(`[ws→] ${text.slice(0, 500)}`);
           }
         });
-        cdp.on("Network.webSocketFrameReceived", (e) => {
+        cdp.on('Network.webSocketFrameReceived', e => {
           const text = e.response.payloadData;
-          if (
-            /statement_submit|statement_store|"error"|broadcast/i.test(text)
-          ) {
+          if (/statement_submit|statement_store|"error"|broadcast/i.test(text)) {
             console.log(`[ws←] ${text.slice(0, 500)}`);
           }
         });
@@ -247,18 +234,15 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
       stopAutoAllow();
       await ctx.close();
     },
-    { scope: "worker" },
+    { scope: 'worker' },
   ],
 
   productFrame: [
     async ({ pairedPage }, use) => {
       const start = Date.now();
-      const frame = await waitForHostPlaygroundFrame(
-        pairedPage,
-        PRODUCT_IFRAME_TIMEOUT_MS,
-      );
+      const frame = await waitForHostPlaygroundFrame(pairedPage, PRODUCT_IFRAME_TIMEOUT_MS);
       await waitForHostModalsSettled(pairedPage);
-      console.log(`[productFrame] iframe ready in ${Date.now() - start}ms`);
+      console.log(`[productFrame] iframe ready in ${String(Date.now() - start)}ms`);
       await use(frame);
     },
     // Test-scoped: dot.li replaces the product iframe when the page navigates
@@ -267,11 +251,10 @@ export const test = base.extend<{ productFrame: Frame }, { pairedPage: Page }>({
     // Its own timeout: a gateway download can exceed the 30 s test timeout
     // it would otherwise share.
     {
-      scope: "test",
-      timeout:
-        PRODUCT_IFRAME_TIMEOUT_MS + HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,
+      scope: 'test',
+      timeout: PRODUCT_IFRAME_TIMEOUT_MS + HOST_MODAL_SETTLE_TIMEOUT_MS + 10_000,
     },
   ],
 });
 
-export { expect } from "@playwright/test";
+export { expect } from '@playwright/test';

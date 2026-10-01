@@ -29,7 +29,7 @@
 //   `serializeErrorDetail(value)`  multi-line string with stack frames
 //   `fullErrorChain(value)`        structured object for Sentry and tests
 
-const UNKNOWN_PREFIX = "[serializeError:";
+const UNKNOWN_PREFIX = '[serializeError:';
 
 export interface ErrorChainNode {
   name: string;
@@ -56,12 +56,12 @@ function walk(value: unknown, onStack: WeakSet<object>): ErrorChainNode {
   // DFS path, not every object ever visited. A repeated reference in a
   // separate branch is walked normally. A true back-edge (A references B
   // references A) returns the `Cycle` node.
-  const isObject = value !== null && typeof value === "object";
+  const isObject = value !== null && typeof value === 'object';
   if (isObject) {
     if (onStack.has(value)) {
       return {
-        name: "Cycle",
-        message: "[cycle in cause chain]",
+        name: 'Cycle',
+        message: '[cycle in cause chain]',
         causes: [],
       };
     }
@@ -71,8 +71,8 @@ function walk(value: unknown, onStack: WeakSet<object>): ErrorChainNode {
   try {
     if (value instanceof Error) {
       const node: ErrorChainNode = {
-        name: value.name || "Error",
-        message: value.message || "",
+        name: value.name || 'Error',
+        message: value.message || '',
         stack: value.stack,
         causes: [],
       };
@@ -111,36 +111,36 @@ function describeNonError(value: unknown): string {
   if (value === undefined) {
     return `${UNKNOWN_PREFIX} undefined]`;
   }
-  if (typeof value === "string") {
+  if (typeof value === 'string') {
     return value.length > 0 ? value : `${UNKNOWN_PREFIX} empty-string]`;
   }
-  if (typeof value === "number" || typeof value === "bigint") {
+  if (typeof value === 'number' || typeof value === 'bigint') {
     return value.toString();
   }
-  if (typeof value === "boolean") {
-    return value ? "true" : "false";
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
   }
-  if (typeof value === "symbol") {
+  if (typeof value === 'symbol') {
     return `${UNKNOWN_PREFIX} BUG-thrown-symbol ${value.toString()}]`;
   }
-  if (typeof value === "function") {
-    return `${UNKNOWN_PREFIX} BUG-thrown-function name=${value.name || "<anon>"}]`;
+  if (typeof value === 'function') {
+    return `${UNKNOWN_PREFIX} BUG-thrown-function name=${value.name || '<anon>'}]`;
   }
-  if (typeof value === "object") {
+  if (typeof value === 'object') {
     const obj = value as { message?: unknown };
-    if (typeof obj.message === "string" && obj.message.length > 0) {
+    if (typeof obj.message === 'string' && obj.message.length > 0) {
       return obj.message;
     }
     try {
       const json = JSON.stringify(value);
-      if (json && json !== "{}" && json !== "null") {
+      if (json && json !== '{}' && json !== 'null') {
         return json;
       }
-      const keys = Object.keys(value).slice(0, 5).join(",");
-      return `[object Object keys=${keys || "<none>"}]`;
+      const keys = Object.keys(value).slice(0, 5).join(',');
+      return `[object Object keys=${keys || '<none>'}]`;
     } catch {
-      const keys = Object.keys(value).slice(0, 5).join(",");
-      return `${UNKNOWN_PREFIX} JSON.stringify failed keys=${keys || "<none>"}]`;
+      const keys = Object.keys(value).slice(0, 5).join(',');
+      return `${UNKNOWN_PREFIX} JSON.stringify failed keys=${keys || '<none>'}]`;
     }
   }
   return `${UNKNOWN_PREFIX} unknown-shape]`;
@@ -185,33 +185,33 @@ export function errorName(value: unknown): string | undefined {
   return value instanceof Error ? value.name : undefined;
 }
 
-const CYCLE_MARKER = "[cycle]";
-const UNKNOWN_OBJECT = "[object Object]";
+const CYCLE_MARKER = '[cycle]';
+const UNKNOWN_OBJECT = '[object Object]';
 const AGG_CAP = 3;
 
 function serialize(value: unknown, onStack: WeakSet<object>): string {
   if (value === null) {
-    return "null";
+    return 'null';
   }
   if (value === undefined) {
-    return "undefined";
+    return 'undefined';
   }
-  if (typeof value === "string") {
-    return value.length > 0 ? value : "Unknown error";
+  if (typeof value === 'string') {
+    return value.length > 0 ? value : 'Unknown error';
   }
-  if (typeof value === "number" || typeof value === "bigint") {
+  if (typeof value === 'number' || typeof value === 'bigint') {
     return value.toString();
   }
-  if (typeof value === "boolean") {
-    return value ? "true" : "false";
+  if (typeof value === 'boolean') {
+    return value ? 'true' : 'false';
   }
-  if (typeof value === "symbol") {
+  if (typeof value === 'symbol') {
     return value.toString();
   }
-  if (typeof value === "function") {
-    return `[function ${value.name || "anonymous"}]`;
+  if (typeof value === 'function') {
+    return `[function ${value.name || 'anonymous'}]`;
   }
-  if (typeof value !== "object") {
+  if (typeof value !== 'object') {
     return UNKNOWN_OBJECT;
   }
 
@@ -222,15 +222,14 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
 
   try {
     if (value instanceof Error) {
-      const headline =
-        value.message.length > 0 ? value.message : value.name || "Error";
+      const headline = value.message.length > 0 ? value.message : value.name || 'Error';
       const errors = (value as Error & { errors?: unknown }).errors;
       if (Array.isArray(errors) && errors.length > 0) {
         const shown = errors
           .slice(0, AGG_CAP)
-          .map((e) => serialize(e, onStack))
-          .join("; ");
-        const suffix = errors.length > AGG_CAP ? ", ..." : "";
+          .map(e => serialize(e, onStack))
+          .join('; ');
+        const suffix = errors.length > AGG_CAP ? ', ...' : '';
         return `${headline} [${shown}${suffix}]`;
       }
       const cause = (value as Error & { cause?: unknown }).cause;
@@ -244,17 +243,12 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
     // then the `[object Object]` fallback. Anything JSON refuses to
     // encode (cycles, typed arrays with circular hosts) also lands here.
     const obj = value as { message?: unknown };
-    if (typeof obj.message === "string" && obj.message.length > 0) {
+    if (typeof obj.message === 'string' && obj.message.length > 0) {
       return obj.message;
     }
     try {
       const json = JSON.stringify(value);
-      if (
-        typeof json === "string" &&
-        json.length > 0 &&
-        json !== "{}" &&
-        json !== "null"
-      ) {
+      if (typeof json === 'string' && json.length > 0 && json !== '{}' && json !== 'null') {
         return json;
       }
       // eslint-disable-next-line no-restricted-syntax -- JSON.stringify throws on cycles; that's exactly what we want to fold into the `[object Object]` fallback. No metric, the caller already saw a serialization fallback.
@@ -280,17 +274,13 @@ export function serializeErrorDetail(value: unknown): string {
 
 function renderChainDetail(node: ErrorChainNode): string {
   const headline =
-    node.message.length > 0
-      ? node.name === "Error"
-        ? node.message
-        : `${node.name}: ${node.message}`
-      : node.name;
+    node.message.length > 0 ? (node.name === 'Error' ? node.message : `${node.name}: ${node.message}`) : node.name;
   let out = headline;
-  if (node.stack !== undefined && node.stack !== "") {
+  if (node.stack !== undefined && node.stack !== '') {
     out += `\n${node.stack}`;
   }
   for (const cause of node.causes) {
-    out += `\n  caused by: ${renderChainDetail(cause).replace(/\n/g, "\n  ")}`;
+    out += `\n  caused by: ${renderChainDetail(cause).replace(/\n/g, '\n  ')}`;
   }
   return out;
 }

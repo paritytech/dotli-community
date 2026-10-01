@@ -13,14 +13,14 @@
 // Scope is the host origin only. The protocol iframe (host.dot.li) and
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
 
-import { Workbox } from "workbox-window";
-import { showNotification } from "@dotli/ui/notification";
-import { log } from "@dotli/shared/log";
+import { Workbox } from 'workbox-window';
+import { showNotification } from '@dotli/ui';
+import { log } from '@dotli/shared';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
-if ("serviceWorker" in navigator) {
-  const wb = new Workbox("/host-sw.js");
+if ('serviceWorker' in navigator) {
+  const wb = new Workbox('/host-sw.js');
   let hostUpdateRequired = false;
   let applyingUpdate = false;
 
@@ -29,23 +29,23 @@ if ("serviceWorker" in navigator) {
       return;
     }
     applyingUpdate = true;
-    wb.addEventListener("controlling", () => {
+    wb.addEventListener('controlling', () => {
       window.location.reload();
     });
     wb.messageSkipWaiting();
   };
 
-  wb.addEventListener("waiting", () => {
+  wb.addEventListener('waiting', () => {
     if (hostUpdateRequired) {
       applyWaitingUpdate();
       return;
     }
     showNotification({
-      label: "Update available",
-      text: "A new version of dot.li is ready. Reload to apply.",
+      label: 'Update available',
+      text: 'A new version of dot.li is ready. Reload to apply.',
       dismissMs: 0,
       action: {
-        label: "Reload",
+        label: 'Reload',
         onClick: applyWaitingUpdate,
       },
     });
@@ -53,7 +53,7 @@ if ("serviceWorker" in navigator) {
 
   const registrationPromise = wb
     .register()
-    .then((registration) => {
+    .then(registration => {
       if (!registration) {
         return undefined;
       }
@@ -62,8 +62,8 @@ if ("serviceWorker" in navigator) {
           void registration.update();
         }
       }, UPDATE_INTERVAL_MS);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && navigator.onLine) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
           void registration.update();
         }
       });
@@ -77,9 +77,9 @@ if ("serviceWorker" in navigator) {
   // The sandbox emits this only when its schema is newer than the contract
   // supplied by this host build. Consent is no longer relevant: the current
   // host cannot run the app safely, so activate a waiting compatible build.
-  window.addEventListener("dotli:host-update-required", () => {
+  window.addEventListener('dotli:host-update-required', () => {
     hostUpdateRequired = true;
-    void registrationPromise.then((registration) => {
+    void registrationPromise.then(registration => {
       if (!registration) {
         return;
       }

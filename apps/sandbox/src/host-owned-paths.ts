@@ -6,17 +6,14 @@
  *
  * Archive entries cannot shadow any file below the host-owned runtime tree.
  */
-const POLKAVM_RUNTIME_PATH_PREFIX = "polkavm-runtime/";
+const POLKAVM_RUNTIME_PATH_PREFIX = 'polkavm-runtime/';
 
 function isHostOwnedPath(path: string): boolean {
-  return (
-    path === POLKAVM_RUNTIME_PATH_PREFIX.slice(0, -1) ||
-    path.startsWith(POLKAVM_RUNTIME_PATH_PREFIX)
-  );
+  return path === POLKAVM_RUNTIME_PATH_PREFIX.slice(0, -1) || path.startsWith(POLKAVM_RUNTIME_PATH_PREFIX);
 }
 
 export function shadowsHostOwnedPath(path: string): boolean {
-  const relative = path.startsWith("/") ? path.slice(1) : path;
+  const relative = path.startsWith('/') ? path.slice(1) : path;
   if (isHostOwnedPath(relative)) {
     return true;
   }

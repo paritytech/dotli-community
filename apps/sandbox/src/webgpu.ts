@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { polkaVmRuntimeAssetUrl } from "./polkavm-runtime-assets";
+import { polkaVmRuntimeAssetUrl } from './polkavm-runtime-assets.js';
 
 const GPU_READY_TIMEOUT_MS = 30_000;
 
@@ -39,27 +39,20 @@ function dimensions(canvas: HTMLCanvasElement): Dimensions {
   };
 }
 
-export function observeSurfaceDimensions(
-  element: HTMLElement,
-  onChange: () => void,
-): () => void {
+export function observeSurfaceDimensions(element: HTMLElement, onChange: () => void): () => void {
   const observer = new ResizeObserver(onChange);
-  let resolution = window.matchMedia(
-    `(resolution: ${String(window.devicePixelRatio || 1)}dppx)`,
-  );
+  let resolution = window.matchMedia(`(resolution: ${String(window.devicePixelRatio || 1)}dppx)`);
   const scaleChanged = (): void => {
-    resolution.removeEventListener("change", scaleChanged);
-    resolution = window.matchMedia(
-      `(resolution: ${String(window.devicePixelRatio || 1)}dppx)`,
-    );
-    resolution.addEventListener("change", scaleChanged);
+    resolution.removeEventListener('change', scaleChanged);
+    resolution = window.matchMedia(`(resolution: ${String(window.devicePixelRatio || 1)}dppx)`);
+    resolution.addEventListener('change', scaleChanged);
     onChange();
   };
-  resolution.addEventListener("change", scaleChanged);
+  resolution.addEventListener('change', scaleChanged);
   observer.observe(element);
   return () => {
     observer.disconnect();
-    resolution.removeEventListener("change", scaleChanged);
+    resolution.removeEventListener('change', scaleChanged);
   };
 }
 
@@ -73,38 +66,25 @@ export class WebGpuBridge {
   #physicalHeight = 1;
   #capabilityTimer: number | undefined;
 
-  constructor(
-    canvas: HTMLCanvasElement,
-    requirements: WebGpuRequirements,
-    callbacks: Callbacks,
-  ) {
-    if (typeof canvas.transferControlToOffscreen !== "function") {
-      throw new Error("WebGPU OffscreenCanvas is unavailable");
+  constructor(canvas: HTMLCanvasElement, requirements: WebGpuRequirements, callbacks: Callbacks) {
+    if (typeof canvas.transferControlToOffscreen !== 'function') {
+      throw new Error('WebGPU OffscreenCanvas is unavailable');
     }
-    const worker = new Worker(polkaVmRuntimeAssetUrl("polkavm-gpu-worker.js"));
+    const worker = new Worker(polkaVmRuntimeAssetUrl('polkavm-gpu-worker.js'));
     const offscreen = canvas.transferControlToOffscreen();
     const { promise, resolve, reject } = Promise.withResolvers<Uint8Array>();
     this.#capabilityTimer = window.setTimeout(() => {
       this.#capabilityTimer = undefined;
-      reject(new Error("WebGPU capability negotiation timed out"));
+      reject(new Error('WebGPU capability negotiation timed out'));
     }, GPU_READY_TIMEOUT_MS);
     this.#worker = worker;
     this.capabilities = promise;
     worker.onmessage = (event: MessageEvent<unknown>): void => {
       const message =
-        event.data !== null && typeof event.data === "object"
-          ? (event.data as Record<string, unknown>)
-          : null;
-      if (
-        message?.type === "capabilities" &&
-        message.bytes instanceof Uint8Array
-      ) {
-        const bytes = message.bytes.slice();
-        const view = new DataView(
-          bytes.buffer,
-          bytes.byteOffset,
-          bytes.byteLength,
-        );
+        event.data !== null && typeof event.data === 'object' ? (event.data as Record<string, unknown>) : null;
+      if (message?.['type'] === 'capabilities' && message['bytes'] instanceof Uint8Array) {
+        const bytes = message['bytes'].slice();
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         if (
           bytes.byteLength < 56 ||
           view.getUint32(0, true) !== 0x31434745 ||
@@ -112,7 +92,7 @@ export class WebGpuBridge {
           view.getUint32(8, true) !== bytes.byteLength
         ) {
           this.#clearCapabilityTimer();
-          const error = new Error("Invalid WebGPU capability record");
+          const error = new Error('Invalid WebGPU capability record');
           reject(error);
           callbacks.error(error);
           return;
@@ -120,38 +100,31 @@ export class WebGpuBridge {
         this.#physicalWidth = view.getUint32(16, true);
         this.#physicalHeight = view.getUint32(20, true);
         this.#clearCapabilityTimer();
-        canvas.dataset.polkavmGpu = "ready";
+        canvas.dataset['polkavmGpu'] = 'ready';
         callbacks.capabilities(bytes);
         resolve(bytes);
-      } else if (
-        message?.type === "event" &&
-        message.bytes instanceof Uint8Array
-      ) {
-        callbacks.event(message.bytes);
-      } else if (message?.type === "presented") {
+      } else if (message?.['type'] === 'event' && message['bytes'] instanceof Uint8Array) {
+        callbacks.event(message['bytes']);
+      } else if (message?.['type'] === 'presented') {
         if (!this.#backgrounded) {
           callbacks.presented();
         }
-      } else if (message?.type === "error") {
+      } else if (message?.['type'] === 'error') {
         this.#clearCapabilityTimer();
-        const error = new Error(
-          typeof message.message === "string"
-            ? message.message
-            : "WebGPU worker failed",
-        );
+        const error = new Error(typeof message['message'] === 'string' ? message['message'] : 'WebGPU worker failed');
         reject(error);
         callbacks.error(error);
       }
     };
     worker.onerror = (): void => {
       this.#clearCapabilityTimer();
-      const error = new Error("WebGPU worker failed");
+      const error = new Error('WebGPU worker failed');
       reject(error);
       callbacks.error(error);
     };
     worker.postMessage(
       {
-        type: "init",
+        type: 'init',
         canvas: offscreen,
         requirements,
         dimensions: dimensions(canvas),
@@ -162,7 +135,7 @@ export class WebGpuBridge {
     );
     this.#stopObservingDimensions = observeSurfaceDimensions(canvas, () => {
       if (!this.#stopped) {
-        worker.postMessage({ type: "resize", dimensions: dimensions(canvas) });
+        worker.postMessage({ type: 'resize', dimensions: dimensions(canvas) });
       }
     });
   }
@@ -184,7 +157,7 @@ export class WebGpuBridge {
     if (this.#stopped || bytes.byteLength === 0) {
       return;
     }
-    this.#worker.postMessage({ type: "batch", bytes }, [bytes.buffer]);
+    this.#worker.postMessage({ type: 'batch', bytes }, [bytes.buffer]);
   }
 
   setBackgrounded(backgrounded: boolean): void {
@@ -192,7 +165,7 @@ export class WebGpuBridge {
       return;
     }
     this.#backgrounded = backgrounded;
-    this.#worker.postMessage({ type: "background", backgrounded });
+    this.#worker.postMessage({ type: 'background', backgrounded });
   }
 
   dispose(): void {
@@ -202,7 +175,7 @@ export class WebGpuBridge {
     this.#stopped = true;
     this.#clearCapabilityTimer();
     this.#stopObservingDimensions();
-    this.#worker.postMessage({ type: "stop" });
+    this.#worker.postMessage({ type: 'stop' });
     this.#worker.terminate();
   }
 }

@@ -13,11 +13,11 @@
  */
 export function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 /**
@@ -39,14 +39,7 @@ export type DotLabelResult =
   | { ok: true }
   | {
       ok: false;
-      reason:
-        | "empty"
-        | "too-long"
-        | "uppercase"
-        | "leading-hyphen"
-        | "trailing-hyphen"
-        | "invalid-char"
-        | "non-ascii";
+      reason: 'empty' | 'too-long' | 'uppercase' | 'leading-hyphen' | 'trailing-hyphen' | 'invalid-char' | 'non-ascii';
     };
 
 /**
@@ -55,26 +48,26 @@ export type DotLabelResult =
  */
 export function validateDotLabel(label: string): DotLabelResult {
   if (label.length === 0) {
-    return { ok: false, reason: "empty" };
+    return { ok: false, reason: 'empty' };
   }
   if (label.length > 63) {
-    return { ok: false, reason: "too-long" };
+    return { ok: false, reason: 'too-long' };
   }
   if (label !== label.toLowerCase()) {
-    return { ok: false, reason: "uppercase" };
+    return { ok: false, reason: 'uppercase' };
   }
   // eslint-disable-next-line no-control-regex
   if (/[^\x00-\x7f]/.test(label)) {
-    return { ok: false, reason: "non-ascii" };
+    return { ok: false, reason: 'non-ascii' };
   }
-  if (label.startsWith("-")) {
-    return { ok: false, reason: "leading-hyphen" };
+  if (label.startsWith('-')) {
+    return { ok: false, reason: 'leading-hyphen' };
   }
-  if (label.endsWith("-")) {
-    return { ok: false, reason: "trailing-hyphen" };
+  if (label.endsWith('-')) {
+    return { ok: false, reason: 'trailing-hyphen' };
   }
   if (!DOT_LABEL_RE.test(label)) {
-    return { ok: false, reason: "invalid-char" };
+    return { ok: false, reason: 'invalid-char' };
   }
   return { ok: true };
 }
