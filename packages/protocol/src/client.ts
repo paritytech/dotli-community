@@ -892,14 +892,16 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
     // the frame once the connect settles, not before, or the frame would keep
     // a connection opened after its disconnect.
     let disconnectedEarly = false;
+    // A call, so the check after the connect isn't narrowed by the one before.
+    const isDisconnectedEarly = (): boolean => disconnectedEarly;
 
     void ensureProtocolFrame()
       .then(async () => {
-        if (disconnectedEarly) {
+        if (isDisconnectedEarly()) {
           return;
         }
         await postRequest('chainConnect', { genesisHash, connectionId });
-        if (disconnectedEarly) {
+        if (isDisconnectedEarly()) {
           postDisconnect(connectionId);
           return;
         }
