@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type {
   JsonRpcConnection,
   JsonRpcMessage,
@@ -251,22 +251,63 @@ describe('createEngine origin binding', () => {
     expect(must(built[0], 'transport').sent).toHaveLength(1);
   });
 
-  it('As a dotli user, a site reusing my connection id cannot take my connection', async () => {
+  it('As a dotli user, a site using the same connection id as my app gets its own connection', async () => {
     // Given
     const { engine, built } = setup();
     await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
 
     // When
-    const steal = call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_B);
+    const second = await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_B);
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') }, ORIGIN_B);
+    await call(engine, 'chainDisconnect', { connectionId: 'c1' }, ORIGIN_A);
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q3') }, ORIGIN_B);
 
     // Then
-    await expect(steal).rejects.toThrow('Duplicate broker session');
+    expect(second[0]).toMatchObject({ kind: 'response', ok: true });
+    expect(must(built[0], 'transport').sent).toHaveLength(3);
+  });
+
+  it('As a dotli integrator, an app reusing its own connection id on another chain is refused', async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
+
+    // When
+    const again = call(engine, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c1' }, ORIGIN_A);
+
+    // Then
+    await expect(again).rejects.toThrow('Duplicate chain connection: c1');
     await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
     expect(must(built[0], 'transport').sent).toHaveLength(1);
+    expect(built).toHaveLength(1);
+  });
+
+  it("As a dotli user, another site's connection on another chain cannot take my connection id", async () => {
+    // Given
+    const { engine, built } = setup();
+    const mine = await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
+    const theirs = await call(engine, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c1' }, ORIGIN_B);
+
+    // When
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
+    haltTransport(must(built[0], 'my chain'));
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') }, ORIGIN_B);
+
+    // Then
+    expect(theirs[0]).toMatchObject({ kind: 'response', ok: true });
+    expect(must(built[0], 'my chain').sent).toHaveLength(1);
+    expect(must(built[1], 'their chain').sent).toHaveLength(1);
+    expect(mine.at(-1)).toEqual({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' });
+    expect(theirs.some(envelope => envelope.kind === 'chain-halt')).toBe(false);
   });
 });
 
 describe('createEngine destroy delay', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('As a dotli user on a light client, a chain my apps stopped using stays synced', async () => {
     // Given
     vi.useFakeTimers();
@@ -279,7 +320,6 @@ describe('createEngine destroy delay', () => {
 
     // Then
     expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
-    vi.useRealTimers();
   });
 
   it('As a dotli user on Trusted Providers, a chain my apps stopped using closes its socket a minute later', async () => {
@@ -297,6 +337,5 @@ describe('createEngine destroy delay', () => {
     // Then
     expect(before).toBe(0);
     expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
   });
 });

@@ -77,25 +77,24 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   });
   options.onBrokerReady?.(broker);
 
+  /** Connection ids are the client's own, so each origin has its own namespace (origins contain no spaces). */
+  function connectionKey(origin: string, connectionId: string): string {
+    return `${origin} ${connectionId}`;
+  }
+
   /** Drop a connection from the engine's books, freeing its slot. */
-  function forget(connectionId: string): StringJsonRpcConnection | null {
-    const entry = connections.get(connectionId);
+  function forget(key: string): StringJsonRpcConnection | null {
+    const entry = connections.get(key);
     if (entry === undefined) {
       return null;
     }
-    connections.delete(connectionId);
-    const owned = originConns.get(entry.origin);
-    owned?.delete(connectionId);
-    if (owned?.size === 0) {
+    connections.delete(key);
+    const held = originConns.get(entry.origin);
+    held?.delete(key);
+    if (held?.size === 0) {
       originConns.delete(entry.origin);
     }
     return entry.connection;
-  }
-
-  /** A connection as `origin` may use it: another origin's is as unknown as a missing one. */
-  function owned(origin: string, connectionId: string): StringJsonRpcConnection | null {
-    const entry = connections.get(connectionId);
-    return entry?.origin === origin ? entry.connection : null;
   }
 
   function assertStr(value: unknown, name: string): asserts value is string {
@@ -219,6 +218,10 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         const payload = request.payload as ProtocolRequestMap['chainConnect'];
         assertStr(payload.genesisHash, 'genesisHash');
         assertStr(payload.connectionId, 'connectionId');
+        const key = connectionKey(origin, payload.connectionId);
+        if (connections.has(key)) {
+          throw new Error(`Duplicate chain connection: ${payload.connectionId}`);
+        }
         if (connections.size >= MAX_CONNS) {
           throw new Error(`Connection limit reached (max ${String(MAX_CONNS)})`);
         }
@@ -232,7 +235,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         const { connectionId } = payload;
         const connection = broker.connectRemote(
           payload.genesisHash,
-          connectionId,
+          key,
           message => {
             respond({
               namespace: 'dotli:protocol',
@@ -244,7 +247,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
           () => {
             // The broker has answered this connection's pending requests and
             // stopped its follows by now; the client drops it on `chain-halt`.
-            if (forget(connectionId) === null) {
+            if (forget(key) === null) {
               return;
             }
             respond({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
@@ -253,8 +256,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         if (connection === null) {
           throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
-        connections.set(connectionId, { connection, origin });
-        oc.add(connectionId);
+        connections.set(key, { connection, origin });
+        oc.add(key);
         originConns.set(origin, oc);
         respond({
           namespace: 'dotli:protocol',
@@ -270,8 +273,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         const payload = request.payload as ProtocolRequestMap['chainSend'];
         assertStr(payload.connectionId, 'connectionId');
         assertStr(payload.message, 'message');
-        const conn = owned(origin, payload.connectionId);
-        if (conn === null) {
+        const conn = connections.get(connectionKey(origin, payload.connectionId))?.connection;
+        if (conn === undefined) {
           throw new Error(`Unknown chain connection: ${payload.connectionId}`);
         }
         conn.send(payload.message);
@@ -288,9 +291,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       case 'chainDisconnect': {
         const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
         assertStr(payload.connectionId, 'connectionId');
-        if (owned(origin, payload.connectionId) !== null) {
-          forget(payload.connectionId)?.disconnect();
-        }
+        forget(connectionKey(origin, payload.connectionId))?.disconnect();
         respond({
           namespace: 'dotli:protocol',
           kind: 'response',
