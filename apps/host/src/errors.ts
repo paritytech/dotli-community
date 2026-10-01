@@ -12,6 +12,9 @@ import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
 // here at compile time. `instanceof` is unavailable because the error arrived
 // over postMessage, so only the name survives.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
+// `ApiStoppedError` in `packages/resolver/src/api.ts`, which is not one of the
+// package's public error classes, so its name cannot be annotated the same way.
+const API_STOPPED = 'ApiStoppedError';
 
 export {
   ERROR_TITLES,
@@ -87,6 +90,7 @@ export type ErrorKind =
   | 'module-fetch-failed'
   | 'contenthash-unsupported'
   | 'chainhead-disjointed'
+  | 'chain-halted'
   | 'bitswap-no-peers'
   | 'failed-to-fetch'
   | 'unexpected-end-of-data'
@@ -332,6 +336,25 @@ function classifyError(
       kind: isP2p ? 'light-client-timeout' : 'rpc-timeout',
       message: isP2p ? HOST_ERRORS.LIGHT_CLIENT_TIMEOUT : HOST_ERRORS.RPC_TIMEOUT,
       recovery: 'switch-backend',
+    };
+  }
+  // The chain under the resolution halted, and so did the one retry the
+  // protocol context gives it on the rebuilt chain. Either the pool answered a
+  // read in flight (`Chain transport halted`), or the follow stopped
+  // (`ApiStoppedError`, `chainHead follow stopped`). Like `chainhead-disjointed`
+  // nothing on the visitor's side explains it. Unlike it, nothing survives in
+  // the light client either: the next connect rebuilds the chain, so a plain
+  // reload is enough and needs no purge.
+  if (
+    msg.includes('Chain transport halted') ||
+    msg.includes('chainHead follow stopped') ||
+    (err instanceof Error && err.name === API_STOPPED)
+  ) {
+    return {
+      kind: 'chain-halted',
+      message: HOST_ERRORS.NETWORK_DROPPED,
+      recovery: 'switch-backend',
+      tips: [],
     };
   }
   return { kind: 'unknown', message: msg, recovery: 'switch-backend' };
