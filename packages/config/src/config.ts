@@ -14,12 +14,13 @@
 // Anything else that doesn't parse as a two-segment hostname is a
 // deployment misconfiguration and aborts boot rather than opening the
 // allowlist to the wrong origin.
-const hostname = self.location.hostname;
-const segments = hostname.split(".");
-const isLocalEnv =
-  hostname === "localhost" ||
-  hostname.endsWith(".localhost") ||
-  hostname === "127.0.0.1";
+//
+// Astro's build-time render of the host page's islands (`import.meta.env.SSR`)
+// has no location and derives as localhost: nothing it renders depends on
+// the domain it will be served from.
+const hostname = import.meta.env.SSR ? 'localhost' : self.location.hostname;
+const segments = hostname.split('.');
+const isLocalEnv = hostname === 'localhost' || hostname.endsWith('.localhost') || hostname === '127.0.0.1';
 
 /**
  * Explicit base domain from runtime config, for deployments whose hostname has
@@ -42,21 +43,19 @@ const isLocalEnv =
  * cross-origin allowlist to a host it has nothing to do with.
  */
 function configuredBaseDomain(): string | null {
-  const enabled =
-    ((import.meta as { env?: Record<string, string | undefined> }).env
-      ?.VITE_RUNTIME_NETWORK_CONFIG ?? "") === "true";
+  const enabled = ((import.meta as { env?: Partial<ImportMetaEnv> }).env?.VITE_RUNTIME_NETWORK_CONFIG ?? '') === 'true';
   if (!enabled) {
     return null;
   }
-  const raw = (globalThis as Record<string, unknown>).__DOTLI_NETWORK__;
-  if (typeof raw !== "object" || raw === null) {
+  const raw = (globalThis as Record<string, unknown>)['__DOTLI_NETWORK__'];
+  if (typeof raw !== 'object' || raw === null) {
     return null;
   }
   const candidate = (raw as { baseDomain?: unknown }).baseDomain;
   if (candidate === undefined) {
     return null;
   }
-  if (typeof candidate !== "string" || candidate.split(".").length < 2) {
+  if (typeof candidate !== 'string' || candidate.split('.').length < 2) {
     throw new Error(
       `[dot.li config] Runtime baseDomain must be a hostname of at least two segments, got ${JSON.stringify(candidate)}.`,
     );
@@ -75,14 +74,14 @@ function deriveBaseDomain(): string {
     return configured;
   }
   if (isLocalEnv) {
-    return "dot.li";
+    return 'dot.li';
   }
   if (segments.length < 2) {
     throw new Error(
       `[dot.li config] Refusing to boot — hostname "${hostname}" doesn't have a two-segment registrable root. Set up a proper DNS entry or run from localhost.`,
     );
   }
-  return `${segments[segments.length - 2]}.${segments[segments.length - 1]}`;
+  return segments.slice(-2).join('.');
 }
 
 export const BASE_DOMAIN = deriveBaseDomain();
@@ -98,7 +97,7 @@ export type SiteId = string;
 
 export const isLocalhost = isLocalEnv;
 
-export const SITE_ID: SiteId = isLocalhost ? "local.li" : BASE_DOMAIN;
+export const SITE_ID: SiteId = isLocalhost ? 'local.li' : BASE_DOMAIN;
 
 /**
  * True when `origin` is a dApp sandbox origin (`<label>.app.<BASE_DOMAIN>`
@@ -111,12 +110,10 @@ export function isSandboxOrigin(origin: string): boolean {
   try {
     const url = new URL(origin);
     const { hostname, protocol } = url;
-    if (hostname === "localhost" || hostname.endsWith(".localhost")) {
-      return (
-        hostname.endsWith(".app.localhost") || hostname === "app.localhost"
-      );
+    if (hostname === 'localhost' || hostname.endsWith('.localhost')) {
+      return hostname.endsWith('.app.localhost') || hostname === 'app.localhost';
     }
-    if (protocol !== "https:") {
+    if (protocol !== 'https:') {
       return false;
     }
     return hostname.endsWith(`.app.${BASE_DOMAIN}`);
@@ -136,8 +133,8 @@ export function sandboxOriginForLabel(label: string): string {
     throw new Error(`invalid sandbox label: ${label}`);
   }
   if (isLocalhost) {
-    const port = import.meta.env.DEV ? "5174" : self.location.port;
-    return `http://${label}.app.localhost${port === "" ? "" : `:${port}`}`;
+    const port = import.meta.env.DEV ? '5174' : self.location.port;
+    return `http://${label}.app.localhost${port === '' ? '' : `:${port}`}`;
   }
   return `https://${label}.app.${BASE_DOMAIN}`;
 }
@@ -145,15 +142,16 @@ export function sandboxOriginForLabel(label: string): string {
 /** Optional relay chain spec override for the statement store people chain.
  *  Value is the chain-spec file name without `.json`, e.g. "westend-local".
  *  When unset, the default Paseo relay chain is reused. */
-export const SS_RELAY_CHAIN: string | undefined =
-  (import.meta.env.VITE_SS_RELAY_CHAIN as string | undefined) ?? undefined;
+export const SS_RELAY_CHAIN: string | undefined = import.meta.env.VITE_SS_RELAY_CHAIN ?? undefined;
 
 // Allowlist polarity: DEBUG is ON only when VITE_APP_DEBUG === "true".
-export const DEBUG =
-  (import.meta.env.VITE_APP_DEBUG as string | undefined) === "true";
+export const DEBUG = import.meta.env.VITE_APP_DEBUG === 'true';
 
-/** Max number of domain archives kept in the SW in-memory LRU cache. */
-export const SW_ARCHIVE_CACHE_MAX = 8;
+/**
+ * Most bytes of content blocks the host keeps between page loads. After each
+ * load, the blocks used longest ago are dropped until the cache fits.
+ */
+export const BLOCK_CACHE_MAX_BYTES = 256 * 1024 * 1024;
 
 /** Max chain connections per origin on the protocol host. */
 export const MAX_CONNECTIONS_PER_ORIGIN = 10;
@@ -173,4 +171,4 @@ export const SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS = 300;
 
 // Re-exported from the pure-constants `timeouts` submodule, so existing
 // `@dotli/config/config` callers keep working unchanged.
-export { TIMEOUTS } from "./timeouts";
+export { TIMEOUTS } from './timeouts.js';

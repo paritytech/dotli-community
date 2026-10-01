@@ -12,39 +12,28 @@
 //
 // Permission status: 'ask' (default), 'granted', or 'denied'.
 
-import type { HostDevicePermissionRequest } from "@parity/truapi";
+import type { HostDevicePermissionRequest } from '@parity/truapi';
 import type {
   PermissionAuthorizationRequest,
   PermissionAuthorizationStatus,
   TrUApiProductProvider,
-} from "@parity/truapi-host";
+} from '@parity/truapi-host';
 
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
-  | DevicePermissionName
-  | "ChainSubmit"
-  | "ChatAuthority"
-  | "IdentityDisclosure"
-  | "PreimageSubmit"
-  | "StatementSubmit";
+  DevicePermissionName | 'ChainSubmit' | 'ChatAuthority' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
 
 /** Device permissions the host can't actually gate (see AUTO_GRANT_DEVICE_PERMISSIONS). */
-export type AutoGrantDevicePermission = "OpenUrl";
+export type AutoGrantDevicePermission = 'OpenUrl';
 
 /** Device permissions that DO have a host-side enforcement point. */
-export type EnforceableDevicePermission = Exclude<
-  DevicePermissionName,
-  AutoGrantDevicePermission
->;
+export type EnforceableDevicePermission = Exclude<DevicePermissionName, AutoGrantDevicePermission>;
 
 /** Permissions the host actually surfaces to the user (popover + modal). */
-export type EnforceablePermissionName = Exclude<
-  PermissionName,
-  AutoGrantDevicePermission
->;
+export type EnforceablePermissionName = Exclude<PermissionName, AutoGrantDevicePermission>;
 
-export type PermissionStatus = "ask" | "granted" | "denied";
+export type PermissionStatus = 'ask' | 'granted' | 'denied';
 
 /**
  * Map from Host API device permission names to Permissions Policy directives.
@@ -53,21 +42,19 @@ export type PermissionStatus = "ask" | "granted" | "denied";
  * a variant absent from this map is still persisted by the core but does not
  * alter the iframe `allow` attribute.
  */
-export const DEVICE_PERMISSION_POLICY: Partial<
-  Record<DevicePermissionName, string>
-> = {
-  Camera: "camera",
-  Microphone: "microphone",
-  Location: "geolocation",
-  Bluetooth: "bluetooth",
+export const DEVICE_PERMISSION_POLICY: Partial<Record<DevicePermissionName, string>> = {
+  Camera: 'camera',
+  Microphone: 'microphone',
+  Location: 'geolocation',
+  Bluetooth: 'bluetooth',
   // Clipboard write is always granted by dot.li (see buildAllowAttribute).
   // The read directive requires explicit consent.
-  Clipboard: "clipboard-read",
+  Clipboard: 'clipboard-read',
   // WebAuthn directive covering the Biometrics variant for hosts that expose
   // it via passkeys or platform authenticators.
-  Biometrics: "publickey-credentials-get",
+  Biometrics: 'publickey-credentials-get',
   // Chromium-only. Harmless to include on browsers that ignore it.
-  NFC: "nfc",
+  NFC: 'nfc',
   // Notifications has no Permissions Policy directive but IS host-gated
   // separately in handleDevicePermission (tri-state, no iframe reload).
   // OpenUrl: cross-origin navigation happens via anchor / window.open.
@@ -81,13 +68,12 @@ export const DEVICE_PERMISSION_POLICY: Partial<
  * always resolve `true` and it is hidden from the settings popover.
  * Offering a control that can't actually block would mislead users.
  */
-export const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<AutoGrantDevicePermission> =
-  new Set<AutoGrantDevicePermission>(["OpenUrl"]);
+export const AUTO_GRANT_DEVICE_PERMISSIONS: ReadonlySet<AutoGrantDevicePermission> = new Set<AutoGrantDevicePermission>(
+  ['OpenUrl'],
+);
 
 /** Type guard: narrows `DevicePermissionName` past the auto-grant set. */
-export function isEnforceableDevicePermission(
-  name: DevicePermissionName,
-): name is EnforceableDevicePermission {
+export function isEnforceableDevicePermission(name: DevicePermissionName): name is EnforceableDevicePermission {
   return !(AUTO_GRANT_DEVICE_PERMISSIONS as ReadonlySet<string>).has(name);
 }
 
@@ -96,19 +82,19 @@ export const ALL_PERMISSIONS: readonly {
   name: EnforceablePermissionName;
   label: string;
 }[] = [
-  { name: "Notifications", label: "Notifications" },
-  { name: "Camera", label: "Camera" },
-  { name: "Microphone", label: "Microphone" },
-  { name: "Location", label: "Location" },
-  { name: "Bluetooth", label: "Bluetooth" },
-  { name: "NFC", label: "NFC" },
-  { name: "Clipboard", label: "Clipboard" },
-  { name: "Biometrics", label: "Biometrics" },
-  { name: "ChatAuthority", label: "Chat Identity Authority" },
-  { name: "IdentityDisclosure", label: "Identity Disclosure" },
-  { name: "ChainSubmit", label: "Sign Transactions" },
-  { name: "PreimageSubmit", label: "Submit Preimages" },
-  { name: "StatementSubmit", label: "Submit Statements" },
+  { name: 'Notifications', label: 'Notifications' },
+  { name: 'Camera', label: 'Camera' },
+  { name: 'Microphone', label: 'Microphone' },
+  { name: 'Location', label: 'Location' },
+  { name: 'Bluetooth', label: 'Bluetooth' },
+  { name: 'NFC', label: 'NFC' },
+  { name: 'Clipboard', label: 'Clipboard' },
+  { name: 'Biometrics', label: 'Biometrics' },
+  { name: 'ChatAuthority', label: 'Chat Identity Authority' },
+  { name: 'IdentityDisclosure', label: 'Identity Disclosure' },
+  { name: 'ChainSubmit', label: 'Sign Transactions' },
+  { name: 'PreimageSubmit', label: 'Submit Preimages' },
+  { name: 'StatementSubmit', label: 'Submit Statements' },
 ];
 
 /** Returns true if the permission name maps to an iframe `allow` directive. */
@@ -118,13 +104,10 @@ export function isDevicePermission(name: string): boolean {
 
 type PermissionAuthorizationProvider = Pick<
   TrUApiProductProvider,
-  "getPermissionAuthorizationStatuses" | "setPermissionAuthorizationStatus"
+  'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
 >;
 
-const permissionProviders = new Map<
-  string,
-  PermissionAuthorizationProvider[]
->();
+const permissionProviders = new Map<string, PermissionAuthorizationProvider[]>();
 
 export function registerPermissionAuthorizationProvider(
   label: string,
@@ -152,60 +135,47 @@ function providerFor(label: string): PermissionAuthorizationProvider | null {
   return permissionProviders.get(label)?.at(-1) ?? null;
 }
 
-export function authorizationRequest(
-  permission: PermissionName,
-): PermissionAuthorizationRequest {
-  if (
-    permission === "ChainSubmit" ||
-    permission === "PreimageSubmit" ||
-    permission === "StatementSubmit"
-  ) {
+export function authorizationRequest(permission: PermissionName): PermissionAuthorizationRequest {
+  if (permission === 'ChainSubmit' || permission === 'PreimageSubmit' || permission === 'StatementSubmit') {
     return {
-      tag: "Remote",
+      tag: 'Remote',
       value: { permission: { tag: permission } },
     };
   }
-  if (permission === "ChatAuthority") {
-    return { tag: "ChatAuthority" };
+  if (permission === 'ChatAuthority') {
+    return { tag: 'ChatAuthority' };
   }
-  if (permission === "IdentityDisclosure") {
-    return { tag: "IdentityDisclosure" };
+  if (permission === 'IdentityDisclosure') {
+    return { tag: 'IdentityDisclosure' };
   }
-  return { tag: "Device", value: permission };
+  return { tag: 'Device', value: permission };
 }
 
-export function fromAuthorizationStatus(
-  status: PermissionAuthorizationStatus,
-): PermissionStatus {
+export function fromAuthorizationStatus(status: PermissionAuthorizationStatus): PermissionStatus {
   switch (status) {
-    case "Authorized":
-      return "granted";
-    case "Denied":
-      return "denied";
-    case "NotDetermined":
-      return "ask";
+    case 'Authorized':
+      return 'granted';
+    case 'Denied':
+      return 'denied';
+    case 'NotDetermined':
+      return 'ask';
   }
 }
 
-function toAuthorizationStatus(
-  status: PermissionStatus,
-): PermissionAuthorizationStatus {
+function toAuthorizationStatus(status: PermissionStatus): PermissionAuthorizationStatus {
   switch (status) {
-    case "granted":
-      return "Authorized";
-    case "denied":
-      return "Denied";
-    case "ask":
-      return "NotDetermined";
+    case 'granted':
+      return 'Authorized';
+    case 'denied':
+      return 'Denied';
+    case 'ask':
+      return 'NotDetermined';
   }
 }
 
-export async function getPermissionStatus(
-  label: string,
-  permission: PermissionName,
-): Promise<PermissionStatus> {
+export async function getPermissionStatus(label: string, permission: PermissionName): Promise<PermissionStatus> {
   const statuses = await getPermissionStatuses(label, [permission]);
-  return statuses.at(0) ?? "ask";
+  return statuses.at(0) ?? 'ask';
 }
 
 export async function getPermissionStatuses(
@@ -214,11 +184,9 @@ export async function getPermissionStatuses(
 ): Promise<PermissionStatus[]> {
   const provider = providerFor(label);
   if (provider === null) {
-    return permissions.map(() => "ask");
+    return permissions.map(() => 'ask');
   }
-  const statuses = await provider.getPermissionAuthorizationStatuses(
-    permissions.map(authorizationRequest),
-  );
+  const statuses = await provider.getPermissionAuthorizationStatuses(permissions.map(authorizationRequest));
   return statuses.map(fromAuthorizationStatus);
 }
 
@@ -229,30 +197,22 @@ export async function setPermissionStatus(
 ): Promise<void> {
   const provider = providerFor(label);
   if (provider === null) {
-    throw new Error("product connection is unavailable");
+    throw new Error('product connection is unavailable');
   }
-  await provider.setPermissionAuthorizationStatus(
-    authorizationRequest(permission),
-    toAuthorizationStatus(status),
-  );
+  await provider.setPermissionAuthorizationStatus(authorizationRequest(permission), toAuthorizationStatus(status));
 }
 
-export async function resetPermission(
-  label: string,
-  permission: PermissionName,
-): Promise<void> {
-  await setPermissionStatus(label, permission, "ask");
+export async function resetPermission(label: string, permission: PermissionName): Promise<void> {
+  await setPermissionStatus(label, permission, 'ask');
 }
 
 /** Returns the list of device permission names that have been granted. */
-export async function getGrantedDevicePermissions(
-  label: string,
-): Promise<DevicePermissionName[]> {
+export async function getGrantedDevicePermissions(label: string): Promise<DevicePermissionName[]> {
   const granted: DevicePermissionName[] = [];
   const names = Object.keys(DEVICE_PERMISSION_POLICY) as DevicePermissionName[];
   const statuses = await getPermissionStatuses(label, names);
   for (const [index, name] of names.entries()) {
-    if (statuses[index] === "granted") {
+    if (statuses[index] === 'granted') {
       granted.push(name);
     }
   }
@@ -265,7 +225,7 @@ export async function hasAnyGrant(label: string): Promise<boolean> {
     label,
     ALL_PERMISSIONS.map(({ name }) => name),
   );
-  return statuses.some((status) => status === "granted");
+  return statuses.some(status => status === 'granted');
 }
 
 /**
@@ -274,12 +234,12 @@ export async function hasAnyGrant(label: string): Promise<boolean> {
  * for each granted device permission.
  */
 export async function buildAllowAttribute(label: string): Promise<string> {
-  const policies = ["clipboard-write"];
+  const policies = ['clipboard-write'];
   for (const name of await getGrantedDevicePermissions(label)) {
     const directive = DEVICE_PERMISSION_POLICY[name];
     if (directive !== undefined) {
       policies.push(directive);
     }
   }
-  return policies.join("; ");
+  return policies.join('; ');
 }

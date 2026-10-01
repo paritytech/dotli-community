@@ -3,21 +3,17 @@
 
 // Post-build script: generate .br and .gz pre-compressed files for dist/assets.
 // Uses Node's built-in zlib, so no extra dependencies are needed.
-// Run with: bun scripts/compress-dist.ts
+// Run with: node scripts/compress-dist.ts
 
-import { readdir, readFile, stat, writeFile } from "node:fs/promises";
-import { brotliCompressSync, constants, gzipSync } from "node:zlib";
-import { join } from "node:path";
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { createBrotliCompress, createGzip, constants } from 'node:zlib';
+import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
+import { Readable } from 'node:stream';
+import { createWriteStream } from 'node:fs';
 
-const DIST = process.env.DIST ?? "dist";
-const COMPRESS_EXTENSIONS = new Set([
-  ".js",
-  ".wasm",
-  ".json",
-  ".css",
-  ".html",
-  ".scale",
-]);
+const DIST = process.env['DIST'] ?? 'dist';
+const COMPRESS_EXTENSIONS = new Set(['.js', '.wasm', '.json', '.css', '.html', '.scale']);
 const MIN_SIZE = 1024; // Skip files smaller than 1KB
 
 interface FileEntry {
@@ -43,32 +39,32 @@ async function collectFiles(dir: string): Promise<FileEntry[]> {
 }
 
 function extOf(name: string): string {
-  const i = name.lastIndexOf(".");
-  return i >= 0 ? name.slice(i) : "";
+  const i = name.lastIndexOf('.');
+  return i >= 0 ? name.slice(i) : '';
 }
 
 async function compressBrotli(filePath: string, data: Buffer): Promise<number> {
-  const out = filePath + ".br";
-  const compressed = brotliCompressSync(data, {
+  const out = filePath + '.br';
+  const brotli = createBrotliCompress({
     params: {
       [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
     },
   });
-  await writeFile(out, compressed);
-  return compressed.byteLength;
+  await pipeline(Readable.from(data), brotli, createWriteStream(out));
+  const info = await stat(out);
+  return info.size;
 }
 
 async function compressGzip(filePath: string, data: Buffer): Promise<number> {
-  const out = filePath + ".gz";
-  const compressed = gzipSync(data, { level: 9 });
-  await writeFile(out, compressed);
-  return compressed.byteLength;
+  const out = filePath + '.gz';
+  const gz = createGzip({ level: 9 });
+  await pipeline(Readable.from(data), gz, createWriteStream(out));
+  const info = await stat(out);
+  return info.size;
 }
 
 function fmt(bytes: number): string {
-  return bytes >= 1024 * 1024
-    ? `${(bytes / 1024 / 1024).toFixed(2)} MB`
-    : `${(bytes / 1024).toFixed(1)} KB`;
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(2)} MB` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 async function main(): Promise<void> {
@@ -77,19 +73,14 @@ async function main(): Promise<void> {
   let totalBr = 0;
   let totalGz = 0;
 
-  console.log(`Compressing ${files.length} files...\n`);
+  console.log(`Compressing ${String(files.length)} files...\n`);
 
   for (const { path: filePath, size } of files) {
     const data = await readFile(filePath);
-    const [brSize, gzSize] = await Promise.all([
-      compressBrotli(filePath, data),
-      compressGzip(filePath, data),
-    ]);
-    const rel = filePath.replace(DIST + "/", "");
+    const [brSize, gzSize] = await Promise.all([compressBrotli(filePath, data), compressGzip(filePath, data)]);
+    const rel = filePath.replace(DIST + '/', '');
     const brPct = ((1 - brSize / size) * 100).toFixed(0);
-    console.log(
-      `  ${rel}: ${fmt(size)} → br ${fmt(brSize)} (-${brPct}%) / gz ${fmt(gzSize)}`,
-    );
+    console.log(`  ${rel}: ${fmt(size)} → br ${fmt(brSize)} (-${brPct}%) / gz ${fmt(gzSize)}`);
     totalRaw += size;
     totalBr += brSize;
     totalGz += gzSize;

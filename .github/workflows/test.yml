@@ -24,19 +24,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
-        with:
-          bun-version: "1.3.13"
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
+      - name: Setup Node
+        uses: ./.github/actions/setup-node
 
       - name: Verify PolkaVM runtime assets
-        run: bun run check:polkavm-runtime
+        run: npm run check:polkavm-runtime
 
       - name: Run tests
-        run: bunx --bun turbo run test
+        run: npx turbo run test
 
   functional:
     name: Functional
@@ -49,8 +44,6 @@ jobs:
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
-        with:
-          bun-version: "1.3.13"
 
       - name: Build
         env:
@@ -66,13 +59,13 @@ jobs:
           # Sentry no-ops on an unset DSN and would tunnel nothing. Never
           # dialled: `tunnel: "/t"` keeps every envelope same-origin.
           VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
-        run: bunx --bun turbo run build
+        run: npx turbo run build
 
       - name: Run functional tests
         working-directory: apps/host
         env:
           VITE_METRICS: "true"
-        run: bun run test:functional || true
+        run: npm run test:functional || true
 
       - name: Apply functional threshold
         working-directory: apps/host
@@ -97,6 +90,8 @@ jobs:
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          SMOKE_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "ui-smoke.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          SETTINGS_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "host-settings.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           # A skipped spec is `.ok == true` and still counts toward TOTAL, so the
           # failure gate below cannot see one. network-transport.spec.ts skips
           # itself without VITE_METRICS, which is exactly how it would silently
@@ -105,6 +100,8 @@ jobs:
           echo "loading.spec.ts failures: $LOADING_FAILED"
           echo "resolution.spec.ts failures: $RESOLUTION_FAILED"
           echo "network-transport.spec.ts failures: $TRANSPORT_FAILED (skipped: $TRANSPORT_SKIPPED)"
+          echo "ui-smoke.spec.ts failures: $SMOKE_FAILED"
+          echo "host-settings.spec.ts failures: $SETTINGS_FAILED"
           if [ "$LOADING_FAILED" -gt 0 ]; then
             echo "::error::loading.spec.ts must have 0 failures"
             exit 1
@@ -115,6 +112,14 @@ jobs:
           fi
           if [ "$TRANSPORT_FAILED" -gt 0 ]; then
             echo "::error::network-transport.spec.ts must have 0 failures"
+            exit 1
+          fi
+          if [ "$SMOKE_FAILED" -gt 0 ]; then
+            echo "::error::ui-smoke.spec.ts must have 0 failures"
+            exit 1
+          fi
+          if [ "$SETTINGS_FAILED" -gt 0 ]; then
+            echo "::error::host-settings.spec.ts must have 0 failures"
             exit 1
           fi
           if [ "$TRANSPORT_SKIPPED" -gt 0 ]; then
@@ -129,8 +134,7 @@ jobs:
     name: E2E
     runs-on: ubuntu-latest
     needs: unit
-    # Allow source-build time plus headroom over Playwright's globalTimeout
-    # (30 min), so a stuck test run is cut off with Playwright diagnostics.
+    # Include source-pinned CLI generation/build before Playwright's 30-minute limit.
     timeout-minutes: 60
     if: ${{ github.event.sender.type != 'Bot' }}
     env:
@@ -150,11 +154,9 @@ jobs:
 
       - name: Setup Playwright
         uses: ./.github/actions/setup-playwright
-        with:
-          bun-version: "1.3.13"
 
       # Build from the same immutable source as this branch's vendored SDK.
-      # Released CLI versions can lag behind the protocol used by the client.
+
       - name: Resolve signing-host source
         id: signing-host-source
         run: |
@@ -181,7 +183,7 @@ jobs:
           fi
           echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
 
-      # Match host-rust-core's codegen toolchains; generated Rust is not tracked.
+
       - name: Setup nightly Rust for codegen
         uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
         with:
@@ -199,29 +201,22 @@ jobs:
           workspaces: .signing-host-src -> target
           save-if: ${{ github.event_name == 'push' }}
 
-      - name: Setup Node for codegen
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: "22"
-
       - name: Checkout product fixture source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: paritytech/host-playground
-          ref: 66e0458891fa2999929e7f3e5363cacbe2eaa478
+          ref: f56294cea4430163bf16ec068844b1327441073c
           path: .build/e2e-host-playground
           persist-credentials: false
 
       - name: Install product fixture dependencies
         working-directory: .build/e2e-host-playground
         run: |
-          corepack enable
-          corepack prepare yarn@1.22.22 --activate
+          npm install --global yarn@1.22.22
           yarn install --frozen-lockfile
 
       - name: Link product fixture to the pinned SDK
-        run: bun scripts/link-truapi-local.ts --product-vendor
-
+        run: node scripts/link-truapi-local.ts --product-vendor
       - name: Generate signing-host sources
         working-directory: .signing-host-src
         run: |
@@ -244,7 +239,7 @@ jobs:
           VITE_NETWORKS: paseo-next-v2,previewnet
           # The fixture is served through dotli's existing loopback-only proxy.
           VITE_APP_DEBUG: "true"
-        run: bunx --bun turbo run build
+        run: npx turbo run build
 
       # Exit code 99 from playwright = pairing/signing infrastructure down
       # (signal raised by apps/host/tests/e2e/global-setup.ts after retries:
@@ -255,7 +250,7 @@ jobs:
         working-directory: apps/host
         run: |
           set +e
-          bun run test:e2e
+          npx playwright test --config=tests/e2e/playwright.config.ts
           code=$?
           if [ "$code" -eq 99 ]; then
             echo "::warning::Signing infrastructure unavailable — E2E Product suite skipped (testnet/identity-backend outage, not a dot.li failure)."

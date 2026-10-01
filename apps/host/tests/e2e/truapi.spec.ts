@@ -1,88 +1,79 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect, openHostPlayground } from "./fixtures/paired";
-import {
-  waitForPlaygroundReady,
-  runTestExpectSuccess,
-} from "./helpers/run-test";
-import { runWebSignedTest } from "./helpers/signing";
+import { test, expect, openHostPlayground } from './fixtures/paired.js';
+import { waitForPlaygroundReady, runTestExpectSuccess } from './helpers/run-test.js';
+import { runWebSignedTest } from './helpers/signing.js';
 
 // Playwright destroys the worker process after a test failure, so the
 // worker-scoped pairing fixture re-pairs from scratch on every failed test
 // (~10-30s extra). Acceptable trade-off, preferred over `describe.serial`
 // which would skip every test after the first failure.
 
-test.describe("dot.li > host-playground.dot", () => {
-  test("Product is ready", async ({ productFrame }) => {
+test.describe('dot.li > host-playground.dot', () => {
+  test('Product is ready', async ({ productFrame }) => {
     await waitForPlaygroundReady(productFrame);
   });
 
-  test.describe("Accounts", () => {
-    test("Get Product Account", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "accounts-provider-product");
+  test.describe('Accounts', () => {
+    test('Get Product Account', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'accounts-provider-product');
     });
 
-    test("Product Signer", async ({ productFrame }) => {
-      await runTestExpectSuccess(
-        productFrame,
-        "accounts-provider-product-signer",
-      );
+    test('Product Signer', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'accounts-provider-product-signer');
     });
 
-    test("Account Connection Status", async ({ productFrame }) => {
+    test('Account Connection Status', async ({ productFrame }) => {
       test.setTimeout(60_000);
-      await runTestExpectSuccess(
-        productFrame,
-        "accounts-provider-connection-status",
-      );
+      await runTestExpectSuccess(productFrame, 'accounts-provider-connection-status');
     });
 
     // Red on main since before the CLI swap: the product-side
     // accounts-provider-alias check itself reports FAILED.
-    test.fixme("Product Account Alias", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "accounts-provider-alias");
+    test.fixme('Product Account Alias', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'accounts-provider-alias');
     });
   });
 
-  test.describe("Auth", () => {
-    test("Request Login", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "request-login");
+  test.describe('Auth', () => {
+    test('Request Login', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'request-login');
     });
 
-    test("Get User Identity", async ({ pairedPage, productFrame }) => {
+    test('Get User Identity', async ({ pairedPage, productFrame }) => {
       test.setTimeout(120_000);
-      const badge = pairedPage.locator(".user-badge");
+      const badge = pairedPage.locator('.user-badge');
       await expect(badge).toBeVisible({ timeout: 30_000 });
-      await expect(badge).not.toHaveText("??", { timeout: 60_000 });
-      await runTestExpectSuccess(productFrame, "get-user-id");
+      await expect(badge).not.toHaveText('??', { timeout: 60_000 });
+      await runTestExpectSuccess(productFrame, 'get-user-id');
     });
   });
 
-  test.describe("Theme", () => {
-    test("Subscribe Theme", async ({ productFrame }) => {
+  test.describe('Theme', () => {
+    test('Subscribe Theme', async ({ productFrame }) => {
       test.setTimeout(15_000);
-      await runTestExpectSuccess(productFrame, "theme-subscribe");
+      await runTestExpectSuccess(productFrame, 'theme-subscribe');
     });
   });
 
-  test.describe("Entropy", () => {
-    test("Derive Entropy", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "derive-entropy");
+  test.describe('Entropy', () => {
+    test('Derive Entropy', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'derive-entropy');
     });
   });
 
-  test.describe("Connection & Providers", () => {
-    test("Well-Known Chains", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "well-known-chains");
+  test.describe('Connection & Providers', () => {
+    test('Well-Known Chains', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'well-known-chains');
     });
   });
 
   // Each allocation triggers an "Always allow" / "Allow" modal on the host that the user
   // approves. The signing host is paired so the test only drives the modal.
 
-  test.describe("Allowances", () => {
-    test("StatementStore Allowance", async ({ pairedPage, productFrame }) => {
+  test.describe('Allowances', () => {
+    test('StatementStore Allowance', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
@@ -90,16 +81,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "allowances-statement-store",
-        ["Always allow", "Allow"],
+        'allowances-statement-store',
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Bulletin Allowance", async ({ pairedPage, productFrame }) => {
+    test('Bulletin Allowance', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
@@ -107,16 +98,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "allowances-bulletin",
-        ["Always allow", "Allow"],
+        'allowances-bulletin',
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Smart-Contract Allowance", async ({ pairedPage, productFrame }) => {
+    test('Smart-Contract Allowance', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
@@ -124,66 +115,62 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "allowances-smart-contract",
-        ["Always allow", "Allow"],
+        'allowances-smart-contract',
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
     // Red on main since before the CLI swap: the combined allocation
     // times out at 30s while the individual allowance tests pass.
-    test.fixme("All Allowances", async ({ pairedPage, productFrame }) => {
+    test.fixme('All Allowances', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        "allowances-all",
-        ["Always allow", "Allow"],
-        { timeoutMs: 90_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'allowances-all', ['Always allow', 'Allow'], {
+        timeoutMs: 90_000,
+      });
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
   });
 
-  test.describe("Storage", () => {
-    test("String Write & Read", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "storage-string-write-read");
+  test.describe('Storage', () => {
+    test('String Write & Read', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'storage-string-write-read');
     });
 
-    test("Bytes Write & Read", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "storage-bytes-write-read");
+    test('Bytes Write & Read', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'storage-bytes-write-read');
     });
 
-    test("JSON Write & Read", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "storage-json-write-read");
+    test('JSON Write & Read', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'storage-json-write-read');
     });
 
-    test("Clear", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "storage-clear");
+    test('Clear', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'storage-clear');
     });
 
-    test("Factory", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "storage-factory");
+    test('Factory', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'storage-factory');
     });
   });
 
   // Remote-permission tests trigger an "Always allow" modal on the host the
   // first time a given capability is requested in a session.
 
-  test.describe("Permissions", () => {
-    test("Feature Check", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "feature-check");
+  test.describe('Permissions', () => {
+    test('Feature Check', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'feature-check');
     });
 
-    test("Remote: HTTP/WS", async ({ pairedPage, productFrame }) => {
+    test('Remote: HTTP/WS', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(60_000);
 
@@ -191,16 +178,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "remote-permission-remote",
-        ["Always allow", "Allow"],
+        'remote-permission-remote',
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Remote: WebRTC", async ({ pairedPage, productFrame }) => {
+    test('Remote: WebRTC', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(60_000);
 
@@ -208,16 +195,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "remote-permission-webrtc",
-        ["Always allow", "Allow"],
+        'remote-permission-webrtc',
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Remote: Chain Submit", async ({ pairedPage, productFrame }) => {
+    test('Remote: Chain Submit', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(60_000);
 
@@ -225,16 +212,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "remote-permission-chain-submit",
-        ["Always allow", "Allow"],
+        'remote-permission-chain-submit',
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Remote: Preimage Submit", async ({ pairedPage, productFrame }) => {
+    test('Remote: Preimage Submit', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(60_000);
 
@@ -242,16 +229,16 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "remote-permission-preimage-submit",
-        ["Always allow", "Allow"],
+        'remote-permission-preimage-submit',
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Remote: Statement Submit", async ({ pairedPage, productFrame }) => {
+    test('Remote: Statement Submit', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(60_000);
 
@@ -259,30 +246,22 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "remote-permission-statement-submit",
-        ["Always allow", "Allow"],
+        'remote-permission-statement-submit',
+        ['Always allow', 'Allow'],
         { timeoutMs: 30_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
   });
 
-  test.describe("Statements", () => {
-    test("As a product user, I can create an authorized statement proof", async ({
-      productFrame,
-    }) => {
-      await runTestExpectSuccess(
-        productFrame,
-        "statement-store-create-proof-authorized",
-      );
+  test.describe('Statements', () => {
+    test('As a product user, I can create an authorized statement proof', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'statement-store-create-proof-authorized');
     });
 
-    test("As a product user, I can submit a statement", async ({
-      pairedPage,
-      productFrame,
-    }) => {
+    test('As a product user, I can submit a statement', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(120_000);
 
@@ -290,38 +269,32 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "statement-store-submit",
-        ["Always allow", "Allow"],
+        'statement-store-submit',
+        ['Always allow', 'Allow'],
         { timeoutMs: 90_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Subscribe Match All", async ({ productFrame }) => {
+    test('Subscribe Match All', async ({ productFrame }) => {
       test.setTimeout(60_000);
-      await runTestExpectSuccess(
-        productFrame,
-        "statement-store-subscribe-match-all",
-      );
+      await runTestExpectSuccess(productFrame, 'statement-store-subscribe-match-all');
     });
 
-    test("Subscribe Match Any", async ({ productFrame }) => {
+    test('Subscribe Match Any', async ({ productFrame }) => {
       test.setTimeout(60_000);
-      await runTestExpectSuccess(
-        productFrame,
-        "statement-store-subscribe-match-any",
-      );
+      await runTestExpectSuccess(productFrame, 'statement-store-subscribe-match-any');
     });
   });
 
-  test.describe("Navigation", () => {
-    test("HTTP URL", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "navigate-http");
+  test.describe('Navigation', () => {
+    test('HTTP URL', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'navigate-http');
     });
 
-    test("Polkadot URL", async ({ pairedPage, productFrame }) => {
+    test('Polkadot URL', async ({ pairedPage, productFrame }) => {
       // Given: navigate-polkadot opens https://truapi-playground.paseo, a
       // dotNS product. dot.li hands the tab over to that product, so the
       // playground (and its result log) is gone once the call succeeds.
@@ -332,10 +305,7 @@ test.describe("dot.li > host-playground.dot", () => {
       await run.click();
 
       // Then
-      await pairedPage.waitForURL(
-        /^http:\/\/truapi-playground\.localhost:\d+\//,
-        { timeout: 15_000 },
-      );
+      await pairedPage.waitForURL(/^http:\/\/truapi-playground\.localhost:\d+\//, { timeout: 15_000 });
 
       // The page is shared by the worker, so put host-playground back for
       // the tests that follow.
@@ -344,130 +314,109 @@ test.describe("dot.li > host-playground.dot", () => {
 
     // Red on main since before the CLI swap: the iframe lands on
     // /navigation?id=… while the assertion expects /page?id=….
-    test.fixme("As a product user, I can navigate within the current product", async ({
-      productFrame,
-    }) => {
+    test.fixme('As a product user, I can navigate within the current product', async ({ productFrame }) => {
       // Given
-      const button = productFrame.locator(
-        '[data-testid="run-navigate-internal"]',
-      );
+      const button = productFrame.locator('[data-testid="run-navigate-internal"]');
       await expect(button).toBeVisible();
 
       // When
       await button.click();
 
       // Then
-      await expect
-        .poll(() => productFrame.url())
-        .toContain("/page?id=hello#fragment=something");
-      await productFrame.getByRole("link", { name: "Back to tests" }).click();
+      await expect.poll(() => productFrame.url()).toContain('/page?id=hello#fragment=something');
+      await productFrame.getByRole('link', { name: 'Back to tests' }).click();
       await waitForPlaygroundReady(productFrame);
     });
   });
 
-  test.describe("Chain", () => {
-    test("Chain Spec: Genesis Hash", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-spec-genesis-hash");
+  test.describe('Chain', () => {
+    test('Chain Spec: Genesis Hash', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-spec-genesis-hash');
     });
 
-    test("Chain Spec: Chain Name", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-spec-chain-name");
+    test('Chain Spec: Chain Name', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-spec-chain-name');
     });
 
-    test("Chain Spec: Properties", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-spec-properties");
+    test('Chain Spec: Properties', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-spec-properties');
     });
 
-    test("Query Balance", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-query-balance");
-    });
-  });
-
-  test.describe("Contract (read-only)", () => {
-    test("Query Stored Value", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-query-stored-value");
-    });
-
-    test("Query Data Length", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-query-data-length");
-    });
-
-    test("Query Balance", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-query-balance");
-    });
-
-    test("Query Total Deposits", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-query-total-deposits");
+    test('Query Balance', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-query-balance');
     });
   });
 
-  test.describe("Preimage", () => {
-    test("Lookup", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "preimage-lookup");
+  test.describe('Contract (read-only)', () => {
+    test('Query Stored Value', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-query-stored-value');
     });
 
-    test("Factory", async ({ pairedPage, productFrame }) => {
+    test('Query Data Length', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-query-data-length');
+    });
+
+    test('Query Balance', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-query-balance');
+    });
+
+    test('Query Total Deposits', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-query-total-deposits');
+    });
+  });
+
+  test.describe('Preimage', () => {
+    test('Lookup', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'preimage-lookup');
+    });
+
+    test('Factory', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        "preimage-factory",
-        ["Always allow", "Allow"],
-        { timeoutMs: 60_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-factory', ['Always allow', 'Allow'], {
+        timeoutMs: 60_000,
+      });
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
 
-    test("Submit", async ({ pairedPage, productFrame }) => {
+    test('Submit', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(180_000);
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        "preimage-submit",
-        ["Always allow", "Allow"],
-        { timeoutMs: 60_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'preimage-submit', ['Always allow', 'Allow'], {
+        timeoutMs: 60_000,
+      });
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
   });
 
-  test.describe("Notifications", () => {
-    test("As a product user, I can allow and receive a push notification", async ({
-      pairedPage,
-      productFrame,
-    }) => {
+  test.describe('Notifications', () => {
+    test('As a product user, I can allow and receive a push notification', async ({ pairedPage, productFrame }) => {
       // Given
-      const approvalButtons = ["Always allow", "Allow"];
+      const approvalButtons = ['Always allow', 'Allow'];
 
       // When
-      const status = await runWebSignedTest(
-        pairedPage,
-        productFrame,
-        "push-notification",
-        approvalButtons,
-        { timeoutMs: 20_000 },
-      );
+      const status = await runWebSignedTest(pairedPage, productFrame, 'push-notification', approvalButtons, {
+        timeoutMs: 20_000,
+      });
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
   });
 
   // Placed after read-only tests so a signing failure doesn't cascade-
   // affect Storage, Chain, Contract, etc. via fixture restarts.
 
-  test.describe("Signing", () => {
-    test("Sign Raw Message", async ({ pairedPage, productFrame }) => {
+  test.describe('Signing', () => {
+    test('Sign Raw Message', async ({ pairedPage, productFrame }) => {
       // Given
       test.setTimeout(180_000);
 
@@ -475,43 +424,43 @@ test.describe("dot.li > host-playground.dot", () => {
       const status = await runWebSignedTest(
         pairedPage,
         productFrame,
-        "wallet-sign-message",
-        ["Always allow", "Allow", "Sign"],
+        'wallet-sign-message',
+        ['Always allow', 'Allow', 'Sign'],
         { timeoutMs: 120_000, preClickDelayMs: 1_000 },
       );
 
       // Then
-      expect(status).toBe("success");
+      expect(status).toBe('success');
     });
   });
 
   // Funded operations (skipped, needs a faucet-funded account). Funded paths
   // exercise transaction submission. Out of scope until we wire a faucet step
   // into the fixture.
-  test.describe("Funded operations", () => {
-    test.skip("Sign Batch Payload", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "sign-batch-payload");
+  test.describe('Funded operations', () => {
+    test.skip('Sign Batch Payload', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'sign-batch-payload');
     });
-    test.skip("Create Transaction", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "create-transaction");
+    test.skip('Create Transaction', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'create-transaction');
     });
-    test.skip("Contract: Store Value", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-store-value");
+    test.skip('Contract: Store Value', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-store-value');
     });
-    test.skip("Contract: Deposit (payable)", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-deposit");
+    test.skip('Contract: Deposit (payable)', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-deposit');
     });
-    test.skip("Contract: Withdraw", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "contract-withdraw");
+    test.skip('Contract: Withdraw', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'contract-withdraw');
     });
-    test.skip("Chain Tx: Broadcast", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-transaction-broadcast");
+    test.skip('Chain Tx: Broadcast', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-transaction-broadcast');
     });
-    test.skip("Chain Tx: Stop Broadcast", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "chain-transaction-stop");
+    test.skip('Chain Tx: Stop Broadcast', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'chain-transaction-stop');
     });
-    test.skip("Payment: Balance Subscribe", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "payment-balance-subscribe");
+    test.skip('Payment: Balance Subscribe', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'payment-balance-subscribe');
     });
   });
 
@@ -520,36 +469,33 @@ test.describe("dot.li > host-playground.dot", () => {
   // they have no host-side equivalent. Listed for coverage parity with
   // host-playground.
 
-  test.describe("Device permissions", () => {
-    test.skip("Camera", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-camera");
+  test.describe('Device permissions', () => {
+    test.skip('Camera', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-camera');
     });
-    test.skip("Microphone", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-microphone");
+    test.skip('Microphone', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-microphone');
     });
-    test.skip("Bluetooth", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-bluetooth");
+    test.skip('Bluetooth', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-bluetooth');
     });
-    test.skip("Biometrics", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-biometrics");
+    test.skip('Biometrics', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-biometrics');
     });
-    test.skip("Clipboard", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-clipboard");
+    test.skip('Clipboard', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-clipboard');
     });
-    test.skip("Location", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-location");
+    test.skip('Location', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-location');
     });
-    test.skip("NFC", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-nfc");
+    test.skip('NFC', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-nfc');
     });
-    test.skip("Notifications", async ({ productFrame }) => {
-      await runTestExpectSuccess(
-        productFrame,
-        "device-permission-notifications",
-      );
+    test.skip('Notifications', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-notifications');
     });
-    test.skip("Open URL", async ({ productFrame }) => {
-      await runTestExpectSuccess(productFrame, "device-permission-open-url");
+    test.skip('Open URL', async ({ productFrame }) => {
+      await runTestExpectSuccess(productFrame, 'device-permission-open-url');
     });
   });
 });

@@ -207,8 +207,8 @@ set:function(v){if(firstWrite){firstWrite=false}else{__dotliReport("Direct walle
  * Inserts after `<head>` if present, otherwise prepends to the HTML.
  */
 export function injectSandboxChecker(html: string): string {
-  if (html.includes("<head>")) {
-    return html.replace("<head>", "<head>" + SANDBOX_CHECKER_SCRIPT);
+  if (html.includes('<head>')) {
+    return html.replace('<head>', '<head>' + SANDBOX_CHECKER_SCRIPT);
   }
   return SANDBOX_CHECKER_SCRIPT + html;
 }

@@ -28,19 +28,19 @@
 
 /** Known metric attribute keys. Keep dashboards in sync with this list. */
 export type MetricOutcome =
-  | "ok"
-  | "error"
-  | "timeout"
-  | "miss"
-  | "hit"
-  | "pending"
+  | 'ok'
+  | 'error'
+  | 'timeout'
+  | 'miss'
+  | 'hit'
+  | 'pending'
   // Bitswap
-  | "not-found"
-  | "invalid-cid"
-  | "aborted"
+  | 'not-found'
+  | 'invalid-cid'
+  | 'aborted'
   // Manifest reader
-  | "empty"
-  | "invalid";
+  | 'empty'
+  | 'invalid';
 
 export type MetricAttributes = {
   mode?: string;
@@ -54,7 +54,7 @@ export type MetricAttributes = {
 
 interface MetricOptions {
   unit?: string;
-  attributes?: Record<string, string>;
+  attributes?: Record<string, string> | undefined;
 }
 
 /** The slice of a Sentry span the tracing helpers below drive. */
@@ -68,16 +68,14 @@ export type SpanValue = string | number | boolean;
 interface SentryLike {
   startSpan: <T>(
     opts: { op: string; name: string },
-    fn: (
-      span: { setAttribute: (key: string, value: string) => void } | undefined,
-    ) => T,
+    fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => T,
   ) => T;
   startInactiveSpan: (opts: {
     name: string;
     op?: string;
-    startTime?: number;
+    startTime?: number | undefined;
     parentSpan?: unknown;
-    forceTransaction?: boolean;
+    forceTransaction?: boolean | undefined;
     attributes?: Record<string, SpanValue>;
   }) => SentrySpan;
   setMeasurement: (name: string, value: number, unit: string) => void;
@@ -91,7 +89,7 @@ interface SentryLike {
     category: string;
     message: string;
     level?: string;
-    data?: Record<string, unknown>;
+    data?: Record<string, unknown> | undefined;
   }) => void;
 }
 
@@ -111,7 +109,7 @@ function sentry(): SentryLike | null {
     return _sentry;
   }
   try {
-    const hub = (globalThis as Record<string, unknown>).__SENTRY_HUB__;
+    const hub = (globalThis as Record<string, unknown>)['__SENTRY_HUB__'];
     if (hub !== undefined && hub !== null) {
       _sentry = hub as SentryLike;
     }
@@ -137,7 +135,7 @@ function warnUnboundOnce(): void {
   }
   _unboundWarned = true;
   console.warn(
-    "[dot.li metrics] VITE_METRICS=true but Sentry is not bound — every metric will silently no-op until `initSentry()` / `m.bind()` runs. Check your app entry point.",
+    '[dot.li metrics] VITE_METRICS=true but Sentry is not bound — every metric will silently no-op until `initSentry()` / `m.bind()` runs. Check your app entry point.',
   );
 }
 
@@ -149,15 +147,18 @@ function warnUnboundOnce(): void {
  * import * as Sentry from "@sentry/browser";
  * import { m } from "@dotli/metrics/metrics";
  * Sentry.init({ ... });
- * m.bind(Sentry);
+ * m.bind({ startSpan: Sentry.startSpan, setTag: Sentry.setTag, ... });
  * ```
+ *
+ * Pass the functions, not the namespace: a namespace passed as a value
+ * keeps every export of the SDK in the bundle.
  */
 function bind(s: SentryLike): void {
   _sentry = s;
   _unboundWarned = false;
 }
 
-const ENABLED = (import.meta.env.VITE_METRICS as string | undefined) === "true";
+const ENABLED = import.meta.env.VITE_METRICS === 'true';
 
 // Apps register session-level context (e.g. `dotli_mode`) via `setDefaults()`.
 // Every metric emitted afterwards carries these attributes, so dashboards can
@@ -166,9 +167,7 @@ const ENABLED = (import.meta.env.VITE_METRICS as string | undefined) === "true";
 
 let defaultAttrs: Record<string, string> = {};
 
-function mergeAttrs(
-  attrs?: Record<string, string>,
-): Record<string, string> | undefined {
+function mergeAttrs(attrs?: Record<string, string>): Record<string, string> | undefined {
   if (attrs === undefined) {
     return Object.keys(defaultAttrs).length > 0 ? defaultAttrs : undefined;
   }
@@ -182,23 +181,14 @@ function mergeAttrs(
  * attributes synchronously inside the body (e.g. `dotli.chain_backend`
  * on a resolve span).
  */
+function span<T>(name: string, fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => T): T;
 function span<T>(
   name: string,
-  fn: (
-    span: { setAttribute: (key: string, value: string) => void } | undefined,
-  ) => T,
-): T;
-function span<T>(
-  name: string,
-  fn: (
-    span: { setAttribute: (key: string, value: string) => void } | undefined,
-  ) => Promise<T>,
+  fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => Promise<T>,
 ): Promise<T>;
 function span<T>(
   name: string,
-  fn: (
-    span: { setAttribute: (key: string, value: string) => void } | undefined,
-  ) => T | Promise<T>,
+  fn: (span: { setAttribute: (key: string, value: string) => void } | undefined) => T | Promise<T>,
 ): T | Promise<T> {
   if (!ENABLED) {
     return fn(undefined);
@@ -207,20 +197,14 @@ function span<T>(
   if (s === null) {
     return fn(undefined);
   }
-  return s.startSpan({ op: "dotli", name: `dotli.${name}` }, (currentSpan) =>
-    fn(currentSpan),
-  );
+  return s.startSpan({ op: 'dotli', name: `dotli.${name}` }, currentSpan => fn(currentSpan));
 }
 
 /**
  * Record a numeric measurement on the current Sentry transaction.
  * Measurements appear in Sentry's performance dashboard.
  */
-function measure(
-  name: string,
-  value: number,
-  unit: "millisecond" | "second" | "byte" | "none" = "millisecond",
-): void {
+function measure(name: string, value: number, unit: 'millisecond' | 'second' | 'byte' | 'none' = 'millisecond'): void {
   if (!ENABLED) {
     return;
   }
@@ -246,12 +230,7 @@ function count(name: string, attributes?: MetricAttributes): void {
 /**
  * Record a distribution (histogram) value. Use for latency distributions.
  */
-function distribution(
-  name: string,
-  value: number,
-  unit = "millisecond",
-  attributes?: MetricAttributes,
-): void {
+function distribution(name: string, value: number, unit = 'millisecond', attributes?: MetricAttributes): void {
   if (!ENABLED) {
     return;
   }
@@ -264,12 +243,7 @@ function distribution(
 /**
  * Record a gauge value (last-write-wins). Use for current state values.
  */
-function gauge(
-  name: string,
-  value: number,
-  unit = "none",
-  attributes?: MetricAttributes,
-): void {
+function gauge(name: string, value: number, unit = 'none', attributes?: MetricAttributes): void {
   if (!ENABLED) {
     return;
   }
@@ -334,14 +308,13 @@ function clearDefaults(keys?: readonly string[]): void {
   if (!ENABLED) {
     return;
   }
-  const targets: string[] =
-    keys === undefined ? Object.keys(defaultAttrs) : [...keys];
+  const targets: string[] = keys === undefined ? Object.keys(defaultAttrs) : [...keys];
   const s = sentry();
   for (const key of targets) {
     // Clear the scope tag by setting it to an empty string. Sentry has
     // no remove primitive, so dashboards filtering on a non-empty value
     // will stop picking up stale values.
-    s?.setTag(`dotli.${key}`, "");
+    s?.setTag(`dotli.${key}`, '');
   }
   if (keys === undefined) {
     defaultAttrs = {};
@@ -418,14 +391,14 @@ const NOOP_HANDLE: SpanHandle = {
 function wrap(sentrySpan: SentrySpan): SpanHandle {
   let ended = false;
   return {
-    setAttributes: (attrs) => {
+    setAttributes: attrs => {
       if (ended) {
         return;
       }
       sentrySpan.setAttributes(attrs);
     },
     child: (name, opts) => open(name, { ...opts, parent: sentrySpan }),
-    end: (endTime) => {
+    end: endTime => {
       if (ended) {
         return;
       }
@@ -441,10 +414,7 @@ function wrap(sentrySpan: SentrySpan): SpanHandle {
  * Returns an inert handle whenever metrics are off or Sentry is unbound, so
  * callers never branch on whether telemetry is live.
  */
-function open(
-  name: string,
-  opts?: OpenSpanOptions & { parent?: unknown },
-): SpanHandle {
+function open(name: string, opts?: OpenSpanOptions & { parent?: unknown }): SpanHandle {
   if (!ENABLED) {
     return NOOP_HANDLE;
   }
@@ -455,7 +425,7 @@ function open(
   return wrap(
     s.startInactiveSpan({
       name: `dotli.${name}`,
-      op: "dotli",
+      op: 'dotli',
       startTime: opts?.startTime,
       // `null` means "no parent", which is what makes a root a root. Leaving it
       // undefined would silently adopt whatever span happens to be active.
@@ -474,9 +444,9 @@ function breadcrumb(message: string, data?: Record<string, unknown>): void {
     return;
   }
   sentry()?.addBreadcrumb({
-    category: "dotli",
+    category: 'dotli',
     message,
-    level: "info",
+    level: 'info',
     data,
   });
 }

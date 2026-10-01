@@ -18,20 +18,15 @@
 // They are part of the public URL contract surface and changing them
 // belongs in this file too.
 
-import { defaultNetwork, isValidNetwork, type Network } from "./network";
-import {
-  defaultBackend,
-  isSharedWorkerAvailable,
-  type Backend,
-  type CacheSettings,
-} from "./mode";
+import { defaultNetwork, isValidNetwork, type Network } from './network.js';
+import { defaultBackend, isSharedWorkerAvailable, type Backend, type CacheSettings } from './mode.js';
 
 const URL_PARAM_NAMES = {
-  network: "network",
-  chainBackend: "chainBackend",
-  skipArchiveCache: "skipArchiveCache",
-  skipCidCache: "skipCidCache",
-  skipWorkerCache: "skipWorkerCache",
+  network: 'network',
+  chainBackend: 'chainBackend',
+  skipArchiveCache: 'skipArchiveCache',
+  skipCidCache: 'skipCidCache',
+  skipWorkerCache: 'skipWorkerCache',
 } as const;
 
 const URL_DEFAULT_CACHE: CacheSettings = {
@@ -41,12 +36,12 @@ const URL_DEFAULT_CACHE: CacheSettings = {
 };
 
 const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
-  "smoldot-direct",
-  "smoldot-shared-worker",
-  "rpc-gateway",
+  'smoldot-direct',
+  'smoldot-shared-worker',
+  'rpc-gateway',
 ]);
 
-const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(["0", "1"]);
+const VALID_BOOLEAN_FLAGS: ReadonlySet<string> = new Set(['0', '1']);
 
 /** Per-axis URL parse: `null` for absent or invalid, so callers can `?? fallback`. */
 export interface ParsedUrlSettings {
@@ -68,45 +63,27 @@ function parseBoolean(raw: string | null): boolean | null {
   if (raw === null || !VALID_BOOLEAN_FLAGS.has(raw)) {
     return null;
   }
-  return raw === "1";
+  return raw === '1';
 }
 
 /** Extract per-axis settings values from a URLSearchParams. */
-export function parseSettingsFromSearch(
-  search: URLSearchParams,
-): ParsedUrlSettings {
+export function parseSettingsFromSearch(search: URLSearchParams): ParsedUrlSettings {
   const rawNetwork = search.get(URL_PARAM_NAMES.network);
   const rawBackend = search.get(URL_PARAM_NAMES.chainBackend);
-  const backend =
-    rawBackend !== null && VALID_BACKENDS.has(rawBackend)
-      ? (rawBackend as Backend)
-      : null;
+  const backend = rawBackend !== null && VALID_BACKENDS.has(rawBackend) ? (rawBackend as Backend) : null;
   return {
-    network:
-      rawNetwork !== null && isValidNetwork(rawNetwork) ? rawNetwork : null,
-    chainBackend:
-      backend === "smoldot-shared-worker" && !isSharedWorkerAvailable()
-        ? null
-        : backend,
-    skipArchiveCache: parseBoolean(
-      search.get(URL_PARAM_NAMES.skipArchiveCache),
-    ),
+    network: rawNetwork !== null && isValidNetwork(rawNetwork) ? rawNetwork : null,
+    chainBackend: backend === 'smoldot-shared-worker' && !isSharedWorkerAvailable() ? null : backend,
+    skipArchiveCache: parseBoolean(search.get(URL_PARAM_NAMES.skipArchiveCache)),
     skipCidCache: parseBoolean(search.get(URL_PARAM_NAMES.skipCidCache)),
     skipWorkerCache: parseBoolean(search.get(URL_PARAM_NAMES.skipWorkerCache)),
   };
 }
 
 /** Canonicalize `search` in place to mirror `settings`, dropping default-valued axes. Returns true if mutated. */
-export function writeSettingsToSearch(
-  settings: EffectiveSettings,
-  search: URLSearchParams,
-): boolean {
+export function writeSettingsToSearch(settings: EffectiveSettings, search: URLSearchParams): boolean {
   const before = search.toString();
-  applyAxis(
-    search,
-    URL_PARAM_NAMES.network,
-    settings.network === defaultNetwork() ? null : settings.network,
-  );
+  applyAxis(search, URL_PARAM_NAMES.network, settings.network === defaultNetwork() ? null : settings.network);
   applyAxis(
     search,
     URL_PARAM_NAMES.chainBackend,
@@ -118,12 +95,7 @@ export function writeSettingsToSearch(
     settings.cache.skipArchiveCache,
     URL_DEFAULT_CACHE.skipArchiveCache,
   );
-  applyBooleanAxis(
-    search,
-    URL_PARAM_NAMES.skipCidCache,
-    settings.cache.skipCidCache,
-    URL_DEFAULT_CACHE.skipCidCache,
-  );
+  applyBooleanAxis(search, URL_PARAM_NAMES.skipCidCache, settings.cache.skipCidCache, URL_DEFAULT_CACHE.skipCidCache);
   applyBooleanAxis(
     search,
     URL_PARAM_NAMES.skipWorkerCache,
@@ -133,11 +105,7 @@ export function writeSettingsToSearch(
   return search.toString() !== before;
 }
 
-function applyAxis(
-  search: URLSearchParams,
-  key: string,
-  desired: string | null,
-): void {
+function applyAxis(search: URLSearchParams, key: string, desired: string | null): void {
   if (desired === null) {
     search.delete(key);
   } else {
@@ -145,11 +113,6 @@ function applyAxis(
   }
 }
 
-function applyBooleanAxis(
-  search: URLSearchParams,
-  key: string,
-  current: boolean,
-  defaultValue: boolean,
-): void {
-  applyAxis(search, key, current === defaultValue ? null : current ? "1" : "0");
+function applyBooleanAxis(search: URLSearchParams, key: string, current: boolean, defaultValue: boolean): void {
+  applyAxis(search, key, current === defaultValue ? null : current ? '1' : '0');
 }

@@ -3,7 +3,7 @@
 // has to hand out ids unique among a product's open operations. One counter
 // never repeats an id, which satisfies that for every product at once.
 
-import type { ProductOperations } from "@parity/truapi-host";
+import type { ProductOperations } from '@parity/truapi-host';
 
 export function createProductOperations(): Required<ProductOperations> {
   let nextId = 0;

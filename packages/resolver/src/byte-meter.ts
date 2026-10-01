@@ -19,7 +19,7 @@ export function chainBytesReceived(): number {
 }
 
 function sizeOf(data: unknown): number {
-  if (typeof data === "string") {
+  if (typeof data === 'string') {
     // Frames are binary in practice. A text frame is counted as UTF-8 rather
     // than as UTF-16 code units, which is what actually crossed the wire.
     return new TextEncoder().encode(data).length;
@@ -43,7 +43,7 @@ function sizeOf(data: unknown): number {
  * replacing `onmessage`, so the handler smoldot installed is untouched.
  */
 export function installByteMeter(): void {
-  if (installed || typeof window === "undefined") {
+  if (installed || typeof window === 'undefined') {
     return;
   }
   installed = true;
@@ -54,7 +54,7 @@ export function installByteMeter(): void {
   class MeteredWebSocket extends window.WebSocket {
     constructor(url: string | URL, protocols?: string | string[]) {
       super(url, protocols);
-      this.addEventListener("message", (event: MessageEvent) => {
+      this.addEventListener('message', (event: MessageEvent) => {
         received += sizeOf(event.data);
       });
     }
@@ -63,7 +63,7 @@ export function installByteMeter(): void {
 
   // webrtc-direct bootnodes carry a real share of the sync on networks that
   // publish them, so the data channels are counted the same way.
-  if (typeof RTCPeerConnection !== "undefined") {
+  if (typeof RTCPeerConnection !== 'undefined') {
     // Taken off the prototype only to call it back with the original `this`.
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const nativeCreate = RTCPeerConnection.prototype.createDataChannel;
@@ -73,7 +73,7 @@ export function installByteMeter(): void {
       options?: RTCDataChannelInit,
     ): RTCDataChannel {
       const channel = nativeCreate.call(this, label, options);
-      channel.addEventListener("message", (event: MessageEvent) => {
+      channel.addEventListener('message', (event: MessageEvent) => {
         received += sizeOf(event.data);
       });
       return channel;

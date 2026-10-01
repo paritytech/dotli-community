@@ -1,0 +1,212 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The shell's popovers (components/shell/Popover.tsx): the surface, its
+   backdrop and its loading state. Each surface's own class sets its width
+   and inner layout; everything they share is here. */
+
+.popover-backdrop {
+  display: none;
+  position: fixed;
+  top: var(--topbar-height);
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1400;
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    display 0.18s allow-discrete;
+}
+.popover-backdrop.open {
+  display: block;
+  opacity: 1;
+}
+@starting-style {
+  .popover-backdrop.open {
+    opacity: 0;
+  }
+}
+
+.popover {
+  display: none;
+  position: fixed;
+  /* Overlaps the bottom of the topbar so the surface attaches to its
+     button instead of floating with a gap. */
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
+  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  /* `--content-height` is dvh-based: it tracks the visible area as mobile
+     browser chrome shows and hides, without the home indicator. */
+  max-height: calc(var(--content-height) - 4px);
+  overflow-y: auto;
+  background: rgb(34, 34, 34);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  z-index: 1500;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
+}
+@supports (backdrop-filter: blur(1px)) {
+  .popover {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .popover {
+    background: rgba(20, 20, 20, 0.97);
+  }
+}
+.popover.open {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .popover.open {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+/* The content's chunk is on its way. */
+.popover-loading {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+}
+.popover-loading::after {
+  content: "";
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  animation: popover-spin 0.8s linear infinite;
+}
+@keyframes popover-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* On phones (SHEET_QUERY, max-width 560px, read as each opening starts) a
+   popover is a modal bottom sheet: at the bottom edge, full width, at most
+   85% of the visible height, sliding up. */
+.popover-backdrop.sheet {
+  top: 0;
+}
+.popover.sheet {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(var(--content-height) * 0.85);
+  overflow-y: auto;
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px 16px 0 0;
+  padding-bottom: var(--safe-bottom);
+  opacity: 1;
+  transform: translateY(100%);
+  transform-origin: bottom center;
+  transition:
+    transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    display 0.28s allow-discrete;
+}
+.popover.sheet.open {
+  transform: translateY(0);
+}
+@starting-style {
+  .popover.sheet.open {
+    opacity: 1;
+    transform: translateY(100%);
+  }
+}
+/* The sheet follows the pointer while dragged. */
+.popover.sheet.dragging {
+  transition: none;
+}
+.popover-sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 18px 14px 12px;
+  background: rgba(20, 20, 20, 0.92);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  touch-action: none;
+  cursor: grab;
+}
+.popover-sheet-grabber {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.28);
+}
+.popover-sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #fff;
+}
+.popover-sheet-close {
+  appearance: none;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 20px;
+  line-height: 1;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.popover-sheet-close:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+/* Under its trigger (anchor="trigger"): the place is set inline. */
+.popover.anchor-trigger {
+  right: auto;
+  transform-origin: top left;
+}
+/* Shown while a mouse rests on the trigger (openOnHover). */
+.popover.peek {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .popover.peek {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .popover,
+  .popover-backdrop {
+    transition: none !important;
+  }
+  .popover-loading::after {
+    animation: none;
+  }
+}

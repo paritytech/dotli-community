@@ -2,7 +2,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from 'vitest';
 import {
   accumulateRelativePointerDelta,
   HostFrameResponseQueue,
@@ -29,28 +29,28 @@ import {
   validatedFileInputHandlers,
   type TruapiPortScope,
   type TruapiPortTarget,
-} from "./polkavm-runtime";
+} from './polkavm-runtime.js';
 
 const encoder = new TextEncoder();
 
 function doomManifest(): Uint8Array {
   return encoder.encode(
     JSON.stringify({
-      $schema: "epoca:experimental-product/v1",
+      $schema: 'epoca:experimental-product/v1',
       $v: 1,
-      kind: "framebuffer",
-      runtime: { kind: "polkavm", entrypoint: "app.polkavm" },
+      kind: 'framebuffer',
+      runtime: { kind: 'polkavm', entrypoint: 'app.polkavm' },
       modalities: {
         framebuffer: {
           abiVersion: 1,
-          controls: ["WASD Move", "Space Fire"],
+          controls: ['WASD Move', 'Space Fire'],
         },
       },
       contentSlots: [
         {
-          id: "iwad",
+          id: 'iwad',
           required: true,
-          mount: "game/doom.wad",
+          mount: 'game/doom.wad',
         },
       ],
     }),
@@ -60,22 +60,22 @@ function doomManifest(): Uint8Array {
 function doomAppV2Manifest(): string {
   return JSON.stringify({
     $v: 2,
-    kind: "app",
+    kind: 'app',
     appVersion: [0, 1, 7],
     runtime: {
-      kind: "polkavm",
+      kind: 'polkavm',
       abiVersion: 1,
-      entrypoint: "app.polkavm",
+      entrypoint: 'app.polkavm',
     },
     capabilities: {
       graphics: {
         abiVersion: 1,
-        profile: "framebuffer",
+        profile: 'framebuffer',
         requiredFeatures: [],
       },
       deviceInput: {
         abiVersion: 1,
-        requiredFeatures: ["pointer", "keyboard"],
+        requiredFeatures: ['pointer', 'keyboard'],
       },
       audio: { abiVersion: 1, requiredFeatures: [] },
     },
@@ -84,29 +84,29 @@ function doomAppV2Manifest(): string {
 
 function tri2dAppV2Manifest(): string {
   const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
-  const capabilities = manifest.capabilities as Record<string, unknown>;
-  const graphics = capabilities.graphics as Record<string, unknown>;
-  graphics.profile = "tri2d";
-  delete capabilities.audio;
+  const capabilities = manifest['capabilities'] as Record<string, unknown>;
+  const graphics = capabilities['graphics'] as Record<string, unknown>;
+  graphics['profile'] = 'tri2d';
+  delete capabilities['audio'];
   return JSON.stringify(manifest);
 }
 
 function webGpuRasterAppV2Manifest(): string {
   const manifest = JSON.parse(doomAppV2Manifest()) as Record<string, unknown>;
-  const capabilities = manifest.capabilities as Record<string, unknown>;
-  const graphics = capabilities.graphics as Record<string, unknown>;
-  graphics.profile = "webgpu-raster";
-  graphics.requiredLimits = {
+  const capabilities = manifest['capabilities'] as Record<string, unknown>;
+  const graphics = capabilities['graphics'] as Record<string, unknown>;
+  graphics['profile'] = 'webgpu-raster';
+  graphics['requiredLimits'] = {
     maxTextureDimension2D: 4096,
     maxBufferSize: 1024,
     maxBindingsPerBindGroup: 3,
   };
-  delete capabilities.audio;
+  delete capabilities['audio'];
   return JSON.stringify(manifest);
 }
 
-describe("PolkaVM pointer input", () => {
-  it("preserves signed pointer deltas for the guest runtime", () => {
+describe('PolkaVM pointer input', () => {
+  it('preserves signed pointer deltas for the guest runtime', () => {
     const large = encodedInput(6, 0, 32_000, -32_000);
     const largeView = new DataView(large.buffer);
     expect(largeView.getInt16(2, true)).toBe(32_000);
@@ -118,7 +118,7 @@ describe("PolkaVM pointer input", () => {
     expect(normalView.getInt16(4, true)).toBe(-19);
   });
 
-  it("coalesces a high-rate pointer backlog into one bounded frame delta", () => {
+  it('coalesces a high-rate pointer backlog into one bounded frame delta', () => {
     let x = 0;
     let y = 0;
     for (let index = 0; index < 64; index++) {
@@ -129,35 +129,35 @@ describe("PolkaVM pointer input", () => {
     expect(accumulateRelativePointerDelta(x, y, -20, 20)).toEqual([107, -107]);
   });
 });
-describe("PolkaVM viewport inset messages", () => {
-  it("accepts bounded integer keyboard insets from the authenticated host", () => {
+describe('PolkaVM viewport inset messages', () => {
+  it('accepts bounded integer keyboard insets from the authenticated host', () => {
     expect(
       validatedPolkaVmViewInsets({
-        type: "dotli:polkavm-view-insets",
+        type: 'dotli:polkavm-view-insets',
         keyboard: { left: 2, top: 4, right: 6, bottom: 800 },
       }),
     ).toEqual({ left: 2, top: 4, right: 6, bottom: 800 });
   });
 
-  it("rejects malformed or out-of-range host insets", () => {
+  it('rejects malformed or out-of-range host insets', () => {
     const messages = [
       null,
-      { type: "dotli:polkavm-view-insets" },
+      { type: 'dotli:polkavm-view-insets' },
       {
-        type: "dotli:polkavm-view-insets",
+        type: 'dotli:polkavm-view-insets',
         keyboard: { left: -1, top: 0, right: 0, bottom: 0 },
       },
       {
-        type: "dotli:polkavm-view-insets",
+        type: 'dotli:polkavm-view-insets',
         keyboard: { left: 0, top: 0.5, right: 0, bottom: 0 },
       },
       {
-        type: "dotli:polkavm-view-insets",
+        type: 'dotli:polkavm-view-insets',
         keyboard: { left: 0, top: 0, right: 65_536, bottom: 0 },
       },
       {
-        type: "dotli:polkavm-view-insets",
-        keyboard: { left: 0, top: 0, right: 0, bottom: "20" },
+        type: 'dotli:polkavm-view-insets',
+        keyboard: { left: 0, top: 0, right: 0, bottom: '20' },
       },
     ];
     for (const message of messages) {
@@ -166,63 +166,53 @@ describe("PolkaVM viewport inset messages", () => {
   });
 });
 
-describe("PolkaVM advanced input encoding", () => {
-  it("chunks UTF-8 text without splitting code points", () => {
-    const records = encodedTextInput(8, "hello π");
+describe('PolkaVM advanced input encoding', () => {
+  it('chunks UTF-8 text without splitting code points', () => {
+    const records = encodedTextInput(8, 'hello π');
     expect(records).toHaveLength(2);
-    expect(records[0]).toEqual(
-      new Uint8Array([8, 0x46, 104, 101, 108, 108, 111, 32]),
-    );
-    expect(records[1]).toEqual(
-      new Uint8Array([8, 0x82, 0xcf, 0x80, 0, 0, 0, 0]),
-    );
-    expect(encodedTextInput(9, "")).toEqual([
-      new Uint8Array([9, 0xc0, 0, 0, 0, 0, 0, 0]),
-    ]);
-    expect(encodedTextInput(10, "a".repeat(4097))).toEqual([]);
+    expect(records[0]).toEqual(new Uint8Array([8, 0x46, 104, 101, 108, 108, 111, 32]));
+    expect(records[1]).toEqual(new Uint8Array([8, 0x82, 0xcf, 0x80, 0, 0, 0, 0]));
+    expect(encodedTextInput(9, '')).toEqual([new Uint8Array([9, 0xc0, 0, 0, 0, 0, 0, 0])]);
+    expect(encodedTextInput(10, 'a'.repeat(4097))).toEqual([]);
   });
 
-  it("normalizes DOM wheel direction before encoding signed deltas", () => {
+  it('normalizes DOM wheel direction before encoding signed deltas', () => {
     const wheel = encodedWheelInput(12, -3, 16);
     const view = new DataView(wheel.buffer);
     expect(view.getInt16(2, true)).toBe(-192);
     expect(view.getInt16(4, true)).toBe(48);
-    expect(encodedInput(13, 1)).toEqual(
-      new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]),
-    );
+    expect(encodedInput(13, 1)).toEqual(new Uint8Array([13, 1, 0, 0, 0, 0, 0, 0]));
   });
 });
 
-describe("PolkaVM UI platform output", () => {
+describe('PolkaVM UI platform output', () => {
   const value = {
-    cursorIcon: "text",
+    cursorIcon: 'text',
     mutableTextUnderCursor: true,
     ime: {
       rect: [10, 20, 210, 60],
       cursorRect: [24, 22, 25, 58],
     },
     commands: [
-      { type: "copy-text", text: "hello" },
+      { type: 'copy-text', text: 'hello' },
       {
-        type: "open-url",
-        url: "https://example.test/path",
+        type: 'open-url',
+        url: 'https://example.test/path',
         newSurface: true,
       },
     ],
   };
 
-  it("validates bounded ABI state and drops guest-only URL controls", () => {
+  it('validates bounded ABI state and drops guest-only URL controls', () => {
     const output = validatedUiPlatformOutput(value);
     expect(output).toEqual({
       ...value,
       commands: [
-        { type: "copy-text", text: "hello" },
-        { type: "open-url", url: "https://example.test/path" },
+        { type: 'copy-text', text: 'hello' },
+        { type: 'open-url', url: 'https://example.test/path' },
       ],
     });
-    expect(
-      validatedUiPlatformOutput({ ...value, cursorIcon: "url(javascript:)" }),
-    ).toBeNull();
+    expect(validatedUiPlatformOutput({ ...value, cursorIcon: 'url(javascript:)' })).toBeNull();
     expect(
       validatedUiPlatformOutput({
         ...value,
@@ -233,39 +223,39 @@ describe("PolkaVM UI platform output", () => {
       validatedUiPlatformOutput({
         ...value,
         commands: Array.from({ length: 65 }, () => ({
-          type: "copy-text",
-          text: "",
+          type: 'copy-text',
+          text: '',
         })),
       }),
     ).toBeNull();
     expect(
       validatedUiPlatformOutput({
         ...value,
-        commands: [{ type: "copy-text", text: "🦀".repeat(16_385) }],
+        commands: [{ type: 'copy-text', text: '🦀'.repeat(16_385) }],
       }),
     ).toBeNull();
     expect(
       validatedUiPlatformOutput({
         ...value,
-        commands: [{ type: "open-url", url: "https://example.test/path" }],
+        commands: [{ type: 'open-url', url: 'https://example.test/path' }],
       }),
     ).toBeNull();
   });
 
-  it("validates bounded image clipboard commands", () => {
+  it('validates bounded image clipboard commands', () => {
     const rgba = new Uint8Array([255, 0, 0, 255, 0, 255, 0, 128]);
     expect(
       validatedUiPlatformOutput({
         ...value,
-        commands: [{ type: "copy-image", width: 2, height: 1, rgba }],
+        commands: [{ type: 'copy-image', width: 2, height: 1, rgba }],
       })?.commands,
-    ).toEqual([{ type: "copy-image", width: 2, height: 1, rgba }]);
+    ).toEqual([{ type: 'copy-image', width: 2, height: 1, rgba }]);
     expect(
       validatedUiPlatformOutput({
         ...value,
         commands: [
           {
-            type: "copy-image",
+            type: 'copy-image',
             width: 2,
             height: 2,
             rgba,
@@ -275,62 +265,59 @@ describe("PolkaVM UI platform output", () => {
     ).toBeNull();
   });
 
-  it("posts only the first sensitive command to the owning host", () => {
+  it('posts only the first sensitive command to the owning host', () => {
     const output = validatedUiPlatformOutput(value);
     expect(output).not.toBeNull();
     if (output === null) {
-      throw new Error("valid UI output was rejected");
+      throw new Error('valid UI output was rejected');
     }
     const postMessage = vi.fn();
-    expect(
-      postFirstUiPlatformCommand(
-        output,
-        { postMessage },
-        "https://chinpokomon-polkavm.westendli.dev",
-      ),
-    ).toBe(true);
+    expect(postFirstUiPlatformCommand(output, { postMessage }, 'https://chinpokomon-polkavm.westendli.dev')).toBe(true);
     expect(postMessage).toHaveBeenCalledWith(
       {
-        type: "dotli:polkavm-ui-command",
-        command: { type: "copy-text", text: "hello" },
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'hello' },
       },
-      "https://chinpokomon-polkavm.westendli.dev",
+      'https://chinpokomon-polkavm.westendli.dev',
     );
     const openUrl = output.commands[1];
     expect(openUrl).toBeDefined();
+    if (openUrl === undefined) {
+      throw new Error('expected a validated URL command');
+    }
     expect(
       postFirstUiPlatformCommand(
         { ...output, commands: [openUrl] },
         { postMessage },
-        "https://chinpokomon-polkavm.westendli.dev",
+        'https://chinpokomon-polkavm.westendli.dev',
       ),
     ).toBe(true);
     expect(postMessage).toHaveBeenLastCalledWith(
       {
-        type: "dotli:polkavm-ui-command",
+        type: 'dotli:polkavm-ui-command',
         command: {
-          type: "open-url",
-          url: "https://example.test/path",
+          type: 'open-url',
+          url: 'https://example.test/path',
         },
       },
-      "https://chinpokomon-polkavm.westendli.dev",
+      'https://chinpokomon-polkavm.westendli.dev',
     );
     expect(
       postFirstUiPlatformCommand(
         { ...output, commands: [] },
         { postMessage },
-        "https://chinpokomon-polkavm.westendli.dev",
+        'https://chinpokomon-polkavm.westendli.dev',
       ),
     ).toBe(false);
     expect(postMessage).toHaveBeenCalledTimes(2);
   });
 });
 
-describe("MotionSample v1 encoding", () => {
-  it("encodes pointer movement as bounded rotation-rate motion", () => {
+describe('MotionSample v1 encoding', () => {
+  it('encodes pointer movement as bounded rotation-rate motion', () => {
     const bytes = encodedPointerMotionSample(10, -5, 20, 3, 100);
     const view = new DataView(bytes.buffer);
-    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe("PMO1");
+    expect(new TextDecoder().decode(bytes.subarray(0, 4))).toBe('PMO1');
     expect(view.getUint16(4, true)).toBe(1);
     expect(view.getUint16(6, true)).toBe(6);
     expect(view.getUint32(8, true)).toBe(48);
@@ -340,7 +327,7 @@ describe("MotionSample v1 encoding", () => {
     expect(view.getFloat32(44, true)).toBeCloseTo(75);
   });
 
-  it("encodes finite device motion and rejects malformed samples", () => {
+  it('encodes finite device motion and rejects malformed samples', () => {
     const bytes = encodedMotionSample({
       flags: 3,
       sequence: 1,
@@ -369,36 +356,24 @@ describe("MotionSample v1 encoding", () => {
   });
 });
 
-describe("PolkaVM parent motion relay", () => {
-  it("derives the authenticated parent from the sandbox origin contract", () => {
-    expect(
-      expectedPolkaVmParentOrigin(
-        "chinpokomon-polkavm.app.westendli.dev",
-        "https:",
-        "",
-      ),
-    ).toBe("https://chinpokomon-polkavm.westendli.dev");
-    expect(
-      expectedPolkaVmParentOrigin(
-        "chinpokomon-polkavm.app.localhost",
-        "http:",
-        "5173",
-      ),
-    ).toBe("http://chinpokomon-polkavm.localhost:5173");
+describe('PolkaVM parent motion relay', () => {
+  it('derives the authenticated parent from the sandbox origin contract', () => {
+    expect(expectedPolkaVmParentOrigin('chinpokomon-polkavm.app.westendli.dev', 'https:', '')).toBe(
+      'https://chinpokomon-polkavm.westendli.dev',
+    );
+    expect(expectedPolkaVmParentOrigin('chinpokomon-polkavm.app.localhost', 'http:', '5173')).toBe(
+      'http://chinpokomon-polkavm.localhost:5173',
+    );
   });
 
-  it("rejects top-level and non-HTTP origins", () => {
-    expect(
-      expectedPolkaVmParentOrigin("westendli.dev", "https:", ""),
-    ).toBeNull();
-    expect(
-      expectedPolkaVmParentOrigin("app.westendli.dev", "file:", ""),
-    ).toBeNull();
+  it('rejects top-level and non-HTTP origins', () => {
+    expect(expectedPolkaVmParentOrigin('westendli.dev', 'https:', '')).toBeNull();
+    expect(expectedPolkaVmParentOrigin('app.westendli.dev', 'file:', '')).toBeNull();
   });
 });
 
-describe("PolkaVM page-cache restore", () => {
-  it("reloads once only for a persisted page-cache restore", () => {
+describe('PolkaVM page-cache restore', () => {
+  it('reloads once only for a persisted page-cache restore', () => {
     const listeners: ((event: PageTransitionEvent) => void)[] = [];
     const reload = vi.fn();
     installPageCacheRestoreReload(
@@ -410,6 +385,9 @@ describe("PolkaVM page-cache restore", () => {
       reload,
     );
     const listener = listeners[0];
+    if (listener === undefined) {
+      throw new Error('expected a page-cache listener');
+    }
     listener({ persisted: false } as PageTransitionEvent);
     listener({ persisted: true } as PageTransitionEvent);
     listener({ persisted: true } as PageTransitionEvent);
@@ -417,172 +395,152 @@ describe("PolkaVM page-cache restore", () => {
   });
 });
 
-describe("PolkaVM compatibility errors", () => {
-  it("explains obsolete TrUAPI transports as an app version mismatch", () => {
-    expect(
-      polkaVmCompatibilityError(
-        "translated PolkaVM guest uses unsupported import host_truapi_poll",
-      ),
-    ).toEqual({
+describe('PolkaVM compatibility errors', () => {
+  it('explains obsolete TrUAPI transports as an app version mismatch', () => {
+    expect(polkaVmCompatibilityError('translated PolkaVM guest uses unsupported import host_truapi_poll')).toEqual({
       title: "App version isn't supported",
       detail:
-        "This app version uses the older PolkaVM interface host_truapi_poll, which this version of dot.li no longer supports. Update the app or ask its publisher to rebuild it.",
+        'This app version uses the older PolkaVM interface host_truapi_poll, which this version of dot.li no longer supports. Update the app or ask its publisher to rebuild it.',
     });
   });
 
-  it("identifies unsupported host capabilities", () => {
-    expect(
-      polkaVmCompatibilityError(
-        "translated PolkaVM guest uses unsupported import host_motion_read",
-      ),
-    ).toEqual({
+  it('identifies unsupported host capabilities', () => {
+    expect(polkaVmCompatibilityError('translated PolkaVM guest uses unsupported import host_motion_read')).toEqual({
       title: "App version isn't supported",
       detail:
-        "This app requires motion input (host_motion_read), which this version of dot.li does not support. Update dot.li or open the app in a compatible host.",
+        'This app requires motion input (host_motion_read), which this version of dot.li does not support. Update dot.li or open the app in a compatible host.',
     });
-    expect(
-      polkaVmCompatibilityError(
-        "translated CoreVM guest uses unsupported import pvm_unknown",
-      ),
-    ).toEqual({
+    expect(polkaVmCompatibilityError('translated CoreVM guest uses unsupported import pvm_unknown')).toEqual({
       title: "App version isn't supported",
       detail:
-        "This app requires the PolkaVM interface pvm_unknown, which this version of dot.li does not support. Update dot.li or open the app in a compatible host.",
+        'This app requires the PolkaVM interface pvm_unknown, which this version of dot.li does not support. Update dot.li or open the app in a compatible host.',
     });
   });
 
-  it("leaves transport and content failures unclassified", () => {
-    expect(polkaVmCompatibilityError("IPFS request timed out")).toBeNull();
+  it('leaves transport and content failures unclassified', () => {
+    expect(polkaVmCompatibilityError('IPFS request timed out')).toBeNull();
   });
 });
 
-describe("PolkaVM package recognition", () => {
-  it("recognizes the deployed doom.paseo package shape", () => {
+describe('PolkaVM package recognition', () => {
+  it('recognizes the deployed doom.paseo package shape', () => {
     const files = {
-      "manifest.json": doomManifest(),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-      "game/doom.wad": new Uint8Array([4, 5, 6]),
+      'manifest.json': doomManifest(),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+      'game/doom.wad': new Uint8Array([4, 5, 6]),
     };
 
     expect(isPolkaVmPackage(files)).toBe(true);
     expect(describePolkaVmPackage(files)).toEqual({
-      graphicsProfile: "framebuffer",
+      graphicsProfile: 'framebuffer',
       webGpuRequirements: null,
       webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["WASD Move", "Space Fire"],
-      inputFeatures: ["pointer", "keyboard", "wheel", "motion"],
+      programPath: 'app.polkavm',
+      controls: ['WASD Move', 'Space Fire'],
+      inputFeatures: ['pointer', 'keyboard', 'wheel', 'motion'],
       audioEnabled: true,
-      requiredAssets: ["game/doom.wad"],
+      requiredAssets: ['game/doom.wad'],
       fileInputHandlers: [],
       manifestVersion: null,
     });
   });
 
-  it("recognizes App manifest v2 and requires exact external bytes", () => {
+  it('recognizes App manifest v2 and requires exact external bytes', () => {
     const manifest = doomAppV2Manifest();
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-      "game/doom.wad": new Uint8Array([4, 5, 6]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+      'game/doom.wad': new Uint8Array([4, 5, 6]),
     };
 
     expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "framebuffer",
+      graphicsProfile: 'framebuffer',
       webGpuRequirements: null,
       webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
+      programPath: 'app.polkavm',
+      controls: ['Pointer', 'Keyboard'],
+      inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: true,
       requiredAssets: [],
       fileInputHandlers: [],
       manifestVersion: 2,
     });
-    expect(() => describePolkaVmPackage(files)).toThrow(
-      /external App manifest is required/,
-    );
-    expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(
-      /does not match/,
-    );
+    expect(() => describePolkaVmPackage(files)).toThrow(/external App manifest is required/);
+    expect(() => describePolkaVmPackage(files, `${manifest}\n`)).toThrow(/does not match/);
   });
 
-  it("bounds declared controls by UTF-8 bytes and rejects malformed device input", () => {
+  it('bounds declared controls by UTF-8 bytes and rejects malformed device input', () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
       capabilities: { deviceInput: unknown };
     };
     const parse = (input: unknown): string[] | undefined => {
       value.capabilities.deviceInput = input;
       const manifest = JSON.stringify(value);
-      return describePolkaVmPackage(
-        { "manifest.json": encoder.encode(manifest) },
-        manifest,
-      )?.controls;
+      return describePolkaVmPackage({ 'manifest.json': encoder.encode(manifest) }, manifest)?.controls;
     };
-    const input = { abiVersion: 1, requiredFeatures: ["keyboard", "focus"] };
-    const controls = ["é".repeat(80), "Arrows: Move", "\uFEFFStart: Enter"];
+    const input = { abiVersion: 1, requiredFeatures: ['keyboard', 'focus'] };
+    const controls = ['é'.repeat(80), 'Arrows: Move', '\uFEFFStart: Enter'];
     expect(parse({ ...input, controls })).toEqual(controls);
     for (const malformed of [
       null,
       { ...input, unknown: true },
-      { ...input, controls: "Arrows: Move" },
-      { ...input, controls: [""] },
-      { ...input, controls: [" padded "] },
-      { ...input, controls: ["Start: Enter\u0085"] },
-      { ...input, controls: ["é".repeat(81)] },
-      { ...input, controls: Array.from({ length: 33 }, () => "Move") },
+      { ...input, controls: 'Arrows: Move' },
+      { ...input, controls: [''] },
+      { ...input, controls: [' padded '] },
+      { ...input, controls: ['Start: Enter\u0085'] },
+      { ...input, controls: ['é'.repeat(81)] },
+      { ...input, controls: Array.from({ length: 33 }, () => 'Move') },
     ]) {
       expect(() => parse(malformed)).toThrow();
     }
   });
 
-  it("routes registered files without inspecting their contents", () => {
+  it('routes registered files without inspecting their contents', () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
       runtime: { entrypoint: string };
       capabilities: Record<string, unknown>;
     };
-    value.capabilities.fileInput = {
+    value.capabilities['fileInput'] = {
       abiVersion: 1,
       handlers: [
         {
-          id: "snes-rom",
-          label: "SNES cartridge image",
-          extensions: [".sfc", ".smc"],
+          id: 'snes-rom',
+          label: 'SNES cartridge image',
+          extensions: ['.sfc', '.smc'],
           maxBytes: 16 * 1024 * 1024,
-          mountPath: "game/cartridge.sfc",
+          mountPath: 'game/cartridge.sfc',
         },
       ],
     };
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-      "game/cartridge.sfc": new Uint8Array(32 * 1024),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+      'game/cartridge.sfc': new Uint8Array(32 * 1024),
     };
-    const handlers =
-      describePolkaVmPackage(files, manifest)?.fileInputHandlers ?? [];
+    const handlers = describePolkaVmPackage(files, manifest)?.fileInputHandlers ?? [];
     expect(handlers).toEqual([
       {
-        id: "snes-rom",
-        label: "SNES cartridge image",
-        extensions: [".sfc", ".smc"],
+        id: 'snes-rom',
+        label: 'SNES cartridge image',
+        extensions: ['.sfc', '.smc'],
         mediaTypes: [],
         maxBytes: 16 * 1024 * 1024,
-        mountPath: "game/cartridge.sfc",
+        mountPath: 'game/cartridge.sfc',
       },
     ]);
     expect(
       matchingFileInputHandlers(handlers, {
-        name: "Chrono.SFC",
+        name: 'Chrono.SFC',
         size: 2 * 1024 * 1024,
-        type: "",
+        type: '',
       }),
     ).toHaveLength(1);
     expect(
       matchingFileInputHandlers(handlers, {
-        name: "game.nes",
+        name: 'game.nes',
         size: 2 * 1024 * 1024,
-        type: "",
+        type: '',
       }),
     ).toEqual([]);
     expect(() =>
@@ -591,11 +549,11 @@ describe("PolkaVM package recognition", () => {
           abiVersion: 1,
           handlers: [
             {
-              id: "escape",
-              label: "Unsafe",
-              extensions: [".sfc"],
+              id: 'escape',
+              label: 'Unsafe',
+              extensions: ['.sfc'],
               maxBytes: 1024,
-              mountPath: "../cartridge.sfc",
+              mountPath: '../cartridge.sfc',
             },
           ],
         },
@@ -604,121 +562,109 @@ describe("PolkaVM package recognition", () => {
     ).toThrow(/invalid fileInput handler/);
   });
 
-  it.each([false, true])(
-    "provides baseline input for a graphics-only app (device input declared: %s)",
-    (declared) => {
-      const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
-        capabilities: {
-          deviceInput?: { abiVersion: number; requiredFeatures: string[] };
-        };
-      };
-      if (declared) {
-        value.capabilities.deviceInput = {
-          abiVersion: 1,
-          requiredFeatures: [],
-        };
-      } else {
-        delete value.capabilities.deviceInput;
-      }
-      const manifest = JSON.stringify(value);
-      const files = {
-        "manifest.json": encoder.encode(manifest),
-        "app.polkavm": new Uint8Array([1, 2, 3]),
-      };
-      expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
-        "pointer",
-        "keyboard",
-        "text",
-        "ime",
-        "focus",
-        "wheel",
-      ]);
-      expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([]);
-    },
-  );
-
-  it("accepts required MotionSample v1 input", () => {
-    const value = JSON.parse(doomAppV2Manifest()) as {
+  it.each([false, true])('provides baseline input for a graphics-only app (device input declared: %s)', declared => {
+    const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
       capabilities: {
-        deviceInput: { requiredFeatures: string[] };
+        deviceInput?: { abiVersion: number; requiredFeatures: string[] };
       };
     };
-    value.capabilities.deviceInput.requiredFeatures.push("motion");
+    if (declared) {
+      value.capabilities.deviceInput = {
+        abiVersion: 1,
+        requiredFeatures: [],
+      };
+    } else {
+      delete value.capabilities.deviceInput;
+    }
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-    };
-    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([
-      "Pointer",
-      "Keyboard",
-      "Motion",
-    ]);
-  });
-
-  it("accepts required decoded camera-UR input", () => {
-    const value = JSON.parse(doomAppV2Manifest()) as {
-      capabilities: {
-        deviceInput: { requiredFeatures: string[] };
-      };
-    };
-    value.capabilities.deviceInput.requiredFeatures.push("camera-ur");
-    const manifest = JSON.stringify(value);
-    const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
     };
     expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
-      "pointer",
-      "keyboard",
-      "text",
-      "ime",
-      "focus",
-      "wheel",
-      "camera-ur",
+      'pointer',
+      'keyboard',
+      'text',
+      'ime',
+      'focus',
+      'wheel',
     ]);
+    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual([]);
   });
 
-  it("accepts required text, IME, focus, and wheel input", () => {
+  it('accepts required MotionSample v1 input', () => {
     const value = JSON.parse(doomAppV2Manifest()) as {
       capabilities: {
         deviceInput: { requiredFeatures: string[] };
       };
     };
-    value.capabilities.deviceInput.requiredFeatures.push(
-      "text",
-      "ime",
-      "focus",
-      "wheel",
-    );
+    value.capabilities.deviceInput.requiredFeatures.push('motion');
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+    };
+    expect(describePolkaVmPackage(files, manifest)?.controls).toEqual(['Pointer', 'Keyboard', 'Motion']);
+  });
+
+  it('accepts required decoded camera-UR input', () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput: { requiredFeatures: string[] };
+      };
+    };
+    value.capabilities.deviceInput.requiredFeatures.push('camera-ur');
+    const manifest = JSON.stringify(value);
+    const files = {
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
     };
     expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
-      "pointer",
-      "keyboard",
-      "text",
-      "ime",
-      "focus",
-      "wheel",
+      'pointer',
+      'keyboard',
+      'text',
+      'ime',
+      'focus',
+      'wheel',
+      'camera-ur',
     ]);
   });
 
-  it("recognizes strict App manifest v2 Tri2D packages", () => {
+  it('accepts required text, IME, focus, and wheel input', () => {
+    const value = JSON.parse(doomAppV2Manifest()) as {
+      capabilities: {
+        deviceInput: { requiredFeatures: string[] };
+      };
+    };
+    value.capabilities.deviceInput.requiredFeatures.push('text', 'ime', 'focus', 'wheel');
+    const manifest = JSON.stringify(value);
+    const files = {
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+    };
+    expect(describePolkaVmPackage(files, manifest)?.inputFeatures).toEqual([
+      'pointer',
+      'keyboard',
+      'text',
+      'ime',
+      'focus',
+      'wheel',
+    ]);
+  });
+
+  it('recognizes strict App manifest v2 Tri2D packages', () => {
     const manifest = tri2dAppV2Manifest();
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
     };
     expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "tri2d",
+      graphicsProfile: 'tri2d',
       webGpuRequirements: null,
       webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
+      programPath: 'app.polkavm',
+      controls: ['Pointer', 'Keyboard'],
+      inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: false,
       requiredAssets: [],
       fileInputHandlers: [],
@@ -726,14 +672,14 @@ describe("PolkaVM package recognition", () => {
     });
   });
 
-  it("recognizes strict App manifest v2 WebGPU Raster limits", () => {
+  it('recognizes strict App manifest v2 WebGPU Raster limits', () => {
     const manifest = webGpuRasterAppV2Manifest();
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
     };
     expect(describePolkaVmPackage(files, manifest)).toEqual({
-      graphicsProfile: "webgpu-raster",
+      graphicsProfile: 'webgpu-raster',
       webGpuRequirements: {
         requiredFeatures: [],
         requiredLimits: {
@@ -743,9 +689,9 @@ describe("PolkaVM package recognition", () => {
         },
       },
       webFallbackPath: null,
-      programPath: "app.polkavm",
-      controls: ["Pointer", "Keyboard"],
-      inputFeatures: ["pointer", "keyboard", "text", "ime", "focus", "wheel"],
+      programPath: 'app.polkavm',
+      controls: ['Pointer', 'Keyboard'],
+      inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: false,
       requiredAssets: [],
       fileInputHandlers: [],
@@ -753,56 +699,52 @@ describe("PolkaVM package recognition", () => {
     });
   });
 
-  it("admits a 128 MiB program view but rejects one byte more", () => {
+  it('admits a 128 MiB program view but rejects one byte more', () => {
     const manifest = webGpuRasterAppV2Manifest();
     const program = new Uint8Array(128 * 1024 * 1024 + 1);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": program.subarray(1),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': program.subarray(1),
     };
     const descriptor = describePolkaVmPackage(files, manifest);
     if (descriptor === null) {
-      throw new Error("GPUI package was not recognized");
+      throw new Error('GPUI package was not recognized');
     }
     validateFiles(files, descriptor);
-    files["app.polkavm"] = program;
+    files['app.polkavm'] = program;
     expect(() => {
       validateFiles(files, descriptor);
     }).toThrow();
   });
 
-  it("selects a declared web fallback when WebGPU is unavailable", async () => {
+  it('selects a declared web fallback when WebGPU is unavailable', async () => {
     const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
       runtime: {
-        fallback?: { kind: "web"; entrypoint: string };
+        fallback?: { kind: 'web'; entrypoint: string };
       };
     };
     value.runtime.fallback = {
-      kind: "web",
-      entrypoint: "fallback/index.html",
+      kind: 'web',
+      entrypoint: 'fallback/index.html',
     };
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-      "fallback/index.html": encoder.encode("<canvas></canvas>"),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+      'fallback/index.html': encoder.encode('<canvas></canvas>'),
     };
-    vi.stubGlobal("navigator", {
+    vi.stubGlobal('navigator', {
       gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
     });
     try {
-      expect(describePolkaVmPackage(files, manifest)?.webFallbackPath).toBe(
-        "fallback/index.html",
-      );
-      await expect(polkavmWebFallbackEntrypoint(files, manifest)).resolves.toBe(
-        "fallback/index.html",
-      );
+      expect(describePolkaVmPackage(files, manifest)?.webFallbackPath).toBe('fallback/index.html');
+      await expect(polkavmWebFallbackEntrypoint(files, manifest)).resolves.toBe('fallback/index.html');
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("keeps the primary runtime when the adapter meets its limits", () => {
+  it('keeps the primary runtime when the adapter meets its limits', () => {
     const adapter = {
       features: { has: () => false },
       limits: {
@@ -821,18 +763,18 @@ describe("PolkaVM package recognition", () => {
     ).toBe(true);
   });
 
-  it("keeps the PolkaVM program when the adapter satisfies the declared limits", async () => {
+  it('keeps the PolkaVM program when the adapter satisfies the declared limits', async () => {
     const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
-      runtime: { fallback?: { kind: "web"; entrypoint: string } };
+      runtime: { fallback?: { kind: 'web'; entrypoint: string } };
     };
-    value.runtime.fallback = { kind: "web", entrypoint: "fallback/index.html" };
+    value.runtime.fallback = { kind: 'web', entrypoint: 'fallback/index.html' };
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
-      "fallback/index.html": encoder.encode("<canvas></canvas>"),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
+      'fallback/index.html': encoder.encode('<canvas></canvas>'),
     };
-    vi.stubGlobal("navigator", {
+    vi.stubGlobal('navigator', {
       gpu: {
         requestAdapter: vi.fn(() =>
           Promise.resolve({
@@ -847,68 +789,64 @@ describe("PolkaVM package recognition", () => {
       },
     });
     try {
-      await expect(
-        polkavmWebFallbackEntrypoint(files, manifest),
-      ).resolves.toBeNull();
+      await expect(polkavmWebFallbackEntrypoint(files, manifest)).resolves.toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("refuses a package whose declared web fallback is absent", async () => {
+  it('refuses a package whose declared web fallback is absent', async () => {
     const value = JSON.parse(webGpuRasterAppV2Manifest()) as {
-      runtime: { fallback?: { kind: "web"; entrypoint: string } };
+      runtime: { fallback?: { kind: 'web'; entrypoint: string } };
     };
-    value.runtime.fallback = { kind: "web", entrypoint: "fallback/index.html" };
+    value.runtime.fallback = { kind: 'web', entrypoint: 'fallback/index.html' };
     const manifest = JSON.stringify(value);
     const files = {
-      "manifest.json": encoder.encode(manifest),
-      "app.polkavm": new Uint8Array([1, 2, 3]),
+      'manifest.json': encoder.encode(manifest),
+      'app.polkavm': new Uint8Array([1, 2, 3]),
     };
-    vi.stubGlobal("navigator", {
+    vi.stubGlobal('navigator', {
       gpu: { requestAdapter: vi.fn(() => Promise.resolve(null)) },
     });
     try {
-      await expect(
-        polkavmWebFallbackEntrypoint(files, manifest),
-      ).rejects.toThrow(/web fallback entrypoint is missing/);
+      await expect(polkavmWebFallbackEntrypoint(files, manifest)).rejects.toThrow(/web fallback entrypoint is missing/);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("leaves ordinary HTML archives on the existing sandbox path", () => {
+  it('leaves ordinary HTML archives on the existing sandbox path', () => {
     expect(
       isPolkaVmPackage({
-        "index.html": encoder.encode("<h1>app</h1>"),
+        'index.html': encoder.encode('<h1>app</h1>'),
       }),
     ).toBe(false);
   });
 
-  it("rejects unsupported graphics profiles rather than guessing", () => {
+  it('rejects unsupported graphics profiles rather than guessing', () => {
     const manifest = encoder.encode(
       JSON.stringify({
-        $schema: "epoca:experimental-product/v2",
+        $schema: 'epoca:experimental-product/v2',
         $v: 2,
-        kind: "application",
-        runtime: { kind: "polkavm", entrypoint: "app.polkavm" },
+        kind: 'application',
+        runtime: { kind: 'polkavm', entrypoint: 'app.polkavm' },
         modalities: {
-          graphics: { abiVersion: 1, profile: "tri2d" },
+          graphics: { abiVersion: 1, profile: 'tri2d' },
           generalInput: { abiVersion: 1, controls: [] },
         },
       }),
     );
     expect(() =>
       isPolkaVmPackage({
-        "manifest.json": manifest,
-        "app.polkavm": new Uint8Array([1]),
+        'manifest.json': manifest,
+        'app.polkavm': new Uint8Array([1]),
       }),
     ).toThrow(/only framebuffer ABI version 1/);
   });
 });
 
-describe("PolkaVM host-frame transport", () => {
-  it("adopts an existing Host-injected canonical MessagePort", async () => {
+describe('PolkaVM host-frame transport', () => {
+  it('adopts an existing Host-injected canonical MessagePort', async () => {
     const channel = new MessageChannel();
     const scope = {
       __HOST_API_PORT__: channel.port1,
@@ -916,88 +854,72 @@ describe("PolkaVM host-frame transport", () => {
       removeEventListener: vi.fn(),
     } satisfies TruapiPortScope;
     const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
-    await expect(
-      waitForTruapiPort(
-        scope,
-        target,
-        "https://chinpokomon-polkavm.westendli.dev",
-        0,
-      ),
-    ).resolves.toBe(channel.port1);
+    await expect(waitForTruapiPort(scope, target, 'https://chinpokomon-polkavm.westendli.dev', 0)).resolves.toBe(
+      channel.port1,
+    );
     expect(target.postMessage).not.toHaveBeenCalled();
     channel.port1.close();
     channel.port2.close();
   });
 
-  it("negotiates a transferred Host port only with the owning origin", async () => {
+  it('negotiates a transferred Host port only with the owning origin', async () => {
     const channel = new MessageChannel();
     let listener: ((event: MessageEvent<unknown>) => void) | null = null;
     const scope: TruapiPortScope = {
-      addEventListener(
-        _type: "message",
-        next: (event: MessageEvent<unknown>) => void,
-      ) {
+      addEventListener(_type: 'message', next: (event: MessageEvent<unknown>) => void) {
         listener = next;
       },
-      removeEventListener(
-        _type: "message",
-        current: (event: MessageEvent<unknown>) => void,
-      ) {
+      removeEventListener(_type: 'message', current: (event: MessageEvent<unknown>) => void) {
         if (listener === current) {
           listener = null;
         }
       },
     };
-    const parentOrigin = "https://chinpokomon-polkavm.westendli.dev";
+    const parentOrigin = 'https://chinpokomon-polkavm.westendli.dev';
     const target = {
       postMessage(message: unknown, targetOrigin: string) {
-        expect(message).toEqual({ type: "truapi-ready" });
+        expect(message).toEqual({ type: 'truapi-ready' });
         expect(targetOrigin).toBe(parentOrigin);
         if (listener === null) {
-          throw new Error("message listener was not ready");
+          throw new Error('message listener was not ready');
         }
         listener({
           source: target as unknown as MessageEventSource,
-          origin: "https://evil.example",
-          data: { type: "truapi-init" },
+          origin: 'https://evil.example',
+          data: { type: 'truapi-init' },
           ports: [channel.port1],
         } as unknown as MessageEvent<unknown>);
         expect(scope.__HOST_API_PORT__).toBeUndefined();
         listener({
           source: target as unknown as MessageEventSource,
           origin: parentOrigin,
-          data: { type: "truapi-init" },
+          data: { type: 'truapi-init' },
           ports: [channel.port1],
         } as unknown as MessageEvent<unknown>);
       },
     } satisfies TruapiPortTarget;
 
-    await expect(
-      waitForTruapiPort(scope, target, parentOrigin, 100),
-    ).resolves.toBe(channel.port1);
+    await expect(waitForTruapiPort(scope, target, parentOrigin, 100)).resolves.toBe(channel.port1);
     expect(scope.__HOST_API_PORT__).toBe(channel.port1);
     channel.port1.close();
     channel.port2.close();
   });
 
-  it("fails closed when the Host port is absent", async () => {
+  it('fails closed when the Host port is absent', async () => {
     const scope = {
       addEventListener: vi.fn(),
       removeEventListener: vi.fn(),
     } satisfies TruapiPortScope;
     const target = { postMessage: vi.fn() } satisfies TruapiPortTarget;
-    const parentOrigin = "https://chinpokomon-polkavm.westendli.dev";
-    await expect(
-      waitForTruapiPort(scope, target, parentOrigin, 0),
-    ).rejects.toThrow(/TrUAPI Host port was not available/);
-    expect(target.postMessage).toHaveBeenCalledWith(
-      { type: "truapi-ready" },
-      parentOrigin,
+    const parentOrigin = 'https://chinpokomon-polkavm.westendli.dev';
+    await expect(waitForTruapiPort(scope, target, parentOrigin, 0)).rejects.toThrow(
+      /TrUAPI Host port was not available/,
     );
+    expect(target.postMessage).toHaveBeenCalledWith({ type: 'truapi-ready' }, parentOrigin);
   });
 });
 
-describe("PolkaVM host-frame response backpressure", () => {
+describe('PolkaVM host-frame response backpressure', () => {
   function harness(options: HostFrameResponseQueueOptions = {}): {
     queue: HostFrameResponseQueue;
     posted: { bytes: Uint8Array; seq: unknown }[];
@@ -1013,30 +935,30 @@ describe("PolkaVM host-frame response backpressure", () => {
         postMessage(message: unknown) {
           if (
             message !== null &&
-            typeof message === "object" &&
-            "bytes" in message &&
-            "seq" in message &&
+            typeof message === 'object' &&
+            'bytes' in message &&
+            'seq' in message &&
             message.bytes instanceof Uint8Array
           ) {
             posted.push({ bytes: message.bytes, seq: message.seq });
           }
         },
       },
-      (error) => failures.push(error),
+      error => failures.push(error),
       {
-        setTimer: (callback) => {
+        setTimer: callback => {
           const id = nextTimer++;
           timers.set(id, callback);
           return id;
         },
-        clearTimer: (id) => void timers.delete(id),
+        clearTimer: id => void timers.delete(id),
         ...options,
       },
     );
     const runNextTimer = (): void => {
       const next = timers.entries().next().value;
       if (next === undefined) {
-        throw new Error("expected a scheduled timer");
+        throw new Error('expected a scheduled timer');
       }
       timers.delete(next[0]);
       next[1]();
@@ -1044,7 +966,7 @@ describe("PolkaVM host-frame response backpressure", () => {
     return { queue, posted, failures, runNextTimer };
   }
 
-  it("dequeues responses only on matching accepted acks", () => {
+  it('dequeues responses only on matching accepted acks', () => {
     const { queue, posted, failures } = harness();
     queue.enqueue(Uint8Array.of(1, 2));
     expect(posted).toEqual([]);
@@ -1055,15 +977,11 @@ describe("PolkaVM host-frame response backpressure", () => {
     expect(queue.pendingBytes).toBe(3);
 
     // An accepted ack for a foreign sequence must not settle the delivery.
-    expect(
-      queue.handleMessage({ type: "host-frame-response-accepted", seq: 999 }),
-    ).toBe(true);
+    expect(queue.handleMessage({ type: 'host-frame-response-accepted', seq: 999 })).toBe(true);
     expect(posted).toHaveLength(1);
     expect(queue.pendingCount).toBe(2);
 
-    expect(
-      queue.handleMessage({ type: "host-frame-response-accepted", seq: 1 }),
-    ).toBe(true);
+    expect(queue.handleMessage({ type: 'host-frame-response-accepted', seq: 1 })).toBe(true);
     expect(queue.pendingCount).toBe(1);
     expect(queue.pendingBytes).toBe(1);
     expect(posted).toEqual([
@@ -1071,13 +989,13 @@ describe("PolkaVM host-frame response backpressure", () => {
       { bytes: Uint8Array.of(3), seq: 2 },
     ]);
 
-    queue.handleMessage({ type: "host-frame-response-accepted", seq: 2 });
+    queue.handleMessage({ type: 'host-frame-response-accepted', seq: 2 });
     expect(queue.pendingCount).toBe(0);
     expect(queue.pendingBytes).toBe(0);
     expect(failures).toEqual([]);
   });
 
-  it("retains and retries a rejected response before later responses", () => {
+  it('retains and retries a rejected response before later responses', () => {
     const { queue, posted, failures, runNextTimer } = harness();
     queue.start();
     queue.enqueue(Uint8Array.of(1, 2));
@@ -1085,8 +1003,8 @@ describe("PolkaVM host-frame response backpressure", () => {
 
     expect(
       queue.handleMessage({
-        type: "host-frame-response-rejected",
-        reason: "queue-full",
+        type: 'host-frame-response-rejected',
+        reason: 'queue-full',
         seq: 1,
       }),
     ).toBe(true);
@@ -1104,15 +1022,15 @@ describe("PolkaVM host-frame response backpressure", () => {
     // in-flight response nor deliver it twice.
     expect(
       queue.handleMessage({
-        type: "host-frame-response-rejected",
-        reason: "queue-full",
+        type: 'host-frame-response-rejected',
+        reason: 'queue-full',
         seq: 1,
       }),
     ).toBe(true);
     expect(posted).toHaveLength(2);
     expect(queue.pendingCount).toBe(2);
 
-    queue.handleMessage({ type: "host-frame-response-accepted", seq: 2 });
+    queue.handleMessage({ type: 'host-frame-response-accepted', seq: 2 });
     expect(posted).toHaveLength(3);
     expect(posted[2]).toEqual({ bytes: Uint8Array.of(3), seq: 3 });
     expect(queue.pendingCount).toBe(1);
@@ -1121,21 +1039,21 @@ describe("PolkaVM host-frame response backpressure", () => {
     // too.
     expect(
       queue.handleMessage({
-        type: "host-frame-response-rejected",
-        reason: "queue-full",
+        type: 'host-frame-response-rejected',
+        reason: 'queue-full',
         seq: 2,
       }),
     ).toBe(true);
     expect(posted).toHaveLength(3);
     expect(queue.pendingCount).toBe(1);
 
-    queue.handleMessage({ type: "host-frame-response-accepted", seq: 3 });
+    queue.handleMessage({ type: 'host-frame-response-accepted', seq: 3 });
     expect(queue.pendingCount).toBe(0);
     expect(queue.pendingBytes).toBe(0);
     expect(failures).toEqual([]);
   });
 
-  it("fails the session only when bounds are exhausted", () => {
+  it('fails the session only when bounds are exhausted', () => {
     const overflow = harness({ maxResponses: 1 });
     overflow.queue.start();
     overflow.queue.enqueue(Uint8Array.of(1));
@@ -1148,15 +1066,15 @@ describe("PolkaVM host-frame response backpressure", () => {
     retried.queue.start();
     retried.queue.enqueue(Uint8Array.of(9));
     retried.queue.handleMessage({
-      type: "host-frame-response-rejected",
-      reason: "queue-full",
+      type: 'host-frame-response-rejected',
+      reason: 'queue-full',
       seq: 1,
     });
     retried.runNextTimer();
     expect(retried.posted.at(-1)?.seq).toBe(2);
     retried.queue.handleMessage({
-      type: "host-frame-response-rejected",
-      reason: "queue-full",
+      type: 'host-frame-response-rejected',
+      reason: 'queue-full',
       seq: 2,
     });
     expect(retried.failures[0]?.message).toMatch(/retry limit exceeded/);
@@ -1165,31 +1083,27 @@ describe("PolkaVM host-frame response backpressure", () => {
     invalid.queue.start();
     invalid.queue.enqueue(Uint8Array.of(7));
     invalid.queue.handleMessage({
-      type: "host-frame-response-rejected",
-      reason: "nope",
+      type: 'host-frame-response-rejected',
+      reason: 'nope',
       seq: 1,
     });
-    expect(invalid.failures[0]?.message).toMatch(
-      /invalid host-frame rejection/,
-    );
+    expect(invalid.failures[0]?.message).toMatch(/invalid host-frame rejection/);
   });
 });
 
-describe("pointer lock mouse deltas", () => {
-  it("drops the cursor-warp sample after pointer lock acquisition", () => {
+describe('pointer lock mouse deltas', () => {
+  it('drops the cursor-warp sample after pointer lock acquisition', () => {
     expect(normalizedPointerDelta(80, -40, true)).toBeNull();
   });
 
-  it("preserves deltas representable by the CoreVM mouse ABI", () => {
+  it('preserves deltas representable by the CoreVM mouse ABI', () => {
     expect(normalizedPointerDelta(127, -127, false)).toEqual([127, -127]);
     expect(normalizedPointerDelta(3, -5, false)).toEqual([3, -5]);
   });
 
-  it("drops pointer-lock discontinuities and invalid browser deltas", () => {
+  it('drops pointer-lock discontinuities and invalid browser deltas', () => {
     expect(normalizedPointerDelta(430, -314, false)).toBeNull();
-    expect(
-      normalizedPointerDelta(Number.POSITIVE_INFINITY, 0, false),
-    ).toBeNull();
+    expect(normalizedPointerDelta(Number.POSITIVE_INFINITY, 0, false)).toBeNull();
     expect(normalizedPointerDelta(0, Number.NaN, false)).toBeNull();
   });
 });

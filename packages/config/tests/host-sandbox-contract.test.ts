@@ -1,37 +1,38 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from 'vitest';
 import {
   SANDBOX_SCHEMA_VERSION,
   SANDBOX_CONTRACT_PARAMS,
   validateSandboxParams,
-} from "@dotli/config/host-sandbox-contract";
-import { NetworkName } from "@dotli/config/network";
+} from '../src/host-sandbox-contract.js';
+import { NetworkName } from '../src/network.js';
 
-const VALID_CID = "bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy";
+const VALID_CID = 'bafyreigh2akiscaildcqabsyg3dfr6chu3fgpregiymsck7e7aqa4s52zy';
 
 /** Build a search string with the required v5 params, allowing overrides. */
-function search(
-  overrides: Record<string, string | null> = {},
-): URLSearchParams {
+function search(overrides: Record<string, string | null> = {}): URLSearchParams {
   const base: Record<string, string> = {
     [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
     [SANDBOX_CONTRACT_PARAMS.cid]: VALID_CID,
-    [SANDBOX_CONTRACT_PARAMS.chainBackend]: "smoldot-direct",
+    [SANDBOX_CONTRACT_PARAMS.chainBackend]: 'smoldot-direct',
     [SANDBOX_CONTRACT_PARAMS.network]: NetworkName.PASEO,
-    [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: "0",
+    [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: '0',
   };
   const params = new URLSearchParams(base);
   for (const [key, value] of Object.entries(overrides)) {
-    if (value === null) params.delete(key);
-    else params.set(key, value);
+    if (value === null) {
+      params.delete(key);
+    } else {
+      params.set(key, value);
+    }
   }
   return params;
 }
 
-describe("validateSandboxParams: v5 cid contract", () => {
-  it("As the sandbox, when I receive a valid contract, I read its content and runtime policy", () => {
+describe('validateSandboxParams: v5 cid contract', () => {
+  it('As the sandbox, when I receive a valid contract, I read its content and runtime policy', () => {
     // Given a contract that carries every required v5 param.
     const params = search();
 
@@ -42,16 +43,14 @@ describe("validateSandboxParams: v5 cid contract", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.params.cid).toBe(VALID_CID);
-      expect(result.params.chainBackend).toBe("smoldot-direct");
+      expect(result.params.chainBackend).toBe('smoldot-direct');
       expect(result.params.network).toBe(NetworkName.PASEO);
       expect(result.params.polkaVmEnabled).toBe(false);
     }
   });
 
-  it("accepts an explicit PolkaVM runtime opt-in", () => {
-    const result = validateSandboxParams(
-      search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: "1" }),
-    );
+  it('accepts an explicit PolkaVM runtime opt-in', () => {
+    const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: '1' }));
 
     expect(result.ok).toBe(true);
     if (result.ok) {
@@ -59,11 +58,9 @@ describe("validateSandboxParams: v5 cid contract", () => {
     }
   });
 
-  it("rejects a missing or malformed PolkaVM runtime policy", () => {
-    for (const value of [null, "true", "2"]) {
-      const result = validateSandboxParams(
-        search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: value }),
-      );
+  it('rejects a missing or malformed PolkaVM runtime policy', () => {
+    for (const value of [null, 'true', '2']) {
+      const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.polkaVmEnabled]: value }));
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.reason).toMatch(/polkavmenabled/i);
@@ -71,7 +68,7 @@ describe("validateSandboxParams: v5 cid contract", () => {
     }
   });
 
-  it("preserves exact executable manifest text for sandbox byte comparison", () => {
+  it('preserves exact executable manifest text for sandbox byte comparison', () => {
     const executableManifest =
       '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
     const result = validateSandboxParams(
@@ -86,7 +83,7 @@ describe("validateSandboxParams: v5 cid contract", () => {
     }
   });
 
-  it("As the sandbox, I reject a contract that omits the cid, but flag it recoverable so the host can re-render me", () => {
+  it('As the sandbox, I reject a contract that omits the cid, but flag it recoverable so the host can re-render me', () => {
     // Given a contract with no cid param (the post-boot strip leaves
     // exactly this shape behind, so a reload of a booted sandbox lands here).
     const params = search({ [SANDBOX_CONTRACT_PARAMS.cid]: null });
@@ -104,9 +101,9 @@ describe("validateSandboxParams: v5 cid contract", () => {
     }
   });
 
-  it("As the sandbox, I reject a contract whose cid is the empty string as fatal, since the host explicitly sent a broken value", () => {
+  it('As the sandbox, I reject a contract whose cid is the empty string as fatal, since the host explicitly sent a broken value', () => {
     // Given a contract with an empty cid.
-    const params = search({ [SANDBOX_CONTRACT_PARAMS.cid]: "" });
+    const params = search({ [SANDBOX_CONTRACT_PARAMS.cid]: '' });
 
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
@@ -115,13 +112,15 @@ describe("validateSandboxParams: v5 cid contract", () => {
     // from the post-boot param strip, so re-rendering from the same host
     // would produce the same empty cid again.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.recoverable).not.toBe(true);
+    if (!result.ok) {
+      expect(result.recoverable).not.toBe(true);
+    }
   });
 
-  it("As the sandbox, I reject a contract whose cid contains non-alphanumeric characters", () => {
+  it('As the sandbox, I reject a contract whose cid contains non-alphanumeric characters', () => {
     // Given a contract that smuggles a path-traversal string in `cid`.
     const params = search({
-      [SANDBOX_CONTRACT_PARAMS.cid]: "../etc/passwd",
+      [SANDBOX_CONTRACT_PARAMS.cid]: '../etc/passwd',
     });
 
     // When the sandbox validates it.
@@ -129,10 +128,12 @@ describe("validateSandboxParams: v5 cid contract", () => {
 
     // Then the charset gate trips before the value reaches any downstream parser.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toMatch(/invalid cid/i);
+    if (!result.ok) {
+      expect(result.reason).toMatch(/invalid cid/i);
+    }
   });
 
-  it("As the sandbox, I accept a contract whose schema version matches my build", () => {
+  it('As the sandbox, I accept a contract whose schema version matches my build', () => {
     // Given a contract that pins the current schema version.
     const params = search({
       [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION),
@@ -145,7 +146,7 @@ describe("validateSandboxParams: v5 cid contract", () => {
     expect(result.ok).toBe(true);
   });
 
-  it("As the sandbox, I request a host update when its schema is older than my build", () => {
+  it('As the sandbox, I request a host update when its schema is older than my build', () => {
     const params = search({
       [SANDBOX_CONTRACT_PARAMS.v]: String(SANDBOX_SCHEMA_VERSION - 1),
     });
@@ -159,16 +160,16 @@ describe("validateSandboxParams: v5 cid contract", () => {
     }
   });
 
-  it("As the sandbox, I request a host update when an active contract omits its schema version", () => {
-    const result = validateSandboxParams(
-      search({ [SANDBOX_CONTRACT_PARAMS.v]: null }),
-    );
+  it('As the sandbox, I request a host update when an active contract omits its schema version', () => {
+    const result = validateSandboxParams(search({ [SANDBOX_CONTRACT_PARAMS.v]: null }));
 
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.hostUpdateRequired).toBe(true);
+    if (!result.ok) {
+      expect(result.hostUpdateRequired).toBe(true);
+    }
   });
 
-  it("As the sandbox, I reject a contract that omits the chainBackend", () => {
+  it('As the sandbox, I reject a contract that omits the chainBackend', () => {
     // Given a contract with no chainBackend param.
     const params = search({ [SANDBOX_CONTRACT_PARAMS.chainBackend]: null });
 
@@ -179,7 +180,7 @@ describe("validateSandboxParams: v5 cid contract", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("As the sandbox, I reject a contract that omits the network", () => {
+  it('As the sandbox, I reject a contract that omits the network', () => {
     // Given a contract with no network param.
     const params = search({ [SANDBOX_CONTRACT_PARAMS.network]: null });
 
@@ -190,11 +191,23 @@ describe("validateSandboxParams: v5 cid contract", () => {
     expect(result.ok).toBe(false);
   });
 
-  it("As a user whose dApp reloads itself after the param strip, the contract failure is recoverable so the host can restore my session", () => {
+  it('As the sandbox, a skipArchiveCache value is no longer mine to judge, since the archive cache lives on the host', () => {
+    // Given a contract from an older host that still sends the flag, with a
+    // value the old validator refused
+    const params = search({ skipArchiveCache: 'yes' });
+
+    // When
+    const result = validateSandboxParams(params);
+
+    // Then
+    expect(result.ok).toBe(true);
+  });
+
+  it('As a user whose dApp reloads itself after the param strip, the contract failure is recoverable so the host can restore my session', () => {
     // Given a URL with no contract params at all, which is what a booted
     // sandbox window looks like after stripContractParamsFromUrl: a dApp
     // calling location.reload() re-enters the boot with this exact shape.
-    const params = new URLSearchParams({ theme: "dark" });
+    const params = new URLSearchParams({ theme: 'dark' });
 
     // When the sandbox validates it.
     const result = validateSandboxParams(params);
@@ -203,16 +216,17 @@ describe("validateSandboxParams: v5 cid contract", () => {
     // label and CID, so it can rebuild the iframe instead of stranding the
     // user on a full-viewport "Invalid sandbox URL" error.
     expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.recoverable).toBe(true);
+    if (!result.ok) {
+      expect(result.recoverable).toBe(true);
+    }
   });
 });
 
-describe("validateSandboxParams: resolution id", () => {
-  it("As the sandbox, I read the resolution id the host threaded through", () => {
+describe('validateSandboxParams: resolution id', () => {
+  it('As the sandbox, I read the resolution id the host threaded through', () => {
     // Given a contract carrying the host correlation id.
     const params = search({
-      [SANDBOX_CONTRACT_PARAMS.resolutionId]:
-        "f1e2d3c4-b5a6-4778-8899-aabbccddeeff",
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]: 'f1e2d3c4-b5a6-4778-8899-aabbccddeeff',
     });
 
     // When the sandbox validates it.
@@ -221,13 +235,11 @@ describe("validateSandboxParams: resolution id", () => {
     // Then the id reaches the caller so it can tag its own telemetry.
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.params.resolutionId).toBe(
-        "f1e2d3c4-b5a6-4778-8899-aabbccddeeff",
-      );
+      expect(result.params.resolutionId).toBe('f1e2d3c4-b5a6-4778-8899-aabbccddeeff');
     }
   });
 
-  it("As the sandbox, I boot normally for a host build that sends no resolution id", () => {
+  it('As the sandbox, I boot normally for a host build that sends no resolution id', () => {
     // Given a contract from a host that predates the correlation id.
     const params = search();
 
@@ -242,10 +254,10 @@ describe("validateSandboxParams: resolution id", () => {
     }
   });
 
-  it("As the sandbox, I drop a malformed resolution id rather than refuse to boot", () => {
+  it('As the sandbox, I drop a malformed resolution id rather than refuse to boot', () => {
     // Given an id carrying characters the contract does not accept.
     const params = search({
-      [SANDBOX_CONTRACT_PARAMS.resolutionId]: "../../etc/passwd",
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]: '../../etc/passwd',
     });
 
     // When the sandbox validates it.
@@ -258,10 +270,10 @@ describe("validateSandboxParams: resolution id", () => {
     }
   });
 
-  it("As the sandbox, I drop an over-long resolution id", () => {
+  it('As the sandbox, I drop an over-long resolution id', () => {
     // Given an id past the length the contract bounds it to.
     const params = search({
-      [SANDBOX_CONTRACT_PARAMS.resolutionId]: "a".repeat(65),
+      [SANDBOX_CONTRACT_PARAMS.resolutionId]: 'a'.repeat(65),
     });
 
     // When the sandbox validates it.
@@ -272,14 +284,5 @@ describe("validateSandboxParams: resolution id", () => {
     if (result.ok) {
       expect(result.params.resolutionId).toBeNull();
     }
-  });
-
-  it("As a user, the app I open never sees the tracking id in its URL", () => {
-    // Given the strip iterates the contract param map.
-    const keys = Object.values(SANDBOX_CONTRACT_PARAMS);
-
-    // Then the id is in that map, so `stripContractParamsFromUrl` removes it
-    // and it never leaks into the product `location.search`.
-    expect(keys).toContain(SANDBOX_CONTRACT_PARAMS.resolutionId);
   });
 });

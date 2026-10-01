@@ -1,23 +1,23 @@
-import { getActiveServicesConfig, withActiveTld } from "@dotli/config/network";
-import type { ProductRuntimeConfig } from "@parity/truapi-host";
+import { getActiveServicesConfig, withActiveTld } from '@dotli/config';
+import type { ProductRuntimeConfig } from '@parity/truapi-host';
 
 declare const __DOTLI_VERSION__: string | undefined;
 
 export function labelToProductId(label: string): string {
-  return label.startsWith("localhost:") ? label : withActiveTld(label);
+  return label.startsWith('localhost:') ? label : withActiveTld(label);
 }
 
 function getPlatformType(userAgent: string = navigator.userAgent): string {
-  if (userAgent.includes("Win")) {
-    return "Windows";
+  if (userAgent.includes('Win')) {
+    return 'Windows';
   }
-  if (userAgent.includes("Mac")) {
-    return "macOS";
+  if (userAgent.includes('Mac')) {
+    return 'macOS';
   }
-  if (userAgent.includes("Linux")) {
-    return "Linux";
+  if (userAgent.includes('Linux')) {
+    return 'Linux';
   }
-  return "Unknown";
+  return 'Unknown';
 }
 
 // The window origin deliberately plays no part here: `productId` comes
@@ -29,15 +29,12 @@ export function createTruapiRuntimeConfig(
   const config: ProductRuntimeConfig = {
     productId,
     host: {
-      name: "Polkadot Web",
-      platform: "Web",
-      icon: undefined,
-      version:
-        typeof __DOTLI_VERSION__ === "string" ? __DOTLI_VERSION__ : undefined,
+      name: 'Polkadot Web',
+      platform: 'Web',
+      ...(typeof __DOTLI_VERSION__ === 'string' ? { version: __DOTLI_VERSION__ } : {}),
     },
     platform: {
       type: getPlatformType(),
-      version: undefined,
     },
     people: {
       genesisHash: getActiveServicesConfig().people.genesis,
@@ -49,7 +46,7 @@ export function createTruapiRuntimeConfig(
       genesisHash: getActiveServicesConfig().assethub.genesis,
     },
     pairing: {
-      deeplinkScheme: "polkadotapp",
+      deeplinkScheme: 'polkadotapp',
     },
   };
   return config;

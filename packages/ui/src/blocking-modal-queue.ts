@@ -1,6 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { setBlockingModalActive } from './state/topbar.js';
+
 type BlockingModalTask<T> = (signal: AbortSignal) => Promise<T> | T;
 
 interface QueueEntry {
@@ -22,13 +24,10 @@ export interface BlockingModalCoordinator {
 }
 
 export function blockingModalAbortError(reason?: unknown): DOMException {
-  if (reason instanceof DOMException && reason.name === "AbortError") {
+  if (reason instanceof DOMException && reason.name === 'AbortError') {
     return reason;
   }
-  return new DOMException(
-    typeof reason === "string" ? reason : "Blocking modal scope disposed",
-    "AbortError",
-  );
+  return new DOMException(typeof reason === 'string' ? reason : 'Blocking modal scope disposed', 'AbortError');
 }
 
 export function throwIfAborted(signal: AbortSignal): void {
@@ -45,10 +44,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     return new BlockingModalScopeImpl(this);
   }
 
-  enqueue<T>(
-    scope: BlockingModalScopeImpl,
-    task: BlockingModalTask<T>,
-  ): Promise<T> {
+  enqueue<T>(scope: BlockingModalScopeImpl, task: BlockingModalTask<T>): Promise<T> {
     if (scope.disposed) {
       return Promise.reject(blockingModalAbortError(scope.disposeReason));
     }
@@ -58,7 +54,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
         scope,
         controller: new AbortController(),
         task,
-        resolve: (value) => {
+        resolve: value => {
           resolve(value as T);
         },
         reject,
@@ -72,7 +68,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     const reason = blockingModalAbortError(scope.disposeReason);
     for (let index = this.queue.length - 1; index >= 0; index -= 1) {
       const entry = this.queue[index];
-      if (entry.scope !== scope) {
+      if (entry?.scope !== scope) {
         continue;
       }
       this.queue.splice(index, 1);
@@ -118,7 +114,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     // Otherwise an asynchronously rejecting result would be abandoned when
     // the queue finishes the entry with AbortError below.
     void resultPromise.then(
-      (value) => {
+      value => {
         this.finish(entry, { ok: true, value });
       },
       (error: unknown) => {
@@ -134,7 +130,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     }
 
     entry.controller.signal.addEventListener(
-      "abort",
+      'abort',
       () => {
         this.finish(entry, {
           ok: false,
@@ -145,10 +141,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
     );
   }
 
-  private finish(
-    entry: QueueEntry,
-    result: { ok: true; value: unknown } | { ok: false; error: unknown },
-  ): void {
+  private finish(entry: QueueEntry, result: { ok: true; value: unknown } | { ok: false; error: unknown }): void {
     if (entry.settled) {
       return;
     }
@@ -165,11 +158,7 @@ class BlockingModalCoordinatorImpl implements BlockingModalCoordinator {
   }
 
   private emitActiveChanged(active: boolean): void {
-    window.dispatchEvent(
-      new CustomEvent("dotli:blocking-modal-active", {
-        detail: { active },
-      }),
-    );
+    setBlockingModalActive(active);
   }
 }
 
@@ -186,7 +175,7 @@ class BlockingModalScopeImpl implements BlockingModalScope {
     return this.coordinator.enqueue(this, task);
   }
 
-  dispose(reason = "TrUAPI host disposed"): void {
+  dispose(reason = 'TrUAPI host disposed'): void {
     if (this.disposed) {
       return;
     }

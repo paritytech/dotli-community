@@ -74,13 +74,13 @@ The host shell selects the submode from `chainBackend` at `apps/host/src/main.ts
 ## Talking to a chain
 
 Sandbox-facing consumers use the cross-origin seam exposed by
-`@dotli/protocol/client`. The host's Rust-core `chain.connect` callback is the
-exception: it imports `@dotli/resolver/chains` and
-`@dotli/resolver/rpc-chain` to honor the selected backend.
+`@dotli/protocol`. The host's Rust-core `chain.connect` callback is the
+exception: it imports the chain providers from `@dotli/resolver` to honor the
+selected backend.
 
 ```ts
-import { createRemoteChainProvider } from "@dotli/protocol/client";
-import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config/config";
+import { createRemoteChainProvider } from "@dotli/protocol";
+import { ASSET_HUB_PASEO_GENESIS } from "@dotli/config";
 
 const provider = createRemoteChainProvider(ASSET_HUB_PASEO_GENESIS);
 if (provider === null) {

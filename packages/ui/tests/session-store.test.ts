@@ -1,9 +1,9 @@
-import "fake-indexeddb/auto";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
-import { SITE_ID } from "@dotli/config/config";
-import type * as Config from "@dotli/config/config";
-import * as network from "@dotli/config/network";
+import 'fake-indexeddb/auto';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { SHARED_CORE_SESSION_KEY } from '@dotli/protocol';
+import { SITE_ID } from '@dotli/config';
+import type * as Config from '@dotli/config';
+import * as network from '@dotli/config';
 import {
   createLocalWalletSecret,
   createSessionStoreAdapters,
@@ -17,19 +17,16 @@ import {
   readLocalWalletSecret,
   setLocalWalletEnabled,
   writeUiStateCache,
-} from "@dotli/ui/host-callbacks/SessionStore";
-import { createAuthStateChanged } from "@dotli/ui/host-callbacks/AuthState";
-import type { CoreStorageKey } from "@parity/truapi-host";
-import type {
-  SharedWalletOperation,
-  SharedWalletState,
-} from "@dotli/protocol/wallet-storage";
-import { handleWalletOperation } from "../../../apps/protocol/src/wallet-storage";
-import { handleCoreCustody } from "../../../apps/protocol/src/core-custody";
-import type { CoreCustodyOperation } from "@dotli/protocol/core-custody";
+} from '../src/host-callbacks/SessionStore.js';
+import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
+import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
+import { must } from './support.js';
+import type { CoreCustodyOperation, SharedWalletOperation, SharedWalletState } from '@dotli/protocol';
+import { handleWalletOperation } from '../../../apps/protocol/src/wallet-storage.js';
+import { handleCoreCustody } from '../../../apps/protocol/src/core-custody.js';
 
 const buildFlags = vi.hoisted(() => ({ debug: false }));
-vi.mock("@dotli/config/config", async (importOriginal) => ({
+vi.mock('@dotli/config', async importOriginal => ({
   ...(await importOriginal<typeof Config>()),
   get DEBUG() {
     return buildFlags.debug;
@@ -38,51 +35,39 @@ vi.mock("@dotli/config/config", async (importOriginal) => ({
 
 const sharedAuth = vi.hoisted(() => ({
   storage: new Map<string, string>(),
-  listeners: new Set<
-    (change: { siteId: string; key: string; value: string | null }) => void
-  >(),
+  listeners: new Set<(change: { siteId: string; key: string; value: string | null }) => void>(),
   walletListeners: new Set<(state: SharedWalletState) => void>(),
   walletError: undefined as Error | undefined,
 }));
 
-vi.mock("@dotli/protocol/client", () => ({
-  requestCoreCustody: (operation: CoreCustodyOperation) =>
-    handleCoreCustody(operation),
-  requestSharedWallet: async (
-    _siteId: string,
-    operation: SharedWalletOperation,
-  ) => {
+vi.mock('../../protocol/src/client.js', () => ({
+  requestCoreCustody: (operation: CoreCustodyOperation) => handleCoreCustody(operation),
+  requestSharedWallet: async (_siteId: string, operation: SharedWalletOperation) => {
     if (sharedAuth.walletError !== undefined) {
       throw sharedAuth.walletError;
     }
-    return handleWalletOperation(operation, (state) => {
-      for (const listener of sharedAuth.walletListeners) listener(state);
+    return handleWalletOperation(operation, state => {
+      for (const listener of sharedAuth.walletListeners) {
+        listener(state);
+      }
     });
   },
   subscribeSharedWallet: (listener: (state: SharedWalletState) => void) => {
     sharedAuth.walletListeners.add(listener);
     return () => sharedAuth.walletListeners.delete(listener);
   },
-  readSharedAuthStorage: async (siteId: string, key: string) => {
-    return sharedAuth.storage.get(`${siteId}:${key}`) ?? null;
+  readSharedAuthStorage: (siteId: string, key: string) => {
+    return Promise.resolve(sharedAuth.storage.get(`${siteId}:${key}`) ?? null);
   },
-  writeSharedAuthStorage: async (
-    siteId: string,
-    key: string,
-    value: string,
-  ) => {
+  writeSharedAuthStorage: async (siteId: string, key: string, value: string) => {
     sharedAuth.storage.set(`${siteId}:${key}`, value);
+    return Promise.resolve();
   },
-  clearSharedAuthStorage: async (siteId: string, key: string) => {
+  clearSharedAuthStorage: (siteId: string, key: string) => {
     sharedAuth.storage.delete(`${siteId}:${key}`);
+    return Promise.resolve();
   },
-  subscribeSharedAuthStorage: (
-    listener: (change: {
-      siteId: string;
-      key: string;
-      value: string | null;
-    }) => void,
-  ) => {
+  subscribeSharedAuthStorage: (listener: (change: { siteId: string; key: string; value: string | null }) => void) => {
     sharedAuth.listeners.add(listener);
     return () => {
       sharedAuth.listeners.delete(listener);
@@ -92,7 +77,7 @@ vi.mock("@dotli/protocol/client", () => ({
 
 const STORAGE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}`;
 const UI_STATE_CACHE_KEY = `${SITE_ID}:${SHARED_CORE_SESSION_KEY}:ui-state`;
-const AUTH_SESSION_KEY = { tag: "AuthSession" as const };
+const AUTH_SESSION_KEY = { tag: 'AuthSession' as const };
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -101,16 +86,14 @@ async function flushMicrotasks(): Promise<void> {
 
 // The core reports these as `Bytes32` (hex), so the UI state carries them
 // through unchanged rather than encoding them.
-const SESSION_PUBLIC_KEY =
-  "0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
-const SESSION_IDENTITY_ACCOUNT_ID =
-  "0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf";
+const SESSION_PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f' as const;
+const SESSION_IDENTITY_ACCOUNT_ID = '0xa0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf' as const;
 
-function connectedSessionUiInfo() {
+function connectedSessionUiInfo(): SessionUiInfo {
   return {
     publicKey: SESSION_PUBLIC_KEY,
     identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
-    liteUsername: "pgherveou.04",
+    liteUsername: 'pgherveou.04',
   };
 }
 
@@ -118,8 +101,8 @@ const CONNECTED_DETAIL = {
   connected: true,
   publicKey: SESSION_PUBLIC_KEY,
   identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
-  liteUsername: "pgherveou.04",
-  primaryUsername: "pgherveou.04",
+  liteUsername: 'pgherveou.04',
+  primaryUsername: 'pgherveou.04',
 };
 
 const walletLockTails = new Map<string, Promise<void>>();
@@ -127,22 +110,22 @@ let custodyLease: string | undefined;
 
 async function experimentalStore(factory = createSessionStoreAdapters) {
   if (custodyLease !== undefined) {
-    await handleCoreCustody({ action: "release", lease: custodyLease });
+    await handleCoreCustody({ action: 'release', lease: custodyLease });
   }
-  const wallet = await handleWalletOperation({ action: "state" }, () => {});
+  const wallet = await handleWalletOperation({ action: 'state' }, () => {});
   const acquired = await handleCoreCustody({
-    action: "acquire",
+    action: 'acquire',
     walletRevision: wallet.state.revision,
   });
-  if (typeof acquired !== "string") throw new Error("Custody was not acquired");
+  if (typeof acquired !== 'string') throw new Error('Custody was not acquired');
   custodyLease = acquired;
   return factory(acquired);
 }
 
-describe("session-store host callbacks", () => {
+describe('session-store host callbacks', () => {
   beforeEach(async () => {
     if (custodyLease !== undefined) {
-      await handleCoreCustody({ action: "release", lease: custodyLease });
+      await handleCoreCustody({ action: 'release', lease: custodyLease });
       custodyLease = undefined;
     }
     buildFlags.debug = false;
@@ -151,7 +134,7 @@ describe("session-store host callbacks", () => {
     sharedAuth.listeners.clear();
     sharedAuth.walletError = undefined;
     vi.restoreAllMocks();
-    Object.defineProperty(navigator, "locks", {
+    Object.defineProperty(navigator, 'locks', {
       configurable: true,
       value: {
         request<T>(
@@ -159,11 +142,8 @@ describe("session-store host callbacks", () => {
           options: LockOptions | (() => Promise<T>),
           callback?: (lock: object | null) => Promise<T>,
         ): Promise<T> {
-          const run =
-            typeof options === "function" ? options : () => callback!({});
-          const result = (walletLockTails.get(name) ?? Promise.resolve()).then(
-            run,
-          );
+          const run = typeof options === 'function' ? options : () => must(callback)({});
+          const result = (walletLockTails.get(name) ?? Promise.resolve()).then(run);
           walletLockTails.set(
             name,
             result.then(
@@ -177,117 +157,110 @@ describe("session-store host callbacks", () => {
     });
   });
 
-  it("does not report restoration failure before a wallet is configured", async () => {
+  it('does not report restoration failure before a wallet is configured', async () => {
     // Given
     buildFlags.debug = true;
-    sharedAuth.walletError = new Error("shared wallet unavailable");
+    sharedAuth.walletError = new Error('shared wallet unavailable');
 
     // When / Then
     await expect(emitPersistedSessionUiState()).resolves.toBeUndefined();
   });
 
-  it("preserves restoration failures for a configured wallet", async () => {
+  it('preserves restoration failures for a configured wallet', async () => {
     // Given
     buildFlags.debug = true;
-    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, "1");
-    sharedAuth.walletError = new Error("shared wallet unavailable");
+    localStorage.setItem(LOCAL_WALLET_ENABLED_KEY, '1');
+    sharedAuth.walletError = new Error('shared wallet unavailable');
 
     // When / Then
-    await expect(emitPersistedSessionUiState()).rejects.toThrow(
-      "shared wallet unavailable",
-    );
+    await expect(emitPersistedSessionUiState()).rejects.toThrow('shared wallet unavailable');
   });
 
-  it("As a dotli integrator, the host round-trips the host core session blob", async () => {
+  it('As a dotli integrator, the host round-trips the host core session blob', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
 
-    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
+    expect(await storage.readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
 
     // Then
-    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe("0x010203");
+    expect(sharedAuth.storage.get(STORAGE_KEY)).toBe('0x010203');
     expect(localStorage.length).toBe(0);
-    expect(Array.from((await readCoreStorage(AUTH_SESSION_KEY)) ?? [])).toEqual(
-      [1, 2, 3],
-    );
+    expect(Array.from((await storage.readCoreStorage(AUTH_SESSION_KEY)) ?? [])).toEqual([1, 2, 3]);
 
     // When
-    await clearCoreStorage(AUTH_SESSION_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     expect(sharedAuth.storage.get(STORAGE_KEY)).toBeUndefined();
-    expect(await readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
+    expect(await storage.readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
   });
 
-  it("isolates cached product manifests when another product is cleared", async () => {
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+  it('isolates cached product manifests when another product is cleared', async () => {
+    const storage = createSessionStoreAdapters();
     const first = {
-      tag: "ProductManifest",
-      value: { productId: "first.dot" },
+      tag: 'ProductManifest',
+      value: { productId: 'first.dot' },
     } satisfies CoreStorageKey;
     const second = {
-      tag: "ProductManifest",
-      value: { productId: "second.dot" },
+      tag: 'ProductManifest',
+      value: { productId: 'second.dot' },
     } satisfies CoreStorageKey;
 
-    await writeCoreStorage(first, new Uint8Array([1]));
-    await writeCoreStorage(second, new Uint8Array([2]));
-    expect(await readCoreStorage(first)).toEqual(new Uint8Array([1]));
-    expect(await readCoreStorage(second)).toEqual(new Uint8Array([2]));
+    await storage.writeCoreStorage(first, new Uint8Array([1]));
+    await storage.writeCoreStorage(second, new Uint8Array([2]));
+    expect(await storage.readCoreStorage(first)).toEqual(new Uint8Array([1]));
+    expect(await storage.readCoreStorage(second)).toEqual(new Uint8Array([2]));
 
-    await clearCoreStorage(first);
-    expect(await readCoreStorage(first)).toBeUndefined();
-    expect(await readCoreStorage(second)).toEqual(new Uint8Array([2]));
+    await storage.clearCoreStorage(first);
+    expect(await storage.readCoreStorage(first)).toBeUndefined();
+    expect(await storage.readCoreStorage(second)).toEqual(new Uint8Array([2]));
   });
 
-  it("As a dotli integrator, the host round-trips permission authorization slots from typed core keys", async () => {
+  it('As a dotli integrator, the host round-trips permission authorization slots from typed core keys', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "PermissionAuthorization",
+      tag: 'PermissionAuthorization',
       value: {
-        productId: "My App",
-        request: { tag: "Device", value: "OpenUrl" },
+        productId: 'My App',
+        request: { tag: 'Device', value: 'OpenUrl' },
       },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([4]));
+    await storage.writeCoreStorage(key, new Uint8Array([4]));
 
     // Then
     expect(localStorage.length).toBe(1);
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("open-url");
-    expect(localStorage.getItem(storageKey ?? "")).toBe("0x04");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([4]);
+    expect(storageKey).not.toContain('open-url');
+    expect(localStorage.getItem(storageKey ?? '')).toBe('0x04');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([4]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host keeps remote permission authorization keys opaque", async () => {
+  it('As a dotli integrator, the host keeps remote permission authorization keys opaque', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "PermissionAuthorization",
+      tag: 'PermissionAuthorization',
       value: {
-        productId: "myapp",
+        productId: 'myapp',
         request: {
-          tag: "Remote",
+          tag: 'Remote',
           value: {
             permission: {
-              tag: "Remote",
-              value: { domains: ["B.example", "a.example", "b.example"] },
+              tag: 'Remote',
+              value: { domains: ['B.example', 'a.example', 'b.example'] },
             },
           },
         },
@@ -295,118 +268,108 @@ describe("session-store host callbacks", () => {
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([7]));
+    await storage.writeCoreStorage(key, new Uint8Array([7]));
 
     // Then
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:permission:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("example");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([7]);
+    expect(storageKey).not.toContain('example');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([7]);
     expect(localStorage.length).toBe(1);
   });
 
-  it("As a dotli integrator, the host encrypts persisted allowance key slots", async () => {
+  it('As a dotli integrator, the host encrypts persisted allowance key slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
 
     // Then
-    const storageKey = "dotli:core:allowance-keys:session-1";
-    expect(localStorage.getItem(storageKey)).not.toBe("0x01020304");
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    const storageKey = 'dotli:core:allowance-keys:session-1';
+    expect(localStorage.getItem(storageKey)).not.toBe('0x01020304');
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host encrypts product auto-signing keys in opaque slots", async () => {
+  it('As a dotli integrator, the host encrypts product auto-signing keys in opaque slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AutoSigningKey",
-      value: { productId: "truapi-playground.dot" },
+      tag: 'AutoSigningKey',
+      value: { productId: 'truapi-playground.dot' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
+    await storage.writeCoreStorage(key, new Uint8Array([5, 6, 7, 8]));
 
     // Then
     expect(localStorage.length).toBe(1);
     const storageKey = localStorage.key(0);
     expect(storageKey).toMatch(/^dotli:core:auto-signing:[0-9a-f]+$/);
-    expect(storageKey).not.toContain("truapi-playground.dot");
-    expect(localStorage.getItem(storageKey ?? "")).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      5, 6, 7, 8,
-    ]);
+    expect(storageKey).not.toContain('truapi-playground.dot');
+    expect(localStorage.getItem(storageKey ?? '')).toMatch(/^enc1:0x/);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([5, 6, 7, 8]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host encrypts the device encryption secret in a stable install-wide slot", async () => {
+  it('As a dotli integrator, the host encrypts the device encryption secret in a stable install-wide slot', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
-    const key = { tag: "DeviceEncryptionKey" } satisfies CoreStorageKey;
+    const storage = createSessionStoreAdapters();
+    const key = { tag: 'DeviceEncryptionKey' } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([9, 10, 11, 12]));
+    await storage.writeCoreStorage(key, new Uint8Array([9, 10, 11, 12]));
 
     // Then
     // Peers address this device by the public counterpart, so the slot name
     // must not move with the session: a fresh name would orphan them.
-    const storageKey = "dotli:core:device-encryption-key";
+    const storageKey = 'dotli:core:device-encryption-key';
     expect(localStorage.getItem(storageKey)).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      9, 10, 11, 12,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([9, 10, 11, 12]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host stores product subtree keys per session in opaque plaintext slots", async () => {
+  it('As a dotli integrator, the host stores product subtree keys per session in opaque plaintext slots', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "ProductSubtree",
+      tag: 'ProductSubtree',
       value: {
-        sessionId: "session-1",
-        productId: "truapi-playground.dot",
+        sessionId: 'session-1',
+        productId: 'truapi-playground.dot',
       },
     } satisfies CoreStorageKey;
     const otherSession = {
-      tag: "ProductSubtree",
+      tag: 'ProductSubtree',
       value: {
-        sessionId: "session-2",
-        productId: "truapi-playground.dot",
+        sessionId: 'session-2',
+        productId: 'truapi-playground.dot',
       },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([13]));
-    await writeCoreStorage(otherSession, new Uint8Array([14]));
+    await storage.writeCoreStorage(key, new Uint8Array([13]));
+    await storage.writeCoreStorage(otherSession, new Uint8Array([14]));
 
     // Then
     // The slot holds a public key, so it is stored in the clear, but the
@@ -415,32 +378,27 @@ describe("session-store host callbacks", () => {
     for (const index of [0, 1]) {
       const storageKey = localStorage.key(index);
       expect(storageKey).toMatch(/^dotli:core:product-subtree:[0-9a-f]+$/);
-      expect(storageKey).not.toContain("truapi-playground.dot");
-      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+      expect(storageKey).not.toContain('truapi-playground.dot');
+      expect(localStorage.getItem(storageKey ?? '')).toMatch(/^0x/);
     }
     // Pairing again answers afresh, so one session's answer must not be read
     // back for another.
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([13]);
-    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
-      14,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([13]);
+    expect(Array.from((await storage.readCoreStorage(otherSession)) ?? [])).toEqual([14]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
-    expect(Array.from((await readCoreStorage(otherSession)) ?? [])).toEqual([
-      14,
-    ]);
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await storage.readCoreStorage(otherSession)) ?? [])).toEqual([14]);
   });
 
-  it("As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer", async () => {
+  it('As a dotli integrator, the host stores the SSO responder replay ledger per wallet and peer', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage, clearCoreStorage } =
-      createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "SsoResponderRequestLedger",
+      tag: 'SsoResponderRequestLedger',
       value: {
         rootPublicKey: new Uint8Array(32).fill(1),
         peerStatementAccountId: new Uint8Array(32).fill(2),
@@ -448,7 +406,7 @@ describe("session-store host callbacks", () => {
       },
     } satisfies CoreStorageKey;
     const otherPeer = {
-      tag: "SsoResponderRequestLedger",
+      tag: 'SsoResponderRequestLedger',
       value: {
         rootPublicKey: new Uint8Array(32).fill(1),
         peerStatementAccountId: new Uint8Array(32).fill(2),
@@ -457,8 +415,8 @@ describe("session-store host callbacks", () => {
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([21]));
-    await writeCoreStorage(otherPeer, new Uint8Array([22]));
+    await storage.writeCoreStorage(key, new Uint8Array([21]));
+    await storage.writeCoreStorage(otherPeer, new Uint8Array([22]));
 
     // Then
     // Core-owned replay state, not key material, so it is stored like the
@@ -467,22 +425,22 @@ describe("session-store host callbacks", () => {
     for (const index of [0, 1]) {
       const storageKey = localStorage.key(index);
       expect(storageKey).toMatch(/^dotli:core:sso-responder-ledger:[0-9a-f]+$/);
-      expect(localStorage.getItem(storageKey ?? "")).toMatch(/^0x/);
+      expect(localStorage.getItem(storageKey ?? '')).toMatch(/^0x/);
     }
     // The ledger bounds replays for one peer, so two peers of the same wallet
     // must never share a slot.
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([21]);
-    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([21]);
+    expect(Array.from((await storage.readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
 
     // When
-    await clearCoreStorage(key);
+    await storage.clearCoreStorage(key);
 
     // Then
-    expect(await readCoreStorage(key)).toBeUndefined();
-    expect(Array.from((await readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
+    expect(await storage.readCoreStorage(key)).toBeUndefined();
+    expect(Array.from((await storage.readCoreStorage(otherPeer)) ?? [])).toEqual([22]);
   });
 
-  it("keeps the shared wallet stable across reads and removes custody on deletion", async () => {
+  it('keeps the shared wallet stable across reads and removes custody on deletion', async () => {
     // Given
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
@@ -510,13 +468,13 @@ describe("session-store host callbacks", () => {
     await expect(readLocalWalletSecret()).resolves.toBeUndefined();
   });
 
-  it("exports an existing 32-byte identity as a phrase and restores exactly the native activation entropy", async () => {
+  it('exports an existing 32-byte identity as a phrase and restores exactly the native activation entropy', async () => {
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     try {
       const mnemonic = await exportLocalWalletMnemonic();
-      expect(mnemonic.split(" ")).toHaveLength(24);
+      expect(mnemonic.split(' ')).toHaveLength(24);
       await deleteLocalWalletSecret();
       await importLocalWalletMnemonic(mnemonic);
       const restored = await readLocalWalletSecret();
@@ -533,9 +491,9 @@ describe("session-store host callbacks", () => {
     }
   });
 
-  it("rejects an invalid import without replacing custody and resets only experimental grants on valid import", async () => {
+  it('rejects an invalid import without replacing custody and resets only experimental grants on valid import', async () => {
     const mobile = createSessionStoreAdapters();
-    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    const grant = { tag: 'AutoSigningKeys' } satisfies CoreStorageKey;
     await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
     await mobile.writeCoreStorage(grant, new Uint8Array([2]));
     buildFlags.debug = true;
@@ -548,58 +506,39 @@ describe("session-store host callbacks", () => {
     const stopWorkers = vi.fn();
     try {
       // Twelve known English words with an invalid checksum must not pass.
-      await expect(
-        importLocalWalletMnemonic("abandon ".repeat(12), stopWorkers),
-      ).rejects.toThrow();
+      await expect(importLocalWalletMnemonic('abandon '.repeat(12), stopWorkers)).rejects.toThrow();
       expect(stopWorkers).not.toHaveBeenCalled();
       const unchanged = await readLocalWalletSecret();
       expect(unchanged).toEqual(secret);
       unchanged?.fill(0);
-      expect(await experimental.readCoreStorage(grant)).toEqual(
-        new Uint8Array([4]),
-      );
-      expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
-        new Uint8Array([3]),
-      );
+      expect(await experimental.readCoreStorage(grant)).toEqual(new Uint8Array([4]));
+      expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toEqual(new Uint8Array([3]));
 
       // A second tab has its own module state but shares origin storage.
       vi.resetModules();
-      const otherTab = await import("@dotli/ui/host-callbacks/SessionStore");
+      const otherTab = await import('../src/host-callbacks/SessionStore.js');
       // Public BIP-39 test vector, not a real user's phrase.
-      await otherTab.importLocalWalletMnemonic(
-        "abandon ".repeat(11) + "about",
-        stopWorkers,
-      );
+      await otherTab.importLocalWalletMnemonic('abandon '.repeat(11) + 'about', stopWorkers);
       const imported = await readLocalWalletSecret();
       expect(imported).toEqual(new Uint8Array(16));
       imported?.fill(0);
       await expect(experimental.readCoreStorage(grant)).rejects.toThrow();
-      await expect(
-        experimental.readCoreStorage(AUTH_SESSION_KEY),
-      ).rejects.toThrow();
-      const replacement = await experimentalStore(
-        otherTab.createSessionStoreAdapters,
-      );
+      await expect(experimental.readCoreStorage(AUTH_SESSION_KEY)).rejects.toThrow();
+      const replacement = await experimentalStore(otherTab.createSessionStoreAdapters);
       await replacement.writeCoreStorage(grant, new Uint8Array([6]));
       // A retired worker cannot acknowledge a discarded write as durable.
-      await expect(
-        experimental.writeCoreStorage(grant, new Uint8Array([5])),
-      ).rejects.toThrow();
+      await expect(experimental.writeCoreStorage(grant, new Uint8Array([5]))).rejects.toThrow();
       await expect(experimental.clearCoreStorage(grant)).rejects.toThrow();
-      expect(await replacement.readCoreStorage(grant)).toEqual(
-        new Uint8Array([6]),
-      );
+      expect(await replacement.readCoreStorage(grant)).toEqual(new Uint8Array([6]));
       expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
-      expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
-        new Uint8Array([1]),
-      );
+      expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(new Uint8Array([1]));
     } finally {
       secret.fill(0);
       await deleteLocalWalletSecret();
     }
   });
 
-  it("ignores but preserves an existing experimental wallet in production", async () => {
+  it('ignores but preserves an existing experimental wallet in production', async () => {
     buildFlags.debug = true;
     const { secret } = await createLocalWalletSecret();
     const expected = Array.from(secret);
@@ -607,17 +546,16 @@ describe("session-store host callbacks", () => {
     await setLocalWalletEnabled(true);
     buildFlags.debug = false;
     const events: unknown[] = [];
-    const onState = (event: Event) =>
-      events.push((event as CustomEvent).detail);
-    window.addEventListener("dotli:truapi-auth-state", onState);
+    const onState = (event: Event): void => {
+      events.push((event as CustomEvent<unknown>).detail);
+    };
+    window.addEventListener('dotli:truapi-auth-state', onState);
     try {
       await expect(readLocalWalletSecret()).resolves.toBeUndefined();
       await expect(createLocalWalletSecret()).rejects.toThrow();
       await expect(deleteLocalWalletSecret()).rejects.toThrow();
       await expect(exportLocalWalletMnemonic()).rejects.toThrow();
-      await expect(
-        importLocalWalletMnemonic("abandon ".repeat(11) + "about"),
-      ).rejects.toThrow();
+      await expect(importLocalWalletMnemonic('abandon '.repeat(11) + 'about')).rejects.toThrow();
       await emitPersistedSessionUiState();
       expect(events).toEqual([]);
       buildFlags.debug = true;
@@ -626,13 +564,13 @@ describe("session-store host callbacks", () => {
       restored?.fill(0);
       await deleteLocalWalletSecret();
     } finally {
-      window.removeEventListener("dotli:truapi-auth-state", onState);
+      window.removeEventListener('dotli:truapi-auth-state', onState);
     }
   });
 
-  it("isolates experimental sessions and signing grants from mobile custody, including deletion", async () => {
+  it('isolates experimental sessions and signing grants from mobile custody, including deletion', async () => {
     const mobile = createSessionStoreAdapters();
-    const grant = { tag: "AutoSigningKeys" } satisfies CoreStorageKey;
+    const grant = { tag: 'AutoSigningKeys' } satisfies CoreStorageKey;
     await mobile.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1]));
     await mobile.writeCoreStorage(grant, new Uint8Array([2]));
     buildFlags.debug = true;
@@ -640,9 +578,7 @@ describe("session-store host callbacks", () => {
     secret.fill(0);
     await setLocalWalletEnabled(true);
     const experimental = await experimentalStore();
-    expect(
-      await experimental.readCoreStorage(AUTH_SESSION_KEY),
-    ).toBeUndefined();
+    expect(await experimental.readCoreStorage(AUTH_SESSION_KEY)).toBeUndefined();
     expect(await experimental.readCoreStorage(grant)).toBeUndefined();
     await experimental.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([3]));
     await experimental.writeCoreStorage(grant, new Uint8Array([4]));
@@ -650,153 +586,138 @@ describe("session-store host callbacks", () => {
     buildFlags.debug = false;
     await experimental.writeCoreStorage(grant, new Uint8Array([5]));
     const production = createSessionStoreAdapters();
-    expect(await production.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
-      new Uint8Array([1]),
-    );
-    expect(await production.readCoreStorage(grant)).toEqual(
-      new Uint8Array([2]),
-    );
+    expect(await production.readCoreStorage(AUTH_SESSION_KEY)).toEqual(new Uint8Array([1]));
+    expect(await production.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     await expect(experimental.readCoreStorage(grant)).rejects.toThrow();
     expect(await mobile.readCoreStorage(grant)).toEqual(new Uint8Array([2]));
-    expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(
-      new Uint8Array([1]),
-    );
+    expect(await mobile.readCoreStorage(AUTH_SESSION_KEY)).toEqual(new Uint8Array([1]));
   });
 
-  it("hands native custody to one signer at a time without losing its purse on release", async () => {
+  it('hands native custody to one signer at a time without losing its purse on release', async () => {
     buildFlags.debug = true;
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
     await setLocalWalletEnabled(true);
     const first = await experimentalStore();
     const purse = {
-      tag: "MainPurseCoinage",
+      tag: 'MainPurseCoinage',
       value: {
         rootPublicKey: new Uint8Array(32).fill(7),
         genesisHash: new Uint8Array(32).fill(8),
       },
     } satisfies CoreStorageKey;
     await first.writeCoreStorage(purse, new Uint8Array([1, 2, 3]));
-    const wallet = await handleWalletOperation({ action: "state" }, () => {});
+    const wallet = await handleWalletOperation({ action: 'state' }, () => {});
     await expect(
       handleCoreCustody({
-        action: "acquire",
+        action: 'acquire',
         walletRevision: wallet.state.revision,
       }),
     ).rejects.toThrow();
-    await expect(
-      createSessionStoreAdapters().writeCoreStorage(purse, new Uint8Array([9])),
-    ).rejects.toThrow();
+    await expect(createSessionStoreAdapters().writeCoreStorage(purse, new Uint8Array([9]))).rejects.toThrow();
     const replacement = await experimentalStore();
-    await expect(
-      first.writeCoreStorage(purse, new Uint8Array([9])),
-    ).rejects.toThrow();
-    expect(await replacement.readCoreStorage(purse)).toEqual(
-      new Uint8Array([1, 2, 3]),
-    );
+    await expect(first.writeCoreStorage(purse, new Uint8Array([9]))).rejects.toThrow();
+    expect(await replacement.readCoreStorage(purse)).toEqual(new Uint8Array([1, 2, 3]));
     await replacement.clearCoreStorage(purse);
   });
 
-  it("As a dotli integrator, the host never reuses a nonce across allowance key writes", async () => {
+  it('As a dotli integrator, the host never reuses a nonce across allowance key writes', async () => {
     // Given
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:session-1";
+    const storageKey = 'dotli:core:allowance-keys:session-1';
 
     // When: the same plaintext is written twice
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const first = localStorage.getItem(storageKey);
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
     const second = localStorage.getItem(storageKey);
 
     // Then: the ciphertexts differ (fresh nonce per write) and still decrypt
     expect(first).not.toBeNull();
     expect(second).not.toBeNull();
     expect(second).not.toBe(first);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
   });
 
-  it("As a dotli integrator, the host encrypts allowance keys under a non-extractable per-install key", async () => {
+  it('As a dotli integrator, the host encrypts allowance keys under a non-extractable per-install key', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
 
     // When
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
 
     // Then: the encryption key is a random per-install CryptoKey persisted
     // in IndexedDB whose material can never be exported, not something
     // derivable from public bundle data.
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const request = indexedDB.open("dotli-core");
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+      const request = indexedDB.open('dotli-core');
+      request.onsuccess = () => {
+        resolve(request.result);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('opening dotli-core failed'));
+      };
     });
-    const stored = await new Promise<CryptoKey | undefined>(
-      (resolve, reject) => {
-        const request = db
-          .transaction("keys")
-          .objectStore("keys")
-          .get("allowance-keys");
-        request.onsuccess = () => resolve(request.result as CryptoKey);
-        request.onerror = () => reject(request.error);
-      },
-    );
+    const stored = await new Promise<CryptoKey | undefined>((resolve, reject) => {
+      const request = db.transaction('keys').objectStore('keys').get('allowance-keys');
+      request.onsuccess = () => {
+        resolve(request.result as CryptoKey);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('reading allowance-keys failed'));
+      };
+    });
     db.close();
-    expect(stored?.type).toBe("secret");
+    expect(stored?.type).toBe('secret');
     expect(stored?.extractable).toBe(false);
-    await expect(
-      crypto.subtle.exportKey("raw", stored as CryptoKey),
-    ).rejects.toThrow();
+    await expect(crypto.subtle.exportKey('raw', must(stored, 'the stored key'))).rejects.toThrow();
   });
 
-  it("As a dotli integrator, the host migrates legacy plaintext allowance keys on read", async () => {
+  it('As a dotli integrator, the host migrates legacy plaintext allowance keys on read', async () => {
     // Given: a plain-hex slot written before at-rest encryption shipped
-    const { readCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "legacy" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'legacy' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:legacy";
-    localStorage.setItem(storageKey, "0x01020304");
+    const storageKey = 'dotli:core:allowance-keys:legacy';
+    localStorage.setItem(storageKey, '0x01020304');
 
     // When
-    const bytes = await readCoreStorage(key);
+    const bytes = await storage.readCoreStorage(key);
 
     // Then: the legacy bytes are readable and re-persisted encrypted
     expect(Array.from(bytes ?? [])).toEqual([1, 2, 3, 4]);
     expect(localStorage.getItem(storageKey)).toMatch(/^enc1:0x/);
-    expect(Array.from((await readCoreStorage(key)) ?? [])).toEqual([
-      1, 2, 3, 4,
-    ]);
+    expect(Array.from((await storage.readCoreStorage(key)) ?? [])).toEqual([1, 2, 3, 4]);
   });
 
-  it("As a dotli integrator, the host drops allowance slots that no longer decrypt instead of returning ciphertext", async () => {
+  it('As a dotli integrator, the host drops allowance slots that no longer decrypt instead of returning ciphertext', async () => {
     // Given: an encrypted slot whose ciphertext no longer authenticates —
     // the same shape as a key lost to an IndexedDB wipe or tampered bytes
-    const { readCoreStorage, writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "session-1" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'session-1' },
     } satisfies CoreStorageKey;
-    const storageKey = "dotli:core:allowance-keys:session-1";
-    await writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
-    const stored = localStorage.getItem(storageKey) ?? "";
-    const flipped = stored.slice(0, -2) + (stored.endsWith("00") ? "ff" : "00");
+    const storageKey = 'dotli:core:allowance-keys:session-1';
+    await storage.writeCoreStorage(key, new Uint8Array([1, 2, 3, 4]));
+    const stored = localStorage.getItem(storageKey) ?? '';
+    const flipped = stored.slice(0, -2) + (stored.endsWith('00') ? 'ff' : '00');
     localStorage.setItem(storageKey, flipped);
 
     // When
-    const bytes = await readCoreStorage(key);
+    const bytes = await storage.readCoreStorage(key);
 
     // Then: a true cache miss — ciphertext is never handed back as key
     // material, and the dead slot is removed rather than re-encrypted
@@ -804,161 +725,156 @@ describe("session-store host callbacks", () => {
     expect(localStorage.getItem(storageKey)).toBeNull();
   });
 
-  it("As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss", async () => {
+  it('As a dotli integrator, the host treats corrupt persisted core bytes as a cache miss', async () => {
     // Given
-    const { readCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const key = {
-      tag: "AllowanceKeys",
-      value: { sessionId: "corrupt" },
+      tag: 'AllowanceKeys',
+      value: { sessionId: 'corrupt' },
     } satisfies CoreStorageKey;
-    localStorage.setItem("dotli:core:allowance-keys:corrupt", "not-hex");
+    localStorage.setItem('dotli:core:allowance-keys:corrupt', 'not-hex');
 
     // When
-    const stored = readCoreStorage(key);
+    const stored = storage.readCoreStorage(key);
 
     // Then
     await expect(stored).resolves.toBeUndefined();
   });
 
-  it("As a dotli integrator, the host treats a corrupt shared auth session as a cache miss", async () => {
+  it('As a dotli integrator, the host treats a corrupt shared auth session as a cache miss', async () => {
     // Given
-    const { readCoreStorage } = createSessionStoreAdapters();
-    sharedAuth.storage.set(STORAGE_KEY, "not-hex");
+    const storage = createSessionStoreAdapters();
+    sharedAuth.storage.set(STORAGE_KEY, 'not-hex');
 
     // When
-    const stored = readCoreStorage(AUTH_SESSION_KEY);
+    const stored = storage.readCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     await expect(stored).resolves.toBeUndefined();
   });
 
-  it("As a dotli integrator, the host emits the typed session identity details from a connected auth state", () => {
+  it('As a dotli integrator, the host emits the typed session identity details from a connected auth state', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
 
     // Then
-    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
-  it("As a dotli integrator, the host dispatches the pairing presentation with its host context", () => {
+  it('As a dotli integrator, the host dispatches the pairing presentation with its host context', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web", {
+    const authStateChanged = createAuthStateChanged('Polkadot Web', {
       dotSuffix: false,
       hostGlobal: true,
     });
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({
-      tag: "Pairing",
-      value: { deeplink: "polkadotapp://pair?handshake=test" },
+    authStateChanged({
+      tag: 'Pairing',
+      value: { deeplink: 'polkadotapp://pair?handshake=test' },
     });
 
     // Then
     expect(events).toEqual([
       {
-        tag: "Pairing",
-        deeplink: "polkadotapp://pair?handshake=test",
-        label: "Polkadot Web",
+        tag: 'Pairing',
+        deeplink: 'polkadotapp://pair?handshake=test',
+        label: 'Polkadot Web',
         dotSuffix: false,
         hostGlobal: true,
       },
     ]);
   });
 
-  it("As a dotli integrator, the host dispatches the authenticating state", () => {
+  it('As a dotli integrator, the host dispatches the authenticating state', () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    authStateChanged?.({ tag: "Authenticating" });
+    authStateChanged({ tag: 'Authenticating' });
 
     // Then
-    expect(events).toEqual([{ tag: "Authenticating" }]);
+    expect(events).toEqual([{ tag: 'Authenticating' }]);
   });
 
-  it("As a dotli integrator, the host caches the connected UI state and clears it with the session", async () => {
+  it('As a dotli integrator, the host caches the connected UI state and clears it with the session', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { clearCoreStorage } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    const storage = createSessionStoreAdapters();
 
     // When
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
 
     // Then
-    expect(
-      JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? ""),
-    ).toEqual(CONNECTED_DETAIL);
+    expect(JSON.parse(sharedAuth.storage.get(UI_STATE_CACHE_KEY) ?? '')).toEqual(CONNECTED_DETAIL);
 
     // When
-    await clearCoreStorage(AUTH_SESSION_KEY);
+    await storage.clearCoreStorage(AUTH_SESSION_KEY);
 
     // Then
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host clears the cached UI state on a disconnected auth state", async () => {
+  it('As a dotli integrator, the host clears the cached UI state on a disconnected auth state', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
 
-    authStateChanged?.({
-      tag: "Connected",
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeDefined();
 
     // When
-    authStateChanged?.({ tag: "Disconnected" });
+    authStateChanged({ tag: 'Disconnected' });
     await flushMicrotasks();
 
     // Then
     expect(sharedAuth.storage.get(UI_STATE_CACHE_KEY)).toBeUndefined();
   });
 
-  it("As a dotli integrator, the host rehydrates the cached session UI state", async () => {
+  it('As a dotli integrator, the host rehydrates the cached session UI state', async () => {
     // Given
-    const authStateChanged = createAuthStateChanged("Polkadot Web");
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const authStateChanged = createAuthStateChanged('Polkadot Web');
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // Nothing persisted: nothing emitted, even with a stale cache entry.
-    sharedAuth.storage.set(
-      UI_STATE_CACHE_KEY,
-      JSON.stringify(CONNECTED_DETAIL),
-    );
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     await emitPersistedSessionUiState();
     expect(events).toEqual([]);
     sharedAuth.storage.delete(UI_STATE_CACHE_KEY);
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    authStateChanged?.({
-      tag: "Connected",
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    authStateChanged({
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     await flushMicrotasks();
@@ -967,22 +883,19 @@ describe("session-store host callbacks", () => {
     await emitPersistedSessionUiState();
 
     // Then
-    expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+    expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
   });
 
-  it("does not publish an experimental session from a stored secret or Mobile UI cache", async () => {
+  it('does not publish an experimental session from a stored secret or Mobile UI cache', async () => {
     // Given
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
     await setLocalWalletEnabled(true);
-    sharedAuth.storage.set(
-      UI_STATE_CACHE_KEY,
-      JSON.stringify(CONNECTED_DETAIL),
-    );
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify(CONNECTED_DETAIL));
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
@@ -994,56 +907,56 @@ describe("session-store host callbacks", () => {
     await deleteLocalWalletSecret();
   });
 
-  it("restores experimental display synchronously after reload without publishing auth", async () => {
+  it('restores experimental display synchronously after reload without publishing auth', async () => {
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
     await setLocalWalletEnabled(true);
-    const authStateChanged = createAuthStateChanged("Wallet");
+    const authStateChanged = createAuthStateChanged('Wallet');
     authStateChanged({
-      tag: "Connected",
+      tag: 'Connected',
       value: connectedSessionUiInfo(),
     });
     const display = {
       publicKey: SESSION_PUBLIC_KEY,
       identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
-      liteUsername: "pgherveou.04",
-      primaryUsername: "pgherveou.04",
+      liteUsername: 'pgherveou.04',
+      primaryUsername: 'pgherveou.04',
     };
     expect(readLocalWalletDisplay()).toEqual(display);
 
     // A fresh module models page startup; a static import retains hydrated state.
     vi.resetModules();
-    const reloaded = await import("@dotli/ui/host-callbacks/SessionStore");
+    const reloaded = await import('../src/host-callbacks/SessionStore.js');
     const events: unknown[] = [];
-    const onAuth = (event: Event) => {
-      events.push((event as CustomEvent).detail);
+    const onAuth = (event: Event): void => {
+      events.push((event as CustomEvent<unknown>).detail);
     };
-    window.addEventListener("dotli:truapi-auth-state", onAuth);
+    window.addEventListener('dotli:truapi-auth-state', onAuth);
     try {
       expect(reloaded.readLocalWalletDisplay()).toEqual(display);
       expect(events).toEqual([]);
       await reloaded.emitPersistedSessionUiState();
       expect(events).toEqual([]);
     } finally {
-      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      window.removeEventListener('dotli:truapi-auth-state', onAuth);
       await deleteLocalWalletSecret();
     }
   });
 
-  it("replaces cached names with native absence or a different identity and clears on disconnect", async () => {
+  it('replaces cached names with native absence or a different identity and clears on disconnect', async () => {
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
     await setLocalWalletEnabled(true);
-    const authStateChanged = createAuthStateChanged("Wallet");
+    const authStateChanged = createAuthStateChanged('Wallet');
     try {
-      authStateChanged({ tag: "Connected", value: connectedSessionUiInfo() });
-      expect(readLocalWalletDisplay()?.primaryUsername).toBe("pgherveou.04");
+      authStateChanged({ tag: 'Connected', value: connectedSessionUiInfo() });
+      expect(readLocalWalletDisplay()?.primaryUsername).toBe('pgherveou.04');
       authStateChanged({
-        tag: "Connected",
+        tag: 'Connected',
         value: {
           publicKey: SESSION_PUBLIC_KEY,
           identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
@@ -1054,28 +967,28 @@ describe("session-store host callbacks", () => {
         identityAccountId: SESSION_IDENTITY_ACCOUNT_ID,
       });
       authStateChanged({
-        tag: "Connected",
+        tag: 'Connected',
         value: {
           publicKey: SESSION_PUBLIC_KEY,
           identityAccountId: SESSION_PUBLIC_KEY,
-          liteUsername: "replacement.01",
+          liteUsername: 'replacement.01',
         },
       });
       expect(readLocalWalletDisplay()).toEqual({
         publicKey: SESSION_PUBLIC_KEY,
         identityAccountId: SESSION_PUBLIC_KEY,
-        liteUsername: "replacement.01",
-        primaryUsername: "replacement.01",
+        liteUsername: 'replacement.01',
+        primaryUsername: 'replacement.01',
       });
-      authStateChanged({ tag: "Disconnected" });
+      authStateChanged({ tag: 'Disconnected' });
       expect(readLocalWalletDisplay()).toBeUndefined();
     } finally {
       await deleteLocalWalletSecret();
     }
   });
 
-  it("hides experimental display outside its network and invalidates it during replacement and deletion", async () => {
-    const getNetwork = vi.spyOn(network, "getNetwork");
+  it('hides experimental display outside its network and invalidates it during replacement and deletion', async () => {
+    const getNetwork = vi.spyOn(network, 'getNetwork');
     getNetwork.mockReturnValue(network.NetworkName.PASEO);
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
@@ -1084,16 +997,12 @@ describe("session-store host callbacks", () => {
     await setLocalWalletEnabled(true);
     try {
       await writeUiStateCache(CONNECTED_DETAIL);
-      expect(readLocalWalletDisplay()?.identityAccountId).toBe(
-        SESSION_IDENTITY_ACCOUNT_ID,
-      );
+      expect(readLocalWalletDisplay()?.identityAccountId).toBe(SESSION_IDENTITY_ACCOUNT_ID);
       getNetwork.mockReturnValue(network.NetworkName.PREVIEWNET);
       expect(readLocalWalletDisplay()).toBeUndefined();
       getNetwork.mockReturnValue(network.NetworkName.PASEO);
-      expect(readLocalWalletDisplay()?.identityAccountId).toBe(
-        SESSION_IDENTITY_ACCOUNT_ID,
-      );
-      await importLocalWalletMnemonic("abandon ".repeat(11) + "about", () => {
+      expect(readLocalWalletDisplay()?.identityAccountId).toBe(SESSION_IDENTITY_ACCOUNT_ID);
+      await importLocalWalletMnemonic('abandon '.repeat(11) + 'about', () => {
         expect(readLocalWalletDisplay()).toBeUndefined();
         void writeUiStateCache(CONNECTED_DETAIL);
       });
@@ -1110,7 +1019,7 @@ describe("session-store host callbacks", () => {
     }
   });
 
-  it("treats corrupt experimental display and denied storage as unavailable without auth errors", async () => {
+  it('treats corrupt experimental display and denied storage as unavailable without auth errors', async () => {
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
@@ -1119,45 +1028,42 @@ describe("session-store host callbacks", () => {
     await writeUiStateCache(CONNECTED_DETAIL);
     const storedDisplay = JSON.stringify(CONNECTED_DETAIL);
     const getItem = localStorage.getItem.bind(localStorage);
-    const storageRead = vi.spyOn(localStorage, "getItem");
+    const storageRead = vi.spyOn(localStorage, 'getItem');
     const events: unknown[] = [];
-    const onAuth = (event: Event) => {
-      events.push((event as CustomEvent).detail);
+    const onAuth = (event: Event): void => {
+      events.push((event as CustomEvent<unknown>).detail);
     };
-    window.addEventListener("dotli:truapi-auth-state", onAuth);
+    window.addEventListener('dotli:truapi-auth-state', onAuth);
     try {
       for (const corrupt of [
-        "not-json",
-        JSON.stringify({ ...CONNECTED_DETAIL, identityAccountId: "0x1234" }),
+        'not-json',
+        JSON.stringify({ ...CONNECTED_DETAIL, identityAccountId: '0x1234' }),
         JSON.stringify({ ...CONNECTED_DETAIL, identityAccountId: undefined }),
         JSON.stringify({ ...CONNECTED_DETAIL, liteUsername: null }),
         JSON.stringify({ ...CONNECTED_DETAIL, connected: false }),
       ]) {
-        storageRead.mockImplementation((key) => {
+        storageRead.mockImplementation(key => {
           const value = getItem(key);
           return value === storedDisplay ? corrupt : value;
         });
         expect(readLocalWalletDisplay()).toBeUndefined();
       }
       storageRead.mockImplementation(() => {
-        throw new DOMException("Storage unavailable", "SecurityError");
+        throw new DOMException('Storage unavailable', 'SecurityError');
       });
       expect(readLocalWalletDisplay()).toBeUndefined();
       expect(events).toEqual([]);
     } finally {
       storageRead.mockRestore();
-      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      window.removeEventListener('dotli:truapi-auth-state', onAuth);
       await deleteLocalWalletSecret();
     }
   });
 
-  it("preserves Mobile rehydration across experimental display writes and disconnects", async () => {
-    const authStateChanged = createAuthStateChanged("Mobile");
-    await createSessionStoreAdapters().writeCoreStorage(
-      AUTH_SESSION_KEY,
-      new Uint8Array([1, 2, 3]),
-    );
-    authStateChanged({ tag: "Connected", value: connectedSessionUiInfo() });
+  it('preserves Mobile rehydration across experimental display writes and disconnects', async () => {
+    const authStateChanged = createAuthStateChanged('Mobile');
+    await createSessionStoreAdapters().writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    authStateChanged({ tag: 'Connected', value: connectedSessionUiInfo() });
     await flushMicrotasks();
     expect(readLocalWalletDisplay()).toBeUndefined();
     buildFlags.debug = true;
@@ -1166,81 +1072,74 @@ describe("session-store host callbacks", () => {
     secret.fill(0);
     await setLocalWalletEnabled(true);
     const events: unknown[] = [];
-    const onAuth = (event: Event) => {
-      events.push((event as CustomEvent).detail);
+    const onAuth = (event: Event): void => {
+      events.push((event as CustomEvent<unknown>).detail);
     };
     try {
       await writeUiStateCache({
         connected: true,
         identityAccountId: SESSION_PUBLIC_KEY,
-        liteUsername: "wallet.01",
+        liteUsername: 'wallet.01',
       });
-      expect(readLocalWalletDisplay()?.liteUsername).toBe("wallet.01");
+      expect(readLocalWalletDisplay()?.liteUsername).toBe('wallet.01');
       buildFlags.debug = false;
       expect(readLocalWalletDisplay()).toBeUndefined();
       buildFlags.debug = true;
       await writeUiStateCache({ connected: false });
       expect(readLocalWalletDisplay()).toBeUndefined();
       await setLocalWalletEnabled(false);
-      window.addEventListener("dotli:truapi-auth-state", onAuth);
+      window.addEventListener('dotli:truapi-auth-state', onAuth);
       await emitPersistedSessionUiState();
-      expect(events).toEqual([{ tag: "Connected", session: CONNECTED_DETAIL }]);
+      expect(events).toEqual([{ tag: 'Connected', session: CONNECTED_DETAIL }]);
     } finally {
-      window.removeEventListener("dotli:truapi-auth-state", onAuth);
+      window.removeEventListener('dotli:truapi-auth-state', onAuth);
       await deleteLocalWalletSecret();
     }
   });
 
-  it("As a dotli integrator, the host rehydrates a bare connected state when no cache exists", async () => {
+  it('As a dotli integrator, the host rehydrates a bare connected state when no cache exists', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
     await emitPersistedSessionUiState();
 
     // Then
-    expect(events).toEqual([
-      { tag: "Connected", session: { connected: true } },
-    ]);
+    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
   });
 
-  it("As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed", async () => {
+  it('As a dotli integrator, the host degrades to a bare connected state when the cached UI state is malformed', async () => {
     // Given: a persisted session, but a UI-state cache whose fields no longer
     // match the expected shape (e.g. written by a different code version).
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const events: unknown[] = [];
-    window.addEventListener("dotli:truapi-auth-state", (event) => {
+    window.addEventListener('dotli:truapi-auth-state', event => {
       events.push((event as CustomEvent).detail);
     });
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
-    sharedAuth.storage.set(
-      UI_STATE_CACHE_KEY,
-      JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }),
-    );
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([1, 2, 3]));
+    sharedAuth.storage.set(UI_STATE_CACHE_KEY, JSON.stringify({ connected: true, publicKey: 42, liteUsername: null }));
 
     // When
     await emitPersistedSessionUiState();
 
     // Then: the malformed cache is discarded instead of being laundered into
     // a typed session state with non-string fields.
-    expect(events).toEqual([
-      { tag: "Connected", session: { connected: true } },
-    ]);
+    expect(events).toEqual([{ tag: 'Connected', session: { connected: true } }]);
   });
 
-  it("As a dotli integrator, the host notifies local and matching storage changes", async () => {
+  it('As a dotli integrator, the host notifies local and matching storage changes', async () => {
     // Given
-    const { writeCoreStorage } = createSessionStoreAdapters();
+    const storage = createSessionStoreAdapters();
     const listener = vi.fn();
     const unsubscribe = onStoredSessionChanged(listener);
 
     // When
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([9]));
 
     // Then
     expect(listener).toHaveBeenCalledTimes(1);
@@ -1250,7 +1149,7 @@ describe("session-store host callbacks", () => {
       sharedListener({
         siteId: SITE_ID,
         key: SHARED_CORE_SESSION_KEY,
-        value: "0x09",
+        value: '0x09',
       });
     }
 
@@ -1259,7 +1158,7 @@ describe("session-store host callbacks", () => {
 
     // When
     unsubscribe();
-    await writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]));
+    await storage.writeCoreStorage(AUTH_SESSION_KEY, new Uint8Array([8]));
 
     // Then
     expect(listener).toHaveBeenCalledTimes(2);
