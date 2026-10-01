@@ -20,7 +20,7 @@ export interface WorkerPairingHostRuntime {
     createProvider(product: {
         productId: string;
         executionKind?: ProductExecutionKind;
-    }): Promise<TrUApiProductProvider>;
+    }, callbacks?: WebWorkerHostCallbacks): Promise<TrUApiProductProvider>;
     disconnectSession(): Promise<void>;
     cancelPairing(): void;
     notifySessionStoreChanged(): void;

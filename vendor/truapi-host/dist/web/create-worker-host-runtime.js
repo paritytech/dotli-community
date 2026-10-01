@@ -209,8 +209,13 @@ function operationHold(encodedProduct, id) {
     }
 }
 function handleCallbackRequest(state, msg) {
-    const fn = Object.hasOwn(state.rawCallbacks, msg.name)
-        ? state.rawCallbacks[msg.name]
+    if (state.disposed)
+        return;
+    const callbacks = msg.coreId === undefined
+        ? state.rawCallbacks
+        : state.coreCallbacks.get(msg.coreId);
+    const fn = callbacks && Object.hasOwn(callbacks, msg.name)
+        ? callbacks[msg.name]
         : undefined;
     if (!fn) {
         state.worker.postMessage({
@@ -222,7 +227,13 @@ function handleCallbackRequest(state, msg) {
         return;
     }
     Promise.resolve()
-        .then(() => fn(...msg.args))
+        .then(() => {
+        if (state.disposed)
+            throw new Error("Host runtime is unavailable");
+        if (msg.coreId !== undefined && !state.coreCallbacks.has(msg.coreId))
+            throw new Error("Product callbacks are unavailable");
+        return fn(...msg.args);
+    })
         .then((value) => {
         // Tracked in the success arm only: a rejected begin must not leave a
         // hold that nothing will ever release.
@@ -279,10 +290,15 @@ function handleSubscriptionStart(state, msg) {
     };
     let dispose = undefined;
     try {
-        dispose = startRawSubscription(state.rawCallbacks, msg.name, msg.payload, sendItem, sendError);
+        const callbacks = msg.coreId === undefined
+            ? state.rawCallbacks
+            : state.coreCallbacks.get(msg.coreId);
+        if (!callbacks)
+            throw new Error("Product callbacks are unavailable");
+        dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
     }
     catch (err) {
-        console.error(`[truapi worker] ${msg.name} threw on start:`, err);
+        sendError({ reason: errorMessage(err) });
         return;
     }
     if (typeof dispose === "function") {
@@ -573,6 +589,7 @@ function teardown(state, error, fault) {
         closeCoreState(core, error);
     }
     state.cores.clear();
+    state.coreCallbacks.clear();
     for (const fn of state.subscriptionDisposers.values()) {
         try {
             fn();
@@ -635,6 +652,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             identityGeneration: 0,
             pendingAllowanceSnapshots: new Map(),
             rawCallbacks: callbacks,
+            coreCallbacks: new Map(),
             cores: new Map(),
             pendingCores: new Map(),
             subscriptionDisposers: new Map(),
@@ -927,6 +945,7 @@ function handleCoreError(state, coreId, error) {
     if (!pending)
         return;
     state.pendingCores.delete(coreId);
+    state.coreCallbacks.delete(coreId);
     pending.reject(new Error(error));
 }
 function handleFrameError(state, coreId, error) {
@@ -937,6 +956,7 @@ function handleFrameError(state, coreId, error) {
     const failure = new Error(`worker frame error: ${error}`);
     closeCoreState(core, failure);
     state.cores.delete(coreId);
+    state.coreCallbacks.delete(coreId);
     // Renders left registered would never settle: the worker cancels them with
     // the core, so nothing further arrives to complete the sink.
     failRendersForCore(state, coreId, failure);
@@ -953,7 +973,7 @@ function handleFrameError(state, coreId, error) {
 function buildRuntime(state) {
     const runtime = {
         coreWireSchemaHash: state.coreWireSchemaHash,
-        createProvider(product) {
+        createProvider(product, callbacks) {
             if (state.disposed) {
                 return Promise.reject(state.closedError ?? new Error("runtime disposed"));
             }
@@ -965,14 +985,27 @@ function buildRuntime(state) {
                     reject,
                 });
                 try {
+                    if (callbacks)
+                        state.coreCallbacks.set(coreId, createWasmRawCallbacks(callbacks));
                     state.worker.postMessage({
                         kind: "createCore",
                         coreId,
                         product,
+                        ...(callbacks === undefined
+                            ? {}
+                            : {
+                                capabilities: {
+                                    chat: callbacks.chat !== undefined,
+                                    contacts: callbacks.contacts !== undefined,
+                                    permissionStatus: callbacks.permissionStatus !== undefined,
+                                    pocket: callbacks.pocket !== undefined,
+                                },
+                            }),
                     });
                 }
                 catch (err) {
                     state.pendingCores.delete(coreId);
+                    state.coreCallbacks.delete(coreId);
                     reject(err instanceof Error ? err : new Error(String(err)));
                 }
             });
@@ -1371,6 +1404,7 @@ function buildProvider(state, core, runtime) {
                 return;
             closeCoreState(core, new Error("provider disposed"));
             state.cores.delete(core.coreId);
+            state.coreCallbacks.delete(core.coreId);
             // Renders left registered would never settle: the worker cancels them
             // with the core, so nothing further arrives to complete the sink.
             failRendersForCore(state, core.coreId, new Error("provider disposed"));

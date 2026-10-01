@@ -1013,7 +1013,10 @@ function operationHold(encodedProduct, id) {
   }
 }
 function handleCallbackRequest(state, msg) {
-  const fn = Object.hasOwn(state.rawCallbacks, msg.name) ? state.rawCallbacks[msg.name] : void 0;
+  if (state.disposed)
+    return;
+  const callbacks = msg.coreId === void 0 ? state.rawCallbacks : state.coreCallbacks.get(msg.coreId);
+  const fn = callbacks && Object.hasOwn(callbacks, msg.name) ? callbacks[msg.name] : void 0;
   if (!fn) {
     state.worker.postMessage({
       kind: "callbackResponse",
@@ -1023,7 +1026,13 @@ function handleCallbackRequest(state, msg) {
     });
     return;
   }
-  Promise.resolve().then(() => fn(...msg.args)).then((value) => {
+  Promise.resolve().then(() => {
+    if (state.disposed)
+      throw new Error("Host runtime is unavailable");
+    if (msg.coreId !== void 0 && !state.coreCallbacks.has(msg.coreId))
+      throw new Error("Product callbacks are unavailable");
+    return fn(...msg.args);
+  }).then((value) => {
     if (msg.name === "beginOperation") {
       const id = operationIdFrom(value);
       const hold = id === null ? null : operationHold(msg.args[0], id);
@@ -1076,9 +1085,12 @@ function handleSubscriptionStart(state, msg) {
   };
   let dispose = void 0;
   try {
-    dispose = startRawSubscription(state.rawCallbacks, msg.name, msg.payload, sendItem, sendError);
+    const callbacks = msg.coreId === void 0 ? state.rawCallbacks : state.coreCallbacks.get(msg.coreId);
+    if (!callbacks)
+      throw new Error("Product callbacks are unavailable");
+    dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
   } catch (err2) {
-    console.error(`[truapi worker] ${msg.name} threw on start:`, err2);
+    sendError({ reason: errorMessage(err2) });
     return;
   }
   if (typeof dispose === "function") {
@@ -1348,6 +1360,7 @@ function teardown(state, error, fault) {
     closeCoreState(core, error);
   }
   state.cores.clear();
+  state.coreCallbacks.clear();
   for (const fn of state.subscriptionDisposers.values()) {
     try {
       fn();
@@ -1394,6 +1407,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
       identityGeneration: 0,
       pendingAllowanceSnapshots: /* @__PURE__ */ new Map(),
       rawCallbacks: callbacks,
+      coreCallbacks: /* @__PURE__ */ new Map(),
       cores: /* @__PURE__ */ new Map(),
       pendingCores: /* @__PURE__ */ new Map(),
       subscriptionDisposers: /* @__PURE__ */ new Map(),
@@ -1665,6 +1679,7 @@ function handleCoreError(state, coreId, error) {
   if (!pending)
     return;
   state.pendingCores.delete(coreId);
+  state.coreCallbacks.delete(coreId);
   pending.reject(new Error(error));
 }
 function handleFrameError(state, coreId, error) {
@@ -1675,6 +1690,7 @@ function handleFrameError(state, coreId, error) {
   const failure = new Error(`worker frame error: ${error}`);
   closeCoreState(core, failure);
   state.cores.delete(coreId);
+  state.coreCallbacks.delete(coreId);
   failRendersForCore(state, coreId, failure);
   try {
     state.worker.postMessage({
@@ -1687,7 +1703,7 @@ function handleFrameError(state, coreId, error) {
 function buildRuntime(state) {
   const runtime = {
     coreWireSchemaHash: state.coreWireSchemaHash,
-    createProvider(product) {
+    createProvider(product, callbacks) {
       if (state.disposed) {
         return Promise.reject(state.closedError ?? new Error("runtime disposed"));
       }
@@ -1699,13 +1715,24 @@ function buildRuntime(state) {
           reject
         });
         try {
+          if (callbacks)
+            state.coreCallbacks.set(coreId, createWasmRawCallbacks(callbacks));
           state.worker.postMessage({
             kind: "createCore",
             coreId,
-            product
+            product,
+            ...callbacks === void 0 ? {} : {
+              capabilities: {
+                chat: callbacks.chat !== void 0,
+                contacts: callbacks.contacts !== void 0,
+                permissionStatus: callbacks.permissionStatus !== void 0,
+                pocket: callbacks.pocket !== void 0
+              }
+            }
           });
         } catch (err2) {
           state.pendingCores.delete(coreId);
+          state.coreCallbacks.delete(coreId);
           reject(err2 instanceof Error ? err2 : new Error(String(err2)));
         }
       });
@@ -2075,6 +2102,7 @@ function buildProvider(state, core, runtime) {
         return;
       closeCoreState(core, new Error("provider disposed"));
       state.cores.delete(core.coreId);
+      state.coreCallbacks.delete(core.coreId);
       failRendersForCore(state, core.coreId, new Error("provider disposed"));
       state.worker.postMessage({
         kind: "disposeCore",

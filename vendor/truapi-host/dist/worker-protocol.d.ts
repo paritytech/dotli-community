@@ -55,6 +55,7 @@ export type MainToWorker = {
     kind: "createCore";
     coreId: number;
     product: unknown;
+    capabilities?: OptionalCapabilities;
 } | {
     kind: "disposeCore";
     coreId: number;
@@ -410,11 +411,13 @@ export type WorkerToMain = {
 } | {
     kind: "callbackRequest";
     requestId: number;
+    coreId?: number;
     name: CallbackName;
     args: CallbackArgs;
 } | {
     kind: "subscriptionStart";
     subId: number;
+    coreId?: number;
     name: SubscriptionName;
     payload: Uint8Array | string | null;
 } | {
