@@ -282,6 +282,9 @@ Return to the package versions recorded in `package-lock.json` with:
 npm run unlink:truapi
 ```
 
+UI test fixtures await `overlaysReady()` before interacting with lazy permission dialogs. Rate-limit cases use a
+controlled clock so module loading and machine load do not consume the permission window.
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
