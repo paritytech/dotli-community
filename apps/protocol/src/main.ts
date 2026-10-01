@@ -760,6 +760,8 @@ async function initDirectMode(): Promise<void> {
   const engine = createEngine({
     createChainProvider,
     isChainSupported,
+    // Releasing a smoldot chain makes the light client drop it and re-sync later.
+    destroyDelay: Infinity,
     onBrokerReady: broker => {
       // Route the resolver's Asset Hub reads AND the People warm-keep through
       // the broker's shared follows so they reuse the broker's single follow per
@@ -810,6 +812,8 @@ function initRpcMode(): void {
     // stays curated separately in `isRemoteChainSupported`.
     createChainProvider: createCoreRpcChainProvider,
     isChainSupported: isCoreRpcChainSupported,
+    // An unused RPC chain's socket closes a minute after its last connection.
+    destroyDelay: 60_000,
     // No resolver: gateway-mode resolution doesn't go through this iframe.
   });
 

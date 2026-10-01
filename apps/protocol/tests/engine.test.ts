@@ -10,9 +10,11 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope, ProtocolRequestMap } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
+import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import { createEngine, type EngineOptions, type ProtocolEngine } from '../src/engine.js';
 
 const ORIGIN_A = 'https://a.example';
+const ORIGIN_B = 'https://b.example';
 
 interface TransportRecord {
   genesisHash: string;
@@ -81,9 +83,12 @@ async function call<M extends keyof ProtocolRequestMap>(
   return out;
 }
 
-function setup(extra: Partial<EngineOptions> = {}): { engine: ProtocolEngine; built: TransportRecord[] } {
+function setup(
+  extra: Partial<EngineOptions> = {},
+  destroyDelay = Infinity,
+): { engine: ProtocolEngine; built: TransportRecord[] } {
   const { createChainProvider, built } = createTransports();
-  const engine = createEngine({ createChainProvider, isChainSupported: () => true, ...extra });
+  const engine = createEngine({ createChainProvider, isChainSupported: () => true, destroyDelay, ...extra });
   return { engine, built };
 }
 
@@ -131,5 +136,167 @@ describe('createEngine chain connections', () => {
 
     // Then
     expect(out[0]).toMatchObject({ kind: 'response', ok: true, result: true });
+  });
+});
+
+/** The transport reports itself dead, as a smoldot chain does. */
+function haltTransport(transport: TransportRecord): void {
+  const hooks = must(transport.hooks, 'transport hooks');
+  hooks.onStatus('disconnected');
+  hooks.onHalt(new Error('chain died'));
+}
+
+const genesisRequest = (id: string): string =>
+  JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_genesisHash', params: [] });
+
+describe('createEngine halts', () => {
+  it('As a dotli user, a dead chain answers what my app was waiting for, then says the connection halted', async () => {
+    // Given
+    const { engine, built } = setup();
+    const out = await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
+
+    // When
+    haltTransport(must(built[0], 'transport'));
+
+    // Then
+    expect(out.slice(1)).toEqual([
+      {
+        namespace: 'dotli:protocol',
+        kind: 'chain-message',
+        connectionId: 'c1',
+        message: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'q1',
+          error: { code: -32603, message: 'Chain transport halted' },
+        }),
+      },
+      { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },
+    ]);
+  });
+
+  it('As a dotli integrator, a halted connection is gone and frees its slot', async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    haltTransport(must(built[0], 'transport'));
+
+    // When
+    const send = call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') });
+
+    // Then
+    await expect(send).rejects.toThrow('Unknown chain connection: c1');
+    // The halted connection's slot is free: the origin can fill its whole quota again.
+    for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i += 1) {
+      await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: `n${String(i)}` });
+    }
+  });
+
+  it('As a dotli integrator, a client reconnecting under the same id after a halt gets a fresh chain', async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    haltTransport(must(built[0], 'transport'));
+
+    // When
+    const out = await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q2') });
+
+    // Then
+    expect(out[0]).toMatchObject({ kind: 'response', ok: true });
+    expect(built).toHaveLength(2);
+    expect(must(built[1], 'rebuilt transport').sent).toHaveLength(1);
+  });
+
+  it('As a dotli user, a dead chain leaves my connections on other chains working', async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await call(engine, 'chainConnect', { genesisHash: '0xbb', connectionId: 'c2' });
+
+    // When
+    haltTransport(must(built[0], 'first chain'));
+    await call(engine, 'chainSend', { connectionId: 'c2', message: genesisRequest('q1') });
+
+    // Then
+    expect(must(built[1], 'second chain').sent).toHaveLength(1);
+  });
+});
+
+describe('createEngine origin binding', () => {
+  it("As a dotli user, another site cannot send on my app's chain connection", async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
+
+    // When
+    const send = call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_B);
+
+    // Then
+    await expect(send).rejects.toThrow('Unknown chain connection: c1');
+    expect(must(built[0], 'transport').sent).toHaveLength(0);
+  });
+
+  it("As a dotli user, another site cannot close my app's chain connection", async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
+
+    // When
+    const out = await call(engine, 'chainDisconnect', { connectionId: 'c1' }, ORIGIN_B);
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
+
+    // Then
+    expect(out[0]).toMatchObject({ kind: 'response', ok: true, result: true });
+    expect(must(built[0], 'transport').sent).toHaveLength(1);
+  });
+
+  it('As a dotli user, a site reusing my connection id cannot take my connection', async () => {
+    // Given
+    const { engine, built } = setup();
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_A);
+
+    // When
+    const steal = call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' }, ORIGIN_B);
+
+    // Then
+    await expect(steal).rejects.toThrow('Duplicate broker session');
+    await call(engine, 'chainSend', { connectionId: 'c1', message: genesisRequest('q1') }, ORIGIN_A);
+    expect(must(built[0], 'transport').sent).toHaveLength(1);
+  });
+});
+
+describe('createEngine destroy delay', () => {
+  it('As a dotli user on a light client, a chain my apps stopped using stays synced', async () => {
+    // Given
+    vi.useFakeTimers();
+    const { engine, built } = setup({}, Infinity);
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+
+    // When
+    await call(engine, 'chainDisconnect', { connectionId: 'c1' });
+    vi.advanceTimersByTime(600_000);
+
+    // Then
+    expect(must(built[0], 'transport').disconnect).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it('As a dotli user on Trusted Providers, a chain my apps stopped using closes its socket a minute later', async () => {
+    // Given
+    vi.useFakeTimers();
+    const { engine, built } = setup({}, 60_000);
+    await call(engine, 'chainConnect', { genesisHash: '0xaa', connectionId: 'c1' });
+    await call(engine, 'chainDisconnect', { connectionId: 'c1' });
+
+    // When
+    vi.advanceTimersByTime(59_999);
+    const before = must(built[0], 'transport').disconnect.mock.calls.length;
+    vi.advanceTimersByTime(1);
+
+    // Then
+    expect(before).toBe(0);
+    expect(must(built[0], 'transport').disconnect).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
   });
 });

@@ -5,11 +5,17 @@
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { StringJsonRpcConnection } from '@dotli/protocol';
-import type { ExecutableManifest, ManifestResult, RootManifest, ResolveOptions } from '@dotli/resolver';
+import type {
+  ChainTransportHooks,
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+  ResolveOptions,
+} from '@dotli/resolver';
 import { isExecutableKind } from '@dotli/shared';
 import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import {
-  createChainBrokerManager,
+  createChainPool,
   type ChainBrokerManager,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
@@ -29,8 +35,10 @@ export interface ProtocolEngine {
 }
 
 export interface EngineOptions {
-  /** Factory for a `JsonRpcProvider` keyed by genesis hash. */
-  createChainProvider: (genesisHash: string) => JsonRpcProvider | null;
+  /** Factory for a chain's transport, keyed by genesis hash. */
+  createChainProvider: (genesisHash: string, hooks?: ChainTransportHooks) => JsonRpcProvider | null;
+  /** How long a chain outlives its last connection, in ms (`Infinity` keeps it). */
+  destroyDelay: number;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
   /**
@@ -61,10 +69,34 @@ export interface EngineOptions {
 
 export function createEngine(options: EngineOptions): ProtocolEngine {
   const MAX_CONNS = 10;
-  const connections = new Map<string, StringJsonRpcConnection>();
+  const connections = new Map<string, { connection: StringJsonRpcConnection; origin: string }>();
   const originConns = new Map<string, Set<string>>();
-  const broker = createChainBrokerManager(options.createChainProvider);
+  const broker = createChainPool({
+    createTransport: options.createChainProvider,
+    destroyDelay: options.destroyDelay,
+  });
   options.onBrokerReady?.(broker);
+
+  /** Drop a connection from the engine's books, freeing its slot. */
+  function forget(connectionId: string): StringJsonRpcConnection | null {
+    const entry = connections.get(connectionId);
+    if (entry === undefined) {
+      return null;
+    }
+    connections.delete(connectionId);
+    const owned = originConns.get(entry.origin);
+    owned?.delete(connectionId);
+    if (owned?.size === 0) {
+      originConns.delete(entry.origin);
+    }
+    return entry.connection;
+  }
+
+  /** A connection as `origin` may use it: another origin's is as unknown as a missing one. */
+  function owned(origin: string, connectionId: string): StringJsonRpcConnection | null {
+    const entry = connections.get(connectionId);
+    return entry?.origin === origin ? entry.connection : null;
+  }
 
   function assertStr(value: unknown, name: string): asserts value is string {
     if (typeof value !== 'string' || value.length === 0) {
@@ -197,19 +229,32 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         if (!options.isChainSupported(payload.genesisHash)) {
           throw new Error(`Unsupported chain: ${payload.genesisHash}`);
         }
-        const connection = broker.connectRemote(payload.genesisHash, payload.connectionId, message => {
-          respond({
-            namespace: 'dotli:protocol',
-            kind: 'chain-message',
-            connectionId: payload.connectionId,
-            message,
-          });
-        });
+        const { connectionId } = payload;
+        const connection = broker.connectRemote(
+          payload.genesisHash,
+          connectionId,
+          message => {
+            respond({
+              namespace: 'dotli:protocol',
+              kind: 'chain-message',
+              connectionId,
+              message,
+            });
+          },
+          () => {
+            // The broker has answered this connection's pending requests and
+            // stopped its follows by now; the client drops it on `chain-halt`.
+            if (forget(connectionId) === null) {
+              return;
+            }
+            respond({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+          },
+        );
         if (connection === null) {
           throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
         }
-        connections.set(payload.connectionId, connection);
-        oc.add(payload.connectionId);
+        connections.set(connectionId, { connection, origin });
+        oc.add(connectionId);
         originConns.set(origin, oc);
         respond({
           namespace: 'dotli:protocol',
@@ -225,8 +270,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
         const payload = request.payload as ProtocolRequestMap['chainSend'];
         assertStr(payload.connectionId, 'connectionId');
         assertStr(payload.message, 'message');
-        const conn = connections.get(payload.connectionId);
-        if (conn === undefined) {
+        const conn = owned(origin, payload.connectionId);
+        if (conn === null) {
           throw new Error(`Unknown chain connection: ${payload.connectionId}`);
         }
         conn.send(payload.message);
@@ -243,14 +288,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       case 'chainDisconnect': {
         const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
         assertStr(payload.connectionId, 'connectionId');
-        const conn = connections.get(payload.connectionId);
-        conn?.disconnect();
-        connections.delete(payload.connectionId);
-        for (const [orig, conns] of originConns) {
-          conns.delete(payload.connectionId);
-          if (conns.size === 0) {
-            originConns.delete(orig);
-          }
+        if (owned(origin, payload.connectionId) !== null) {
+          forget(payload.connectionId)?.disconnect();
         }
         respond({
           namespace: 'dotli:protocol',
@@ -270,8 +309,8 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
   }
 
   function cleanup(): void {
-    for (const conn of connections.values()) {
-      conn.disconnect();
+    for (const { connection } of connections.values()) {
+      connection.disconnect();
     }
     connections.clear();
     originConns.clear();
