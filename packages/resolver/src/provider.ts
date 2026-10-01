@@ -278,7 +278,9 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
  *
  * `hooks` hears each connection's status, and a halt when it fails or its
  * stream ends without `disconnect()`: smoldot does not reconnect underneath
- * its consumers, so that connection is gone for good.
+ * its consumers, so that connection is gone for good. Only a light client that
+ * cannot connect the chain also raises `onProviderFatal`; a chain that fails
+ * after it connected halts alone.
  */
 export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
@@ -315,6 +317,9 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
       // Set when the response stream ends, so the halt runs once, outside the
       // `try`: a throwing hook must not reach the `catch` and halt again.
       let streamEnded = false;
+      // Set once the light client has connected the chain. Only a failure
+      // before that is the light client's; one after it is this chain's.
+      let connected = false;
       try {
         const handle = await getHandle();
         // Must precede `connect`: only a chain's first add consumes a blob.
@@ -325,6 +330,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           return;
         }
         state.connection = candidate;
+        connected = true;
         hooks?.onStatus('connected');
         for (const message of queued) {
           candidate.send(message);
@@ -360,7 +366,14 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           onMessage(parsed);
         }
       } catch (error) {
-        markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+        const reason = error instanceof Error ? error.message : String(error);
+        if (connected) {
+          // A malformed response, a throwing consumer or a broken read on
+          // this chain: it halts alone, as when its stream ends.
+          log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`);
+        } else {
+          markFatal(`chain ${key} connection failed: ${reason}`);
+        }
         if (!isClosed()) {
           fail(error);
         }
