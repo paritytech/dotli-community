@@ -51,7 +51,7 @@ describe('user confirmation modal', () => {
       'Coinage asset instance': '0',
       'Payment operation': `0x${'09'.repeat(32)}`,
     });
-    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign')).click();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Approve payment').click();
     await expect(first).resolves.toBe(true);
     const second = confirmUserAction({
       ...review,
@@ -59,7 +59,7 @@ describe('user confirmation modal', () => {
     });
     await overlaysReady();
     expect(document.querySelector('.signing-modal')).not.toBeNull();
-    must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')).click();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel payment').click();
     await expect(second).resolves.toBe(false);
   });
 

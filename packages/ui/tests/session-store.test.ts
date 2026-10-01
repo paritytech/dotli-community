@@ -19,7 +19,7 @@ import {
   writeUiStateCache,
 } from '../src/host-callbacks/SessionStore.js';
 import { createAuthStateChanged } from '../src/host-callbacks/AuthState.js';
-import type { CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
+import type { CoreStorage, CoreStorageKey, SessionUiInfo } from '@parity/truapi-host';
 import { must } from './support.js';
 import type { CoreCustodyOperation, SharedWalletOperation, SharedWalletState } from '@dotli/protocol';
 import { handleWalletOperation } from '../../../apps/protocol/src/wallet-storage.js';
@@ -108,7 +108,7 @@ const CONNECTED_DETAIL = {
 const walletLockTails = new Map<string, Promise<void>>();
 let custodyLease: string | undefined;
 
-async function experimentalStore(factory = createSessionStoreAdapters) {
+async function experimentalStore(factory = createSessionStoreAdapters): Promise<CoreStorage> {
   if (custodyLease !== undefined) {
     await handleCoreCustody({ action: 'release', lease: custodyLease });
   }
@@ -117,7 +117,9 @@ async function experimentalStore(factory = createSessionStoreAdapters) {
     action: 'acquire',
     walletRevision: wallet.state.revision,
   });
-  if (typeof acquired !== 'string') throw new Error('Custody was not acquired');
+  if (typeof acquired !== 'string') {
+    throw new Error('Custody was not acquired');
+  }
   custodyLease = acquired;
   return factory(acquired);
 }
@@ -142,7 +144,7 @@ describe('session-store host callbacks', () => {
           options: LockOptions | (() => Promise<T>),
           callback?: (lock: object | null) => Promise<T>,
         ): Promise<T> {
-          const run = typeof options === 'function' ? options : () => must(callback)({});
+          const run = typeof options === 'function' ? options : () => must(callback, 'Lock callback')({});
           const result = (walletLockTails.get(name) ?? Promise.resolve()).then(run);
           walletLockTails.set(
             name,

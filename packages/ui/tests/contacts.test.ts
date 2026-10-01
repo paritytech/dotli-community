@@ -1,7 +1,7 @@
-import type { CoreStorage, NativeChatContactsSnapshot, ProductContext } from '@parity/truapi-host';
+import type { ContactsPlatform, CoreStorage, NativeChatContactsSnapshot, ProductContext } from '@parity/truapi-host';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
-import { createBlockingModalCoordinator } from '../src/blocking-modal-queue.js';
+import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { must } from './support.js';
 
@@ -17,15 +17,24 @@ const product: ProductContext = {
   productId: 'chat-client.paseo',
   executionKind: 'App',
 };
-const cleanups: Array<() => void> = [];
+const cleanups: (() => void)[] = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0)) cleanup();
+  for (const cleanup of cleanups.splice(0)) {
+    cleanup();
+  }
   resetOverlays();
   document.body.replaceChildren();
 });
 
-function fixture() {
+function fixture(): {
+  directory: NativeChatContactsDirectory;
+  adapter: { callbacks: Required<ContactsPlatform>; dispose(): void };
+  coordinator: BlockingModalCoordinator;
+  snapshot: NativeChatContactsSnapshot;
+  setRead(value: () => Promise<NativeChatContactsSnapshot>): void;
+  switchSession(): void;
+} {
   let snapshot: NativeChatContactsSnapshot = {
     walletPublicKey,
     genesisHash,
@@ -108,14 +117,14 @@ describe('native Chat contacts', () => {
 
   it('renders verified names as text, identifies unnamed peers, and revalidates the choice', async () => {
     const state = fixture();
-    must(state.snapshot.contacts[0]).username = '<img src=x onerror=alert(1)>';
+    must(state.snapshot.contacts[0], 'Alice contact').username = '<img src=x onerror=alert(1)>';
     const picked = state.adapter.callbacks.pickContact(product);
     const buttons = await choices();
-    expect(must(buttons[0]).textContent).toContain('<img src=x onerror=alert(1)>');
-    expect(must(buttons[0]).querySelector('img')).toBeNull();
-    expect(must(buttons[1]).textContent).toContain(bob);
+    expect(must(buttons[0], 'Alice choice').textContent).toContain('<img src=x onerror=alert(1)>');
+    expect(must(buttons[0], 'Alice choice').querySelector('img')).toBeNull();
+    expect(must(buttons[1], 'Bob choice').textContent).toContain(bob);
     expect(document.querySelector('[role=dialog]')?.textContent).toContain(product.productId);
-    must(buttons[1]).click();
+    must(buttons[1], 'Bob choice').click();
     await expect(picked).resolves.toEqual({
       tag: 'Picked',
       value: { account: bob },
@@ -129,7 +138,7 @@ describe('native Chat contacts', () => {
     const picked = state.adapter.callbacks.pickContact(product);
     const buttons = await choices();
     state.snapshot = { ...state.snapshot, contacts: [{ peerIdentity: bob }] };
-    must(buttons[0]).click();
+    must(buttons[0], 'Removed Alice choice').click();
     await expect(picked).rejects.toThrow();
     await expect(state.adapter.callbacks.contacts({ handleKey, handles: [aliceHandle] })).resolves.toEqual({
       accounts: [undefined],
@@ -181,7 +190,9 @@ describe('native Chat contacts', () => {
     await overlaysReady();
     expect(document.querySelector('[role=dialog]')).toBeNull();
     const other = createContactsPlatform(state.directory, state.coordinator.createScope());
-    cleanups.push(() => other.dispose());
+    cleanups.push(() => {
+      other.dispose();
+    });
     await expect(other.callbacks.contacts({ handleKey, handles: [aliceHandle] })).resolves.toEqual({
       accounts: [alice],
     });
@@ -189,7 +200,7 @@ describe('native Chat contacts', () => {
 
   it('never opens a queued picker under a replacement wallet', async () => {
     const state = fixture();
-    const blocker = Promise.withResolvers<void>();
+    const blocker = Promise.withResolvers<undefined>();
     const blockerScope = state.coordinator.createScope();
     const blocking = blockerScope.enqueue(() => blocker.promise);
     const picked = state.adapter.callbacks.pickContact(product);
@@ -198,7 +209,7 @@ describe('native Chat contacts', () => {
     });
     state.switchSession();
     await rejected;
-    blocker.resolve();
+    blocker.resolve(undefined);
     await blocking;
     expect(document.querySelector('[role=dialog]')).toBeNull();
     blockerScope.dispose();
@@ -206,7 +217,7 @@ describe('native Chat contacts', () => {
 
   it('invalidates active selections and late lookups at both trusted roster-write boundaries', async () => {
     const state = fixture();
-    const stored = Promise.withResolvers<void>();
+    const stored = Promise.withResolvers<undefined>();
     const backing: CoreStorage = {
       readCoreStorage: () => Promise.resolve(undefined),
       writeCoreStorage: () => stored.promise,
@@ -241,7 +252,7 @@ describe('native Chat contacts', () => {
     const rejectedLookup = expect(lookup).rejects.toMatchObject({
       name: 'AbortError',
     });
-    stored.resolve();
+    stored.resolve(undefined);
     await writing;
     await rejectedLookup;
     pending.resolve(state.snapshot);
@@ -256,7 +267,7 @@ describe('native Chat contacts', () => {
     const state = fixture();
     const picked = state.adapter.callbacks.pickContact(product);
     const buttons = await choices();
-    must(buttons[0]).dispatchEvent(
+    must(buttons[0], 'First contact choice').dispatchEvent(
       new KeyboardEvent('keydown', {
         key: 'Tab',
         shiftKey: true,
@@ -265,7 +276,9 @@ describe('native Chat contacts', () => {
       }),
     );
     expect(document.activeElement).toBe(document.querySelector('.signing-btn-cancel'));
-    must(document.activeElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    must(document.activeElement, 'Focused picker action').dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
     await expect(picked).resolves.toEqual({ tag: 'Dismissed' });
   });
 });

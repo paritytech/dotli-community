@@ -67,6 +67,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return `Remote:${request.value.permission.tag}`;
     case 'ChatAuthority':
       return 'ChatAuthority';
+    case 'StatementStoreAllowance':
+      return `StatementStoreAllowance:${JSON.stringify(request.value.derivationIndex)}`;
     case 'IdentityDisclosure':
       return 'IdentityDisclosure';
     case 'AccountAccess':

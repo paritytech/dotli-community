@@ -405,13 +405,13 @@ function createCore(product: PageProduct): Core {
     }
     try {
       assertCurrent();
+      const { dotns, coinage } = getActiveServicesConfig();
       worker = new HostWorker();
       const signing = await createWebWorkerSigningHostRuntime(worker, callbacks, {
-        hostConfig: {
-          ...hostConfig,
-          networkSuffix: getActiveServicesConfig().dotns.TLD,
-          coinageInstanceId: getActiveServicesConfig().coinage?.instanceId,
-        },
+        hostConfig:
+          coinage === undefined
+            ? { ...hostConfig, networkSuffix: dotns.TLD }
+            : { ...hostConfig, networkSuffix: dotns.TLD, coinageInstanceId: coinage.instanceId },
       });
       booted = signing;
       assertCurrent();

@@ -331,7 +331,7 @@ describe('host-owned experimental identity', () => {
 
   it('releases late custody before a replacement core starts signing', async () => {
     const { experimentalWalletControls: controls } = boot();
-    const gate = Promise.withResolvers<void>();
+    const gate = Promise.withResolvers<undefined>();
     owner.custodyGate = gate.promise;
     const first = controls.getIdentity();
     const rejected = expect(first).rejects.toThrow('Wallet or network changed');
@@ -342,7 +342,7 @@ describe('host-owned experimental identity', () => {
     const { disposePageCores } = await import('../src/page-core.js');
     disposePageCores();
     const replacement = controls.getIdentity();
-    gate.resolve();
+    gate.resolve(undefined);
     await rejected;
     await expect(replacement).resolves.toMatchObject({ identityAccountId: wallet.account });
     expect(wallet.sessions).toHaveLength(1);
