@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
-import { CHAIN_HALTED_ERROR_DATA } from './chain-halted.js';
+import { CHAIN_HALTED_ERROR_DATA, type RemoteChainHalt } from './chain-halted.js';
 import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
@@ -40,8 +40,7 @@ interface PendingRequest {
   onProgress?: ((message: string) => void) | undefined;
 }
 
-/** Why a remote connection halted: its own chain died, or the whole frame did. */
-export type RemoteChainHalt = 'chain' | 'frame';
+export type { RemoteChainHalt } from './chain-halted.js';
 
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
