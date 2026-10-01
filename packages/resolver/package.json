@@ -32,6 +32,8 @@
     "@polkadot-api/substrate-bindings": "0.21.2",
     "@polkadot-api/substrate-client": "0.7.0",
     "@polkadot-api/utils": "0.4.0",
+    "@polkadot-api/ws-middleware": "0.4.2",
+    "@polkadot-api/ws-provider": "0.9.1",
     "@polkadot-labs/hdkd": "^0.0.32",
     "@polkadot-labs/hdkd-helpers": "^0.0.34",
     "polkadot-api": "^3.2.0"
