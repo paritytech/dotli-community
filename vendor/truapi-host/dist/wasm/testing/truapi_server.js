@@ -743,7 +743,7 @@ export class WasmSigningHostRuntime {
     }
     /**
      * Build one product-scoped runtime from this signing host.
-     * Optional platform callbacks are execution-local; custody stays on this host.
+     * Optional platform callbacks are execution-local; shared authority stays here.
      * @param {any} product
      * @param {any} core_callbacks
      * @param {any | null} [platform_callbacks]

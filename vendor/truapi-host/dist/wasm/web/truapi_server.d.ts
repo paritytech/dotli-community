@@ -280,7 +280,7 @@ export class WasmSigningHostRuntime {
     permissionAuthorizationStatuses(product_id: string, payloads: Array<any>): Promise<Array<any>>;
     /**
      * Build one product-scoped runtime from this signing host.
-     * Optional platform callbacks are execution-local; custody stays on this host.
+     * Optional platform callbacks are execution-local; shared authority stays here.
      */
     productRuntime(product: any, core_callbacks: any, platform_callbacks?: any | null): WasmProductRuntime;
     /**
