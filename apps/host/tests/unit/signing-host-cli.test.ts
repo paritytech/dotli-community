@@ -10,15 +10,19 @@ describe('signing-host diagnostic privacy', () => {
   it('removes pairing secrets and configured recovery material from failure reports', () => {
     const privateMaterial = 'private signer material used only by this fixture';
     vi.stubEnv('HOST_CLI_SIGNER_MNEMONIC', privateMaterial);
-    const output = formatSigningHostExit({ code: 1, signal: null },
-      `pair polkadotapp://pair?handshake=private-handshake\nsigner ${privateMaterial}\nconnection refused`);
+    const output = formatSigningHostExit(
+      { code: 1, signal: null },
+      `pair polkadotapp://pair?handshake=private-handshake\nsigner ${privateMaterial}\nconnection refused`,
+    );
     expect(output).not.toContain('private-handshake');
     expect(output).not.toContain(privateMaterial);
     expect(output).toContain('connection refused');
   });
 
   it('removes labeled recovery material without discarding subsequent diagnostics', () => {
-    const output = sanitizeSigningHostOutput('Recovery phrase: private material\nmnemonic="more private material"\nready');
+    const output = sanitizeSigningHostOutput(
+      'Recovery phrase: private material\nmnemonic="more private material"\nready',
+    );
     expect(output).not.toContain('private material');
     expect(output).toContain('ready');
   });

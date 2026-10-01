@@ -132,7 +132,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
           return;
         }
         entry.guard.onStatus(status);
-        if (entry.live) {
+        if (entries.get(key) === entry) {
           setStatus(key, status);
         }
       },

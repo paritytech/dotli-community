@@ -956,7 +956,8 @@ export class ChainBroker {
       (message.method === 'transactionWatch_v1_watchEvent' &&
         (eventType === 'finalized' || eventType === 'error' || eventType === 'invalid' || eventType === 'dropped')) ||
       (message.method === 'author_extrinsicUpdate' &&
-        (eventResult === 'invalid' || eventResult === 'dropped' ||
+        (eventResult === 'invalid' ||
+          eventResult === 'dropped' ||
           (isJsonRpcObject(eventResult) &&
             ('finalized' in eventResult || 'usurped' in eventResult || 'finalityTimeout' in eventResult))));
     const localTokens = [...ownedLocals];
@@ -985,7 +986,6 @@ export class ChainBroker {
         },
       });
     }
-
   }
 
   private hasPendingSubscriptionRequest(): boolean {
