@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
+import { log } from '@dotli/shared';
 import { createRemoteChainProvider, getProtocolOrigin, resetProtocolFrame } from '../src/client.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
@@ -44,7 +45,7 @@ async function bootFrame(): Promise<Frame> {
 async function connectRemote(onHalt?: () => void): Promise<{
   frame: Frame;
   received: JsonRpcMessage[];
-  connection: ReturnType<NonNullable<ReturnType<typeof createRemoteChainProvider>>>;
+  connection: JsonRpcConnection;
   connectionId: string;
 }> {
   const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
@@ -87,19 +88,22 @@ describe('createRemoteChainProvider halts', () => {
     ]);
   });
 
-  it('As a dotli integrator, a halt listener that throws is logged and goes no further', async () => {
+  it('As a dotli integrator, a halt listener that throws is logged and the connection still closes', async () => {
     // Given
-    const { frame, connectionId } = await connectRemote(() => {
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const { frame, received, connection, connectionId } = await connectRemote(() => {
       throw new Error('listener bug');
     });
 
     // When
-    const deliver = (): void => {
-      frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
-    };
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+    connection.send({ jsonrpc: '2.0', id: 9, method: 'chainSpec_v1_genesisHash', params: [] });
 
     // Then
-    expect(deliver).not.toThrow();
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining('onHalt threw'), 'listener bug');
+    expect(received).toEqual([
+      { jsonrpc: '2.0', id: 9, error: { code: -32603, message: 'Chain connection is closed' } },
+    ]);
   });
 
   it('As a dotli integrator, a connection closed before its chain halts hears nothing', async () => {
