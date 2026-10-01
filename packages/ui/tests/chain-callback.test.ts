@@ -160,7 +160,7 @@ describe('createChainConnect', () => {
     second.close();
   });
 
-  it('As a dotli integrator, a halted chain transport ends the core connection stream', async () => {
+  it('As a dotli integrator, a halted chain transport leaves the core connection stream open', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
@@ -168,12 +168,41 @@ describe('createChainConnect', () => {
 
     // When
     must(mocks.upstreams[0], 'upstream').hooks.onHalt(new Error('chain stopped responding'));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    const rebuilt = must(mocks.upstreams[1], 'rebuilt upstream');
+    rebuilt.emit({ jsonrpc: '2.0', id: must(must(rebuilt.sent[0], 'request').id, 'id'), result: 'People' });
 
     // Then
-    expect((await pending).done).toBe(true);
+    expect(JSON.parse(yielded(await pending))).toEqual({ jsonrpc: '2.0', id: 'truapi:2', result: 'People' });
+    connection.close();
   });
 
-  it('As a dotli integrator, a halted chain transport still delivers the messages queued before it, then ends the stream', async () => {
+  it('As a dotli integrator, a request after a halt that no new transport can serve is answered at once', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(mocks.upstreams[0], 'upstream').hooks.onHalt(new Error('chain stopped responding'));
+    mocks.createFrameChainTransport.mockReturnValue(null);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the request gets the halted error, the notification nothing.
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({
+      jsonrpc: '2.0',
+      id: 'truapi:2',
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+    });
+    expect(warn).toHaveBeenCalledWith(
+      `[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`,
+    );
+    connection.close();
+    expect((await responses.next()).done).toBe(true);
+  });
+
+  it('As a dotli integrator, a halted chain transport still delivers the messages queued before it', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     connection.send(
@@ -200,10 +229,11 @@ describe('createChainConnect', () => {
       method: 'transactionWatch_v1_watchEvent',
       params: { subscription: ack.result, result: { event: 'dropped' } },
     });
+    connection.close();
     expect((await responses.next()).done).toBe(true);
   });
 
-  it('As a dotli integrator, a halted chain transport answers a request in flight before the stream ends', async () => {
+  it('As a dotli integrator, a halted chain transport answers a request in flight', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     connection.send(
@@ -222,6 +252,7 @@ describe('createChainConnect', () => {
       id: 'truapi:9',
       error: { message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
+    connection.close();
     expect((await responses.next()).done).toBe(true);
   });
 

@@ -14,19 +14,19 @@
 // Every core connection is a lease on the host page's chain pool: one
 // connection per chain, shared through the broker, which keeps each core
 // connection's ids apart. Over RPC the socket replays its subscriptions when
-// it reconnects. A transport that dies for good ends its connections' streams
-// after they deliver what was queued (including `dropped` for transaction
-// watches). The installed truapi-host does not act on the end itself, so other
-// requests on that connection stay pending (spec follow-up: "Interrupt the
-// core on a halt").
+// it reconnects. When a transport dies for good, its connections still
+// deliver what was queued (including `dropped` for transaction watches), and
+// stay open: the installed truapi-host ignores a stream's end. The next
+// request takes a new lease, which rebuilds the chain.
 
 import { bytesToHex } from '@parity/truapi/scale';
-import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcConnection, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getBackend } from '@dotli/config';
 import {
+  CHAIN_HALTED_ERROR_DATA,
   createChainPool,
   haltReasonOf,
   isRemoteChainConnectable,
@@ -105,39 +105,75 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   );
 }
 
-function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection {
-  if (!provider) {
+/** What a request after a halt gets when no new lease can be taken, so it does not hang. */
+function haltedAnswer(id: string | number): unknown {
+  return {
+    jsonrpc: '2.0',
+    id,
+    error: { code: -32603, message: 'Chain transport halted', data: CHAIN_HALTED_ERROR_DATA },
+  };
+}
+
+/**
+ * A core connection over leases on the host pool. `takeLease` is asked for the
+ * first lease, and again on the first send after a halt.
+ */
+function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null): PlatformJsonRpcConnection {
+  const first = takeLease();
+  if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
   const queue: string[] = [];
   let wake: (() => void) | null = null;
-  let halted = false;
   let closed = false;
-  // The chain's transport is gone for good: the stream ends once it has
-  // delivered what was queued. truapi-host 0.23.0 ignores the end itself, so
-  // other requests on this connection stay pending.
-  const halt = (): void => {
-    halted = true;
-    wake?.();
-    wake = null;
-  };
-  const conn = provider((message: unknown) => {
+  let lease: JsonRpcConnection | null = null;
+
+  const deliver = (message: unknown): void => {
     if (closed) {
       return;
     }
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  }, halt);
-  // Calls, so the checks after the drain aren't narrowed by earlier ones.
-  const isHalted = (): boolean => halted;
+  };
+  // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
+  // ignores its end and keeps sending on this connection. The broker has
+  // answered the requests in flight and stopped the follows, so the next send
+  // takes a new lease, which rebuilds the chain (and, after `'frame'`, boots
+  // a frame: the product asked).
+  const open = (provider: LeaseProvider): JsonRpcConnection => {
+    const connection: JsonRpcConnection = provider(deliver, () => {
+      if (lease === connection) {
+        lease = null;
+      }
+    });
+    lease = connection;
+    return connection;
+  };
+  const reopen = (): JsonRpcConnection | null => {
+    try {
+      const provider = takeLease();
+      if (provider !== null) {
+        return open(provider);
+      }
+    } catch (error: unknown) {
+      log.warn(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
+      return null;
+    }
+    log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
+    return null;
+  };
+  open(first);
+
+  // A call, so the check after the drain isn't narrowed by earlier ones.
   const isClosed = (): boolean => closed;
   const close = (): void => {
     if (closed) {
       return;
     }
     closed = true;
-    conn.disconnect();
+    lease?.disconnect();
+    lease = null;
     wake?.();
     wake = null;
   };
@@ -148,19 +184,29 @@ function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection
       if (!isJsonRpcRequest(parsed)) {
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }
-      conn.send(parsed);
+      if (closed) {
+        return;
+      }
+      const connection = lease ?? reopen();
+      if (connection === null) {
+        // Notifications have nothing to answer.
+        if (parsed.id !== undefined && parsed.id !== null) {
+          deliver(haltedAnswer(parsed.id));
+        }
+        return;
+      }
+      connection.send(parsed);
     },
     async *responses(): AsyncIterable<string> {
       try {
         for (;;) {
-          // A halt still delivers what was queued; a close ends at once.
           while (!isClosed() && queue.length > 0) {
             const response = queue.shift();
             if (response !== undefined) {
               yield response;
             }
           }
-          if (isHalted() || isClosed()) {
+          if (isClosed()) {
             break;
           }
           await new Promise<void>(resolve => {
@@ -187,13 +233,13 @@ export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvid
         log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
+      return Promise.resolve(toConnection(genesisHash, () => pool.getLocalProvider(genesisHash)));
     }
 
     if (!isRemoteChainConnectable(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
+    return Promise.resolve(toConnection(genesisHash, () => pool.getLocalProvider(genesisHash)));
   };
 }

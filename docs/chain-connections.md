@@ -227,10 +227,11 @@ sequenceDiagram
   their next read takes a fresh lease. A resolution running at that moment is
   retried once on it (see below).
 - On the smoldot backends the host pool's remote connection hears
-  `onHalt('chain')`, and the host pool halts that chain the same way: each
-  TrUAPI core connection delivers its answers, then ends, and each block bar
-  or probe client hears `'chain'` (`hostChainProvider` reads the reason with
-  `haltReasonOf`). The next lease connects again.
+  `onHalt('chain')`, and the host pool halts that chain the same way. Each
+  TrUAPI core connection delivers its answers and stays open; its next request
+  takes a new lease, which rebuilds the chain (a papi client in the product
+  re-follows on the `stop`, and lands there). Each block bar or probe client
+  hears `'chain'` (`hostChainProvider` reads the reason with `haltReasonOf`).
 
 ### …a chain halts while a page is loading
 
@@ -299,9 +300,12 @@ sequenceDiagram
   fetch in progress, and block bars wait for a frame that something else
   started (`onProtocolReady`).
 - The host pool's remote connections hear `'frame'` too. Each halts its chain
-  with `ChainHaltError('frame')`: TrUAPI core connections deliver what was
-  queued, then end, and the block bars hear `'frame'` through the host pool.
-  A product's next chain call takes a new lease, which boots a new frame.
+  with `ChainHaltError('frame')`, and the block bars hear `'frame'` through the
+  host pool. TrUAPI core connections deliver what was queued and stay open. A
+  product's next request on one takes a new lease, which boots a new frame:
+  the product asked. If no lease can be taken, that request is answered at
+  once with `Chain transport halted` (`data: 'dotli:chain-halted'`), so
+  nothing hangs.
 - A connection that never reaches a frame halts with `'frame'` too: the frame
   did not come up in time, its iframe failed to load, or it refused the
   `chainConnect` (for example at its connection limit). So bitswap drops that
@@ -351,8 +355,8 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 ## Known limits
 
 - `@parity/truapi-host` ignores the end of a chain connection's response
-  stream, so after a host-pool halt the TrUAPI core gets its in-flight answers
-  but requests it sends afterwards on that connection stay pending.
+  stream, so the host never ends one on a halt: a core connection outlives its
+  lease, and its next request takes a new one. Only `close()` ends it.
 - The watched chains in `smoldot-direct` do not take a new lease after a halt;
   the loading bar loses that chain's progress until something else opens it.
 - In `rpc-gateway`, bitswap (the product icon, the debug panel's archive) still

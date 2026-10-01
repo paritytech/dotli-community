@@ -108,7 +108,7 @@ describe('host chain pool on a light client backend', () => {
       // Then
       expect(onHalt).toHaveBeenCalledTimes(1);
       expect(onHalt).toHaveBeenCalledWith(reason);
-      expect((await product.responses()[Symbol.asyncIterator]().next()).done).toBe(true);
+      product.close();
     },
   );
 
@@ -136,20 +136,74 @@ describe('host chain pool on a light client backend', () => {
     expect(remote.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it("As a dotli user, a dead protocol frame ends a product's connection after what it had queued", async () => {
-    // Given: a product request answered by the frame, not yet read.
-    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
-    const remote = must(remotes[0], 'remote');
-    remote.emit({ jsonrpc: '2.0', id: must(must(remote.sent[0], 'request').id, 'id'), result: 'People' });
+  it.each(['chain', 'frame'] as const)(
+    "As a dotli user, a product's chain connection outlives a %s halt: what was queued arrives, and its next request opens a fresh connection to the frame",
+    async reason => {
+      // Given: a product request answered by the frame, not yet read.
+      const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+      const responses = connection.responses()[Symbol.asyncIterator]();
+      connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
+      const first = must(remotes[0], 'first remote');
+      first.emit({ jsonrpc: '2.0', id: must(must(first.sent[0], 'request').id, 'id'), result: 'People' });
+
+      // When: the connection to the frame halts, then the product asks again.
+      first.halt(reason);
+      connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+
+      // Then: the queued answer arrives, a new remote connection carries the
+      // next request, and its answer reaches the same stream.
+      expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'People' });
+      expect(remotes).toHaveLength(2);
+      const second = must(remotes[1], 'second remote');
+      expect(first.sent).toHaveLength(1);
+      second.emit({ jsonrpc: '2.0', id: must(must(second.sent[0], 'request').id, 'id'), result: 'People again' });
+      expect(JSON.parse(yielded(await responses.next()))).toEqual({
+        jsonrpc: '2.0',
+        id: 'truapi:2',
+        result: 'People again',
+      });
+      connection.close();
+      expect((await responses.next()).done).toBe(true);
+    },
+  );
+
+  it('As a dotli user, a block bar after a halt opens a fresh connection to the frame', () => {
+    // Given
+    const pool = createHostChainPool();
+    const provider = must(hostChainProvider(people, pool), 'provider');
+    provider(
+      () => undefined,
+      () => undefined,
+    );
+    must(remotes[0], 'first remote').halt('chain');
 
     // When
-    remote.halt('frame');
+    const bar = provider(() => undefined);
+    bar.send({ jsonrpc: '2.0', id: 'bar:1', method: 'chainSpec_v1_genesisHash', params: [] });
 
     // Then
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'People' });
-    expect((await responses.next()).done).toBe(true);
+    expect(remotes).toHaveLength(2);
+    expect(must(remotes[1], 'second remote').sent).toHaveLength(1);
+    bar.disconnect();
+  });
+
+  it('As a dotli user, the connection to the protocol frame closes 60 seconds after the last of two leases', async () => {
+    // Given
+    const connect = createChainConnect(createHostChainPool());
+    const first = await connect(hexBytes(people));
+    const second = await connect(hexBytes(people));
+    const remote = must(remotes[0], 'remote');
+
+    // When: one lease is released, and the other a while later.
+    first.close();
+    await vi.advanceTimersByTimeAsync(30_000);
+    second.close();
+    await vi.advanceTimersByTimeAsync(59_999);
+
+    // Then: the countdown started at the second release.
+    expect(remote.disconnect).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(remote.disconnect).toHaveBeenCalledTimes(1);
   });
 });
 
