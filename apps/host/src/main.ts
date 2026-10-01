@@ -439,7 +439,8 @@ let rpcResolveReady: Promise<RpcResolveModule> | null = null;
 /**
  * The gateway resolver, wired to the host pool's Asset Hub connection before
  * its first use. The resolver cannot import the pool itself; the lease comes
- * from the bridge module, which boot has already awaited by then.
+ * from the bridge module, which boot has already awaited by the first
+ * resolution.
  */
 function loadRpcResolve(): Promise<RpcResolveModule> {
   if (rpcResolveReady !== null) {
@@ -763,14 +764,16 @@ async function applyUrlSettings(): Promise<void> {
     resetProtocolFrame();
   }
 
-  // Same logic for the trusted-RPC path's cached `chainHead_v1_follow`.
-  if (prior.chain !== next.chain || prior.network !== next.network) {
+  // Same logic for the trusted-RPC path's cached `chainHead_v1_follow`. Only a
+  // gateway resolver that was loaded can hold one, and this runs at the top of
+  // boot, before anything resolved. Loading it here would fetch the resolver
+  // and the bridge ahead of the protocol frame only to find nothing to destroy.
+  if ((prior.chain !== next.chain || prior.network !== next.network) && rpcResolveReady !== null) {
     try {
-      const r = await loadRpcResolve();
-      r.destroyRpcClient();
-      // eslint-disable-next-line no-restricted-syntax -- defensive teardown: the rpc-resolve module may not have been imported yet on this boot, in which case there is nothing to destroy.
+      (await rpcResolveReady).destroyRpcClient();
+      // eslint-disable-next-line no-restricted-syntax -- defensive teardown: a load that failed has no client to destroy.
     } catch {
-      /* not loaded yet */
+      /* the load failed: nothing to destroy */
     }
   }
 
