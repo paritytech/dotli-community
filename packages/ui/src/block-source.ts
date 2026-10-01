@@ -8,6 +8,7 @@
 import { log } from '@dotli/shared';
 import {
   createRemoteChainProvider,
+  isProtocolReady,
   isRemoteChainConnectable,
   onProtocolReady,
   type RemoteChainHalt,
@@ -24,8 +25,9 @@ const MAX_RETRY_MS = 30_000;
  * reports every head change rather than whatever a poll happens to catch.
  *
  * When the chain halts the client is destroyed and a new one is dialled after
- * a doubling wait, reset by a block. When the protocol frame dies there is
- * nothing to dial until it reports ready again, so the bar waits for that.
+ * a doubling wait, reset by a block. When the protocol frame dies, before the
+ * halt or during that wait, there is nothing to dial until it reports ready
+ * again, so the bar waits for that.
  */
 export function createBlockSource(): BlockSource {
   return {
@@ -52,6 +54,14 @@ export function createBlockSource(): BlockSource {
         live.unready = null;
       };
 
+      // Dialling without a frame would boot one, which a bar never does on its own.
+      const awaitFrame = (): void => {
+        live.unready = onProtocolReady(() => {
+          clearWaiting();
+          void connect();
+        });
+      };
+
       const connect = async (): Promise<void> => {
         try {
           const remote = createRemoteChainProvider(genesis);
@@ -75,18 +85,22 @@ export function createBlockSource(): BlockSource {
             live.teardown?.();
             clearWaiting();
             if (reason === 'frame') {
-              live.unready = onProtocolReady(() => {
-                clearWaiting();
-                void connect();
-              });
+              awaitFrame();
               return;
             }
             const wait = live.delay;
             live.delay = Math.min(live.delay * 2, MAX_RETRY_MS);
             live.timer = setTimeout(() => {
               live.timer = null;
-              if (!live.cancelled) {
+              if (live.cancelled) {
+                return;
+              }
+              // A frame that died during the wait told only the connections
+              // it had, and dialling now would boot a new one.
+              if (isProtocolReady()) {
                 void connect();
+              } else {
+                awaitFrame();
               }
             }, wait);
           };

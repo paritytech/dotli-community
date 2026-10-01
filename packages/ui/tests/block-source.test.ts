@@ -16,12 +16,14 @@ const mocks = vi.hoisted(() => ({
   remote: vi.fn(),
   createClient: vi.fn(),
   onProtocolReady: vi.fn(),
+  isProtocolReady: vi.fn<() => boolean>(),
 }));
 
 vi.mock('@dotli/protocol', () => ({
   createRemoteChainProvider: mocks.remote,
   isRemoteChainConnectable: () => true,
   onProtocolReady: mocks.onProtocolReady,
+  isProtocolReady: mocks.isProtocolReady,
 }));
 vi.mock('polkadot-api', () => ({ createClient: mocks.createClient }));
 
@@ -65,6 +67,7 @@ describe('network block source', () => {
       clients.push(client);
       return client;
     });
+    mocks.isProtocolReady.mockReset().mockReturnValue(true);
     mocks.onProtocolReady.mockReset().mockImplementation((listener: () => void) => {
       readyListeners.push(listener);
       return unreadied;
@@ -142,6 +145,25 @@ describe('network block source', () => {
 
     // Then: nothing was dialled until the frame reports ready.
     expect(clients).toHaveLength(1);
+    readyListeners[0]?.();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(clients).toHaveLength(2);
+    expect(live()).toBe(1);
+    expect(unreadied).toHaveBeenCalled();
+  });
+
+  it('As a dotli user, a bar in its backoff does not boot a protocol frame that died meanwhile', async () => {
+    // Given: a chain that halted and is waiting out its backoff.
+    await start();
+    halt('chain');
+
+    // When: the frame dies before the wait ends.
+    mocks.isProtocolReady.mockReturnValue(false);
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    // Then: nothing was dialled until the frame reports ready.
+    expect(clients).toHaveLength(1);
+    expect(mocks.remote).toHaveBeenCalledTimes(1);
     readyListeners[0]?.();
     await vi.advanceTimersByTimeAsync(0);
     expect(clients).toHaveLength(2);

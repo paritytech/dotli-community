@@ -8,6 +8,7 @@ import { log } from '@dotli/shared';
 import {
   createRemoteChainProvider,
   getProtocolOrigin,
+  isProtocolReady,
   onProtocolReady,
   resetProtocolFrame,
   type RemoteChainHalt,
@@ -282,6 +283,34 @@ describe('createRemoteChainProvider halts', () => {
 
     // Then
     expect(listener).toHaveBeenCalledTimes(2);
+  });
+
+  it('As a dotli integrator, I can tell whether a protocol frame is up, without starting one', async () => {
+    // Given
+    vi.spyOn(log, 'error').mockImplementation(() => undefined);
+
+    // Then
+    expect(isProtocolReady()).toBe(false);
+    expect(document.querySelector('iframe')).toBeNull();
+
+    // When
+    const first = await connectRemote();
+
+    // Then
+    expect(isProtocolReady()).toBe(true);
+
+    // When
+    first.frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+
+    // Then
+    expect(isProtocolReady()).toBe(false);
+
+    // When
+    await connectRemote();
+    resetProtocolFrame();
+
+    // Then
+    expect(isProtocolReady()).toBe(false);
   });
 
   it('As a dotli integrator, a consumer that throws while its queued send is closed cannot stop the rest from halting', async () => {

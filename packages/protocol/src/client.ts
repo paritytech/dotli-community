@@ -728,6 +728,15 @@ export function onProtocolChainSync(listener: (event: ProtocolChainSyncEnvelope)
 }
 
 /**
+ * Whether a protocol frame is up: it has signalled ready and not been reset or
+ * died since. Does not start a frame, so a consumer that must not boot one on
+ * its own can check before it dials.
+ */
+export function isProtocolReady(): boolean {
+  return protocolReady;
+}
+
+/**
  * Subscribe to each time the protocol frame comes up. Does not start a frame.
  * Returns an unsubscribe function.
  */
