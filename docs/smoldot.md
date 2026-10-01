@@ -25,6 +25,22 @@ Both origins use the singleton in `packages/resolver/src/provider.ts`,
 backed by **`@parity/truapi-provider` 0.3.1**. RPC Gateway mode routes
 requests to configured WebSocket endpoints instead.
 
+In `rpc-gateway` mode, `createCoreRpcChainProvider(genesisHash, onHalt)`
+requires its owner to handle transport loss. Quiet subscriptions are kept
+alive with a `system_health` probe after 60 seconds without inbound traffic;
+probe replies stay inside the provider. The 120-second inbound deadline
+still detects an unresponsive node. Initial connection failures retain
+endpoint failover, but an established connection is never silently replaced.
+On failure the provider closes the socket and calls `onHalt` once.
+
+The Rust-core adapter ends its response stream so pending calls and
+subscriptions are interrupted. The iframe broker rejects pending calls,
+emits the subscription family's terminal event or error, and clears old
+tokens and follow snapshots before accepting a fresh subscription. It
+reconnects lazily on the next request; old-connection callbacks cannot reach
+the replacement session. Explicit consumer shutdown cancels health probes
+and does not report a transport failure.
+
 ## Provider contract
 
 `createChainProvider(genesisHash)` adapts the provider's raw JSON-RPC
