@@ -12,9 +12,9 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import type { StringJsonRpcConnection, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/protocol';
+import type { SmoldotDbChain, SmoldotDbOutcome } from '@dotli/protocol';
 
-import { MAX_CONNECTIONS_PER_ORIGIN, isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@dotli/config';
+import { isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@dotli/config';
 
 import {
   createChainProvider,
@@ -35,12 +35,11 @@ import {
 import { m, initSentry, installGlobalErrorHandlers, spans as S } from '@dotli/metrics';
 
 import {
-  createChainBrokerManager,
+  createChainPool,
   requireBrokerLocalProvider,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
   getRequestSyncTimeoutMs,
-  type ChainBrokerManager,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolEnvelope,
@@ -48,6 +47,7 @@ import {
 import { errorName, serializeError, isExecutableKind } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { createWorkerChainSessions, type WorkerChainSessions } from './worker-chains.js';
 
 initSentry('worker');
 installGlobalErrorHandlers('worker');
@@ -88,13 +88,12 @@ function swError(...args: unknown[]): void {
   console.error(TAG, ...args);
 }
 
-const MAX_CHAIN_CONNECTIONS = 10;
-const chainConnections = new Map<string, StringJsonRpcConnection>();
-const originConnections = new Map<string, Set<string>>();
-const connectionPorts = new Map<string, MessagePort>();
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
 let engineReady = false;
+// Why the engine is dead for good: pre-sync failed, or the light client could
+// not connect a chain. Every port that connects later is told, never `ready`.
+let presyncFailureMessage: string | null = null;
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
@@ -109,14 +108,19 @@ if (requestedNetwork === null) {
   swLog(`Active network pinned to ${requestedNetwork}`);
 }
 
-// Chain-death broadcast. When a chain connection ends without a deliberate
-// disconnect, relay a `fatal` envelope to every connected port so the host
-// client rejects every in-flight request immediately instead of waiting for
-// a per-request timeout. `onProviderFatal` is idempotent and replays to late
-// subscribers, so firing this once at module load covers the SharedWorker's
-// lifetime.
+// Light-client death broadcast. When the light client cannot connect a chain,
+// relay a `fatal` envelope to every connected port so the host client rejects
+// every in-flight request immediately instead of waiting for a per-request
+// timeout. `onProviderFatal` is idempotent and replays to late subscribers,
+// so firing this once at module load covers the SharedWorker's lifetime.
+//
+// The light client stays dead for every tab: the engine is marked failed, so
+// a port that connects later (another tab, or this one after its retry) gets
+// the cause through the same path as a failed pre-sync, never `ready`.
 onProviderFatal(message => {
   swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
+  engineReady = false;
+  presyncFailureMessage = message;
   broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
 });
 
@@ -136,14 +140,19 @@ onSmoldotDbOutcome((chain, outcome) => {
   });
 });
 
-// Placeholder broker manager until pre-sync creates the real one.
-let chainBrokerManager: ChainBrokerManager;
+// Created by pre-sync.
+let chainSessions: WorkerChainSessions | null = null;
+
+function requireChainSessions(): WorkerChainSessions {
+  if (chainSessions === null) {
+    throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
+  }
+  return chainSessions;
+}
 
 // NO retries. NO cleanup-and-retry. NO backoff. The user picked
 // smoldot-shared-worker. If presync fails the actual cause is surfaced to
 // every waiting port and the engine stays dead until the user reloads.
-
-let presyncFailureMessage: string | null = null;
 
 async function presync(): Promise<void> {
   const t0 = performance.now();
@@ -154,16 +163,20 @@ async function presync(): Promise<void> {
     // through it as a local session, so there is one shared Asset Hub follow
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
-    chainBrokerManager = createChainBrokerManager(createChainProvider);
+    const pool = createChainPool({
+      createTransport: createChainProvider,
+      destroyDelay: Infinity,
+    });
+    chainSessions = createWorkerChainSessions(pool, isChainSupported, sendToPort, swLog);
     setResolverAssetHubProvider(() =>
-      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
+      requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );
     // The People warm-keep must share this same broker follow. A separate
     // getSmProvider on the People chain would race the broker's follow (one
     // shared smoldot JSON-RPC queue) and have its events misrouted, so the
     // broker drops People follow events as "unknown token" and reads hang.
     setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().people.genesis, 'People'),
+      requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
     );
 
     // Wait for Asset Hub to sync to a finalized block via the
@@ -177,6 +190,12 @@ async function presync(): Promise<void> {
     m.measure(S.SMOLDOT_PRESYNC, totalMs);
     m.distribution(S.SMOLDOT_PRESYNC, totalMs);
     swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
+
+    // A light client that failed while Asset Hub synced stays dead: the
+    // waiting ports were told by the fatal broadcast, and must not hear ready.
+    if (presyncFailureMessage !== null) {
+      return;
+    }
 
     // Success: mark ready.
     swLog('Pre-sync complete, engine ready');
@@ -214,11 +233,16 @@ async function presync(): Promise<void> {
     m.breadcrumb('smoldot presync failed', { reason: msg });
 
     // Surface the actual cause to every waiting port. Engine remains
-    // permanently dead. The user must reload to retry.
-    presyncFailureMessage = msg;
-    for (const port of pendingPorts) {
-      const errorMsg: SWError = { type: 'error', message: msg };
-      port.postMessage(errorMsg);
+    // permanently dead. The user must reload to retry. A light client that
+    // died during pre-sync is that cause, and this failure only its symptom:
+    // the fatal broadcast already told the waiting ports, and later ones hear
+    // the fatal's message.
+    if (presyncFailureMessage === null) {
+      presyncFailureMessage = msg;
+      for (const port of pendingPorts) {
+        const errorMsg: SWError = { type: 'error', message: msg };
+        port.postMessage(errorMsg);
+      }
     }
     pendingPorts.length = 0;
   }
@@ -262,22 +286,7 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
 
 function removePort(port: MessagePort): void {
   ports.delete(port);
-  let cleaned = 0;
-  for (const [connId, connPort] of connectionPorts) {
-    if (connPort === port) {
-      const connection = chainConnections.get(connId);
-      connection?.disconnect();
-      chainConnections.delete(connId);
-      connectionPorts.delete(connId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(connId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      cleaned++;
-    }
-  }
+  const cleaned = chainSessions?.removePort(port) ?? 0;
   swLog(`Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`);
 }
 
@@ -403,42 +412,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       const payload = request.payload as ProtocolRequestMap['chainConnect'];
       assertString(payload.genesisHash, 'genesisHash');
       assertString(payload.connectionId, 'connectionId');
-      if (chainConnections.size >= MAX_CHAIN_CONNECTIONS) {
-        throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
-      }
-      const originConns = originConnections.get(origin) ?? new Set<string>();
-      if (originConns.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-        throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
-      }
-      if (!isChainSupported(payload.genesisHash)) {
-        throw new Error(`Unsupported chain: ${payload.genesisHash}`);
-      }
-      // The resolver and all dApp sessions share one Asset Hub chain via the
-      // broker, so there is no resolver chain to release here; connect
-      // directly.
-      let chainMsgCount = 0;
-      const connection = chainBrokerManager.connectRemote(payload.genesisHash, payload.connectionId, message => {
-        chainMsgCount++;
-        if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-          swLog(
-            `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
-          );
-        }
-        sendToPort(port, {
-          namespace: 'dotli:protocol',
-          kind: 'chain-message',
-          connectionId: payload.connectionId,
-          message,
-        });
-      });
-      if (connection === null) {
-        throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
-      }
-      chainConnections.set(payload.connectionId, connection);
-      connectionPorts.set(payload.connectionId, port);
-      originConns.add(payload.connectionId);
-      originConnections.set(origin, originConns);
-      swLog(`Chain connected: ${payload.connectionId} (${String(chainConnections.size)} total)`);
+      requireChainSessions().connect(port, origin, payload.genesisHash, payload.connectionId);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -453,11 +427,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       const payload = request.payload as ProtocolRequestMap['chainSend'];
       assertString(payload.connectionId, 'connectionId');
       assertString(payload.message, 'message');
-      const connection = chainConnections.get(payload.connectionId);
-      if (connection === undefined) {
-        throw new Error(`Unknown chain connection: ${payload.connectionId}`);
-      }
-      connection.send(payload.message);
+      requireChainSessions().send(origin, payload.connectionId, payload.message);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -471,17 +441,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     case 'chainDisconnect': {
       const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
       assertString(payload.connectionId, 'connectionId');
-      const connection = chainConnections.get(payload.connectionId);
-      connection?.disconnect();
-      chainConnections.delete(payload.connectionId);
-      connectionPorts.delete(payload.connectionId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(payload.connectionId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      swLog(`Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`);
+      requireChainSessions().disconnect(origin, payload.connectionId);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -562,7 +522,16 @@ self.addEventListener('connect', event => {
 
   port.start();
 
-  if (engineReady) {
+  if (presyncFailureMessage !== null) {
+    // The engine is dead: pre-sync failed, or the light client could not
+    // connect a chain. Surface the original cause immediately instead of
+    // queuing this port forever or telling it the engine is ready.
+    const errorMsg: SWError = {
+      type: 'error',
+      message: presyncFailureMessage,
+    };
+    port.postMessage(errorMsg);
+  } else if (engineReady) {
     // Engine already synced, signal ready immediately.
     const readyMsg: SWReady = { type: 'ready' };
     port.postMessage(readyMsg);
@@ -577,14 +546,6 @@ self.addEventListener('connect', event => {
         outcome: 'hit',
       });
     }
-  } else if (presyncFailureMessage !== null) {
-    // Pre-sync already failed. Surface the original cause immediately
-    // instead of queuing this port forever.
-    const errorMsg: SWError = {
-      type: 'error',
-      message: presyncFailureMessage,
-    };
-    port.postMessage(errorMsg);
   } else {
     // Engine still syncing. Queue the port and signal when pre-sync completes.
     // A port arriving after a store read missed that record-time broadcast

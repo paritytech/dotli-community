@@ -9,6 +9,7 @@
     "build": "tsc && vite build",
     "build:prod": "tsc && vite build && node ../../scripts/compress-dist.ts",
     "lint": "eslint .",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

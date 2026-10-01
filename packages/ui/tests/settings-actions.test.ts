@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveServicesConfig } from '@dotli/config';
+import type { RemoteChainProvider } from '@dotli/protocol';
 import type { ModeDraft } from '../src/settings-actions.js';
 
 const mocks = vi.hoisted(() => ({
@@ -17,6 +19,15 @@ vi.mock('../../storage/src/cid-cache.js', async importOriginal => ({
 vi.mock('../../storage/src/block-cache.js', () => ({
   clearBlockCache: mocks.clearBlockCache,
 }));
+
+const probe = vi.hoisted(() => ({
+  hostChainProvider: vi.fn<(genesisHash: string) => RemoteChainProvider | null>(),
+  createClient: vi.fn(),
+}));
+vi.mock('../src/lazy.js', () => ({
+  loadBridge: () => Promise.resolve({ hostChainProvider: probe.hostChainProvider }),
+}));
+vi.mock('polkadot-api', () => ({ createClient: probe.createClient }));
 
 const CACHE_ON = {
   skipCidCache: false,
@@ -72,5 +83,44 @@ describe('applyAndReset: archive cache', () => {
 
     // Then
     expect(mocks.clearBlockCache).not.toHaveBeenCalled();
+  });
+});
+
+describe('queryFinalizedBlock', () => {
+  const people = getActiveServicesConfig().people.genesis;
+  const provider: RemoteChainProvider = () => ({ send: vi.fn(), disconnect: vi.fn() });
+
+  beforeEach(() => {
+    probe.hostChainProvider.mockReset().mockReturnValue(provider);
+    probe.createClient.mockReset();
+  });
+
+  it("As a dotli user, the diagnostics read a chain's finalized block over the host pool", async () => {
+    // Given
+    const destroy = vi.fn<() => void>();
+    probe.createClient.mockReturnValue({ getFinalizedBlock: () => Promise.resolve({ number: 42 }), destroy });
+    const { queryFinalizedBlock } = await import('../src/settings-actions.js');
+
+    // When
+    const block = await queryFinalizedBlock(people);
+
+    // Then
+    expect(block).toBe(42);
+    expect(probe.hostChainProvider).toHaveBeenCalledWith(people);
+    expect(probe.createClient).toHaveBeenCalledWith(provider);
+    expect(destroy).toHaveBeenCalledOnce();
+  });
+
+  it('As a dotli user, the diagnostics read no block for a chain the host pool cannot serve', async () => {
+    // Given
+    probe.hostChainProvider.mockReturnValue(null);
+    const { queryFinalizedBlock } = await import('../src/settings-actions.js');
+
+    // When
+    const block = await queryFinalizedBlock(people);
+
+    // Then
+    expect(block).toBeNull();
+    expect(probe.createClient).not.toHaveBeenCalled();
   });
 });
