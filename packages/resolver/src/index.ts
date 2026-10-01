@@ -21,12 +21,7 @@ export {
   waitForPeopleFinalized,
   type ResolveOptions,
 } from './resolve.js';
-export {
-  createCoreRpcChainProvider,
-  getConnectedRpcEndpoint,
-  isCoreRpcChainSupported,
-  isRpcChainSupported,
-} from './rpc-chain.js';
+export { createCoreRpcChainProvider, getConnectedRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
 export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
 export {
   loadProvider,

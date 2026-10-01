@@ -136,11 +136,6 @@ function coreGatewayChain(genesisHash: string): ChainService | null {
   return getActiveCoreGatewayChains().find(chain => chain.genesis.toLowerCase() === key) ?? null;
 }
 
-/** Whether gateway mode can serve chain calls for `genesisHash`. */
-export function isRpcChainSupported(genesisHash: string): boolean {
-  return gatewayChain(genesisHash) !== null;
-}
-
 /** A WSS JSON-RPC provider for `genesisHash`, or `null` when gateway mode does not support that chain. */
 export function createRpcChainProvider(
   genesisHash: string,
