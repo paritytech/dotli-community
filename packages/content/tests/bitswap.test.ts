@@ -396,6 +396,50 @@ describe('bitswapGet after a halt', () => {
     expect(dials).toHaveLength(2);
     expect(dead.sent).toHaveLength(1);
   });
+
+  it('As a dotli user, a late halt from a replaced Bulletin connection leaves the new one working', async () => {
+    // Given a fetch that redialled after its chain halted, with a request in
+    // flight on the new connection
+    const dials = stubManualChain();
+    vi.resetModules();
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { bitswapGet } = await import('../src/bitswap.js');
+    const fetching = bitswapGet('bafyReplaced');
+    let settled = false;
+    void fetching.finally(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    const replaced = manualDial(dials, 0);
+    replaced.onMessage({
+      jsonrpc: '2.0',
+      id: replaced.sent[0],
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+    });
+    replaced.onHalt('chain');
+    await vi.advanceTimersByTimeAsync(1_000);
+    const current = manualDial(dials, 1);
+    expect(current.sent).toHaveLength(1);
+
+    // When the replaced connection hears a halt again
+    replaced.onHalt('frame');
+    await vi.advanceTimersByTimeAsync(100);
+
+    // Then the request on the new connection is still pending, and is served there
+    expect(settled).toBe(false);
+    current.onMessage({ jsonrpc: '2.0', id: current.sent[0], result: '0xabcd' });
+    await expect(fetching).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
+
+    // And the next fetch uses the new connection without dialling
+    const next = bitswapGet('bafyReplaced');
+    await vi.advanceTimersByTimeAsync(100);
+    current.onMessage({ jsonrpc: '2.0', id: current.sent[1], result: '0xef' });
+    await expect(next).resolves.toEqual(new Uint8Array([0xef]));
+    expect(dials).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[dot.li bitswap] bafyReplaced retry attempt=1 code=-32811 delay=500ms');
+  });
 });
 
 describe('listenForSandboxBitswap', () => {

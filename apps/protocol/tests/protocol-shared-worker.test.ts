@@ -154,6 +154,26 @@ describe('protocol SharedWorker', () => {
     expect(warn).toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync complete, engine ready');
   });
 
+  it('As a dotli user on the shared light client, a light client that dies while Asset Hub syncs never tells a waiting tab it is ready', async () => {
+    // Given: a tab waiting on a pre-sync still under way.
+    const presync = deferred();
+    resolver.presync = () => presync.promise;
+    await bootWorker();
+    const waiting = connect();
+
+    // When: the light client cannot connect a chain, and then Asset Hub syncs anyway.
+    resolver.fatal?.(FATAL);
+    presync.resolve();
+    await flush();
+    const later = connect();
+
+    // Then: the waiting tab heard only the fatal, and the engine never became ready.
+    expect(heard(waiting)).toEqual([fatalRelay]);
+    expect(later.posted.mock.calls).toEqual([[{ type: 'error', message: FATAL }]]);
+    expect(error).toHaveBeenCalledWith('[dot.li SW]', 'Chain death detected, broadcasting fatal to 1 port(s)');
+    expect(warn).not.toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync complete, engine ready');
+  });
+
   it('As a dotli user on the shared light client, a tab waiting on pre-sync is told why the light client died, once', async () => {
     // Given: a tab waiting on a pre-sync still under way.
     const presync = deferred();
