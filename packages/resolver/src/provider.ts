@@ -24,6 +24,7 @@ import init, {
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb } from './smoldot-db.js';
 import { attachChainSync, chainKeyForGenesis, reportDbCache, type ChainSyncTap } from './chain-sync.js';
+import type { ChainTransportHooks } from './transport-hooks.js';
 
 // One provider per host process: every connection shares the single embedded
 // light client.
@@ -276,8 +277,12 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
  * papi providers are object-wire. The truapi connection is a raw string pipe,
  * so messages are stringified on send and parsed on receipt. Messages sent
  * before the async connect resolves are queued and flushed in order.
+ *
+ * `hooks` hears each connection's status, and a halt when it fails or its
+ * stream ends without `disconnect()`: smoldot does not reconnect underneath
+ * its consumers, so that connection is gone for good.
  */
-export function createChainProvider(genesisHash: string): JsonRpcProvider | null {
+export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
   if (!isChainSupported(key)) {
     log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
@@ -301,6 +306,12 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
     // which control-flow analysis cannot see.
     const isClosed = (): boolean => state.closed;
     const queued: string[] = [];
+    // The connection is gone for good, and its owner did not end it.
+    const fail = (error: unknown): void => {
+      hooks?.onStatus('disconnected');
+      hooks?.onHalt(error);
+    };
+    hooks?.onStatus('connecting');
 
     void (async () => {
       try {
@@ -313,6 +324,7 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
           return;
         }
         state.connection = candidate;
+        hooks?.onStatus('connected');
         for (const message of queued) {
           candidate.send(message);
         }
@@ -340,6 +352,7 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
             // response will ever arrive on this chain.
             if (!isClosed()) {
               markFatal(`chain ${key} stopped responding`);
+              fail(new Error(`chain ${key} stopped responding`));
             }
             break;
           }
@@ -353,6 +366,9 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
         }
       } catch (error) {
         markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!isClosed()) {
+          fail(error);
+        }
       }
     })();
 
