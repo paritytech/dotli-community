@@ -12,12 +12,11 @@
 // and no runtime call is needed. Version 0 means never anchored; a zero
 // digest means revoked.
 
-import type { Api } from "./api";
-import { computeNestedBytes32MappingSlot, toHex, wordToBigInt } from "./abi";
+import type { Api } from './api.js';
+import { computeNestedBytes32MappingSlot, toHex, wordToBigInt } from './abi.js';
 
 /** blake2b-256("seity:domain:v1"): the registry domain every seity slot uses. */
-export const SEITY_REGISTRY_DOMAIN =
-  "0x5c9584ba6e565351723d57394780b31b4c2156123e1269c4724ae5f01258bb53" as const;
+export const SEITY_REGISTRY_DOMAIN = '0x5c9584ba6e565351723d57394780b31b4c2156123e1269c4724ae5f01258bb53' as const;
 
 const SLOT_OWNERS = 0;
 const SLOT_DIGESTS = 1;
@@ -36,15 +35,14 @@ export async function readSeitySlot(
   lookupKey: `0x${string}`,
   domain: `0x${string}` = SEITY_REGISTRY_DOMAIN,
 ): Promise<SeitySlot | null> {
-  return api.withContract(registry, async (storage) => {
-    const slot = (n: number): `0x${string}` =>
-      computeNestedBytes32MappingSlot(domain, lookupKey, n);
+  return api.withContract(registry, async storage => {
+    const slot = (n: number): `0x${string}` => computeNestedBytes32MappingSlot(domain, lookupKey, n);
     const versionWord = await storage.readSlot(slot(SLOT_VERSIONS));
     const version = versionWord === null ? 0n : wordToBigInt(versionWord);
     if (version === 0n) {
       return {
-        owner: `0x${"00".repeat(20)}`,
-        cidDigest: `0x${"00".repeat(32)}`,
+        owner: `0x${'00'.repeat(20)}`,
+        cidDigest: `0x${'00'.repeat(32)}`,
         version,
       };
     }

@@ -4,10 +4,10 @@
 // Sandbox-side bitswap bridge: postMessages the host parent which proxies
 // the request to the protocol iframe's smoldot.
 
-import { log } from "@dotli/shared/log";
+import { log } from '@dotli/shared';
 
 interface BitswapResultMessage {
-  type: "dotli:bitswap-result";
+  type: 'dotli:bitswap-result';
   id: string;
   ok: boolean;
   bytes?: Uint8Array;
@@ -15,22 +15,15 @@ interface BitswapResultMessage {
 }
 
 function isBitswapResultMessage(value: unknown): value is BitswapResultMessage {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const obj = value as Record<string, unknown>;
-  return (
-    obj.type === "dotli:bitswap-result" &&
-    typeof obj.id === "string" &&
-    typeof obj.ok === "boolean"
-  );
+  return obj['type'] === 'dotli:bitswap-result' && typeof obj['id'] === 'string' && typeof obj['ok'] === 'boolean';
 }
 
 let nextId = 1;
-const pending = new Map<
-  string,
-  { resolve: (bytes: Uint8Array) => void; reject: (err: Error) => void }
->();
+const pending = new Map<string, { resolve: (bytes: Uint8Array) => void; reject: (err: Error) => void }>();
 let listenerInstalled = false;
 
 function ensureListener(): void {
@@ -41,7 +34,7 @@ function ensureListener(): void {
   // The host keeps fetching for us after this frame is gone, and a fetch that
   // found no providers now retries for tens of seconds rather than failing at
   // about a second. Nothing tells the host the frame went, so say so.
-  window.addEventListener("pagehide", (event: PageTransitionEvent) => {
+  window.addEventListener('pagehide', (event: PageTransitionEvent) => {
     // `persisted` means the frame is going into the back/forward cache and can
     // come back through `pageshow`. Cancelling then would strand the restored
     // frame: the host would have aborted, and the restored page would still be
@@ -49,21 +42,16 @@ function ensureListener(): void {
     if (event.persisted || pending.size === 0) {
       return;
     }
-    window.parent.postMessage(
-      { type: "dotli:bitswap-abort", ids: [...pending.keys()] },
-      "*",
-    );
+    window.parent.postMessage({ type: 'dotli:bitswap-abort', ids: [...pending.keys()] }, '*');
     // Reject rather than clear. Dropping the resolvers turns a cancellation
     // into a promise that can never settle, because the reply listener
     // early-returns on an id it no longer knows.
     for (const [, entry] of pending) {
-      entry.reject(
-        new Error("bitswap-relay: aborted, the sandbox frame was torn down"),
-      );
+      entry.reject(new Error('bitswap-relay: aborted, the sandbox frame was torn down'));
     }
     pending.clear();
   });
-  window.addEventListener("message", (event: MessageEvent) => {
+  window.addEventListener('message', (event: MessageEvent) => {
     if (!isBitswapResultMessage(event.data)) {
       return;
     }
@@ -76,9 +64,7 @@ function ensureListener(): void {
     if (reply.ok && reply.bytes instanceof Uint8Array) {
       entry.resolve(reply.bytes);
     } else {
-      entry.reject(
-        new Error(reply.error ?? "bitswap-relay: malformed result envelope"),
-      );
+      entry.reject(new Error(reply.error ?? 'bitswap-relay: malformed result envelope'));
     }
   });
 }
@@ -90,10 +76,10 @@ export async function requestBitswapBlock(cid: string): Promise<Uint8Array> {
   return new Promise<Uint8Array>((resolve, reject) => {
     pending.set(id, { resolve, reject });
     try {
-      window.parent.postMessage({ type: "dotli:bitswap-get", id, cid }, "*");
+      window.parent.postMessage({ type: 'dotli:bitswap-get', id, cid }, '*');
     } catch (err) {
       pending.delete(id);
-      log.error("[dot.li sandbox] bitswap bridge postMessage failed:", err);
+      log.error('[dot.li sandbox] bitswap bridge postMessage failed:', err);
       reject(err instanceof Error ? err : new Error(String(err)));
     }
   });

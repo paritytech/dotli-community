@@ -13,13 +13,11 @@
 // The reference is a bearer capability. It is parsed and used here, in the
 // host, and never logged or handed back to the product.
 
-import { cidToPreimageKey } from "@dotli/content/preimage";
+import { cidToPreimageKey } from '@dotli/content';
 
 const KEY_BYTES = 32;
 const IV_BYTES = 12;
-const FRAGMENT_PATTERN = new RegExp(
-  `^[0-9a-fA-F]{${String((KEY_BYTES + IV_BYTES) * 2)}}$`,
-);
+const FRAGMENT_PATTERN = new RegExp(`^[0-9a-fA-F]{${String((KEY_BYTES + IV_BYTES) * 2)}}$`);
 
 export interface SeityBlobReference {
   /** Blake2b-256 preimage key the ciphertext is stored under. */
@@ -32,7 +30,7 @@ export class InvalidProfileReferenceError extends Error {
   constructor(reason: string) {
     // The reference itself stays out of the message: it is a capability.
     super(`invalid profile reference: ${reason}`);
-    this.name = "InvalidProfileReferenceError";
+    this.name = 'InvalidProfileReferenceError';
   }
 }
 
@@ -45,23 +43,19 @@ function hexBytes(hex: string): Uint8Array<ArrayBuffer> {
 }
 
 export function parseSeityBlobReference(reference: string): SeityBlobReference {
-  const hash = reference.indexOf("#");
-  if (hash < 1 || hash !== reference.lastIndexOf("#")) {
-    throw new InvalidProfileReferenceError("expected <cid>#<key><iv>");
+  const hash = reference.indexOf('#');
+  if (hash < 1 || hash !== reference.lastIndexOf('#')) {
+    throw new InvalidProfileReferenceError('expected <cid>#<key><iv>');
   }
   const fragment = reference.slice(hash + 1);
   if (!FRAGMENT_PATTERN.test(fragment)) {
-    throw new InvalidProfileReferenceError(
-      "fragment must be a 32-byte key and 12-byte IV in hex",
-    );
+    throw new InvalidProfileReferenceError('fragment must be a 32-byte key and 12-byte IV in hex');
   }
   let preimageKey: `0x${string}`;
   try {
     preimageKey = cidToPreimageKey(reference.slice(0, hash));
   } catch {
-    throw new InvalidProfileReferenceError(
-      "CID must be a raw Blake2b-256 CIDv1",
-    );
+    throw new InvalidProfileReferenceError('CID must be a raw Blake2b-256 CIDv1');
   }
   return {
     preimageKey,
@@ -76,19 +70,9 @@ export function parseSeityBlobReference(reference: string): SeityBlobReference {
  */
 export async function openSeityBlob(
   ciphertext: Uint8Array<ArrayBuffer>,
-  reference: Pick<SeityBlobReference, "aesKey" | "iv">,
+  reference: Pick<SeityBlobReference, 'aesKey' | 'iv'>,
 ): Promise<Uint8Array> {
-  const key = await crypto.subtle.importKey(
-    "raw",
-    reference.aesKey,
-    "AES-GCM",
-    false,
-    ["decrypt"],
-  );
-  const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: reference.iv },
-    key,
-    ciphertext,
-  );
+  const key = await crypto.subtle.importKey('raw', reference.aesKey, 'AES-GCM', false, ['decrypt']);
+  const plaintext = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: reference.iv }, key, ciphertext);
   return new Uint8Array(plaintext);
 }

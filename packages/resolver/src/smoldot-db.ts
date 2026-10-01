@@ -8,19 +8,19 @@
 // here, keyed by `0x`-prefixed genesis hash, and resumes a chain from the
 // stored finalized state instead.
 
-import { log } from "@dotli/shared/log";
+import { log } from '@dotli/shared';
 
-const DB_NAME = "dotli-smoldot-db";
-const STORE = "chain-databases";
+const DB_NAME = 'dotli-smoldot-db';
+const STORE = 'chain-databases';
 // Which chains actually resumed from storage, by genesis hash, with the time
 // of the most recent resume. The provider runs in a SharedWorker in the
 // default backend, where its console and globals are unreachable, so this is
 // the only place warm start can be observed from outside.
-const LOADS_STORE = "loads";
+const LOADS_STORE = 'loads';
 // Version 1 of this database kept blobs in `chain-db`, keyed by network and
 // chain name rather than genesis hash. Version 2 drops it, so an upgrading
 // browser reclaims the space instead of carrying megabytes nothing reads.
-const V1_STORE = "chain-db";
+const V1_STORE = 'chain-db';
 const DB_VERSION = 2;
 // Real warp-sync blobs are hundreds of KB. Anything smaller is truncated or
 // garbage, and the light client may hang on it rather than discard it. The
@@ -69,11 +69,7 @@ function openDb(): Promise<IDBDatabase> {
     let settled = false;
     req.onblocked = () => {
       settled = true;
-      reject(
-        new Error(
-          `${DB_NAME} upgrade to v${String(DB_VERSION)} is blocked by another tab`,
-        ),
-      );
+      reject(new Error(`${DB_NAME} upgrade to v${String(DB_VERSION)} is blocked by another tab`));
     };
     req.onsuccess = () => {
       if (settled) {
@@ -86,7 +82,7 @@ function openDb(): Promise<IDBDatabase> {
     };
     req.onerror = () => {
       settled = true;
-      reject(req.error ?? new Error("indexedDB.open failed"));
+      reject(req.error ?? new Error('indexedDB.open failed'));
     };
   });
 }
@@ -106,22 +102,20 @@ async function read(genesisHash: string): Promise<string | null> {
   const db = await openDb();
   try {
     const raw = await new Promise<unknown>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
+      const tx = db.transaction(STORE, 'readonly');
       const req = tx.objectStore(STORE).get(genesisHash);
       req.onsuccess = () => {
         resolve(req.result);
       };
       req.onerror = () => {
-        reject(req.error ?? new Error("smoldot-db read failed"));
+        reject(req.error ?? new Error('smoldot-db read failed'));
       };
     });
-    if (typeof raw !== "string") {
+    if (typeof raw !== 'string') {
       return null;
     }
     if (raw.length < MIN_VALID_BYTES) {
-      log.warn(
-        `[dot.li smoldot-db] Discarding undersized blob for ${genesisHash} (${String(raw.length)} bytes)`,
-      );
+      log.warn(`[dot.li smoldot-db] Discarding undersized blob for ${genesisHash} (${String(raw.length)} bytes)`);
       return null;
     }
     return raw;
@@ -137,23 +131,20 @@ async function recordLoad(genesisHash: string): Promise<void> {
     const db = await openDb();
     try {
       await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction(LOADS_STORE, "readwrite");
+        const tx = db.transaction(LOADS_STORE, 'readwrite');
         tx.objectStore(LOADS_STORE).put(Date.now(), genesisHash);
         tx.oncomplete = () => {
           resolve();
         };
         tx.onerror = () => {
-          reject(tx.error ?? new Error("smoldot-db load marker failed"));
+          reject(tx.error ?? new Error('smoldot-db load marker failed'));
         };
       });
     } finally {
       db.close();
     }
   } catch (error) {
-    log.debug(
-      `[dot.li smoldot-db] load marker failed for ${genesisHash}:`,
-      error,
-    );
+    log.debug(`[dot.li smoldot-db] load marker failed for ${genesisHash}:`, error);
   }
 }
 
@@ -161,13 +152,13 @@ async function write(genesisHash: string, blob: string): Promise<void> {
   const db = await openDb();
   try {
     await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction(STORE, "readwrite");
+      const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).put(blob, genesisHash);
       tx.oncomplete = () => {
         resolve();
       };
       tx.onerror = () => {
-        reject(tx.error ?? new Error("smoldot-db write failed"));
+        reject(tx.error ?? new Error('smoldot-db write failed'));
       };
     });
   } finally {
@@ -177,12 +168,12 @@ async function write(genesisHash: string, blob: string): Promise<void> {
 
 /** Returns `null` where IndexedDB is unavailable, so warm start stays off. */
 export function createSmoldotDb(): SmoldotDb | null {
-  if (typeof indexedDB === "undefined") {
+  if (typeof indexedDB === 'undefined') {
     return null;
   }
   return {
-    load: async (genesisHash) => {
-      const blob = await withTimeout(read(genesisHash), "smoldot-db load");
+    load: async genesisHash => {
+      const blob = await withTimeout(read(genesisHash), 'smoldot-db load');
       if (blob !== null) {
         void recordLoad(genesisHash);
       }
@@ -201,7 +192,7 @@ export function createSmoldotDb(): SmoldotDb | null {
         );
         return;
       }
-      await withTimeout(write(genesisHash, blob), "smoldot-db save");
+      await withTimeout(write(genesisHash, blob), 'smoldot-db save');
     },
   };
 }

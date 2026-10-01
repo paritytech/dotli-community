@@ -1,11 +1,12 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { createChainConnect } from "@dotli/ui/host-callbacks/Chain";
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveServicesConfig } from '@dotli/config';
+import { createChainConnect } from '../src/host-callbacks/Chain.js';
+import { yielded } from './support.js';
 
 const mocks = vi.hoisted(() => {
   const smoldotBrokerProvider = vi.fn();
   return {
-    backend: "smoldot-shared-worker",
+    backend: 'smoldot-shared-worker',
     smoldotProvider: vi.fn(),
     rpcProvider: vi.fn(),
     smoldotBrokerProvider,
@@ -21,26 +22,26 @@ const mocks = vi.hoisted(() => {
   };
 });
 
-vi.mock("@dotli/config/mode", () => ({
+vi.mock('../../config/src/mode.js', () => ({
   getBackend: () => mocks.backend,
 }));
 
-vi.mock("@dotli/resolver/provider", () => ({
+vi.mock('../../resolver/src/provider.js', () => ({
   createChainProvider: mocks.createSmoldotChainProvider,
   isChainSupported: mocks.isSmoldotChainSupported,
 }));
 
-vi.mock("@dotli/resolver/rpc-chain", () => ({
+vi.mock('../../resolver/src/rpc-chain.js', () => ({
   createCoreRpcChainProvider: mocks.createRpcChainProvider,
   isCoreRpcChainSupported: mocks.isCoreRpcChainSupported,
 }));
 
-vi.mock("@dotli/protocol/broker", () => ({
+vi.mock('../../protocol/src/broker.js', () => ({
   createChainBrokerManager: mocks.createChainBrokerManager,
 }));
 
 function hexBytes(hex: string): Uint8Array {
-  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
   const bytes = new Uint8Array(clean.length / 2);
   for (let i = 0; i < bytes.length; i += 1) {
     bytes[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
@@ -48,10 +49,10 @@ function hexBytes(hex: string): Uint8Array {
   return bytes;
 }
 
-describe("createChainConnect", () => {
+describe('createChainConnect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.backend = "smoldot-shared-worker";
+    mocks.backend = 'smoldot-shared-worker';
     mocks.smoldotProvider.mockReturnValue({
       send: vi.fn(),
       disconnect: vi.fn(),
@@ -67,7 +68,7 @@ describe("createChainConnect", () => {
     mocks.isCoreRpcChainSupported.mockReturnValue(true);
   });
 
-  it("As a dotli integrator, the host routes People-chain connections through the selected smoldot backend", async () => {
+  it('As a dotli integrator, the host routes People-chain connections through the selected smoldot backend', async () => {
     // Given
     const peopleGenesis = getActiveServicesConfig().people.genesis;
 
@@ -79,7 +80,7 @@ describe("createChainConnect", () => {
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it("As a dotli integrator, the host keeps non-People chain connections on the selected smoldot backend", async () => {
+  it('As a dotli integrator, the host keeps non-People chain connections on the selected smoldot backend', async () => {
     // Given
     const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
 
@@ -91,28 +92,26 @@ describe("createChainConnect", () => {
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
   });
 
-  it("As a dotli integrator, the host adapts brokered statement-store traffic to a platform connection", async () => {
+  it('As a dotli integrator, the host adapts brokered statement-store traffic to a platform connection', async () => {
     // Given
     let onMessage: ((message: unknown) => void) | undefined;
     const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation(
-      (handler: (message: unknown) => void) => {
-        onMessage = handler;
-        return {
-          send: (request: unknown) => {
-            sent.push(request);
-          },
-          disconnect: vi.fn(),
-        };
-      },
-    );
+    mocks.smoldotProvider.mockImplementation((handler: (message: unknown) => void) => {
+      onMessage = handler;
+      return {
+        send: (request: unknown) => {
+          sent.push(request);
+        },
+        disconnect: vi.fn(),
+      };
+    });
     const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
 
     const connection = await createChainConnect()(hexBytes(assetHubGenesis));
     const query = {
-      jsonrpc: "2.0",
-      id: "opaque-query-request",
-      method: "statement_subscribeStatement",
+      jsonrpc: '2.0',
+      id: 'opaque-query-request',
+      method: 'statement_subscribeStatement',
       params: [{ matchAll: [] }],
     };
 
@@ -124,36 +123,34 @@ describe("createChainConnect", () => {
 
     // When
     const ack = {
-      jsonrpc: "2.0",
-      id: "opaque-query-request",
-      result: "remote-sub",
+      jsonrpc: '2.0',
+      id: 'opaque-query-request',
+      result: 'remote-sub',
     };
     onMessage?.(ack);
 
     // Then
     const responses = connection.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse((await responses.next()).value)).toEqual(ack);
+    expect(JSON.parse(yielded(await responses.next()))).toEqual(ack);
     await responses.return?.();
   });
 
-  it("As a dotli integrator, the host does not rewrite core chain RPC requests", async () => {
+  it('As a dotli integrator, the host does not rewrite core chain RPC requests', async () => {
     // Given
     const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation(
-      (_handler: (message: unknown) => void) => ({
-        send: (request: unknown) => {
-          sent.push(request);
-        },
-        disconnect: vi.fn(),
-      }),
-    );
+    mocks.smoldotProvider.mockImplementation((_handler: (message: unknown) => void) => ({
+      send: (request: unknown) => {
+        sent.push(request);
+      },
+      disconnect: vi.fn(),
+    }));
     const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
     const connection = await createChainConnect()(hexBytes(assetHubGenesis));
     const unpin = {
-      jsonrpc: "2.0",
-      id: "core-unpin",
-      method: "chainHead_v1_unpin",
-      params: ["REMOTE-FOLLOW", "0xabc"],
+      jsonrpc: '2.0',
+      id: 'core-unpin',
+      method: 'chainHead_v1_unpin',
+      params: ['REMOTE-FOLLOW', '0xabc'],
     };
 
     // When

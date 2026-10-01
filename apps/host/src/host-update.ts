@@ -23,8 +23,13 @@ function hasCurrentContract(client: WindowClient): Promise<boolean> {
     finish(false);
   }, VERSION_REPLY_TIMEOUT_MS);
   channel.port1.onmessage = (event: MessageEvent<unknown>) => {
-    const data = event.data as { version?: unknown } | null;
-    finish(data?.version === __HOST_SANDBOX_SCHEMA_VERSION__);
+    const data = event.data;
+    finish(
+      typeof data === 'object' &&
+        data !== null &&
+        'version' in data &&
+        data.version === __HOST_SANDBOX_SCHEMA_VERSION__,
+    );
   };
   try {
     client.postMessage({ type: "dotli:host-contract-version" }, [
@@ -44,6 +49,10 @@ async function outdatedClients(): Promise<WindowClient[]> {
   ).filter((client) => client.url.startsWith(self.registration.scope));
   const compatible = await Promise.all(windows.map(hasCurrentContract));
   return windows.filter((_, index) => !compatible[index]);
+}
+
+function isWindowClient(client: Client | undefined): client is WindowClient {
+  return client?.type === 'window';
 }
 
 self.addEventListener("install", (event: ExtendableEvent) => {
@@ -75,11 +84,10 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
       await Promise.all(
         clients.map(async (client) => {
           const current = await self.clients.get(client.id);
-          if (current?.type === "window") {
+          if (isWindowClient(current)) {
             // Navigation fetches wait for activation. Awaiting them here would
             // deadlock the worker and every tab it just claimed.
-            void (current as WindowClient)
-              .navigate(current.url)
+            void current.navigate(current.url)
               .catch((error: unknown) => {
                 console.warn(
                   "[dot.li] Could not reload an outdated host",

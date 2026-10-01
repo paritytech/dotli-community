@@ -16,12 +16,11 @@ import type {
   HostRendererActionSubscribeItem,
   ImageSource,
   ProductRendererRenderRequest,
-} from "@parity/truapi";
-import type { RenderSink } from "@parity/truapi-host";
-import { fetchArchive, type FetchResult } from "@dotli/content/fetch";
-import { bitswapGet } from "@dotli/content/bitswap";
-import { getBackend } from "@dotli/config/mode";
-import { getMimeType } from "@dotli/shared/mime";
+} from '@parity/truapi';
+import type { RenderSink } from '@parity/truapi-host';
+import { loadFetch, bitswapGet, type FetchResult } from '@dotli/content';
+import { getBackend } from '@dotli/config';
+import { getMimeType } from '@dotli/shared';
 import {
   appendMessage,
   createRoom,
@@ -33,21 +32,22 @@ import {
   type ChatBotRecord,
   type ChatMessageRecord,
   type ChatRoomRecord,
-} from "@dotli/storage/chat";
+} from '@dotli/storage';
+import { recordBotsChanged, recordMessage, recordRoomsChanged } from '../state/chat.js';
 
 export type { ChatBotRecord, ChatMessageRecord, ChatRoomRecord };
 
 /** Window event: a product's room list changed. Detail: `{ productId }`. */
-export const CHAT_ROOMS_CHANGED_EVENT = "dotli:chat-rooms-changed";
+export const CHAT_ROOMS_CHANGED_EVENT = 'dotli:chat-rooms-changed';
 /** Window event: a product's bot registry changed. Detail: `{ productId }`. */
-export const CHAT_BOTS_CHANGED_EVENT = "dotli:chat-bots-changed";
+export const CHAT_BOTS_CHANGED_EVENT = 'dotli:chat-bots-changed';
 /** Window event: a message was appended. Detail: `{ productId, roomId, author }`. */
-export const CHAT_MESSAGE_EVENT = "dotli:chat-message";
+export const CHAT_MESSAGE_EVENT = 'dotli:chat-message';
 
 export interface ChatMessageEventDetail {
   productId: string;
   roomId: string;
-  author: "product" | "user";
+  author: 'product' | 'user';
 }
 
 /** Live handles for one product's Worker-kind core connection. */
@@ -65,10 +65,7 @@ const connections = new Map<string, ChatConnection>();
  * Returns the matching unregister; a stale unregister (after a newer
  * registration for the same product) is a no-op.
  */
-export function registerChatConnection(
-  productId: string,
-  connection: ChatConnection,
-): () => void {
+export function registerChatConnection(productId: string, connection: ChatConnection): () => void {
   connections.set(productId, connection);
   return () => {
     if (connections.get(productId) === connection) {
@@ -77,18 +74,14 @@ export function registerChatConnection(
   };
 }
 
-function emit(name: string, detail: unknown): void {
-  window.dispatchEvent(new CustomEvent(name, { detail }));
-}
-
 /** Product-initiated room creation. A repeat for an existing (productId,
  *  roomId) refreshes the room's name and icon, so always notify. */
 export async function productCreateRoom(
   productId: string,
   room: { roomId: string; name: string; icon: string },
-): Promise<"New" | "Exists"> {
+): Promise<'New' | 'Exists'> {
   const status = await createRoom({ productId, ...room });
-  emit(CHAT_ROOMS_CHANGED_EVENT, { productId });
+  recordRoomsChanged(productId);
   return status;
 }
 
@@ -103,14 +96,14 @@ export async function productPostMessage(
     productId,
     roomId,
     messageId,
-    author: "product",
+    author: 'product',
     content,
     timestamp: Date.now(),
   });
-  emit(CHAT_MESSAGE_EVENT, {
+  recordMessage({
     productId,
     roomId,
-    author: "product",
+    author: 'product',
   } satisfies ChatMessageEventDetail);
   return messageId;
 }
@@ -123,33 +116,29 @@ export async function productPostMessage(
  * `chat.action_subscribe` stream; a late publish failure (denied, worker
  * gone mid-call) surfaces to the caller without losing the stored message.
  */
-export async function userPostMessage(
-  productId: string,
-  roomId: string,
-  text: string,
-): Promise<void> {
+export async function userPostMessage(productId: string, roomId: string, text: string): Promise<void> {
   const connection = connections.get(productId);
   if (connection === undefined) {
-    throw new Error("Chat is not connected for this product");
+    throw new Error('Chat is not connected for this product');
   }
-  const content: ChatMessageContent = { tag: "Text", value: { text } };
+  const content: ChatMessageContent = { tag: 'Text', value: { text } };
   await appendMessage({
     productId,
     roomId,
     messageId: crypto.randomUUID(),
-    author: "user",
+    author: 'user',
     content,
     timestamp: Date.now(),
   });
-  emit(CHAT_MESSAGE_EVENT, {
+  recordMessage({
     productId,
     roomId,
-    author: "user",
+    author: 'user',
   } satisfies ChatMessageEventDetail);
   await connection.publish({
     roomId,
-    peer: "user",
-    payload: { tag: "MessagePosted", value: content },
+    peer: 'user',
+    payload: { tag: 'MessagePosted', value: content },
   });
 }
 
@@ -164,12 +153,12 @@ export async function userTriggerAction(
 ): Promise<void> {
   const connection = connections.get(productId);
   if (connection === undefined) {
-    throw new Error("Chat is not connected for this product");
+    throw new Error('Chat is not connected for this product');
   }
   await connection.publish({
     roomId,
-    peer: "user",
-    payload: { tag: "ActionTriggered", value: trigger },
+    peer: 'user',
+    payload: { tag: 'ActionTriggered', value: trigger },
   });
 }
 
@@ -180,54 +169,49 @@ export async function userTriggerRendererAction(
 ): Promise<void> {
   const connection = connections.get(productId);
   if (connection === undefined) {
-    throw new Error("Renderer is not connected for this product");
+    throw new Error('Renderer is not connected for this product');
   }
   await connection.publishRendererAction(action);
 }
 
 /** Resolve image bytes through the same live product connection as its tree. */
-export async function loadRendererImage(
-  productId: string,
-  source: ImageSource,
-  signal: AbortSignal,
-): Promise<Blob> {
+export async function loadRendererImage(productId: string, source: ImageSource, signal: AbortSignal): Promise<Blob> {
   const connection = connections.get(productId);
   if (connection === undefined) {
-    throw new Error("Renderer is not connected for this product");
+    throw new Error('Renderer is not connected for this product');
   }
   return connection.loadRendererImage(source, signal);
 }
 
 /** Capture the launched executable, never re-resolve a mutable product name. */
-export function createRendererImageLoader(
-  archiveCid?: string,
-): ChatConnection["loadRendererImage"] {
+export function createRendererImageLoader(archiveCid?: string): ChatConnection['loadRendererImage'] {
   // Share an archive fetch within a tree; its signal is also its cache lifetime.
   const archives = new WeakMap<AbortSignal, Promise<FetchResult>>();
   return async (source, signal) => {
     signal.throwIfAborted();
-    const fetchContent = (cid: string): Promise<FetchResult> =>
-      fetchArchive(
+    const fetchContent = async (cid: string): Promise<FetchResult> => {
+      const { fetchArchive } = await loadFetch();
+      signal.throwIfAborted();
+      return fetchArchive(
         cid,
         undefined,
-        getBackend() === "rpc-gateway"
+        getBackend() === 'rpc-gateway'
           ? { useGateway: true }
-          : { bitswapBlockSource: (blockCid) => bitswapGet(blockCid, signal) },
+          : { bitswapBlockSource: blockCid => bitswapGet(blockCid, signal) },
       );
+    };
     let bytes: Uint8Array;
-    let mime = "application/octet-stream";
+    let mime = 'application/octet-stream';
     switch (source.tag) {
-      case "Bulletin": {
+      case 'Bulletin': {
         const result = await fetchContent(source.value);
-        if (result.type !== "single") {
-          throw new Error(
-            "Renderer Bulletin image must address a file, not a directory",
-          );
+        if (result.type !== 'single') {
+          throw new Error('Renderer Bulletin image must address a file, not a directory');
         }
         bytes = result.content;
         break;
       }
-      case "Archive": {
+      case 'Archive': {
         // Archive paths are literal relative paths, not URLs. Reject ambiguous
         // separators/traversal rather than letting browser URL normalization
         // reinterpret a product-authored path.
@@ -241,18 +225,14 @@ export function createRendererImageLoader(
           }
         }
         if (
-          path === "" ||
+          path === '' ||
           invalidCharacter ||
-          path
-            .split("/")
-            .some((part) => part === "" || part === "." || part === "..")
+          path.split('/').some(part => part === '' || part === '.' || part === '..')
         ) {
-          throw new Error("Renderer image has an invalid archive path");
+          throw new Error('Renderer image has an invalid archive path');
         }
         if (archiveCid === undefined) {
-          throw new Error(
-            "This product was not launched from an executable archive",
-          );
+          throw new Error('This product was not launched from an executable archive');
         }
         let archive = archives.get(signal);
         if (archive === undefined) {
@@ -260,33 +240,27 @@ export function createRendererImageLoader(
           archives.set(signal, archive);
         }
         const result = await archive;
-        if (result.type !== "archive" || !Object.hasOwn(result.files, path)) {
-          throw new Error(
-            `Renderer image is absent from the executable archive: ${path}`,
-          );
+        const file = result.type === 'archive' && Object.hasOwn(result.files, path) ? result.files[path] : undefined;
+        if (file === undefined) {
+          throw new Error(`Renderer image is absent from the executable archive: ${path}`);
         }
-        bytes = result.files[path];
+        bytes = file;
         mime = getMimeType(path);
         break;
       }
       default: {
         const unsupported: never = source;
-        throw new Error(
-          `Unsupported renderer image source: ${JSON.stringify(unsupported)}`,
-        );
+        throw new Error(`Unsupported renderer image source: ${JSON.stringify(unsupported)}`);
       }
     }
     signal.throwIfAborted();
     // Raster formats are sniffed by <img>. SVG needs its image MIME type,
     // including when its content-addressed source has no filename extension.
     if (
-      mime === "application/octet-stream" &&
-      new TextDecoder()
-        .decode(bytes.subarray(0, 512))
-        .trimStart()
-        .startsWith("<")
+      mime === 'application/octet-stream' &&
+      new TextDecoder().decode(bytes.subarray(0, 512)).trimStart().startsWith('<')
     ) {
-      mime = "image/svg+xml";
+      mime = 'image/svg+xml';
     }
     return new Blob([new Uint8Array(bytes)], { type: mime });
   };
@@ -298,14 +272,10 @@ export function createRendererImageLoader(
  * Without a live connection the sink fails immediately; the stored message
  * stays and the next render attempt can succeed.
  */
-export function render(
-  productId: string,
-  request: ProductRendererRenderRequest,
-  sink: RenderSink,
-): () => void {
+export function render(productId: string, request: ProductRendererRenderRequest, sink: RenderSink): () => void {
   const connection = connections.get(productId);
   if (connection === undefined) {
-    sink.onError?.(new Error("Chat is not connected for this product"));
+    sink.onError?.(new Error('Chat is not connected for this product'));
     return (): void => undefined;
   }
   return connection.render(request, sink);
@@ -319,9 +289,9 @@ export function render(
 export async function registerBot(
   productId: string,
   bot: { botId: string; name: string; icon: string },
-): Promise<"New" | "Exists"> {
+): Promise<'New' | 'Exists'> {
   const status = await storeBot({ productId, ...bot });
-  emit(CHAT_BOTS_CHANGED_EVENT, { productId });
+  recordBotsChanged(productId);
   return status;
 }
 
@@ -331,9 +301,7 @@ export function chatBots(productId: string): Promise<ChatBotRecord[]> {
 }
 
 /** Latest message timestamp per room, for contact-list ordering. */
-export function chatLatestMessageTimes(
-  productId: string,
-): Promise<Map<string, number>> {
+export function chatLatestMessageTimes(productId: string): Promise<Map<string, number>> {
   return latestMessageTimestamps(productId);
 }
 
@@ -343,9 +311,6 @@ export function chatRooms(productId: string): Promise<ChatRoomRecord[]> {
 }
 
 /** Messages of one room, insertion order. */
-export function chatMessages(
-  productId: string,
-  roomId: string,
-): Promise<ChatMessageRecord[]> {
+export function chatMessages(productId: string, roomId: string): Promise<ChatMessageRecord[]> {
   return listMessages(productId, roomId);
 }

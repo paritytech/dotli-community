@@ -10,27 +10,21 @@
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
 
-import { bytesToHex } from "@parity/truapi/scale";
-import type {
-  JsonRpcRequest,
-  JsonRpcProvider,
-} from "@polkadot-api/json-rpc-provider";
-import type { ChainProvider, HopProvider } from "@parity/truapi-host";
-import type { PlatformJsonRpcConnection } from "@parity/truapi-host";
-import { getBackend } from "@dotli/config/mode";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { createChainBrokerManager } from "@dotli/protocol/broker";
+import { bytesToHex } from '@parity/truapi/scale';
+import type { JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { ChainProvider, HopProvider, PlatformJsonRpcConnection } from '@parity/truapi-host';
+import { getBackend, getActiveServicesConfig } from '@dotli/config';
+import { createChainBrokerManager } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
-} from "@dotli/resolver/provider";
-import {
   createCoreRpcChainProvider,
   isCoreRpcChainSupported,
-} from "@dotli/resolver/rpc-chain";
-import { log } from "@dotli/shared/log";
-import { ERRORS } from "../errors";
-import { withTrustedSubmitFallback } from "./light-client-submit-fallback";
+} from '@dotli/resolver';
+
+import { log } from '@dotli/shared';
+import { ERRORS } from '../errors.js';
+import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
 
 // `createSmoldotChainProvider` returns wrappers around singleton smoldot
 // chains. Every wrapper drains the same response queue, so independent core
@@ -39,24 +33,19 @@ import { withTrustedSubmitFallback } from "./light-client-submit-fallback";
 const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
-  if (typeof value !== "object" || value === null) {
+  if (typeof value !== 'object' || value === null) {
     return false;
   }
   const record = value as Record<string, unknown>;
-  const id = record.id;
+  const id = record['id'];
   return (
-    record.jsonrpc === "2.0" &&
-    typeof record.method === "string" &&
-    (id === undefined ||
-      id === null ||
-      typeof id === "string" ||
-      typeof id === "number")
+    record['jsonrpc'] === '2.0' &&
+    typeof record['method'] === 'string' &&
+    (id === undefined || id === null || typeof id === 'string' || typeof id === 'number')
   );
 }
 
-function toConnection(
-  provider: JsonRpcProvider<unknown> | null,
-): PlatformJsonRpcConnection {
+function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRpcConnection {
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
@@ -100,7 +89,7 @@ function toConnection(
               yield response;
             }
           }
-          await new Promise<void>((resolve) => {
+          await new Promise<void>(resolve => {
             wake = resolve;
           });
         }
@@ -112,18 +101,16 @@ function toConnection(
   };
 }
 
-export function createChainConnect(): ChainProvider["connect"] {
-  return (genesisHashBytes) => {
+export function createChainConnect(): ChainProvider['connect'] {
+  return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
-    if (backend === "rpc-gateway") {
+    if (backend === 'rpc-gateway') {
       // This callback is shared by product-forwarded calls and core-owned
       // Bulletin operations. `featureSupported` is the dApp advertisement;
       // this seam cannot enforce that advertised subset.
       if (!isCoreRpcChainSupported(genesisHash)) {
-        log.warn(
-          `[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`,
-        );
+        log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
       const connection = toConnection(createCoreRpcChainProvider(genesisHash));
@@ -131,9 +118,7 @@ export function createChainConnect(): ChainProvider["connect"] {
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
-      log.warn(
-        `[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`,
-      );
+      log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
     const lightClient = smoldotChainBroker.getLocalProvider(genesisHash);
@@ -141,11 +126,7 @@ export function createChainConnect(): ChainProvider["connect"] {
     return Promise.resolve(
       toConnection(
         lightClient !== null && isCoreRpcChainSupported(genesisHash)
-          ? withTrustedSubmitFallback(
-              lightClient,
-              () => createCoreRpcChainProvider(genesisHash),
-              genesisHash,
-            )
+          ? withTrustedSubmitFallback(lightClient, () => createCoreRpcChainProvider(genesisHash), genesisHash)
           : lightClient,
       ),
     );
@@ -158,9 +139,7 @@ export function createHopProvider(): Required<HopProvider> {
     allowedHopEndpoints(genesisHash) {
       const bulletin = getActiveServicesConfig().bulletin;
       return Promise.resolve(
-        bytesToHex(genesisHash) === bulletin.genesis.toLowerCase()
-          ? [...(bulletin.hopEndpoints ?? [])]
-          : [],
+        bytesToHex(genesisHash) === bulletin.genesis.toLowerCase() ? [...(bulletin.hopEndpoints ?? [])] : [],
       );
     },
     async connectHop(genesisHash, endpoint) {
@@ -169,9 +148,7 @@ export function createHopProvider(): Required<HopProvider> {
         bytesToHex(genesisHash) !== bulletin.genesis.toLowerCase() ||
         bulletin.hopEndpoints?.includes(endpoint) !== true
       ) {
-        throw new Error(
-          "HOP endpoint is not configured for this Bulletin chain",
-        );
+        throw new Error('HOP endpoint is not configured for this Bulletin chain');
       }
       const socket = new WebSocket(endpoint);
       const opened = Promise.withResolvers<undefined>();
@@ -184,7 +161,7 @@ export function createHopProvider(): Required<HopProvider> {
         }
         stopped = true;
         socket.close();
-        opened.reject(new Error("HOP connection closed before opening"));
+        opened.reject(new Error('HOP connection closed before opening'));
         wake?.();
       };
       socket.onopen = () => {
@@ -196,7 +173,7 @@ export function createHopProvider(): Required<HopProvider> {
         if (stopped) {
           return;
         }
-        if (typeof event.data !== "string") {
+        if (typeof event.data !== 'string') {
           close();
           return;
         }
@@ -208,7 +185,7 @@ export function createHopProvider(): Required<HopProvider> {
       return {
         send(request) {
           if (stopped || socket.readyState !== WebSocket.OPEN) {
-            throw new Error("HOP connection is closed");
+            throw new Error('HOP connection is closed');
           }
           socket.send(request);
         },

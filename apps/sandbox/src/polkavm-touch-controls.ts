@@ -14,7 +14,7 @@ interface TouchControl {
   code?: string;
   button?: number;
   stick?: {
-    kind: "move" | "look";
+    kind: 'move' | 'look';
     thumb: HTMLElement;
     centerX: number;
     centerY: number;
@@ -29,22 +29,19 @@ export interface PolkaVmTouchControls {
 }
 
 /** The caller owns coarse-pointer eligibility and the guest's capture state. */
-export function installPolkaVmTouchControls(
-  surface: HTMLElement,
-  callbacks: TouchCallbacks,
-): PolkaVmTouchControls {
+export function installPolkaVmTouchControls(surface: HTMLElement, callbacks: TouchCallbacks): PolkaVmTouchControls {
   const document = surface.ownerDocument;
   const view = document.defaultView;
   if (view === null) {
-    throw new Error("Touch controls require a browser document");
+    throw new Error('Touch controls require a browser document');
   }
   const window = view;
-  const root = document.createElement("div");
-  root.dataset.polkavmTouchControls = "";
-  root.setAttribute("role", "group");
-  root.setAttribute("aria-label", "Touch game controls");
+  const root = document.createElement('div');
+  root.dataset['polkavmTouchControls'] = '';
+  root.setAttribute('role', 'group');
+  root.setAttribute('aria-label', 'Touch game controls');
   root.hidden = true;
-  const style = document.createElement("style");
+  const style = document.createElement('style');
   style.textContent = `
     [data-polkavm-touch-controls] {
       --stick-size: clamp(88px, 24vw, 128px);
@@ -150,67 +147,55 @@ export function installPolkaVmTouchControls(
   let frame = 0;
   let lastFrame = 0;
 
-  function addControl(
-    name: string,
-    label: string,
-    text: string,
-    code?: string,
-    button?: number,
-  ): TouchControl {
-    const element = document.createElement("button");
-    element.type = "button";
-    element.dataset.touchControl = name;
-    element.setAttribute("aria-label", label);
-    element.setAttribute("aria-pressed", "false");
+  function addControl(name: string, label: string, text: string, code?: string, button?: number): TouchControl {
+    const element = document.createElement('button');
+    element.type = 'button';
+    element.dataset['touchControl'] = name;
+    element.setAttribute('aria-label', label);
+    element.setAttribute('aria-pressed', 'false');
     element.textContent = text;
     const control: TouchControl = {
       element,
       pointers: new Set(),
-      code,
-      button,
     };
+    if (code !== undefined) {
+      control.code = code;
+    }
+    if (button !== undefined) {
+      control.button = button;
+    }
     byElement.set(element, control);
     root.append(element);
     return control;
   }
 
-  for (const kind of ["move", "look"] as const) {
-    const control = addControl(
-      kind,
-      kind === "move" ? "Movement joystick" : "Look joystick",
-      "",
-    );
-    const label = document.createElement("span");
-    label.className = "pvm-touch-stick-label";
+  for (const kind of ['move', 'look'] as const) {
+    const control = addControl(kind, kind === 'move' ? 'Movement joystick' : 'Look joystick', '');
+    const label = document.createElement('span');
+    label.className = 'pvm-touch-stick-label';
     label.textContent = kind.toUpperCase();
-    label.setAttribute("aria-hidden", "true");
-    const thumb = document.createElement("span");
-    thumb.className = "pvm-touch-thumb";
-    thumb.setAttribute("aria-hidden", "true");
+    label.setAttribute('aria-hidden', 'true');
+    const thumb = document.createElement('span');
+    thumb.className = 'pvm-touch-thumb';
+    thumb.setAttribute('aria-hidden', 'true');
     control.element.append(label, thumb);
     control.stick = { kind, thumb, centerX: 0, centerY: 0, radius: 1 };
   }
-  addControl("fire", "Fire (hold)", "FIRE", undefined, 1);
-  addControl("grapple", "Grapple (hold Q)", "GRAPPLE", "KeyQ");
-  addControl("jump", "Jump (Space)", "JUMP", "Space");
-  addControl("reload", "Reload (R)", "RELOAD", "KeyR");
-  addControl("start", "Start or continue (Enter)", "START", "Enter");
-  addControl("run", "Run (hold Shift)", "RUN", "ShiftLeft");
+  addControl('fire', 'Fire (hold)', 'FIRE', undefined, 1);
+  addControl('grapple', 'Grapple (hold Q)', 'GRAPPLE', 'KeyQ');
+  addControl('jump', 'Jump (Space)', 'JUMP', 'Space');
+  addControl('reload', 'Reload (R)', 'RELOAD', 'KeyR');
+  addControl('start', 'Start or continue (Enter)', 'START', 'Enter');
+  addControl('run', 'Run (hold Shift)', 'RUN', 'ShiftLeft');
   surface.append(root);
 
   function active(control: TouchControl, down: boolean): void {
-    control.element.toggleAttribute("data-active", down);
-    control.element.setAttribute("aria-pressed", String(down));
+    control.element.toggleAttribute('data-active', down);
+    control.element.setAttribute('aria-pressed', String(down));
   }
 
   function acceptsInput(): boolean {
-    return (
-      enabled &&
-      !disposed &&
-      !resetting &&
-      !document.hidden &&
-      root.hidden === false
-    );
+    return enabled && !disposed && !resetting && !document.hidden && root.hidden === false;
   }
 
   function moveKey(control: TouchControl, code: string, down: boolean): void {
@@ -273,13 +258,13 @@ export function installPolkaVmTouchControls(
       y /= distance;
     }
     stick.thumb.style.transform = `translate(-50%, -50%) translate(${String(x * stick.radius)}px, ${String(y * stick.radius)}px)`;
-    if (stick.kind === "move") {
+    if (stick.kind === 'move') {
       const moving = distance > 0.22;
       const magnitude = Math.hypot(x, y) || 1;
-      moveKey(control, "KeyW", moving && y / magnitude < -0.38);
-      moveKey(control, "KeyS", moving && y / magnitude > 0.38);
-      moveKey(control, "KeyA", moving && x / magnitude < -0.38);
-      moveKey(control, "KeyD", moving && x / magnitude > 0.38);
+      moveKey(control, 'KeyW', moving && y / magnitude < -0.38);
+      moveKey(control, 'KeyS', moving && y / magnitude > 0.38);
+      moveKey(control, 'KeyA', moving && x / magnitude < -0.38);
+      moveKey(control, 'KeyD', moving && x / magnitude > 0.38);
     } else {
       const magnitude = Math.min(distance, 1);
       if (magnitude <= 0.14) {
@@ -326,8 +311,8 @@ export function installPolkaVmTouchControls(
         callbacks.button(control.button, false);
       }
       if (control.stick) {
-        control.stick.thumb.style.transform = "translate(-50%, -50%)";
-        if (control.stick.kind === "look") {
+        control.stick.thumb.style.transform = 'translate(-50%, -50%)';
+        if (control.stick.kind === 'look') {
           stopAim();
         } else {
           releaseMovement();
@@ -372,7 +357,7 @@ export function installPolkaVmTouchControls(
       return;
     }
     const target = event.target as Element;
-    const element = target.closest("[data-touch-control]");
+    const element = target.closest('[data-touch-control]');
     const control = element ? byElement.get(element) : undefined;
     if (!control || pointers.has(event.pointerId)) {
       return;
@@ -394,19 +379,13 @@ export function installPolkaVmTouchControls(
       control.element.setPointerCapture(event.pointerId);
     } catch (error) {
       // Window listeners still release contacts if the browser refuses capture.
-      console.warn(
-        "Could not capture the PolkaVM touch control pointer",
-        error,
-      );
+      console.warn('Could not capture the PolkaVM touch control pointer', error);
     }
     if (control.stick) {
       const bounds = control.element.getBoundingClientRect();
       control.stick.centerX = bounds.left + bounds.width / 2;
       control.stick.centerY = bounds.top + bounds.height / 2;
-      control.stick.radius = Math.max(
-        1,
-        Math.min(bounds.width, bounds.height) * 0.34,
-      );
+      control.stick.radius = Math.max(1, Math.min(bounds.width, bounds.height) * 0.34);
       updateStick(control, event);
     } else if (first) {
       if (control.code !== undefined) {
@@ -453,40 +432,44 @@ export function installPolkaVmTouchControls(
 
   const listeners = new AbortController();
   const options = { signal: listeners.signal };
-  root.addEventListener("pointerdown", pointerDown, options);
-  root.addEventListener("pointermove", pointerMove, options);
-  root.addEventListener("pointerup", consume, options);
-  root.addEventListener("pointercancel", consume, options);
-  root.addEventListener("lostpointercapture", pointerCancel, options);
+  root.addEventListener('pointerdown', pointerDown, options);
+  root.addEventListener('pointermove', pointerMove, options);
+  root.addEventListener('pointerup', consume, options);
+  root.addEventListener('pointercancel', consume, options);
+  root.addEventListener('lostpointercapture', pointerCancel, options);
   for (const event of [
-    "mousedown",
-    "mouseup",
-    "click",
-    "dblclick",
-    "contextmenu",
-    "touchstart",
-    "touchmove",
-    "touchend",
+    'mousedown',
+    'mouseup',
+    'click',
+    'dblclick',
+    'contextmenu',
+    'touchstart',
+    'touchmove',
+    'touchend',
   ]) {
     root.addEventListener(event, consume, { ...options, passive: false });
   }
-  window.addEventListener("pointerup", pointerUp, {
+  window.addEventListener('pointerup', pointerUp, {
     ...options,
     capture: true,
   });
-  window.addEventListener("pointercancel", pointerCancel, {
+  window.addEventListener('pointercancel', pointerCancel, {
     ...options,
     capture: true,
   });
-  window.addEventListener("blur", reset, options);
-  window.addEventListener("pagehide", reset, options);
-  window.addEventListener("resize", reset, options);
-  window.addEventListener("orientationchange", reset, options);
-  document.addEventListener("visibilitychange", visibilityChange, options);
+  window.addEventListener('blur', reset, options);
+  window.addEventListener('pagehide', reset, options);
+  window.addEventListener('resize', reset, options);
+  window.addEventListener('orientationchange', reset, options);
+  document.addEventListener('visibilitychange', visibilityChange, options);
   let width = -1;
   let height = -1;
-  const resizeObserver = new window.ResizeObserver((entries) => {
-    const bounds = entries[0].contentRect;
+  const resizeObserver = new window.ResizeObserver(entries => {
+    const entry = entries[0];
+    if (entry === undefined) {
+      return;
+    }
+    const bounds = entry.contentRect;
     if (width !== -1 && (width !== bounds.width || height !== bounds.height)) {
       reset();
     }

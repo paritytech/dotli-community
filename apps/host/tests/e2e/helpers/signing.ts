@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { expect, type Page, type Frame, type Locator } from "@playwright/test";
+import { expect, type Page, type Frame, type Locator } from '@playwright/test';
 
 type PageLike = Page | Frame;
 
@@ -16,7 +16,7 @@ export async function runWebSignedTest(
   testId: string,
   dialogButtons: readonly string[],
   opts: { timeoutMs?: number; preClickDelayMs?: number } = {},
-): Promise<"success" | "error"> {
+): Promise<'success' | 'error'> {
   const timeoutMs = opts.timeoutMs ?? 90_000;
   const preClickDelayMs = opts.preClickDelayMs ?? 0;
   const entries = productFrame.locator('[data-testid="log-entry"]');
@@ -28,7 +28,7 @@ export async function runWebSignedTest(
     await expect(btn).toBeEnabled({ timeout: 15_000 });
   } catch {
     console.log(`[signed] ${testId}: DISABLED`);
-    return "error";
+    return 'error';
   }
   console.log(`[signed] ${testId}: clicking run`);
   await btn.click();
@@ -36,38 +36,21 @@ export async function runWebSignedTest(
   const dialogController = new AbortController();
   const dialogTask =
     dialogButtons.length > 0
-      ? clickHostDialogs(
-          hostPage,
-          dialogButtons,
-          60_000,
-          preClickDelayMs,
-          dialogController.signal,
-        ).catch(() => {})
+      ? clickHostDialogs(hostPage, dialogButtons, 60_000, preClickDelayMs, dialogController.signal).catch(() => {})
       : Promise.resolve();
 
-  const result = await waitForLogResult(
-    entries,
-    initialCount,
-    testId,
-    timeoutMs,
-  );
+  const result = await waitForLogResult(entries, initialCount, testId, timeoutMs);
   dialogController.abort();
   await dialogTask;
-  if (result === "error") {
+  if (result === 'error') {
     // On failure, dump the visible buttons on the host page. Invaluable for
     // diagnosing modal selector mismatches when the signer signs but
     // Playwright can't find the Allow/Sign button to click.
     const visibleButtons = await hostPage
-      .locator("button:visible")
-      .evaluateAll((els) =>
-        els
-          .map((e) => (e.textContent ?? "").trim().slice(0, 60))
-          .filter(Boolean),
-      )
+      .locator('button:visible')
+      .evaluateAll(els => els.map(e => e.textContent.trim().slice(0, 60)).filter(Boolean))
       .catch(() => []);
-    console.log(
-      `[signed] ${testId}: visible buttons on host: ${JSON.stringify(visibleButtons)}`,
-    );
+    console.log(`[signed] ${testId}: visible buttons on host: ${JSON.stringify(visibleButtons)}`);
   }
   return result;
 }
@@ -103,14 +86,14 @@ async function clickHostDialogs(
 
     let clickedThisPass = false;
     for (const name of buttonNames) {
-      const btn = page.getByRole("button", { name, exact: true }).first();
+      const btn = page.getByRole('button', { name, exact: true }).first();
       const visible = await btn.isVisible({ timeout: 250 }).catch(() => false);
-      if (!visible) continue;
+      if (!visible) {
+        continue;
+      }
 
       if (preClickDelayMs > 0) {
-        console.log(
-          `[signed] dialog "${name}" visible — pausing ${preClickDelayMs}ms before click`,
-        );
+        console.log(`[signed] dialog "${name}" visible — pausing ${String(preClickDelayMs)}ms before click`);
         await page.waitForTimeout(preClickDelayMs);
       }
       // The fixture's auto-allow poller clicks lasting-grant buttons too, and
@@ -118,11 +101,10 @@ async function clickHostDialogs(
       // wait for a button that never returns and never reach the next dialog
       // (e.g. "Sign"), so bound it and let the next pass move on.
       console.log(`[signed] dialog "${name}" — clicking`);
-      // The paired fixture can approve the same permission and remove this
-      // button first. Bound the action so cancellation can finish promptly.
-      await btn.click({ timeout: 2_000 }).catch((e: Error) => {
+      await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
         if (!signal.aborted) {
-          console.log(`[signed] dialog "${name}" click failed: ${e.message}`);
+          const reason = e instanceof Error ? e.message : String(e);
+          console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
         }
       });
       seen.add(name);
@@ -142,13 +124,9 @@ async function clickHostDialogs(
     return;
   }
   if (seen.size === 0) {
-    console.log(
-      `[signed] no host dialog appeared (looked for: ${buttonNames.join(", ")})`,
-    );
+    console.log(`[signed] no host dialog appeared (looked for: ${buttonNames.join(', ')})`);
   } else {
-    console.log(
-      `[signed] dialog budget exhausted after seeing: ${[...seen].join(", ")}`,
-    );
+    console.log(`[signed] dialog budget exhausted after seeing: ${[...seen].join(', ')}`);
   }
 }
 
@@ -157,33 +135,31 @@ async function waitForLogResult(
   initialCount: number,
   testId: string,
   timeoutMs: number,
-): Promise<"success" | "error"> {
+): Promise<'success' | 'error'> {
   try {
-    await expect
-      .poll(async () => entries.count(), { timeout: 10_000 })
-      .toBeGreaterThan(initialCount);
+    await expect.poll(async () => entries.count(), { timeout: 10_000 }).toBeGreaterThan(initialCount);
   } catch {
     console.log(`[signed] ${testId}: no log entry within 10s`);
-    return "error";
+    return 'error';
   }
 
   const newest = entries.first();
   try {
-    await expect(newest).not.toHaveAttribute("data-status", "pending", {
+    await expect(newest).not.toHaveAttribute('data-status', 'pending', {
       timeout: timeoutMs,
     });
   } catch {
     console.log(`[signed] ${testId}: stuck pending`);
-    return "error";
+    return 'error';
   }
 
-  const status = await newest.getAttribute("data-status");
-  if (status !== "success") {
+  const status = await newest.getAttribute('data-status');
+  if (status !== 'success') {
     const msg = await newest
-      .locator("div.break-all")
+      .locator('div.break-all')
       .textContent()
-      .catch(() => "");
-    console.log(`[signed] ${testId}: ${(msg ?? "").slice(0, 300)}`);
+      .catch(() => '');
+    console.log(`[signed] ${testId}: ${(msg ?? '').slice(0, 300)}`);
   }
-  return status === "success" ? "success" : "error";
+  return status === 'success' ? 'success' : 'error';
 }

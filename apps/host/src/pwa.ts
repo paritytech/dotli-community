@@ -13,19 +13,25 @@
 // Scope is the host origin only. The protocol iframe (host.dot.li) and
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
 
-import { Workbox } from "workbox-window";
-import { showNotification } from "@dotli/ui/notification";
-import { log } from "@dotli/shared/log";
-import { SANDBOX_SCHEMA_VERSION } from "@dotli/config/host-sandbox-contract";
+import { Workbox } from 'workbox-window';
+import { showNotification } from '@dotli/ui';
+import { log } from '@dotli/shared';
+import { SANDBOX_SCHEMA_VERSION } from '@dotli/config';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
-if ("serviceWorker" in navigator) {
-  const wb = new Workbox("/host-sw.js");
-  navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
-    const data = event.data as { type?: unknown } | null;
+if ('serviceWorker' in navigator) {
+  const wb = new Workbox('/host-sw.js');
+  navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+    const data = event.data;
     const reply = event.ports.at(0);
-    if (data?.type !== "dotli:host-contract-version" || reply === undefined) {
+    if (
+      typeof data !== 'object' ||
+      data === null ||
+      !('type' in data) ||
+      data.type !== 'dotli:host-contract-version' ||
+      reply === undefined
+    ) {
       return;
     }
     reply.postMessage({ version: SANDBOX_SCHEMA_VERSION });
@@ -39,23 +45,23 @@ if ("serviceWorker" in navigator) {
       return;
     }
     applyingUpdate = true;
-    wb.addEventListener("controlling", () => {
+    wb.addEventListener('controlling', () => {
       window.location.reload();
     });
     wb.messageSkipWaiting();
   };
 
-  wb.addEventListener("waiting", () => {
+  wb.addEventListener('waiting', () => {
     if (hostUpdateRequired) {
       applyWaitingUpdate();
       return;
     }
     showNotification({
-      label: "Update available",
-      text: "A new version of dot.li is ready. Reload to apply.",
+      label: 'Update available',
+      text: 'A new version of dot.li is ready. Reload to apply.',
       dismissMs: 0,
       action: {
-        label: "Reload",
+        label: 'Reload',
         onClick: applyWaitingUpdate,
       },
     });
@@ -63,7 +69,7 @@ if ("serviceWorker" in navigator) {
 
   const registrationPromise = wb
     .register()
-    .then((registration) => {
+    .then(registration => {
       if (!registration) {
         return undefined;
       }
@@ -72,8 +78,8 @@ if ("serviceWorker" in navigator) {
           void registration.update();
         }
       }, UPDATE_INTERVAL_MS);
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "visible" && navigator.onLine) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && navigator.onLine) {
           void registration.update();
         }
       });
@@ -87,9 +93,9 @@ if ("serviceWorker" in navigator) {
   // The sandbox emits this only when its schema is newer than the contract
   // supplied by this host build. Consent is no longer relevant: the current
   // host cannot run the app safely, so activate a waiting compatible build.
-  window.addEventListener("dotli:host-update-required", () => {
+  window.addEventListener('dotli:host-update-required', () => {
     hostUpdateRequired = true;
-    void registrationPromise.then((registration) => {
+    void registrationPromise.then(registration => {
       if (!registration) {
         return;
       }

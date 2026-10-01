@@ -12,24 +12,15 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import type { StringJsonRpcConnection } from "@dotli/protocol/broker";
-import type {
-  SmoldotDbChain,
-  SmoldotDbOutcome,
-} from "@dotli/protocol/messages";
-import { MAX_CONNECTIONS_PER_ORIGIN } from "@dotli/config/config";
-import {
-  isValidNetwork,
-  setNetworkOverride,
-  getActiveServicesConfig,
-} from "@dotli/config/network";
+import type { StringJsonRpcConnection, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/protocol';
+
+import { MAX_CONNECTIONS_PER_ORIGIN, isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@dotli/config';
+
 import {
   createChainProvider,
   isChainSupported,
   onProviderFatal,
   onSmoldotDbOutcome,
-} from "@dotli/resolver/provider";
-import {
   resolveDotName,
   resolveExecutableManifest,
   resolveOwner,
@@ -39,58 +30,55 @@ import {
   setResolverPeopleProvider,
   waitForAssetHubFinalized,
   waitForPeopleFinalized,
-} from "@dotli/resolver/resolve";
-import { m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { initSentry, installGlobalErrorHandlers } from "@dotli/metrics/sentry";
+} from '@dotli/resolver';
+
+import { m, initSentry, installGlobalErrorHandlers, spans as S } from '@dotli/metrics';
+
 import {
   createChainBrokerManager,
   requireBrokerLocalProvider,
-} from "@dotli/protocol/broker";
-import { errorName, serializeError } from "@dotli/shared/errors";
-import { isExecutableKind } from "@dotli/shared/executables";
-import { PROTOCOL_APP_ERRORS } from "./errors";
-
-initSentry("worker");
-installGlobalErrorHandlers("worker");
-// Only ever runs in shared-worker mode. Tag every metric emitted from this
-// context so broker/smoldot counters aggregate cleanly with the iframe's.
-m.setDefaults({ protocol_mode: "shared-worker" });
-import {
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
-} from "@dotli/protocol/auth-storage";
-import {
   getRequestSyncTimeoutMs,
+  type ChainBrokerManager,
   type ProtocolRequestEnvelope,
   type ProtocolRequestMap,
   type ProtocolEnvelope,
-} from "@dotli/protocol/messages";
+} from '@dotli/protocol';
+import { errorName, serializeError, isExecutableKind } from '@dotli/shared';
+
+import { PROTOCOL_APP_ERRORS } from './errors.js';
+
+initSentry('worker');
+installGlobalErrorHandlers('worker');
+// Only ever runs in shared-worker mode. Tag every metric emitted from this
+// context so broker/smoldot counters aggregate cleanly with the iframe's.
+m.setDefaults({ protocol_mode: 'shared-worker' });
 
 export interface SWRelayRequest {
-  type: "relay-request";
+  type: 'relay-request';
   envelope: ProtocolRequestEnvelope;
   origin: string;
 }
 
 export interface SWRelayResponse {
-  type: "relay-response";
+  type: 'relay-response';
   envelope: ProtocolEnvelope;
 }
 
 export interface SWReady {
-  type: "ready";
+  type: 'ready';
 }
 
 export interface SWError {
-  type: "error";
+  type: 'error';
   message: string;
 }
 
 export type SWInbound = SWRelayRequest;
 export type SWOutbound = SWRelayResponse | SWReady | SWError;
 
-const TAG = "[dot.li SW]";
+const TAG = '[dot.li SW]';
 
 function swLog(...args: unknown[]): void {
   console.warn(TAG, ...args);
@@ -108,11 +96,9 @@ const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
 let engineReady = false;
 
-const NETWORK_NAME_PREFIX = "dotli-protocol-";
+const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
-const requestedNetwork = self.name.startsWith(NETWORK_NAME_PREFIX)
-  ? self.name.slice(NETWORK_NAME_PREFIX.length)
-  : null;
+const requestedNetwork = self.name.startsWith(NETWORK_NAME_PREFIX) ? self.name.slice(NETWORK_NAME_PREFIX.length) : null;
 if (requestedNetwork === null) {
   networkInitFailure = `Unexpected SharedWorker name "${self.name}" — iframe did not encode the active network.`;
 } else if (!isValidNetwork(requestedNetwork)) {
@@ -129,11 +115,9 @@ if (requestedNetwork === null) {
 // a per-request timeout. `onProviderFatal` is idempotent and replays to late
 // subscribers, so firing this once at module load covers the SharedWorker's
 // lifetime.
-onProviderFatal((message) => {
-  swError(
-    `Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`,
-  );
-  broadcastToPorts({ namespace: "dotli:protocol", kind: "fatal", message });
+onProviderFatal(message => {
+  swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
+  broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
 });
 
 // Tell every connected tab which chains began from pre-existing state. The
@@ -145,15 +129,15 @@ const latchedSmoldotDb = new Map<SmoldotDbChain, SmoldotDbOutcome>();
 onSmoldotDbOutcome((chain, outcome) => {
   latchedSmoldotDb.set(chain, outcome);
   broadcastToPorts({
-    namespace: "dotli:protocol",
-    kind: "smoldot-db",
+    namespace: 'dotli:protocol',
+    kind: 'smoldot-db',
     chain,
     outcome,
   });
 });
 
 // Placeholder broker manager until pre-sync creates the real one.
-let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
+let chainBrokerManager: ChainBrokerManager;
 
 // NO retries. NO cleanup-and-retry. NO backoff. The user picked
 // smoldot-shared-worker. If presync fails the actual cause is surfaced to
@@ -163,7 +147,7 @@ let presyncFailureMessage: string | null = null;
 
 async function presync(): Promise<void> {
   const t0 = performance.now();
-  m.breadcrumb("presync starting");
+  m.breadcrumb('presync starting');
 
   try {
     // Create the broker FIRST and route the resolver's Asset Hub reads
@@ -172,29 +156,21 @@ async function presync(): Promise<void> {
     // dApp connection would release — the `ChainHead disjointed` load failure.
     chainBrokerManager = createChainBrokerManager(createChainProvider);
     setResolverAssetHubProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().assethub.genesis,
-        "Asset Hub",
-      ),
+      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );
     // The People warm-keep must share this same broker follow. A separate
     // getSmProvider on the People chain would race the broker's follow (one
     // shared smoldot JSON-RPC queue) and have its events misrouted, so the
     // broker drops People follow events as "unknown token" and reads hang.
     setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
+      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().people.genesis, 'People'),
     );
 
     // Wait for Asset Hub to sync to a finalized block via the
     // explicit presync primitive (no more overloading `resolveDotName`
     // with a sentinel label). This now syncs the broker's shared chain.
-    swLog("Waiting for Asset Hub to reach finalized block...");
-    await waitForAssetHubFinalized((msg) => {
+    swLog('Waiting for Asset Hub to reach finalized block...');
+    await waitForAssetHubFinalized(msg => {
       swLog(`Pre-sync status: ${msg}`);
     });
     const totalMs = performance.now() - t0;
@@ -203,12 +179,12 @@ async function presync(): Promise<void> {
     swLog(`Asset Hub synced (${String(Math.round(totalMs))}ms total)`);
 
     // Success: mark ready.
-    swLog("Pre-sync complete, engine ready");
+    swLog('Pre-sync complete, engine ready');
     engineReady = true;
 
     // Signal ready to any ports that connected during pre-sync
     for (const port of pendingPorts) {
-      const readyMsg: SWReady = { type: "ready" };
+      const readyMsg: SWReady = { type: 'ready' };
       port.postMessage(readyMsg);
     }
     pendingPorts.length = 0;
@@ -218,41 +194,30 @@ async function presync(): Promise<void> {
     // the parachain warp sync (the source of the intermittent failures). Start
     // syncing it now so it is ready by the time auth runs. People is not needed
     // for resolution, so this must not gate the ready signal above.
-    swLog("Warming People chain in background...");
-    // Route the People warm-up through the broker's shared follow (mirrors
-    // Asset Hub above) so it doesn't open a second competing smoldot follow.
-    setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(
-        chainBrokerManager,
-        getActiveServicesConfig().people.genesis,
-        "People",
-      ),
-    );
-    void waitForPeopleFinalized((msg) => {
+    swLog('Warming People chain in background...');
+    void waitForPeopleFinalized(msg => {
       swLog(`People warm status: ${msg}`);
     })
       .then(() => {
-        swLog("People chain warmed");
+        swLog('People chain warmed');
       })
       .catch((err: unknown) => {
-        swLog(
-          `People chain warm failed (retried on demand): ${serializeError(err)}`,
-        );
+        swLog(`People chain warm failed (retried on demand): ${serializeError(err)}`);
       });
   } catch (err: unknown) {
     const msg = serializeError(err);
     swError(`Pre-sync failed: ${msg}`);
     m.count(S.SMOLDOT_PRESYNC, {
-      outcome: "error",
-      reason: err instanceof Error ? err.name : "unknown",
+      outcome: 'error',
+      reason: err instanceof Error ? err.name : 'unknown',
     });
-    m.breadcrumb("smoldot presync failed", { reason: msg });
+    m.breadcrumb('smoldot presync failed', { reason: msg });
 
     // Surface the actual cause to every waiting port. Engine remains
     // permanently dead. The user must reload to retry.
     presyncFailureMessage = msg;
     for (const port of pendingPorts) {
-      const errorMsg: SWError = { type: "error", message: msg };
+      const errorMsg: SWError = { type: 'error', message: msg };
       port.postMessage(errorMsg);
     }
     pendingPorts.length = 0;
@@ -260,7 +225,7 @@ async function presync(): Promise<void> {
 }
 
 function assertString(value: unknown, name: string): asserts value is string {
-  if (typeof value !== "string" || value.length === 0) {
+  if (typeof value !== 'string' || value.length === 0) {
     throw new Error(`Invalid ${name}: expected non-empty string`);
   }
 }
@@ -273,7 +238,7 @@ function broadcastToPorts(envelope: ProtocolEnvelope): void {
 
 function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
   try {
-    const msg: SWRelayResponse = { type: "relay-response", envelope };
+    const msg: SWRelayResponse = { type: 'relay-response', envelope };
     port.postMessage(msg);
   } catch (err: unknown) {
     // Distinguish "port closed" (expected on tab navigation) from any
@@ -282,16 +247,13 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
     // cause (a structured-clone failure on an un-transferable payload,
     // for example) is a real bug and we want it visible instead of
     // silently removing an otherwise-healthy port.
-    const name = errorName(err) ?? "";
-    if (name === "InvalidStateError") {
-      swLog("Port closed, cleaning up");
+    const name = errorName(err) ?? '';
+    if (name === 'InvalidStateError') {
+      swLog('Port closed, cleaning up');
       removePort(port);
       return;
     }
-    swError(
-      `sendToPort unexpected failure (name=${name || "<unknown>"}):`,
-      err,
-    );
+    swError(`sendToPort unexpected failure (name=${name || '<unknown>'}):`, err);
     // Remove the port regardless, since we can't deliver to it. The
     // error log above preserves the real cause for triage.
     removePort(port);
@@ -316,21 +278,13 @@ function removePort(port: MessagePort): void {
       cleaned++;
     }
   }
-  swLog(
-    `Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`,
-  );
+  swLog(`Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`);
 }
 
-async function handleRequest(
-  port: MessagePort,
-  request: ProtocolRequestEnvelope,
-  origin: string,
-): Promise<void> {
+async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope, origin: string): Promise<void> {
   const t = performance.now();
   if (isSharedAuthRequestMethod(request.method)) {
-    throw new Error(
-      `Shared auth requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`,
-    );
+    throw new Error(`Shared auth requests must be handled on host.dot.li, not the SharedWorker: ${request.method}`);
   }
   if (isSharedModeRequestMethod(request.method)) {
     throw new Error(
@@ -339,17 +293,16 @@ async function handleRequest(
   }
 
   const syncTimeoutMs = getRequestSyncTimeoutMs(request);
+  const syncOptions = syncTimeoutMs !== undefined ? { syncTimeoutMs } : {};
 
   switch (request.method) {
-    case "warmup": {
+    case 'warmup': {
       // Pre-sync already started smoldot, the relay chain, and periodic
       // saves. Just confirm it's done.
-      swLog(
-        `Warmup acknowledged (engine already pre-synced) (${String(Math.round(performance.now() - t))}ms)`,
-      );
+      swLog(`Warmup acknowledged (engine already pre-synced) (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -357,26 +310,24 @@ async function handleRequest(
       return;
     }
 
-    case "resolveDotName": {
-      const payload = request.payload as ProtocolRequestMap["resolveDotName"];
-      assertString(payload.label, "label");
+    case 'resolveDotName': {
+      const payload = request.payload as ProtocolRequestMap['resolveDotName'];
+      assertString(payload.label, 'label');
       const result = await resolveDotName(payload.label, {
-        onStatus: (message) => {
+        onStatus: message => {
           sendToPort(port, {
-            namespace: "dotli:protocol",
-            kind: "progress",
+            namespace: 'dotli:protocol',
+            kind: 'progress',
             id: request.id,
             message,
           });
         },
-        syncTimeoutMs,
+        ...syncOptions,
       });
-      swLog(
-        `Resolved "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
-      );
+      swLog(`Resolved "${payload.label}" → ${result ?? 'null'} (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result,
@@ -384,32 +335,28 @@ async function handleRequest(
       return;
     }
 
-    case "resolveSeitySlot": {
-      const payload = request.payload as ProtocolRequestMap["resolveSeitySlot"];
-      assertString(payload.lookupKey, "lookupKey");
-      const slot = await resolveSeitySlot(payload.lookupKey as `0x${string}`, {
-        syncTimeoutMs,
-      });
+    case 'resolveSeitySlot': {
+      const payload = request.payload as ProtocolRequestMap['resolveSeitySlot'];
+      assertString(payload.lookupKey, 'lookupKey');
+      const slot = await resolveSeitySlot(payload.lookupKey as `0x${string}`, syncOptions);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
-        result:
-          slot === null ? null : { ...slot, version: slot.version.toString() },
+        result: slot === null ? null : { ...slot, version: slot.version.toString() },
       });
       return;
     }
-    case "resolveOwner": {
-      const payload = request.payload as ProtocolRequestMap["resolveOwner"];
-      assertString(payload.label, "label");
-      const result = await resolveOwner(payload.label, { syncTimeoutMs });
-      swLog(
-        `Owner "${payload.label}" → ${result ?? "null"} (${String(Math.round(performance.now() - t))}ms)`,
-      );
+
+    case 'resolveOwner': {
+      const payload = request.payload as ProtocolRequestMap['resolveOwner'];
+      assertString(payload.label, 'label');
+      const result = await resolveOwner(payload.label, syncOptions);
+      swLog(`Owner "${payload.label}" → ${result ?? 'null'} (${String(Math.round(performance.now() - t))}ms)`);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result,
@@ -417,10 +364,9 @@ async function handleRequest(
       return;
     }
 
-    case "resolveExecutableManifest": {
-      const payload =
-        request.payload as ProtocolRequestMap["resolveExecutableManifest"];
-      assertString(payload.label, "label");
+    case 'resolveExecutableManifest': {
+      const payload = request.payload as ProtocolRequestMap['resolveExecutableManifest'];
+      assertString(payload.label, 'label');
       // postMessage payloads are untrusted strings even though TS narrows
       // `payload.kind` to the union. Widening through a string local keeps the
       // runtime check intact under strict TS rules.
@@ -428,14 +374,10 @@ async function handleRequest(
       if (!isExecutableKind(kind)) {
         throw new Error(`Unsupported executable kind: ${kind}`);
       }
-      const result = await resolveExecutableManifest(
-        payload.label,
-        payload.kind,
-        { syncTimeoutMs },
-      );
+      const result = await resolveExecutableManifest(payload.label, payload.kind, syncOptions);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result,
@@ -443,16 +385,13 @@ async function handleRequest(
       return;
     }
 
-    case "resolveRootManifest": {
-      const payload =
-        request.payload as ProtocolRequestMap["resolveRootManifest"];
-      assertString(payload.label, "label");
-      const result = await resolveRootManifest(payload.label, {
-        syncTimeoutMs,
-      });
+    case 'resolveRootManifest': {
+      const payload = request.payload as ProtocolRequestMap['resolveRootManifest'];
+      assertString(payload.label, 'label');
+      const result = await resolveRootManifest(payload.label, syncOptions);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result,
@@ -460,20 +399,16 @@ async function handleRequest(
       return;
     }
 
-    case "chainConnect": {
-      const payload = request.payload as ProtocolRequestMap["chainConnect"];
-      assertString(payload.genesisHash, "genesisHash");
-      assertString(payload.connectionId, "connectionId");
+    case 'chainConnect': {
+      const payload = request.payload as ProtocolRequestMap['chainConnect'];
+      assertString(payload.genesisHash, 'genesisHash');
+      assertString(payload.connectionId, 'connectionId');
       if (chainConnections.size >= MAX_CHAIN_CONNECTIONS) {
-        throw new Error(
-          `Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`,
-        );
+        throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
       }
       const originConns = originConnections.get(origin) ?? new Set<string>();
       if (originConns.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-        throw new Error(
-          `Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`,
-        );
+        throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
       }
       if (!isChainSupported(payload.genesisHash)) {
         throw new Error(`Unsupported chain: ${payload.genesisHash}`);
@@ -482,24 +417,20 @@ async function handleRequest(
       // broker, so there is no resolver chain to release here; connect
       // directly.
       let chainMsgCount = 0;
-      const connection = chainBrokerManager.connectRemote(
-        payload.genesisHash,
-        payload.connectionId,
-        (message) => {
-          chainMsgCount++;
-          if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-            swLog(
-              `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
-            );
-          }
-          sendToPort(port, {
-            namespace: "dotli:protocol",
-            kind: "chain-message",
-            connectionId: payload.connectionId,
-            message,
-          });
-        },
-      );
+      const connection = chainBrokerManager.connectRemote(payload.genesisHash, payload.connectionId, message => {
+        chainMsgCount++;
+        if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
+          swLog(
+            `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
+          );
+        }
+        sendToPort(port, {
+          namespace: 'dotli:protocol',
+          kind: 'chain-message',
+          connectionId: payload.connectionId,
+          message,
+        });
+      });
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
@@ -507,12 +438,10 @@ async function handleRequest(
       connectionPorts.set(payload.connectionId, port);
       originConns.add(payload.connectionId);
       originConnections.set(origin, originConns);
-      swLog(
-        `Chain connected: ${payload.connectionId} (${String(chainConnections.size)} total)`,
-      );
+      swLog(`Chain connected: ${payload.connectionId} (${String(chainConnections.size)} total)`);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -520,18 +449,18 @@ async function handleRequest(
       return;
     }
 
-    case "chainSend": {
-      const payload = request.payload as ProtocolRequestMap["chainSend"];
-      assertString(payload.connectionId, "connectionId");
-      assertString(payload.message, "message");
+    case 'chainSend': {
+      const payload = request.payload as ProtocolRequestMap['chainSend'];
+      assertString(payload.connectionId, 'connectionId');
+      assertString(payload.message, 'message');
       const connection = chainConnections.get(payload.connectionId);
       if (connection === undefined) {
         throw new Error(`Unknown chain connection: ${payload.connectionId}`);
       }
       connection.send(payload.message);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -539,9 +468,9 @@ async function handleRequest(
       return;
     }
 
-    case "chainDisconnect": {
-      const payload = request.payload as ProtocolRequestMap["chainDisconnect"];
-      assertString(payload.connectionId, "connectionId");
+    case 'chainDisconnect': {
+      const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
+      assertString(payload.connectionId, 'connectionId');
       const connection = chainConnections.get(payload.connectionId);
       connection?.disconnect();
       chainConnections.delete(payload.connectionId);
@@ -552,12 +481,10 @@ async function handleRequest(
           originConnections.delete(orig);
         }
       }
-      swLog(
-        `Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`,
-      );
+      swLog(`Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: request.id,
         ok: true,
         result: true,
@@ -565,12 +492,10 @@ async function handleRequest(
       return;
     }
 
-    case "walletStorage":
-    case "coreCustody":
-    case "walletOwner":
-      throw new Error(
-        "Wallet storage is only available through the trusted protocol iframe",
-      );
+    case 'walletStorage':
+    case 'coreCustody':
+    case 'walletOwner':
+      throw new Error('Wallet storage is only available through the trusted protocol iframe');
 
     default: {
       const _method: never = request.method;
@@ -584,36 +509,37 @@ async function handleRequest(
 function cleanStalePorts(): void {
   for (const p of [...ports]) {
     try {
-      p.postMessage({ type: "ping" });
+      p.postMessage({ type: 'ping' });
     } catch {
-      swLog("Detected stale port during cleanup");
+      swLog('Detected stale port during cleanup');
       removePort(p);
     }
   }
 }
 
-self.addEventListener("connect", (event) => {
+self.addEventListener('connect', event => {
   const port = event.ports[0];
+  if (port === undefined) {
+    return;
+  }
 
   // Clean up any stale ports from previous iframe reloads
   cleanStalePorts();
 
   ports.add(port);
-  swLog(
-    `Port connected (${String(ports.size)} total, engine ${engineReady ? "ready" : "syncing"})`,
-  );
+  swLog(`Port connected (${String(ports.size)} total, engine ${engineReady ? 'ready' : 'syncing'})`);
 
-  port.addEventListener("message", (msgEvent: MessageEvent) => {
+  port.addEventListener('message', (msgEvent: MessageEvent) => {
     const data = msgEvent.data as { type?: string } | null;
 
     // Handle disconnect signal from iframe beforeunload
-    if (data?.type === "disconnect") {
-      swLog("Port sent disconnect signal, cleaning up");
+    if (data?.type === 'disconnect') {
+      swLog('Port sent disconnect signal, cleaning up');
       removePort(port);
       return;
     }
 
-    if (data?.type !== "relay-request") {
+    if (data?.type !== 'relay-request') {
       return;
     }
 
@@ -621,14 +547,15 @@ self.addEventListener("connect", (event) => {
     const { envelope, origin } = relayData;
     void handleRequest(port, envelope, origin).catch((error: unknown) => {
       const msg = serializeError(error);
+      const name = errorName(error);
       swError(`Request ${envelope.method} failed:`, msg);
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "response",
+        namespace: 'dotli:protocol',
+        kind: 'response',
         id: envelope.id,
         ok: false,
         error: msg,
-        errorName: errorName(error),
+        ...(name !== undefined ? { errorName: name } : {}),
       });
     });
   });
@@ -637,24 +564,24 @@ self.addEventListener("connect", (event) => {
 
   if (engineReady) {
     // Engine already synced, signal ready immediately.
-    const readyMsg: SWReady = { type: "ready" };
+    const readyMsg: SWReady = { type: 'ready' };
     port.postMessage(readyMsg);
     // This tab joins a worker whose recorded chains are already live, so it
     // pays no sync cost regardless of what the worker's own first load did.
     // Report the state this tab got rather than the worker's disk outcomes.
     for (const chain of latchedSmoldotDb.keys()) {
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "smoldot-db",
+        namespace: 'dotli:protocol',
+        kind: 'smoldot-db',
         chain,
-        outcome: "hit",
+        outcome: 'hit',
       });
     }
   } else if (presyncFailureMessage !== null) {
     // Pre-sync already failed. Surface the original cause immediately
     // instead of queuing this port forever.
     const errorMsg: SWError = {
-      type: "error",
+      type: 'error',
       message: presyncFailureMessage,
     };
     port.postMessage(errorMsg);
@@ -665,13 +592,13 @@ self.addEventListener("connect", (event) => {
     // the worker is running, so the worker's outcomes are its own.
     for (const [chain, outcome] of latchedSmoldotDb) {
       sendToPort(port, {
-        namespace: "dotli:protocol",
-        kind: "smoldot-db",
+        namespace: 'dotli:protocol',
+        kind: 'smoldot-db',
         chain,
         outcome,
       });
     }
-    swLog("Engine not ready yet, queuing port for ready signal");
+    swLog('Engine not ready yet, queuing port for ready signal');
     pendingPorts.push(port);
   }
 });
@@ -680,6 +607,6 @@ if (networkInitFailure !== null) {
   swError(networkInitFailure);
   presyncFailureMessage = networkInitFailure;
 } else {
-  swLog("SharedWorker initialized, starting pre-sync...");
+  swLog('SharedWorker initialized, starting pre-sync...');
   void presync();
 }

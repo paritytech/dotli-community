@@ -31,6 +31,13 @@ regexes = [
 ]
 
 [[allowlists]]
+description = "Seity contacts test vectors hold public registry lookup keys and content digests (32-byte hex hashes) that trip generic-api-key but are not secrets."
+targetRules = ["generic-api-key"]
+paths = [
+  '''packages/ui/tests/fixtures/seity-contacts-v\d+\.json$''',
+]
+
+[[allowlists]]
 description = "The resolver mapping-slot test uses a repeating public hexadecimal pattern, not a credential. Scope this exception to that exact value and test file."
 condition = "AND"
 targetRules = ["generic-api-key"]

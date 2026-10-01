@@ -222,17 +222,7 @@
   background: #141414;
   min-width: 0;
   gap: 6px;
-}
-.td-header-tools {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
   overflow-x: auto;
-}
-.td-header-tools > * {
-  flex-shrink: 0;
 }
 .td-title {
   color: #a3a3a3;
@@ -262,10 +252,6 @@
 .td-runtime-badge:hover {
   border-color: #3b82f6;
   color: #dbeafe;
-}
-.td-runtime-badge.hidden,
-.td-runtime-tab.hidden {
-  display: none;
 }
 #truapi-debug-panel.docked-right .td-runtime-badge {
   max-width: 145px;

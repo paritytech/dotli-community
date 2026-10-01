@@ -13,43 +13,37 @@
 // saw. Each instance serves one product, so the product the core passes is
 // already known as `label`.
 
-import { withActiveTld } from "@dotli/config/network";
-import type { PermissionDecision, Permissions } from "@parity/truapi-host";
-import type { RemotePermission } from "@parity/truapi";
+import { withActiveTld } from '@dotli/config';
+import type { PermissionDecision, Permissions } from '@parity/truapi-host';
+import type { RemotePermission } from '@parity/truapi';
 import {
   getPermissionStatus,
   isDevicePermission,
   isEnforceableDevicePermission,
   setPermissionStatus,
   type EnforceablePermissionName,
-} from "../permissions";
-import {
-  showJamPeersPermissionModal,
-  showPermissionRequestModal,
-} from "../permission-modal";
-import { showNotification } from "../notification";
-import {
-  createBlockingModalScope,
-  throwIfAborted,
-  type BlockingModalScope,
-} from "../blocking-modal-queue";
-import { createSubmitRateLimiter, type SubmitRateLimiter } from "./rate-limit";
-import { ERRORS } from "../errors";
+} from '../permissions.js';
+import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
+import { showNotification } from '../notification.js';
+import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
+import { ERRORS } from '../errors.js';
+import { recordPermissionChange } from '../state/permissions.js';
 
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
 // reliably intercepted from inside the sandbox. Auto-grant either.
 // `JamPeers` carries its genesis and has its own prompt.
 function gatedRemotePermissionName(
-  tag: Exclude<RemotePermission["tag"], "JamPeers">,
+  tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
 ): EnforceablePermissionName | null {
   switch (tag) {
-    case "ChainSubmit":
-    case "PreimageSubmit":
-    case "StatementSubmit":
+    case 'ChainSubmit':
+    case 'PreimageSubmit':
+    case 'StatementSubmit':
       return tag;
-    case "Remote":
-    case "WebRtc":
+    case 'Remote':
+    case 'WebRtc':
       return null;
   }
 }
@@ -59,46 +53,25 @@ export function createPromptPermission(
   modalScope: BlockingModalScope = createBlockingModalScope(),
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const devicePermission: Permissions["devicePermission"] = async (
-    _product,
-    tag,
-  ) => {
+  const devicePermission: Permissions['devicePermission'] = async (_product, tag) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
-      return "AllowOnce";
+      return 'AllowOnce';
     }
-    return decidePromptPermission(
-      label,
-      tag,
-      { kind: "Device", limiter },
-      modalScope,
-    );
+    return decidePromptPermission(label, tag, { kind: 'Device', limiter }, modalScope);
   };
 
-  const remotePermission: Permissions["remotePermission"] = async (
-    _product,
-    request,
-  ) => {
+  const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
     const { permission } = request;
-    if (permission.tag === "JamPeers") {
-      return modalScope.enqueue((signal) =>
-        decideJamPeersPermission(label, permission.value.genesis, {
-          limiter,
-          signal,
-        }),
-      );
+    if (permission.tag === 'JamPeers') {
+      return modalScope.enqueue(signal => decideJamPeersPermission(label, permission.value.genesis, { limiter, signal }));
     }
     const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {
-      return "AllowOnce";
+      return 'AllowOnce';
     }
-    return decidePromptPermission(
-      label,
-      name,
-      { kind: "Remote", limiter },
-      modalScope,
-    );
+    return decidePromptPermission(label, name, { kind: 'Remote', limiter }, modalScope);
   };
 
   return { devicePermission, remotePermission };
@@ -132,7 +105,7 @@ async function decideJamPeersPermission(
 }
 
 interface PromptOptions {
-  kind: "Device" | "Remote";
+  kind: 'Device' | 'Remote';
   limiter: { allow: () => boolean };
   gatedByIframe?: boolean;
 }
@@ -143,9 +116,7 @@ export function decidePromptPermission(
   options: PromptOptions,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Promise<PermissionDecision> {
-  return modalScope.enqueue((signal) =>
-    decidePromptPermissionWhenActive(label, name, options, signal),
-  );
+  return modalScope.enqueue(signal => decidePromptPermissionWhenActive(label, name, options, signal));
 }
 
 async function decidePromptPermissionWhenActive(
@@ -158,23 +129,23 @@ async function decidePromptPermissionWhenActive(
   // Grants enforced by the iframe `allow` attribute require a reload.
   const status = await getPermissionStatus(label, name);
   throwIfAborted(signal);
-  if (status === "granted") {
+  if (status === 'granted') {
     // The status also reflects a pending one-time grant, so answering
     // AllowAlways here would quietly make it permanent. AllowOnce leaves a
     // saved grant untouched.
-    return "AllowOnce";
+    return 'AllowOnce';
   }
-  if (status === "denied") {
+  if (status === 'denied') {
     showNotification({
       label: withActiveTld(label),
       text:
-        kind === "Device"
+        kind === 'Device'
           ? `${name} access is blocked. Use the permissions menu in the top bar to change this.`
-          : "Transaction signing is blocked. Use the permissions menu in the top bar to change this.",
+          : 'Transaction signing is blocked. Use the permissions menu in the top bar to change this.',
       dismissMs: 6000,
       browserNotification: false,
     });
-    return "Deny";
+    return 'Deny';
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {
@@ -184,16 +155,16 @@ async function decidePromptPermissionWhenActive(
     allowOnce: !gatedByIframe,
   });
   throwIfAborted(signal);
-  if (decision === "dismissed") {
+  if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
-  if (decision === "denied") {
-    await setPermissionStatus(label, name, "denied");
+  if (decision === 'denied') {
+    await setPermissionStatus(label, name, 'denied');
     throwIfAborted(signal);
-    return "Deny";
+    return 'Deny';
   }
-  if (decision === "granted") {
-    await setPermissionStatus(label, name, "granted");
+  if (decision === 'granted') {
+    await setPermissionStatus(label, name, 'granted');
     throwIfAborted(signal);
   }
   if (gatedByIframe) {
@@ -205,18 +176,12 @@ async function decidePromptPermissionWhenActive(
       if (signal.aborted) {
         return;
       }
-      window.dispatchEvent(
-        new CustomEvent("dotli:device-permission-changed", {
-          detail: { label, permission: name },
-        }),
-      );
+      recordPermissionChange({ kind: 'device', label, permission: name });
     }, 0);
   } else {
     // No browser-level gate, so the grant takes effect as is. The event keeps
-    // the topbar in sync.
-    window.dispatchEvent(
-      new CustomEvent("dotli:permission-changed", { detail: { label } }),
-    );
+    // the permissions button in sync.
+    recordPermissionChange({ kind: 'grant', label, permission: name });
   }
-  return decision === "granted-once" ? "AllowOnce" : "AllowAlways";
+  return decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';
 }

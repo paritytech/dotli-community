@@ -24,43 +24,40 @@ export function installPolkaVmMenu(
   },
 ): PolkaVmMenu {
   const button = (label: string): HTMLButtonElement => {
-    const element = document.createElement("button");
-    element.type = "button";
+    const element = document.createElement('button');
+    element.type = 'button';
     element.textContent = label;
     return element;
   };
-  const toggle = button("Menu");
-  toggle.id = "dotli-polkavm-menu-open";
-  toggle.setAttribute("aria-haspopup", "dialog");
-  toggle.setAttribute("aria-expanded", "false");
-  toggle.setAttribute("aria-keyshortcuts", "Alt+M");
-  toggle.title = "Menu (Alt+M)";
-  const dialog = document.createElement("dialog");
-  dialog.className = "dotli-polkavm-menu dotli-file-consent";
-  dialog.setAttribute("aria-labelledby", "dotli-polkavm-menu-title");
-  const heading = document.createElement("h2");
-  heading.id = "dotli-polkavm-menu-title";
-  heading.textContent =
-    options.error === undefined ? "App menu" : "Unable to run app";
-  const message = document.createElement("p");
-  message.setAttribute("role", "status");
-  message.textContent =
-    options.error ??
-    "Display, sound and controls are paused. Network updates continue.";
-  const resume = button("Resume");
+  const toggle = button('Menu');
+  toggle.id = 'dotli-polkavm-menu-open';
+  toggle.setAttribute('aria-haspopup', 'dialog');
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.setAttribute('aria-keyshortcuts', 'Alt+M');
+  toggle.title = 'Menu (Alt+M)';
+  const dialog = document.createElement('dialog');
+  dialog.className = 'dotli-polkavm-menu dotli-file-consent';
+  dialog.setAttribute('aria-labelledby', 'dotli-polkavm-menu-title');
+  const heading = document.createElement('h2');
+  heading.id = 'dotli-polkavm-menu-title';
+  heading.textContent = options.error === undefined ? 'App menu' : 'Unable to run app';
+  const message = document.createElement('p');
+  message.setAttribute('role', 'status');
+  message.textContent = options.error ?? 'Display, sound and controls are paused. Network updates continue.';
+  const resume = button('Resume');
   resume.hidden = options.error !== undefined;
-  const help = document.createElement("details");
-  const summary = document.createElement("summary");
-  summary.textContent = "Controls";
-  const list = document.createElement("ul");
+  const help = document.createElement('details');
+  const summary = document.createElement('summary');
+  summary.textContent = 'Controls';
+  const list = document.createElement('ul');
   for (const control of controls) {
-    const item = document.createElement("li");
+    const item = document.createElement('li');
     item.textContent = control;
     list.append(item);
   }
   if (controls.length === 0) {
-    const item = document.createElement("li");
-    item.textContent = "This app has not declared control instructions.";
+    const item = document.createElement('li');
+    item.textContent = 'This app has not declared control instructions.';
     list.append(item);
   }
   help.append(summary, list);
@@ -88,11 +85,11 @@ export function installPolkaVmMenu(
     ? button("Change Game / Choose file")
     : null;
   if (changeFile !== null) {
-    changeFile.id = "dotli-polkavm-file-open";
+    changeFile.id = 'dotli-polkavm-file-open';
   }
-  const retry = button("Retry");
+  const retry = button('Retry');
   retry.hidden = options.error === undefined;
-  const launcher = button("Return to launcher");
+  const launcher = button('Return to launcher');
   launcher.hidden = !options.hasFileInput;
   dialog.append(heading, message, resume, help, network);
   if (changeFile !== null) {
@@ -106,14 +103,11 @@ export function installPolkaVmMenu(
     if (dialog.open) {
       return;
     }
-    previousFocus =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
+    previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     renderGrants();
     options.pause(true);
     dialog.showModal();
-    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute('aria-expanded', 'true');
     (options.error === undefined ? resume : retry).focus();
   };
   const close = (): void => {
@@ -121,25 +115,18 @@ export function installPolkaVmMenu(
       return;
     }
     dialog.close();
-    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute('aria-expanded', 'false');
     options.pause(false);
-    (previousFocus?.isConnected === true && previousFocus !== toggle
-      ? previousFocus
-      : canvas
-    ).focus({ preventScroll: true });
+    (previousFocus?.isConnected === true && previousFocus !== toggle ? previousFocus : canvas).focus({
+      preventScroll: true,
+    });
   };
   const keydown = (event: KeyboardEvent): void => {
     // A nested file-consent dialog owns its own Escape and focus handling.
-    if (document.querySelector(".dotli-file-consent-backdrop") !== null) {
+    if (document.querySelector('.dotli-file-consent-backdrop') !== null) {
       return;
     }
-    if (
-      event.code === "KeyM" &&
-      event.altKey &&
-      !event.ctrlKey &&
-      !event.metaKey &&
-      !event.shiftKey
-    ) {
+    if (event.code === 'KeyM' && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey) {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!event.repeat) {
@@ -151,18 +138,14 @@ export function installPolkaVmMenu(
       }
       return;
     }
-    if (dialog.open && event.code === "Escape") {
+    if (dialog.open && event.code === 'Escape') {
       event.preventDefault();
       event.stopImmediatePropagation();
       if (!event.repeat) {
         close();
       }
-    } else if (dialog.open && event.key === "Tab") {
-      const focusable = [
-        ...dialog.querySelectorAll<HTMLElement>(
-          "button:not(:disabled):not([hidden]),summary",
-        ),
-      ];
+    } else if (dialog.open && event.key === 'Tab') {
+      const focusable = [...dialog.querySelectorAll<HTMLElement>('button:not(:disabled):not([hidden]),summary')];
       const first = focusable.at(0);
       const last = focusable.at(-1);
       if (event.shiftKey && document.activeElement === first) {
@@ -174,15 +157,15 @@ export function installPolkaVmMenu(
       }
     }
   };
-  dialog.addEventListener("cancel", (event) => {
+  dialog.addEventListener('cancel', event => {
     event.preventDefault();
     close();
   });
-  toggle.addEventListener("click", open);
-  resume.addEventListener("click", close);
-  retry.addEventListener("click", options.retry);
-  launcher.addEventListener("click", options.launcher);
-  window.addEventListener("keydown", keydown, true);
+  toggle.addEventListener('click', open);
+  resume.addEventListener('click', close);
+  retry.addEventListener('click', options.retry);
+  launcher.addEventListener('click', options.launcher);
+  window.addEventListener('keydown', keydown, true);
   if (options.error !== undefined) {
     open();
   }
@@ -190,7 +173,7 @@ export function installPolkaVmMenu(
     changeFile,
     status: message,
     open,
-    setBusy: (value) => {
+    setBusy: value => {
       busy = value;
       resume.disabled = value;
       retry.disabled = value;
@@ -200,7 +183,7 @@ export function installPolkaVmMenu(
       }
     },
     cleanup: () => {
-      window.removeEventListener("keydown", keydown, true);
+      window.removeEventListener('keydown', keydown, true);
       dialog.close();
       dialog.remove();
       toggle.remove();
