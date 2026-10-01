@@ -1227,7 +1227,8 @@ describe('ChainBroker.halt', () => {
     const { broker, harness, open } = setup();
     const log: string[] = [];
     const session = open('a', log);
-    session.send({ jsonrpc: '2.0', id: 'req-1', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    session.send({ jsonrpc: '2.0', id: 'req-1', method: 'chainSpec_v1_genesisHash', params: [] });
+    expect(session.messages).toEqual([]);
 
     // When
     broker.halt(new Error('gone'));
@@ -1286,7 +1287,8 @@ describe('ChainBroker.halt', () => {
     const log: string[] = [];
     const a = followedSession('a', open, harness, log, 'up-1');
     const b = open('b', log);
-    b.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    b.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainSpec_v1_genesisHash', params: [] });
+    expect(b.messages).toEqual([]);
     log.length = 0;
 
     // When
@@ -1309,17 +1311,16 @@ describe('ChainBroker.halt', () => {
     const log: string[] = [];
     const broken = open('a', log, true);
     const healthy = open('b', log);
-    broken.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
-    healthy.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    broken.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    healthy.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
+    expect(broken.messages).toEqual([]);
+    expect(healthy.messages).toEqual([]);
 
     // When
-    const halt = (): void => {
-      broker.halt();
-    };
+    broker.halt();
 
     // Then
-    expect(halt).not.toThrow();
-    expect(healthy.messages).toHaveLength(1);
+    expect(healthy.messages).toMatchObject([{ jsonrpc: '2.0', id: 2, error: { code: -32603 } }]);
     expect(log).toContain('a:halt');
     expect(log).toContain('b:halt');
   });
@@ -1333,7 +1334,8 @@ describe('ChainBroker.halt', () => {
     leaving.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
     harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'watch-1' });
     leaving.disconnect();
-    staying.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    staying.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainSpec_v1_genesisHash', params: [] });
+    expect(staying.messages).toEqual([]);
 
     // When
     broker.halt();
