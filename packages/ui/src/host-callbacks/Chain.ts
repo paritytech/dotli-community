@@ -325,21 +325,14 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
 export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvider['connect'] {
   return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
-    const backend = getBackend();
-    if (backend === 'rpc-gateway') {
-      // This callback is shared by product-forwarded calls and core-owned
-      // Bulletin operations. `featureSupported` is the dApp advertisement;
-      // this seam cannot enforce that advertised subset.
-      if (!isCoreRpcChainSupported(genesisHash)) {
-        log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
-        throw new Error(`Unsupported RPC chain: ${genesisHash}`);
-      }
-      return Promise.resolve(toConnection(genesisHash, pool));
-    }
-
-    if (!isRemoteChainConnectable(genesisHash)) {
-      log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
-      throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
+    // This callback is shared by product-forwarded calls and core-owned
+    // Bulletin operations. `featureSupported` is the dApp advertisement; this
+    // seam cannot enforce that advertised subset.
+    const [isSupported, backend] =
+      getBackend() === 'rpc-gateway' ? [isCoreRpcChainSupported, 'RPC'] : [isRemoteChainConnectable, 'smoldot'];
+    if (!isSupported(genesisHash)) {
+      log.warn(`[dot.li truapi-chain] ${backend} backend doesn't support ${genesisHash}; product call will fail`);
+      throw new Error(`Unsupported ${backend} chain: ${genesisHash}`);
     }
     return Promise.resolve(toConnection(genesisHash, pool));
   };
