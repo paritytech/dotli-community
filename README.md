@@ -305,6 +305,19 @@ Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
 
+### Running the functional browser suite locally
+
+Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN
+lets the preview server collect their same-origin `/t` envelopes without contacting an external collector.
+
+```bash
+VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true VITE_METRICS=true \
+VITE_SENTRY_DSN=http://publickey@127.0.0.1:5173/1 npm run build
+VITE_METRICS=true npm run --workspace apps/host test:functional
+```
+
+Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
+
 ### Running the host-playground E2E locally
 
 The product E2E suite loads the source checkout through dotli's localhost proxy. CI pins
