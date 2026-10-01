@@ -626,11 +626,14 @@
 }
 
 /* The Resolution view has nothing to select, so the detail pane would only
-   ever say "select an event". The chart takes the whole width instead. */
+   ever say "select an event". The chart takes the whole width instead. The
+   Archive view shows its own selection, so it takes the width too. */
 #truapi-debug-panel.res-view .td-body,
 #truapi-debug-panel.docked-right.res-view .td-body,
 #truapi-debug-panel.wallet-view .td-body,
-#truapi-debug-panel.docked-right.wallet-view .td-body {
+#truapi-debug-panel.docked-right.wallet-view .td-body,
+#truapi-debug-panel.archive-view .td-body,
+#truapi-debug-panel.docked-right.archive-view .td-body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }
@@ -638,7 +641,9 @@
 #truapi-debug-panel.res-view .td-detail,
 #truapi-debug-panel.wallet-view .td-body-splitter,
 #truapi-debug-panel.wallet-view .td-detail,
-#truapi-debug-panel.wallet-view .td-filters {
+#truapi-debug-panel.wallet-view .td-filters,
+#truapi-debug-panel.archive-view .td-body-splitter,
+#truapi-debug-panel.archive-view .td-detail {
   display: none;
 }
 #truapi-debug-panel.wallet-view:not(.collapsed) {
@@ -712,6 +717,7 @@
 }
 .td-views > .td-list,
 .td-views > .td-res,
+.td-views > .td-archive,
 .td-views > .td-timeline {
   min-height: 0;
   overflow: auto;
@@ -1330,4 +1336,88 @@
   background: #2a0a1c;
   color: #f9a8d4;
   border-color: #9d174d;
+}
+
+/* Archive view: the file list on the left, the selected file on the right. */
+.td-archive {
+  display: grid;
+  grid-template-columns: minmax(160px, 30%) 1fr;
+  overflow: hidden !important;
+}
+.td-archive > .td-archive-empty {
+  grid-column: 1 / -1;
+}
+.td-archive-sidebar {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 0;
+  border-right: 1px solid #1f1f1f;
+}
+.td-archive-summary {
+  padding: 6px 10px;
+  color: #6b7280;
+  font-size: 11px;
+  border-bottom: 1px solid #1f1f1f;
+}
+.td-archive-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  min-height: 0;
+}
+.td-archive-file {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  padding: 3px 10px;
+  background: transparent;
+  border: none;
+  color: #c4c4c4;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+.td-archive-file:hover {
+  background: #1a1a1a;
+}
+.td-archive-file.active {
+  background: #2a0f1d;
+  color: #e0e0e0;
+}
+.td-archive-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.td-archive-size {
+  flex-shrink: 0;
+  color: #6b7280;
+}
+.td-archive-content {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+.td-archive-text {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: #d4d4d4;
+}
+.td-archive-image {
+  display: block;
+  max-width: 100%;
+  margin: 10px;
+  background: repeating-conic-gradient(#222 0% 25%, #2c2c2c 0% 50%) 0 0 / 16px 16px;
+}
+.td-archive-empty,
+.td-archive-note {
+  padding: 10px;
+  color: #6b7280;
+  font-size: 11px;
 }

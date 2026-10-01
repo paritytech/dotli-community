@@ -1369,7 +1369,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   stopSetup();
   document.title = withActiveTld(label);
 
-  setProductLoaded(label, labelToProductId(label));
+  setProductLoaded(label, labelToProductId(label), cid);
   emitDotliDebugEvent({
     layer: 'render',
     event: 'iframe_ready',

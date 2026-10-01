@@ -36,6 +36,24 @@ describe('product store', () => {
     window.removeEventListener('dotli:product-loaded', listener);
   });
 
+  it('As the debug panel, a product loaded from a CID carries it in the store, not in the event', async () => {
+    // Given
+    const details: unknown[] = [];
+    const listener = (e: Event): void => {
+      details.push((e as CustomEvent).detail);
+    };
+    window.addEventListener('dotli:product-loaded', listener);
+
+    // When
+    setProductLoaded('myapp', 'myapp.dot', 'bafyroot');
+    await settle();
+
+    // Then
+    expect(productStore.get()).toEqual({ status: 'loaded', label: 'myapp', productId: 'myapp.dot', cid: 'bafyroot' });
+    expect(details).toEqual([{ label: 'myapp', productId: 'myapp.dot' }]);
+    window.removeEventListener('dotli:product-loaded', listener);
+  });
+
   it('As a listener of dotli:product-error, the event fires with no detail and the store is in error', () => {
     // Given
     const details: unknown[] = [];

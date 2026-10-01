@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { cleanup as unmountAll } from '@solidjs/testing-library';
 import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
@@ -60,6 +60,13 @@ const DEFAULT_CACHE = {
 };
 
 let cleanups: (() => void)[] = [];
+
+// The popover body's chunk, transformed here rather than in the first test
+// to open it: on a loaded CI runner the cold transform outlasts
+// waitForContent's wait.
+beforeAll(async () => {
+  await import('../../../src/components/shell/SettingsContent.js');
+});
 
 beforeEach(() => {
   localStorage.clear();

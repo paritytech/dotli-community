@@ -100,6 +100,8 @@ interface Session {
   connected: boolean;
   /** Fixed at session creation, never inferred from message shape later. */
   wireMode: WireMode;
+  /** Told once when the chain's transport halts for good. */
+  onHalt: ((error?: unknown) => void) | null;
 }
 
 /** Internal session handle returned by `ChainBroker.connect()`. */
@@ -223,10 +225,11 @@ function brokerWarn(...args: unknown[]): void {
   log.warn(BROKER_TAG, ...args);
 }
 
-class ChainBroker {
-  private readonly createProvider: (onHalt: () => void) => JsonRpcProvider | null;
-  private provider: JsonRpcProvider | null = null;
+export class ChainBroker {
+  private readonly provider: JsonRpcProvider;
+  private readonly onError: (error: unknown) => void;
   private upstreamGeneration = 0;
+  private halted = false;
   private readonly onEmpty: () => void;
   private upstream: JsonRpcConnection | null = null;
   private readonly sessions = new Map<string, Session>();
@@ -240,8 +243,9 @@ class ChainBroker {
   private requestCounter = 0;
   private tokenCounter = 0;
 
-  constructor(createProvider: (onHalt: () => void) => JsonRpcProvider | null, onEmpty: () => void) {
-    this.createProvider = createProvider;
+  constructor(provider: JsonRpcProvider, onEmpty: () => void, onError: (error: unknown) => void) {
+    this.provider = provider;
+    this.onError = onError;
     this.onEmpty = onEmpty;
   }
 
@@ -251,11 +255,10 @@ class ChainBroker {
   }
 
   private sendUpstream(obj: unknown): void {
-    const generation = this.upstreamGeneration;
     try {
       this.upstream?.send(obj as UpstreamJsonRpcRequest);
-    } catch {
-      this.handleUpstreamHalt(generation);
+    } catch (error) {
+      this.onError(error);
     }
   }
 
@@ -263,23 +266,38 @@ class ChainBroker {
     sessionId: string,
     onMessage: (message: unknown) => void,
     wireMode: WireMode = DEFAULT_WIRE_MODE,
+    onHalt: ((error?: unknown) => void) | null = null,
   ): BrokerConnection {
     if (this.sessions.has(sessionId)) {
       throw new Error(`Duplicate broker session: ${sessionId}`);
     }
+    if (this.halted) {
+      throw new Error('Chain transport halted');
+    }
 
     brokerLog(`Session ${sessionId} connecting (${String(this.sessions.size)} existing sessions)`);
-    this.ensureUpstream();
     this.sessions.set(sessionId, {
       id: sessionId,
       onMessage,
       ownedTokens: new Set<string>(),
       connected: true,
       wireMode,
+      onHalt,
     });
+    try {
+      if (!this.ensureUpstream()) {
+        throw new Error('Chain transport halted while connecting');
+      }
+    } catch (error) {
+      this.onError(error);
+      throw error;
+    }
 
     return {
       send: message => {
+        if (this.halted) {
+          throw new Error('Chain transport halted');
+        }
         this.sendFromSession(sessionId, message);
       },
       disconnect: () => {
@@ -296,27 +314,12 @@ class ChainBroker {
     this.onEmpty();
   }
 
-  prepareProvider(): boolean {
-    if (this.provider !== null) {
-      return true;
-    }
-    const generation = ++this.upstreamGeneration;
-    const provider = this.createProvider(() => {
-      this.handleUpstreamHalt(generation);
-    });
-    if (generation !== this.upstreamGeneration) {
+  private ensureUpstream(): boolean {
+    if (this.halted) {
       return false;
     }
-    this.provider = provider;
-    return provider !== null;
-  }
-
-  private ensureUpstream(): boolean {
     if (this.upstream !== null) {
       return true;
-    }
-    if (!this.prepareProvider() || this.provider === null) {
-      return false;
     }
     const generation = this.upstreamGeneration;
     brokerLog(`Connecting to upstream provider... (sessions: [${[...this.sessions.keys()].join(',')}])`);
@@ -334,10 +337,12 @@ class ChainBroker {
     return true;
   }
 
-  private handleUpstreamHalt(generation: number): void {
-    if (generation !== this.upstreamGeneration) {
+  /** Retire the transport and answer every consumer before announcing its halt. */
+  halt(error?: unknown): void {
+    if (this.halted) {
       return;
     }
+    this.halted = true;
     const deliveries: { session: Session; message: unknown }[] = [];
     const enqueue = (sessionId: string, message: unknown): void => {
       const session = this.sessions.get(sessionId);
@@ -394,12 +399,25 @@ class ChainBroker {
         params: { subscription: owned.localToken, ...payload },
       });
     }
-    // Invalidate callbacks and clear ownership before consumers can synchronously
-    // re-subscribe from a terminal notification. No old snapshots are replayed.
+    // Clear ownership before callbacks: a consumer may synchronously acquire a
+    // replacement lease. Neither stale messages nor old cleanup can touch it.
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
     this.disconnectUpstream();
+    this.onEmpty();
     for (const { session, message } of deliveries) {
-      if (session.connected && this.sessions.get(session.id) === session) {
+      try {
         this.sendToSession(session, message);
+      } catch (error) {
+        brokerWarn('Terminal message handler threw', error);
+      }
+    }
+    for (const session of sessions) {
+      session.connected = false;
+      try {
+        session.onHalt?.(error);
+      } catch (error) {
+        brokerWarn('Halt handler threw', error);
       }
     }
   }
@@ -897,6 +915,14 @@ class ChainBroker {
         ? eventResult['event']
         : 'unknown'
       : '?';
+    const terminal =
+      eventType === 'stop' ||
+      (message.method === 'transactionWatch_v1_watchEvent' &&
+        (eventType === 'finalized' || eventType === 'error' || eventType === 'invalid' || eventType === 'dropped')) ||
+      (message.method === 'author_extrinsicUpdate' &&
+        (eventResult === 'invalid' || eventResult === 'dropped' ||
+          (isJsonRpcObject(eventResult) &&
+            ('finalized' in eventResult || 'usurped' in eventResult || 'finalityTimeout' in eventResult))));
     const localTokens = [...ownedLocals];
     for (const localToken of localTokens) {
       const owned = this.localToOwned.get(localToken);
@@ -905,6 +931,9 @@ class ChainBroker {
       }
 
       const session = this.sessions.get(owned.sessionId);
+      if (terminal) {
+        this.releaseOwnedToken(localToken, false);
+      }
       if (session?.connected !== true) {
         brokerWarn(`← upstream subscription for disconnected session: ${owned.sessionId}`);
         continue;
@@ -921,12 +950,6 @@ class ChainBroker {
       });
     }
 
-    if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
-      brokerLog(`Token stopped by upstream: ${upstreamToken}`);
-      for (const localToken of localTokens) {
-        this.releaseOwnedToken(localToken, false);
-      }
-    }
   }
 
   private hasPendingSubscriptionRequest(): boolean {
@@ -1034,7 +1057,6 @@ class ChainBroker {
 
   private disconnectUpstream(): void {
     this.upstreamGeneration += 1;
-    this.provider = null;
     const upstream = this.upstream;
     this.upstream = null;
     for (const session of this.sessions.values()) {
@@ -1304,62 +1326,4 @@ class ChainBroker {
       });
     }
   }
-}
-
-export function createChainBrokerManager(
-  createProvider: (genesisHash: string, onHalt: () => void) => JsonRpcProvider | null,
-): ChainBrokerManager {
-  const brokers = new Map<string, ChainBroker>();
-  let localConnectionCounter = 0;
-
-  function getBroker(genesisHash: string): ChainBroker | null {
-    let broker = brokers.get(genesisHash);
-    if (broker) {
-      brokerLog(`Reusing existing broker for chain ${genesisHash.slice(0, 10)}…`);
-      return broker;
-    }
-
-    brokerLog(`Creating new broker for chain ${genesisHash.slice(0, 10)}…`);
-    broker = new ChainBroker(
-      onHalt => createProvider(genesisHash, onHalt),
-      () => {
-        brokerLog(`Broker emptied, removing for chain ${genesisHash.slice(0, 10)}…`);
-        brokers.delete(genesisHash);
-      },
-    );
-    if (!broker.prepareProvider()) {
-      brokerLog(`No provider available for chain ${genesisHash.slice(0, 10)}…`);
-      return null;
-    }
-    brokers.set(genesisHash, broker);
-    return broker;
-  }
-
-  return {
-    connectRemote(genesisHash, connectionId, onMessage) {
-      const broker = getBroker(genesisHash);
-      if (!broker) {
-        return null;
-      }
-      return broker.connect(connectionId, onMessage as (message: unknown) => void, 'string');
-    },
-    getLocalProvider(genesisHash) {
-      const broker = getBroker(genesisHash);
-      if (!broker) {
-        return null;
-      }
-
-      return onMessage => {
-        const connectionId = `local:${localConnectionCounter.toString(36)}`;
-        localConnectionCounter += 1;
-        return broker.connect(connectionId, onMessage as (message: unknown) => void, 'object') as JsonRpcConnection;
-      };
-    },
-    disconnectAll() {
-      for (const broker of brokers.values()) {
-        broker.disconnectAll();
-      }
-      brokers.clear();
-    },
-  };
 }
