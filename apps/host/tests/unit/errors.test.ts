@@ -1,7 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { setBackend } from '@dotli/config';
 import { ProtocolInitFailedError } from '@dotli/protocol';
 
 import { describeError, HOST_ERRORS } from '../../src/errors.js';
@@ -42,15 +43,46 @@ describe('host error classification', () => {
     },
   );
 
-  it('As a dotli user on the shared light client, a light client that failed to start tells me to close my other dot.li tabs before I reload', () => {
-    // When
-    const error = describeError(new ProtocolInitFailedError('SharedWorker: chain 0xaa connection failed'), true);
+  describe('a light client that failed to start', () => {
+    const failed = (): ProtocolInitFailedError =>
+      new ProtocolInitFailedError('SharedWorker: chain 0xaa connection failed');
 
-    // Then
-    expect({ kind: error.kind, message: error.message, tips: error.tips }).toEqual({
-      kind: 'protocol-init-failed',
-      message: HOST_ERRORS.SW_FAILED_TO_START,
-      tips: ['Close other dot.li tabs, then reload.', 'Checking your internet connection.'],
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      localStorage.clear();
+    });
+
+    it('As a dotli user on the shared light client, it tells me to close my other dot.li tabs before I reload', () => {
+      // Given
+      vi.stubGlobal('SharedWorker', vi.fn());
+      setBackend('smoldot-shared-worker');
+
+      // When
+      const error = describeError(failed(), true);
+
+      // Then
+      expect({ kind: error.kind, message: error.message, tips: error.tips }).toEqual({
+        kind: 'protocol-init-failed',
+        message: HOST_ERRORS.SW_FAILED_TO_START,
+        tips: ['Closing other dot.li tabs, then reloading.', 'Checking your internet connection.'],
+      });
+    });
+
+    it.each([
+      ['smoldot-direct', true],
+      ['rpc-gateway', false],
+    ] as const)('As a dotli user on %s, it keeps only the connectivity tip', (backend, isP2p) => {
+      // Given
+      setBackend(backend);
+
+      // When
+      const error = describeError(failed(), isP2p);
+
+      // Then
+      expect({ kind: error.kind, tips: error.tips }).toEqual({
+        kind: 'protocol-init-failed',
+        tips: ['Checking your internet connection.'],
+      });
     });
   });
 });
