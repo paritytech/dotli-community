@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The SharedWorker's remote chain connections: one pool lease each, tied to
-// the port and the origin that opened it. The limits are counted per port, so
-// each tab has the budget its own iframe has in smoldot-direct. There is no
-// worker-wide cap: the pool shares the chains, so a session is a broker entry.
+// the port and the origin that opened it. The limit is counted per port, so
+// each tab has the budget its own iframe has in smoldot-direct. A port is one
+// host page's iframe, so it carries one origin, and needs no per-origin limit
+// of its own. There is no worker-wide cap: the pool shares the chains, so a
+// session is a broker entry.
 
-import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import type { ChainPool, ProtocolEnvelope, StringJsonRpcConnection } from '@dotli/protocol';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
@@ -28,7 +29,6 @@ export interface WorkerChainSessions {
 interface Session {
   connection: StringJsonRpcConnection;
   port: MessagePort;
-  origin: string;
 }
 
 export function createWorkerChainSessions(
@@ -69,10 +69,6 @@ export function createWorkerChainSessions(
       if (portConns.size >= MAX_CHAIN_CONNECTIONS) {
         throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
       }
-      const originCount = [...portConns].filter(owned => sessions.get(owned)?.origin === origin).length;
-      if (originCount >= MAX_CONNECTIONS_PER_ORIGIN) {
-        throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
-      }
       if (!isChainSupported(genesisHash)) {
         throw new Error(`Unsupported chain: ${genesisHash}`);
       }
@@ -107,7 +103,7 @@ export function createWorkerChainSessions(
       if (connection === null) {
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
-      sessions.set(key, { connection, port, origin });
+      sessions.set(key, { connection, port });
       portConns.add(key);
       portConnections.set(port, portConns);
       log(`Chain connected: ${connectionId} (${String(sessions.size)} total)`);

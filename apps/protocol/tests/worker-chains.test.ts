@@ -10,7 +10,6 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ProtocolEnvelope } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
-import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import { log } from '@dotli/shared';
 import { MAX_CHAIN_CONNECTIONS, createWorkerChainSessions, type WorkerChainSessions } from '../src/worker-chains.js';
 
@@ -257,14 +256,14 @@ describe('createWorkerChainSessions halts and origins', () => {
     expect(sessions.size).toBe(15);
   });
 
-  it('As a dotli user on the shared light client, two tabs of one site each get the per-site limit', () => {
+  it("As a dotli user on the shared light client, two tabs of one site each get a tab's limit", () => {
     // Given
     const { sessions, portA, portB } = setup();
 
     // When
     const connectAll = (): void => {
       for (const [tab, port] of [portA, portB].entries()) {
-        for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i++) {
+        for (let i = 0; i < MAX_CHAIN_CONNECTIONS; i++) {
           sessions.connect(port, ORIGIN_A, '0xaa', `t${String(tab)}c${String(i)}`);
         }
       }
@@ -272,7 +271,7 @@ describe('createWorkerChainSessions halts and origins', () => {
 
     // Then
     expect(connectAll).not.toThrow();
-    expect(sessions.size).toBe(2 * MAX_CONNECTIONS_PER_ORIGIN);
+    expect(sessions.size).toBe(2 * MAX_CHAIN_CONNECTIONS);
   });
 
   it("As a dotli user on the shared light client, a closed tab's connections no longer count against its limit", () => {
@@ -311,12 +310,10 @@ describe('createWorkerChainSessions halts and origins', () => {
     expect(overflow).toThrow('Connection limit reached (max 10)');
   });
 
-  it('As a dotli user on the shared light client, one site hitting its limit is told so by the limit that applies', () => {
+  it('As a dotli user on the shared light client, a tab at its limit gets a connection again once it closes one', () => {
     // Given
-    // Both limits are 10, so the tab's own one is reached first for a single site.
-    expect(MAX_CONNECTIONS_PER_ORIGIN).toBe(MAX_CHAIN_CONNECTIONS);
     const { sessions, portA } = setup();
-    for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i++) {
+    for (let i = 0; i < MAX_CHAIN_CONNECTIONS; i++) {
       sessions.connect(portA, ORIGIN_A, '0xaa', `c${String(i)}`);
     }
 
