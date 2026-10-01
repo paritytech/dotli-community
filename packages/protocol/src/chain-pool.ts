@@ -58,12 +58,30 @@ interface Entry {
 
 const DEFAULT_DESTROY_DELAY_MS = 60_000;
 
+interface Pausable {
+  pause: () => void;
+  resume: () => void;
+}
+
+type PausableProvider = JsonRpcProvider & Pausable;
+
+/**
+ * Whether a transport can drop its socket and reopen it, as the package's ws
+ * provider can. The package exports no check, so this is the same duck typing.
+ */
+function isPausable(transport: JsonRpcProvider): transport is PausableProvider {
+  const candidate = transport as Partial<PausableProvider>;
+  return typeof candidate.pause === 'function' && typeof candidate.resume === 'function';
+}
+
 export function createChainPool(options: ChainPoolOptions): ChainPool {
   const destroyDelay = options.destroyDelay ?? DEFAULT_DESTROY_DELAY_MS;
   const entries = new Map<string, Entry>();
   const statuses = new Map<string, ConnectionStatus>();
   const listeners = new Map<string, Set<(status: ConnectionStatus) => void>>();
   let sessionCounter = 0;
+  // Survives every entry: a chain first leased while paused comes up paused.
+  let paused = false;
 
   function setStatus(key: string, status: ConnectionStatus): void {
     if (statuses.get(key) === status) {
@@ -118,6 +136,12 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     if (transport === null) {
       return null;
     }
+    // Paused before the broker first calls the transport, so its socket does
+    // not open until the resume.
+    const builtPaused = paused && isPausable(transport);
+    if (builtPaused) {
+      transport.pause();
+    }
     const guard = createWatchGuard(transport);
     entry = {
       key,
@@ -130,7 +154,7 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       live: true,
     };
     entries.set(key, entry);
-    setStatus(key, 'connecting');
+    setStatus(key, builtPaused ? 'disconnected' : 'connecting');
     return entry;
   }
 
@@ -253,11 +277,27 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
     },
 
     pauseAll() {
-      // Task 4.
+      if (paused) {
+        return;
+      }
+      paused = true;
+      for (const entry of entries.values()) {
+        if (isPausable(entry.transport)) {
+          entry.transport.pause();
+        }
+      }
     },
 
     resumeAll() {
-      // Task 4.
+      if (!paused) {
+        return;
+      }
+      paused = false;
+      for (const entry of entries.values()) {
+        if (isPausable(entry.transport)) {
+          entry.transport.resume();
+        }
+      }
     },
   };
 }

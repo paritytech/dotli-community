@@ -9,6 +9,9 @@ import type {
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import type { ChainTransportHooks } from '@dotli/resolver';
+import { getActiveServicesConfig } from '@dotli/config';
+import { createCoreRpcChainProvider } from '../../resolver/src/rpc-chain.js';
+import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import { createChainPool, type ChainPool } from '../src/chain-pool.js';
 
 interface TransportRecord {
@@ -312,5 +315,148 @@ describe('createChainPool', () => {
     expect(built).toHaveLength(2);
     expect(pool.status('0xaa')).toBe('connecting');
     expect(seen).toEqual(['connecting', 'disconnected', 'connecting']);
+  });
+});
+
+/** A transport factory whose transports can be paused, recording what happens in order. */
+function createPausableTransports(): {
+  createTransport: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
+  events: string[];
+} {
+  const events: string[] = [];
+  const createTransport = (genesisHash: string): JsonRpcProvider => {
+    const transport: JsonRpcProvider = (): JsonRpcConnection => {
+      events.push(`open ${genesisHash}`);
+      return { send: () => undefined, disconnect: () => undefined };
+    };
+    return Object.assign(transport, {
+      pause: () => {
+        events.push(`pause ${genesisHash}`);
+      },
+      resume: () => {
+        events.push(`resume ${genesisHash}`);
+      },
+    });
+  };
+  return { createTransport, events };
+}
+
+describe('createChainPool pausing', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it('As a dotli integrator, pausing reaches every pausable transport once and skips the others', () => {
+    // Given
+    const pausable = createPausableTransports();
+    const plain = createTransports();
+    const pool = createChainPool({
+      createTransport: (genesisHash, hooks) =>
+        genesisHash === '0xaa' ? pausable.createTransport(genesisHash, hooks) : plain.createTransport(genesisHash, hooks),
+    });
+    lease(pool, '0xaa');
+    lease(pool, '0xbb');
+
+    // When
+    pool.pauseAll();
+    pool.pauseAll();
+    pool.resumeAll();
+    pool.resumeAll();
+
+    // Then
+    expect(pausable.events).toEqual(['open 0xaa', 'pause 0xaa', 'resume 0xaa']);
+  });
+
+  it('As a dotli integrator, a chain first leased while paused is paused before it opens', () => {
+    // Given
+    const { createTransport, events } = createPausableTransports();
+    const pool = createChainPool({ createTransport });
+    pool.pauseAll();
+
+    // When
+    lease(pool, '0xaa');
+
+    // Then
+    expect(events).toEqual(['pause 0xaa', 'open 0xaa']);
+    expect(pool.status('0xaa')).toBe('disconnected');
+
+    // When
+    pool.resumeAll();
+
+    // Then
+    expect(events).toEqual(['pause 0xaa', 'open 0xaa', 'resume 0xaa']);
+  });
+
+  it('As a dotli integrator, a chain that closes while paused is left alone by the resume', async () => {
+    // Given
+    const { createTransport, events } = createPausableTransports();
+    const pool = createChainPool({ createTransport, destroyDelay: 1_000 });
+    const connection = lease(pool, '0xaa');
+    pool.pauseAll();
+    connection.disconnect();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // When
+    pool.resumeAll();
+
+    // Then
+    expect(pool.status('0xaa')).toBe('disconnected');
+    expect(events).toEqual(['open 0xaa', 'pause 0xaa']);
+  });
+
+  it('As a dotli user on Trusted Providers, a paused chain closes its socket, and resuming replays its subscription and the sends held meanwhile', async () => {
+    // Given
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    FakeWebSocket.instances = [];
+    const people = getActiveServicesConfig().people.genesis;
+    const pool = createChainPool({ createTransport: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, hooks) });
+    const received: JsonRpcMessage[] = [];
+    const connection = lease(pool, people, message => {
+      received.push(message);
+    });
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'statement_subscribeStatement', params: [{ matchAll: [] }] });
+    await vi.advanceTimersByTimeAsync(0);
+    const first = must(FakeWebSocket.instances[0], 'first socket');
+    first.open();
+    const subscribe = must(first.requests('statement_subscribeStatement')[0], 'subscribe');
+    first.deliver({ jsonrpc: '2.0', id: subscribe.id, result: 'srv-1' });
+    const localToken = (must(received[0], 'subscribe response') as { result: unknown }).result;
+
+    // When
+    pool.pauseAll();
+    connection.send({ jsonrpc: '2.0', id: 2, method: 'chainSpec_v1_genesisHash', params: [] });
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    // Then
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(pool.status(people)).toBe('disconnected');
+
+    // When
+    pool.resumeAll();
+    await vi.advanceTimersByTimeAsync(0);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
+    const resubscribe = must(second.requests('statement_subscribeStatement')[0], 'resubscribe');
+    second.deliver({ jsonrpc: '2.0', id: resubscribe.id, result: 'srv-2' });
+    second.deliver({
+      jsonrpc: '2.0',
+      method: 'statement_statement',
+      params: { subscription: 'srv-2', result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } } },
+    });
+
+    // Then
+    expect(second.requests('statement_subscribeStatement')).toHaveLength(1);
+    expect(second.requests('chainSpec_v1_genesisHash')).toHaveLength(1);
+    expect(received.at(-1)).toEqual({
+      jsonrpc: '2.0',
+      method: 'statement_statement',
+      params: { subscription: localToken, result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } } },
+    });
   });
 });
