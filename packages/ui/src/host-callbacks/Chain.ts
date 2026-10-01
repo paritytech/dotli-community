@@ -132,27 +132,9 @@ function haltedAnswer(id: string | number): unknown {
  * last dial through the gate starts again at 1 s.
  */
 const frameGate = createRedialGate(1_000);
-let frameGateSubscribed = false;
-
-function noteFrameHalt(): void {
-  if (!frameGateSubscribed) {
-    frameGateSubscribed = true;
-    onProtocolReady(() => {
-      frameGate.open();
-    });
-  }
-  frameGate.noteHalt();
-}
-
-/** Whether a product may take a new lease now, after its last one heard `'frame'`. */
-function mayDialAfterFrameHalt(): boolean {
-  // A frame something else started is up, or on its way up: a lease boots
-  // nothing, and waits on that frame.
-  if (isProtocolReady() || isProtocolBooting()) {
-    return true;
-  }
-  return frameGate.tryDial();
-}
+onProtocolReady(() => {
+  frameGate.open();
+});
 
 /**
  * When a product may rebuild a chain after it halted, one gate per chain,
@@ -160,7 +142,8 @@ function mayDialAfterFrameHalt(): boolean {
  * rebuilt would otherwise be re-added and re-synced on each re-follow. The
  * first rebuild after a halt goes at once. A halt within 30 s of the last
  * rebuild through the gate waits 1 s, doubling to 30 s; one after more than
- * 30 s starts over.
+ * 30 s starts over. A lease while another connection has rebuilt the chain
+ * rebuilds nothing, so it does not ask the gate.
  */
 const chainGates = new Map<string, RedialGate>();
 
@@ -172,15 +155,6 @@ function chainGate(genesisHash: string): RedialGate {
     chainGates.set(key, gate);
   }
   return gate;
-}
-
-/** Whether a product may take a new lease now, after its last one heard `'chain'`. */
-function mayDialAfterChainHalt(pool: ChainPool, genesisHash: string): boolean {
-  // Another connection has rebuilt the chain already: a lease rebuilds nothing.
-  if (pool.status(genesisHash) !== 'disconnected') {
-    return true;
-  }
-  return chainGate(genesisHash).tryDial();
 }
 
 /**
@@ -215,54 +189,47 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
   // takes a new lease, which rebuilds the chain: it waits for the chain's gate
   // after `'chain'`, and for the frame gate after `'frame'`, where that lease
   // boots a frame.
-  const open = (provider: LeaseProvider): JsonRpcConnection | null => {
+  const open = (provider: LeaseProvider): void => {
     // Per lease, so a halt heard while `provider` is still running, or a late
     // one from a replaced lease, never touches another lease.
     const slot = { connection: null as JsonRpcConnection | null, halted: false };
     const connection = provider(deliver, error => {
       slot.halted = true;
-      if (slot.connection !== null && lease === slot.connection) {
+      if (lease === slot.connection) {
         lease = null;
       }
       haltedBy = haltReasonOf(error);
-      if (haltedBy === 'frame') {
-        noteFrameHalt();
-      } else {
-        chainGate(genesisHash).noteHalt();
-      }
+      (haltedBy === 'frame' ? frameGate : chainGate(genesisHash)).noteHalt();
     });
-    // A call, so the check isn't narrowed to the `false` it started as.
-    const isHalted = (): boolean => slot.halted;
-    if (isHalted()) {
-      return null;
+    if (!slot.halted) {
+      slot.connection = lease = connection;
+      // Only a lease taken clears it: a failed one keeps the gate.
+      haltedBy = null;
     }
-    slot.connection = connection;
-    lease = connection;
-    return connection;
   };
   const reopen = (): JsonRpcConnection | null => {
+    // A frame something else started is up or on its way up, or another
+    // connection has rebuilt the chain: that lease dials nothing, and passes.
     const mayDial =
-      haltedBy === null || (haltedBy === 'frame' ? mayDialAfterFrameHalt() : mayDialAfterChainHalt(pool, genesisHash));
+      haltedBy === 'frame'
+        ? isProtocolReady() || isProtocolBooting() || frameGate.tryDial()
+        : pool.status(genesisHash) !== 'disconnected' || chainGate(genesisHash).tryDial();
     if (!mayDial) {
       // Answered at once, as the product's own retry is.
       return null;
     }
     try {
       const provider = takeLease();
-      if (provider !== null) {
-        const connection = open(provider);
-        // Only a lease taken clears it: a failed one keeps the gate.
-        if (connection !== null) {
-          haltedBy = null;
-        }
-        return connection;
+      if (provider === null) {
+        log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
+        return null;
       }
+      open(provider);
+      return lease;
     } catch (error: unknown) {
       log.warn(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
       return null;
     }
-    log.warn(`[dot.li truapi-chain] no chain transport for ${genesisHash} after a halt`);
-    return null;
   };
   open(first);
 
