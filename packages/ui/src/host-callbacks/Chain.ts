@@ -112,15 +112,13 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
 
 /**
  * When a product may boot a protocol frame after one died, shared by every
- * core connection. It opens 1 s after a frame halt; each dial through it shuts
- * it again and doubles the delay, up to 30 s. A lease while a frame is up or
- * booting boots nothing, so it does not ask the gate.
+ * core connection. It opens 1 s after a frame halt. A lease while a frame is
+ * up or booting boots nothing, so it does not ask the gate.
  *
  * A frame that reports ready ends the wait but keeps the delay: in
  * smoldot-direct a new frame reports ready before its light client has
  * connected a chain, and may answer for a while before it fails, so neither
- * proves it works. Only uptime does: a frame halt more than 30 s after the
- * last dial through the gate starts again at 1 s.
+ * proves it works. Only uptime does (see `createRedialGate`).
  */
 const frameGate = createRedialGate(1_000);
 onProtocolReady(() => {
@@ -131,10 +129,8 @@ onProtocolReady(() => {
  * When a product may rebuild a chain after it halted, one gate per chain,
  * shared by every core connection on it: a chain that halts each time it is
  * rebuilt would otherwise be re-added and re-synced on each re-follow. The
- * first rebuild after a halt goes at once. A halt within 30 s of the last
- * rebuild through the gate waits 1 s, doubling to 30 s; one after more than
- * 30 s starts over. A lease while another connection has rebuilt the chain
- * rebuilds nothing, so it does not ask the gate.
+ * first rebuild after a halt goes at once. A lease while another connection
+ * has rebuilt the chain rebuilds nothing, so it does not ask the gate.
  */
 const chainGates = new Map<string, RedialGate>();
 
@@ -198,8 +194,6 @@ function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConn
     }
   };
   const reopen = (): JsonRpcConnection | null => {
-    // A frame something else started is up or on its way up, or another
-    // connection has rebuilt the chain: that lease dials nothing, and passes.
     const mayDial =
       haltedBy === 'frame'
         ? isProtocolReady() || isProtocolBooting() || frameGate.tryDial()
