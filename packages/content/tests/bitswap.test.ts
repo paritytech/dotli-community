@@ -240,18 +240,26 @@ describe('bitswapGet after a halt', () => {
     vi.useRealTimers();
   });
 
+  interface HaltableChain {
+    /** Each dial's message and halt callbacks, in dial order. */
+    dialled: { onMessage: (m: unknown) => void; onHalt: (reason: 'chain' | 'frame') => void }[];
+    /** The ids sent on the first connection, which never replies. */
+    unanswered: number[];
+  }
+
   /** One fake connection per dial; the first never replies, later ones answer. */
-  function stubHaltableChain(): { halts: ((reason: 'chain' | 'frame') => void)[]; dials: () => number } {
-    const halts: ((reason: 'chain' | 'frame') => void)[] = [];
+  function stubHaltableChain(): HaltableChain {
+    const chain: HaltableChain = { dialled: [], unanswered: [] };
     mocks.createRemoteChainProvider.mockImplementation(
       () => (onMessage: (m: unknown) => void, onHalt?: (reason: 'chain' | 'frame') => void) => {
-        const first = halts.length === 0;
+        const first = chain.dialled.length === 0;
         if (onHalt !== undefined) {
-          halts.push(onHalt);
+          chain.dialled.push({ onMessage, onHalt });
         }
         return {
           send: (request: { id: number }) => {
             if (first) {
+              chain.unanswered.push(request.id);
               return;
             }
             queueMicrotask(() => {
@@ -262,24 +270,43 @@ describe('bitswapGet after a halt', () => {
         };
       },
     );
-    return { halts, dials: () => halts.length };
+    return chain;
+  }
+
+  function dialled(chain: HaltableChain, index: number): HaltableChain['dialled'][number] {
+    const connection = chain.dialled[index];
+    if (connection === undefined) {
+      throw new Error(`no connection ${String(index)}`);
+    }
+    return connection;
   }
 
   it('As a dotli user, content still loads after the Bulletin chain halts', async () => {
     // Given a request in flight on a connection that then halts
     const chain = stubHaltableChain();
     vi.resetModules();
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
     const { bitswapGet } = await import('../src/bitswap.js');
     const inFlight = bitswapGet('bafyHalt');
     await vi.advanceTimersByTimeAsync(100);
 
-    // When the chain halts
-    chain.halts[0]?.('chain');
+    // When the chain halts the way the pool halts it: the request in flight
+    // is answered with the halt first, and the connection hears it after
+    const halted = dialled(chain, 0);
+    halted.onMessage({
+      jsonrpc: '2.0',
+      id: chain.unanswered[0],
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+    });
+    halted.onHalt('chain');
     await vi.advanceTimersByTimeAsync(1_000);
 
     // Then the same call redials and resolves with the second connection's bytes
     await expect(inFlight).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
-    expect(chain.dials()).toBe(2);
+    expect(chain.dialled).toHaveLength(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[dot.li bitswap] bafyHalt retry attempt=1 code=-32811 delay=500ms');
   });
 
   it('As a dotli user, a request in flight when the protocol frame dies fails at once', async () => {
@@ -292,19 +319,19 @@ describe('bitswapGet after a halt', () => {
     await vi.advanceTimersByTimeAsync(100);
 
     // When the frame dies
-    chain.halts[0]?.('frame');
+    dialled(chain, 0).onHalt('frame');
 
     // Then it fails without waiting for the 60s per-call timeout, and
     // nothing dials during that call
     await settled;
     await vi.advanceTimersByTimeAsync(10_000);
-    expect(chain.dials()).toBe(1);
+    expect(chain.dialled).toHaveLength(1);
 
     // And a later fetch dials anew
     const next = bitswapGet('bafyFrame');
     await vi.advanceTimersByTimeAsync(100);
     await expect(next).resolves.toEqual(new Uint8Array([0xab, 0xcd]));
-    expect(chain.dials()).toBe(2);
+    expect(chain.dialled).toHaveLength(2);
   });
 });
 

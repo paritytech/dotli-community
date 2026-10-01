@@ -210,7 +210,7 @@ describe('createChainConnect', () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     expect(JSON.parse(yielded(await responses.next()))).toMatchObject({
       id: 'truapi:9',
-      error: { message: 'Chain transport halted' },
+      error: { message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     expect((await responses.next()).done).toBe(true);
   });

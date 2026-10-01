@@ -927,7 +927,11 @@ describe('ChainBroker.halt', () => {
 
     // Then
     expect(session.messages).toEqual([
-      { jsonrpc: '2.0', id: 'req-1', error: { code: -32603, message: 'Chain transport halted' } },
+      {
+        jsonrpc: '2.0',
+        id: 'req-1',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
     ]);
     expect(log).toEqual(['a:message', 'a:halt']);
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
@@ -969,7 +973,7 @@ describe('ChainBroker.halt', () => {
     const error = (id: number): unknown => ({
       jsonrpc: '2.0',
       id,
-      error: { code: -32603, message: 'Chain transport halted' },
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
     expect(first.messages).toEqual([error(11)]);
     expect(second.messages).toEqual([error(22)]);
@@ -996,7 +1000,11 @@ describe('ChainBroker.halt', () => {
       },
     ]);
     expect(b.messages).toEqual([
-      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603, message: 'Chain transport halted' } },
+      {
+        jsonrpc: '2.0',
+        id: 'b-req',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
     ]);
   });
 
@@ -1038,7 +1046,11 @@ describe('ChainBroker.halt', () => {
     // Then
     expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
     expect(staying.messages).toEqual([
-      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603, message: 'Chain transport halted' } },
+      {
+        jsonrpc: '2.0',
+        id: 'b-req',
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
     ]);
   });
 });

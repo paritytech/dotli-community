@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
+import { CHAIN_HALTED_ERROR_DATA } from './chain-halted.js';
 import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
@@ -780,21 +781,28 @@ export function isRemoteChainSupported(genesisHash: string): boolean {
 /**
  * Notification-style requests (no `id`) get `null`, nothing to respond to.
  */
-function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string): JsonRpcMessage | null {
+function buildJsonRpcError(request: JsonRpcRequest, errorMessage: string, data?: string): JsonRpcMessage | null {
   if (request.id === undefined || request.id === null) {
     return null;
   }
   return {
     jsonrpc: '2.0',
     id: request.id,
-    error: { code: -32603, message: errorMessage },
+    error: data === undefined ? { code: -32603, message: errorMessage } : { code: -32603, message: errorMessage, data },
   };
 }
 
-/** Tell one remote connection its chain is gone, once; a throwing listener is logged. */
+/**
+ * Tell one remote connection its chain is gone, once; a throwing listener is
+ * logged. What it had not sent yet is answered as the broker answers what it
+ * had: a halted chain as one to retry on the next connect, a dead frame not.
+ */
 function haltRemote(connectionId: string, connection: RemoteChainConnection, reason: RemoteChainHalt): void {
   for (const message of connection.pendingMessages) {
-    const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
+    const errResponse =
+      reason === 'chain'
+        ? buildJsonRpcError(message, 'Chain transport halted', CHAIN_HALTED_ERROR_DATA)
+        : buildJsonRpcError(message, 'Chain connection is closed');
     if (errResponse !== null) {
       try {
         connection.onMessage(errResponse);

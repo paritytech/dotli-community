@@ -148,7 +148,7 @@ describe('createWorkerChainSessions halts and origins', () => {
         message: JSON.stringify({
           jsonrpc: '2.0',
           id: 'q1',
-          error: { code: -32603, message: 'Chain transport halted' },
+          error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
         }),
       },
       { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },

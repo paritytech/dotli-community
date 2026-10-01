@@ -16,6 +16,7 @@ export {
   isValidSharedModeKey,
 } from './auth-storage.js';
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
+export { CHAIN_HALTED_ERROR_DATA } from './chain-halted.js';
 export { createChainPool, type ChainPool, type ChainPoolOptions, type LeaseProvider } from './chain-pool.js';
 export {
   clearSharedAuthStorage,

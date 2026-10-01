@@ -123,6 +123,38 @@ describe('createRemoteChainProvider halts', () => {
     ]);
   });
 
+  it('As a dotli integrator, a chain-halt answers what a connection had not sent yet with a halt it can retry', async () => {
+    // Given
+    const onHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const received: JsonRpcMessage[] = [];
+    const connection = provider(message => received.push(message), onHalt);
+    connection.send({ jsonrpc: '2.0', id: 4, method: 'chainSpec_v1_genesisHash', params: [] });
+    const frame = await bootFrame();
+    const request = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (request === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+    const { connectionId } = request.payload as { connectionId: string };
+
+    // When
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'chain-halt', connectionId });
+
+    // Then
+    expect(received).toEqual([
+      {
+        jsonrpc: '2.0',
+        id: 4,
+        error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+      },
+    ]);
+    expect(onHalt).toHaveBeenCalledTimes(1);
+    expect(onHalt).toHaveBeenCalledWith('chain');
+  });
+
   it('As a dotli integrator, a halt listener that throws is logged and the connection still closes', async () => {
     // Given
     const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);

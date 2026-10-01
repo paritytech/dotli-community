@@ -4,7 +4,7 @@
 import { isResponse } from '@polkadot-api/json-rpc-provider';
 import type { JsonRpcConnection, JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { hexToBytes } from '@noble/hashes/utils.js';
-import { createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
+import { CHAIN_HALTED_ERROR_DATA, createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
 import { isSandboxOrigin, getBackend, getActiveServicesConfig } from '@dotli/config';
 
 import { log, serializeError } from '@dotli/shared';
@@ -174,7 +174,11 @@ function ensureConnection(): JsonRpcConnection {
       pending.delete(message.id);
       if ('error' in message) {
         const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
-        (err as { code?: number }).code = message.error.code;
+        // The chain halted under this request. The pool answers it before the
+        // connection hears `onHalt`, which then drops it, so the retry loop's
+        // next attempt redials a rebuilt chain.
+        const halted = message.error.data === CHAIN_HALTED_ERROR_DATA;
+        (err as { code?: number }).code = halted ? ERR_FAIL_RETRY : message.error.code;
         entry.reject(err);
         return;
       }
@@ -191,7 +195,9 @@ function ensureConnection(): JsonRpcConnection {
     },
     reason => {
       // The next attempt dials again. After a dead frame that only happens
-      // because a fetch is running, so nothing reconnects on its own.
+      // because a fetch is running, so nothing reconnects on its own. What
+      // the halt answers did not reach (a dead frame answers nothing already
+      // sent) is rejected here.
       connection = null;
       for (const [id, entry] of pending) {
         pending.delete(id);
