@@ -26,7 +26,8 @@ export function createFrameChainTransport(genesisHash: string, hooks: ChainTrans
       hooks.onHalt(new ChainHaltError(reason));
     });
     // The remote provider says nothing finer: it queues sends until the frame
-    // accepts the connection, and halts if the frame refuses it.
+    // accepts the connection, and halts if the frame refuses it. So the pool's
+    // status reads `connected` while the frame may still be booting.
     hooks.onStatus('connected');
     return connection;
   };

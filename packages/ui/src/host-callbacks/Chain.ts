@@ -47,12 +47,12 @@ import { createFrameChainTransport } from './frame-transport.js';
  * remote connection to the protocol frame otherwise. Every backend switch
  * reloads the page, so an entry never outlives its backend.
  */
-export function createHostChainPool(destroyDelay = 60_000): ChainPool {
+export function createHostChainPool(destroyDelay?: number): ChainPool {
   return createChainPool({
-    // An idle chain is closed after a minute on every backend. A socket is
-    // cheap to reopen, and a remote connection is: the frame keeps the
-    // light client's chain.
-    destroyDelay,
+    // Unset, the pool's default: an idle chain is closed after a minute on
+    // every backend. A socket is cheap to reopen, and a remote connection is:
+    // the frame keeps the light client's chain.
+    ...(destroyDelay === undefined ? {} : { destroyDelay }),
     createTransport: (genesisHash, hooks) =>
       getBackend() === 'rpc-gateway'
         ? createCoreRpcChainProvider(genesisHash, hooks)
