@@ -523,6 +523,7 @@ function promptButtonTexts(): string[] {
 }
 
 async function clickPromptButton(text: string): Promise<void> {
+  await overlaysReady();
   await vi.waitFor(() => {
     expect(promptButtonTexts()).toContain(text);
   });
