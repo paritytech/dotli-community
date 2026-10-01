@@ -161,13 +161,6 @@ function noteFrameHalt(): void {
   }
 }
 
-/** The gate as a fresh page has it. */
-export function resetFrameGateForTests(): void {
-  frameGate.opensAt = null;
-  frameGate.delay = FRAME_RETRY_FIRST_MS;
-  frameGate.dialedAt = null;
-}
-
 /** Whether a product may take a new lease now, after its last one heard `'frame'`. */
 function mayDialAfterFrameHalt(): boolean {
   // A frame something else started is up: a lease boots nothing.

@@ -7,16 +7,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, setBackend } from '@dotli/config';
-import { log } from '@dotli/shared';
+import type * as SharedModule from '@dotli/shared';
 import type { RemoteChainHalt, RemoteChainProvider } from '@dotli/protocol';
 import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import type * as ClientModule from '../../protocol/src/client.js';
-import {
-  createChainConnect,
-  createHostChainPool,
-  hostChainProvider,
-  resetFrameGateForTests,
-} from '../src/host-callbacks/Chain.js';
+import type * as ChainModule from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface RemoteConnection {
@@ -27,7 +22,8 @@ interface RemoteConnection {
 }
 
 const mocks = vi.hoisted(() => {
-  // Never cleared: the host pool's frame gate subscribes once, for good.
+  // The host pool's frame gate subscribes once per module, so each test's
+  // fresh module adds its own.
   const readyListeners: (() => void)[] = [];
   return {
     createRemoteChainProvider: vi.fn<(genesisHash: string) => RemoteChainProvider | null>(),
@@ -57,6 +53,20 @@ function frameReady(): void {
 
 const people = getActiveServicesConfig().people.genesis;
 
+let createChainConnect: typeof ChainModule.createChainConnect;
+let createHostChainPool: typeof ChainModule.createHostChainPool;
+let hostChainProvider: typeof ChainModule.hostChainProvider;
+let log: typeof SharedModule.log;
+
+// Chain.ts keeps its gates at module level, so each test gets them as a fresh
+// page has them from a fresh module.
+beforeEach(async () => {
+  vi.resetModules();
+  mocks.readyListeners.length = 0;
+  ({ createChainConnect, createHostChainPool, hostChainProvider } = await import('../src/host-callbacks/Chain.js'));
+  ({ log } = await import('@dotli/shared'));
+});
+
 describe('host chain pool on a light client backend', () => {
   let remotes: RemoteConnection[];
   // How each new remote connection fares. `worker`: refused, as the
@@ -71,7 +81,6 @@ describe('host chain pool on a light client backend', () => {
     setBackend('smoldot-direct');
     remotes = [];
     refuse = 'none';
-    resetFrameGateForTests();
     mocks.isProtocolReady.mockReturnValue(false);
     mocks.createRemoteChainProvider.mockReset().mockImplementation(() => (onMessage, onHalt) => {
       const remote: RemoteConnection = {
