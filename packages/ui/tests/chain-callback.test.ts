@@ -175,6 +175,26 @@ describe('createChainConnect', () => {
     expect((await responses.next()).done).toBe(true);
   });
 
+  it('As a dotli integrator, a halted chain transport answers a request in flight before the stream ends', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }));
+    const upstream = must(mocks.upstreams[0], 'upstream');
+    expect(upstream.sent).toHaveLength(1);
+
+    // When
+    upstream.hooks.onStatus('disconnected');
+    upstream.hooks.onHalt(new Error('smoldot died'));
+
+    // Then
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    expect(JSON.parse(yielded(await responses.next()))).toMatchObject({
+      id: 'truapi:9',
+      error: { message: 'Chain transport halted' },
+    });
+    expect((await responses.next()).done).toBe(true);
+  });
+
   it('As a dotli integrator, closing a halted core connection releases its lease once', async () => {
     // Given
     const pool = createHostChainPool(0);

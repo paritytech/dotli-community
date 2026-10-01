@@ -339,6 +339,35 @@ describe('createChainPool', () => {
     ]);
   });
 
+  it('As a dotli integrator, a transport that disconnects and then halts drops an answered watch before the lease hears the halt', () => {
+    // Given
+    const { createTransport, built } = createTransports();
+    const pool = createChainPool({ createTransport });
+    const events: string[] = [];
+    const connection = lease(
+      pool,
+      '0xaa',
+      message => {
+        const event = (message as { params?: { result?: { event?: string } } }).params?.result?.event;
+        events.push(event ?? 'response');
+      },
+      () => {
+        events.push('halt');
+      },
+    );
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
+    const transport = must(built[0], 'transport');
+    transport.emit({ jsonrpc: '2.0', id: must(must(transport.sent[0], 'upstream submit').id, 'id'), result: 'watch-1' });
+    events.length = 0;
+
+    // When
+    transport.hooks.onStatus('disconnected');
+    transport.hooks.onHalt(new Error('gone'));
+
+    // Then
+    expect(events).toEqual(['dropped', 'halt']);
+  });
+
   it('As a dotli integrator, a chain rebuilt by a halt handler reports its own status', () => {
     // Given
     const { createTransport, built } = createTransports();

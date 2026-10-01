@@ -8,6 +8,7 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
+import { ChainBroker } from '../src/broker.js';
 import { createChainBrokerManager } from '../src/chain-pool.js';
 
 function createProviderHarness(): {
@@ -854,5 +855,182 @@ describe('createChainBrokerManager', () => {
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe('up-a');
     expect((unpins[0]?.params as unknown[])[1]).toEqual(['0xblock']);
+  });
+});
+
+describe('ChainBroker.halt', () => {
+  function setup(): {
+    broker: ChainBroker;
+    harness: ReturnType<typeof createProviderHarness>;
+    open: (
+      id: string,
+      log: string[],
+      throwOnMessage?: boolean,
+    ) => { send: (message: unknown) => void; disconnect: () => void; messages: unknown[] };
+  } {
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider, () => undefined);
+    const open: ReturnType<typeof setup>['open'] = (id, log, throwOnMessage = false) => {
+      const messages: unknown[] = [];
+      const connection = broker.connect(
+        id,
+        message => {
+          messages.push(message);
+          log.push(`${id}:message`);
+          if (throwOnMessage) {
+            throw new Error('consumer bug');
+          }
+        },
+        'object',
+        () => {
+          log.push(`${id}:halt`);
+        },
+      );
+      return { send: connection.send, disconnect: connection.disconnect, messages };
+    };
+    return { broker, harness, open };
+  }
+
+  function followedSession(
+    id: string,
+    open: ReturnType<typeof setup>['open'],
+    harness: ReturnType<typeof setup>['harness'],
+    log: string[],
+    upstreamToken: string,
+  ): { messages: unknown[]; token: string } {
+    const session = open(id, log);
+    session.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    const upstream = harness.sent[harness.sent.length - 1] as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: upstream.id, result: upstreamToken });
+    const ack = session.messages[0] as { result: string };
+    session.messages.length = 0;
+    log.length = 0;
+    return { messages: session.messages, token: ack.result };
+  }
+
+  it('As a dotli integrator, a halt answers a request in flight under its client id before the session hears the halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const session = open('a', log);
+    session.send({ jsonrpc: '2.0', id: 'req-1', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    broker.halt(new Error('gone'));
+
+    // Then
+    expect(session.messages).toEqual([
+      { jsonrpc: '2.0', id: 'req-1', error: { code: -32603, message: 'Chain transport halted' } },
+    ]);
+    expect(log).toEqual(['a:message', 'a:halt']);
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, a halt stops an established follow under its local token before the halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const follow = followedSession('a', open, harness, log, 'up-1');
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(follow.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: follow.token, result: { event: 'stop' } },
+      },
+    ]);
+    expect(log).toEqual(['a:message', 'a:halt']);
+  });
+
+  it('As a dotli integrator, a halt answers a follow still in flight with an error and no stop', () => {
+    // Given
+    const { broker, open } = setup();
+    const log: string[] = [];
+    const first = open('a', log);
+    const second = open('b', log);
+    first.send({ jsonrpc: '2.0', id: 11, method: 'chainHead_v1_follow', params: [true] });
+    second.send({ jsonrpc: '2.0', id: 22, method: 'chainHead_v1_follow', params: [true] });
+
+    // When
+    broker.halt();
+
+    // Then
+    const error = (id: number): unknown => ({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32603, message: 'Chain transport halted' },
+    });
+    expect(first.messages).toEqual([error(11)]);
+    expect(second.messages).toEqual([error(22)]);
+  });
+
+  it('As a dotli integrator, a halt tells each session only about its own requests and follows', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const a = followedSession('a', open, harness, log, 'up-1');
+    const b = open('b', log);
+    b.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    log.length = 0;
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(a.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: a.token, result: { event: 'stop' } },
+      },
+    ]);
+    expect(b.messages).toEqual([
+      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603, message: 'Chain transport halted' } },
+    ]);
+  });
+
+  it('As a dotli integrator, a session whose handler throws does not keep the others from their messages and halt', () => {
+    // Given
+    const { broker, open } = setup();
+    const log: string[] = [];
+    const broken = open('a', log, true);
+    const healthy = open('b', log);
+    broken.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    healthy.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    const halt = (): void => {
+      broker.halt();
+    };
+
+    // Then
+    expect(halt).not.toThrow();
+    expect(healthy.messages).toHaveLength(1);
+    expect(log).toContain('b:halt');
+  });
+
+  it('As a dotli integrator, the release requests the broker sends itself are never answered on a halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const leaving = open('a', log);
+    const staying = open('b', log);
+    leaving.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'watch-1' });
+    leaving.disconnect();
+    staying.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
+    expect(staying.messages).toEqual([
+      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603, message: 'Chain transport halted' } },
+    ]);
   });
 });
