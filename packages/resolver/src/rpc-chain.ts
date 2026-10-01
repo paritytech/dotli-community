@@ -163,14 +163,14 @@ export function createCoreRpcChainProvider(
 }
 
 /** Gateway socket endpoint per lowercased genesis hash, while a socket is dialing or connected. */
-const connectedEndpoints = new Map<string, string>();
+const connectedEndpoints = new Map<string, { uri: string; owner: object }>();
 
 /**
  * The endpoint the chain's gateway socket is dialing or connected to, or
  * `null` between sockets and for a chain no gateway socket was built for.
  */
 export function getConnectedRpcEndpoint(genesisHash: string): string | null {
-  return connectedEndpoints.get(genesisHash.toLowerCase()) ?? null;
+  return connectedEndpoints.get(genesisHash.toLowerCase())?.uri ?? null;
 }
 
 function createGatewayProvider(
@@ -183,6 +183,14 @@ function createGatewayProvider(
   let replay: () => void = () => undefined;
   const pauseController = createPauseController();
   const { WebSocketClass, closeLatest } = closingWebSocketClass();
+  const owner = {};
+  const genesisKey = chain.genesis.toLowerCase();
+  // Only the provider that recorded the endpoint may clear it.
+  const clearEndpoint = (): void => {
+    if (connectedEndpoints.get(genesisKey)?.owner === owner) {
+      connectedEndpoints.delete(genesisKey);
+    }
+  };
   const socket = getWsProvider([...chain.rpcs], {
     heartbeatTimeout: HEARTBEAT_TIMEOUT_MS,
     websocketClass: WebSocketClass,
@@ -192,11 +200,10 @@ function createGatewayProvider(
     middleware: inner => pauseController.middleware(withOwnMessages(compatibilityMiddleware(inner))),
     onStatusChanged: event => {
       // CONNECTING and CONNECTED carry the endpoint; ERROR and CLOSE do not.
-      const genesisKey = chain.genesis.toLowerCase();
       if ('uri' in event) {
-        connectedEndpoints.set(genesisKey, event.uri);
+        connectedEndpoints.set(genesisKey, { uri: event.uri, owner });
       } else {
-        connectedEndpoints.delete(genesisKey);
+        clearEndpoint();
       }
       const status = STATUS_BY_WS_EVENT[event.type];
       if (status === 'connected') {
@@ -215,5 +222,18 @@ function createGatewayProvider(
       replay = () => undefined;
     };
   });
-  return Object.assign(replaying, { pause: pauseController.pause, resume: pauseController.resume });
+  // ws-provider emits no status event for a disconnect, so clear the endpoint here.
+  const provider: JsonRpcProvider = onMessage => {
+    const connection = replaying(onMessage);
+    return {
+      send: message => {
+        connection.send(message);
+      },
+      disconnect: () => {
+        connection.disconnect();
+        clearEndpoint();
+      },
+    };
+  };
+  return Object.assign(provider, { pause: pauseController.pause, resume: pauseController.resume });
 }

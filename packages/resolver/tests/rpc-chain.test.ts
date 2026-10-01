@@ -138,6 +138,29 @@ describe('rpc-chain', () => {
     connection.disconnect();
   });
 
+  it('As a dotli user on Trusted Providers, diagnostics show no node once the chain connection is closed or paused', async () => {
+    // Given
+    const { genesis } = getActiveServicesConfig().assethub;
+    const provider = must(createCoreRpcChainProvider(genesis), 'provider');
+    const { socket, connection } = await connect(provider);
+    expect(getConnectedRpcEndpoint(genesis)).toBe(socket.url);
+
+    // When
+    connection.disconnect();
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
+
+    // When
+    await connect(provider);
+    const dialed = getConnectedRpcEndpoint(genesis);
+    provider.pause();
+
+    // Then
+    expect(dialed).not.toBeNull();
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
+  });
+
   it('As a dotli user on Trusted Providers, a socket counts as dead only after 120 seconds without a message', async () => {
     // Given
     const onStatus = vi.fn();
