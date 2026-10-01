@@ -12,6 +12,7 @@
 
 import { bytesToHex } from "@parity/truapi/scale";
 import type {
+  JsonRpcConnection,
   JsonRpcRequest,
   JsonRpcProvider,
 } from "@polkadot-api/json-rpc-provider";
@@ -54,50 +55,57 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
 }
 
 function toConnection(
-  provider: JsonRpcProvider<unknown> | null,
+  createProvider: (onHalt: () => void) => JsonRpcProvider<unknown> | null,
 ): PlatformJsonRpcConnection {
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  const state = { closed: false };
+  let conn: JsonRpcConnection<unknown> | null = null;
+  const close = (): void => {
+    if (state.closed) {
+      return;
+    }
+    state.closed = true;
+    queue.length = 0;
+    conn?.disconnect();
+    wake?.();
+    wake = null;
+  };
+  const provider = createProvider(close);
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
-  const queue: string[] = [];
-  let wake: (() => void) | null = null;
-  let stopped = false;
-  let closed = false;
-  const conn = provider((message: unknown) => {
-    if (closed) {
+  const upstream = provider((message: unknown) => {
+    if (state.closed) {
       return;
     }
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
   });
-  const close = (): void => {
-    if (closed) {
-      return;
-    }
-    stopped = true;
-    closed = true;
-    conn.disconnect();
-    wake?.();
-    wake = null;
-  };
+  conn = upstream;
+  if (state.closed) {
+    upstream.disconnect();
+  }
 
   return {
     send(request: string): void {
+      if (state.closed) {
+        throw new Error("Chain connection is closed");
+      }
       const parsed: unknown = JSON.parse(request);
       if (!isJsonRpcRequest(parsed)) {
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }
-      conn.send(parsed);
+      upstream.send(parsed);
     },
     async *responses(): AsyncIterable<string> {
       try {
-        while (!stopped) {
-          while (queue.length > 0) {
-            const response = queue.shift();
-            if (response !== undefined) {
-              yield response;
-            }
+        while (!state.closed) {
+          const response = queue.shift();
+          if (response !== undefined) {
+            yield response;
+            continue;
           }
           await new Promise<void>((resolve) => {
             wake = resolve;
@@ -125,7 +133,9 @@ export function createChainConnect(): ChainProvider["connect"] {
         );
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      const connection = toConnection(createCoreRpcChainProvider(genesisHash));
+      const connection = toConnection((onHalt) =>
+        createCoreRpcChainProvider(genesisHash, onHalt),
+      );
       return Promise.resolve(connection);
     }
 
@@ -138,11 +148,11 @@ export function createChainConnect(): ChainProvider["connect"] {
     const lightClient = smoldotChainBroker.getLocalProvider(genesisHash);
     // TEMPORARY: see light-client-submit-fallback.ts and ADR 0002.
     return Promise.resolve(
-      toConnection(
+      toConnection((onHalt) =>
         lightClient !== null && isCoreRpcChainSupported(genesisHash)
           ? withTrustedSubmitFallback(
               lightClient,
-              () => createCoreRpcChainProvider(genesisHash),
+              () => createCoreRpcChainProvider(genesisHash, onHalt),
               genesisHash,
             )
           : lightClient,
