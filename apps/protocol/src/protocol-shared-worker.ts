@@ -159,7 +159,7 @@ async function presync(): Promise<void> {
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
     chainPool = createChainPool({
-      createTransport: genesisHash => createChainProvider(genesisHash),
+      createTransport: createChainProvider,
       destroyDelay: Infinity,
     });
     chainSessions = createWorkerChainSessions(chainPool, isChainSupported, sendToPort, swLog);
