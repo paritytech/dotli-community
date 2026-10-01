@@ -72,10 +72,6 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
       }
       // Per connection, so a halt of a client already replaced is ignored.
       const mine = { done: false };
-      const release = (): void => {
-        mine.done = true;
-        live.teardown = null;
-      };
       const onHalt = (reason: RemoteChainHalt): void => {
         if (mine.done || live.cancelled) {
           return;
@@ -120,7 +116,8 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
         },
       });
       live.teardown = () => {
-        release();
+        mine.done = true;
+        live.teardown = null;
         sub.unsubscribe();
         client.destroy();
       };
