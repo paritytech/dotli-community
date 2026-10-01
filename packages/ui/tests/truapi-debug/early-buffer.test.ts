@@ -8,9 +8,6 @@
 // with no animation frame advanced — advancing a frame would also let the
 // panel's own `store.subscribe` commit path paper over a wrong subscribe
 // order.
-//
-// Reuses the characterization suite's stubbing approach (`./panel.test.ts`),
-// which is left untouched; this is a separate, narrowly scoped file.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';
@@ -27,19 +24,6 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // The panel links its stylesheet; happy-dom would try to fetch it.
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   vi.resetModules();
   document.head.replaceChildren();
