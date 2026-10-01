@@ -100,6 +100,8 @@ interface Session {
   connected: boolean;
   /** Fixed at session creation, never inferred from message shape later. */
   wireMode: WireMode;
+  /** Told once when the chain's transport halts for good. */
+  onHalt: ((error?: unknown) => void) | null;
 }
 
 /** Internal session handle returned by `ChainBroker.connect()`. */
@@ -221,7 +223,7 @@ function brokerWarn(...args: unknown[]): void {
   log.warn(BROKER_TAG, ...args);
 }
 
-class ChainBroker {
+export class ChainBroker {
   private readonly provider: JsonRpcProvider;
   private readonly onEmpty: () => void;
   private upstream: JsonRpcConnection | null = null;
@@ -254,6 +256,7 @@ class ChainBroker {
     sessionId: string,
     onMessage: (message: unknown) => void,
     wireMode: WireMode = DEFAULT_WIRE_MODE,
+    onHalt: ((error?: unknown) => void) | null = null,
   ): BrokerConnection {
     if (this.sessions.has(sessionId)) {
       throw new Error(`Duplicate broker session: ${sessionId}`);
@@ -267,6 +270,7 @@ class ChainBroker {
       ownedTokens: new Set<string>(),
       connected: true,
       wireMode,
+      onHalt,
     });
 
     return {
@@ -285,6 +289,66 @@ class ChainBroker {
     }
     this.disconnectUpstream();
     this.onEmpty();
+  }
+
+  /**
+   * The transport is gone for good. Before each session hears the halt, it is
+   * answered for what it was still waiting on: an error for every request in
+   * flight (including a chainHead follow not yet acknowledged), and a `stop`
+   * event for every established follow. Transaction watches already got
+   * `dropped` from the watch guard when the transport reported `disconnected`;
+   * statement subscriptions and broadcasts have nothing to report. Then the
+   * sessions and the upstream are dropped without sending the upstream
+   * anything: there is nothing left to unsubscribe from.
+   */
+  halt(error?: unknown): void {
+    const sessions = [...this.sessions.values()];
+    this.sessions.clear();
+    for (const session of sessions) {
+      try {
+        this.answerHaltedSession(session);
+        // eslint-disable-next-line no-restricted-syntax -- a throwing message handler must not keep its session from hearing the halt.
+      } catch {
+        /* the handler threw; the session still hears the halt */
+      }
+      session.connected = false;
+      try {
+        session.onHalt?.(error);
+        // eslint-disable-next-line no-restricted-syntax -- defensive multicast: one session's handler must not keep the others from hearing the halt.
+      } catch {
+        /* the handler threw; the remaining sessions still hear the halt */
+      }
+    }
+    this.disconnectUpstream();
+    this.onEmpty();
+  }
+
+  private answerHaltedSession(session: Session): void {
+    for (const entry of this.pending.values()) {
+      if (entry.sessionId === session.id && entry.clientId !== null) {
+        this.sendToSession(session, buildJsonRpcError(entry.clientId, 'Chain transport halted'));
+      }
+    }
+    for (const sharedFollow of this.sharedFollows.values()) {
+      for (const pendingLocal of sharedFollow.pendingLocals) {
+        if (pendingLocal.sessionId === session.id && pendingLocal.requestId !== null) {
+          this.sendToSession(session, buildJsonRpcError(pendingLocal.requestId, 'Chain transport halted'));
+        }
+      }
+    }
+    for (const [localToken, followToken] of this.localFollowTokens) {
+      if (followToken.sessionId !== session.id) {
+        continue;
+      }
+      if ((this.sharedFollows.get(followToken.followKey)?.upstreamToken ?? null) === null) {
+        continue;
+      }
+      this.sendToSession(session, {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: localToken, result: { event: 'stop' } },
+      });
+    }
   }
 
   private ensureUpstream(): void {
@@ -1187,61 +1251,4 @@ class ChainBroker {
       });
     }
   }
-}
-
-export function createChainBrokerManager(
-  createProvider: (genesisHash: string) => JsonRpcProvider | null,
-): ChainBrokerManager {
-  const brokers = new Map<string, ChainBroker>();
-  let localConnectionCounter = 0;
-
-  function getBroker(genesisHash: string): ChainBroker | null {
-    let broker = brokers.get(genesisHash);
-    if (broker) {
-      brokerLog(`Reusing existing broker for chain ${genesisHash.slice(0, 10)}…`);
-      return broker;
-    }
-
-    brokerLog(`Creating new broker for chain ${genesisHash.slice(0, 10)}…`);
-    const provider = createProvider(genesisHash);
-    if (provider === null) {
-      brokerLog(`No provider available for chain ${genesisHash.slice(0, 10)}…`);
-      return null;
-    }
-
-    broker = new ChainBroker(provider, () => {
-      brokerLog(`Broker emptied, removing for chain ${genesisHash.slice(0, 10)}…`);
-      brokers.delete(genesisHash);
-    });
-    brokers.set(genesisHash, broker);
-    return broker;
-  }
-
-  return {
-    connectRemote(genesisHash, connectionId, onMessage) {
-      const broker = getBroker(genesisHash);
-      if (!broker) {
-        return null;
-      }
-      return broker.connect(connectionId, onMessage as (message: unknown) => void, 'string');
-    },
-    getLocalProvider(genesisHash) {
-      const broker = getBroker(genesisHash);
-      if (!broker) {
-        return null;
-      }
-
-      return onMessage => {
-        const connectionId = `local:${localConnectionCounter.toString(36)}`;
-        localConnectionCounter += 1;
-        return broker.connect(connectionId, onMessage as (message: unknown) => void, 'object') as JsonRpcConnection;
-      };
-    },
-    disconnectAll() {
-      for (const broker of brokers.values()) {
-        broker.disconnectAll();
-      }
-      brokers.clear();
-    },
-  };
 }

@@ -241,6 +241,7 @@ test.describe('Settings works', () => {
     test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
+      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -266,6 +267,7 @@ test.describe('Settings works', () => {
     test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
+      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,

@@ -22,6 +22,7 @@ export {
   type ResolveOptions,
 } from './resolve.js';
 export { createCoreRpcChainProvider, isCoreRpcChainSupported, isRpcChainSupported } from './rpc-chain.js';
+export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
 export {
   loadProvider,
   loadResolve,

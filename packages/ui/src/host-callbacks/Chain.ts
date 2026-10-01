@@ -9,13 +9,22 @@
 // light-client footprint, and rebuild a fresh chain alongside the one
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
+//
+// Every core connection is a lease on the host page's chain pool: one
+// connection per chain, shared through the broker, which keeps each core
+// connection's ids apart. Over RPC the socket replays its subscriptions when
+// it reconnects. A transport that dies for good ends its connections' streams
+// after they deliver what was queued (including `dropped` for transaction
+// watches). The installed truapi-host does not act on the end itself, so other
+// requests on that connection stay pending (spec follow-up: "Interrupt the
+// core on a halt").
 
 import { bytesToHex } from '@parity/truapi/scale';
-import type { JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getBackend } from '@dotli/config';
-import { createChainBrokerManager } from '@dotli/protocol';
+import { createChainPool, type ChainPool, type LeaseProvider } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -26,11 +35,26 @@ import {
 import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 
-// `createSmoldotChainProvider` returns wrappers around singleton smoldot
-// chains. Every wrapper drains the same response queue, so independent core
-// connections must share one broker that assigns responses and subscription
-// notifications to their owning connection.
-const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
+/**
+ * The host page's chain pool. A chain's transport follows the backend when
+ * its entry is built: a WebSocket in `rpc-gateway`, smoldot otherwise. Every
+ * backend switch reloads the page, so an entry never outlives its backend.
+ */
+export function createHostChainPool(destroyDelay?: number): ChainPool {
+  return createChainPool({
+    // truapi-provider drops a smoldot chain once nothing holds it, so closing
+    // one after an idle delay would only make the next connect re-add and
+    // re-sync a chain main keeps open for good. Read when the countdown starts
+    // (after boot), not at import.
+    destroyDelay: destroyDelay ?? (() => (getBackend() === 'rpc-gateway' ? 60_000 : Infinity)),
+    createTransport: (genesisHash, hooks) =>
+      getBackend() === 'rpc-gateway'
+        ? createCoreRpcChainProvider(genesisHash, hooks)
+        : createSmoldotChainProvider(genesisHash, hooks),
+  });
+}
+
+const hostChainPool = createHostChainPool();
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -45,14 +69,22 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   );
 }
 
-function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRpcConnection {
+function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection {
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
   const queue: string[] = [];
   let wake: (() => void) | null = null;
-  let stopped = false;
+  let halted = false;
   let closed = false;
+  // The chain's transport is gone for good: the stream ends once it has
+  // delivered what was queued. truapi-host 0.23.0 ignores the end itself, so
+  // other requests on this connection stay pending.
+  const halt = (): void => {
+    halted = true;
+    wake?.();
+    wake = null;
+  };
   const conn = provider((message: unknown) => {
     if (closed) {
       return;
@@ -60,12 +92,14 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  });
+  }, halt);
+  // Calls, so the checks after the drain aren't narrowed by earlier ones.
+  const isHalted = (): boolean => halted;
+  const isClosed = (): boolean => closed;
   const close = (): void => {
     if (closed) {
       return;
     }
-    stopped = true;
     closed = true;
     conn.disconnect();
     wake?.();
@@ -82,12 +116,16 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
     },
     async *responses(): AsyncIterable<string> {
       try {
-        while (!stopped) {
-          while (queue.length > 0) {
+        for (;;) {
+          // A halt still delivers what was queued; a close ends at once.
+          while (!isClosed() && queue.length > 0) {
             const response = queue.shift();
             if (response !== undefined) {
               yield response;
             }
+          }
+          if (isHalted() || isClosed()) {
+            break;
           }
           await new Promise<void>(resolve => {
             wake = resolve;
@@ -101,7 +139,7 @@ function toConnection(provider: JsonRpcProvider<unknown> | null): PlatformJsonRp
   };
 }
 
-export function createChainConnect(): ChainProvider['connect'] {
+export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvider['connect'] {
   return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
@@ -113,14 +151,13 @@ export function createChainConnect(): ChainProvider['connect'] {
         log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      const connection = toConnection(createCoreRpcChainProvider(genesisHash));
-      return Promise.resolve(connection);
+      return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(smoldotChainBroker.getLocalProvider(genesisHash)));
+    return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
   };
 }
