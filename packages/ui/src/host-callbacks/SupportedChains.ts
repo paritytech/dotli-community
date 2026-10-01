@@ -15,7 +15,8 @@ import type { ChainIdentifier } from '@parity/truapi';
 import { toHexString } from '@parity/truapi/scale';
 import { getBackend, getActiveServicesConfig, getNetwork } from '@dotli/config';
 
-import { isChainSupported as isSmoldotChainSupported, isRpcChainSupported } from '@dotli/resolver';
+import { isRemoteChainSupported } from '@dotli/protocol';
+import { isRpcChainSupported } from '@dotli/resolver';
 
 export function createSupportedChains(): Features['supportedChains'] {
   return () => {
@@ -26,7 +27,9 @@ export function createSupportedChains(): Features['supportedChains'] {
       { identifier: 'People', genesis: cfg.people.genesis },
       { identifier: 'Bulletin', genesis: cfg.bulletin.genesis },
     ];
-    const isSupported = getBackend() === 'rpc-gateway' ? isRpcChainSupported : isSmoldotChainSupported;
+    // The light client backends serve what the protocol frame's light client
+    // runs; asking the resolver's smoldot provider would pull it into the host.
+    const isSupported = getBackend() === 'rpc-gateway' ? isRpcChainSupported : isRemoteChainSupported;
     return Promise.resolve({
       network: getNetwork(),
       chains: slots

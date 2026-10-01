@@ -4,7 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
+import { log } from '@dotli/shared';
 import type { ChainTransportHooks } from '@dotli/resolver';
+import type * as ClientModule from '../../protocol/src/client.js';
 import { createChainConnect, createHostChainPool, hostAssetHubProvider } from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
@@ -19,9 +21,9 @@ interface Upstream {
 const mocks = vi.hoisted(() => ({
   backend: 'smoldot-shared-worker',
   upstreams: [] as Upstream[],
-  createSmoldotChainProvider: vi.fn(),
+  createFrameChainTransport: vi.fn(),
   createCoreRpcChainProvider: vi.fn(),
-  isSmoldotChainSupported: vi.fn(),
+  isRemoteChainConnectable: vi.fn(),
   isCoreRpcChainSupported: vi.fn(),
 }));
 
@@ -29,9 +31,13 @@ vi.mock('../../config/src/mode.js', () => ({
   getBackend: () => mocks.backend,
 }));
 
-vi.mock('../../resolver/src/provider.js', () => ({
-  createChainProvider: mocks.createSmoldotChainProvider,
-  isChainSupported: mocks.isSmoldotChainSupported,
+vi.mock('../src/host-callbacks/frame-transport.js', () => ({
+  createFrameChainTransport: mocks.createFrameChainTransport,
+}));
+
+vi.mock('../../protocol/src/client.js', async importOriginal => ({
+  ...(await importOriginal<typeof ClientModule>()),
+  isRemoteChainConnectable: mocks.isRemoteChainConnectable,
 }));
 
 vi.mock('../../resolver/src/rpc-chain.js', () => ({
@@ -75,18 +81,22 @@ describe('createChainConnect', () => {
     vi.clearAllMocks();
     mocks.backend = 'smoldot-shared-worker';
     mocks.upstreams = [];
-    mocks.createSmoldotChainProvider.mockImplementation(recordingTransport);
+    mocks.createFrameChainTransport.mockImplementation(recordingTransport);
     mocks.createCoreRpcChainProvider.mockImplementation(recordingTransport);
-    mocks.isSmoldotChainSupported.mockReturnValue(true);
+    mocks.isRemoteChainConnectable.mockReturnValue(true);
     mocks.isCoreRpcChainSupported.mockReturnValue(true);
   });
 
-  it('As a dotli integrator, the host routes chain connections through the selected smoldot backend', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("As a dotli integrator, the host routes chain connections on a light client backend through the protocol frame's light client", async () => {
     // When
     await createChainConnect(createHostChainPool(0))(hexBytes(people));
 
     // Then
-    expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
+    expect(mocks.createFrameChainTransport).toHaveBeenCalledWith(
       people.toLowerCase(),
       expect.objectContaining({ onStatus: expect.any(Function) as unknown, onHalt: expect.any(Function) as unknown }),
     );
@@ -102,7 +112,7 @@ describe('createChainConnect', () => {
 
     // Then
     expect(mocks.createCoreRpcChainProvider).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
-    expect(mocks.createSmoldotChainProvider).not.toHaveBeenCalled();
+    expect(mocks.createFrameChainTransport).not.toHaveBeenCalled();
   });
 
   it('As a dotli integrator, core connections to one chain share one transport', async () => {
@@ -242,16 +252,19 @@ describe('createChainConnect', () => {
       vi.useRealTimers();
     });
 
-    it('As a dotli integrator, a smoldot chain stays open after its last connection closes', async () => {
+    it('As a dotli user on a light client backend, a chain closes a minute after its last connection closes', async () => {
       // Given
       const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+      const upstream = must(mocks.upstreams[0], 'upstream');
 
       // When
       connection.close();
-      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(59_999);
 
       // Then
-      expect(must(mocks.upstreams[0], 'upstream').disconnect).not.toHaveBeenCalled();
+      expect(upstream.disconnect).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(upstream.disconnect).toHaveBeenCalledTimes(1);
     });
 
     it('As a dotli user on Trusted Providers, an RPC chain closes after its last connection closes', async () => {
@@ -292,6 +305,22 @@ describe('createChainConnect', () => {
     // Then
     expect(connect).toThrow(`Unsupported RPC chain: ${people.toLowerCase()}`);
     expect(mocks.createCoreRpcChainProvider).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, a chain the protocol frame cannot serve is refused before any transport is built', () => {
+    // Given
+    mocks.isRemoteChainConnectable.mockReturnValue(false);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+
+    // When
+    const connect = (): unknown => createChainConnect(createHostChainPool(0))(hexBytes(people));
+
+    // Then
+    expect(connect).toThrow(`Unsupported smoldot chain: ${people.toLowerCase()}`);
+    expect(mocks.createFrameChainTransport).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      `[dot.li truapi-chain] smoldot backend doesn't support ${people.toLowerCase()}; product call will fail`,
+    );
   });
 
   it("As a dotli user on Trusted Providers, name resolution leases the pool's one Asset Hub transport", () => {

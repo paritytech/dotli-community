@@ -1,14 +1,15 @@
 // dot.li — TrUAPI chain callback
 //
 // Routes product chain RPC traffic through whichever backend the user
-// has selected in the host shell ("Light Client" via smoldot, or
-// "RPC Node" via curated WSS endpoints).
+// has selected in the host shell ("Light Client" or "RPC Node" via
+// curated WSS endpoints).
 //
 // Without this callback, truapi-server would fall back to its own
-// bundled smoldot — which would ignore the toggle, double the
-// light-client footprint, and rebuild a fresh chain alongside the one
-// dotli's resolver already maintains. Routing through dotli's existing
-// providers reuses already-synced chains and respects the toggle.
+// bundled smoldot — which would ignore the toggle and run another light
+// client alongside the protocol frame's. On the light client backends the
+// host pool reaches each chain over one remote connection to the protocol
+// frame, so products share the chains the frame's light client already
+// syncs. The host page runs no light client of its own.
 //
 // Every core connection is a lease on the host page's chain pool: one
 // connection per chain, shared through the broker, which keeps each core
@@ -25,33 +26,35 @@ import type { ChainProvider } from '@parity/truapi-host';
 import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getBackend } from '@dotli/config';
-import { createChainPool, requireBrokerLocalProvider, type ChainPool, type LeaseProvider } from '@dotli/protocol';
 import {
-  createChainProvider as createSmoldotChainProvider,
-  isChainSupported as isSmoldotChainSupported,
-  createCoreRpcChainProvider,
-  isCoreRpcChainSupported,
-} from '@dotli/resolver';
+  createChainPool,
+  isRemoteChainConnectable,
+  requireBrokerLocalProvider,
+  type ChainPool,
+  type LeaseProvider,
+} from '@dotli/protocol';
+import { createCoreRpcChainProvider, isCoreRpcChainSupported } from '@dotli/resolver';
 
 import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
+import { createFrameChainTransport } from './frame-transport.js';
 
 /**
  * The host page's chain pool. A chain's transport follows the backend when
- * its entry is built: a WebSocket in `rpc-gateway`, smoldot otherwise. Every
- * backend switch reloads the page, so an entry never outlives its backend.
+ * its entry is built: the host page's own WebSocket in `rpc-gateway`, a
+ * remote connection to the protocol frame otherwise. Every backend switch
+ * reloads the page, so an entry never outlives its backend.
  */
-export function createHostChainPool(destroyDelay?: number): ChainPool {
+export function createHostChainPool(destroyDelay = 60_000): ChainPool {
   return createChainPool({
-    // truapi-provider drops a smoldot chain once nothing holds it, so closing
-    // one after an idle delay would only make the next connect re-add and
-    // re-sync a chain main keeps open for good. Read when the countdown starts
-    // (after boot), not at import.
-    destroyDelay: destroyDelay ?? (() => (getBackend() === 'rpc-gateway' ? 60_000 : Infinity)),
+    // An idle chain is closed after a minute on every backend. A socket is
+    // cheap to reopen, and a remote connection is: the frame keeps the
+    // light client's chain.
+    destroyDelay,
     createTransport: (genesisHash, hooks) =>
       getBackend() === 'rpc-gateway'
         ? createCoreRpcChainProvider(genesisHash, hooks)
-        : createSmoldotChainProvider(genesisHash, hooks),
+        : createFrameChainTransport(genesisHash, hooks),
   });
 }
 
@@ -164,7 +167,7 @@ export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvid
       return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
     }
 
-    if (!isSmoldotChainSupported(genesisHash)) {
+    if (!isRemoteChainConnectable(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
