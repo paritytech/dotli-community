@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from 'vitest';
+import { ProtocolInitFailedError } from '@dotli/protocol';
 
 import { describeError, HOST_ERRORS } from '../../src/errors.js';
 
@@ -40,4 +41,16 @@ describe('host error classification', () => {
       });
     },
   );
+
+  it('As a dotli user on the shared light client, a light client that failed to start tells me to close my other dot.li tabs before I reload', () => {
+    // When
+    const error = describeError(new ProtocolInitFailedError('SharedWorker: chain 0xaa connection failed'), true);
+
+    // Then
+    expect({ kind: error.kind, message: error.message, tips: error.tips }).toEqual({
+      kind: 'protocol-init-failed',
+      message: HOST_ERRORS.SW_FAILED_TO_START,
+      tips: ['Close other dot.li tabs, then reload.', 'Checking your internet connection.'],
+    });
+  });
 });

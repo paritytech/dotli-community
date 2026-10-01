@@ -122,6 +122,11 @@ const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 
 const BITSWAP_TIPS = ['Waiting a moment as the app may still be spreading across the network.'] as const;
 
+// The shared light client serves every dot.li tab and stays dead once it has
+// failed, so a reload alone joins the same dead worker while another tab
+// keeps it open.
+const SHARED_WORKER_TIPS = ['Close other dot.li tabs, then reload.', ...CONNECTIVITY_TIPS] as const;
+
 // Quotes the option verbatim from `BACKEND_LABELS`, which is what the "Network
 // Transport" section of the Settings panel renders. Names the mode they are not
 // already in, because a tip pointing at the mode that just failed is worse than
@@ -329,6 +334,7 @@ function classifyError(
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
+      tips: SHARED_WORKER_TIPS,
     };
   }
   if (msg.includes('timed out') || msg.includes('Timed out')) {

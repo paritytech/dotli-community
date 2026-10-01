@@ -93,6 +93,9 @@ let engineReady = false;
 // Why the engine is dead for good: pre-sync failed, or the light client could
 // not connect a chain. Every port that connects later is told, never `ready`.
 let presyncFailureMessage: string | null = null;
+// Whether the light client could not connect a chain. The worker then closes
+// once its last port leaves, so the next tab, or a reload, gets a new one.
+let lightClientDied = false;
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
@@ -115,12 +118,15 @@ if (requestedNetwork === null) {
 //
 // The light client stays dead for every tab: the engine is marked failed, so
 // a port that connects later (another tab, or this one after its retry) gets
-// the cause through the same path as a failed pre-sync, never `ready`.
+// the cause through the same path as a failed pre-sync, never `ready`. Once
+// the last port has left, the worker closes, so the next tab starts afresh.
 onProviderFatal(message => {
   swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
   engineReady = false;
   presyncFailureMessage = message;
+  lightClientDied = true;
   broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
+  closeIfAbandoned();
 });
 
 // Tell every connected tab which chains began from pre-existing state. The
@@ -293,6 +299,16 @@ function removePort(port: MessagePort): void {
   ports.delete(port);
   const cleaned = chainSessions?.removePort(port) ?? 0;
   swLog(`Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`);
+  closeIfAbandoned();
+}
+
+/** A worker whose light client died closes once no tab holds it. */
+function closeIfAbandoned(): void {
+  if (!lightClientDied || ports.size > 0) {
+    return;
+  }
+  swLog('Light client dead and no ports left, closing the worker');
+  self.close();
 }
 
 async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope, origin: string): Promise<void> {

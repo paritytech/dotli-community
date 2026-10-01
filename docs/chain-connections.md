@@ -302,8 +302,11 @@ sequenceDiagram
 - A fatal is only raised when the light client **cannot connect a chain**. A
   crashed light client shows up that way: every chain halts, consumers
   reconnect, and the first reconnect fails.
-- In the SharedWorker a fatal is **permanent**: tabs that connect later get the
-  error at once instead of retrying a dead light client.
+- In the SharedWorker a fatal is **permanent** while any tab holds the worker:
+  tabs that connect later, and reloads, get the error at once instead of
+  retrying a dead light client. Once its last tab has left (closed, or
+  reloading), the worker closes itself, so the next tab starts a new one. The
+  error page says so: "Close other dot.li tabs, then reload."
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress, and block bars wait for a frame that something else
   started (`onProtocolReady`). A product's requests are demand, but its papi
