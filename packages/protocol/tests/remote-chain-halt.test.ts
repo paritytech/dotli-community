@@ -451,7 +451,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(timedRequests()).toBe(1);
   });
 
-  it('As a dotli integrator, a connection closed while its frame boots is closed in the frame once it opens there, and sends nothing', async () => {
+  it('As a dotli integrator, a connection closed while its frame boots never reaches the frame', async () => {
     // Given: a connection with a send queued, closed before its frame is up.
     const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
     if (provider === null) {
@@ -462,12 +462,32 @@ describe('createRemoteChainProvider halts', () => {
     connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
     connection.disconnect();
 
-    // When: the frame comes up and accepts the connection.
+    // When: the frame comes up.
+    const frame = await bootFrame();
+    await flush();
+
+    // Then: nothing was posted for it, not even its connect.
+    expect(frame.posted).toEqual([]);
+    expect(received).toEqual([]);
+  });
+
+  it('As a dotli integrator, a connection closed after its connect was posted is closed in the frame once the frame accepts it, and sends nothing', async () => {
+    // Given: a connection with a send queued, whose connect the frame has not answered yet.
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const received: JsonRpcMessage[] = [];
+    const connection = provider(message => received.push(message));
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
     const frame = await bootFrame();
     const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
     if (chainConnect === undefined) {
       throw new Error('no chainConnect posted');
     }
+
+    // When: it is closed, and then the frame accepts the connection.
+    connection.disconnect();
     frame.deliver({ namespace: 'dotli:protocol', kind: 'response', id: chainConnect.id, ok: true, result: true });
     await flush();
 
@@ -480,7 +500,7 @@ describe('createRemoteChainProvider halts', () => {
     expect(received).toEqual([]);
   });
 
-  it('As a dotli integrator, a connection closed while its frame boots, which the frame then refuses, posts nothing more', async () => {
+  it('As a dotli integrator, a connection closed after its connect was posted, which the frame then refuses, posts nothing more', async () => {
     // Given
     const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
     const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
@@ -488,14 +508,14 @@ describe('createRemoteChainProvider halts', () => {
       throw new Error('People is not remote-connectable');
     }
     const connection = provider(() => undefined);
-    connection.disconnect();
-
-    // When
     const frame = await bootFrame();
     const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
     if (chainConnect === undefined) {
       throw new Error('no chainConnect posted');
     }
+
+    // When
+    connection.disconnect();
     frame.deliver({
       namespace: 'dotli:protocol',
       kind: 'response',

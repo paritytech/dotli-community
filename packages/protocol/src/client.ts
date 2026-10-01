@@ -887,13 +887,17 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
     };
 
     chainConnections.set(connectionId, remote);
-    // Disconnected before the frame accepted the connection: it is closed in
+    // Disconnected before the frame accepted the connection. Before the
+    // connect is posted, the frame never hears of it. After, it is closed in
     // the frame once the connect settles, not before, or the frame would keep
     // a connection opened after its disconnect.
     let disconnectedEarly = false;
 
     void ensureProtocolFrame()
       .then(async () => {
+        if (disconnectedEarly) {
+          return;
+        }
         await postRequest('chainConnect', { genesisHash, connectionId });
         if (disconnectedEarly) {
           postDisconnect(connectionId);
@@ -974,7 +978,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
           return;
         }
         if (!current.connected) {
-          // Nothing queued is sent; the connect still settles first.
+          // Nothing queued is sent. A connect already posted settles first.
           current.pendingMessages = [];
           disconnectedEarly = true;
           return;
