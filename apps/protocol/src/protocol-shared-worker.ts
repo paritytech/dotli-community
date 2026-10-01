@@ -35,7 +35,6 @@ import { m, initSentry, installGlobalErrorHandlers, spans as S } from '@dotli/me
 
 import {
   createChainPool,
-  type ChainPool,
   requireBrokerLocalProvider,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
@@ -133,7 +132,6 @@ onSmoldotDbOutcome((chain, outcome) => {
 });
 
 // Created by pre-sync.
-let chainPool: ChainPool | null = null;
 let chainSessions: WorkerChainSessions | null = null;
 
 function requireChainSessions(): WorkerChainSessions {
@@ -158,12 +156,11 @@ async function presync(): Promise<void> {
     // through it as a local session, so there is one shared Asset Hub follow
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
-    chainPool = createChainPool({
+    const pool = createChainPool({
       createTransport: createChainProvider,
       destroyDelay: Infinity,
     });
-    chainSessions = createWorkerChainSessions(chainPool, isChainSupported, sendToPort, swLog);
-    const pool = chainPool;
+    chainSessions = createWorkerChainSessions(pool, isChainSupported, sendToPort, swLog);
     setResolverAssetHubProvider(() =>
       requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );

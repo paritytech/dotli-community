@@ -10,6 +10,7 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ProtocolEnvelope } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
+import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import { MAX_CHAIN_CONNECTIONS, createWorkerChainSessions, type WorkerChainSessions } from '../src/worker-chains.js';
 
 const ORIGIN_A = 'https://a.example';
@@ -29,7 +30,7 @@ function must<T>(value: T | null | undefined, what: string): T {
   return value;
 }
 
-function setup(): {
+function setup(onSend?: (sessions: () => WorkerChainSessions, port: MessagePort, envelope: ProtocolEnvelope) => void): {
   sessions: WorkerChainSessions;
   built: TransportRecord[];
   posted: { port: MessagePort; envelope: ProtocolEnvelope }[];
@@ -63,7 +64,10 @@ function setup(): {
   const sessions = createWorkerChainSessions(
     pool,
     () => true,
-    (port, envelope) => posted.push({ port, envelope }),
+    (port, envelope) => {
+      posted.push({ port, envelope });
+      onSend?.(() => sessions, port, envelope);
+    },
     () => undefined,
   );
   return { sessions, built, posted, portA: {} as MessagePort, portB: {} as MessagePort };
@@ -232,6 +236,69 @@ describe('createWorkerChainSessions halts and origins', () => {
 
     // Then
     expect(overflow).toThrow('Connection limit reached (max 10)');
+  });
+
+  it('As a dotli user on the shared light client, one site hitting its limit is told so by the limit that applies', () => {
+    // Given
+    // Both limits are 10, so the worker-wide one is reached first for a single site.
+    expect(MAX_CONNECTIONS_PER_ORIGIN).toBe(MAX_CHAIN_CONNECTIONS);
+    const { sessions, portA, portB } = setup();
+    for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i++) {
+      sessions.connect(portA, ORIGIN_A, '0xaa', `c${String(i)}`);
+    }
+
+    // When
+    const overflow = (): void => {
+      sessions.connect(portA, ORIGIN_A, '0xaa', 'extra');
+    };
+
+    // Then
+    expect(overflow).toThrow('Connection limit reached (max 10)');
+    sessions.disconnect(ORIGIN_A, 'c0');
+    sessions.connect(portB, ORIGIN_B, '0xaa', 'c0');
+    expect(sessions.size).toBe(MAX_CHAIN_CONNECTIONS);
+  });
+
+  it("As a dotli user on the shared light client, a halt on one site's connection leaves another site's same-id connection working", () => {
+    // Given
+    const { sessions, built, posted, portA, portB } = setup();
+    sessions.connect(portA, ORIGIN_A, '0xaa', 'c1');
+    sessions.connect(portB, ORIGIN_B, '0xbb', 'c1');
+
+    // When
+    haltTransport(must(built[0], 'first chain'));
+
+    // Then
+    expect(posted.map(p => p.port)).toEqual([portA]);
+    expect(posted.map(p => p.envelope)).toEqual([
+      { namespace: 'dotli:protocol', kind: 'chain-halt', connectionId: 'c1' },
+    ]);
+    expect(sessions.size).toBe(1);
+    sessions.send(ORIGIN_B, 'c1', genesisRequest('q1'));
+    expect(must(built[1], 'second chain').sent).toHaveLength(1);
+  });
+
+  it('As a dotli user on the shared light client, a halt reaching a tab that already closed is survived and releases nothing twice', () => {
+    // Given
+    const { sessions, built, portA } = setup((getSessions, port, envelope) => {
+      if (envelope.kind === 'chain-halt') {
+        getSessions().removePort(port);
+        throw new Error('port closed');
+      }
+    });
+    sessions.connect(portA, ORIGIN_A, '0xaa', 'c1');
+    sessions.connect(portA, ORIGIN_A, '0xbb', 'c2');
+
+    // When
+    const halt = (): void => {
+      haltTransport(must(built[0], 'first chain'));
+    };
+
+    // Then
+    expect(halt).not.toThrow();
+    expect(sessions.size).toBe(0);
+    expect(must(built[0], 'first chain').disconnect.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(must(built[1], 'second chain').disconnect).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user on the shared light client, an unsupported chain is refused', () => {
