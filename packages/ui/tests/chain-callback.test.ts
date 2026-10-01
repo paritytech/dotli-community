@@ -196,9 +196,7 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, a halted chain transport answers a request in flight before the stream ends', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
-    connection.send(
-      JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }),
-    );
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainSpec_v1_genesisHash', params: [] }));
     const upstream = must(mocks.upstreams[0], 'upstream');
     expect(upstream.sent).toHaveLength(1);
 
