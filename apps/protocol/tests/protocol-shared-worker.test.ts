@@ -42,28 +42,16 @@ vi.mock('@dotli/metrics', async importOriginal => ({
 interface FakePort {
   posted: Mock<(message: unknown) => void>;
   port: MessagePort;
-  /** The tab's iframe unloads, and says so as it does on `beforeunload`. */
-  leave: () => void;
 }
 
 function fakePort(): FakePort {
   const posted = vi.fn<(message: unknown) => void>();
-  const listeners: ((event: MessageEvent) => void)[] = [];
   const port = {
-    addEventListener: (type: string, listener: (event: MessageEvent) => void) => {
-      if (type === 'message') {
-        listeners.push(listener);
-      }
-    },
+    addEventListener: () => undefined,
     start: () => undefined,
     postMessage: posted,
   } as unknown as MessagePort;
-  const leave = (): void => {
-    for (const listener of listeners) {
-      listener(new MessageEvent('message', { data: { type: 'disconnect' } }));
-    }
-  };
-  return { posted, port, leave };
+  return { posted, port };
 }
 
 /** Connect a port to the worker as a tab's protocol iframe would. */
@@ -203,39 +191,5 @@ describe('protocol SharedWorker', () => {
     expect(heard(waiting)).toEqual([fatalRelay]);
     expect(later.posted.mock.calls).toEqual([[{ type: 'error', message: FATAL }]]);
     expect(error).toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync failed: chainHead follow stopped');
-  });
-
-  it('As a dotli user on the shared light client, a worker whose light client died closes once its last tab leaves, so a reload starts a new one', async () => {
-    // Given: two tabs on a worker whose light client then cannot connect a chain.
-    await bootWorker();
-    const close = vi.spyOn(self, 'close').mockImplementation(() => undefined);
-    const first = connect();
-    const second = connect();
-    resolver.fatal?.(FATAL);
-
-    // When: one tab leaves.
-    first.leave();
-
-    // Then: the other still holds the worker.
-    expect(close).not.toHaveBeenCalled();
-
-    // When: the last one leaves too.
-    second.leave();
-
-    // Then
-    expect(close).toHaveBeenCalledTimes(1);
-  });
-
-  it('As a dotli user on the shared light client, a working worker stays when its last tab leaves', async () => {
-    // Given
-    await bootWorker();
-    const close = vi.spyOn(self, 'close').mockImplementation(() => undefined);
-    const tab = connect();
-
-    // When
-    tab.leave();
-
-    // Then
-    expect(close).not.toHaveBeenCalled();
   });
 });

@@ -302,11 +302,11 @@ sequenceDiagram
 - A fatal is only raised when the light client **cannot connect a chain**. A
   crashed light client shows up that way: every chain halts, consumers
   reconnect, and the first reconnect fails.
-- In the SharedWorker a fatal is **permanent** while any tab holds the worker:
-  tabs that connect later, and reloads, get the error at once instead of
-  retrying a dead light client. Once its last tab has left (closed, or
-  reloading), the worker closes itself, so the next tab starts a new one. The
-  error page says so: "Closing other dot.li tabs, then reloading."
+- In the SharedWorker a fatal is **permanent** while any document holds the
+  worker: tabs that connect later, and reloads, get the error at once instead
+  of retrying a dead light client. It ends when the browser drops the worker,
+  so closing every dot.li tab gets a new one. The error page says so:
+  "Closing other dot.li tabs, then reloading."
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress, and block bars wait for a frame that something else
   started (`onProtocolReady`). A product's requests are demand, but its papi
@@ -425,8 +425,3 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
   lease through while a frame is up, so nothing backs those retries off.
 - A block bar a live frame refuses stays empty until that frame is replaced:
   it waits for `onProtocolReady`, which a frame already up does not fire again.
-- The SharedWorker counts a tab as gone only when its iframe says so, on
-  `beforeunload`, or when posting to its port fails. An iframe the host removes
-  (as it does after a fatal) never says so, so its port stays counted, and a
-  dead worker it held closes itself only once the browser drops it, when no
-  document holds it any more.
