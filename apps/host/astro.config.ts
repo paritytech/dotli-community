@@ -13,7 +13,7 @@ import type { Plugin, PluginOption } from 'vite';
 import { readFileSync, readdirSync } from 'node:fs';
 import { readFile, writeFile } from 'node:fs/promises';
 import { execSync } from 'node:child_process';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@dotli/astro-solid';
@@ -93,11 +93,37 @@ function collectWorkspaceDependencies(): Map<string, Set<string>> {
   return deps;
 }
 
+const REPO_ROOT = resolve(import.meta.dirname, '../..');
+
+/**
+ * The installed version of `name` as the workspace at `wsDir` resolves it:
+ * its own `node_modules` first, then each ancestor's up to the repo root,
+ * where npm hoists most dependencies.
+ */
+function installedVersion(wsDir: string, name: string): string | undefined {
+  for (let dir = wsDir; ; dir = dirname(dir)) {
+    try {
+      const depPkg = JSON.parse(readFileSync(resolve(dir, 'node_modules', name, 'package.json'), 'utf8')) as {
+        version?: string;
+      };
+      if (depPkg.version !== undefined && depPkg.version !== '') {
+        return depPkg.version;
+      }
+      // eslint-disable-next-line no-restricted-syntax -- a missing copy just means an ancestor holds it.
+    } catch {
+      // Not installed at this level, so try the parent.
+    }
+    if (dir === REPO_ROOT || dirname(dir) === dir) {
+      return undefined;
+    }
+  }
+}
+
 /**
  * For every direct dependency whose name starts with `scope`, resolve the
- * actually-installed version via the depending workspace's own
- * `node_modules/<name>/package.json`. Ignores transitive dependencies, which
- * would otherwise balloon the version list to 80+ rows.
+ * actually-installed version as the depending workspace sees it. Ignores
+ * transitive dependencies, which would otherwise balloon the version list to
+ * 80+ rows.
  */
 function collectDirectScopedDeps(scope: string): { name: string; version: string }[] {
   const wsDeps = collectWorkspaceDependencies();
@@ -107,17 +133,10 @@ function collectDirectScopedDeps(scope: string): { name: string; version: string
       continue;
     }
     for (const wsDir of usedBy) {
-      try {
-        const depPkg = JSON.parse(readFileSync(resolve(wsDir, 'node_modules', name, 'package.json'), 'utf8')) as {
-          version?: string;
-        };
-        if (depPkg.version !== undefined && depPkg.version !== '') {
-          result.set(name, depPkg.version);
-          break;
-        }
-        // eslint-disable-next-line no-restricted-syntax -- a missing copy just means the next workspace holds it.
-      } catch {
-        // Not hoisted into this workspace's node_modules, so try the next one.
+      const version = installedVersion(wsDir, name);
+      if (version !== undefined) {
+        result.set(name, version);
+        break;
       }
     }
   }

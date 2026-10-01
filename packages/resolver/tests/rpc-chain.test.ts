@@ -1,249 +1,293 @@
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import type { JsonRpcProvider } from 'polkadot-api';
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { JsonRpcMessage } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
   createRpcChainProvider,
   isCoreRpcChainSupported,
   isRpcChainSupported,
+  type RpcChainProvider,
 } from '../src/rpc-chain.js';
+import { FakeWebSocket } from './fake-websocket.js';
 
-function parseRequest(message: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(message);
-  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw new Error('Expected a JSON-RPC request object');
+function must<T>(value: T | null | undefined, what: string): T {
+  if (value === null || value === undefined) {
+    throw new Error(`missing ${what}`);
   }
-  return parsed as Record<string, unknown>;
+  return value;
 }
 
-class TestWebSocket extends EventTarget {
-  static readonly CONNECTING = 0;
-  static readonly OPEN = 1;
-  static readonly CLOSING = 2;
-  static readonly CLOSED = 3;
-  static instances: TestWebSocket[] = [];
-  readonly sent: string[] = [];
-  readonly url: string;
-  readyState = 0;
-  answerHealth = true;
-
-  constructor(url: string) {
-    super();
-    this.url = url;
-    TestWebSocket.instances.push(this);
-  }
-
-  open(): void {
-    this.readyState = 1;
-    this.dispatchEvent(new Event('open'));
-  }
-
-  send(message: string): void {
-    if (this.readyState !== 1) {
-      throw new Error('Socket is not open');
-    }
-    this.sent.push(message);
-    const request = parseRequest(message);
-    let result: unknown;
-    if (request['method'] === 'rpc_methods') {
-      result = {
-        methods: ['statement_subscribeStatement', 'statement_unsubscribeStatement', 'chain_getHeader', 'system_health'],
-      };
-    } else if (this.answerHealth && request['method'] === 'system_health') {
-      result = { peers: 1, isSyncing: false, shouldHavePeers: true };
-    } else {
-      return;
-    }
-    queueMicrotask(() => {
-      if (this.readyState === 1) {
-        this.receive({ jsonrpc: '2.0', id: request['id'], result });
-      }
-    });
-  }
-
-  receive(message: unknown): void {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(message) }));
-  }
-
-  close(): void {
-    if (this.readyState === 3) {
-      return;
-    }
-    this.readyState = 3;
-    this.dispatchEvent(new Event('close'));
-  }
-
-  fail(): void {
-    this.readyState = 3;
-    this.dispatchEvent(new Event('error'));
-  }
-}
-
-function latestSocket(): TestWebSocket {
-  const socket = TestWebSocket.instances.at(-1);
-  if (!socket) {
-    throw new Error('Provider did not open a WebSocket');
-  }
-  return socket;
-}
-
-const disconnects: (() => void)[] = [];
-
-function connect(provider: JsonRpcProvider | null, onMessage: (message: unknown) => void): ReturnType<JsonRpcProvider> {
-  if (!provider) {
-    throw new Error('Expected a supported gateway chain');
-  }
-  const connection = provider(onMessage);
-  disconnects.push(() => {
-    connection.disconnect();
-  });
-  return connection;
-}
-
-async function openGateway(): Promise<{
-  connection: ReturnType<JsonRpcProvider>;
-  socket: TestWebSocket;
-  onHalt: Mock<() => void>;
-  onMessage: Mock<(message: unknown) => void>;
+/** Open a connection on `provider` and its first socket. */
+async function connect(
+  provider: RpcChainProvider,
+  received: JsonRpcMessage[] = [],
+): Promise<{
+  socket: FakeWebSocket;
+  connection: ReturnType<RpcChainProvider>;
 }> {
-  const onHalt = vi.fn<() => void>();
-  const onMessage = vi.fn<(message: unknown) => void>();
-  const connection = connect(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, onHalt), onMessage);
+  const connection = provider(message => {
+    received.push(message);
+  });
   await vi.advanceTimersByTimeAsync(0);
-  const socket = latestSocket();
+  const socket = must(FakeWebSocket.instances.at(-1), 'socket');
   socket.open();
-  await vi.advanceTimersByTimeAsync(0);
-  return { connection, socket, onHalt, onMessage };
+  return { socket, connection };
 }
 
 describe('rpc-chain', () => {
   beforeEach(() => {
     vi.useFakeTimers();
-    TestWebSocket.instances = [];
-    vi.stubGlobal('WebSocket', TestWebSocket);
+    vi.stubGlobal('WebSocket', FakeWebSocket);
+    FakeWebSocket.instances = [];
   });
 
   afterEach(() => {
-    for (const disconnect of disconnects.splice(0)) {
-      disconnect();
-    }
     vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
-  it('rejects unknown genesis hashes for both product and core callers', () => {
-    expect(isRpcChainSupported('0xdeadbeef')).toBe(false);
-    expect(isCoreRpcChainSupported('0xdeadbeef')).toBe(false);
-    expect(createRpcChainProvider('0xdeadbeef', vi.fn())).toBeNull();
-    expect(createCoreRpcChainProvider('0xdeadbeef', vi.fn())).toBeNull();
-  });
+  it('As a dotli user on Trusted Providers, the People chain is reached over its configured RPC endpoints', async () => {
+    // Given
+    const people = getActiveServicesConfig().people;
 
-  it('reserves Bulletin RPC access for the host-owned Rust core', () => {
-    const { people, bulletin } = getActiveServicesConfig();
+    // When
+    const provider = must(createRpcChainProvider(people.genesis), 'People provider');
+    const { socket } = await connect(provider);
+
+    // Then
     expect(isRpcChainSupported(people.genesis)).toBe(true);
-    expect(createRpcChainProvider(people.genesis, vi.fn())).not.toBeNull();
-    expect(isRpcChainSupported(bulletin.genesis)).toBe(false);
-    expect(createRpcChainProvider(bulletin.genesis, vi.fn())).toBeNull();
-    expect(isCoreRpcChainSupported(bulletin.genesis)).toBe(true);
-    expect(createCoreRpcChainProvider(bulletin.genesis, vi.fn())).not.toBeNull();
+    expect(people.rpcs).toContain(socket.url);
+    expect(typeof provider.pause).toBe('function');
+    expect(typeof provider.resume).toBe('function');
   });
 
-  it('keeps a quiet subscription alive beyond the heartbeat without exposing health replies', async () => {
-    const { connection, socket, onHalt, onMessage } = await openGateway();
-    connection.send({
-      jsonrpc: '2.0',
-      id: 'subscribe',
-      method: 'statement_subscribeStatement',
-      params: [{ matchAll: [] }],
-    });
-    socket.receive({ jsonrpc: '2.0', id: 'subscribe', result: 'statements' });
-    onMessage.mockClear();
+  it('rejects unknown genesis hashes', () => {
+    expect(isRpcChainSupported('0xdeadbeef')).toBe(false);
+    expect(createRpcChainProvider('0xdeadbeef')).toBeNull();
+  });
 
-    await vi.advanceTimersByTimeAsync(185_000);
+  it('As a dotli integrator, the host reserves Bulletin RPC access for the host-owned Rust core', () => {
+    // Given
+    const bulletin = getActiveServicesConfig().bulletin;
 
-    const requests = socket.sent.map(parseRequest);
-    expect(requests.map(request => request['method'])).toContain('system_health');
-    expect(onHalt).not.toHaveBeenCalled();
-    expect(onMessage).not.toHaveBeenCalled();
-    expect(socket.readyState).toBe(1);
-    expect(TestWebSocket.instances).toEqual([socket]);
-    const notification = {
+    // When
+    const productSupported = isRpcChainSupported(bulletin.genesis);
+    const productProvider = createRpcChainProvider(bulletin.genesis);
+    const coreSupported = isCoreRpcChainSupported(bulletin.genesis);
+    const coreProvider = createCoreRpcChainProvider(bulletin.genesis);
+
+    // Then
+    expect(productSupported).toBe(false);
+    expect(productProvider).toBeNull();
+    expect(coreSupported).toBe(true);
+    expect(coreProvider).not.toBeNull();
+  });
+
+  it('As a dotli integrator, the socket reports its status to the pool', async () => {
+    // Given
+    const onStatus = vi.fn();
+    const provider = must(
+      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }),
+      'provider',
+    );
+
+    // When
+    await connect(provider);
+
+    // Then
+    expect(onStatus.mock.calls.map(([status]: unknown[]) => status)).toEqual(['connecting', 'connected']);
+  });
+
+  it('As a dotli user on Trusted Providers, a socket counts as dead only after 120 seconds without a message', async () => {
+    // Given
+    const onStatus = vi.fn();
+    const provider = must(
+      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }),
+      'provider',
+    );
+    const { socket } = await connect(provider);
+    onStatus.mockClear();
+
+    // When
+    await vi.advanceTimersByTimeAsync(119_999);
+
+    // Then
+    expect(onStatus).not.toHaveBeenCalled();
+    expect(socket.readyState).toBe(FakeWebSocket.OPEN);
+
+    // When
+    await vi.advanceTimersByTimeAsync(1);
+
+    // Then
+    expect(onStatus).toHaveBeenCalledWith('disconnected');
+  });
+
+  it('As a dotli user on Trusted Providers, the socket abandoned by a heartbeat kill is closed, and stays closed when the next one opens', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first } = await connect(provider);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    // Then: ws-provider dropped its listeners and left the socket open; the provider closes it.
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // Then
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('As a dotli user on Trusted Providers, a heartbeat-killed socket is closed at once when the connection is disconnected', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first, connection } = await connect(provider);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+    connection.disconnect();
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // Then
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(FakeWebSocket.instances).toHaveLength(1);
+  });
+
+  it('As a dotli user on Trusted Providers, a heartbeat-killed socket is closed at once when the provider is paused', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first } = await connect(provider);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+    provider.pause();
+
+    // Then
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+  });
+
+  it('As a dotli user on Trusted Providers, a statement subscription is re-established under its first id after a reconnect', async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first, connection } = await connect(provider, received);
+    connection.send({ jsonrpc: '2.0', id: 'sub', method: 'statement_subscribeStatement', params: [{ matchAll: [] }] });
+    const firstSubscribe = must(first.requests('statement_subscribeStatement')[0], 'first subscribe');
+    first.deliver({ jsonrpc: '2.0', id: firstSubscribe.id, result: 'srv-1' });
+
+    // When
+    await vi.advanceTimersByTimeAsync(121_000);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
+    const resubscribe = must(second.requests('statement_subscribeStatement')[0], 'resubscribe');
+    second.deliver({ jsonrpc: '2.0', id: resubscribe.id, result: 'srv-2' });
+    second.deliver({
       jsonrpc: '2.0',
       method: 'statement_statement',
       params: {
-        subscription: 'statements',
-        result: { event: 'newStatements', data: { statements: ['0x1234'] } },
+        subscription: 'srv-2',
+        result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } },
       },
-    };
-    socket.receive(notification);
-    expect(onMessage).toHaveBeenCalledExactlyOnceWith(notification);
+    });
+
+    // Then
+    expect(second.requests('statement_subscribeStatement')).toHaveLength(1);
+    expect(received).toEqual([
+      { jsonrpc: '2.0', id: 'sub', result: 'srv-1' },
+      {
+        jsonrpc: '2.0',
+        method: 'statement_statement',
+        params: {
+          subscription: 'srv-1',
+          result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } },
+        },
+      },
+    ]);
   });
 
-  it('halts once on established socket loss instead of reconnecting and replaying pending requests', async () => {
-    const { connection, socket, onHalt } = await openGateway();
-    connection.send({ jsonrpc: '2.0', id: 'pending', method: 'chain_getHeader', params: [] });
-    socket.close();
-    socket.fail();
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    const sent = [...socket.sent];
+  it('As a dotli user on Trusted Providers, every new chain socket first asks the node which methods it serves', async () => {
+    // Given
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket: first, connection } = await connect(provider);
+    connection.send({ jsonrpc: '2.0', id: 'a', method: 'chainSpec_v1_genesisHash', params: [] });
 
-    await vi.advanceTimersByTimeAsync(300_000);
+    // When
+    await vi.advanceTimersByTimeAsync(121_000);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
 
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(socket.readyState).toBe(3);
-    expect(socket.sent).toEqual(sent);
-    expect(TestWebSocket.instances).toEqual([socket]);
-    expect(vi.getTimerCount()).toBe(0);
+    // Then
+    expect(first.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
+    expect(second.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
   });
 
-  it('halts and releases the socket when health probes receive no response', async () => {
-    const { socket, onHalt } = await openGateway();
-    socket.answerHealth = false;
+  it("As a dotli integrator, requests reach the node with numeric ids and their responses keep the caller's id", async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { socket, connection } = await connect(provider, received);
 
-    await vi.advanceTimersByTimeAsync(125_000);
+    // When
+    connection.send({ jsonrpc: '2.0', id: 'core-1', method: 'chainSpec_v1_genesisHash', params: [] });
+    const sent = must(socket.requests('chainSpec_v1_genesisHash')[0], 'request');
+    socket.deliver({ jsonrpc: '2.0', id: sent.id, result: '0x01' });
 
-    expect(onHalt).toHaveBeenCalledTimes(1);
-    expect(socket.readyState).toBe(3);
-    expect(TestWebSocket.instances).toEqual([socket]);
-    expect(vi.getTimerCount()).toBe(0);
+    // Then
+    expect(typeof sent.id).toBe('number');
+    expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
   });
 
-  it('cancels keepalive and socket timers on consumer disconnect without reporting a halt', async () => {
-    const { connection, socket, onHalt } = await openGateway();
-    await vi.advanceTimersByTimeAsync(65_000);
-    connection.disconnect();
-    const sent = [...socket.sent];
+  it("As a dotli integrator, a request in flight when a socket dies is answered on the next socket under the caller's id", async () => {
+    // Given
+    const received: JsonRpcMessage[] = [];
+    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+    const { connection } = await connect(provider, received);
+    connection.send({ jsonrpc: '2.0', id: 'core-1', method: 'chainSpec_v1_genesisHash', params: [] });
 
-    await vi.advanceTimersByTimeAsync(300_000);
+    // When
+    await vi.advanceTimersByTimeAsync(121_000);
+    const second = must(FakeWebSocket.instances[1], 'second socket');
+    second.open();
+    const resent = must(second.requests('chainSpec_v1_genesisHash')[0], 're-sent request');
+    second.deliver({ jsonrpc: '2.0', id: resent.id, result: '0x01' });
 
-    expect(socket.readyState).toBe(3);
-    expect(socket.sent).toEqual(sent);
-    expect(TestWebSocket.instances).toEqual([socket]);
-    expect(onHalt).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
+    // Then
+    expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
   });
 
-  it('fails over an initial endpoint failure and delivers a queued request on the next endpoint', async () => {
-    const relay = getActiveServicesConfig().relay;
-    const onHalt = vi.fn();
-    const onMessage = vi.fn();
-    const connection = connect(createCoreRpcChainProvider(relay.genesis, onHalt), onMessage);
-    const request = { jsonrpc: '2.0' as const, id: 'queued', method: 'chain_getHeader', params: [] };
-    connection.send(request);
-    await vi.advanceTimersByTimeAsync(0);
-    const failed = latestSocket();
-    failed.fail();
+  it('As a dotli user on Trusted Providers, a node without chainHead_v1 is served through legacy RPC', async () => {
+    // Given
+    const methods = FakeWebSocket.methods;
+    FakeWebSocket.methods = [
+      'chain_getBlockHash',
+      'chain_getHeader',
+      'chain_subscribeNewHeads',
+      'chain_unsubscribeNewHeads',
+      'chain_subscribeFinalizedHeads',
+      'chain_unsubscribeFinalizedHeads',
+      'state_getRuntimeVersion',
+      'state_getMetadata',
+      'rpc_methods',
+    ];
+    try {
+      const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
+      const { socket, connection } = await connect(provider);
 
-    await vi.advanceTimersByTimeAsync(1_000);
-    const replacement = latestSocket();
-    expect(replacement).not.toBe(failed);
-    expect(replacement.url).not.toBe(failed.url);
-    replacement.open();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(replacement.sent.map(parseRequest)).toContainEqual(request);
-    const response = { jsonrpc: '2.0', id: 'queued', result: { number: '0x20' } };
-    replacement.receive(response);
-    expect(onMessage).toHaveBeenCalledExactlyOnceWith(response);
-    expect(onHalt).not.toHaveBeenCalled();
+      // When
+      connection.send({ jsonrpc: '2.0', id: 'f', method: 'chainHead_v1_follow', params: [true] });
+
+      // Then
+      const methodsSent = socket.sent.map(raw => (JSON.parse(raw) as { method: string }).method);
+      expect(socket.requests('chainHead_v1_follow')).toHaveLength(0);
+      expect(methodsSent.some(method => method.startsWith('chain_'))).toBe(true);
+    } finally {
+      FakeWebSocket.methods = methods;
+    }
   });
 });

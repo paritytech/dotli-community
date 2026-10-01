@@ -8,7 +8,8 @@ import type {
   JsonRpcProvider,
   JsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
-import { createChainBrokerManager } from '../src/broker.js';
+import { ChainBroker } from '../src/broker.js';
+import { createChainBrokerManager } from '../src/chain-pool.js';
 
 interface ProviderHarness {
   provider: JsonRpcProvider;
@@ -920,8 +921,8 @@ describe('createChainBrokerManager', () => {
   it('fails pending reads and shared follows once, without notifying closed sessions', () => {
     const harness = createProviderHarness();
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, onHalt) => {
-      halt = onHalt;
+    const manager = createChainBrokerManager((_genesis, hooks) => {
+      halt = hooks.onHalt;
       return harness.provider;
     });
     const messagesA: string[] = [];
@@ -957,8 +958,8 @@ describe('createChainBrokerManager', () => {
   it('terminates statement and transaction watches using their protocol terminal forms', () => {
     const harness = createProviderHarness();
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, onHalt) => {
-      halt = onHalt;
+    const manager = createChainBrokerManager((_genesis, hooks) => {
+      halt = hooks.onHalt;
       return harness.provider;
     });
     const messages: JsonRpcMessage[] = [];
@@ -994,11 +995,11 @@ describe('createChainBrokerManager', () => {
     ]);
   });
 
-  it('reconnects lazily and isolates renewed statements even when the server reuses its token', () => {
+  it('isolates replacement leases when a halted server reuses its subscription token', () => {
     const generations: { harness: ProviderHarness; halt: () => void }[] = [];
-    const manager = createChainBrokerManager((_genesis, halt) => {
+    const manager = createChainBrokerManager((_genesis, hooks) => {
       const harness = createProviderHarness();
-      generations.push({ harness, halt });
+      generations.push({ harness, halt: hooks.onHalt });
       return harness.provider;
     });
     const messagesA: string[] = [];
@@ -1011,12 +1012,13 @@ describe('createChainBrokerManager', () => {
     for (const request of first.harness.sent) {
       first.harness.emit({ jsonrpc: '2.0', id: requestId(request), result: 'reused-token' });
     }
-    const oldToken = subscriptionToken(messagesA[0]);
     b?.disconnect();
     first.halt();
     expect(generations).toHaveLength(1);
     expect(messagesB).toHaveLength(1);
-    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'statement_subscribeStatement', params: ['any'] }));
+    const renewed = manager.connectRemote('people', 'a', message => messagesA.push(message));
+    renewed?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'statement_subscribeStatement', params: ['any'] }));
+    a?.disconnect();
     const second = required(generations[1]);
     const notification: JsonRpcMessage = {
       jsonrpc: '2.0',
@@ -1028,7 +1030,6 @@ describe('createChainBrokerManager', () => {
     first.halt();
     second.harness.emit({ jsonrpc: '2.0', id: requestId(second.harness.sent[0]), result: 'reused-token' });
     const newToken = subscriptionToken(messagesA[2]);
-    expect(newToken).not.toBe(oldToken);
     expect(messagesA).toHaveLength(3);
     second.harness.emit(notification);
     expect(JSON.parse(required(messagesA[3]))).toEqual({
@@ -1036,7 +1037,7 @@ describe('createChainBrokerManager', () => {
       params: { subscription: newToken, result: { event: 'newStatements', data: { statements: ['0x01'] } } },
     });
     expect(messagesB).toHaveLength(1);
-    a?.disconnect();
+    renewed?.disconnect();
     expect(second.harness.sent.at(-1)).toMatchObject({
       method: 'statement_unsubscribeStatement',
       params: ['reused-token'],
@@ -1047,9 +1048,9 @@ describe('createChainBrokerManager', () => {
 
   it('stops every shared follow and allows synchronous refollow without replaying the old snapshot', () => {
     const generations: { harness: ProviderHarness; halt: () => void }[] = [];
-    const manager = createChainBrokerManager((_genesis, halt) => {
+    const manager = createChainBrokerManager((_genesis, hooks) => {
       const harness = createProviderHarness();
-      generations.push({ harness, halt });
+      generations.push({ harness, halt: hooks.onHalt });
       return harness.provider;
     });
     const messagesA: string[] = [];
@@ -1058,7 +1059,8 @@ describe('createChainBrokerManager', () => {
       messagesA.push(message);
       const parsed = JSON.parse(message) as { params?: { result?: { event?: string } } };
       if (parsed.params?.result?.event === 'stop') {
-        a?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
+        const renewed = manager.connectRemote('people', 'a', value => messagesA.push(value));
+        renewed?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
       }
     });
     const b = manager.connectRemote('people', 'b', message => messagesB.push(message));
@@ -1087,7 +1089,6 @@ describe('createChainBrokerManager', () => {
     const second = required(generations[1]);
     second.harness.emit({ jsonrpc: '2.0', id: requestId(second.harness.sent[0]), result: 'new-follow' });
     const newToken = subscriptionToken(messagesA[3]);
-    expect(newToken).not.toBe(tokenA);
     expect(messagesA).toHaveLength(4);
     second.harness.emit({
       jsonrpc: '2.0',
@@ -1107,12 +1108,12 @@ describe('createChainBrokerManager', () => {
     const fresh = createProviderHarness();
     let generation = 0;
     let halt = (): void => {};
-    const manager = createChainBrokerManager((_genesis, onHalt) => {
-      halt = onHalt;
+    const manager = createChainBrokerManager((_genesis, hooks) => {
+      halt = hooks.onHalt;
       generation += 1;
       if (generation === 1) {
         return () => {
-          onHalt();
+          hooks.onHalt();
           return {
             send: () => {
               throw new Error('stale send');
@@ -1124,6 +1125,7 @@ describe('createChainBrokerManager', () => {
       return fresh.provider;
     });
     const messages: string[] = [];
+    expect(() => manager.connectRemote('people', 'a', message => messages.push(message))).toThrow();
     const connection = manager.connectRemote('people', 'a', message => messages.push(message));
     expect(staleDisconnect).toHaveBeenCalledTimes(1);
     connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] }));
@@ -1133,11 +1135,14 @@ describe('createChainBrokerManager', () => {
     expect(fresh.disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('fails an in-flight request when send synchronously reports a halt', () => {
+  it.each(['halt', 'throw'])('fails pending requests and retires the lease when send reports %s', failure => {
     const disconnect = vi.fn();
-    const manager = createChainBrokerManager((_genesis, onHalt) => () => ({
+    const manager = createChainBrokerManager((_genesis, hooks) => () => ({
       send: () => {
-        onHalt();
+        if (failure === 'throw') {
+          throw new Error('transport send failed');
+        }
+        hooks.onHalt();
       },
       disconnect,
     }));
@@ -1148,5 +1153,186 @@ describe('createChainBrokerManager', () => {
       { jsonrpc: '2.0', id: 1, error: { code: -32603 } },
     ]);
     expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(() => connection?.send(JSON.stringify({
+      jsonrpc: '2.0', id: 2, method: 'system_health', params: [],
+    }))).toThrow();
+  });
+});
+
+describe('ChainBroker.halt', () => {
+  function setup(): {
+    broker: ChainBroker;
+    harness: ReturnType<typeof createProviderHarness>;
+    open: (
+      id: string,
+      log: string[],
+      throwOnMessage?: boolean,
+    ) => { send: (message: unknown) => void; disconnect: () => void; messages: unknown[] };
+  } {
+    const harness = createProviderHarness();
+    const broker: ChainBroker = new ChainBroker(harness.provider, () => undefined, error => broker.halt(error));
+    const open: ReturnType<typeof setup>['open'] = (id, log, throwOnMessage = false) => {
+      const messages: unknown[] = [];
+      const connection = broker.connect(
+        id,
+        message => {
+          messages.push(message);
+          log.push(`${id}:message`);
+          if (throwOnMessage) {
+            throw new Error('consumer bug');
+          }
+        },
+        'object',
+        () => {
+          log.push(`${id}:halt`);
+        },
+      );
+      return { send: connection.send, disconnect: connection.disconnect, messages };
+    };
+    return { broker, harness, open };
+  }
+
+  function followedSession(
+    id: string,
+    open: ReturnType<typeof setup>['open'],
+    harness: ReturnType<typeof setup>['harness'],
+    log: string[],
+    upstreamToken: string,
+  ): { messages: unknown[]; token: string } {
+    const session = open(id, log);
+    session.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    const upstream = harness.sent[harness.sent.length - 1] as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: upstream.id, result: upstreamToken });
+    const ack = session.messages[0] as { result: string };
+    session.messages.length = 0;
+    log.length = 0;
+    return { messages: session.messages, token: ack.result };
+  }
+
+  it('As a dotli integrator, a halt answers a request in flight under its client id before the session hears the halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const session = open('a', log);
+    session.send({ jsonrpc: '2.0', id: 'req-1', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    broker.halt(new Error('gone'));
+
+    // Then
+    expect(session.messages).toMatchObject([
+      { jsonrpc: '2.0', id: 'req-1', error: { code: -32603 } },
+    ]);
+    expect(log).toEqual(['a:message', 'a:halt']);
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, a halt stops an established follow under its local token before the halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const follow = followedSession('a', open, harness, log, 'up-1');
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(follow.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: follow.token, result: { event: 'stop' } },
+      },
+    ]);
+    expect(log).toEqual(['a:message', 'a:halt']);
+  });
+
+  it('As a dotli integrator, a halt answers a follow still in flight with an error and no stop', () => {
+    // Given
+    const { broker, open } = setup();
+    const log: string[] = [];
+    const first = open('a', log);
+    const second = open('b', log);
+    first.send({ jsonrpc: '2.0', id: 11, method: 'chainHead_v1_follow', params: [true] });
+    second.send({ jsonrpc: '2.0', id: 22, method: 'chainHead_v1_follow', params: [true] });
+
+    // When
+    broker.halt();
+
+    // Then
+    const error = (id: number): unknown => ({
+      jsonrpc: '2.0',
+      id,
+      error: { code: -32603 },
+    });
+    expect(first.messages).toMatchObject([error(11)]);
+    expect(second.messages).toMatchObject([error(22)]);
+  });
+
+  it('As a dotli integrator, a halt tells each session only about its own requests and follows', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const a = followedSession('a', open, harness, log, 'up-1');
+    const b = open('b', log);
+    b.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    log.length = 0;
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(a.messages).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'chainHead_v1_followEvent',
+        params: { subscription: a.token, result: { event: 'stop' } },
+      },
+    ]);
+    expect(b.messages).toMatchObject([
+      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } },
+    ]);
+  });
+
+  it('As a dotli integrator, a session whose handler throws still hears its halt and does not keep the others from theirs', () => {
+    // Given
+    const { broker, open } = setup();
+    const log: string[] = [];
+    const broken = open('a', log, true);
+    const healthy = open('b', log);
+    broken.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+    healthy.send({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    const halt = (): void => {
+      broker.halt();
+    };
+
+    // Then
+    expect(halt).not.toThrow();
+    expect(healthy.messages).toHaveLength(1);
+    expect(log).toContain('a:halt');
+    expect(log).toContain('b:halt');
+  });
+
+  it('As a dotli integrator, the release requests the broker sends itself are never answered on a halt', () => {
+    // Given
+    const { broker, harness, open } = setup();
+    const log: string[] = [];
+    const leaving = open('a', log);
+    const staying = open('b', log);
+    leaving.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'watch-1' });
+    leaving.disconnect();
+    staying.send({ jsonrpc: '2.0', id: 'b-req', method: 'chainHead_v1_header', params: ['tok', '0xabc'] });
+
+    // When
+    broker.halt();
+
+    // Then
+    expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
+    expect(staying.messages).toMatchObject([
+      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } },
+    ]);
   });
 });

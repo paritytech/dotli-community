@@ -7,13 +7,14 @@ import type { Readable, Writable } from 'node:stream';
 const MAX_CAPTURED_OUTPUT_BYTES = 256 * 1024;
 // Pairing deeplinks carry the handshake secret. Scrub them from logs.
 const PAIRING_DEEPLINK = /polkadotapp:\/\/pair\?[^\s'"]+/g;
+const RECOVERY_PHRASE = /((?:recovery[ _-]?phrase|seed[ _-]?phrase|mnemonic)["']?\s*[:=]\s*)[^\r\n]+/gi;
 
 export interface SigningHostConfig {
   binary: string;
   basePath: string;
   network: string;
   productId: string;
-  liteUsernamePrefix?: string | undefined;
+  session?: string | undefined;
 }
 
 export interface SigningHostExit {
@@ -39,7 +40,9 @@ export function signingHostVersion(binary: string): string | null {
 }
 
 export function sanitizeSigningHostOutput(text: string): string {
-  return text.replace(PAIRING_DEEPLINK, '<pairing deeplink>');
+  const mnemonic = process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim();
+  const scrubbed = mnemonic ? text.replaceAll(mnemonic, '<recovery phrase>') : text;
+  return scrubbed.replace(PAIRING_DEEPLINK, '<pairing deeplink>').replace(RECOVERY_PHRASE, '$1<redacted>');
 }
 
 // Spawns `truapi-host signing-host … exec "/pair <deeplink>"`: answers the
@@ -55,8 +58,8 @@ export function startSigningHostPair(config: SigningHostConfig, deeplink: string
     config.productId,
     '--auto-accept',
   ];
-  if (config.liteUsernamePrefix !== undefined) {
-    args.push('--lite-username-prefix', config.liteUsernamePrefix);
+  if (config.session !== undefined) {
+    args.push('--session', config.session);
   }
   args.push('exec', `/pair ${deeplink}`);
 

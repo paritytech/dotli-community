@@ -25,25 +25,35 @@ Both origins use the singleton in `packages/resolver/src/provider.ts`,
 backed by **`@parity/truapi-provider` 0.3.1**. RPC Gateway mode routes
 requests to configured WebSocket endpoints instead.
 
-In `rpc-gateway` mode, `createCoreRpcChainProvider(genesisHash, onHalt)`
-requires its owner to handle transport loss. Quiet subscriptions are kept
-alive with a `system_health` probe after 60 seconds without inbound traffic;
-probe replies stay inside the provider. The 120-second inbound deadline
-still detects an unresponsive node. Initial connection failures retain
-endpoint failover, but an established connection is never silently replaced.
-On failure the provider closes the socket and calls `onHalt` once.
+In `rpc-gateway` mode, `createCoreRpcChainProvider(genesisHash, hooks)` composes
+the WebSocket provider, compatibility middleware, pause controller, and
+subscription replay. The provider's 120-second heartbeat replaces silent
+sockets; there is no additional health-probe timer or fatal-on-disconnect
+policy. Confirmed statement subscriptions are replayed with stable consumer
+tokens, and requests still in flight remain owned by the provider proxy.
+Acknowledged modern and legacy transaction watches receive their terminal
+`dropped` event rather than being resubmitted after a disconnect.
 
-The Rust-core adapter ends its response stream so pending calls and
-subscriptions are interrupted. The iframe broker rejects pending calls,
-emits the subscription family's terminal event or error, and clears old
-tokens and follow snapshots before accepting a fresh subscription. It
-reconnects lazily on the next request; old-connection callbacks cannot reach
-the replacement session. Explicit consumer shutdown cancels health probes
-and does not report a transport failure.
+The host's chain pool owns one transport and broker per chain. RPC entries
+close 60 seconds after their last lease; smoldot entries remain warm. The
+protocol iframe and SharedWorker use the same hook-aware pool with an infinite
+idle delay. A true terminal halt (such as a smoldot stream ending) retires the
+entry before consumer callbacks: pending calls get errors, follows stop, and
+statement/transaction subscriptions receive their protocol terminal forms.
+Old callbacks and released leases cannot touch a replacement entry.
+
+The Rust-core adapter drains those terminal responses before ending its
+stream and rejects subsequent sends on the retired connection. New leases
+create a fresh transport. Explicit consumer shutdown is not a transport halt.
+The pinned native worker adapter ignores iterator completion and logs rejected
+sends without notifying the core. Requests submitted by the core after lease
+retirement can therefore still wait; fixing native connection interruption is
+outside the frontend transport's contract. Pending-at-halt requests are answered
+by the broker, not left to iterator completion.
 
 ## Provider contract
 
-`createChainProvider(genesisHash)` adapts the provider's raw JSON-RPC
+`createChainProvider(genesisHash, hooks)` adapts the provider's raw JSON-RPC
 `Connection` to polkadot-api. It queues only while asynchronous initialization
 and connection opening are pending. After connection, the provider itself holds
 requests until the chain first syncs, then forwards them in order. Chain-spec,

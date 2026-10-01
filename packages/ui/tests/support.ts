@@ -64,3 +64,13 @@ export function yielded<T>(step: IteratorResult<T, unknown>): T {
   }
   return step.value;
 }
+
+/** The bytes of a `0x`-prefixed (or bare) hex string. */
+export function hexBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith('0x') ? hex.slice(2) : hex;
+  const bytes = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < bytes.length; i += 1) {
+    bytes[i] = Number.parseInt(clean.slice(i * 2, i * 2 + 2), 16);
+  }
+  return bytes;
+}
