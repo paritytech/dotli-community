@@ -162,6 +162,17 @@ export function createCoreRpcChainProvider(
   return createGatewayProvider(coreGatewayChain(genesisHash), hooks);
 }
 
+/** Gateway socket endpoint per lowercased genesis hash, while a socket is dialing or connected. */
+const connectedEndpoints = new Map<string, string>();
+
+/**
+ * The endpoint the chain's gateway socket is dialing or connected to, or
+ * `null` between sockets and for a chain no gateway socket was built for.
+ */
+export function getConnectedRpcEndpoint(genesisHash: string): string | null {
+  return connectedEndpoints.get(genesisHash.toLowerCase()) ?? null;
+}
+
 function createGatewayProvider(
   chain: ChainService | null,
   hooks: Pick<ChainTransportHooks, 'onStatus'> | undefined,
@@ -180,6 +191,13 @@ function createGatewayProvider(
     // over with each one. `withOwnMessages` sits between them.
     middleware: inner => pauseController.middleware(withOwnMessages(compatibilityMiddleware(inner))),
     onStatusChanged: event => {
+      // CONNECTING and CONNECTED carry the endpoint; ERROR and CLOSE do not.
+      const genesisKey = chain.genesis.toLowerCase();
+      if ('uri' in event) {
+        connectedEndpoints.set(genesisKey, event.uri);
+      } else {
+        connectedEndpoints.delete(genesisKey);
+      }
       const status = STATUS_BY_WS_EVENT[event.type];
       if (status === 'connected') {
         replay();

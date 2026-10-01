@@ -7,6 +7,7 @@ import { getActiveServicesConfig } from '@dotli/config';
 import {
   createCoreRpcChainProvider,
   createRpcChainProvider,
+  getConnectedRpcEndpoint,
   isCoreRpcChainSupported,
   isRpcChainSupported,
   type RpcChainProvider,
@@ -99,6 +100,42 @@ describe('rpc-chain', () => {
 
     // Then
     expect(onStatus.mock.calls.map(([status]: unknown[]) => status)).toEqual(['connecting', 'connected']);
+  });
+
+  it('As a dotli user on Trusted Providers, diagnostics show the node my chain is talking to right now', async () => {
+    // Given
+    const { genesis } = getActiveServicesConfig().assethub;
+    const provider = must(createCoreRpcChainProvider(genesis), 'provider');
+
+    // When
+    const connection = provider(() => undefined);
+    await vi.advanceTimersByTimeAsync(0);
+    const first = must(FakeWebSocket.instances.at(-1), 'first socket');
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBe(first.url);
+
+    // When
+    first.open();
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBe(first.url);
+
+    // When
+    await vi.advanceTimersByTimeAsync(120_000);
+
+    // Then
+    expect(getConnectedRpcEndpoint(genesis)).toBeNull();
+
+    // When
+    await vi.advanceTimersByTimeAsync(1_000);
+    const second = must(FakeWebSocket.instances.at(-1), 'second socket');
+
+    // Then
+    expect(second).not.toBe(first);
+    expect(getConnectedRpcEndpoint(genesis)).toBe(second.url);
+    expect(getConnectedRpcEndpoint('0xdeadbeef')).toBeNull();
+    connection.disconnect();
   });
 
   it('As a dotli user on Trusted Providers, a socket counts as dead only after 120 seconds without a message', async () => {
