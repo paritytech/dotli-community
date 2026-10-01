@@ -90,6 +90,9 @@ function swError(...args: unknown[]): void {
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
 let engineReady = false;
+// Why the engine is dead for good: pre-sync failed, or the light client could
+// not connect a chain. Every port that connects later is told, never `ready`.
+let presyncFailureMessage: string | null = null;
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
@@ -104,14 +107,19 @@ if (requestedNetwork === null) {
   swLog(`Active network pinned to ${requestedNetwork}`);
 }
 
-// Chain-death broadcast. When a chain connection ends without a deliberate
-// disconnect, relay a `fatal` envelope to every connected port so the host
-// client rejects every in-flight request immediately instead of waiting for
-// a per-request timeout. `onProviderFatal` is idempotent and replays to late
-// subscribers, so firing this once at module load covers the SharedWorker's
-// lifetime.
+// Light-client death broadcast. When the light client cannot connect a chain,
+// relay a `fatal` envelope to every connected port so the host client rejects
+// every in-flight request immediately instead of waiting for a per-request
+// timeout. `onProviderFatal` is idempotent and replays to late subscribers,
+// so firing this once at module load covers the SharedWorker's lifetime.
+//
+// The light client stays dead for every tab: the engine is marked failed, so
+// a port that connects later (another tab, or this one after its retry) gets
+// the cause through the same path as a failed pre-sync, never `ready`.
 onProviderFatal(message => {
   swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
+  engineReady = false;
+  presyncFailureMessage = message;
   broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
 });
 
@@ -144,8 +152,6 @@ function requireChainSessions(): WorkerChainSessions {
 // NO retries. NO cleanup-and-retry. NO backoff. The user picked
 // smoldot-shared-worker. If presync fails the actual cause is surfaced to
 // every waiting port and the engine stays dead until the user reloads.
-
-let presyncFailureMessage: string | null = null;
 
 async function presync(): Promise<void> {
   const t0 = performance.now();
@@ -490,7 +496,16 @@ self.addEventListener('connect', event => {
 
   port.start();
 
-  if (engineReady) {
+  if (presyncFailureMessage !== null) {
+    // The engine is dead: pre-sync failed, or the light client could not
+    // connect a chain. Surface the original cause immediately instead of
+    // queuing this port forever or telling it the engine is ready.
+    const errorMsg: SWError = {
+      type: 'error',
+      message: presyncFailureMessage,
+    };
+    port.postMessage(errorMsg);
+  } else if (engineReady) {
     // Engine already synced, signal ready immediately.
     const readyMsg: SWReady = { type: 'ready' };
     port.postMessage(readyMsg);
@@ -505,14 +520,6 @@ self.addEventListener('connect', event => {
         outcome: 'hit',
       });
     }
-  } else if (presyncFailureMessage !== null) {
-    // Pre-sync already failed. Surface the original cause immediately
-    // instead of queuing this port forever.
-    const errorMsg: SWError = {
-      type: 'error',
-      message: presyncFailureMessage,
-    };
-    port.postMessage(errorMsg);
   } else {
     // Engine still syncing. Queue the port and signal when pre-sync completes.
     // A port arriving after a store read missed that record-time broadcast
