@@ -28,10 +28,12 @@ import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, getBackend } from '@dotli/config';
 import {
   createChainPool,
+  haltReasonOf,
   isRemoteChainConnectable,
   requireBrokerLocalProvider,
   type ChainPool,
   type LeaseProvider,
+  type RemoteChainProvider,
 } from '@dotli/protocol';
 import { createCoreRpcChainProvider, isCoreRpcChainSupported } from '@dotli/resolver';
 
@@ -67,6 +69,27 @@ const hostChainPool = createHostChainPool();
  */
 export function hostAssetHubProvider(): JsonRpcProvider {
   return requireBrokerLocalProvider(hostChainPool, getActiveServicesConfig().assethub.genesis, 'Asset Hub');
+}
+
+/**
+ * A papi provider for a host-page chain user (the block bars, the settings
+ * probe), or `null` when the active backend cannot serve the chain. Each of
+ * its connections is a lease on the host pool, so these users share the
+ * products' connection to each chain. A halt reaches them with its reason: a
+ * dead protocol frame as `'frame'`, anything else as `'chain'`.
+ */
+export function hostChainProvider(genesisHash: string, pool: ChainPool = hostChainPool): RemoteChainProvider | null {
+  if (!isRemoteChainConnectable(genesisHash)) {
+    return null;
+  }
+  const lease = pool.getLocalProvider(genesisHash);
+  if (lease === null) {
+    return null;
+  }
+  return (onMessage, onHalt) =>
+    lease(onMessage, error => {
+      onHalt?.(haltReasonOf(error));
+    });
 }
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {

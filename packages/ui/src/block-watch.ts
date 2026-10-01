@@ -7,7 +7,8 @@
 
 import { createClient } from 'polkadot-api';
 import { log } from '@dotli/shared';
-import { createRemoteChainProvider, isProtocolReady, onProtocolReady, type RemoteChainHalt } from '@dotli/protocol';
+import { isProtocolReady, onProtocolReady, type RemoteChainHalt } from '@dotli/protocol';
+import { hostChainProvider } from './host-callbacks/Chain.js';
 
 const FIRST_RETRY_MS = 1_000;
 const MAX_RETRY_MS = 30_000;
@@ -16,7 +17,9 @@ const MAX_RETRY_MS = 30_000;
  * Watch the best block of one chain over a client held for the session.
  *
  * One client per chain, held open, pays for metadata once. `bestBlocks$` then
- * reports every head change rather than whatever a poll happens to catch.
+ * reports every head change rather than whatever a poll happens to catch. The
+ * client's connection is a lease on the host pool, shared with the products'
+ * connections to that chain.
  *
  * When the chain halts the client is destroyed and a new one is dialled after
  * a doubling wait, reset by a block. When the protocol frame dies, before the
@@ -58,7 +61,7 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
 
   const connect = (): void => {
     try {
-      const remote = createRemoteChainProvider(genesis);
+      const remote = hostChainProvider(genesis);
       if (remote === null) {
         return;
       }

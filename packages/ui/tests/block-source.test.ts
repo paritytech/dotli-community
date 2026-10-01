@@ -13,18 +13,17 @@ interface FakeClient {
 }
 
 const mocks = vi.hoisted(() => ({
-  remote: vi.fn(),
+  hostChainProvider: vi.fn<(genesisHash: string) => Remote | null>(),
   createClient: vi.fn(),
   onProtocolReady: vi.fn(),
   isProtocolReady: vi.fn<() => boolean>(),
 }));
 
 vi.mock('@dotli/protocol', () => ({
-  createRemoteChainProvider: mocks.remote,
-  isRemoteChainConnectable: () => true,
   onProtocolReady: mocks.onProtocolReady,
   isProtocolReady: mocks.isProtocolReady,
 }));
+vi.mock('../src/host-callbacks/Chain.js', () => ({ hostChainProvider: mocks.hostChainProvider }));
 vi.mock('polkadot-api', () => ({ createClient: mocks.createClient }));
 
 import { createBlockSource } from '../src/block-source.js';
@@ -60,7 +59,7 @@ describe('network block source', () => {
       }
       return { send: vi.fn(), disconnect: vi.fn() };
     };
-    mocks.remote.mockReset().mockReturnValue(remote);
+    mocks.hostChainProvider.mockReset().mockReturnValue(remote);
     mocks.createClient.mockReset().mockImplementation((provider: (m: () => void) => unknown) => {
       provider(() => undefined);
       const client: FakeClient = { bestBlocks$: new Subject(), destroy: vi.fn<() => void>() };
@@ -95,7 +94,7 @@ describe('network block source', () => {
     await vi.advanceTimersByTimeAsync(0);
 
     // Then: no client was dialled.
-    expect(mocks.remote).not.toHaveBeenCalled();
+    expect(mocks.hostChainProvider).not.toHaveBeenCalled();
     expect(clients).toHaveLength(0);
   });
 
@@ -178,7 +177,7 @@ describe('network block source', () => {
 
     // Then: nothing was dialled until the frame reports ready.
     expect(clients).toHaveLength(1);
-    expect(mocks.remote).toHaveBeenCalledTimes(1);
+    expect(mocks.hostChainProvider).toHaveBeenCalledTimes(1);
     readyListeners[0]?.();
     await vi.advanceTimersByTimeAsync(0);
     expect(clients).toHaveLength(2);

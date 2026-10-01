@@ -34,7 +34,6 @@ vi.mock('../../../src/settings-actions.js', async importOriginal => ({
 // No chain answers here: the share report's block heights read "n/a".
 vi.mock('../../../../protocol/src/client.js', () => ({
   isRemoteChainSupported: () => false,
-  createRemoteChainProvider: () => null,
 }));
 
 const rpc = vi.hoisted(() => ({ live: null as string | null }));
