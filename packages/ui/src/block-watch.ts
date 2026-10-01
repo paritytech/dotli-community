@@ -84,11 +84,9 @@ export function watchBlocks(genesis: string, onBlock: (blockNumber: number) => v
         }
         const wait = live.delay;
         live.delay = Math.min(live.delay * 2, MAX_RETRY_MS);
+        // The stop clears this timer, so it never fires after one.
         live.timer = setTimeout(() => {
           live.timer = null;
-          if (live.cancelled) {
-            return;
-          }
           // A frame that died during the wait told only the connections it
           // had, and dialling now would boot a new one.
           if (!viaFrame || isProtocolReady()) {
