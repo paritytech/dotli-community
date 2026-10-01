@@ -10,12 +10,14 @@ import type {
 } from '@polkadot-api/json-rpc-provider';
 import { createChainBrokerManager } from '../src/broker.js';
 
-function createProviderHarness(): {
+interface ProviderHarness {
   provider: JsonRpcProvider;
   sent: JsonRpcRequest[];
   disconnect: ReturnType<typeof vi.fn>;
   emit: (message: JsonRpcMessage) => void;
-} {
+}
+
+function createProviderHarness(): ProviderHarness {
   const sent: JsonRpcRequest[] = [];
   const disconnect = vi.fn();
   let onMessage: ((message: JsonRpcMessage) => void) | null = null;
@@ -38,6 +40,28 @@ function createProviderHarness(): {
       onMessage?.(message);
     },
   };
+}
+
+function subscriptionToken(message: unknown): string {
+  const parsed: unknown = typeof message === 'string' ? JSON.parse(message) : message;
+  if (typeof parsed !== 'object' || parsed === null || !('result' in parsed) || typeof parsed.result !== 'string') {
+    throw new Error('Expected a subscription token response');
+  }
+  return parsed.result;
+}
+
+function requestId(request: JsonRpcRequest | undefined): string | number | null {
+  if (request?.id === undefined) {
+    throw new Error('Expected an upstream request with an ID');
+  }
+  return request.id;
+}
+
+function required<T>(value: T | undefined): T {
+  if (value === undefined) {
+    throw new Error('Expected a recorded provider event');
+  }
+  return value;
 }
 
 describe('createChainBrokerManager', () => {
@@ -897,5 +921,238 @@ describe('createChainBrokerManager', () => {
     expect(unpins).toHaveLength(1);
     expect((unpins[0]?.params as unknown[])[0]).toBe('up-a');
     expect((unpins[0]?.params as unknown[])[1]).toEqual(['0xblock']);
+  });
+
+  it('fails pending reads and shared follows once, without notifying closed sessions', () => {
+    const harness = createProviderHarness();
+    let halt = (): void => {};
+    const manager = createChainBrokerManager((_genesis, onHalt) => {
+      halt = onHalt;
+      return harness.provider;
+    });
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const closedMessages: string[] = [];
+    const a = manager.connectRemote('people', 'a', message => messagesA.push(message));
+    const b = manager.connectRemote('people', 'b', message => messagesB.push(message));
+    const closed = manager.connectRemote('people', 'closed', message => closedMessages.push(message));
+    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] }));
+    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
+    b?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
+    closed?.send(JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'chainHead_v1_follow', params: [true] }));
+    closed?.send(JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'system_health', params: [] }));
+    closed?.disconnect();
+    halt();
+    halt();
+    const error = { code: -32603 };
+    expect(messagesA.map(message => JSON.parse(message) as unknown)).toMatchObject([
+      { jsonrpc: '2.0', id: 1, error },
+      { jsonrpc: '2.0', id: 2, error },
+    ]);
+    expect(messagesB.map(message => JSON.parse(message) as unknown)).toMatchObject([{ jsonrpc: '2.0', id: 3, error }]);
+    expect(closedMessages).toEqual([]);
+    // Late replies from the halted generation must not complete failed requests.
+    for (const request of harness.sent) {
+      harness.emit({ jsonrpc: '2.0', id: requestId(request), result: 'stale' });
+    }
+    expect(messagesA).toHaveLength(2);
+    expect(messagesB).toHaveLength(1);
+    expect(harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('terminates statement and transaction watches using their protocol terminal forms', () => {
+    const harness = createProviderHarness();
+    let halt = (): void => {};
+    const manager = createChainBrokerManager((_genesis, onHalt) => {
+      halt = onHalt;
+      return harness.provider;
+    });
+    const messages: JsonRpcMessage[] = [];
+    const connection = manager.getLocalProvider('people')?.(message => messages.push(message));
+    const methods = [
+      'statement_subscribeStatement',
+      'author_submitAndWatchExtrinsic',
+      'transactionWatch_v1_submitAndWatch',
+      'transaction_v1_broadcast',
+    ];
+    for (const [id, method] of methods.entries()) {
+      connection?.send({ jsonrpc: '2.0', id, method, params: [] });
+      harness.emit({ jsonrpc: '2.0', id: requestId(harness.sent[id]), result: `up-${String(id)}` });
+    }
+    const tokens = messages.map(subscriptionToken);
+    messages.length = 0;
+    halt();
+    expect(messages).toMatchObject([
+      {
+        jsonrpc: '2.0',
+        method: 'statement_statement',
+        params: {
+          subscription: tokens[0],
+          error: { code: -32603 },
+        },
+      },
+      { jsonrpc: '2.0', method: 'author_extrinsicUpdate', params: { subscription: tokens[1], result: 'dropped' } },
+      {
+        jsonrpc: '2.0',
+        method: 'transactionWatch_v1_watchEvent',
+        params: { subscription: tokens[2], result: { event: 'error' } },
+      },
+    ]);
+  });
+
+  it('reconnects lazily and isolates renewed statements even when the server reuses its token', () => {
+    const generations: { harness: ProviderHarness; halt: () => void }[] = [];
+    const manager = createChainBrokerManager((_genesis, halt) => {
+      const harness = createProviderHarness();
+      generations.push({ harness, halt });
+      return harness.provider;
+    });
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const a = manager.connectRemote('people', 'a', message => messagesA.push(message));
+    const b = manager.connectRemote('people', 'b', message => messagesB.push(message));
+    const first = required(generations[0]);
+    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'statement_subscribeStatement', params: ['any'] }));
+    b?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'statement_subscribeStatement', params: ['any'] }));
+    for (const request of first.harness.sent) {
+      first.harness.emit({ jsonrpc: '2.0', id: requestId(request), result: 'reused-token' });
+    }
+    const oldToken = subscriptionToken(messagesA[0]);
+    b?.disconnect();
+    first.halt();
+    expect(generations).toHaveLength(1);
+    expect(messagesB).toHaveLength(1);
+    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'statement_subscribeStatement', params: ['any'] }));
+    const second = required(generations[1]);
+    const notification: JsonRpcMessage = {
+      jsonrpc: '2.0',
+      method: 'statement_statement',
+      params: { subscription: 'reused-token', result: { event: 'newStatements', data: { statements: ['0x01'] } } },
+    };
+    // This must not be buffered as an early event for the replacement subscription.
+    first.harness.emit(notification);
+    first.halt();
+    second.harness.emit({ jsonrpc: '2.0', id: requestId(second.harness.sent[0]), result: 'reused-token' });
+    const newToken = subscriptionToken(messagesA[2]);
+    expect(newToken).not.toBe(oldToken);
+    expect(messagesA).toHaveLength(3);
+    second.harness.emit(notification);
+    expect(JSON.parse(required(messagesA[3]))).toEqual({
+      ...notification,
+      params: { subscription: newToken, result: { event: 'newStatements', data: { statements: ['0x01'] } } },
+    });
+    expect(messagesB).toHaveLength(1);
+    a?.disconnect();
+    expect(second.harness.sent.at(-1)).toMatchObject({
+      method: 'statement_unsubscribeStatement',
+      params: ['reused-token'],
+    });
+    manager.disconnectAll();
+    expect(second.harness.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops every shared follow and allows synchronous refollow without replaying the old snapshot', () => {
+    const generations: { harness: ProviderHarness; halt: () => void }[] = [];
+    const manager = createChainBrokerManager((_genesis, halt) => {
+      const harness = createProviderHarness();
+      generations.push({ harness, halt });
+      return harness.provider;
+    });
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const a = manager.connectRemote('people', 'a', message => {
+      messagesA.push(message);
+      const parsed = JSON.parse(message) as { params?: { result?: { event?: string } } };
+      if (parsed.params?.result?.event === 'stop') {
+        a?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
+      }
+    });
+    const b = manager.connectRemote('people', 'b', message => messagesB.push(message));
+    a?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    b?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
+    const first = required(generations[0]);
+    first.harness.emit({ jsonrpc: '2.0', id: requestId(first.harness.sent[0]), result: 'old-follow' });
+    first.harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'old-follow', result: { event: 'initialized', finalizedBlockHashes: ['old-block'] } },
+    });
+    const tokenA = subscriptionToken(messagesA[0]);
+    const tokenB = subscriptionToken(messagesB[0]);
+    first.halt();
+    expect(JSON.parse(required(messagesA[2]))).toEqual({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: tokenA, result: { event: 'stop' } },
+    });
+    expect(JSON.parse(required(messagesB[2]))).toEqual({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: tokenB, result: { event: 'stop' } },
+    });
+    const second = required(generations[1]);
+    second.harness.emit({ jsonrpc: '2.0', id: requestId(second.harness.sent[0]), result: 'new-follow' });
+    const newToken = subscriptionToken(messagesA[3]);
+    expect(newToken).not.toBe(tokenA);
+    expect(messagesA).toHaveLength(4);
+    second.harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'new-follow', result: { event: 'initialized', finalizedBlockHashes: ['new-block'] } },
+    });
+    expect(JSON.parse(required(messagesA[4]))).toEqual({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: newToken, result: { event: 'initialized', finalizedBlockHashes: ['new-block'] } },
+    });
+    expect(messagesB).toHaveLength(3);
+  });
+
+  it('does not resurrect a provider that halts synchronously during connection', () => {
+    const staleDisconnect = vi.fn();
+    const fresh = createProviderHarness();
+    let generation = 0;
+    let halt = (): void => {};
+    const manager = createChainBrokerManager((_genesis, onHalt) => {
+      halt = onHalt;
+      generation += 1;
+      if (generation === 1) {
+        return () => {
+          onHalt();
+          return {
+            send: () => {
+              throw new Error('stale send');
+            },
+            disconnect: staleDisconnect,
+          };
+        };
+      }
+      return fresh.provider;
+    });
+    const messages: string[] = [];
+    const connection = manager.connectRemote('people', 'a', message => messages.push(message));
+    expect(staleDisconnect).toHaveBeenCalledTimes(1);
+    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] }));
+    fresh.emit({ jsonrpc: '2.0', id: requestId(fresh.sent[0]), result: { peers: 1 } });
+    expect(JSON.parse(required(messages[0]))).toEqual({ jsonrpc: '2.0', id: 1, result: { peers: 1 } });
+    halt();
+    expect(fresh.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails an in-flight request when send synchronously reports a halt', () => {
+    const disconnect = vi.fn();
+    const manager = createChainBrokerManager((_genesis, onHalt) => () => ({
+      send: () => {
+        onHalt();
+      },
+      disconnect,
+    }));
+    const messages: string[] = [];
+    const connection = manager.connectRemote('people', 'a', message => messages.push(message));
+    connection?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'system_health', params: [] }));
+    expect(messages.map(message => JSON.parse(message) as unknown)).toMatchObject([
+      { jsonrpc: '2.0', id: 1, error: { code: -32603 } },
+    ]);
+    expect(disconnect).toHaveBeenCalledTimes(1);
   });
 });

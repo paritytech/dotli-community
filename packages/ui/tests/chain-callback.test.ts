@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getActiveServicesConfig } from '@dotli/config';
 import { createChainConnect } from '../src/host-callbacks/Chain.js';
 import { yielded } from './support.js';
@@ -49,6 +50,41 @@ function hexBytes(hex: string): Uint8Array {
   return bytes;
 }
 
+async function openRpcConnection(): Promise<{
+  connection: PlatformJsonRpcConnection;
+  disconnect: ReturnType<typeof vi.fn>;
+  halt: () => void;
+  receive: (message: unknown) => void;
+}> {
+  mocks.backend = 'rpc-gateway';
+  let halt: () => void = () => {
+    throw new Error('Gateway halt callback was not registered');
+  };
+  let receive: (message: unknown) => void = () => {
+    throw new Error('Gateway response callback was not registered');
+  };
+  const disconnect = vi.fn();
+  mocks.createRpcChainProvider.mockImplementation((_genesis: string, onHalt: () => void) => {
+    halt = onHalt;
+    return mocks.rpcProvider;
+  });
+  mocks.rpcProvider.mockImplementation((onMessage: (message: unknown) => void) => {
+    receive = onMessage;
+    return { send: vi.fn(), disconnect };
+  });
+  const connection = await createChainConnect()(hexBytes(getActiveServicesConfig().people.genesis));
+  return {
+    connection,
+    disconnect,
+    halt: () => {
+      halt();
+    },
+    receive: (message: unknown) => {
+      receive(message);
+    },
+  };
+}
+
 describe('createChainConnect', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -73,11 +109,12 @@ describe('createChainConnect', () => {
     const peopleGenesis = getActiveServicesConfig().people.genesis;
 
     // When
-    await createChainConnect()(hexBytes(peopleGenesis));
+    const connection = await createChainConnect()(hexBytes(peopleGenesis));
 
     // Then
     expect(mocks.smoldotBrokerProvider).toHaveBeenCalledWith(peopleGenesis);
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
+    connection.close();
   });
 
   it('As a dotli integrator, the host keeps non-People chain connections on the selected smoldot backend', async () => {
@@ -85,79 +122,86 @@ describe('createChainConnect', () => {
     const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
 
     // When
-    await createChainConnect()(hexBytes(assetHubGenesis));
+    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
 
     // Then
     expect(mocks.smoldotBrokerProvider).toHaveBeenCalledWith(assetHubGenesis);
     expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
-  });
-
-  it('As a dotli integrator, the host adapts brokered statement-store traffic to a platform connection', async () => {
-    // Given
-    let onMessage: ((message: unknown) => void) | undefined;
-    const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation((handler: (message: unknown) => void) => {
-      onMessage = handler;
-      return {
-        send: (request: unknown) => {
-          sent.push(request);
-        },
-        disconnect: vi.fn(),
-      };
-    });
-    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
-
-    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
-    const query = {
-      jsonrpc: '2.0',
-      id: 'opaque-query-request',
-      method: 'statement_subscribeStatement',
-      params: [{ matchAll: [] }],
-    };
-
-    // When
-    connection.send(JSON.stringify(query));
-
-    // Then
-    expect(sent).toEqual([query]);
-
-    // When
-    const ack = {
-      jsonrpc: '2.0',
-      id: 'opaque-query-request',
-      result: 'remote-sub',
-    };
-    onMessage?.(ack);
-
-    // Then
-    const responses = connection.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse(yielded(await responses.next()))).toEqual(ack);
-    await responses.return?.();
-  });
-
-  it('As a dotli integrator, the host does not rewrite core chain RPC requests', async () => {
-    // Given
-    const sent: unknown[] = [];
-    mocks.smoldotProvider.mockImplementation((_handler: (message: unknown) => void) => ({
-      send: (request: unknown) => {
-        sent.push(request);
-      },
-      disconnect: vi.fn(),
-    }));
-    const assetHubGenesis = getActiveServicesConfig().assethub.genesis;
-    const connection = await createChainConnect()(hexBytes(assetHubGenesis));
-    const unpin = {
-      jsonrpc: '2.0',
-      id: 'core-unpin',
-      method: 'chainHead_v1_unpin',
-      params: ['REMOTE-FOLLOW', '0xabc'],
-    };
-
-    // When
-    connection.send(JSON.stringify(unpin));
-
-    // Then
-    expect(sent).toEqual([unpin]);
     connection.close();
+  });
+
+  it('rejects unsupported chains without falling back from the selected RPC backend', () => {
+    mocks.backend = 'rpc-gateway';
+    mocks.isCoreRpcChainSupported.mockReturnValue(false);
+
+    expect(() => createChainConnect()(hexBytes('0xdeadbeef'))).toThrow(/Unsupported RPC chain/);
+    expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
+    expect(mocks.smoldotBrokerProvider).not.toHaveBeenCalled();
+  });
+
+  it('rejects unsupported chains without falling back from the selected smoldot backend', () => {
+    mocks.isSmoldotChainSupported.mockReturnValue(false);
+
+    expect(() => createChainConnect()(hexBytes('0xdeadbeef'))).toThrow(/Unsupported smoldot chain/);
+    expect(mocks.smoldotBrokerProvider).not.toHaveBeenCalled();
+    expect(mocks.createRpcChainProvider).not.toHaveBeenCalled();
+  });
+
+  it('ends a pending response read when the gateway halts', async () => {
+    const { connection, halt, disconnect } = await openRpcConnection();
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    const pending = responses.next();
+
+    halt();
+
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+    halt();
+    connection.close();
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends a pending response read when the consumer closes the connection', async () => {
+    const { connection, disconnect } = await openRpcConnection();
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    const pending = responses.next();
+
+    connection.close();
+
+    expect(await pending).toEqual({ done: true, value: undefined });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not wait again when closed while the response iterator is suspended after yielding', async () => {
+    const { connection, receive, disconnect } = await openRpcConnection();
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    const pending = responses.next();
+    const response = { jsonrpc: '2.0', id: 'subscribe', result: 'statements' };
+    receive(response);
+    expect(JSON.parse(yielded(await pending))).toEqual(response);
+
+    connection.close();
+    receive({ jsonrpc: '2.0', id: 'late', result: null });
+
+    expect(await responses.next()).toEqual({ done: true, value: undefined });
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects sends after an explicit close', async () => {
+    const { connection } = await openRpcConnection();
+    connection.close();
+
+    expect(() => {
+      connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'late', method: 'chain_getHeader', params: [] }));
+    }).toThrow();
+  });
+
+  it('rejects sends after the gateway halts', async () => {
+    const { connection, halt } = await openRpcConnection();
+    halt();
+
+    expect(() => {
+      connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'late', method: 'chain_getHeader', params: [] }));
+    }).toThrow();
   });
 });
