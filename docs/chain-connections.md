@@ -425,3 +425,8 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
   lease through while a frame is up, so nothing backs those retries off.
 - A block bar a live frame refuses stays empty until that frame is replaced:
   it waits for `onProtocolReady`, which a frame already up does not fire again.
+- The SharedWorker counts a tab as gone only when its iframe says so, on
+  `beforeunload`, or when posting to its port fails. An iframe the host removes
+  (as it does after a fatal) never says so, so its port stays counted, and a
+  dead worker it held closes itself only once the browser drops it, when no
+  document holds it any more.
