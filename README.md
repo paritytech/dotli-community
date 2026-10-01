@@ -105,17 +105,18 @@ All chain access is read-only storage reads through the smoldot light client —
 gateway backend reads the same storage over a public RPC node instead.)
 
 The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
-and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement subscriptions.
-Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than resubmitting a
-transaction. The provider's heartbeat owns reconnection; there is no second health-request keepalive. Smoldot terminal
-loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before notifying each lease.
-The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived chain pools.
-The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing dropped
-legacy-extrinsic case (see ADR 0002).
+and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
+subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
+resubmitting a transaction. The provider's heartbeat owns reconnection; there is no second health-request keepalive.
+Smoldot terminal loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before
+notifying each lease. The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived
+chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
+dropped legacy-extrinsic case (see ADR 0002).
 
 Native boundary limitation: the pinned worker adapter ignores chain response-stream completion and only logs a rejected
-send. Requests already pending at a terminal halt receive broker errors/events, but newly issued requests on that retired
-native connection still require native connection interruption; the frontend does not conceal this with automatic retries.
+send. Requests already pending at a terminal halt receive broker errors/events, but newly issued requests on that
+retired native connection still require native connection interruption; the frontend does not conceal this with
+automatic retries.
 
 ## How multi-file SPAs work
 

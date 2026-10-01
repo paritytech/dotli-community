@@ -1159,9 +1159,16 @@ describe('createChainBrokerManager', () => {
       { jsonrpc: '2.0', id: 1, error: { code: -32603 } },
     ]);
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(() => connection?.send(JSON.stringify({
-      jsonrpc: '2.0', id: 2, method: 'system_health', params: [],
-    }))).toThrow();
+    expect(() =>
+      connection?.send(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 2,
+          method: 'system_health',
+          params: [],
+        }),
+      ),
+    ).toThrow();
   });
 });
 
@@ -1176,7 +1183,13 @@ describe('ChainBroker.halt', () => {
     ) => { send: (message: unknown) => void; disconnect: () => void; messages: unknown[] };
   } {
     const harness = createProviderHarness();
-    const broker: ChainBroker = new ChainBroker(harness.provider, () => undefined, error => broker.halt(error));
+    const broker: ChainBroker = new ChainBroker(
+      harness.provider,
+      () => undefined,
+      error => {
+        broker.halt(error);
+      },
+    );
     const open: ReturnType<typeof setup>['open'] = (id, log, throwOnMessage = false) => {
       const messages: unknown[] = [];
       const connection = broker.connect(
@@ -1226,9 +1239,7 @@ describe('ChainBroker.halt', () => {
     broker.halt(new Error('gone'));
 
     // Then
-    expect(session.messages).toMatchObject([
-      { jsonrpc: '2.0', id: 'req-1', error: { code: -32603 } },
-    ]);
+    expect(session.messages).toMatchObject([{ jsonrpc: '2.0', id: 'req-1', error: { code: -32603 } }]);
     expect(log).toEqual(['a:message', 'a:halt']);
     expect(harness.disconnect).toHaveBeenCalledTimes(1);
   });
@@ -1295,9 +1306,7 @@ describe('ChainBroker.halt', () => {
         params: { subscription: a.token, result: { event: 'stop' } },
       },
     ]);
-    expect(b.messages).toMatchObject([
-      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } },
-    ]);
+    expect(b.messages).toMatchObject([{ jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } }]);
   });
 
   it('As a dotli integrator, a session whose handler throws still hears its halt and does not keep the others from theirs', () => {
@@ -1337,8 +1346,6 @@ describe('ChainBroker.halt', () => {
 
     // Then
     expect(harness.sent.some(m => String(m.id).startsWith('broker-release:'))).toBe(true);
-    expect(staying.messages).toMatchObject([
-      { jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } },
-    ]);
+    expect(staying.messages).toMatchObject([{ jsonrpc: '2.0', id: 'b-req', error: { code: -32603 } }]);
   });
 });

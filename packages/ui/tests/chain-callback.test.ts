@@ -304,7 +304,9 @@ describe('createChainConnect', () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     upstream.emit({ jsonrpc: '2.0', id, result: { peers: 2 } });
     expect(JSON.parse(yielded(await responses.next()))).toEqual({
-      jsonrpc: '2.0', id: 'read', result: { peers: 2 },
+      jsonrpc: '2.0',
+      id: 'read',
+      result: { peers: 2 },
     });
     connection.close();
     upstream.emit({ jsonrpc: '2.0', id, result: 'stale' });
@@ -319,9 +321,16 @@ describe('createChainConnect', () => {
     } else {
       must(mocks.upstreams[0], 'upstream').hooks.onHalt();
     }
-    expect(() => connection.send(JSON.stringify({
-      jsonrpc: '2.0', id: 'late', method: 'system_health', params: [],
-    }))).toThrow();
+    expect(() => {
+      connection.send(
+        JSON.stringify({
+          jsonrpc: '2.0',
+          id: 'late',
+          method: 'system_health',
+          params: [],
+        }),
+      );
+    }).toThrow();
     expect(must(mocks.upstreams[0], 'upstream').sent).toEqual([]);
     connection.close();
   });
