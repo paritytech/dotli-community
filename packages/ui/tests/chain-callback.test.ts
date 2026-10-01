@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
 import type { ChainTransportHooks } from '@dotli/resolver';
@@ -150,6 +150,65 @@ describe('createChainConnect', () => {
 
     // Then
     expect((await pending).done).toBe(true);
+  });
+
+  it('As a dotli integrator, a halted chain transport still delivers the messages queued before it, then ends the stream', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] }));
+    const upstream = must(mocks.upstreams[0], 'upstream');
+    upstream.emit({ jsonrpc: '2.0', id: must(must(upstream.sent[0], 'upstream submit').id, 'id'), result: 'watch-1' });
+
+    // When: smoldot dies, and its provider reports the status and the halt in one step
+    upstream.hooks.onStatus('disconnected');
+    upstream.hooks.onHalt(new Error('smoldot died'));
+
+    // Then
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    const ack = JSON.parse(yielded(await responses.next())) as { id: unknown; result: unknown };
+    expect(ack.id).toBe('truapi:1');
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({
+      jsonrpc: '2.0',
+      method: 'transactionWatch_v1_watchEvent',
+      params: { subscription: ack.result, result: { event: 'dropped' } },
+    });
+    expect((await responses.next()).done).toBe(true);
+  });
+
+  describe('with the default pool settings', () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('As a dotli integrator, a smoldot chain stays open after its last connection closes', async () => {
+      // Given
+      const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+
+      // When
+      connection.close();
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      // Then
+      expect(must(mocks.upstreams[0], 'upstream').disconnect).not.toHaveBeenCalled();
+    });
+
+    it('As a dotli user on Trusted Providers, an RPC chain closes after its last connection closes', async () => {
+      // Given
+      mocks.backend = 'rpc-gateway';
+      const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+      const upstream = must(mocks.upstreams[0], 'upstream');
+
+      // When
+      connection.close();
+      await vi.advanceTimersByTimeAsync(120_000);
+
+      // Then
+      expect(upstream.disconnect).toHaveBeenCalledTimes(1);
+    });
   });
 
   it('As a dotli integrator, closing a core connection releases its lease once', async () => {

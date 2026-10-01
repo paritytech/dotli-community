@@ -13,7 +13,11 @@
 // Every core connection is a lease on the host page's chain pool: one
 // connection per chain, shared through the broker, which keeps each core
 // connection's ids apart. Over RPC the socket replays its subscriptions when
-// it reconnects. A transport that dies for good ends its connections' streams.
+// it reconnects. A transport that dies for good ends its connections' streams
+// after they deliver what was queued (including `dropped` for transaction
+// watches). The installed truapi-host does not act on the end itself, so other
+// requests on that connection stay pending (spec follow-up: "Interrupt the
+// core on a halt").
 
 import { bytesToHex } from '@parity/truapi/scale';
 import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
@@ -38,11 +42,15 @@ import { ERRORS } from '../errors.js';
  */
 export function createHostChainPool(destroyDelay?: number): ChainPool {
   return createChainPool({
+    // truapi-provider drops a smoldot chain once nothing holds it, so closing
+    // one after an idle delay would only make the next connect re-add and
+    // re-sync a chain main keeps open for good. Read when the countdown starts
+    // (after boot), not at import.
+    destroyDelay: destroyDelay ?? (() => (getBackend() === 'rpc-gateway' ? 60_000 : Infinity)),
     createTransport: (genesisHash, hooks) =>
       getBackend() === 'rpc-gateway'
         ? createCoreRpcChainProvider(genesisHash, hooks)
         : createSmoldotChainProvider(genesisHash, hooks),
-    ...(destroyDelay !== undefined && { destroyDelay }),
   });
 }
 
@@ -67,12 +75,13 @@ function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection
   }
   const queue: string[] = [];
   let wake: (() => void) | null = null;
-  let stopped = false;
+  let halted = false;
   let closed = false;
-  // The chain's transport is gone for good: end the stream, so the core
-  // interrupts what rides on it instead of waiting.
+  // The chain's transport is gone for good: the stream ends once it has
+  // delivered what was queued. truapi-host 0.23.0 ignores the end itself, so
+  // other requests on this connection stay pending.
   const halt = (): void => {
-    stopped = true;
+    halted = true;
     wake?.();
     wake = null;
   };
@@ -84,13 +93,13 @@ function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection
     wake?.();
     wake = null;
   }, halt);
-  // A call, so the check after the drain isn't narrowed by the loop condition.
-  const isStopped = (): boolean => stopped;
+  // Calls, so the checks after the drain aren't narrowed by earlier ones.
+  const isHalted = (): boolean => halted;
+  const isClosed = (): boolean => closed;
   const close = (): void => {
     if (closed) {
       return;
     }
-    stopped = true;
     closed = true;
     conn.disconnect();
     wake?.();
@@ -107,14 +116,15 @@ function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection
     },
     async *responses(): AsyncIterable<string> {
       try {
-        while (!stopped) {
-          while (queue.length > 0) {
+        for (;;) {
+          // A halt still delivers what was queued; a close ends at once.
+          while (!isClosed() && queue.length > 0) {
             const response = queue.shift();
             if (response !== undefined) {
               yield response;
             }
           }
-          if (isStopped()) {
+          if (isHalted() || isClosed()) {
             break;
           }
           await new Promise<void>(resolve => {
