@@ -1099,6 +1099,7 @@ async function main(): Promise<void> {
     void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
       setupTruapiDebugPanel({
         startCollapsed: !debugMode.explicit,
+        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
         ...(DEBUG ? { experimentalWallet: bridgeModule.experimentalWalletControls } : {}),
       });
       log.warn(`[dot.li] TrUAPI debug panel enabled`);

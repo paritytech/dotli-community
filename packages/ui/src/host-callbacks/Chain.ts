@@ -9,12 +9,23 @@
 // light-client footprint, and rebuild a fresh chain alongside the one
 // dotli's resolver already maintains. Routing through dotli's existing
 // providers reuses already-synced chains and respects the toggle.
+//
+// Every core connection is a lease on the host page's chain pool: one
+// connection per chain, shared through the broker, which keeps each core
+// connection's ids apart. Over RPC the socket replays its subscriptions when
+// it reconnects. A transport that dies for good ends its connections' streams
+// after they deliver what was queued (including `dropped` for transaction
+// watches). The broker answers pending calls before the stream ends; later
+// sends on that retired lease are rejected rather than silently discarded.
+// Native boundary limitation: the pinned worker adapter logs send failures and
+// ignores iterator completion instead of interrupting the core connection.
+// Requests issued by that core after retirement still need native interruption.
 
 import { bytesToHex } from '@parity/truapi/scale';
-import type { JsonRpcConnection, JsonRpcRequest, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
+import type { JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import type { ChainProvider, HopProvider, PlatformJsonRpcConnection } from '@parity/truapi-host';
 import { getBackend, getActiveServicesConfig } from '@dotli/config';
-import { createChainBrokerManager } from '@dotli/protocol';
+import { createChainPool, type ChainPool, type LeaseProvider } from '@dotli/protocol';
 import {
   createChainProvider as createSmoldotChainProvider,
   isChainSupported as isSmoldotChainSupported,
@@ -26,11 +37,38 @@ import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { withTrustedSubmitFallback } from './light-client-submit-fallback.js';
 
-// `createSmoldotChainProvider` returns wrappers around singleton smoldot
-// chains. Every wrapper drains the same response queue, so independent core
-// connections must share one broker that assigns responses and subscription
-// notifications to their owning connection.
-const smoldotChainBroker = createChainBrokerManager(createSmoldotChainProvider);
+// The temporary submit fallback is deliberately independent of the selected
+// light-client transport. Its RPC leases still use the shared replay/watch policy.
+const trustedSubmitPool = createChainPool({
+  createTransport: createCoreRpcChainProvider,
+  destroyDelay: 0,
+});
+
+/**
+ * The host page's chain pool. A chain's transport follows the backend when
+ * its entry is built: a WebSocket in `rpc-gateway`, smoldot otherwise. Every
+ * backend switch reloads the page, so an entry never outlives its backend.
+ */
+export function createHostChainPool(destroyDelay?: number): ChainPool {
+  return createChainPool({
+    // truapi-provider drops a smoldot chain once nothing holds it, so closing
+    // one after an idle delay would only make the next connect re-add and
+    // re-sync a chain main keeps open for good. Read when the countdown starts
+    // (after boot), not at import.
+    destroyDelay: destroyDelay ?? (() => (getBackend() === 'rpc-gateway' ? 60_000 : Infinity)),
+    createTransport: (genesisHash, hooks) => {
+      if (getBackend() === 'rpc-gateway') {
+        return createCoreRpcChainProvider(genesisHash, hooks);
+      }
+      const lightClient = createSmoldotChainProvider(genesisHash, hooks);
+      return lightClient === null
+        ? null
+        : withTrustedSubmitFallback(lightClient, () => trustedSubmitPool.getLocalProvider(genesisHash), genesisHash);
+    },
+  });
+}
+
+const hostChainPool = createHostChainPool();
 
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   if (typeof value !== 'object' || value === null) {
@@ -45,58 +83,65 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest<unknown> {
   );
 }
 
-function toConnection(
-  createProvider: (onHalt: () => void) => JsonRpcProvider<unknown> | null,
-): PlatformJsonRpcConnection {
-  const queue: string[] = [];
-  let wake: (() => void) | null = null;
-  const state = { closed: false };
-  let conn: JsonRpcConnection<unknown> | null = null;
-  const close = (): void => {
-    if (state.closed) {
-      return;
-    }
-    state.closed = true;
-    queue.length = 0;
-    conn?.disconnect();
-    wake?.();
-    wake = null;
-  };
-  const provider = createProvider(close);
+function toConnection(provider: LeaseProvider | null): PlatformJsonRpcConnection {
   if (!provider) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
   }
-  const upstream = provider((message: unknown) => {
-    if (state.closed) {
+  const queue: string[] = [];
+  let wake: (() => void) | null = null;
+  let halted = false;
+  let closed = false;
+  // Deliver terminal responses before ending the stream. Native consumers need
+  // these responses even when their adapter does not act on iterator completion.
+  const halt = (): void => {
+    halted = true;
+    wake?.();
+    wake = null;
+  };
+  const conn = provider((message: unknown) => {
+    if (closed) {
       return;
     }
     queue.push(JSON.stringify(message));
     wake?.();
     wake = null;
-  });
-  conn = upstream;
-  if (state.closed) {
-    upstream.disconnect();
-  }
+  }, halt);
+  // Calls, so the checks after the drain aren't narrowed by earlier ones.
+  const isHalted = (): boolean => halted;
+  const isClosed = (): boolean => closed;
+  const close = (): void => {
+    if (closed) {
+      return;
+    }
+    closed = true;
+    conn.disconnect();
+    wake?.();
+    wake = null;
+  };
 
   return {
     send(request: string): void {
-      if (state.closed) {
-        throw new Error('Chain connection is closed');
+      if (closed || halted) {
+        throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
       }
       const parsed: unknown = JSON.parse(request);
       if (!isJsonRpcRequest(parsed)) {
         throw new Error(ERRORS.INVALID_JSON_RPC_REQUEST);
       }
-      upstream.send(parsed);
+      conn.send(parsed);
     },
     async *responses(): AsyncIterable<string> {
       try {
-        while (!state.closed) {
-          const response = queue.shift();
-          if (response !== undefined) {
-            yield response;
-            continue;
+        for (;;) {
+          // A halt still delivers what was queued; a close ends at once.
+          while (!isClosed() && queue.length > 0) {
+            const response = queue.shift();
+            if (response !== undefined) {
+              yield response;
+            }
+          }
+          if (isHalted() || isClosed()) {
+            break;
           }
           await new Promise<void>(resolve => {
             wake = resolve;
@@ -110,7 +155,7 @@ function toConnection(
   };
 }
 
-export function createChainConnect(): ChainProvider['connect'] {
+export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvider['connect'] {
   return genesisHashBytes => {
     const genesisHash = bytesToHex(genesisHashBytes);
     const backend = getBackend();
@@ -122,23 +167,14 @@ export function createChainConnect(): ChainProvider['connect'] {
         log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      const connection = toConnection(onHalt => createCoreRpcChainProvider(genesisHash, onHalt));
-      return Promise.resolve(connection);
+      return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
     }
 
     if (!isSmoldotChainSupported(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    const lightClient = smoldotChainBroker.getLocalProvider(genesisHash);
-    // TEMPORARY: see light-client-submit-fallback.ts and ADR 0002.
-    return Promise.resolve(
-      toConnection(onHalt =>
-        lightClient !== null && isCoreRpcChainSupported(genesisHash)
-          ? withTrustedSubmitFallback(lightClient, () => createCoreRpcChainProvider(genesisHash, onHalt), genesisHash)
-          : lightClient,
-      ),
-    );
+    return Promise.resolve(toConnection(pool.getLocalProvider(genesisHash)));
   };
 }
 

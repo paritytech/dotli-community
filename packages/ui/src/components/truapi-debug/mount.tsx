@@ -12,6 +12,7 @@ import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutio
 
 import { mountRoot } from '../../mount/root.js';
 import { Panel, PANEL_ID } from './Panel.js';
+import { productArchiveLoader, type BlockSource } from './archive-source.js';
 
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
@@ -28,6 +29,11 @@ export interface SetupOptions {
   startCollapsed?: boolean;
   /** Compile-time debug builds only; runtime debug opt-ins cannot enable custody. */
   experimentalWallet?: ExperimentalWalletControls;
+  /**
+   * Where the Archive tab reads blocks on the light client: the host's own
+   * source, cache first. Without one it reads over the IPFS gateway.
+   */
+  blockSource?: BlockSource;
 }
 
 function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
@@ -90,6 +96,7 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
         resolution={resolution}
         startCollapsed={options.startCollapsed ?? false}
         wallet={DEBUG ? options.experimentalWallet : undefined}
+        loadArchive={productArchiveLoader(options.blockSource)}
       />
     ),
     // A render error, even a late one, tears the panel down instead of

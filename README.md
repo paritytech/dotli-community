@@ -106,6 +106,19 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
+The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
+and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement subscriptions.
+Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than resubmitting a
+transaction. The provider's heartbeat owns reconnection; there is no second health-request keepalive. Smoldot terminal
+loss retires the pool entry, errors pending requests, stops follows, and ends subscriptions before notifying each lease.
+The protocol iframe and SharedWorker use the same transport hooks while retaining their long-lived chain pools.
+The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing dropped
+legacy-extrinsic case (see ADR 0002).
+
+Native boundary limitation: the pinned worker adapter ignores chain response-stream completion and only logs a rejected
+send. Requests already pending at a terminal halt receive broker errors/events, but newly issued requests on that retired
+native connection still require native connection interruption; the frontend does not conceal this with automatic retries.
+
 ## How multi-file SPAs work
 
 When a CID points to an IPFS directory (not a single file):
@@ -364,8 +377,13 @@ E2E_CHAIN_BACKEND=smoldot-shared-worker npm run --workspace apps/host test:e2e:l
 `apps/host`. Without it the suite looks up `truapi-host` on `PATH`; ensure that binary was built from the same lock
 revision and disable self-updates with `TRUAPI_HOST_NO_UPDATE=1`. Rebuild when the lock revision changes, including when
 switching between generic and Chat branches. Set `SIGNING_HOST_NETWORK` when testing against a non-default network. The
-CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`, so repeat runs reuse one test account; the
-first run registers a fresh lite username on-chain and can take a few minutes.
+CLI keeps its account state under `apps/host/tests/e2e/.auth/signing-host`. The adapter uses canonical `--session`
+selection, defaulting to the bare stem `dotlitest`; set `SIGNING_HOST_SESSION` to choose another stem or an existing
+exact numbered username. A new stem must contain at least six lowercase ASCII letters (digits and separators do not
+count). Repeated pairing attempts and runs reuse the same base path and session, including unfinished setup. The first
+run provisions an account and can take a few minutes. With `HOST_CLI_SIGNER_MNEMONIC`, no session flag is passed.
+Captured CLI diagnostics redact pairing deeplinks, the configured mnemonic, and labeled recovery phrases; never attach
+the CLI's private account/session files to reports.
 
 Playwright starts both preview servers, extracts the login QR deeplink, pairs a headless `truapi-host signing-host`
 process that auto-signs for the rest of the run, and runs the same host-product suite used in CI.
@@ -417,6 +435,10 @@ dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resol
 host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk and stylesheet are
 dynamically imported together, so its initial dock measurement uses the styled size even on a cold load. Users who never
 see the panel pay no download cost.
+
+The **Archive** tab explores the current product's files. Light-client reads use the host block cache before bitswap;
+gateway mode uses the IPFS gateway. Its lazy mount retains a static stylesheet side-effect import so layout is measured
+only after the panel CSS arrives.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
 `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in

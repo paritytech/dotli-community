@@ -55,7 +55,14 @@ window.addEventListener('vite:preloadError', event => {
 });
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { StringJsonRpcConnection } from '@dotli/protocol';
-import type { ExecutableManifest, ManifestResult, RootManifest, ResolveOptions, SeitySlot } from '@dotli/resolver';
+import type {
+  ChainTransportHooks,
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+  ResolveOptions,
+  SeitySlot,
+} from '@dotli/resolver';
 
 import { isExecutableKind, log, errorName, serializeError } from '@dotli/shared';
 import {
@@ -1250,7 +1257,7 @@ interface ProtocolEngine {
 
 interface EngineOptions {
   /** Factory keyed by genesis hash, reporting terminal upstream connection loss. */
-  createChainProvider: (genesisHash: string, onHalt: () => void) => JsonRpcProvider | null;
+  createChainProvider: (genesisHash: string, hooks: ChainTransportHooks) => JsonRpcProvider | null;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
   /**
