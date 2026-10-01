@@ -1,8 +1,8 @@
 // dot.li — TrUAPI chain callback
 //
 // Routes product chain RPC traffic through whichever backend the user
-// has selected in the host shell ("Light Client" or "RPC Node" via
-// curated WSS endpoints).
+// has selected in the host shell ("Light Client", served by the protocol
+// frame, or "RPC Node" via curated WSS endpoints).
 //
 // Without this callback, truapi-server would fall back to its own
 // bundled smoldot — which would ignore the toggle and run another light
