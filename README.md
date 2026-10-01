@@ -312,6 +312,9 @@ UI test fixtures await `overlaysReady()` before interacting with lazy permission
 controlled clock so module loading and machine load do not consume the permission window. Retention behavior uses a
 small explicit capacity; large timeline workloads have separate work-bound tests.
 
+Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
+ready before boot finishes rewriting the URL.
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
