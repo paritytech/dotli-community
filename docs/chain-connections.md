@@ -28,7 +28,7 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   The host tears the protocol iframe down, every remote connection is told
   `'frame'`, and nothing redials by itself, except a product's own requests,
   which may boot a new frame at most once per backoff window (1 s, doubling
-  to 30 s).
+  to 30 s, back to 1 s only once a rebooted frame's chain answers).
 
 ## Where chains are used
 
@@ -309,10 +309,19 @@ sequenceDiagram
   host pool. TrUAPI core connections deliver what was queued and stay open. A
   product's next request on one takes a new lease when a frame is up again
   (`isProtocolReady()`), or when the frame gate has opened. The gate is shared
-  by every core connection: it opens 1 s after the first frame halt, each dial
-  through it shuts it for twice as long, up to 30 s, and a frame reporting
-  ready resets it. So concurrent connections boot one frame per window. A
-  request the gate refuses, or one no lease can be taken for, is answered at
+  by every core connection, so concurrent connections boot one frame per
+  window:
+  - it opens one delay (first 1 s) after a frame halt; a window left in the
+    past, by a live frame's refusal long ago, is armed again from the halt;
+  - each dial through it shuts it again and doubles the delay, up to 30 s;
+  - a frame reporting ready ends the wait but keeps the delay: in
+    `smoldot-direct` a new frame is ready before its light client has
+    connected a chain, so a light client that keeps failing keeps doubling;
+  - the delay goes back to 1 s only when a product's lease delivers a chain
+    answer, as a block bar's backoff resets on a block;
+  - a re-lease that finds no transport keeps the connection behind the gate.
+
+  A request the gate refuses, or one no lease can be taken for, is answered at
   once with `Chain transport halted` (`data: 'dotli:chain-halted'`), so
   nothing hangs.
 - A connection that never reaches a frame halts with `'frame'` too: the frame

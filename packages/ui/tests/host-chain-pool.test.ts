@@ -7,10 +7,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig, setBackend } from '@dotli/config';
+import { log } from '@dotli/shared';
 import type { RemoteChainHalt, RemoteChainProvider } from '@dotli/protocol';
 import { FakeWebSocket } from '../../resolver/tests/fake-websocket.js';
 import type * as ClientModule from '../../protocol/src/client.js';
-import { createChainConnect, createHostChainPool, hostChainProvider } from '../src/host-callbacks/Chain.js';
+import {
+  createChainConnect,
+  createHostChainPool,
+  hostChainProvider,
+  resetFrameGateForTests,
+} from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface RemoteConnection {
@@ -41,7 +47,7 @@ vi.mock('../../protocol/src/client.js', async importOriginal => ({
   onProtocolReady: mocks.onProtocolReady,
 }));
 
-/** The protocol frame reports ready, which also reopens the host pool's frame gate. */
+/** The protocol frame reports ready, which ends the host pool's frame-gate wait. */
 function frameReady(): void {
   mocks.isProtocolReady.mockReturnValue(true);
   for (const listener of mocks.readyListeners) {
@@ -53,17 +59,17 @@ const people = getActiveServicesConfig().people.genesis;
 
 describe('host chain pool on a light client backend', () => {
   let remotes: RemoteConnection[];
-  // Set, every new remote connection is refused by the frame, as a frame
-  // whose light client hit a fatal refuses it.
-  let refuse: boolean;
+  // How each new remote connection fares. `worker`: refused, as the
+  // SharedWorker after a permanent fatal refuses it. `direct`: its frame
+  // reports ready, then its light client fails, as in smoldot-direct.
+  let refuse: 'none' | 'worker' | 'direct';
 
   beforeEach(() => {
     vi.useFakeTimers();
     setBackend('smoldot-direct');
     remotes = [];
-    refuse = false;
-    // A gate left shut by an earlier test is reset, then the frame is down.
-    frameReady();
+    refuse = 'none';
+    resetFrameGateForTests();
     mocks.isProtocolReady.mockReturnValue(false);
     mocks.createRemoteChainProvider.mockReset().mockImplementation(() => (onMessage, onHalt) => {
       const remote: RemoteConnection = {
@@ -73,8 +79,13 @@ describe('host chain pool on a light client backend', () => {
         disconnect: vi.fn<() => void>(),
       };
       remotes.push(remote);
-      if (refuse) {
+      if (refuse !== 'none') {
+        const mode = refuse;
         queueMicrotask(() => {
+          if (mode === 'direct') {
+            frameReady();
+            mocks.isProtocolReady.mockReturnValue(false);
+          }
           remote.halt('frame');
         });
       }
@@ -88,8 +99,13 @@ describe('host chain pool on a light client backend', () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
     localStorage.clear();
   });
+
+  const ask = (connection: { send: (request: string) => void }, id: string): void => {
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_chainName', params: [] }));
+  };
 
   it("As a dotli user, products' connections to one chain share one connection to the protocol frame", async () => {
     // Given
@@ -210,7 +226,7 @@ describe('host chain pool on a light client backend', () => {
     // Given: the frame died, and every new frame refuses the connection.
     const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
     must(remotes[0], 'first remote').halt('frame');
-    refuse = true;
+    refuse = 'worker';
 
     // When: the product's papi client retries every 250 ms for a minute.
     for (let i = 0; i < 240; i++) {
@@ -265,29 +281,106 @@ describe('host chain pool on a light client backend', () => {
     second.close();
   });
 
-  it('As a dotli user, the protocol frame coming back resets the backoff', async () => {
-    // Given: a frame halt, and a retry through the 1 s window that was refused,
-    // so the next window would be 2 s away.
+  it('As a dotli user on smoldot-direct, a light client that fails right after its frame comes back keeps the doubled backoff', async () => {
+    // Given: the frame died, and every new frame reports ready, then fails.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('frame');
+    refuse = 'direct';
+
+    // When: the product's papi client retries every 250 ms for two minutes.
+    for (let i = 0; i < 480; i++) {
+      ask(connection, `truapi:${String(i)}`);
+      await vi.advanceTimersByTimeAsync(250);
+    }
+
+    // Then: a new frame is tried at 1, 3, 7, 15, 31, 61 and 91 s, as when
+    // no frame ever comes back.
+    expect(remotes).toHaveLength(8);
+    connection.close();
+  });
+
+  it("As a dotli user, a chain answer from a rebooted frame resets the backoff, and a frame's ready alone does not", async () => {
+    // Given: a frame halt, and a retry through the 1 s window that boots a
+    // frame (the delay is now 2 s); that frame comes up and answers.
     const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
     must(remotes[0], 'first remote').halt('frame');
     await vi.advanceTimersByTimeAsync(1_000);
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
-    must(remotes[1], 'second remote').halt('frame');
-
-    // When: a frame something else started comes up, and the product asks.
+    ask(connection, 'truapi:1');
     frameReady();
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    const second = must(remotes[1], 'second remote');
+    second.emit({ jsonrpc: '2.0', id: must(must(second.sent[0], 'request').id, 'id'), result: 'People' });
 
-    // Then: it dials at once; and when that frame dies too, the next window is 1 s away again.
+    // When: that frame dies.
+    mocks.isProtocolReady.mockReturnValue(false);
+    second.halt('frame');
+
+    // Then: the next window is 1 s away again.
+    await vi.advanceTimersByTimeAsync(999);
+    ask(connection, 'truapi:2');
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    ask(connection, 'truapi:3');
     expect(remotes).toHaveLength(3);
+
+    // When: the frame that dial booted reports ready, answers nothing, and dies.
+    frameReady();
     mocks.isProtocolReady.mockReturnValue(false);
     must(remotes[2], 'third remote').halt('frame');
-    await vi.advanceTimersByTimeAsync(999);
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:3', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the window doubled to 2 s.
+    await vi.advanceTimersByTimeAsync(1_999);
+    ask(connection, 'truapi:4');
     expect(remotes).toHaveLength(3);
     await vi.advanceTimersByTimeAsync(1);
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:4', method: 'chainSpec_v1_chainName', params: [] }));
+    ask(connection, 'truapi:5');
     expect(remotes).toHaveLength(4);
+    connection.close();
+  });
+
+  it('As a dotli user, a refusal by a live frame long ago does not let its later death boot a frame at once', async () => {
+    // Given: a live frame refused a connection, and the product re-leased.
+    mocks.isProtocolReady.mockReturnValue(true);
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('frame');
+    ask(connection, 'truapi:1');
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // When: the frame really dies, and the product asks at once.
+    mocks.isProtocolReady.mockReturnValue(false);
+    must(remotes[1], 'second remote').halt('frame');
+    ask(connection, 'truapi:2');
+
+    // Then: no frame is booted until the window opens 1 s later.
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+    ask(connection, 'truapi:3');
+    expect(remotes).toHaveLength(3);
+    connection.close();
+  });
+
+  it('As a dotli user, a re-lease after a frame halt that finds no transport keeps the backoff', async () => {
+    // Given: a frame halt, the window open, and no transport to be had.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(remotes[0], 'first remote').halt('frame');
+    await vi.advanceTimersByTimeAsync(1_000);
+    mocks.createRemoteChainProvider.mockReturnValue(null);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+
+    // When: the product asks twice.
+    ask(connection, 'truapi:1');
+    ask(connection, 'truapi:2');
+
+    // Then: both are answered at once, and only the first tried for a lease.
+    const halted = { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' };
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', error: halted });
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:2', error: halted });
+    expect(mocks.createRemoteChainProvider).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      `[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`,
+    );
     connection.close();
   });
 

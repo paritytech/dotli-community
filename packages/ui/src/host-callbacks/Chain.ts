@@ -122,9 +122,14 @@ const FRAME_RETRY_MAX_MS = 30_000;
 /**
  * When a product may boot a protocol frame after one died, shared by every
  * core connection: its papi client re-follows every 250 ms, and each re-lease
- * would boot a frame. The gate opens 1 s after the first frame halt, and each
- * dial through it shuts it for twice as long, up to 30 s. A frame that
- * reports ready resets it.
+ * would boot a frame. The gate opens one delay after a frame halt; each dial
+ * through it shuts it again and doubles the delay, up to 30 s.
+ *
+ * A frame that reports ready ends the wait but keeps the delay: in
+ * smoldot-direct a new frame reports ready before its light client has
+ * connected a chain, so ready proves nothing. The delay goes back to 1 s only
+ * when a product's lease delivers a chain answer, as a block bar's backoff
+ * resets on a block.
  */
 const frameGate = {
   opensAt: null as number | null,
@@ -137,10 +142,27 @@ function noteFrameHalt(): void {
     frameGate.subscribed = true;
     onProtocolReady(() => {
       frameGate.opensAt = null;
-      frameGate.delay = FRAME_RETRY_FIRST_MS;
     });
   }
-  frameGate.opensAt ??= Date.now() + frameGate.delay;
+  const now = Date.now();
+  // A window already shut by a dial stays; one left in the past (by a live
+  // frame's refusal, say) is armed again from this halt.
+  if (frameGate.opensAt === null || frameGate.opensAt <= now) {
+    frameGate.opensAt = now + frameGate.delay;
+  }
+}
+
+/** A successful answer is evidence that the chain behind a frame works. */
+function noteChainAnswer(message: unknown): void {
+  if (typeof message === 'object' && message !== null && 'result' in message) {
+    frameGate.delay = FRAME_RETRY_FIRST_MS;
+  }
+}
+
+/** The gate as a fresh page has it. */
+export function resetFrameGateForTests(): void {
+  frameGate.opensAt = null;
+  frameGate.delay = FRAME_RETRY_FIRST_MS;
 }
 
 /** Whether a product may take a new lease now, after its last one heard `'frame'`. */
@@ -191,7 +213,11 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
     // Per lease, so a halt heard while `provider` is still running, or a late
     // one from a replaced lease, never touches another lease.
     const slot = { connection: null as JsonRpcConnection | null, halted: false };
-    const connection = provider(deliver, error => {
+    const fromLease = (message: unknown): void => {
+      noteChainAnswer(message);
+      deliver(message);
+    };
+    const connection = provider(fromLease, error => {
       slot.halted = true;
       if (slot.connection !== null && lease === slot.connection) {
         lease = null;
@@ -215,11 +241,15 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
       // Answered at once, as the product's own retry is.
       return null;
     }
-    frameDown = false;
     try {
       const provider = takeLease();
       if (provider !== null) {
-        return open(provider);
+        const connection = open(provider);
+        // Only a lease taken clears it: a failed one keeps the gate.
+        if (connection !== null) {
+          frameDown = false;
+        }
+        return connection;
       }
     } catch (error: unknown) {
       log.warn(`[dot.li truapi-chain] re-leasing ${genesisHash} failed:`, error);
