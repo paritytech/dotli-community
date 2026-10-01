@@ -76,7 +76,6 @@ function hostUpdateWorker(): AstroIntegration {
               name: 'DotliHostUpdate',
               fileName: () => HOST_UPDATE_SCRIPT,
             },
-            codeSplitting: false,
             sourcemap: false,
             minify: true,
           },

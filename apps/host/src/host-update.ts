@@ -32,9 +32,7 @@ function hasCurrentContract(client: WindowClient): Promise<boolean> {
     );
   };
   try {
-    client.postMessage({ type: "dotli:host-contract-version" }, [
-      channel.port2,
-    ]);
+    client.postMessage({ type: 'dotli:host-contract-version' }, [channel.port2]);
   } catch {
     // The document can disappear while the worker is checking open tabs.
     channel.port2.close();
@@ -44,23 +42,23 @@ function hasCurrentContract(client: WindowClient): Promise<boolean> {
 }
 
 async function outdatedClients(): Promise<WindowClient[]> {
-  const windows = (
-    await self.clients.matchAll({ type: "window", includeUncontrolled: true })
-  ).filter((client) => client.url.startsWith(self.registration.scope));
+  const windows = (await self.clients.matchAll({ type: 'window', includeUncontrolled: true })).filter(client =>
+    client.url.startsWith(self.registration.scope),
+  );
   const compatible = await Promise.all(windows.map(hasCurrentContract));
-  return windows.filter((_, index) => !compatible[index]);
+  return windows.filter((_, index) => compatible[index] !== true);
 }
 
 function isWindowClient(client: Client | undefined): client is WindowClient {
   return client?.type === 'window';
 }
 
-self.addEventListener("install", (event: ExtendableEvent) => {
+self.addEventListener('install', (event: ExtendableEvent) => {
   if (self.registration.active === null) {
     return;
   }
   event.waitUntil(
-    outdatedClients().then(async (clients) => {
+    outdatedClients().then(async clients => {
       // Compatible sessions retain the normal update prompt. Legacy hosts do
       // not answer this query and cannot be relied on to handle a new sandbox's
       // update request. Activate only after Workbox's precache install succeeds.
@@ -71,7 +69,7 @@ self.addEventListener("install", (event: ExtendableEvent) => {
   );
 });
 
-self.addEventListener("activate", (event: ExtendableEvent) => {
+self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
       // Probe again: the worker can restart between installation and activation,
@@ -82,18 +80,14 @@ self.addEventListener("activate", (event: ExtendableEvent) => {
       }
       await self.clients.claim();
       await Promise.all(
-        clients.map(async (client) => {
+        clients.map(async client => {
           const current = await self.clients.get(client.id);
           if (isWindowClient(current)) {
             // Navigation fetches wait for activation. Awaiting them here would
             // deadlock the worker and every tab it just claimed.
-            void current.navigate(current.url)
-              .catch((error: unknown) => {
-                console.warn(
-                  "[dot.li] Could not reload an outdated host",
-                  error,
-                );
-              });
+            void current.navigate(current.url).catch((error: unknown) => {
+              console.warn('[dot.li] Could not reload an outdated host', error);
+            });
           }
         }),
       );

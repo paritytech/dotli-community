@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { test, expect, type Page } from "@playwright/test";
-import { createServer } from "node:http";
-import { readFile } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { test, expect, type Page } from '@playwright/test';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { extname, resolve, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const DIST = fileURLToPath(new URL("../../dist/", import.meta.url));
+const DIST = fileURLToPath(new URL('../../dist/', import.meta.url));
 const LEGACY_HTML = `<!doctype html>
 <html><body><h1 id="legacy-host">Cached contract-v4 host</h1>
 <script>
@@ -31,15 +31,15 @@ self.addEventListener('fetch', event => {
 `;
 
 const MIME: Record<string, string> = {
-  ".html": "text/html; charset=utf-8",
-  ".js": "text/javascript",
-  ".css": "text/css",
-  ".json": "application/json",
-  ".webmanifest": "application/manifest+json",
-  ".wasm": "application/wasm",
-  ".svg": "image/svg+xml",
-  ".png": "image/png",
-  ".ico": "image/x-icon",
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript',
+  '.css': 'text/css',
+  '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
+  '.wasm': 'application/wasm',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.ico': 'image/x-icon',
 };
 
 interface UpgradeFixture {
@@ -52,36 +52,32 @@ interface UpgradeFixture {
 async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixture> {
   // Fail before launching the fixture if the production build is missing.
   const [html, worker] = await Promise.all([
-    readFile(resolve(DIST, "index.html")),
-    readFile(resolve(DIST, "host-sw.js"), "utf8"),
+    readFile(resolve(DIST, 'index.html')),
+    readFile(resolve(DIST, 'host-sw.js'), 'utf8'),
   ]);
-  let currentHtml = initial === "current";
-  let currentWorker = initial === "current";
+  let currentHtml = initial === 'current';
+  let currentWorker = initial === 'current';
   let release = 0;
   const server = createServer((request, response) => {
     void (async () => {
-      const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
-      response.setHeader("Cache-Control", "no-store");
-      response.setHeader("Service-Worker-Allowed", "/");
-      if (pathname === "/host-sw.js") {
+      const pathname = new URL(request.url ?? '/', 'http://localhost').pathname;
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('Service-Worker-Allowed', '/');
+      if (pathname === '/host-sw.js') {
         response.setHeader('Content-Type', 'text/javascript');
         // A byte-only release marker creates a genuine browser SW update
         // without copying, patching, or substituting the generated worker.
-        response.end(
-          currentWorker
-            ? `${worker}\n// test release ${String(release)}\n`
-            : LEGACY_WORKER,
-        );
+        response.end(currentWorker ? `${worker}\n// test release ${String(release)}\n` : LEGACY_WORKER);
         return;
       }
-      if (pathname === "/" || pathname === "/index.html") {
+      if (pathname === '/' || pathname === '/index.html') {
         response.setHeader('Content-Type', 'text/html; charset=utf-8');
         response.end(currentHtml ? html : LEGACY_HTML);
         return;
       }
-      if (pathname === "/dotli-network.js") {
+      if (pathname === '/dotli-network.js') {
         response.setHeader('Content-Type', 'text/javascript');
-        response.end("window.__DOTLI_NETWORK__ = {};\n");
+        response.end('window.__DOTLI_NETWORK__ = {};\n');
         return;
       }
       const path = resolve(DIST, `.${decodeURIComponent(pathname)}`);
@@ -90,26 +86,23 @@ async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixtu
         return;
       }
       const bytes = await readFile(path);
-      response.setHeader(
-        "Content-Type",
-        MIME[extname(path)] ?? "application/octet-stream",
-      );
+      response.setHeader('Content-Type', MIME[extname(path)] ?? 'application/octet-stream');
       response.end(bytes);
     })().catch((error: unknown) => {
       response.writeHead(404).end(String(error));
     });
   });
-  const listening = Promise.withResolvers<void>();
+  const listening = Promise.withResolvers<undefined>();
   server.once('error', (error: Error) => {
     listening.reject(error);
   });
   server.listen(0, '127.0.0.1', () => {
-    listening.resolve();
+    listening.resolve(undefined);
   });
   await listening.promise;
   const address = server.address();
-  if (!address || typeof address === "string") {
-    throw new Error("Expected an ephemeral TCP listener");
+  if (address === null || typeof address === 'string') {
+    throw new Error('Expected an ephemeral TCP listener');
   }
   return {
     origin: `http://localhost:${String(address.port)}`,
@@ -121,10 +114,14 @@ async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixtu
       release += 1;
     },
     async close(): Promise<void> {
-      const closed = Promise.withResolvers<void>();
-      server.close((error) =>
-        error ? closed.reject(error) : closed.resolve(),
-      );
+      const closed = Promise.withResolvers<undefined>();
+      server.close(error => {
+        if (error !== undefined) {
+          closed.reject(error);
+        } else {
+          closed.resolve(undefined);
+        }
+      });
       server.closeAllConnections();
       await closed.promise;
     },
@@ -133,11 +130,11 @@ async function serveUpgrade(initial: 'legacy' | 'current'): Promise<UpgradeFixtu
 
 async function seedUserData(page: Page): Promise<void> {
   await page.evaluate(async () => {
-    localStorage.setItem("dotli-theme", "dark");
-    localStorage.setItem("upgrade-user-setting", "keep my settings");
+    localStorage.setItem('dotli-theme', 'dark');
+    localStorage.setItem('upgrade-user-setting', 'keep my settings');
     const opened = Promise.withResolvers<IDBDatabase>();
-    const request = indexedDB.open("upgrade-user-data", 1);
-    request.onupgradeneeded = () => request.result.createObjectStore("records");
+    const request = indexedDB.open('upgrade-user-data', 1);
+    request.onupgradeneeded = () => request.result.createObjectStore('records');
     request.onsuccess = () => {
       opened.resolve(request.result);
     };
@@ -145,13 +142,11 @@ async function seedUserData(page: Page): Promise<void> {
       opened.reject(new Error('Could not open upgrade user data', { cause: request.error }));
     };
     const db = await opened.promise;
-    const written = Promise.withResolvers<void>();
-    const transaction = db.transaction("records", "readwrite");
-    transaction
-      .objectStore("records")
-      .put({ message: "keep my saved record" }, "saved");
+    const written = Promise.withResolvers<undefined>();
+    const transaction = db.transaction('records', 'readwrite');
+    transaction.objectStore('records').put({ message: 'keep my saved record' }, 'saved');
     transaction.oncomplete = () => {
-      written.resolve();
+      written.resolve(undefined);
     };
     transaction.onerror = () => {
       written.reject(new Error('Could not save upgrade user data', { cause: transaction.error }));
@@ -161,15 +156,15 @@ async function seedUserData(page: Page): Promise<void> {
     };
     await written.promise;
     db.close();
-    const cache = await caches.open("upgrade-product-data");
-    await cache.put("/saved-product", new Response("keep my product cache"));
+    const cache = await caches.open('upgrade-product-data');
+    await cache.put('/saved-product', new Response('keep my product cache'));
   });
 }
 
 async function expectUserData(page: Page): Promise<void> {
   const saved = await page.evaluate(async () => {
     const opened = Promise.withResolvers<IDBDatabase>();
-    const openRequest = indexedDB.open("upgrade-user-data", 1);
+    const openRequest = indexedDB.open('upgrade-user-data', 1);
     openRequest.onsuccess = () => {
       opened.resolve(openRequest.result);
     };
@@ -179,10 +174,7 @@ async function expectUserData(page: Page): Promise<void> {
     const db = await opened.promise;
     try {
       const savedRecord = Promise.withResolvers<unknown>();
-      const request = db
-        .transaction("records")
-        .objectStore("records")
-        .get("saved");
+      const request = db.transaction('records').objectStore('records').get('saved');
       request.onsuccess = () => {
         savedRecord.resolve(request.result);
       };
@@ -191,20 +183,20 @@ async function expectUserData(page: Page): Promise<void> {
       };
       const record = await savedRecord.promise;
       return {
-        theme: localStorage.getItem("dotli-theme"),
-        setting: localStorage.getItem("upgrade-user-setting"),
+        theme: localStorage.getItem('dotli-theme'),
+        setting: localStorage.getItem('upgrade-user-setting'),
         record,
-        product: await (await caches.match("/saved-product"))?.text(),
+        product: await (await caches.match('/saved-product'))?.text(),
       };
     } finally {
       db.close();
     }
   });
   expect(saved).toEqual({
-    theme: "dark",
-    setting: "keep my settings",
-    record: { message: "keep my saved record" },
-    product: "keep my product cache",
+    theme: 'dark',
+    setting: 'keep my settings',
+    record: { message: 'keep my saved record' },
+    product: 'keep my product cache',
   });
 }
 
@@ -216,29 +208,23 @@ async function updateWorker(page: Page): Promise<void> {
   });
 }
 
-test.describe("host service worker contract upgrades", () => {
+test.describe('host service worker contract upgrades', () => {
   test.setTimeout(60_000);
 
-  test("replaces a cache-first legacy host automatically without erasing user data", async ({
-    browser,
-  }) => {
-    const fixture = await serveUpgrade("legacy");
-    const context = await browser.newContext({ serviceWorkers: "allow" });
+  test('replaces a cache-first legacy host automatically without erasing user data', async ({ browser }) => {
+    const fixture = await serveUpgrade('legacy');
+    const context = await browser.newContext({ serviceWorkers: 'allow' });
     try {
       // Real landing code, but no external chain, protocol host, or analytics
       // dependency. SW precache requests are served by the isolated HTTP server.
-      await context.route("**/*", (route) => {
-        return new URL(route.request().url()).origin === fixture.origin
-          ? route.continue()
-          : route.abort();
+      await context.route('**/*', route => {
+        return new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort();
       });
       const page = await context.newPage();
       const url = `${fixture.origin}/?upgrade=legacy#saved-location`;
       await page.goto(url);
-      await page.waitForFunction(
-        () => navigator.serviceWorker.controller !== null,
-      );
-      await expect(page.locator("#legacy-host")).toBeVisible();
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
+      await expect(page.locator('#legacy-host')).toBeVisible();
       await seedUserData(page);
 
       // New HTML on the network alone cannot repair a cache-first old host.
@@ -246,10 +232,10 @@ test.describe("host service worker contract upgrades", () => {
       fixture.publishHtml();
       const oldReload = await page.reload();
       expect(oldReload?.fromServiceWorker()).toBe(true);
-      await expect(page.locator("#legacy-host")).toBeVisible();
+      await expect(page.locator('#legacy-host')).toBeVisible();
       await expectUserData(page);
       let navigations = 0;
-      page.on("framenavigated", (frame) => {
+      page.on('framenavigated', frame => {
         if (frame === page.mainFrame()) {
           navigations += 1;
         }
@@ -257,8 +243,8 @@ test.describe("host service worker contract upgrades", () => {
 
       fixture.publishWorker();
       await updateWorker(page);
-      await expect(page.locator(".landing")).toBeVisible({ timeout: 20_000 });
-      await expect(page.locator("#legacy-host")).toHaveCount(0);
+      await expect(page.locator('.landing')).toBeVisible({ timeout: 20_000 });
+      await expect(page.locator('#legacy-host')).toHaveCount(0);
       expect(page.url()).toBe(url);
       expect(navigations).toBe(1);
       await expect
@@ -272,7 +258,7 @@ test.describe("host service worker contract upgrades", () => {
             };
           }),
         )
-        .toEqual({ active: "activated", waiting: false, controlled: true });
+        .toEqual({ active: 'activated', waiting: false, controlled: true });
       await expectUserData(page);
     } finally {
       await context.close();
@@ -280,34 +266,26 @@ test.describe("host service worker contract upgrades", () => {
     }
   });
 
-  test("keeps a compatible update waiting until the user applies it", async ({
-    browser,
-  }) => {
-    const fixture = await serveUpgrade("current");
-    const context = await browser.newContext({ serviceWorkers: "allow" });
+  test('keeps a compatible update waiting until the user applies it', async ({ browser }) => {
+    const fixture = await serveUpgrade('current');
+    const context = await browser.newContext({ serviceWorkers: 'allow' });
     try {
-      await context.route("**/*", (route) => {
-        return new URL(route.request().url()).origin === fixture.origin
-          ? route.continue()
-          : route.abort();
+      await context.route('**/*', route => {
+        return new URL(route.request().url()).origin === fixture.origin ? route.continue() : route.abort();
       });
       const page = await context.newPage();
       let navigations = 0;
-      page.on("framenavigated", (frame) => {
+      page.on('framenavigated', frame => {
         if (frame === page.mainFrame()) {
           navigations += 1;
         }
       });
       await page.goto(fixture.origin);
-      await page.evaluate(() =>
-        navigator.serviceWorker.ready.then(() => undefined),
-      );
-      await expect(page.locator(".landing")).toBeVisible();
+      await page.evaluate(() => navigator.serviceWorker.ready.then(() => undefined));
+      await expect(page.locator('.landing')).toBeVisible();
       expect(navigations).toBe(1); // Fresh installation must not reload the page.
       await page.reload(); // Begin the update with a controlled, current host.
-      await page.waitForFunction(
-        () => navigator.serviceWorker.controller !== null,
-      );
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null);
       await seedUserData(page);
       const beforeUpdate = navigations;
       await page.evaluate(() => {
@@ -328,14 +306,10 @@ test.describe("host service worker contract upgrades", () => {
 
       fixture.publishWorker();
       await updateWorker(page);
-      const reload = page.getByRole("button", { name: "Reload", exact: true });
+      const reload = page.getByRole('button', { name: 'Reload', exact: true });
       await expect(reload).toBeVisible({ timeout: 20_000 });
       await expect
-        .poll(() =>
-          page.evaluate(() =>
-            Number(document.documentElement.dataset['contractQueries']),
-          ),
-        )
+        .poll(() => page.evaluate(() => Number(document.documentElement.dataset['contractQueries'])))
         .toBeGreaterThan(0);
       // Observe longer than the contract-query timeout. A momentary waiting
       // state before a late skipWaiting call is not a successful prompt update.
@@ -346,26 +320,17 @@ test.describe("host service worker contract upgrades", () => {
           const registration = await navigator.serviceWorker.ready;
           return registration.waiting?.state;
         }),
-      ).toBe("installed");
+      ).toBe('installed');
       await expectUserData(page);
 
-      await Promise.all([
-        page.waitForEvent(
-          "framenavigated",
-          (frame) => frame === page.mainFrame(),
-        ),
-        reload.click(),
-      ]);
-      await expect(page.locator(".landing")).toBeVisible();
+      await Promise.all([page.waitForEvent('framenavigated', frame => frame === page.mainFrame()), reload.click()]);
+      await expect(page.locator('.landing')).toBeVisible();
       expect(navigations).toBe(beforeUpdate + 1);
       await expect
         .poll(() =>
           page.evaluate(async () => {
             const registration = await navigator.serviceWorker.ready;
-            return (
-              registration.waiting === null &&
-              registration.active?.state === "activated"
-            );
+            return registration.waiting === null && registration.active?.state === 'activated';
           }),
         )
         .toBe(true);

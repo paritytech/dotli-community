@@ -10,4 +10,4 @@ export { buildInfo, readPackageVersion } from './build-info-plugin.ts';
 export { runtimeNetworkConfigScript, runtimeNetworkConfigScriptBody } from './runtime-network-config-plugin.ts';
 export { socialMetaAttributes, socialMetaTags } from './social-meta-plugin.ts';
 export { astroPwa } from './astro-pwa.ts';
-export { SANDBOX_SCHEMA_VERSION } from './host-sandbox-contract.ts';
+export { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.ts';
