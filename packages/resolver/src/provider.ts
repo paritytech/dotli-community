@@ -24,6 +24,7 @@ import init, {
 import wasmUrl from '@parity/truapi-provider/truapi_provider_bg.wasm?url';
 import { createSmoldotDb } from './smoldot-db.js';
 import { attachChainSync, chainKeyForGenesis, reportDbCache, type ChainSyncTap } from './chain-sync.js';
+import type { ChainTransportHooks } from './transport-hooks.js';
 
 // One provider per host process: every connection shares the single embedded
 // light client.
@@ -277,8 +278,12 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
  * so messages are stringified on send and parsed on receipt. Messages sent
  * before the async connect resolves are queued and flushed in order. Once
  * connected, the provider owns sync-aware buffering; do not wait for ready here.
+ *
+ * `hooks` hears each connection's status, and a halt when it fails or its
+ * stream ends without `disconnect()`: smoldot does not reconnect underneath
+ * its consumers, so that connection is gone for good.
  */
-export function createChainProvider(genesisHash: string): JsonRpcProvider | null {
+export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
   if (!isChainSupported(key)) {
     log.warn(`[dot.li provider] Unsupported chain: ${genesisHash}`);
@@ -302,8 +307,17 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
     // which control-flow analysis cannot see.
     const isClosed = (): boolean => state.closed;
     const queued: string[] = [];
+    // The connection is gone for good, and its owner did not end it.
+    const fail = (error: unknown): void => {
+      hooks?.onStatus('disconnected');
+      hooks?.onHalt(error);
+    };
+    hooks?.onStatus('connecting');
 
     void (async () => {
+      // Set when the response stream ends, so the halt runs once, outside the
+      // `try`: a throwing hook must not reach the `catch` and halt again.
+      let streamEnded = false;
       try {
         const handle = await getHandle();
         // Must precede `connect`: only a chain's first add consumes a blob.
@@ -314,6 +328,7 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
           return;
         }
         state.connection = candidate;
+        hooks?.onStatus('connected');
         for (const message of queued) {
           candidate.send(message);
         }
@@ -336,12 +351,7 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
         for (;;) {
           const response = await candidate.nextResponse();
           if (response === undefined) {
-            // Only `disconnect()` makes this an orderly end. Otherwise the
-            // transport died, and no further response will arrive. Queue-budget
-            // refusals are JSON-RPC errors, handled through the normal pipe.
-            if (!isClosed()) {
-              markFatal(`chain ${key} stopped responding`);
-            }
+            streamEnded = true;
             break;
           }
           const parsed = JSON.parse(response) as JsonRpcMessage;
@@ -354,6 +364,22 @@ export function createChainProvider(genesisHash: string): JsonRpcProvider | null
         }
       } catch (error) {
         markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+        if (!isClosed()) {
+          fail(error);
+        }
+      }
+      // Only `disconnect()` makes the end of the stream orderly. Otherwise the
+      // transport died or overflowed its send budget, and no further response
+      // will ever arrive on this chain.
+      if (streamEnded && !isClosed()) {
+        markFatal(`chain ${key} stopped responding`);
+        try {
+          fail(new Error(`chain ${key} stopped responding`));
+        } catch (error) {
+          // A throwing listener is its owner's bug, and nothing awaits this
+          // loop to hear it.
+          log.warn(`[dot.li provider] halt listener for chain ${key} threw`, error);
+        }
       }
     })();
 
