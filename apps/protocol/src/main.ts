@@ -1223,8 +1223,8 @@ interface ProtocolEngine {
 }
 
 interface EngineOptions {
-  /** Factory for a `JsonRpcProvider` keyed by genesis hash. */
-  createChainProvider: (genesisHash: string) => JsonRpcProvider | null;
+  /** Factory keyed by genesis hash, reporting terminal upstream connection loss. */
+  createChainProvider: (genesisHash: string, onHalt: () => void) => JsonRpcProvider | null;
   /** Whether the given genesis hash is handled by this engine. */
   isChainSupported: (genesisHash: string) => boolean;
   /**
