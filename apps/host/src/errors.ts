@@ -3,7 +3,7 @@
 
 import { CORE_CUSTODY_BUSY_ERROR, WALLET_OWNER_BUSY_ERROR } from '@dotli/protocol';
 import { ProtocolFatalError, ProtocolInitFailedError } from '@dotli/protocol';
-import { getActiveServicesConfig, BACKEND_LABELS } from '@dotli/config';
+import { getActiveServicesConfig, getBackend, BACKEND_LABELS } from '@dotli/config';
 
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
@@ -13,6 +13,9 @@ import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
 // here at compile time. `instanceof` is unavailable because the error arrived
 // over postMessage, so only the name survives.
 const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
+// `ApiStoppedError` in `packages/resolver/src/api.ts`, which is not one of the
+// package's public error classes, so its name cannot be annotated the same way.
+const API_STOPPED = 'ApiStoppedError';
 
 export class InvalidAppExecutableManifestError extends Error {
   constructor(errors: readonly string[]) {
@@ -96,6 +99,7 @@ export type ErrorKind =
   | 'executable-manifest-invalid'
   | 'contenthash-unsupported'
   | 'chainhead-disjointed'
+  | 'chain-halted'
   | 'bitswap-no-peers'
   | 'failed-to-fetch'
   | 'unexpected-end-of-data'
@@ -127,6 +131,11 @@ export interface ErrorDescription {
 const CONNECTIVITY_TIPS = ['Checking your internet connection.'] as const;
 
 const BITSWAP_TIPS = ['Waiting a moment as the app may still be spreading across the network.'] as const;
+
+// The shared light client serves every dot.li tab and stays dead once it has
+// failed, so a reload alone joins the same dead worker while another tab
+// keeps it open. Only that backend has a worker to leave.
+const SHARED_WORKER_TIPS = ['Closing other dot.li tabs, then reloading.', ...CONNECTIVITY_TIPS] as const;
 
 // Quotes the option verbatim from `BACKEND_LABELS`, which is what the "Network
 // Transport" section of the Settings panel renders. Names the mode they are not
@@ -342,21 +351,12 @@ function classifyError(
       resetProtocol: true,
     };
   }
-  if (msg.includes('worker init timed out')) {
-    return {
-      kind: 'worker-init-timeout',
-      title: ERROR_TITLES.HOST_UNAVAILABLE,
-      message: HOST_ERRORS.WORKER_INIT_TIMEOUT,
-      recovery: 'switch-backend',
-      tips: [],
-      resetProtocol: true,
-    };
-  }
   if (err instanceof ProtocolInitFailedError) {
     return {
       kind: 'protocol-init-failed',
       message: HOST_ERRORS.SW_FAILED_TO_START,
       recovery: 'switch-backend',
+      ...(getBackend() === 'smoldot-shared-worker' ? { tips: SHARED_WORKER_TIPS } : {}),
     };
   }
   if (msg.includes('timed out') || msg.includes('Timed out')) {
@@ -364,6 +364,25 @@ function classifyError(
       kind: isP2p ? 'light-client-timeout' : 'rpc-timeout',
       message: isP2p ? HOST_ERRORS.LIGHT_CLIENT_TIMEOUT : HOST_ERRORS.RPC_TIMEOUT,
       recovery: 'switch-backend',
+    };
+  }
+  // The chain under the resolution halted, and so did the one retry the
+  // protocol context gives it on the rebuilt chain. Either the pool answered a
+  // read in flight (`Chain transport halted`), or the follow stopped
+  // (`ApiStoppedError`, `chainHead follow stopped`). Like `chainhead-disjointed`
+  // nothing on the visitor's side explains it. Unlike it, nothing survives in
+  // the light client either: the next connect rebuilds the chain, so a plain
+  // reload is enough and needs no purge.
+  if (
+    msg.includes('Chain transport halted') ||
+    msg.includes('chainHead follow stopped') ||
+    (err instanceof Error && err.name === API_STOPPED)
+  ) {
+    return {
+      kind: 'chain-halted',
+      message: HOST_ERRORS.NETWORK_DROPPED,
+      recovery: 'switch-backend',
+      tips: [],
     };
   }
   return { kind: 'unknown', message: msg, recovery: 'switch-backend' };

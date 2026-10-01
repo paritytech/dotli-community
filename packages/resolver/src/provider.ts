@@ -147,11 +147,9 @@ function getHandle(): Promise<ChainProviderHandle> {
   return handlePromise;
 }
 
-// A connection that ends without `disconnect()` leaves every in-flight
-// request on that chain waiting forever: papi has no error channel on a
-// `JsonRpcProvider`, so a half-open transport is indistinguishable from a
-// quiet one. Surface it here and let the protocol layer reject pending work
-// the way the smoldot panic broadcast used to.
+// Reports a light client that cannot connect a chain, which leaves the app
+// with no way to reach any chain. A single chain that stops responding is not
+// reported here: it halts alone through its `onHalt` hook.
 type FatalCallback = (message: string) => void;
 const fatalListeners = new Set<FatalCallback>();
 let fatalMessage: string | null = null;
@@ -281,7 +279,9 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
  *
  * `hooks` hears each connection's status, and a halt when it fails or its
  * stream ends without `disconnect()`: smoldot does not reconnect underneath
- * its consumers, so that connection is gone for good.
+ * its consumers, so that connection is gone for good. Only a light client that
+ * cannot connect the chain also raises `onProviderFatal`; a chain that fails
+ * after it connected halts alone.
  */
 export function createChainProvider(genesisHash: string, hooks?: ChainTransportHooks): JsonRpcProvider | null {
   const key = genesisHash.toLowerCase();
@@ -318,6 +318,9 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
       // Set when the response stream ends, so the halt runs once, outside the
       // `try`: a throwing hook must not reach the `catch` and halt again.
       let streamEnded = false;
+      // Set once the light client has connected the chain. Only a failure
+      // before that is the light client's; one after it is this chain's.
+      let connected = false;
       try {
         const handle = await getHandle();
         // Must precede `connect`: only a chain's first add consumes a blob.
@@ -328,6 +331,7 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           return;
         }
         state.connection = candidate;
+        connected = true;
         hooks?.onStatus('connected');
         for (const message of queued) {
           candidate.send(message);
@@ -363,16 +367,24 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
           onMessage(parsed);
         }
       } catch (error) {
-        markFatal(`chain ${key} connection failed: ${error instanceof Error ? error.message : String(error)}`);
+        const reason = error instanceof Error ? error.message : String(error);
+        if (connected) {
+          // A malformed response, a throwing consumer or a broken read on
+          // this chain: it halts alone, as when its stream ends.
+          log.warn(`[dot.li provider] chain ${key} read failed, halting it: ${reason}`);
+        } else {
+          markFatal(`chain ${key} connection failed: ${reason}`);
+        }
         if (!isClosed()) {
           fail(error);
         }
       }
       // Only `disconnect()` makes the end of the stream orderly. Otherwise the
       // transport died or overflowed its send budget, and no further response
-      // will ever arrive on this chain.
+      // will ever arrive on this chain. That halts this chain through the
+      // pool; a crashed light client surfaces as `fatal` when the next
+      // connect fails.
       if (streamEnded && !isClosed()) {
-        markFatal(`chain ${key} stopped responding`);
         try {
           fail(new Error(`chain ${key} stopped responding`));
         } catch (error) {
@@ -403,33 +415,5 @@ export function createChainProvider(genesisHash: string, hooks?: ChainTransportH
         state.connection = null;
       },
     };
-  };
-}
-
-/**
- * Open a connection to a chain for no reason but to watch it.
- *
- * Every other connection exists because something reads that chain. The relay
- * is the exception: smoldot runs it as the parent of the parachains, so papi
- * never dials it and no sync tap would ever attach. Its warp sync is both the
- * slowest part of a cold start and the only one that reports a true
- * percentage, which is worth one otherwise idle connection to observe.
- *
- * Returns a stop function. No-op for a genesis this network does not define.
- */
-export function observeChain(genesisHash: string): () => void {
-  const factory = createChainProvider(genesisHash);
-  if (factory === null) {
-    return () => {
-      /* nothing was opened */
-    };
-  }
-  const connection = factory(() => {
-    // Nothing reads this chain. Responses to the requests the tap itself sent are
-    // consumed before they reach here. Anything else is chain chatter we
-    // opened the connection to provoke, not to handle.
-  });
-  return () => {
-    connection.disconnect();
   };
 }

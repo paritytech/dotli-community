@@ -82,6 +82,11 @@ import {
 } from './host-callbacks/SessionStore.js';
 
 export { setPageProduct } from './page-core.js';
+// The host boot already awaits this module, and the pool behind these leases
+// is already in it (through the page core's callbacks), so the gateway
+// resolver and the settings probe take their leases from here rather than
+// from a chunk of their own.
+export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.js';
 import { setProductLoaded } from './state/product.js';
 import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';

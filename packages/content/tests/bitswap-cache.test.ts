@@ -18,7 +18,8 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock('@dotli/protocol', () => ({
+vi.mock(import('@dotli/protocol'), async importOriginal => ({
+  ...(await importOriginal()),
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));

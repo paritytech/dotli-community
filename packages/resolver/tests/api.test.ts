@@ -8,7 +8,7 @@ import { toHex } from '@polkadot-api/utils';
 import { createRawApi, ApiStoppedError, type Api, type ContractStorage } from '../src/api.js';
 import { readMappingBytes, readNestedMappingString } from '../src/access-raw-storage.js';
 import { PartialStorageReadError } from '../src/errors.js';
-import { createChainBrokerManager } from '@dotli/protocol';
+import { createChainPool } from '@dotli/protocol';
 
 const ADDRESS = `0x${'11'.repeat(20)}`;
 const KEY = `0x${'22'.repeat(32)}` as const;
@@ -188,7 +188,7 @@ function server(shared = false): StorageServer {
       disconnect() {},
     };
   };
-  const manager = shared ? createChainBrokerManager(() => provider) : null;
+  const manager = shared ? createChainPool({ createTransport: () => provider, destroyDelay: Infinity }) : null;
   const client = createClient(manager?.getLocalProvider('test-chain') ?? provider);
   return {
     client,
