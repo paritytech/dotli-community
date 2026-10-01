@@ -7,6 +7,7 @@ import type {
   JsonRpcRequest as UpstreamJsonRpcRequest,
 } from '@polkadot-api/json-rpc-provider';
 import { log } from '@dotli/shared';
+import { chainHaltedError } from './chain-halted.js';
 
 /**
  * String-wire variant of `JsonRpcConnection` exposed by `connectRemote`.
@@ -123,8 +124,11 @@ function isJsonRpcObject(value: unknown): value is Record<string, unknown> & { j
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function buildJsonRpcError(id: JsonRpcId, message: string): Record<string, unknown> {
-  return { jsonrpc: '2.0', id, error: { code: -32603, message } };
+function buildJsonRpcError(
+  id: JsonRpcId,
+  error: string | ReturnType<typeof chainHaltedError>,
+): Record<string, unknown> {
+  return { jsonrpc: '2.0', id, error: typeof error === 'string' ? { code: -32603, message: error } : error };
 }
 
 function buildJsonRpcResult(id: JsonRpcId, result: unknown): Record<string, unknown> {
@@ -326,13 +330,13 @@ export class ChainBroker {
   private answerHaltedSession(session: Session): void {
     for (const entry of this.pending.values()) {
       if (entry.sessionId === session.id && entry.clientId !== null) {
-        this.sendToSession(session, buildJsonRpcError(entry.clientId, 'Chain transport halted'));
+        this.sendToSession(session, buildJsonRpcError(entry.clientId, chainHaltedError()));
       }
     }
     for (const sharedFollow of this.sharedFollows.values()) {
       for (const pendingLocal of sharedFollow.pendingLocals) {
         if (pendingLocal.sessionId === session.id && pendingLocal.requestId !== null) {
-          this.sendToSession(session, buildJsonRpcError(pendingLocal.requestId, 'Chain transport halted'));
+          this.sendToSession(session, buildJsonRpcError(pendingLocal.requestId, chainHaltedError()));
         }
       }
     }

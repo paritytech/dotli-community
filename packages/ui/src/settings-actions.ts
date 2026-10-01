@@ -8,7 +8,7 @@
 // settings, before any island has loaded.
 
 import { formatAppVersion, getActiveAppManifest, getActiveRootManifest } from '@dotli/shared';
-import { createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
+import { isRemoteChainSupported } from '@dotli/protocol';
 import {
   getCacheSettings,
   setCacheSettings,
@@ -26,6 +26,7 @@ import {
 } from '@dotli/config';
 import { clearCidCache, clearBlockCache } from '@dotli/storage';
 
+import { loadBridge } from './lazy.js';
 import { ALL_PERMISSIONS, getPermissionStatuses } from './permissions.js';
 import { getProductState } from './state/product.js';
 import { THEME_KEY } from './theme-controller.js';
@@ -401,23 +402,25 @@ export function buildLightClientVersionLabel(): string {
 }
 
 /**
- * Query the finalized block number for a given chain through the protocol
- * iframe's `chainConnect` bridge. Works across all chain backends:
- *   - smoldot-shared-worker / smoldot-direct: goes through smoldot
- *   - rpc: goes through the curated WSS endpoint
+ * Query the finalized block number for a given chain over a lease on the host
+ * pool, the connection the products use. Works across all chain backends:
+ *   - smoldot-shared-worker / smoldot-direct: the protocol frame's light client
+ *   - rpc: the host page's socket to the curated WSS endpoint
  *
  * Returns `null` if the chain isn't supported by the active backend (e.g.
  * asking for relay in rpc mode, which only supports Asset Hub) or if the
- * query doesn't resolve within the timeout. The heavy `polkadot-api` import
- * stays dynamic so opening the popover is cheap when the user doesn't care
- * about blocks.
+ * query doesn't resolve within the timeout. The pool comes with the bridge
+ * chunk and `polkadot-api` with its own, both loaded here: this module is on
+ * the eager path, and opening the popover stays cheap when the user doesn't
+ * care about blocks.
  */
 export async function queryFinalizedBlock(genesisHash: string): Promise<number | null> {
   try {
     if (!isRemoteChainSupported(genesisHash)) {
       return null;
     }
-    const provider = createRemoteChainProvider(genesisHash);
+    const { hostChainProvider } = await loadBridge();
+    const provider = hostChainProvider(genesisHash);
     if (provider === null) {
       return null;
     }

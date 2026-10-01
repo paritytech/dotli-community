@@ -17,12 +17,13 @@ export {
 } from './auth-storage.js';
 export { requireBrokerLocalProvider, type ChainBrokerManager, type StringJsonRpcConnection } from './broker.js';
 export {
-  createChainBrokerManager,
-  createChainPool,
-  type ChainPool,
-  type ChainPoolOptions,
-  type LeaseProvider,
-} from './chain-pool.js';
+  CHAIN_HALTED_ERROR_DATA,
+  chainHaltedError,
+  ChainHaltError,
+  haltReasonOf,
+  type RemoteChainHalt,
+} from './chain-halted.js';
+export { createChainPool, type ChainPool, type ChainPoolOptions, type LeaseProvider } from './chain-pool.js';
 export {
   clearSharedAuthStorage,
   clearSharedModeStorage,
@@ -30,11 +31,14 @@ export {
   ensureProtocolFrame,
   getProtocolOrigin,
   getSmoldotDbOutcome,
+  isProtocolBooting,
+  isProtocolReady,
   isRemoteChainConnectable,
   isRemoteChainSupported,
   onProtocolChainDetail,
   onProtocolChainSync,
   onProtocolNetBytes,
+  onProtocolReady,
   readSharedAuthStorage,
   readSharedModeStorage,
   resetProtocolFrame,
@@ -43,6 +47,7 @@ export {
   resolveRootManifestRemote,
   setProtocolSubMode,
   subscribeSharedAuthStorage,
+  type RemoteChainProvider,
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,

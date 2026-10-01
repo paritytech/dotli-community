@@ -4,8 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
+import type * as SharedModule from '@dotli/shared';
 import type { ChainTransportHooks } from '@dotli/resolver';
-import { createChainConnect, createHostChainPool } from '../src/host-callbacks/Chain.js';
+import type * as ClientModule from '../../protocol/src/client.js';
+import type { ChainPool, LeaseProvider } from '@dotli/protocol';
+import type * as ChainModule from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface Upstream {
@@ -19,9 +22,9 @@ interface Upstream {
 const mocks = vi.hoisted(() => ({
   backend: 'smoldot-shared-worker',
   upstreams: [] as Upstream[],
-  createSmoldotChainProvider: vi.fn(),
+  createFrameChainTransport: vi.fn(),
   createCoreRpcChainProvider: vi.fn(),
-  isSmoldotChainSupported: vi.fn(),
+  isRemoteChainConnectable: vi.fn(),
   isCoreRpcChainSupported: vi.fn(),
 }));
 
@@ -29,9 +32,13 @@ vi.mock('../../config/src/mode.js', () => ({
   getBackend: () => mocks.backend,
 }));
 
-vi.mock('../../resolver/src/provider.js', () => ({
-  createChainProvider: mocks.createSmoldotChainProvider,
-  isChainSupported: mocks.isSmoldotChainSupported,
+vi.mock('../src/host-callbacks/frame-transport.js', () => ({
+  createFrameChainTransport: mocks.createFrameChainTransport,
+}));
+
+vi.mock('../../protocol/src/client.js', async importOriginal => ({
+  ...(await importOriginal<typeof ClientModule>()),
+  isRemoteChainConnectable: mocks.isRemoteChainConnectable,
 }));
 
 vi.mock('../../resolver/src/rpc-chain.js', () => ({
@@ -70,23 +77,37 @@ function recordingTransport(
 describe('createChainConnect', () => {
   const people = getActiveServicesConfig().people.genesis;
   const assetHub = getActiveServicesConfig().assethub.genesis;
+  let createChainConnect: typeof ChainModule.createChainConnect;
+  let createHostChainPool: typeof ChainModule.createHostChainPool;
+  let hostAssetHubProvider: typeof ChainModule.hostAssetHubProvider;
+  let log: typeof SharedModule.log;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Chain.ts keeps its gates at module level: a fresh module has them as a
+    // fresh page does.
+    vi.resetModules();
+    ({ createChainConnect, createHostChainPool, hostAssetHubProvider } =
+      await import('../src/host-callbacks/Chain.js'));
+    ({ log } = await import('@dotli/shared'));
     vi.clearAllMocks();
     mocks.backend = 'smoldot-shared-worker';
     mocks.upstreams = [];
-    mocks.createSmoldotChainProvider.mockImplementation(recordingTransport);
+    mocks.createFrameChainTransport.mockImplementation(recordingTransport);
     mocks.createCoreRpcChainProvider.mockImplementation(recordingTransport);
-    mocks.isSmoldotChainSupported.mockReturnValue(true);
+    mocks.isRemoteChainConnectable.mockReturnValue(true);
     mocks.isCoreRpcChainSupported.mockReturnValue(true);
   });
 
-  it('As a dotli integrator, the host routes chain connections through the selected smoldot backend', async () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("As a dotli integrator, the host routes chain connections on a light client backend through the protocol frame's light client", async () => {
     // When
     await createChainConnect(createHostChainPool(0))(hexBytes(people));
 
     // Then
-    expect(mocks.createSmoldotChainProvider).toHaveBeenCalledWith(
+    expect(mocks.createFrameChainTransport).toHaveBeenCalledWith(
       people.toLowerCase(),
       expect.objectContaining({ onStatus: expect.any(Function) as unknown, onHalt: expect.any(Function) as unknown }),
     );
@@ -102,7 +123,7 @@ describe('createChainConnect', () => {
 
     // Then
     expect(mocks.createCoreRpcChainProvider).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
-    expect(mocks.createSmoldotChainProvider).not.toHaveBeenCalled();
+    expect(mocks.createFrameChainTransport).not.toHaveBeenCalled();
   });
 
   it('As a dotli integrator, core connections to one chain share one transport', async () => {
@@ -150,7 +171,7 @@ describe('createChainConnect', () => {
     second.close();
   });
 
-  it('As a dotli integrator, a halted chain transport ends the core connection stream', async () => {
+  it('As a dotli integrator, a halted chain transport leaves the core connection stream open', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     const responses = connection.responses()[Symbol.asyncIterator]();
@@ -158,12 +179,67 @@ describe('createChainConnect', () => {
 
     // When
     must(mocks.upstreams[0], 'upstream').hooks.onHalt(new Error('chain stopped responding'));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    const rebuilt = must(mocks.upstreams[1], 'rebuilt upstream');
+    rebuilt.emit({ jsonrpc: '2.0', id: must(must(rebuilt.sent[0], 'request').id, 'id'), result: 'People' });
 
     // Then
-    expect((await pending).done).toBe(true);
+    expect(JSON.parse(yielded(await pending))).toEqual({ jsonrpc: '2.0', id: 'truapi:2', result: 'People' });
+    connection.close();
   });
 
-  it('As a dotli integrator, a halted chain transport still delivers the messages queued before it, then ends the stream', async () => {
+  it('As a dotli integrator, a lease that halts before it is handed over is not kept', async () => {
+    // Given: a pool whose first lease halts while it is being taken.
+    const live = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
+    const dead = { send: vi.fn<JsonRpcConnection['send']>(), disconnect: vi.fn<() => void>() };
+    let leases = 0;
+    const provider: LeaseProvider = (_onMessage, onHalt) => {
+      leases += 1;
+      if (leases === 1) {
+        onHalt?.(new Error('chain died while connecting'));
+        return dead;
+      }
+      return live;
+    };
+    const pool = { getLocalProvider: () => provider, status: () => 'disconnected' } as unknown as ChainPool;
+    const connection = await createChainConnect(pool)(hexBytes(people));
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the request went out on a new lease, not the dead one.
+    expect(dead.send).not.toHaveBeenCalled();
+    expect(live.send).toHaveBeenCalledTimes(1);
+    connection.close();
+    expect(live.disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a dotli integrator, a request after a halt that no new transport can serve is answered at once', async () => {
+    // Given
+    const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(mocks.upstreams[0], 'upstream').hooks.onHalt(new Error('chain stopped responding'));
+    mocks.createFrameChainTransport.mockReturnValue(null);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+
+    // When
+    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:2', method: 'chainSpec_v1_chainName', params: [] }));
+    connection.send(JSON.stringify({ jsonrpc: '2.0', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the request gets the halted error, the notification nothing.
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({
+      jsonrpc: '2.0',
+      id: 'truapi:2',
+      error: { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' },
+    });
+    expect(warn).toHaveBeenCalledWith(
+      `[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`,
+    );
+    connection.close();
+    expect((await responses.next()).done).toBe(true);
+  });
+
+  it('As a dotli integrator, a halted chain transport still delivers the messages queued before it', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     connection.send(
@@ -190,10 +266,11 @@ describe('createChainConnect', () => {
       method: 'transactionWatch_v1_watchEvent',
       params: { subscription: ack.result, result: { event: 'dropped' } },
     });
+    connection.close();
     expect((await responses.next()).done).toBe(true);
   });
 
-  it('As a dotli integrator, a halted chain transport answers a request in flight before the stream ends', async () => {
+  it('As a dotli integrator, a halted chain transport answers a request in flight', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
     connection.send(
@@ -210,8 +287,9 @@ describe('createChainConnect', () => {
     const responses = connection.responses()[Symbol.asyncIterator]();
     expect(JSON.parse(yielded(await responses.next()))).toMatchObject({
       id: 'truapi:9',
-      error: { message: 'Chain transport halted' },
+      error: { message: 'Chain transport halted', data: 'dotli:chain-halted' },
     });
+    connection.close();
     expect((await responses.next()).done).toBe(true);
   });
 
@@ -242,16 +320,19 @@ describe('createChainConnect', () => {
       vi.useRealTimers();
     });
 
-    it('As a dotli integrator, a smoldot chain stays open after its last connection closes', async () => {
+    it('As a dotli user on a light client backend, a chain closes a minute after its last connection closes', async () => {
       // Given
       const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+      const upstream = must(mocks.upstreams[0], 'upstream');
 
       // When
       connection.close();
-      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(59_999);
 
       // Then
-      expect(must(mocks.upstreams[0], 'upstream').disconnect).not.toHaveBeenCalled();
+      expect(upstream.disconnect).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(upstream.disconnect).toHaveBeenCalledTimes(1);
     });
 
     it('As a dotli user on Trusted Providers, an RPC chain closes after its last connection closes', async () => {
@@ -292,5 +373,38 @@ describe('createChainConnect', () => {
     // Then
     expect(connect).toThrow(`Unsupported RPC chain: ${people.toLowerCase()}`);
     expect(mocks.createCoreRpcChainProvider).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli integrator, a chain the protocol frame cannot serve is refused before any transport is built', () => {
+    // Given
+    mocks.isRemoteChainConnectable.mockReturnValue(false);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+
+    // When
+    const connect = (): unknown => createChainConnect(createHostChainPool(0))(hexBytes(people));
+
+    // Then
+    expect(connect).toThrow(`Unsupported smoldot chain: ${people.toLowerCase()}`);
+    expect(mocks.createFrameChainTransport).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      `[dot.li truapi-chain] smoldot backend doesn't support ${people.toLowerCase()}; product call will fail`,
+    );
+  });
+
+  it("As a dotli user on Trusted Providers, name resolution leases the pool's one Asset Hub transport", () => {
+    // Given
+    mocks.backend = 'rpc-gateway';
+    const received: JsonRpcMessage[] = [];
+
+    // When
+    const first = hostAssetHubProvider()(message => received.push(message));
+    const second = hostAssetHubProvider()(message => received.push(message));
+
+    // Then
+    expect(mocks.createCoreRpcChainProvider).toHaveBeenCalledWith(assetHub.toLowerCase(), expect.any(Object));
+    expect(mocks.upstreams).toHaveLength(1);
+    expect(must(mocks.upstreams[0], 'upstream').opened).toBe(1);
+    first.disconnect();
+    second.disconnect();
   });
 });

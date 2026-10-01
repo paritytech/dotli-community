@@ -226,9 +226,15 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         return null;
       }
       try {
+        // Prefixed so no remote id can collide with a local lease's `local:N`.
         return lease(
           entry,
-          entry.broker.connect(connectionId, onMessage as (message: unknown) => void, 'string', onHalt ?? null),
+          entry.broker.connect(
+            `remote:${connectionId}`,
+            onMessage as (message: unknown) => void,
+            'string',
+            onHalt ?? null,
+          ),
         );
       } catch (error) {
         idle(entry);
@@ -309,18 +315,4 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
       }
     },
   };
-}
-
-/**
- * The protocol iframe's and SharedWorker's broker manager: a pool that keeps
- * every chain once opened, as the manager always has. The next sub-project
- * moves them onto `createChainPool` with a finite delay.
- */
-export function createChainBrokerManager(
-  createProvider: (genesisHash: string) => JsonRpcProvider | null,
-): ChainBrokerManager {
-  return createChainPool({
-    createTransport: genesisHash => createProvider(genesisHash),
-    destroyDelay: Infinity,
-  });
 }
