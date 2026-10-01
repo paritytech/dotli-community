@@ -12,9 +12,9 @@
 /// <reference lib="webworker" />
 declare const self: SharedWorkerGlobalScope;
 
-import type { StringJsonRpcConnection, SmoldotDbChain, SmoldotDbOutcome } from '@dotli/protocol';
+import type { SmoldotDbChain, SmoldotDbOutcome } from '@dotli/protocol';
 
-import { MAX_CONNECTIONS_PER_ORIGIN, isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@dotli/config';
+import { isValidNetwork, setNetworkOverride, getActiveServicesConfig } from '@dotli/config';
 
 import {
   createChainProvider,
@@ -34,7 +34,8 @@ import {
 import { m, initSentry, installGlobalErrorHandlers, spans as S } from '@dotli/metrics';
 
 import {
-  createChainBrokerManager,
+  createChainPool,
+  type ChainPool,
   requireBrokerLocalProvider,
   isSharedAuthRequestMethod,
   isSharedModeRequestMethod,
@@ -46,6 +47,7 @@ import {
 import { errorName, serializeError, isExecutableKind } from '@dotli/shared';
 
 import { PROTOCOL_APP_ERRORS } from './errors.js';
+import { createWorkerChainSessions, type WorkerChainSessions } from './worker-chains.js';
 
 initSentry('worker');
 installGlobalErrorHandlers('worker');
@@ -86,10 +88,6 @@ function swError(...args: unknown[]): void {
   console.error(TAG, ...args);
 }
 
-const MAX_CHAIN_CONNECTIONS = 10;
-const chainConnections = new Map<string, StringJsonRpcConnection>();
-const originConnections = new Map<string, Set<string>>();
-const connectionPorts = new Map<string, MessagePort>();
 const ports = new Set<MessagePort>();
 const pendingPorts: MessagePort[] = [];
 let engineReady = false;
@@ -134,8 +132,16 @@ onSmoldotDbOutcome((chain, outcome) => {
   });
 });
 
-// Placeholder broker manager until pre-sync creates the real one.
-let chainBrokerManager: ReturnType<typeof createChainBrokerManager>;
+// Created by pre-sync.
+let chainPool: ChainPool | null = null;
+let chainSessions: WorkerChainSessions | null = null;
+
+function requireChainSessions(): WorkerChainSessions {
+  if (chainSessions === null) {
+    throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
+  }
+  return chainSessions;
+}
 
 // NO retries. NO cleanup-and-retry. NO backoff. The user picked
 // smoldot-shared-worker. If presync fails the actual cause is surfaced to
@@ -152,16 +158,21 @@ async function presync(): Promise<void> {
     // through it as a local session, so there is one shared Asset Hub follow
     // (never removed mid-read) instead of a separate resolver chain the first
     // dApp connection would release — the `ChainHead disjointed` load failure.
-    chainBrokerManager = createChainBrokerManager(createChainProvider);
+    chainPool = createChainPool({
+      createTransport: genesisHash => createChainProvider(genesisHash),
+      destroyDelay: Infinity,
+    });
+    chainSessions = createWorkerChainSessions(chainPool, isChainSupported, sendToPort, swLog);
+    const pool = chainPool;
     setResolverAssetHubProvider(() =>
-      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
+      requireBrokerLocalProvider(pool, getActiveServicesConfig().assethub.genesis, 'Asset Hub'),
     );
     // The People warm-keep must share this same broker follow. A separate
     // getSmProvider on the People chain would race the broker's follow (one
     // shared smoldot JSON-RPC queue) and have its events misrouted, so the
     // broker drops People follow events as "unknown token" and reads hang.
     setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().people.genesis, 'People'),
+      requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
     );
 
     // Wait for Asset Hub to sync to a finalized block via the
@@ -196,7 +207,7 @@ async function presync(): Promise<void> {
     // Route the People warm-up through the broker's shared follow (mirrors
     // Asset Hub above) so it doesn't open a second competing smoldot follow.
     setResolverPeopleProvider(() =>
-      requireBrokerLocalProvider(chainBrokerManager, getActiveServicesConfig().people.genesis, 'People'),
+      requireBrokerLocalProvider(pool, getActiveServicesConfig().people.genesis, 'People'),
     );
     void waitForPeopleFinalized(msg => {
       swLog(`People warm status: ${msg}`);
@@ -265,22 +276,7 @@ function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
 
 function removePort(port: MessagePort): void {
   ports.delete(port);
-  let cleaned = 0;
-  for (const [connId, connPort] of connectionPorts) {
-    if (connPort === port) {
-      const connection = chainConnections.get(connId);
-      connection?.disconnect();
-      chainConnections.delete(connId);
-      connectionPorts.delete(connId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(connId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      cleaned++;
-    }
-  }
+  const cleaned = chainSessions?.removePort(port) ?? 0;
   swLog(`Port removed (cleaned ${String(cleaned)} connections, ${String(ports.size)} ports remaining)`);
 }
 
@@ -392,42 +388,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       const payload = request.payload as ProtocolRequestMap['chainConnect'];
       assertString(payload.genesisHash, 'genesisHash');
       assertString(payload.connectionId, 'connectionId');
-      if (chainConnections.size >= MAX_CHAIN_CONNECTIONS) {
-        throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
-      }
-      const originConns = originConnections.get(origin) ?? new Set<string>();
-      if (originConns.size >= MAX_CONNECTIONS_PER_ORIGIN) {
-        throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
-      }
-      if (!isChainSupported(payload.genesisHash)) {
-        throw new Error(`Unsupported chain: ${payload.genesisHash}`);
-      }
-      // The resolver and all dApp sessions share one Asset Hub chain via the
-      // broker, so there is no resolver chain to release here; connect
-      // directly.
-      let chainMsgCount = 0;
-      const connection = chainBrokerManager.connectRemote(payload.genesisHash, payload.connectionId, message => {
-        chainMsgCount++;
-        if (chainMsgCount <= 5 || chainMsgCount % 100 === 0) {
-          swLog(
-            `Chain message #${String(chainMsgCount)} for ${payload.connectionId} (${String(message.length)} bytes)`,
-          );
-        }
-        sendToPort(port, {
-          namespace: 'dotli:protocol',
-          kind: 'chain-message',
-          connectionId: payload.connectionId,
-          message,
-        });
-      });
-      if (connection === null) {
-        throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
-      }
-      chainConnections.set(payload.connectionId, connection);
-      connectionPorts.set(payload.connectionId, port);
-      originConns.add(payload.connectionId);
-      originConnections.set(origin, originConns);
-      swLog(`Chain connected: ${payload.connectionId} (${String(chainConnections.size)} total)`);
+      requireChainSessions().connect(port, origin, payload.genesisHash, payload.connectionId);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -442,11 +403,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
       const payload = request.payload as ProtocolRequestMap['chainSend'];
       assertString(payload.connectionId, 'connectionId');
       assertString(payload.message, 'message');
-      const connection = chainConnections.get(payload.connectionId);
-      if (connection === undefined) {
-        throw new Error(`Unknown chain connection: ${payload.connectionId}`);
-      }
-      connection.send(payload.message);
+      requireChainSessions().send(origin, payload.connectionId, payload.message);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
@@ -460,17 +417,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     case 'chainDisconnect': {
       const payload = request.payload as ProtocolRequestMap['chainDisconnect'];
       assertString(payload.connectionId, 'connectionId');
-      const connection = chainConnections.get(payload.connectionId);
-      connection?.disconnect();
-      chainConnections.delete(payload.connectionId);
-      connectionPorts.delete(payload.connectionId);
-      for (const [orig, conns] of originConnections) {
-        conns.delete(payload.connectionId);
-        if (conns.size === 0) {
-          originConnections.delete(orig);
-        }
-      }
-      swLog(`Chain disconnected: ${payload.connectionId} (${String(chainConnections.size)} remaining)`);
+      requireChainSessions().disconnect(origin, payload.connectionId);
       sendToPort(port, {
         namespace: 'dotli:protocol',
         kind: 'response',
