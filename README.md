@@ -423,8 +423,9 @@ is deployed; rebuild from that tag to verify a deployment.
 ## Debug panel
 
 dot.li ships a TrUAPI debug panel that aggregates host-side activity (boot/resolve/render/bridge events, TrUAPI
-host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk is dynamically imported, so
-users who never see it pay no download cost.
+host↔product messages, SSO/session events) into one time-aligned inspector. The panel chunk and stylesheet are
+dynamically imported together, so its initial dock measurement uses the styled size even on a cold load. Users who never
+see the panel pay no download cost.
 
 In builds compiled with `VITE_APP_DEBUG=true` (local `npm run preview:debug`, and the staging dev deploy at
 `paseoli.dev`) the panel auto-mounts collapsed. In staging/production it's off until you click **Open in debug mode** in
