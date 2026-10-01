@@ -251,4 +251,38 @@ describe('createRemoteChainProvider halts', () => {
     // Then
     expect(listener).toHaveBeenCalledTimes(2);
   });
+
+  it('As a dotli integrator, a consumer that throws while its queued send is closed cannot stop the rest from halting', async () => {
+    // Given
+    const logError = vi.spyOn(log, 'error').mockImplementation(() => undefined);
+    const provider = createRemoteChainProvider(getActiveServicesConfig().people.genesis);
+    if (provider === null) {
+      throw new Error('People is not remote-connectable');
+    }
+    const throwing = provider(() => {
+      throw new Error('consumer bug');
+    });
+    throwing.send({ jsonrpc: '2.0', id: 1, method: 'chainSpec_v1_genesisHash', params: [] });
+    const frame = await bootFrame();
+    const chainConnect = frame.posted.find(envelope => envelope.method === 'chainConnect');
+    if (chainConnect === undefined) {
+      throw new Error('no chainConnect posted');
+    }
+    const secondHalt: Mock<(reason: RemoteChainHalt) => void> = vi.fn<(reason: RemoteChainHalt) => void>();
+    const second = createRemoteChainProvider(getActiveServicesConfig().people.genesis)?.(() => undefined, secondHalt);
+    if (second === undefined) {
+      throw new Error('People is not remote-connectable');
+    }
+    await flush();
+
+    // When
+    frame.deliver({ namespace: 'dotli:protocol', kind: 'fatal', message: 'boom' });
+    await flush();
+
+    // Then
+    expect(logError).toHaveBeenCalledWith(expect.stringContaining('onMessage threw'), 'consumer bug');
+    expect(secondHalt).toHaveBeenCalledTimes(1);
+    expect(secondHalt).toHaveBeenCalledWith('frame');
+    expect(document.querySelector('iframe')).toBeNull();
+  });
 });

@@ -298,12 +298,14 @@ function bindMessageListener(): void {
         // `ensureProtocolFrame()` call can attempt a clean re-boot (e.g.
         // after the user switches settings) instead of being stuck on a
         // poisoned cached rejection.
-        const orphaned = [...chainConnections];
+        // Reset before halting: a `'frame'` listener that dials again must
+        // not attach to the dead frame.
+        const orphanedConnections = [...chainConnections];
         chainConnections.clear();
-        for (const [id, connection] of orphaned) {
+        resetProtocolFrameState(err);
+        for (const [id, connection] of orphanedConnections) {
           haltRemote(id, connection, 'frame');
         }
-        resetProtocolFrameState(err);
         return;
       }
       case 'chain-message': {
@@ -794,7 +796,14 @@ function haltRemote(connectionId: string, connection: RemoteChainConnection, rea
   for (const message of connection.pendingMessages) {
     const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
     if (errResponse !== null) {
-      connection.onMessage(errResponse);
+      try {
+        connection.onMessage(errResponse);
+      } catch (err: unknown) {
+        log.error(
+          `[dot.li protocol] onMessage threw (conn=${connectionId.slice(-8)}):`,
+          err instanceof Error ? err.message : err,
+        );
+      }
     }
   }
   connection.pendingMessages = [];
@@ -852,6 +861,10 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         remote.pendingMessages = [];
       })
       .catch((error: unknown) => {
+        // Already halted or disconnected: whoever removed it has told the consumer.
+        if (chainConnections.get(connectionId) !== remote) {
+          return;
+        }
         // Connection failed. Send JSON-RPC error responses for all
         // pending messages so polkadot-api's client knows the connection
         // died instead of hanging on "Not connected" forever.
