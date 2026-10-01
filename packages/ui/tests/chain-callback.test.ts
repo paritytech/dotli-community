@@ -4,11 +4,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
-import { log } from '@dotli/shared';
+import type * as SharedModule from '@dotli/shared';
 import type { ChainTransportHooks } from '@dotli/resolver';
 import type * as ClientModule from '../../protocol/src/client.js';
 import type { ChainPool, LeaseProvider } from '@dotli/protocol';
-import { createChainConnect, createHostChainPool, hostAssetHubProvider } from '../src/host-callbacks/Chain.js';
+import type * as ChainModule from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface Upstream {
@@ -77,8 +77,18 @@ function recordingTransport(
 describe('createChainConnect', () => {
   const people = getActiveServicesConfig().people.genesis;
   const assetHub = getActiveServicesConfig().assethub.genesis;
+  let createChainConnect: typeof ChainModule.createChainConnect;
+  let createHostChainPool: typeof ChainModule.createHostChainPool;
+  let hostAssetHubProvider: typeof ChainModule.hostAssetHubProvider;
+  let log: typeof SharedModule.log;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // Chain.ts keeps its gates at module level: a fresh module has them as a
+    // fresh page does.
+    vi.resetModules();
+    ({ createChainConnect, createHostChainPool, hostAssetHubProvider } =
+      await import('../src/host-callbacks/Chain.js'));
+    ({ log } = await import('@dotli/shared'));
     vi.clearAllMocks();
     mocks.backend = 'smoldot-shared-worker';
     mocks.upstreams = [];
@@ -191,7 +201,7 @@ describe('createChainConnect', () => {
       }
       return live;
     };
-    const pool = { getLocalProvider: () => provider } as unknown as ChainPool;
+    const pool = { getLocalProvider: () => provider, status: () => 'disconnected' } as unknown as ChainPool;
     const connection = await createChainConnect(pool)(hexBytes(people));
 
     // When

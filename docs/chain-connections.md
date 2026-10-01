@@ -22,8 +22,9 @@ what happens when one breaks. This covers the work in #311 and #313 (issue
   the SharedWorker (re-syncing a light-client chain is expensive).
 - When a chain **halts** (dies for good), the pool first answers everything
   that was still waiting on it, then tells each lease holder. The next lease
-  builds the chain again. Holders reconnect on their own, and a name
-  resolution the halt cut off is retried once on the rebuilt chain.
+  builds the chain again. Holders reconnect on their own (a product's
+  requests through a backoff per chain), and a name resolution the halt cut
+  off is retried once on the rebuilt chain.
 - When the **light client itself** cannot work any more, that is a **fatal**.
   The host tears the protocol iframe down, every remote connection is told
   `'frame'`, and nothing redials by itself, except a product's own requests,
@@ -233,8 +234,10 @@ sequenceDiagram
   `onHalt('chain')`, and the host pool halts that chain the same way. Each
   TrUAPI core connection delivers its answers and stays open; its next request
   takes a new lease, which rebuilds the chain (a papi client in the product
-  re-follows on the `stop`, and lands there). Each block bar or probe client
-  hears `'chain'` (`hostChainProvider` reads the reason with `haltReasonOf`).
+  re-follows on the `stop`, and lands there), through that chain's gate (see
+  [the host pool's gates](#a-product-keeps-retrying-after-a-halt-the-host-pools-gates)).
+  Each block bar or probe client hears `'chain'` (`hostChainProvider` reads
+  the reason with `haltReasonOf`).
 
 ### …a chain halts while a page is loading
 
@@ -273,7 +276,9 @@ sequenceDiagram
   shapes, which needs only a reload; the existing `chainhead-disjointed` for
   the third, which also purges the light client's caches.
 - A light client that keeps dying does not loop: its next connect fails, and
-  that is a fatal.
+  that is a fatal. Nor does a single chain that halts again each time it is
+  rebuilt: products rebuild it only through its chain gate, and the block bars
+  back off.
 - `rpc-gateway` resolution needs no retry. Its RPC socket never halts: it
   reconnects and replays.
 
@@ -307,27 +312,8 @@ sequenceDiagram
 - The host pool's remote connections hear `'frame'` too. Each halts its chain
   with `ChainHaltError('frame')`, and the block bars hear `'frame'` through the
   host pool. TrUAPI core connections deliver what was queued and stay open. A
-  product's next request on one takes a new lease when a frame is up again
-  (`isProtocolReady()`), or when the frame gate has opened. The gate is shared
-  by every core connection, so concurrent connections boot one frame per
-  window:
-  - it opens one delay (first 1 s) after a frame halt; a window left in the
-    past, by a live frame's refusal long ago, is armed again from the halt;
-  - each dial through it shuts it again and doubles the delay, up to 30 s;
-  - a frame reporting ready ends the wait but keeps the delay. In
-    `smoldot-direct` a new frame is ready before its light client has
-    connected a chain, and may answer for a while before it fails, so neither
-    ready nor an answer proves it works: a light client that keeps failing
-    keeps doubling;
-  - only uptime resets it: a frame halt more than 30 s after the last dial
-    through the gate opens the next window 1 s later, and the delay starts
-    again at 1 s. Once the backoff has grown, reboots come at most about once
-    per 31 s, whatever the frame does;
-  - a re-lease that finds no transport keeps the connection behind the gate.
-
-  A request the gate refuses, or one no lease can be taken for, is answered at
-  once with `Chain transport halted` (`data: 'dotli:chain-halted'`), so
-  nothing hangs.
+  product's next request on one takes a new lease through the frame gate
+  (below).
 - A connection that never reaches a frame halts with `'frame'` too: the frame
   did not come up in time, its iframe failed to load, or it refused the
   `chainConnect` (for example at its connection limit). So bitswap drops that
@@ -340,11 +326,54 @@ sequenceDiagram
   Such late failures, and those of sends still unacknowledged when a fatal
   arrives, are dropped quietly: the consumer has already heard `onHalt`.
 
+### …a product keeps retrying after a halt (the host pool's gates)
+
+A product's papi client re-follows every 250 ms, and after a halt each
+re-follow is a new lease on the host pool. After `'frame'` that lease boots a
+protocol frame. After `'chain'` it rebuilds the chain, which on the smoldot
+backends adds it to the light client again and syncs it again. So a TrUAPI
+core connection takes that lease only through a gate
+(`packages/ui/src/host-callbacks/redial-gate.ts`), and the host pool has two
+kinds:
+
+- **the frame gate**, one per page, after `'frame'`;
+- **a chain gate** per genesis hash, after `'chain'`.
+
+Each gate is shared by every core connection it covers, so concurrent
+connections dial once per window. Both work the same way:
+
+- each dial through a gate shuts it again and doubles the delay, from 1 s up
+  to 30 s;
+- a halt with the gate shut keeps it shut; one that finds its window in the
+  past (left there by a live frame's refusal long ago, say) arms it again from
+  the halt;
+- only uptime resets it: a halt more than 30 s after the last dial through
+  the gate starts it over. Once the backoff has grown, dials come at most
+  about once per 31 s, whatever the frame or the chain does;
+- a re-lease that finds no transport keeps the connection behind the gate.
+
+They differ in where they start, and in what lets a lease past them without
+a dial:
+
+| | Frame gate | Chain gate |
+| --- | --- | --- |
+| After the first halt, or a reset | waits 1 s | goes at once |
+| A lease passes without dialing when | a frame is up (`isProtocolReady()`) | the chain is in the host pool again (another connection rebuilt it) |
+| The wait also ends when | a frame reports ready (the delay stays) | never |
+
+A frame reporting ready keeps the delay because in `smoldot-direct` a new
+frame is ready before its light client has connected a chain, and may answer
+for a while before it fails. Neither ready nor an answer proves it works, so a
+light client that keeps failing keeps doubling.
+
+A request a gate refuses, or one no lease can be taken for, is answered at once
+with `Chain transport halted` (`data: 'dotli:chain-halted'`), so nothing hangs.
+
 ## Halt reasons at a glance
 
 | Reason | Comes from | What it means | What consumers do |
 | --- | --- | --- | --- |
-| `'chain'` | `chain-halt` envelope | That chain died; the pool rebuilds it on the next lease | Reconnect (bitswap at once, bars with backoff) |
+| `'chain'` | `chain-halt` envelope | That chain died; the pool rebuilds it on the next lease | Reconnect (bitswap at once, bars with backoff, a product's requests through the host pool's chain gate) |
 | `'frame'` | `fatal` / `init-failed` envelope, or a `chainConnect` that never succeeded | The protocol iframe or light client is gone, or never came up for this connection | Don't redial on your own; wait for user demand or `onProtocolReady`. A product's requests are demand, rate-limited by the host pool's frame gate |
 
 Through the host pool the reason travels as a `ChainHaltError`
@@ -367,6 +396,7 @@ Any other transport halt, such as a socket's, reads as `'chain'`.
 | Host error page classification | `apps/host/src/errors.ts` |
 | Host pool, TrUAPI chain connections, `hostChainProvider` | `packages/ui/src/host-callbacks/Chain.ts` |
 | Host pool's transport on the smoldot backends | `packages/ui/src/host-callbacks/frame-transport.ts` |
+| Host pool's frame and chain gates | `packages/ui/src/host-callbacks/redial-gate.ts` |
 | Settings probe | `packages/ui/src/settings-actions.ts` (`queryFinalizedBlock`) |
 | Block bars | `packages/ui/src/block-source.ts`, `packages/ui/src/block-watch.ts` |
 | Bitswap | `packages/content/src/bitswap.ts` |

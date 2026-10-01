@@ -15,6 +15,7 @@ import type * as ChainModule from '../src/host-callbacks/Chain.js';
 import { hexBytes, must, yielded } from './support.js';
 
 interface RemoteConnection {
+  genesisHash: string;
   sent: JsonRpcRequest[];
   emit: (message: JsonRpcMessage) => void;
   halt: (reason: RemoteChainHalt) => void;
@@ -52,6 +53,7 @@ function frameReady(): void {
 }
 
 const people = getActiveServicesConfig().people.genesis;
+const assetHub = getActiveServicesConfig().assethub.genesis;
 
 let createChainConnect: typeof ChainModule.createChainConnect;
 let createHostChainPool: typeof ChainModule.createHostChainPool;
@@ -73,8 +75,9 @@ describe('host chain pool on a light client backend', () => {
   // SharedWorker after a permanent fatal refuses it. `direct`: its frame
   // reports ready, then its light client fails, as in smoldot-direct.
   // `answering`: its frame reports ready and answers the first request, then
-  // its light client fails 1.5 s later.
-  let refuse: 'none' | 'worker' | 'direct' | 'answering';
+  // its light client fails 1.5 s later. `chain`: its chain halts at once, as a
+  // chain the frame's broker throws on each time does.
+  let refuse: 'none' | 'worker' | 'direct' | 'answering' | 'chain';
 
   beforeEach(() => {
     vi.useFakeTimers();
@@ -82,8 +85,9 @@ describe('host chain pool on a light client backend', () => {
     remotes = [];
     refuse = 'none';
     mocks.isProtocolReady.mockReturnValue(false);
-    mocks.createRemoteChainProvider.mockReset().mockImplementation(() => (onMessage, onHalt) => {
+    mocks.createRemoteChainProvider.mockReset().mockImplementation(genesisHash => (onMessage, onHalt) => {
       const remote: RemoteConnection = {
+        genesisHash,
         sent: [],
         emit: onMessage,
         halt: reason => onHalt?.(reason),
@@ -93,6 +97,10 @@ describe('host chain pool on a light client backend', () => {
       if (refuse !== 'none') {
         const mode = refuse;
         queueMicrotask(() => {
+          if (mode === 'chain') {
+            remote.halt('chain');
+            return;
+          }
           if (mode === 'answering') {
             frameReady();
             const id = remote.sent[0]?.id;
@@ -410,6 +418,150 @@ describe('host chain pool on a light client backend', () => {
       `[dot.li truapi-chain] no chain transport for ${people.toLowerCase()} after a halt`,
     );
     connection.close();
+  });
+
+  it('As a dotli user, a product retrying on a chain that halts right after each rebuild rebuilds it only as the backoff allows', async () => {
+    // Given: the chain halted, and every rebuild of it halts at once.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('chain');
+    refuse = 'chain';
+
+    // When: the product's papi client retries every 250 ms for two minutes.
+    for (let i = 0; i < 480; i++) {
+      ask(connection, `truapi:${String(i)}`);
+      await vi.advanceTimersByTimeAsync(250);
+    }
+
+    // Then: the chain is rebuilt at once, then at 1, 3, 7, 15, 31, 61 and
+    // 91 s, the frame backoff's windows, and no more.
+    expect(remotes).toHaveLength(9);
+    connection.close();
+  });
+
+  it('As a dotli user, a request on a chain whose backoff is shut is answered at once', async () => {
+    // Given: the chain halted, was rebuilt at once, and halted again.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    const responses = connection.responses()[Symbol.asyncIterator]();
+    must(remotes[0], 'first remote').halt('chain');
+    ask(connection, 'truapi:1');
+    expect(remotes).toHaveLength(2);
+    must(remotes[1], 'second remote').halt('chain');
+
+    // When
+    ask(connection, 'truapi:2');
+    connection.send(JSON.stringify({ jsonrpc: '2.0', method: 'chainSpec_v1_chainName', params: [] }));
+
+    // Then: the request gets the halted error, the notification nothing, and
+    // the chain is not rebuilt.
+    const halted = { code: -32603, message: 'Chain transport halted', data: 'dotli:chain-halted' };
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', error: halted });
+    expect(JSON.parse(yielded(await responses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:2', error: halted });
+    expect(remotes).toHaveLength(2);
+    connection.close();
+  });
+
+  it('As a dotli user, a chain that halts again within 30 s of its rebuild is rebuilt 1 s later', async () => {
+    // Given: the chain halted, was rebuilt at once, and the rebuild lived 10 s.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('chain');
+    ask(connection, 'truapi:1');
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    // When
+    must(remotes[1], 'second remote').halt('chain');
+
+    // Then
+    ask(connection, 'truapi:2');
+    await vi.advanceTimersByTimeAsync(999);
+    ask(connection, 'truapi:3');
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1);
+    ask(connection, 'truapi:4');
+    expect(remotes).toHaveLength(3);
+    connection.close();
+  });
+
+  it('As a dotli user, a chain whose rebuild lived past 30 s is rebuilt at once after its next halt', async () => {
+    // Given: the chain halted twice in a row, so its backoff has grown, and
+    // the rebuild after that lived 31 s.
+    const connection = await createChainConnect(createHostChainPool())(hexBytes(people));
+    must(remotes[0], 'first remote').halt('chain');
+    ask(connection, 'truapi:1');
+    must(remotes[1], 'second remote').halt('chain');
+    await vi.advanceTimersByTimeAsync(1_000);
+    ask(connection, 'truapi:2');
+    expect(remotes).toHaveLength(3);
+    await vi.advanceTimersByTimeAsync(31_000);
+
+    // When
+    must(remotes[2], 'third remote').halt('chain');
+    ask(connection, 'truapi:3');
+
+    // Then: rebuilt at once, and a halt right after waits 1 s again.
+    expect(remotes).toHaveLength(4);
+    must(remotes[3], 'fourth remote').halt('chain');
+    await vi.advanceTimersByTimeAsync(999);
+    ask(connection, 'truapi:4');
+    expect(remotes).toHaveLength(4);
+    await vi.advanceTimersByTimeAsync(1);
+    ask(connection, 'truapi:5');
+    expect(remotes).toHaveLength(5);
+    connection.close();
+  });
+
+  it("As a dotli user, one chain's backoff does not hold back another chain", async () => {
+    // Given: People halted, was rebuilt at once, and halted again.
+    const connect = createChainConnect(createHostChainPool());
+    const onPeople = await connect(hexBytes(people));
+    const onAssetHub = await connect(hexBytes(assetHub));
+    const peopleRemotes = (): RemoteConnection[] => remotes.filter(r => r.genesisHash === people.toLowerCase());
+    const assetHubRemotes = (): RemoteConnection[] => remotes.filter(r => r.genesisHash === assetHub.toLowerCase());
+    must(peopleRemotes()[0], 'People').halt('chain');
+    ask(onPeople, 'p:1');
+    must(peopleRemotes()[1], 'rebuilt People').halt('chain');
+
+    // When: Asset Hub halts, and both products ask.
+    must(assetHubRemotes()[0], 'Asset Hub').halt('chain');
+    ask(onAssetHub, 'a:1');
+    ask(onPeople, 'p:2');
+
+    // Then: Asset Hub is rebuilt at once, People waits for its own window.
+    expect(assetHubRemotes()).toHaveLength(2);
+    expect(peopleRemotes()).toHaveLength(2);
+    onPeople.close();
+    onAssetHub.close();
+  });
+
+  it('As a dotli user, two products after a chain halt share its rebuild, and wait together when it halts again', async () => {
+    // Given
+    const connect = createChainConnect(createHostChainPool());
+    const first = await connect(hexBytes(people));
+    const second = await connect(hexBytes(people));
+    must(remotes[0], 'first remote').halt('chain');
+
+    // When: both products ask.
+    ask(first, 'a:1');
+    ask(second, 'b:1');
+
+    // Then: the first rebuilt the chain, and the second's request rides on it.
+    expect(remotes).toHaveLength(2);
+    expect(must(remotes[1], 'second remote').sent).toHaveLength(2);
+
+    // When: the rebuild halts at once, and both ask again.
+    must(remotes[1], 'second remote').halt('chain');
+    ask(first, 'a:2');
+    ask(second, 'b:2');
+
+    // Then: neither rebuilds it before the window opens.
+    expect(remotes).toHaveLength(2);
+    await vi.advanceTimersByTimeAsync(1_000);
+    ask(second, 'b:3');
+    ask(first, 'a:3');
+    expect(remotes).toHaveLength(3);
+    expect(must(remotes[2], 'third remote').sent).toHaveLength(2);
+    first.close();
+    second.close();
   });
 
   it('As a dotli user, a block bar after a halt opens a fresh connection to the frame', () => {

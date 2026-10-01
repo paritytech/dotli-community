@@ -17,7 +17,7 @@
 // it reconnects. When a transport dies for good, its connections still
 // deliver what was queued (including `dropped` for transaction watches), and
 // stay open: the installed truapi-host ignores a stream's end. The next
-// request takes a new lease, which rebuilds the chain.
+// request takes a new lease, which rebuilds the chain, through a backoff.
 
 import { bytesToHex } from '@parity/truapi/scale';
 import type { JsonRpcConnection, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
@@ -35,6 +35,7 @@ import {
   requireBrokerLocalProvider,
   type ChainPool,
   type LeaseProvider,
+  type RemoteChainHalt,
   type RemoteChainProvider,
 } from '@dotli/protocol';
 import { createCoreRpcChainProvider, isCoreRpcChainSupported } from '@dotli/resolver';
@@ -42,6 +43,7 @@ import { createCoreRpcChainProvider, isCoreRpcChainSupported } from '@dotli/reso
 import { log } from '@dotli/shared';
 import { ERRORS } from '../errors.js';
 import { createFrameChainTransport } from './frame-transport.js';
+import { createRedialGate, type RedialGate } from './redial-gate.js';
 
 /**
  * The host page's chain pool. A chain's transport follows the backend when
@@ -116,14 +118,10 @@ function haltedAnswer(id: string | number): unknown {
   };
 }
 
-const FRAME_RETRY_FIRST_MS = 1_000;
-const FRAME_RETRY_MAX_MS = 30_000;
-
 /**
  * When a product may boot a protocol frame after one died, shared by every
- * core connection: its papi client re-follows every 250 ms, and each re-lease
- * would boot a frame. The gate opens one delay after a frame halt; each dial
- * through it shuts it again and doubles the delay, up to 30 s.
+ * core connection. It opens 1 s after a frame halt; each dial through it shuts
+ * it again and doubles the delay, up to 30 s.
  *
  * A frame that reports ready ends the wait but keeps the delay: in
  * smoldot-direct a new frame reports ready before its light client has
@@ -131,34 +129,17 @@ const FRAME_RETRY_MAX_MS = 30_000;
  * proves it works. Only uptime does: a frame halt more than 30 s after the
  * last dial through the gate starts again at 1 s.
  */
-const frameGate = {
-  opensAt: null as number | null,
-  delay: FRAME_RETRY_FIRST_MS,
-  /** When the last dial went through the gate. */
-  dialedAt: null as number | null,
-  subscribed: false,
-};
+const frameGate = createRedialGate(1_000);
+let frameGateSubscribed = false;
 
 function noteFrameHalt(): void {
-  if (!frameGate.subscribed) {
-    frameGate.subscribed = true;
+  if (!frameGateSubscribed) {
+    frameGateSubscribed = true;
     onProtocolReady(() => {
-      frameGate.opensAt = null;
+      frameGate.open();
     });
   }
-  const now = Date.now();
-  // The frame the last dial booted lived past the longest wait: it recovered.
-  if (frameGate.dialedAt !== null && now - frameGate.dialedAt > FRAME_RETRY_MAX_MS) {
-    frameGate.dialedAt = null;
-    frameGate.delay = FRAME_RETRY_FIRST_MS;
-    frameGate.opensAt = now + frameGate.delay;
-    return;
-  }
-  // A window already shut by a dial stays; one left in the past (by a live
-  // frame's refusal, say) is armed again from this halt.
-  if (frameGate.opensAt === null || frameGate.opensAt <= now) {
-    frameGate.opensAt = now + frameGate.delay;
-  }
+  frameGate.noteHalt();
 }
 
 /** Whether a product may take a new lease now, after its last one heard `'frame'`. */
@@ -167,21 +148,44 @@ function mayDialAfterFrameHalt(): boolean {
   if (isProtocolReady()) {
     return true;
   }
-  const now = Date.now();
-  if (frameGate.opensAt !== null && now < frameGate.opensAt) {
-    return false;
-  }
-  frameGate.delay = Math.min(frameGate.delay * 2, FRAME_RETRY_MAX_MS);
-  frameGate.opensAt = now + frameGate.delay;
-  frameGate.dialedAt = now;
-  return true;
+  return frameGate.tryDial();
 }
 
 /**
- * A core connection over leases on the host pool. `takeLease` is asked for the
- * first lease, and again on the first send after a halt.
+ * When a product may rebuild a chain after it halted, one gate per chain,
+ * shared by every core connection on it: a chain that halts each time it is
+ * rebuilt would otherwise be re-added and re-synced on each re-follow. The
+ * first rebuild after a halt goes at once. A halt within 30 s of the last
+ * rebuild through the gate waits 1 s, doubling to 30 s; one after more than
+ * 30 s starts over.
  */
-function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null): PlatformJsonRpcConnection {
+const chainGates = new Map<string, RedialGate>();
+
+function chainGate(genesisHash: string): RedialGate {
+  const key = genesisHash.toLowerCase();
+  let gate = chainGates.get(key);
+  if (gate === undefined) {
+    gate = createRedialGate(0);
+    chainGates.set(key, gate);
+  }
+  return gate;
+}
+
+/** Whether a product may take a new lease now, after its last one heard `'chain'`. */
+function mayDialAfterChainHalt(pool: ChainPool, genesisHash: string): boolean {
+  // Another connection has rebuilt the chain already: a lease rebuilds nothing.
+  if (pool.status(genesisHash) !== 'disconnected') {
+    return true;
+  }
+  return chainGate(genesisHash).tryDial();
+}
+
+/**
+ * A core connection over leases on the host pool: one at once, and another on
+ * the first send after a halt.
+ */
+function toConnection(genesisHash: string, pool: ChainPool): PlatformJsonRpcConnection {
+  const takeLease = (): LeaseProvider | null => pool.getLocalProvider(genesisHash);
   const first = takeLease();
   if (!first) {
     throw new Error(ERRORS.CHAIN_PROVIDER_UNAVAILABLE);
@@ -190,8 +194,9 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
   let wake: (() => void) | null = null;
   let closed = false;
   let lease: JsonRpcConnection | null = null;
-  // Whether the last lease heard `'frame'`: the next one waits for the gate.
-  let frameDown = false;
+  // Why the last lease halted, until a new one is taken: the next one waits
+  // for that reason's gate.
+  let haltedBy: RemoteChainHalt | null = null;
 
   const deliver = (message: unknown): void => {
     if (closed) {
@@ -204,8 +209,9 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
   // A halt drops the lease, and the stream stays open: truapi-host 0.23.0
   // ignores its end and keeps sending on this connection. The broker has
   // answered the requests in flight and stopped the follows, so the next send
-  // takes a new lease, which rebuilds the chain. After `'frame'` that lease
-  // boots a frame, so it waits for the frame gate.
+  // takes a new lease, which rebuilds the chain: it waits for the chain's gate
+  // after `'chain'`, and for the frame gate after `'frame'`, where that lease
+  // boots a frame.
   const open = (provider: LeaseProvider): JsonRpcConnection | null => {
     // Per lease, so a halt heard while `provider` is still running, or a late
     // one from a replaced lease, never touches another lease.
@@ -215,9 +221,11 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
       if (slot.connection !== null && lease === slot.connection) {
         lease = null;
       }
-      frameDown = haltReasonOf(error) === 'frame';
-      if (frameDown) {
+      haltedBy = haltReasonOf(error);
+      if (haltedBy === 'frame') {
         noteFrameHalt();
+      } else {
+        chainGate(genesisHash).noteHalt();
       }
     });
     // A call, so the check isn't narrowed to the `false` it started as.
@@ -230,7 +238,9 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
     return connection;
   };
   const reopen = (): JsonRpcConnection | null => {
-    if (frameDown && !mayDialAfterFrameHalt()) {
+    const mayDial =
+      haltedBy === null || (haltedBy === 'frame' ? mayDialAfterFrameHalt() : mayDialAfterChainHalt(pool, genesisHash));
+    if (!mayDial) {
       // Answered at once, as the product's own retry is.
       return null;
     }
@@ -240,7 +250,7 @@ function toConnection(genesisHash: string, takeLease: () => LeaseProvider | null
         const connection = open(provider);
         // Only a lease taken clears it: a failed one keeps the gate.
         if (connection !== null) {
-          frameDown = false;
+          haltedBy = null;
         }
         return connection;
       }
@@ -321,13 +331,13 @@ export function createChainConnect(pool: ChainPool = hostChainPool): ChainProvid
         log.warn(`[dot.li truapi-chain] RPC backend doesn't support ${genesisHash}; product call will fail`);
         throw new Error(`Unsupported RPC chain: ${genesisHash}`);
       }
-      return Promise.resolve(toConnection(genesisHash, () => pool.getLocalProvider(genesisHash)));
+      return Promise.resolve(toConnection(genesisHash, pool));
     }
 
     if (!isRemoteChainConnectable(genesisHash)) {
       log.warn(`[dot.li truapi-chain] smoldot backend doesn't support ${genesisHash}; product call will fail`);
       throw new Error(`Unsupported smoldot chain: ${genesisHash}`);
     }
-    return Promise.resolve(toConnection(genesisHash, () => pool.getLocalProvider(genesisHash)));
+    return Promise.resolve(toConnection(genesisHash, pool));
   };
 }
