@@ -80,9 +80,24 @@ describe('network block source', () => {
 
   async function start(): Promise<() => void> {
     const stop = createBlockSource().subscribe(GENESIS, onBlock);
+    await vi.dynamicImportSettled();
     await vi.advanceTimersByTimeAsync(0);
     return stop;
   }
+
+  it('As a dotli integrator, a bar unsubscribed before its watch loads dials nothing', async () => {
+    // Given: a bar subscribed and left at once.
+    const stop = createBlockSource().subscribe(GENESIS, onBlock);
+    stop();
+
+    // When: the watch module arrives.
+    await vi.dynamicImportSettled();
+    await vi.advanceTimersByTimeAsync(0);
+
+    // Then: no client was dialled.
+    expect(mocks.remote).not.toHaveBeenCalled();
+    expect(clients).toHaveLength(0);
+  });
 
   it("As a dotli user, a chain's block bar comes back after its chain halts", async () => {
     // Given: a watched chain delivering a block.
