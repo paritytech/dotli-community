@@ -2769,6 +2769,8 @@ function buildRuntime(state) {
           reject
         });
         try {
+          if (callbacks)
+            state.coreCallbacks.set(coreId, createWasmRawCallbacks(callbacks));
           state.worker.postMessage({
             kind: "createCore",
             coreId,
