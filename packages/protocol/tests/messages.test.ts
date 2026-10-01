@@ -1,13 +1,13 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { afterEach, beforeEach, describe, it, expect, vi } from "vitest";
+import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import {
   NETWORK_NAME_TO_SERVICES_CONFIG,
   NetworkName,
   getActiveSupportedGenesisHashes,
   setNetwork,
-} from "@dotli/config/network";
+} from '@dotli/config';
 import {
   ENVELOPE_CHAIN_KEYS,
   ENVELOPE_SYNC_KINDS,
@@ -23,150 +23,144 @@ import {
   type ProtocolReadyEnvelope,
   type ProtocolChainSyncEnvelope,
   type ProtocolSmoldotDbEnvelope,
-} from "@dotli/protocol/messages";
+} from '../src/messages.js';
 
-describe("isProtocolEnvelope", () => {
-  it("returns true for a valid request envelope", () => {
+describe('isProtocolEnvelope', () => {
+  it('returns true for a valid request envelope', () => {
     const envelope: ProtocolRequestEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "request",
-      id: "test-1",
-      method: "warmup",
-      payload: {} as Record<string, never>,
+      namespace: 'dotli:protocol',
+      kind: 'request',
+      id: 'test-1',
+      method: 'warmup',
+      payload: {},
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid response envelope", () => {
+  it('returns true for a valid response envelope', () => {
     const envelope: ProtocolResponseEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "response",
-      id: "test-1",
+      namespace: 'dotli:protocol',
+      kind: 'response',
+      id: 'test-1',
       ok: true,
-      result: "some-cid",
+      result: 'some-cid',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid error envelope", () => {
+  it('returns true for a valid error envelope', () => {
     const envelope: ProtocolErrorEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "response",
-      id: "test-1",
+      namespace: 'dotli:protocol',
+      kind: 'response',
+      id: 'test-1',
       ok: false,
-      error: "something failed",
+      error: 'something failed',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid progress envelope", () => {
+  it('returns true for a valid progress envelope', () => {
     const envelope: ProtocolProgressEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "progress",
-      id: "test-1",
-      message: "Connecting to relay chain...",
+      namespace: 'dotli:protocol',
+      kind: 'progress',
+      id: 'test-1',
+      message: 'Connecting to relay chain...',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid chain-message envelope", () => {
+  it('returns true for a valid chain-message envelope', () => {
     const envelope: ProtocolChainMessageEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "chain-message",
-      connectionId: "conn-1",
+      namespace: 'dotli:protocol',
+      kind: 'chain-message',
+      connectionId: 'conn-1',
       message: '{"jsonrpc":"2.0"}',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid chain-halt envelope", () => {
+  it('returns true for a valid chain-halt envelope', () => {
     const envelope: ProtocolChainHaltEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "chain-halt",
-      connectionId: "conn-1",
+      namespace: 'dotli:protocol',
+      kind: 'chain-halt',
+      connectionId: 'conn-1',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid ready envelope", () => {
+  it('returns true for a valid ready envelope', () => {
     const envelope: ProtocolReadyEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "ready",
+      namespace: 'dotli:protocol',
+      kind: 'ready',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns true for a valid smoldot-db envelope", () => {
+  it('returns true for a valid smoldot-db envelope', () => {
     const envelope: ProtocolSmoldotDbEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "smoldot-db",
-      chain: "hub",
-      outcome: "hit",
+      namespace: 'dotli:protocol',
+      kind: 'smoldot-db',
+      chain: 'hub',
+      outcome: 'hit',
     };
     expect(isProtocolEnvelope(envelope)).toBe(true);
   });
 
-  it("returns false for null", () => {
+  it('returns false for null', () => {
     expect(isProtocolEnvelope(null)).toBe(false);
   });
 
-  it("returns false for undefined", () => {
+  it('returns false for undefined', () => {
     expect(isProtocolEnvelope(undefined)).toBe(false);
   });
 
-  it("returns false for a string", () => {
-    expect(isProtocolEnvelope("dotli:protocol")).toBe(false);
+  it('returns false for a string', () => {
+    expect(isProtocolEnvelope('dotli:protocol')).toBe(false);
   });
 
-  it("returns false for a number", () => {
+  it('returns false for a number', () => {
     expect(isProtocolEnvelope(42)).toBe(false);
   });
 
-  it("returns false for an empty object", () => {
+  it('returns false for an empty object', () => {
     expect(isProtocolEnvelope({})).toBe(false);
   });
 
-  it("returns false for wrong namespace", () => {
-    expect(
-      isProtocolEnvelope({ namespace: "other:protocol", kind: "request" }),
-    ).toBe(false);
+  it('returns false for wrong namespace', () => {
+    expect(isProtocolEnvelope({ namespace: 'other:protocol', kind: 'request' })).toBe(false);
   });
 
-  it("returns false for missing kind", () => {
-    expect(isProtocolEnvelope({ namespace: "dotli:protocol" })).toBe(false);
+  it('returns false for missing kind', () => {
+    expect(isProtocolEnvelope({ namespace: 'dotli:protocol' })).toBe(false);
   });
 
-  it("returns false for unknown kind", () => {
-    expect(
-      isProtocolEnvelope({ namespace: "dotli:protocol", kind: "unknown" }),
-    ).toBe(false);
+  it('returns false for unknown kind', () => {
+    expect(isProtocolEnvelope({ namespace: 'dotli:protocol', kind: 'unknown' })).toBe(false);
   });
 
-  it("returns false for missing namespace", () => {
-    expect(isProtocolEnvelope({ kind: "request" })).toBe(false);
+  it('returns false for missing namespace', () => {
+    expect(isProtocolEnvelope({ kind: 'request' })).toBe(false);
   });
 });
 
-describe("getRequestSyncTimeoutMs", () => {
+describe('getRequestSyncTimeoutMs', () => {
   // Not inside a test body: a failing assertion would leak the mock onward.
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  const requestWithDeadline = (
-    deadlineMs?: number,
-  ): ProtocolRequestEnvelope => ({
-    namespace: "dotli:protocol",
-    kind: "request",
-    id: "test-deadline",
-    method: "resolveDotName",
-    payload: { label: "chinpokomon" },
-    deadlineMs,
+  const requestWithDeadline = (deadlineMs?: number): ProtocolRequestEnvelope => ({
+    namespace: 'dotli:protocol',
+    kind: 'request',
+    id: 'test-deadline',
+    method: 'resolveDotName',
+    payload: { label: 'chinpokomon' },
+    ...(deadlineMs !== undefined ? { deadlineMs } : {}),
   });
 
   it("reserves response-delivery time inside the caller's deadline", () => {
     // Given
-    vi.spyOn(Date, "now").mockReturnValue(10_000);
+    vi.spyOn(Date, 'now').mockReturnValue(10_000);
 
     // When
     const budget = getRequestSyncTimeoutMs(requestWithDeadline(100_000));
@@ -175,9 +169,9 @@ describe("getRequestSyncTimeoutMs", () => {
     expect(budget).toBe(89_000);
   });
 
-  it("As a handler reading an already-expired deadline, my budget stays positive", () => {
+  it('As a handler reading an already-expired deadline, my budget stays positive', () => {
     // Given
-    vi.spyOn(Date, "now").mockReturnValue(100_000);
+    vi.spyOn(Date, 'now').mockReturnValue(100_000);
 
     // When
     const budget = getRequestSyncTimeoutMs(requestWithDeadline(10_000));
@@ -185,12 +179,13 @@ describe("getRequestSyncTimeoutMs", () => {
     // Then
     expect(budget).toBe(1);
   });
-  it("ignores missing or non-finite deadlines", () => {
+
+  it('ignores missing or non-finite deadlines', () => {
     const request: ProtocolRequestEnvelope = {
-      namespace: "dotli:protocol",
-      kind: "request",
-      id: "test-no-deadline",
-      method: "warmup",
+      namespace: 'dotli:protocol',
+      kind: 'request',
+      id: 'test-no-deadline',
+      method: 'warmup',
       payload: {},
     };
 
@@ -200,7 +195,7 @@ describe("getRequestSyncTimeoutMs", () => {
   });
 });
 
-describe("getActiveSupportedGenesisHashes", () => {
+describe('getActiveSupportedGenesisHashes', () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -208,29 +203,27 @@ describe("getActiveSupportedGenesisHashes", () => {
     localStorage.clear();
   });
 
-  it("does not contain arbitrary hashes", () => {
+  it('does not contain arbitrary hashes', () => {
     setNetwork(NetworkName.PASEO);
-    expect(getActiveSupportedGenesisHashes().has("0xdeadbeef")).toBe(false);
+    expect(getActiveSupportedGenesisHashes().has('0xdeadbeef')).toBe(false);
   });
 });
 
-describe("genesis hash constants", () => {
-  it("relay genesis is a 0x-prefixed hex string on every network", () => {
+describe('genesis hash constants', () => {
+  it('relay genesis is a 0x-prefixed hex string on every network', () => {
     for (const cfg of Object.values(NETWORK_NAME_TO_SERVICES_CONFIG)) {
       expect(cfg.relay.genesis).toMatch(/^0x[0-9a-f]{64}$/);
     }
   });
 });
 
-describe("chain-sync envelope validation works", () => {
-  function envelope(
-    over: Partial<ProtocolChainSyncEnvelope> = {},
-  ): ProtocolChainSyncEnvelope {
+describe('chain-sync envelope validation works', () => {
+  function envelope(over: Partial<ProtocolChainSyncEnvelope> = {}): ProtocolChainSyncEnvelope {
     return {
-      namespace: "dotli:protocol",
-      kind: "chain-sync",
-      chain: "relay",
-      syncKind: "firstPeer",
+      namespace: 'dotli:protocol',
+      kind: 'chain-sync',
+      chain: 'relay',
+      syncKind: 'firstPeer',
       ...over,
     };
   }
@@ -239,7 +232,7 @@ describe("chain-sync envelope validation works", () => {
   // validator keeps its own runtime copy so smoldot stays out of every
   // bundle that talks to the protocol. When the two fell out of step, three
   // kinds were dropped in silence and the loading screen simply went quiet.
-  it("As a user, every sync milestone the resolver can emit reaches the shell", () => {
+  it('As a user, every sync milestone the resolver can emit reaches the shell', () => {
     // Given / When / Then
     for (const chain of ENVELOPE_CHAIN_KEYS) {
       for (const syncKind of ENVELOPE_SYNC_KINDS) {
@@ -248,7 +241,7 @@ describe("chain-sync envelope validation works", () => {
             envelope({
               chain,
               syncKind,
-              ...(syncKind === "peers" ? { peers: 1 } : {}),
+              ...(syncKind === 'peers' ? { peers: 1 } : {}),
             }),
           ),
         ).toBe(true);
@@ -256,40 +249,30 @@ describe("chain-sync envelope validation works", () => {
     }
   });
 
-  it("As a user, a spoofed chain or milestone is refused", () => {
+  it('As a user, a spoofed chain or milestone is refused', () => {
     // Given / When / Then
     expect(
       isChainSyncPayloadValid(
         envelope({
-          chain: "not-a-chain" as (typeof ENVELOPE_CHAIN_KEYS)[number],
+          chain: 'not-a-chain' as (typeof ENVELOPE_CHAIN_KEYS)[number],
         }),
       ),
     ).toBe(false);
     expect(
       isChainSyncPayloadValid(
         envelope({
-          syncKind: "somethingElse" as (typeof ENVELOPE_SYNC_KINDS)[number],
+          syncKind: 'somethingElse' as (typeof ENVELOPE_SYNC_KINDS)[number],
         }),
       ),
     ).toBe(false);
   });
 
-  it("As a user, a nonsense peer count or block height is refused", () => {
+  it('As a user, a nonsense peer count or block height is refused', () => {
     // Given / When / Then
     for (const peers of [-1, 1.5, 10_001, Number.NaN]) {
-      expect(
-        isChainSyncPayloadValid(envelope({ syncKind: "peers", peers })),
-      ).toBe(false);
+      expect(isChainSyncPayloadValid(envelope({ syncKind: 'peers', peers }))).toBe(false);
     }
-    expect(
-      isChainSyncPayloadValid(
-        envelope({ syncKind: "warpSyncProgress", at: Number.NaN, target: 10 }),
-      ),
-    ).toBe(false);
-    expect(
-      isChainSyncPayloadValid(
-        envelope({ syncKind: "warpSyncFinished", finalized: -5 }),
-      ),
-    ).toBe(false);
+    expect(isChainSyncPayloadValid(envelope({ syncKind: 'warpSyncProgress', at: Number.NaN, target: 10 }))).toBe(false);
+    expect(isChainSyncPayloadValid(envelope({ syncKind: 'warpSyncFinished', finalized: -5 }))).toBe(false);
   });
 });

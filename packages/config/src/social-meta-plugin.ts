@@ -4,7 +4,7 @@
 // Injects description, OpenGraph and Twitter card tags so shared links unfurl.
 // A plugin, not index.html, because crawlers need an absolute og:image URL.
 
-import type { HtmlTagDescriptor, Plugin } from "vite";
+import type { HtmlTagDescriptor, Plugin } from 'vite';
 
 export interface SocialMeta {
   /** Page title as shown in link previews. Should match `<title>`. */
@@ -21,36 +21,41 @@ export interface SocialMeta {
 
 /** Resolves `image` against `VITE_APP_URL`, keeping it relative when unset. */
 export function socialImageUrl(image: string): string {
-  const appUrl = process.env.VITE_APP_URL?.trim();
-  if (appUrl === undefined || appUrl === "") {
+  const appUrl = process.env['VITE_APP_URL']?.trim();
+  if (appUrl === undefined || appUrl === '') {
     return image;
   }
   return new URL(image, appUrl).href;
 }
 
-function meta(attrs: Record<string, string>): HtmlTagDescriptor {
-  return { tag: "meta", attrs, injectTo: "head" as const };
+/**
+ * The description, OpenGraph and Twitter card `<meta>` tags for `config`, as
+ * attribute sets: what socialMetaTags() injects, for a page that writes its
+ * own head (the host's Astro page).
+ */
+export function socialMetaAttributes(config: SocialMeta): Record<string, string>[] {
+  const image = socialImageUrl(config.image);
+  return [
+    { name: 'description', content: config.description },
+    { property: 'og:type', content: 'website' },
+    { property: 'og:site_name', content: config.siteName },
+    { property: 'og:title', content: config.title },
+    { property: 'og:description', content: config.description },
+    { property: 'og:image', content: image },
+    { property: 'og:image:alt', content: config.imageAlt },
+    { name: 'twitter:card', content: 'summary' },
+    { name: 'twitter:title', content: config.title },
+    { name: 'twitter:description', content: config.description },
+    { name: 'twitter:image', content: image },
+    { name: 'twitter:image:alt', content: config.imageAlt },
+  ];
 }
 
 export function socialMetaTags(config: SocialMeta): Plugin {
   return {
-    name: "dotli-social-meta",
-    transformIndexHtml() {
-      const image = socialImageUrl(config.image);
-      return [
-        meta({ name: "description", content: config.description }),
-        meta({ property: "og:type", content: "website" }),
-        meta({ property: "og:site_name", content: config.siteName }),
-        meta({ property: "og:title", content: config.title }),
-        meta({ property: "og:description", content: config.description }),
-        meta({ property: "og:image", content: image }),
-        meta({ property: "og:image:alt", content: config.imageAlt }),
-        meta({ name: "twitter:card", content: "summary" }),
-        meta({ name: "twitter:title", content: config.title }),
-        meta({ name: "twitter:description", content: config.description }),
-        meta({ name: "twitter:image", content: image }),
-        meta({ name: "twitter:image:alt", content: config.imageAlt }),
-      ];
+    name: 'dotli-social-meta',
+    transformIndexHtml(): HtmlTagDescriptor[] {
+      return socialMetaAttributes(config).map(attrs => ({ tag: 'meta', attrs, injectTo: 'head' as const }));
     },
   };
 }

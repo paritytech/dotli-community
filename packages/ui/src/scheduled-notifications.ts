@@ -33,17 +33,13 @@ import {
   removeById,
   removeStale,
   type ScheduledNotificationRecord,
-} from "@dotli/storage/scheduled-notifications";
-import {
-  SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS,
-  SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS,
-} from "@dotli/config/config";
-import { log } from "@dotli/shared/log";
-import { showNotification } from "./notification";
+} from '@dotli/storage';
+import { SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS, SCHEDULED_NOTIFICATIONS_POLL_INTERVAL_MS } from '@dotli/config';
+import { log } from '@dotli/shared';
+import { showNotification } from './notification.js';
 
 export type ScheduleNotificationResult =
-  | { ok: true; id: number; immediate: boolean }
-  | { ok: false; error: "ScheduleLimitReached" };
+  { ok: true; id: number; immediate: boolean } | { ok: false; error: 'ScheduleLimitReached' };
 
 interface InitOpts {
   // The top-frame product label. Used only as a tag in log lines. Record
@@ -51,11 +47,8 @@ interface InitOpts {
   label: string;
 }
 
-const BROADCAST_CHANNEL_NAME = "dotli:scheduled-notifications";
-type WakeMessage =
-  | { kind: "scheduled" }
-  | { kind: "cancelled" }
-  | { kind: "fired"; hostId: number };
+const BROADCAST_CHANNEL_NAME = 'dotli:scheduled-notifications';
+type WakeMessage = { kind: 'scheduled' } | { kind: 'cancelled' } | { kind: 'fired'; hostId: number };
 
 let initialized = false;
 let shuttingDown = false;
@@ -73,7 +66,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
   }
   initialized = true;
 
-  if (typeof BroadcastChannel === "function") {
+  if (typeof BroadcastChannel === 'function') {
     bcChannel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
     bcChannel.onmessage = () => {
       ensurePolling();
@@ -88,8 +81,8 @@ export function initScheduledNotifications(opts: InitOpts): void {
 
   // Restart polling when the tab becomes visible. Gives a stale visible
   // tab a chance to drain the queue before the next tick.
-  document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") {
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
       ensurePolling();
     }
   });
@@ -99,7 +92,7 @@ export function initScheduledNotifications(opts: InitOpts): void {
   // still in flight at that point throws `InvalidStateError` from
   // `db.transaction()`. `pagehide` fires for both regular unloads and
   // the bfcache path, which is why it is preferred over `beforeunload`.
-  window.addEventListener("pagehide", () => {
+  window.addEventListener('pagehide', () => {
     shuttingDown = true;
     stopPolling();
     bcChannel?.close();
@@ -142,7 +135,7 @@ export async function scheduleNotification(req: {
   }
 
   ensurePolling();
-  bcChannel?.postMessage({ kind: "scheduled" } satisfies WakeMessage);
+  bcChannel?.postMessage({ kind: 'scheduled' } satisfies WakeMessage);
 
   return { ok: true, id: result.id, immediate: false };
 }
@@ -154,13 +147,10 @@ export async function scheduleNotification(req: {
  * Idempotent. Returns true if a pending record was removed, false if it
  * had already fired or never existed.
  */
-export async function cancelNotification(
-  productId: string,
-  perProductId: number,
-): Promise<boolean> {
+export async function cancelNotification(productId: string, perProductId: number): Promise<boolean> {
   const removed = await dbCancel(productId, perProductId);
   if (removed) {
-    bcChannel?.postMessage({ kind: "cancelled" } satisfies WakeMessage);
+    bcChannel?.postMessage({ kind: 'cancelled' } satisfies WakeMessage);
   }
   return removed;
 }
@@ -169,17 +159,14 @@ async function rehydrate(): Promise<void> {
   try {
     await removeStale(Date.now());
   } catch (err) {
-    log.error(
-      "[scheduled notifications] removeStale on rehydrate failed:",
-      err,
-    );
+    log.error('[scheduled notifications] removeStale on rehydrate failed:', err);
   }
 
   let records: ScheduledNotificationRecord[];
   try {
     records = await listAll();
   } catch (err) {
-    log.error("[scheduled notifications] listAll on rehydrate failed:", err);
+    log.error('[scheduled notifications] listAll on rehydrate failed:', err);
     return;
   }
 
@@ -188,7 +175,7 @@ async function rehydrate(): Promise<void> {
     if (rec.scheduledAt > now) {
       continue;
     }
-    await tryFire(rec, "rehydrate");
+    await tryFire(rec, 'rehydrate');
   }
 }
 
@@ -216,14 +203,14 @@ async function tick(): Promise<void> {
   try {
     await removeStale(Date.now());
   } catch (err) {
-    log.error("[scheduled notifications] removeStale failed:", err);
+    log.error('[scheduled notifications] removeStale failed:', err);
   }
 
   let records: ScheduledNotificationRecord[];
   try {
     records = await listAll();
   } catch (err) {
-    log.error("[scheduled notifications] listAll failed:", err);
+    log.error('[scheduled notifications] listAll failed:', err);
     return;
   }
 
@@ -232,7 +219,7 @@ async function tick(): Promise<void> {
     return;
   }
 
-  const isVisible = document.visibilityState === "visible";
+  const isVisible = document.visibilityState === 'visible';
   const offset = isVisible ? 0 : SCHEDULED_NOTIFICATIONS_HIDDEN_TAB_OFFSET_MS;
   const cutoff = Date.now() - offset;
 
@@ -240,14 +227,11 @@ async function tick(): Promise<void> {
     if (rec.scheduledAt > cutoff) {
       continue;
     }
-    await tryFire(rec, "realtime");
+    await tryFire(rec, 'realtime');
   }
 }
 
-async function tryFire(
-  rec: ScheduledNotificationRecord,
-  source: "realtime" | "rehydrate",
-): Promise<void> {
+async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): Promise<void> {
   if (inFlight.has(rec.hostId)) {
     return;
   }
@@ -261,23 +245,19 @@ async function tryFire(
       }
       fire(rec, source);
       bcChannel?.postMessage({
-        kind: "fired",
+        kind: 'fired',
         hostId: rec.hostId,
       } satisfies WakeMessage);
     };
 
-    if ("locks" in navigator) {
-      await navigator.locks.request(
-        `dotli-notif:${String(rec.hostId)}`,
-        { ifAvailable: true },
-        async (lock) => {
-          // Another tab holds the lock, so let it fire.
-          if (!lock) {
-            return;
-          }
-          await claimAndFire();
-        },
-      );
+    if ('locks' in navigator) {
+      await navigator.locks.request(`dotli-notif:${String(rec.hostId)}`, { ifAvailable: true }, async lock => {
+        // Another tab holds the lock, so let it fire.
+        if (!lock) {
+          return;
+        }
+        await claimAndFire();
+      });
     } else {
       // No Web Locks. Rely on IDB tx serialization in `removeById`.
       await claimAndFire();
@@ -287,16 +267,13 @@ async function tryFire(
   }
 }
 
-function fire(
-  rec: ScheduledNotificationRecord,
-  source: "realtime" | "rehydrate",
-): void {
+function fire(rec: ScheduledNotificationRecord, source: 'realtime' | 'rehydrate'): void {
   showNotification({
     label: rec.title,
     text: rec.text,
     deeplink: rec.deeplink ?? undefined,
     // Past-due fires (rehydrate) render the in-app banner only. An OS
     // toast for an event the user was not around for is intrusive.
-    browserNotification: source === "realtime",
+    browserNotification: source === 'realtime',
   });
 }

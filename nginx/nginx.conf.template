@@ -75,6 +75,8 @@ server {
         try_files /index.html =404;
     }
 
+    include /etc/nginx/snippets/dotli-host-version.conf;
+
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -110,6 +112,8 @@ server {
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
 
+    include /etc/nginx/snippets/dotli-host-version.conf;
+
     location / {
         try_files $uri /index.html;
     }
@@ -143,6 +147,8 @@ server {
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;
@@ -178,6 +184,8 @@ server {
     ${SENTRY}set $sentry_ingest  "${SENTRY_INGEST}";
     ${SENTRY}set $sentry_project "${SENTRY_PROJECT}";
     ${SENTRY}include /etc/nginx/snippets/dotli-sentry-tunnel.conf;
+
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;

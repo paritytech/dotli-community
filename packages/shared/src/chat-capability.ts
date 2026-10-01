@@ -10,10 +10,10 @@
 // resolved value is cached in localStorage per label so warm loads (cached
 // CID) do not stall provider creation on a dotNS text-record read.
 
-const CACHE_PREFIX = "dotli:chat-capable:";
+const CACHE_PREFIX = 'dotli:chat-capable:';
 
 /** Window event announcing a settled chat capability for a label. */
-export const CHAT_AVAILABILITY_EVENT = "dotli:chat-availability";
+export const CHAT_AVAILABILITY_EVENT = 'dotli:chat-availability';
 
 export interface ChatAvailabilityDetail {
   label: string;
@@ -26,7 +26,7 @@ let activePromise: Promise<boolean> | null = null;
 function readCache(label: string): boolean | null {
   try {
     const raw = localStorage.getItem(`${CACHE_PREFIX}${label}`);
-    return raw === null ? null : raw === "1";
+    return raw === null ? null : raw === '1';
   } catch {
     return null;
   }
@@ -34,7 +34,7 @@ function readCache(label: string): boolean | null {
 
 function writeCache(label: string, value: boolean): void {
   try {
-    localStorage.setItem(`${CACHE_PREFIX}${label}`, value ? "1" : "0");
+    localStorage.setItem(`${CACHE_PREFIX}${label}`, value ? '1' : '0');
     // eslint-disable-next-line no-restricted-syntax -- localStorage may be unavailable (private mode); only the warm-start shortcut is lost.
   } catch {
     /* capability still resolves for this load */
@@ -42,7 +42,7 @@ function writeCache(label: string, value: boolean): void {
 }
 
 function announce(label: string, chat: boolean): void {
-  if (typeof window === "undefined") {
+  if (typeof window === 'undefined') {
     return;
   }
   window.dispatchEvent(
@@ -60,14 +60,11 @@ function announce(label: string, chat: boolean): void {
  * fixes the connection's execution kind from the first answer and a fresher
  * one cannot retroactively change what that connection can do.
  */
-export function primeChatCapability(
-  label: string,
-  resolve: () => Promise<boolean>,
-): void {
+export function primeChatCapability(label: string, resolve: () => Promise<boolean>): void {
   activeLabel = label;
   const cached = readCache(label);
   const fresh = resolve().then(
-    (value) => {
+    value => {
       writeCache(label, value);
       announce(label, cached ?? value);
       return cached ?? value;

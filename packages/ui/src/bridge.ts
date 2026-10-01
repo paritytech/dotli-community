@@ -1,9 +1,9 @@
 // dot.li TrUAPI host bridge
 //
-// Boots a WASM TrUAPI core instance and connects it to a sandboxed
-// product iframe via `@parity/truapi-host`. Each render swaps its product
-// runtime. In experimental mode a separate host-owned signing runtime keeps
-// wallet identity and username operations alive independently of products.
+// Connects the page's TrUAPI core (see page-core.ts) to a sandboxed product
+// iframe via `@parity/truapi-host`, and routes the topbar's login, pairing
+// cancel and logout to that same core. Each render swaps the iframe and its
+// connection; the core stays for as long as anything holds it.
 //
 // Nested dApp-in-dApp composition is not modeled as separate Rust runtimes,
 // sessions, product identities, or storage namespaces. Any future nested
@@ -13,6 +13,7 @@ import {
   AllocatableResource,
   createClient,
   createTransport,
+  type TrUApiClient,
   decodeWireMessage,
   encodeWireMessage,
   MESSAGE_TYPE_REQUEST,
@@ -22,68 +23,51 @@ import {
   VersionedHostRequestLoginRequest,
   VersionedHostRequestLoginResponse,
   type HostRequestLoginResponse as LoginResponse,
-  type TrUApiClient,
   type WireProvider as Provider,
   createMessagePortProvider,
-} from "@parity/truapi";
-import { ACCOUNT_REQUEST_LOGIN } from "@parity/truapi/wire-table";
-import type { InspectorProduct } from "@dotli/truapi-debug/panel";
-import { DEBUG, SITE_ID, sandboxOriginForLabel } from "@dotli/config/config";
+} from '@parity/truapi';
+import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
+  DEBUG,
+  getActiveServicesConfig,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
-} from "@dotli/config/host-sandbox-contract";
-import {
   getBackend,
-  getCacheSettings,
   getPolkaVmAppsEnabled,
-} from "@dotli/config/mode";
-import {
-  getActiveServicesConfig,
+  SITE_ID,
+  sandboxOriginForLabel,
   getNetwork,
   withActiveTld,
-} from "@dotli/config/network";
-import { getResolutionId, m } from "@dotli/metrics/metrics";
-import * as S from "@dotli/metrics/spans";
-import { chatCapabilityFor } from "@dotli/shared/chat-capability";
-import { log } from "@dotli/shared/log";
+} from '@dotli/config';
+
+import { getResolutionId, m, spans as S } from '@dotli/metrics';
+import { chatCapabilityFor, log } from '@dotli/shared';
+
+import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
+import type { TrUApiProductProvider } from '@parity/truapi-host';
+import { createIframeHost } from '@parity/truapi-host/web';
+import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import { dispatchAuthState } from './host-callbacks/AuthState.js';
+import { LoginRequestError } from './login-request-error.js';
+import { attachProductFrame } from './product-frame-layout.js';
+import { labelToProductId } from './runtime-config.js';
 import {
-  emitDotliDebugEvent,
-  hasDotliDebugListeners,
-} from "@dotli/truapi-debug/dotli-debug-bus";
-import type { TrUApiProductProvider } from "@parity/truapi-host";
-import type { AuthState, PairingHostAdmin } from "@parity/truapi-host";
-import type {
-  LocalIdentity,
-  LocalIdentityProgress,
-  WalletAllowanceSnapshot,
-  WorkerPairingHostRuntime,
-  WorkerSigningHostRuntime,
-} from "@parity/truapi-host/web";
+  acquireCore,
+  cancelPairing,
+  initPageCore,
+  setPageProduct,
+  activeLocalWallet,
+  assertLocalWallet,
+  disposePageCores,
+  withLocalIdentityUpdate,
+  type LiveLocalWallet,
+  type CoreConnection,
+} from './page-core.js';
+import type { InspectorProduct } from '@dotli/truapi-debug';
+import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
+import { ALL_PERMISSIONS, authorizationRequest, fromAuthorizationStatus } from './permissions.js';
 import {
-  ALL_PERMISSIONS,
-  authorizationRequest,
-  fromAuthorizationStatus,
-  buildAllowAttribute,
-  registerPermissionAuthorizationProvider,
-} from "./permissions";
-import { createHostCallbacks } from "./host-callbacks/handlers";
-import { dispatchAuthState } from "./host-callbacks/AuthState";
-import {
-  CameraInputCancelledError,
-  CameraInputPermissionError,
-  scanCameraUr,
-} from "./mediated-input-camera";
-import {
-  MediatedInputHost,
-  validatedMediatedInputRequest,
-} from "./mediated-input-host";
-import { decidePromptPermission } from "./host-callbacks/PromptPermission";
-import { createSubmitRateLimiter } from "./host-callbacks/rate-limit";
-import {
-  onStoredSessionChanged,
   createLocalWalletSecret,
-  readLocalWalletSecret,
   deleteLocalWalletSecret,
   exportLocalWalletMnemonic,
   importLocalWalletMnemonic,
@@ -91,141 +75,89 @@ import {
   initializeLocalWalletState,
   isLocalWalletStoredInOtherApp,
   setLocalWalletEnabled,
-  onVerifiedLocalIdentityChanged,
-  localWalletContext,
-  isCurrentLocalWallet,
-  readVerifiedLocalIdentity,
   readLocalWalletDisplay,
   writeVerifiedLocalIdentity,
-  type LocalWalletIdentityBinding,
   LOCAL_WALLET_ENABLED_KEY,
   LOCAL_WALLET_REVISION_KEY,
-} from "./host-callbacks/SessionStore";
-import { LoginRequestError } from "./login-request-error";
-import { productIframeBox } from "./product-iframe-box";
-import { installPolkaVmViewInsetsRelay } from "./polkavm-view-insets";
-import { createTruapiRuntimeConfig, labelToProductId } from "./runtime-config";
-import { describeWireFrame } from "./debug-wire-describe";
-import type { BlockingModalCoordinator } from "./blocking-modal-queue";
-import {
-  createRendererImageLoader,
-  registerChatConnection,
-} from "./chat/service";
-import { showNotification } from "./notification";
-import { ERRORS } from "./errors";
-import {
-  requestWalletOwner,
-  subscribeWalletOwnerRevoked,
-} from "@dotli/protocol/client";
-import { WALLET_OWNER_REVOKED_EVENT } from "@dotli/protocol/wallet-owner";
+} from './host-callbacks/SessionStore.js';
+
+export { setPageProduct } from './page-core.js';
+import { setProductLoaded } from './state/product.js';
+import { describeWireFrame } from './debug-wire-describe.js';
+import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
+import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
+import { showNotification } from './notification.js';
+import { ERRORS } from './errors.js';
+import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
+import { mountViolationPanel } from './components/sandbox-checker/mount.js';
+import { CameraInputCancelledError, CameraInputPermissionError, scanCameraUr } from './mediated-input-camera.js';
+import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-input-host.js';
+import { decidePromptPermission } from './host-callbacks/PromptPermission.js';
+import { createSubmitRateLimiter } from './host-callbacks/rate-limit.js';
+import { installPolkaVmViewInsetsRelay } from './polkavm-view-insets.js';
 
 const noop = (): void => undefined;
 
-// Eagerly load the iframe host chunk and the worker constructor so they're
-// ready by the time we need them. The wasm core lives inside the worker. The host
-// shell only owns the postMessage bridge, keeping smoldot's CPU off the
-// main thread (no more `[Violation] 'message' handler took 150ms+`).
-const chunkLoadStart = performance.now();
-const runtimeChunkPromise = Promise.all([
-  import("@parity/truapi-host/web"),
-  import("@parity/truapi-host/worker-runtime?worker"),
-]).then(([web, workerMod]) => {
-  m.measure(S.BRIDGE_CHUNK_LOAD, performance.now() - chunkLoadStart);
-  return {
-    createWebWorkerPairingHostRuntime: web.createWebWorkerPairingHostRuntime,
-    createWebWorkerSigningHostRuntime: web.createWebWorkerSigningHostRuntime,
-    createIframeHost: web.createIframeHost,
-    HostWorker: workerMod.default,
-  };
-});
-void runtimeChunkPromise.catch(() => {
-  /* fire-and-forget */
-});
-
-const app = document.getElementById("app") ?? document.body;
+const app = document.getElementById('app') ?? document.body;
 
 interface ActiveHost {
-  core: CoreProvider;
+  core: CoreProviderBase;
+  wallet: LiveLocalWallet | undefined;
   generation: number;
   iframe: HTMLIFrameElement;
-  requestLogin: (reason?: string) => Promise<LoginResponse>;
-  cancelLogin: () => void;
-  disconnect: () => Promise<void>;
-  dispose: () => void;
-}
-
-interface CoreHost {
-  core: CoreProvider;
-  requestLogin: (reason?: string) => Promise<LoginResponse>;
-  cancelLogin: () => void;
-  disconnect: () => Promise<void>;
   dispose: () => void;
 }
 
 type CoreProviderBase = Provider &
   Pick<
     TrUApiProductProvider,
-    | "disconnectSession"
-    | "getPermissionAuthorizationStatus"
-    | "getPermissionAuthorizationStatuses"
-    | "setPermissionAuthorizationStatus"
+    'getPermissionAuthorizationStatus' | 'getPermissionAuthorizationStatuses' | 'setPermissionAuthorizationStatus'
   >;
-type CoreProvider = CoreProviderBase & PairingHostAdmin;
-type PairingRuntimeControls = Partial<PairingHostAdmin> & {
-  dispose(): void;
-};
 type CurrentProduct =
   | {
-      mode: "iframe";
+      mode: 'iframe';
       label: string;
       url: string;
-      productId?: string;
+      productId?: string | undefined;
     }
   | {
-      mode: "subdomain";
+      mode: 'subdomain';
       label: string;
       cid: string;
       executableManifest: string | null;
     };
 
-const LANDING_AUTH_LABEL = "dotli";
-const LANDING_AUTH_DISPLAY_LABEL = "Polkadot Web";
-
 let currentHost: ActiveHost | null = null;
-let landingAuthHostPromise: Promise<CoreHost> | null = null;
-let landingAuthGeneration = 0;
 let currentPanelDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
-const liveCoreProviders = new Set<CoreProvider>();
-let unsubscribeSessionStoreChanges: (() => void) | null = null;
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 const mediatedInputPermissionLimiter = createSubmitRateLimiter();
 const mediatedInputHost = new MediatedInputHost({
   authorize: async (label, signal) => {
     const coordinator = blockingModalCoordinator;
     if (coordinator === null) {
-      throw new Error("blocking modal coordinator is unavailable");
+      throw new Error('blocking modal coordinator is unavailable');
     }
     const scope = coordinator.createScope();
     const abort = (): void => {
-      scope.dispose("mediated input cancelled");
+      scope.dispose('mediated input cancelled');
     };
-    signal.addEventListener("abort", abort, { once: true });
+    signal.addEventListener('abort', abort, { once: true });
     try {
       const decision = await decidePromptPermission(
         label,
-        "Camera",
+        'Camera',
         {
-          kind: "Device",
+          kind: 'Device',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
         },
         scope,
       );
-      return decision !== "Deny";
+      return decision !== 'Deny';
     } finally {
-      signal.removeEventListener("abort", abort);
+      signal.removeEventListener('abort', abort);
       scope.dispose();
     }
   },
@@ -233,18 +165,13 @@ const mediatedInputHost = new MediatedInputHost({
   send: (owner, handle, status, bytes) => {
     const product = currentProduct;
     const source = currentHost?.iframe.contentWindow;
-    if (
-      product?.mode !== "subdomain" ||
-      source === null ||
-      source === undefined ||
-      owner !== source
-    ) {
+    if (product?.mode !== 'subdomain' || source === null || source === undefined || owner !== source) {
       return;
     }
     if (bytes === undefined) {
       source.postMessage(
         {
-          type: "dotli:polkavm-mediated-input-result",
+          type: 'dotli:polkavm-mediated-input-result',
           handle,
           status,
         },
@@ -255,7 +182,7 @@ const mediatedInputHost = new MediatedInputHost({
     const result = new Uint8Array(bytes);
     source.postMessage(
       {
-        type: "dotli:polkavm-mediated-input-result",
+        type: 'dotli:polkavm-mediated-input-result',
         handle,
         status,
         bytes: result,
@@ -264,234 +191,78 @@ const mediatedInputHost = new MediatedInputHost({
       [result.buffer],
     );
   },
-  isCancellation: (error) =>
-    error instanceof CameraInputCancelledError ||
-    (error instanceof DOMException && error.name === "AbortError"),
-  isPermissionDenied: (error) => error instanceof CameraInputPermissionError,
+  isCancellation: error =>
+    error instanceof CameraInputCancelledError || (error instanceof DOMException && error.name === 'AbortError'),
+  isPermissionDenied: error => error instanceof CameraInputPermissionError,
 });
 
-interface LiveLocalWallet {
-  runtime: WorkerSigningHostRuntime;
-  binding: LocalWalletIdentityBinding;
-  identity: LocalIdentity;
-  /** Whether `identity`'s username came from a chain read in this session. */
-  usernameVerified: boolean;
-  nativeSessionUiInfo?: { publicKey?: string; fullUsername?: string };
-}
-
-const localRuntimeDisposers = new Set<() => void>();
-
-function disposeWalletRuntimes(): void {
-  disposeLandingAuthHost();
-  for (const provider of [...liveCoreProviders]) {
-    provider.dispose();
-  }
-  // Include workers still booting, before they have a tracked product provider.
-  for (const dispose of [...localRuntimeDisposers]) {
-    dispose();
-  }
-}
-
-// One tab of the profile runs the test wallet. Every wallet core this page
-// starts shares one lease, acquired before the first one starts.
-let walletOwnerLease: Promise<string | undefined> | undefined;
-let walletOwnerRevocationBound = false;
-
-async function ensureWalletOwner(): Promise<void> {
-  if (!walletOwnerRevocationBound) {
-    walletOwnerRevocationBound = true;
-    subscribeWalletOwnerRevoked(yieldWalletOwner);
-  }
-  walletOwnerLease ??= requestWalletOwner({ action: "acquire" }).catch(
-    (error: unknown) => {
-      walletOwnerLease = undefined;
-      throw error;
-    },
-  );
-  await walletOwnerLease;
-}
-
-// Another tab asked for the wallet: stop this page's cores first, then release,
-// so the two tabs never run the wallet at the same time.
-function yieldWalletOwner(lease: string): void {
-  walletOwnerLease = undefined;
-  if (
-    isExperimentalWalletActive() &&
-    (liveLocalWallets.size > 0 || localRuntimeDisposers.size > 0)
-  ) {
-    disposeWalletRuntimes();
-    window.dispatchEvent(new Event(WALLET_OWNER_REVOKED_EVENT));
-  }
-  void requestWalletOwner({ action: "release", lease }).catch(noop);
-}
-const liveLocalWallets = new Map<WorkerSigningHostRuntime, LiveLocalWallet>();
-const providerWallets = new WeakMap<CoreProvider, LiveLocalWallet>();
-let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
 let localIdentityOperationPending = false;
-
-// Boot restoration and explicit updates share a queue: a provider created while
-// a claim is pending cannot install an older cache after the claim completes.
-function withLocalIdentityUpdate<T>(operation: () => Promise<T>): Promise<T> {
-  const result = localIdentityUpdateQueue.then(operation);
-  localIdentityUpdateQueue = result.catch(noop);
-  return result;
-}
-
-async function activeLocalWallet(): Promise<LiveLocalWallet> {
-  await initializeLocalWalletState();
-  if (!isExperimentalWalletActive()) {
-    throw new Error(
-      "Enable the debug test wallet before checking its username.",
-    );
-  }
-  const host = await getLandingAuthHost();
-  const wallet = providerWallets.get(host.core);
-  if (wallet === undefined) {
-    throw new Error(
-      "The current test wallet is not ready. Try again after it connects.",
-    );
-  }
-  if (!isCurrentLocalWallet(wallet.binding)) {
-    disposeWalletRuntimes();
-    throw new Error(
-      "The test wallet or network changed. Reopen the Wallet tab.",
-    );
-  }
-  return wallet;
-}
 
 async function updateLocalIdentity(
   baseUsername?: string,
   onProgress?: (progress: LocalIdentityProgress) => void,
 ): Promise<LocalIdentity> {
   if (localIdentityOperationPending) {
-    throw new Error("A username operation is already pending.");
+    throw new Error('A username operation is already pending.');
   }
   localIdentityOperationPending = true;
   try {
     const wallet = await activeLocalWallet();
     return await withLocalIdentityUpdate(async () => {
-      if (
-        !isCurrentLocalWallet(wallet.binding) ||
-        !liveLocalWallets.has(wallet.runtime)
-      ) {
-        throw new Error(
-          "Test wallet changed. Retry with the current identity.",
-        );
-      }
+      assertLocalWallet(wallet);
       const identity =
         baseUsername === undefined
           ? await wallet.runtime.refreshLocalIdentity()
           : await wallet.runtime.registerLocalLiteUsername(
               baseUsername,
-              new URL(
-                getActiveServicesConfig().identityBackendBaseUrl,
-                window.location.origin,
-              ).href,
+              new URL(getActiveServicesConfig().identityBackendBaseUrl, window.location.origin).href,
               onProgress === undefined
                 ? undefined
-                : (progress) => {
-                    if (
-                      isCurrentLocalWallet(wallet.binding) &&
-                      liveLocalWallets.has(wallet.runtime)
-                    ) {
-                      onProgress(progress);
+                : progress => {
+                    try {
+                      assertLocalWallet(wallet);
+                    } catch {
+                      return;
                     }
+                    onProgress(progress);
                   },
             );
+      assertLocalWallet(wallet);
       if (
         identity.identityAccountId !== wallet.binding.identityAccountId ||
-        (baseUsername !== undefined &&
-          (identity.liteUsername?.trim() ?? "") === "")
+        (baseUsername !== undefined && (identity.liteUsername?.trim() ?? '') === '')
       ) {
-        throw new Error(
-          "Native username confirmation did not match the active identity.",
-        );
+        throw new Error('Native username confirmation did not match the active identity.');
       }
-      if (
-        !isCurrentLocalWallet(wallet.binding) ||
-        !liveLocalWallets.has(wallet.runtime)
-      ) {
-        throw new Error("Test wallet changed while confirming its username.");
-      }
+      // Every page connection sees the same native session update; no second
+      // product runtime needs reactivation (which would reset its grants).
       wallet.identity = identity;
       wallet.usernameVerified = true;
       if (baseUsername !== undefined && identity.liteUsername !== undefined) {
         showNotification({
-          text: `${identity.liteUsername} is confirmed on-chain and ready to use.`,
-          label: "Username claimed",
+          text: identity.liteUsername + ' is confirmed on-chain and ready to use.',
+          label: 'Username claimed',
           browserNotification: false,
         });
       }
-      // Persist only the SDK's ownership-confirmed result. An absent username is
-      // a verified chain absence, not a failed RPC or HTTP acceptance response.
-      let persistenceError: unknown;
       try {
         await writeVerifiedLocalIdentity(wallet.binding, identity);
-      } catch (error) {
-        persistenceError = error;
-      }
-      const updates = await Promise.allSettled(
-        [...liveLocalWallets.values()]
-          .filter(
-            (entry) =>
-              entry !== wallet &&
-              isCurrentLocalWallet(entry.binding) &&
-              entry.binding.identityAccountId === identity.identityAccountId,
-          )
-          .map(async (entry) => {
-            // Reactivating a live runtime would reset its session/grants. Refresh
-            // updates SessionInfo in place so current apps immediately get_user_id.
-            let refreshed: LocalIdentity;
-            try {
-              refreshed = await entry.runtime.refreshLocalIdentity();
-            } catch (error) {
-              // Product replacement retires its native session, not the claim.
-              if (!liveLocalWallets.has(entry.runtime)) {
-                return;
-              }
-              throw error;
-            }
-            if (!liveLocalWallets.has(entry.runtime)) {
-              return;
-            }
-            if (
-              !isCurrentLocalWallet(entry.binding) ||
-              refreshed.identityAccountId !== identity.identityAccountId ||
-              refreshed.liteUsername !== identity.liteUsername
-            ) {
-              throw new Error(
-                "A running app has not confirmed the same username yet.",
-              );
-            }
-            entry.identity = refreshed;
-            entry.usernameVerified = true;
-          }),
-      );
-      if (!isCurrentLocalWallet(wallet.binding)) {
+      } catch {
         throw new Error(
-          "Test wallet changed while synchronizing its username.",
+          'Chain confirmed ' +
+            (identity.liteUsername ?? 'no registered Lite username') +
+            ', but saving shared metadata failed. Use Check username to retry; do not submit another claim.',
         );
       }
-      if (updates.some((result) => result.status === "rejected")) {
-        showNotification({
-          text: "The wallet username is confirmed, but a running product could not update its account. Reload that product to reconnect.",
-          label: "Product account update failed",
-          browserNotification: false,
-        });
-      }
-      if (persistenceError !== undefined) {
-        throw new Error(
-          `Chain confirmed ${identity.liteUsername ?? "no registered Lite username"}, but saving shared metadata failed. Use Check username to retry; do not submit another claim.`,
-        );
-      }
+      assertLocalWallet(wallet);
       return identity;
     });
   } finally {
     localIdentityOperationPending = false;
   }
 }
-const INSPECTOR_REQUEST_PREFIX = "dotli:host-inspector:";
+
+const INSPECTOR_REQUEST_PREFIX = 'dotli:host-inspector:';
 let inspectorRequestSequence = 0;
 let inspectorResourcePending = false;
 
@@ -507,15 +278,7 @@ function inspectorRequestId(message: Uint8Array): string | null {
 }
 
 function assertInspectorWallet(wallet: LiveLocalWallet): void {
-  if (
-    !DEBUG ||
-    !isExperimentalWalletActive() ||
-    !isCurrentLocalWallet(wallet.binding) ||
-    liveLocalWallets.get(wallet.runtime) !== wallet ||
-    wallet.identity.identityAccountId !== wallet.binding.identityAccountId
-  ) {
-    throw new Error("The test identity changed. Reopen the Wallet tab.");
-  }
+  assertLocalWallet(wallet);
 }
 
 function inspectorProductContext(): InspectorProductContext | null {
@@ -524,7 +287,7 @@ function inspectorProductContext(): InspectorProductContext | null {
   if (product === null) {
     return null;
   }
-  const wallet = host === null ? undefined : providerWallets.get(host.core);
+  const wallet = host?.wallet;
   if (host?.generation !== renderGeneration || wallet === undefined) {
     throw new Error("The current product's test wallet is not ready.");
   }
@@ -535,18 +298,14 @@ function inspectorProductContext(): InspectorProductContext | null {
     host,
     wallet,
     id:
-      product.mode === "iframe"
+      product.mode === 'iframe'
         ? (product.productId ?? labelToProductId(product.label))
         : labelToProductId(product.label),
     assertCurrent(): void {
       assertInspectorWallet(wallet);
-      if (
-        currentProduct !== product ||
-        currentHost !== host ||
-        generation !== renderGeneration
-      ) {
+      if (currentProduct !== product || currentHost !== host || generation !== renderGeneration) {
         throw new Error(
-          "The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.",
+          'The product changed during the Wallet tab operation. An allocation already submitted may have completed; check its outcome before making another request.',
         );
       }
     },
@@ -587,7 +346,7 @@ async function withInspectorClient<T>(
       context.host.core.postMessage(frame.value);
     },
     subscribe(callback) {
-      return context.host.core.subscribe((message) => {
+      return context.host.core.subscribe(message => {
         if (inspectorRequestId(message)?.startsWith(prefix) !== true) {
           return;
         }
@@ -625,23 +384,14 @@ function matchesResourceValue(input: unknown, canonical: unknown): boolean {
   if (input === canonical) {
     return true;
   }
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    typeof canonical !== "object" ||
-    canonical === null
-  ) {
+  if (typeof input !== 'object' || input === null || typeof canonical !== 'object' || canonical === null) {
     return false;
   }
   const actual = input as Record<string, unknown>;
   const expected = canonical as Record<string, unknown>;
   return (
-    Object.keys(actual).every(
-      (key) => actual[key] === undefined || Object.hasOwn(expected, key),
-    ) &&
-    Object.keys(expected).every((key) =>
-      matchesResourceValue(actual[key], expected[key]),
-    )
+    Object.keys(actual).every(key => actual[key] === undefined || Object.hasOwn(expected, key)) &&
+    Object.keys(expected).every(key => matchesResourceValue(actual[key], expected[key]))
   );
 }
 
@@ -653,26 +403,21 @@ function describeResource(resource: unknown): {
   try {
     const encoded = AllocatableResource.enc(resource as AllocatableResource);
     const request = AllocatableResource.dec(encoded);
-    if (
-      request.tag === "AutoSigning" ||
-      !matchesResourceValue(resource, request)
-    ) {
+    if (request.tag === 'AutoSigning' || !matchesResourceValue(resource, request)) {
       return null;
     }
     const selector = request.value as unknown;
     const suffix =
-      typeof selector === "object" &&
+      typeof selector === 'object' &&
       selector !== null &&
-      "tag" in selector &&
-      "value" in selector &&
-      (selector.tag === "Index" || selector.tag === "Raw")
+      'tag' in selector &&
+      'value' in selector &&
+      (selector.tag === 'Index' || selector.tag === 'Raw')
         ? ` (${selector.tag} ${String(selector.value)})`
-        : "";
+        : '';
     return {
-      id: Array.from(encoded, (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join(""),
-      label: request.tag.replace(/([a-z])([A-Z])/g, "$1 $2") + suffix,
+      id: Array.from(encoded, byte => byte.toString(16).padStart(2, '0')).join(''),
+      label: request.tag.replace(/([a-z])([A-Z])/g, '$1 $2') + suffix,
       request,
     };
   } catch {
@@ -690,51 +435,52 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
   );
   context.assertCurrent();
   if (statuses.length !== ALL_PERMISSIONS.length) {
-    throw new Error("Native permission status response was incomplete.");
+    throw new Error('Native permission status response was incomplete.');
   }
   let accountPublicKey: string | undefined;
   let accountError: string | undefined;
   try {
-    const result = await withInspectorClient(context, (client) =>
+    const result = await withInspectorClient(context, client =>
       client.account.getAccount({
         productAccountId: {
           dotNsIdentifier: context.id,
-          derivationIndex: { tag: "Index", value: 0 },
+          derivationIndex: { tag: 'Index', value: 0 },
         },
       }),
     );
     if (result.isErr()) {
-      accountError = "Native host did not disclose this product account.";
+      accountError = 'Native host did not disclose this product account.';
     } else {
       accountPublicKey = result.value.account.publicKey;
     }
   } catch (error) {
     context.assertCurrent();
-    accountError =
-      error instanceof Error ? error.message : "Product account lookup failed.";
+    accountError = error instanceof Error ? error.message : 'Product account lookup failed.';
   }
   context.assertCurrent();
   const defaults: AllocatableResource[] = [
-    { tag: "StatementStoreAllowance" },
-    { tag: "BulletinAllowance" },
-    { tag: "SmartContractAllowance", value: { tag: "Index", value: 0 } },
+    { tag: 'StatementStoreAllowance' },
+    { tag: 'BulletinAllowance' },
+    { tag: 'SmartContractAllowance', value: { tag: 'Index', value: 0 } },
   ];
   return {
     id: context.id,
     name: context.product.label,
     origin:
-      context.product.mode === "iframe"
+      context.product.mode === 'iframe'
         ? new URL(context.product.url, window.location.href).origin
         : sandboxOriginForLabel(context.product.label),
     accountPublicKey,
     accountError,
     derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
-    permissions: ALL_PERMISSIONS.map(({ name, label }, index) => ({
-      id: name,
-      label,
-      status: fromAuthorizationStatus(statuses[index]),
-    })),
-    resources: defaults.flatMap((resource) => {
+    permissions: ALL_PERMISSIONS.map(({ name, label }, index) => {
+      const status = statuses[index];
+      if (status === undefined) {
+        throw new Error('Native permission status response was incomplete.');
+      }
+      return { id: name, label, status: fromAuthorizationStatus(status) };
+    }),
+    resources: defaults.flatMap(resource => {
       const description = describeResource(resource);
       return description === null ? [] : [description];
     }),
@@ -750,22 +496,16 @@ async function getInspectorAllowanceSnapshot(): Promise<WalletAllowanceSnapshot>
     product === null
       ? []
       : [
-          product.mode === "iframe"
+          product.mode === 'iframe'
             ? (product.productId ?? labelToProductId(product.label))
             : labelToProductId(product.label),
         ];
   const wallet = await activeLocalWallet();
   const assertCurrent = (): void => {
-    assertInspectorWallet(wallet);
-    if (
-      product !== currentProduct ||
-      generation !== renderGeneration ||
-      network !== getNetwork()
-    ) {
-      throw new Error(
-        "The wallet inspection context changed. Refresh the Wallet tab.",
-      );
+    if (product !== currentProduct || generation !== renderGeneration || network !== getNetwork()) {
+      throw new Error('The wallet inspection context changed. Refresh the Wallet tab.');
     }
+    assertInspectorWallet(wallet);
   };
   assertCurrent();
   const snapshot = await wallet.runtime.getWalletAllowanceSnapshot(productIds);
@@ -776,9 +516,7 @@ async function getInspectorAllowanceSnapshot(): Promise<WalletAllowanceSnapshot>
     snapshot.productIds.length !== productIds.length ||
     snapshot.productIds.some((id, index) => id !== productIds[index])
   ) {
-    throw new Error(
-      "Native allowance inspection returned a different wallet or product scope.",
-    );
+    throw new Error('Native allowance inspection returned a different wallet or product scope.');
   }
   return snapshot;
 }
@@ -786,40 +524,38 @@ async function getInspectorAllowanceSnapshot(): Promise<WalletAllowanceSnapshot>
 async function requestInspectorResource(
   productId: string,
   resource: unknown,
-): Promise<"Allocated" | "Rejected" | "NotAvailable"> {
+): Promise<'Allocated' | 'Rejected' | 'NotAvailable'> {
   if (inspectorResourcePending) {
-    throw new Error("A resource request is already pending.");
+    throw new Error('A resource request is already pending.');
   }
   const context = inspectorProductContext();
   if (context?.id !== productId) {
-    throw new Error(
-      "Select the current product before requesting an allowance.",
-    );
+    throw new Error('Select the current product before requesting an allowance.');
   }
   const description = describeResource(resource);
   if (description === null) {
-    throw new Error(
-      "Unsupported allowance request. Auto-signing is a permission, not an allowance.",
-    );
+    throw new Error('Unsupported allowance request. Auto-signing is a permission, not an allowance.');
   }
   inspectorResourcePending = true;
   try {
     // This is the same native product provider and its host confirmation flow.
     // An outcome is not a balance: the API exposes no remaining-quota counter.
-    const result = await withInspectorClient(context, (client) =>
+    const result = await withInspectorClient(context, client =>
       client.resourceAllocation.request({ resources: [description.request] }),
     );
     if (result.isErr()) {
-      throw new Error("Native resource allocation failed.", {
+      throw new Error('Native resource allocation failed.', {
         cause: result.error,
       });
     }
     if (result.value.outcomes.length !== 1) {
-      throw new Error(
-        "Native allocation returned no unique outcome. Do not retry blindly.",
-      );
+      throw new Error('Native allocation returned no unique outcome. Do not retry blindly.');
     }
-    return result.value.outcomes[0];
+    const outcome = result.value.outcomes[0];
+    if (outcome === undefined) {
+      throw new Error('Native allocation outcome missing');
+    }
+    return outcome;
   } finally {
     inspectorResourcePending = false;
   }
@@ -834,15 +570,13 @@ export const experimentalWalletControls = {
   },
   getCachedIdentity() {
     const display = readLocalWalletDisplay();
-    return display === undefined
-      ? undefined
-      : { ...display, network: getActiveServicesConfig().label };
+    return display === undefined ? undefined : { ...display, network: getActiveServicesConfig().label };
   },
   async storedInOtherApp(): Promise<boolean> {
     try {
       await initializeLocalWalletState();
     } catch (error) {
-      log.warn("[dot.li] Shared wallet state unavailable:", error);
+      log.warn('[dot.li] Shared wallet state unavailable:', error);
       return false;
     }
     return isLocalWalletStoredInOtherApp();
@@ -850,8 +584,8 @@ export const experimentalWalletControls = {
   async getIdentity(): Promise<
     LocalIdentity & {
       network: string;
-      publicKey?: string;
-      fullUsername?: string;
+      publicKey?: string | undefined;
+      fullUsername?: string | undefined;
       usernameVerified: boolean;
     }
   > {
@@ -876,57 +610,53 @@ export const experimentalWalletControls = {
     onProgress?: (progress: LocalIdentityProgress) => void,
   ): Promise<LocalIdentity> {
     const username = baseUsername.trim();
-    if (username === "" || username.includes(".")) {
-      return Promise.reject(
-        new Error("Enter a base username only, without a network suffix."),
-      );
+    if (username === '' || username.includes('.')) {
+      return Promise.reject(new Error('Enter a base username only, without a network suffix.'));
     }
     return updateLocalIdentity(username, onProgress);
   },
   async activate(): Promise<void> {
     if (!DEBUG) {
-      throw new Error("Experimental wallets require a debug build");
+      throw new Error('Experimental wallets require a debug build');
     }
     const { secret } = await createLocalWalletSecret();
     secret.fill(0);
-    disposeWalletRuntimes();
+    disposePageCores();
     await setLocalWalletEnabled(true);
     window.location.reload();
   },
   async disconnect(): Promise<void> {
     if (!DEBUG) {
-      return Promise.reject(
-        new Error("Experimental wallets require a debug build"),
-      );
+      return Promise.reject(new Error('Experimental wallets require a debug build'));
     }
     if (isExperimentalWalletActive()) {
-      disposeWalletRuntimes();
+      disposePageCores();
     }
     await setLocalWalletEnabled(false);
     window.location.reload();
   },
   async exportMnemonic(): Promise<string> {
     if (!DEBUG) {
-      throw new Error("Experimental wallets require a debug build");
+      throw new Error('Experimental wallets require a debug build');
     }
     return exportLocalWalletMnemonic();
   },
   async importMnemonic(mnemonic: string): Promise<void> {
     if (!DEBUG) {
-      throw new Error("Experimental wallets require a debug build");
+      throw new Error('Experimental wallets require a debug build');
     }
     await importLocalWalletMnemonic(mnemonic, () => {
-      disposeWalletRuntimes();
+      disposePageCores();
     });
     await setLocalWalletEnabled(true);
     window.location.reload();
   },
   async deleteWallet(): Promise<void> {
     if (!DEBUG) {
-      throw new Error("Experimental wallets require a debug build");
+      throw new Error('Experimental wallets require a debug build');
     }
     if (isExperimentalWalletActive()) {
-      disposeWalletRuntimes();
+      disposePageCores();
     }
     await deleteLocalWalletSecret();
     await setLocalWalletEnabled(false);
@@ -934,148 +664,27 @@ export const experimentalWalletControls = {
   },
 };
 
-function ensureStoredSessionForwarder(): void {
-  if (unsubscribeSessionStoreChanges !== null) {
-    return;
-  }
-  const unsubscribeSession = onStoredSessionChanged(() => {
-    notifyLiveCoreProvidersSessionStoreChanged();
-  });
-  const unsubscribeIdentity = onVerifiedLocalIdentityChanged(() => {
-    void withLocalIdentityUpdate(async () => {
-      await Promise.all(
-        [...liveLocalWallets.values()].map(async (entry) => {
-          if (!isCurrentLocalWallet(entry.binding)) {
-            return;
-          }
-          const cached = await readVerifiedLocalIdentity(entry.binding);
-          if (
-            cached === undefined ||
-            cached.liteUsername === entry.identity.liteUsername ||
-            !isCurrentLocalWallet(entry.binding) ||
-            !liveLocalWallets.has(entry.runtime)
-          ) {
-            return;
-          }
-          // Other trusted host tabs learn of the shared record, then update their
-          // own native sessions by checking the chain, without resetting grants.
-          const identity = await entry.runtime.refreshLocalIdentity();
-          if (
-            isCurrentLocalWallet(entry.binding) &&
-            liveLocalWallets.has(entry.runtime)
-          ) {
-            entry.identity = identity;
-          }
-        }),
-      );
-    }).catch((error: unknown) => {
-      log.warn("[dot.li] shared test-wallet username refresh failed:", error);
-      showNotification({
-        text: "A shared test-wallet username changed, but this app could not refresh it. Use Wallet tab → Check username.",
-        label: "Test wallet",
-        browserNotification: false,
-      });
-    });
-  });
-  unsubscribeSessionStoreChanges = () => {
-    unsubscribeSession();
-    unsubscribeIdentity();
-  };
-}
-
-function trackCoreProvider(
-  provider: CoreProviderBase,
-  pairing: PairingRuntimeControls,
-  disposeModalScope: () => void,
-): CoreProvider {
-  let disposed = false;
-  const tracked: CoreProvider = {
-    postMessage(message: Uint8Array): void {
-      provider.postMessage(message);
-    },
-    subscribe(callback) {
-      return provider.subscribe(callback);
-    },
-    subscribeClose(callback) {
-      return provider.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await provider.disconnectSession();
-    },
-    cancelPairing() {
-      pairing.cancelPairing?.();
-    },
-    notifySessionStoreChanged() {
-      pairing.notifySessionStoreChanged?.();
-    },
-    getPermissionAuthorizationStatus(request) {
-      return provider.getPermissionAuthorizationStatus(request);
-    },
-    getPermissionAuthorizationStatuses(requests) {
-      return provider.getPermissionAuthorizationStatuses(requests);
-    },
-    setPermissionAuthorizationStatus(request, status) {
-      return provider.setPermissionAuthorizationStatus(request, status);
-    },
-    dispose() {
-      if (disposed) {
-        return;
-      }
-      disposed = true;
-      liveCoreProviders.delete(tracked);
-      if (
-        liveCoreProviders.size === 0 &&
-        unsubscribeSessionStoreChanges !== null
-      ) {
-        unsubscribeSessionStoreChanges();
-        unsubscribeSessionStoreChanges = null;
-      }
-      disposeModalScope();
-      provider.dispose();
-      pairing.dispose();
-    },
-  };
-  liveCoreProviders.add(tracked);
-  ensureStoredSessionForwarder();
-  queueMicrotask(() => {
-    if (!disposed) {
-      tracked.notifySessionStoreChanged();
-    }
-  });
-  return tracked;
-}
-
-function notifyLiveCoreProvidersSessionStoreChanged(): void {
-  for (const provider of [...liveCoreProviders]) {
-    provider.notifySessionStoreChanged();
-  }
-}
-
 function rerenderProduct(product: CurrentProduct): void {
   const expectedGeneration = renderGeneration + 1;
   const render =
-    product.mode === "iframe"
+    product.mode === 'iframe'
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
         })
-      : renderAppSubdomain(
-          product.cid,
-          product.label,
-          product.executableManifest,
-        );
+      : renderAppSubdomain(product.cid, product.label, product.executableManifest);
   void render.catch((error: unknown) => {
     // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
       return;
     }
-    log.error("[dot.li] Product iframe reload failed:", error);
+    log.error('[dot.li] Product iframe reload failed:', error);
     showNotification({
-      label: "dot.li",
-      text: "The app could not be reloaded.",
+      label: 'dot.li',
+      text: 'The app could not be reloaded.',
       browserNotification: false,
       dismissMs: 0,
       action: {
-        label: "Reload",
+        label: 'Reload',
         onClick: () => {
           window.location.reload();
         },
@@ -1087,7 +696,7 @@ function rerenderProduct(product: CurrentProduct): void {
 // Listen for device permission grants. Reload the iframe so the updated
 // `allow` attribute takes effect. Keep the current iframe visible and surface
 // a retry if replacement host startup fails.
-window.addEventListener("dotli:device-permission-changed", () => {
+window.addEventListener('dotli:device-permission-changed', () => {
   const product = currentProduct;
   if (product !== null) {
     rerenderProduct(product);
@@ -1106,22 +715,11 @@ function stopMotionRelay(): void {
   motionPromptSource = null;
 }
 
-function sendMotionStatus(
-  source: Window,
-  origin: string,
-  availability: 0 | 1 | 2,
-): void {
-  source.postMessage(
-    { type: "dotli:polkavm-motion-status", availability },
-    origin,
-  );
+function sendMotionStatus(source: Window, origin: string, availability: 0 | 1 | 2): void {
+  source.postMessage({ type: 'dotli:polkavm-motion-status', availability }, origin);
 }
 
-function offerTopLevelMotionPermission(
-  source: Window,
-  origin: string,
-  label: string,
-): void {
+function offerTopLevelMotionPermission(source: Window, origin: string, label: string): void {
   if (motionRelayCleanup !== null) {
     sendMotionStatus(source, origin, 1);
     return;
@@ -1133,11 +731,11 @@ function offerTopLevelMotionPermission(
   let permissionPending = false;
   const dismissPrompt = showNotification({
     label: withActiveTld(label),
-    text: "Enable motion to tilt this application with your device.",
+    text: 'Enable motion to tilt this application with your device.',
     dismissMs: 0,
     browserNotification: false,
     action: {
-      label: "Enable motion",
+      label: 'Enable motion',
       onClick: () => {
         if (motionRelayCleanup !== null) {
           sendMotionStatus(source, origin, 1);
@@ -1148,37 +746,34 @@ function offerTopLevelMotionPermission(
         }
         permissionPending = true;
         const constructor =
-          typeof DeviceMotionEvent === "undefined"
+          typeof DeviceMotionEvent === 'undefined'
             ? null
             : (DeviceMotionEvent as typeof DeviceMotionEvent & {
-                requestPermission?: () => Promise<"granted" | "denied">;
+                requestPermission?: () => Promise<'granted' | 'denied'>;
               });
-        let request: Promise<"granted" | "denied" | "unavailable">;
+        let request: Promise<'granted' | 'denied' | 'unavailable'>;
         try {
           request =
             constructor === null
-              ? Promise.resolve("unavailable")
-              : typeof constructor.requestPermission === "function"
+              ? Promise.resolve('unavailable')
+              : typeof constructor.requestPermission === 'function'
                 ? constructor.requestPermission()
-                : Promise.resolve("granted");
+                : Promise.resolve('granted');
         } catch {
           permissionPending = false;
           sendMotionStatus(source, origin, 2);
           return;
         }
         void request
-          .then((permission) => {
-            if (
-              currentHost?.iframe.contentWindow !== source ||
-              currentProduct?.mode !== "subdomain"
-            ) {
+          .then(permission => {
+            if (currentHost?.iframe.contentWindow !== source || currentProduct?.mode !== 'subdomain') {
               return;
             }
-            if (permission === "unavailable") {
+            if (permission === 'unavailable') {
               sendMotionStatus(source, origin, 0);
               return;
             }
-            if (permission !== "granted") {
+            if (permission !== 'granted') {
               sendMotionStatus(source, origin, 2);
               return;
             }
@@ -1187,7 +782,7 @@ function offerTopLevelMotionPermission(
               const rotation = event.rotationRate;
               source.postMessage(
                 {
-                  type: "dotli:polkavm-motion-sample",
+                  type: 'dotli:polkavm-motion-sample',
                   timestampMs: performance.now(),
                   acceleration:
                     acceleration === null
@@ -1209,9 +804,9 @@ function offerTopLevelMotionPermission(
                 origin,
               );
             };
-            window.addEventListener("devicemotion", onMotion);
+            window.addEventListener('devicemotion', onMotion);
             motionRelayCleanup = () => {
-              window.removeEventListener("devicemotion", onMotion);
+              window.removeEventListener('devicemotion', onMotion);
             };
             dismissPrompt();
             motionPromptSource = null;
@@ -1245,22 +840,22 @@ function offerTopLevelMotionPermission(
 // re-renders; update activation has its own idempotence guard in `pwa.ts`.
 const RECOVER_MIN_INTERVAL_MS = 5_000;
 let lastRecoverAt = 0;
-window.addEventListener("message", (event: MessageEvent) => {
+window.addEventListener('message', (event: MessageEvent) => {
   const data = event.data as Record<string, unknown> | null;
-  const type = data?.type;
+  const type = data?.['type'];
   if (
-    type !== "dotli:sandbox-recover" &&
-    type !== "dotli:host-update-required" &&
-    type !== "dotli:polkavm-motion-request" &&
-    type !== "dotli:polkavm-mediated-input-request" &&
-    type !== "dotli:polkavm-mediated-input-cancel"
+    type !== 'dotli:sandbox-recover' &&
+    type !== 'dotli:host-update-required' &&
+    type !== 'dotli:polkavm-motion-request' &&
+    type !== 'dotli:polkavm-mediated-input-request' &&
+    type !== 'dotli:polkavm-mediated-input-cancel'
   ) {
     return;
   }
   const product = currentProduct;
   const source = currentHost?.iframe.contentWindow;
   if (
-    product?.mode !== "subdomain" ||
+    product?.mode !== 'subdomain' ||
     event.origin !== sandboxOriginForLabel(product.label) ||
     source === null ||
     source === undefined ||
@@ -1268,31 +863,31 @@ window.addEventListener("message", (event: MessageEvent) => {
   ) {
     return;
   }
-  if (type === "dotli:polkavm-motion-request") {
+  if (type === 'dotli:polkavm-motion-request') {
     offerTopLevelMotionPermission(source, event.origin, product.label);
     return;
   }
-  if (type === "dotli:polkavm-mediated-input-request") {
+  if (type === 'dotli:polkavm-mediated-input-request') {
     const request = validatedMediatedInputRequest(data);
     if (request !== null) {
       mediatedInputHost.request(source, product.label, request);
     }
     return;
   }
-  if (type === "dotli:polkavm-mediated-input-cancel") {
+  if (type === 'dotli:polkavm-mediated-input-cancel') {
     if (
       data !== null &&
-      Object.keys(data).every((key) => key === "type" || key === "handle") &&
-      Number.isInteger(data.handle) &&
-      Number(data.handle) >= 1 &&
-      Number(data.handle) <= 0xffffffff
+      Object.keys(data).every(key => key === 'type' || key === 'handle') &&
+      Number.isInteger(data['handle']) &&
+      Number(data['handle']) >= 1 &&
+      Number(data['handle']) <= 0xffffffff
     ) {
-      mediatedInputHost.cancel(source, Number(data.handle));
+      mediatedInputHost.cancel(source, Number(data['handle']));
     }
     return;
   }
-  if (type === "dotli:host-update-required") {
-    window.dispatchEvent(new Event("dotli:host-update-required"));
+  if (type === 'dotli:host-update-required') {
+    window.dispatchEvent(new Event('dotli:host-update-required'));
     return;
   }
   const now = Date.now();
@@ -1304,14 +899,14 @@ window.addEventListener("message", (event: MessageEvent) => {
 });
 
 type PolkaVmPlatformCommand =
-  | Readonly<{ type: "copy-text"; text: string }>
+  | Readonly<{ type: 'copy-text'; text: string }>
   | Readonly<{
-      type: "copy-image";
+      type: 'copy-image';
       width: number;
       height: number;
       rgba: Uint8Array;
     }>
-  | Readonly<{ type: "open-url"; url: string }>;
+  | Readonly<{ type: 'open-url'; url: string }>;
 
 // Cold guest work can exceed one second. Browser transient activation must
 // still be live when the command arrives; this bound never extends it.
@@ -1327,81 +922,63 @@ let polkavmPlatformActivation: Readonly<{
   expiresAt: number;
 }> | null = null;
 
-function validatedPolkaVmPlatformCommand(
-  value: unknown,
-): PolkaVmPlatformCommand | null {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+function validatedPolkaVmPlatformCommand(value: unknown): PolkaVmPlatformCommand | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
   const command = value as Record<string, unknown>;
   if (
-    command.type === "copy-text" &&
-    Object.keys(command).every((key) => key === "type" || key === "text") &&
-    typeof command.text === "string" &&
-    polkavmPlatformEncoder.encode(command.text).byteLength <=
-      MAX_POLKAVM_COPY_TEXT_BYTES
+    command['type'] === 'copy-text' &&
+    Object.keys(command).every(key => key === 'type' || key === 'text') &&
+    typeof command['text'] === 'string' &&
+    polkavmPlatformEncoder.encode(command['text']).byteLength <= MAX_POLKAVM_COPY_TEXT_BYTES
   ) {
-    return { type: "copy-text", text: command.text };
+    return { type: 'copy-text', text: command['text'] };
   }
   if (
-    command.type === "copy-image" &&
-    Object.keys(command).every((key) =>
-      ["type", "width", "height", "rgba"].includes(key),
-    ) &&
-    Number.isInteger(command.width) &&
-    Number.isInteger(command.height) &&
-    Number(command.width) > 0 &&
-    Number(command.height) > 0 &&
-    Number(command.width) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
-    Number(command.height) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
-    Number(command.width) * Number(command.height) <=
-      MAX_POLKAVM_COPY_IMAGE_PIXELS &&
-    command.rgba instanceof Uint8Array &&
-    command.rgba.byteLength ===
-      Number(command.width) * Number(command.height) * 4
+    command['type'] === 'copy-image' &&
+    Object.keys(command).every(key => ['type', 'width', 'height', 'rgba'].includes(key)) &&
+    Number.isInteger(command['width']) &&
+    Number.isInteger(command['height']) &&
+    Number(command['width']) > 0 &&
+    Number(command['height']) > 0 &&
+    Number(command['width']) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command['height']) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command['width']) * Number(command['height']) <= MAX_POLKAVM_COPY_IMAGE_PIXELS &&
+    command['rgba'] instanceof Uint8Array &&
+    command['rgba'].byteLength === Number(command['width']) * Number(command['height']) * 4
   ) {
     return {
-      type: "copy-image",
-      width: Number(command.width),
-      height: Number(command.height),
-      rgba: command.rgba,
+      type: 'copy-image',
+      width: Number(command['width']),
+      height: Number(command['height']),
+      rgba: command['rgba'],
     };
   }
   if (
-    command.type === "open-url" &&
-    Object.keys(command).every((key) => key === "type" || key === "url") &&
-    typeof command.url === "string" &&
-    command.url !== "" &&
-    polkavmPlatformEncoder.encode(command.url).byteLength <=
-      MAX_POLKAVM_OPEN_URL_BYTES
+    command['type'] === 'open-url' &&
+    Object.keys(command).every(key => key === 'type' || key === 'url') &&
+    typeof command['url'] === 'string' &&
+    command['url'] !== '' &&
+    polkavmPlatformEncoder.encode(command['url']).byteLength <= MAX_POLKAVM_OPEN_URL_BYTES
   ) {
     return {
-      type: "open-url",
-      url: command.url,
+      type: 'open-url',
+      url: command['url'],
     };
   }
   return null;
 }
 
-function clipboardImagePng(
-  command: Extract<PolkaVmPlatformCommand, { type: "copy-image" }>,
-): Promise<Blob> {
-  const canvas = document.createElement("canvas");
+function clipboardImagePng(command: Extract<PolkaVmPlatformCommand, { type: 'copy-image' }>): Promise<Blob> {
+  const canvas = document.createElement('canvas');
   canvas.width = command.width;
   canvas.height = command.height;
-  const context = canvas.getContext("2d");
+  const context = canvas.getContext('2d');
   if (context === null) {
-    return Promise.reject(new Error("2D canvas is unavailable"));
+    return Promise.reject(new Error('2D canvas is unavailable'));
   }
-  context.putImageData(
-    new ImageData(
-      new Uint8ClampedArray(command.rgba),
-      command.width,
-      command.height,
-    ),
-    0,
-    0,
-  );
+  context.putImageData(new ImageData(new Uint8ClampedArray(command.rgba), command.width, command.height), 0, 0);
   const { promise, resolve, reject } = (
     Promise as PromiseConstructor & {
       withResolvers<T>(): {
@@ -1411,35 +988,32 @@ function clipboardImagePng(
       };
     }
   ).withResolvers<Blob>();
-  canvas.toBlob((blob) => {
+  canvas.toBlob(blob => {
     if (blob === null) {
-      reject(new Error("PNG encoding failed"));
+      reject(new Error('PNG encoding failed'));
     } else {
       resolve(blob);
     }
-  }, "image/png");
+  }, 'image/png');
   return promise;
 }
 
-window.addEventListener("message", (event: MessageEvent) => {
+window.addEventListener('message', (event: MessageEvent) => {
   const data = event.data as { type?: unknown; command?: unknown } | null;
-  if (
-    data?.type !== "dotli:polkavm-user-activation" &&
-    data?.type !== "dotli:polkavm-ui-command"
-  ) {
+  if (data?.type !== 'dotli:polkavm-user-activation' && data?.type !== 'dotli:polkavm-ui-command') {
     return;
   }
   const product = currentProduct;
   const source = currentHost?.iframe.contentWindow;
   if (
-    product?.mode !== "subdomain" ||
+    product?.mode !== 'subdomain' ||
     event.origin !== sandboxOriginForLabel(product.label) ||
     source === null ||
     event.source !== source
   ) {
     return;
   }
-  if (data.type === "dotli:polkavm-user-activation") {
+  if (data.type === 'dotli:polkavm-user-activation') {
     if (navigator.userActivation.isActive) {
       polkavmPlatformActivation = {
         source,
@@ -1466,25 +1040,22 @@ window.addEventListener("message", (event: MessageEvent) => {
   if (command === null) {
     return;
   }
-  if (command.type === "copy-text") {
+  if (command.type === 'copy-text') {
     void navigator.clipboard.writeText(command.text).catch((error: unknown) => {
-      log.warn("[dot.li] PolkaVM clipboard request was declined:", error);
+      log.warn('[dot.li] PolkaVM clipboard request was declined:', error);
     });
     return;
   }
-  if (command.type === "copy-image") {
+  if (command.type === 'copy-image') {
     try {
       const item = new ClipboardItem({
-        "image/png": clipboardImagePng(command),
+        'image/png': clipboardImagePng(command),
       });
       void navigator.clipboard.write([item]).catch((error: unknown) => {
-        log.warn(
-          "[dot.li] PolkaVM image clipboard request was declined:",
-          error,
-        );
+        log.warn('[dot.li] PolkaVM image clipboard request was declined:', error);
       });
     } catch (error) {
-      log.warn("[dot.li] PolkaVM image clipboard is unavailable:", error);
+      log.warn('[dot.li] PolkaVM image clipboard is unavailable:', error);
     }
     return;
   }
@@ -1494,92 +1065,62 @@ window.addEventListener("message", (event: MessageEvent) => {
   } catch {
     return;
   }
-  if (destination.protocol !== "https:") {
+  if (destination.protocol !== 'https:') {
     return;
   }
-  window.open(destination.href, "_blank", "noopener,noreferrer");
+  window.open(destination.href, '_blank', 'noopener,noreferrer');
 });
 
 let bridgeEventListenersInitialized = false;
 
-export function initBridgeEventListeners(
-  modalCoordinator: BlockingModalCoordinator,
-): void {
+export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordinator): void {
   if (bridgeEventListenersInitialized) {
     return;
   }
+  initPageCore(modalCoordinator);
   blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
-  (
-    window as typeof window & { __dotliTruapiBridgeReady?: boolean }
-  ).__dotliTruapiBridgeReady = true;
+  (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
   if (DEBUG) {
-    window.addEventListener("storage", (event) => {
-      if (
-        event.key === LOCAL_WALLET_ENABLED_KEY ||
-        event.key === LOCAL_WALLET_REVISION_KEY ||
-        event.key === null
-      ) {
-        disposeWalletRuntimes();
+    window.addEventListener('storage', event => {
+      if (event.key === LOCAL_WALLET_ENABLED_KEY || event.key === LOCAL_WALLET_REVISION_KEY || event.key === null) {
+        disposePageCores();
         window.location.reload();
       }
     });
-    // The host identity is available on the landing page and outlives every
-    // product. Mobile keeps its existing lazy pairing lifecycle.
-    const generation = landingAuthGeneration;
-    void initializeLocalWalletState()
-      .then(async () => {
-        if (
-          isExperimentalWalletActive() &&
-          generation === landingAuthGeneration
-        ) {
-          await getLandingAuthHost();
+    void initializeLocalWalletState().then(
+      () => {
+        if (isExperimentalWalletActive()) {
+          void activeLocalWallet().catch(noop);
         }
-      })
-      .catch((error: unknown) => {
-        if (
-          isExperimentalWalletActive() &&
-          generation === landingAuthGeneration
-        ) {
+      },
+      (error: unknown) => {
+        if (isExperimentalWalletActive()) {
           dispatchAuthState({
-            tag: "WalletUnavailable",
+            tag: 'WalletUnavailable',
             reason: error instanceof Error ? error.message : String(error),
           });
         }
-      });
+      },
+    );
   }
-  window.addEventListener("dotli:truapi-disconnect-request", () => {
+  window.addEventListener('dotli:truapi-disconnect-request', () => {
     if (isExperimentalWalletActive()) {
       void experimentalWalletControls.disconnect();
       return;
     }
-    void disconnectTruapiHosts();
+    void disconnectSession();
   });
 
-  // User closed the pairing modal: cancel whichever core initiated it. A
-  // product can request login directly, while the topbar uses the landing
-  // auth host.
-  window.addEventListener("dotli:truapi-cancel-login", () => {
-    currentHost?.cancelLogin();
-    void landingAuthHostPromise?.then(
-      (host) => {
-        host.cancelLogin();
-      },
-      () => {
-        /* a failed pending host has no login to cancel */
-      },
-    );
+  // User closed the pairing modal: the page's core runs every pairing,
+  // whether the product or the topbar asked for it.
+  window.addEventListener('dotli:truapi-cancel-login', () => {
+    cancelPairing();
   });
 
-  window.addEventListener("dotli:truapi-login-request", (event: Event) => {
+  window.addEventListener('dotli:truapi-login-request', (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
-    void (async () => {
-      const host = await getLandingAuthHost();
-      const result = await host.requestLogin(detail.reason);
-      if (result === "Success" || result === "AlreadyConnected") {
-        notifyLiveCoreProvidersSessionStoreChanged();
-      }
-    })().catch((error: unknown) => {
+    void topbarLogin(detail.reason).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       // A `LoginRequestError` came back over the wire, so the core already
       // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
@@ -1587,8 +1128,8 @@ export function initBridgeEventListeners(
       // failures the core never saw: host boot, encode, transport errors.
       if (!(error instanceof LoginRequestError)) {
         dispatchAuthState({
-          tag: "LoginFailed",
-          kind: "Other",
+          tag: 'LoginFailed',
+          kind: 'Other',
           reason: message,
         });
       }
@@ -1596,30 +1137,42 @@ export function initBridgeEventListeners(
   });
 }
 
-async function disconnectTruapiHosts(): Promise<void> {
-  const hosts = new Set<CoreHost | ActiveHost>();
-  if (currentHost !== null) {
-    hosts.add(currentHost);
-  }
-  if (landingAuthHostPromise !== null) {
+/**
+ * Log in from the topbar, over a connection of its own: the product's
+ * connection forwards every frame to the product. The lease keeps the core
+ * up until the login settles, whatever renders meanwhile.
+ */
+async function topbarLogin(reason: string | undefined): Promise<void> {
+  const lease = await acquireCore();
+  try {
+    const core = wrapCoreProviderForDebug(await lease.connect());
     try {
-      hosts.add(await landingAuthHostPromise);
-    } catch (err) {
-      log.warn("[dot.li] pending login host cleanup failed:", err);
+      await requestCoreLogin(core, reason);
+    } finally {
+      core.dispose();
     }
+  } finally {
+    lease.release();
   }
+}
 
-  if (hosts.size === 0) {
-    try {
-      hosts.add(await getLandingAuthHost());
-    } catch {
-      // If the auth runtime cannot boot, keep the UI responsive even though
-      // persisted core session state could not be cleared.
-      dispatchAuthState({ tag: "Disconnected" });
-      return;
-    }
+async function disconnectSession(): Promise<void> {
+  let lease;
+  try {
+    lease = await acquireCore();
+  } catch {
+    // If the core cannot boot, keep the UI responsive even though persisted
+    // core session state could not be cleared.
+    dispatchAuthState({ tag: 'Disconnected' });
+    return;
   }
-  await Promise.allSettled([...hosts].map((host) => host.disconnect()));
+  try {
+    await lease.runtime.disconnectSession();
+  } catch (err) {
+    log.warn('[dot.li] disconnect failed:', err);
+  } finally {
+    lease.release();
+  }
 }
 
 /**
@@ -1630,25 +1183,24 @@ function getDeepPath(): string {
   const { pathname, search, hash } = window.location;
   let p = pathname;
   const base = import.meta.env.BASE_URL;
-  if (base !== "/" && p.startsWith(base)) {
-    p = "/" + p.slice(base.length);
+  if (base !== '/' && p.startsWith(base)) {
+    p = '/' + p.slice(base.length);
   }
-  const isRoot = p === "" || p === "/";
+  const isRoot = p === '' || p === '/';
   if (isRoot) {
-    return search || hash ? search + hash : "";
+    return search || hash ? search + hash : '';
   }
   return p + search + hash;
 }
 
-/** Pin the product iframe to the area the host chrome and the insets leave. */
-function applyIframeStyling(
-  iframe: HTMLIFrameElement,
-  opts: { topbarOffset: boolean },
-): void {
-  const box = productIframeBox(opts);
-  iframe.style.cssText = `position:fixed;top:${box.top};left:${box.left};width:${box.width};height:${box.height};border:none;margin:0;padding:0;`;
-  document.body.style.margin = "0";
-  document.body.style.overflow = "hidden";
+/**
+ * Pin the product iframe to the area the host chrome and the insets leave.
+ * product-frame-layout owns its geometry from here on.
+ */
+function applyIframeStyling(iframe: HTMLIFrameElement): void {
+  attachProductFrame(iframe);
+  document.body.style.margin = '0';
+  document.body.style.overflow = 'hidden';
 }
 
 function pipeProviders(
@@ -1659,17 +1211,15 @@ function pipeProviders(
   let sawInbound = false;
   let sawOutbound = false;
   const unsubs = [
-    product.subscribe((message) => {
-      // This namespace belongs to host-only clients. Guests cannot inject a
-      // matching request or receive an inspector response.
+    product.subscribe(message => {
       if (inspectorRequestId(message) !== null) {
         return;
       }
       if (!sawInbound) {
         sawInbound = true;
         emitDotliDebugEvent({
-          layer: "bridge",
-          event: "first_inbound",
+          layer: 'bridge',
+          event: 'first_inbound',
           flowId: args.flowId,
           timestamp: Date.now(),
           payload: { label: args.label, productId: args.productId },
@@ -1677,20 +1227,20 @@ function pipeProviders(
       }
       core.postMessage(message);
     }),
-    core.subscribe((message) => {
+    core.subscribe(message => {
       if (inspectorRequestId(message) !== null) {
         return;
       }
       if (!sawOutbound) {
         sawOutbound = true;
         emitDotliDebugEvent({
-          layer: "bridge",
-          event: "first_outbound",
+          layer: 'bridge',
+          event: 'first_outbound',
           flowId: args.flowId,
           timestamp: Date.now(),
           payload: { label: args.label, productId: args.productId },
         });
-        window.dispatchEvent(new Event("dotli:debug:bridge-ready"));
+        window.dispatchEvent(new Event('dotli:debug:bridge-ready'));
       }
       product.postMessage(message);
     }),
@@ -1700,7 +1250,7 @@ function pipeProviders(
     core.subscribeClose?.(() => {
       product.dispose();
     }),
-  ].filter((fn): fn is () => void => typeof fn === "function");
+  ].filter((fn): fn is () => void => typeof fn === 'function');
 
   return () => {
     for (const unsub of unsubs) {
@@ -1714,11 +1264,7 @@ function pipeProviders(
   };
 }
 
-function emitWireFrameDebug(
-  direction: "incoming" | "outgoing",
-  productId: string,
-  message: Uint8Array,
-): void {
+function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: string, message: Uint8Array): void {
   if (!hasDotliDebugListeners()) {
     return;
   }
@@ -1728,7 +1274,7 @@ function emitWireFrameDebug(
       return;
     }
     emitDotliDebugEvent({
-      kind: "truapi",
+      kind: 'truapi',
       direction,
       productId,
       requestId: decoded.value.requestId,
@@ -1740,17 +1286,15 @@ function emitWireFrameDebug(
   }
 }
 
-function wrapCoreProviderForDebug(
-  provider: CoreProviderBase,
-  productId: string,
-): CoreProviderBase {
+function wrapCoreProviderForDebug(connection: CoreConnection): CoreProviderBase {
+  const { provider, productId } = connection;
   const listeners = new Set<(message: Uint8Array) => void>();
   let disposed = false;
-  const unsubscribeCore = provider.subscribe((message) => {
+  const unsubscribeCore = provider.subscribe(message => {
     if (disposed) {
       return;
     }
-    emitWireFrameDebug("outgoing", productId, message);
+    emitWireFrameDebug('outgoing', productId, message);
     for (const listener of [...listeners]) {
       listener(message);
     }
@@ -1761,7 +1305,7 @@ function wrapCoreProviderForDebug(
       if (disposed) {
         return;
       }
-      emitWireFrameDebug("incoming", productId, message);
+      emitWireFrameDebug('incoming', productId, message);
       provider.postMessage(message);
     },
     subscribe(callback) {
@@ -1772,9 +1316,6 @@ function wrapCoreProviderForDebug(
     },
     subscribeClose(callback) {
       return provider.subscribeClose?.(callback) ?? noop;
-    },
-    async disconnectSession() {
-      await provider.disconnectSession();
     },
     getPermissionAuthorizationStatus(request) {
       return provider.getPermissionAuthorizationStatus(request);
@@ -1792,17 +1333,14 @@ function wrapCoreProviderForDebug(
       disposed = true;
       unsubscribeCore();
       listeners.clear();
-      provider.dispose();
+      connection.close();
     },
   };
 }
 
 let topbarLoginRequestSeq = 0;
 
-export function requestCoreLogin(
-  core: Provider,
-  reason?: string,
-): Promise<LoginResponse> {
+export function requestCoreLogin(core: Provider, reason?: string): Promise<LoginResponse> {
   const requestId = `dotli:topbar-login:${String(++topbarLoginRequestSeq)}`;
   // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
@@ -1816,8 +1354,8 @@ export function requestCoreLogin(
       methodId: ACCOUNT_REQUEST_LOGIN.method,
       messageType: MESSAGE_TYPE_REQUEST,
       value: VersionedHostRequestLoginRequest.enc({
-        tag: "V1",
-        value: { reason },
+        tag: 'V1',
+        value: reason === undefined ? {} : { reason },
       }),
     },
   });
@@ -1865,7 +1403,7 @@ export function requestCoreLogin(
     };
 
     registerCleanup(
-      core.subscribe((message) => {
+      core.subscribe(message => {
         const decoded = decodeWireMessage(message);
         if (decoded.isErr()) {
           rejectRequest(decoded.error);
@@ -1890,21 +1428,19 @@ export function requestCoreLogin(
             rejectRequest(error);
           }
         } catch (error) {
-          rejectRequest(
-            error instanceof Error ? error : new Error(String(error)),
-          );
+          rejectRequest(error instanceof Error ? error : new Error(String(error)));
         }
       }),
-      (unsubscribe) => {
+      unsubscribe => {
         unsubscribeMessage = unsubscribe;
       },
     );
 
     registerCleanup(
-      core.subscribeClose?.((error) => {
+      core.subscribeClose?.(error => {
         rejectRequest(error);
       }),
-      (unsubscribe) => {
+      unsubscribe => {
         unsubscribeClose = unsubscribe;
       },
     );
@@ -1922,24 +1458,30 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
-  productId?: string;
   archiveCid?: string;
+  productId?: string | undefined;
   container: HTMLElement;
   extraAllow?: readonly string[];
   debugFlowId: string;
   viewInsetsRelay?: boolean;
 }): Promise<ActiveHost> {
-  const generation = renderGeneration;
-  const coreProvider = await createCoreProvider(args.label, {
-    productId: args.productId,
-    archiveCid: args.archiveCid,
-  });
-  const unregisterPermissions = registerPermissionAuthorizationProvider(
-    args.label,
-    coreProvider,
-  );
-  const { createIframeHost } = await runtimeChunkPromise;
-  const productId = args.productId ?? labelToProductId(args.label);
+  const lease = await acquireCore();
+  let connection: CoreConnection;
+  let chatCapable: boolean;
+  try {
+    // Chat-capable products get a Worker-kind execution so the core serves
+    // their chat calls; everything an App connection can do still works.
+    // The capability is primed by the host shell before rendering, so
+    // this await settles from cache or the in-flight manifest read.
+    chatCapable = await chatCapabilityFor(args.label);
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App');
+  } catch (error) {
+    lease.release();
+    throw error;
+  }
+  const coreProvider = wrapCoreProviderForDebug(connection);
+  const unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
+  const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
@@ -1947,7 +1489,7 @@ async function createHost(args: {
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
-    productId,
+    productId: connection.productId,
   };
   const cleanupProductSide = (): void => {
     disposePipe?.();
@@ -1960,12 +1502,17 @@ async function createHost(args: {
     productProvider = createMessagePortProvider(port);
     disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
   };
+  const cleanupCoreSide = (): void => {
+    unregisterPermissions();
+    unregisterChat();
+    cleanupProductSide();
+    coreProvider.dispose();
+    lease.release();
+  };
   try {
-    const allow = [
-      await buildAllowAttribute(args.label),
-      ...(args.extraAllow ?? []),
-      "cross-origin-isolated",
-    ].join("; ");
+    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
+      '; ',
+    );
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1975,482 +1522,83 @@ async function createHost(args: {
       onPort: connectProductPort,
     });
     if (args.viewInsetsRelay === true) {
-      disposeViewInsets = installPolkaVmViewInsetsRelay(
-        host.iframe,
-        args.allowedOrigin,
-      );
+      disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
     }
 
     // Codec-1 Nova products post raw SCALE frames to window.parent. Those
     // bytes have no codec marker and must never reach the codec-2 decoder.
     // Only the modern SDK's transferred MessagePort is supported.
-    let probeMode: "pending" | "modern" = "pending";
+    let probeMode: 'pending' | 'modern' = 'pending';
     let warnedLegacyTransport = false;
     const onProbe = (event: MessageEvent): void => {
       const targetWindow = host.iframe.contentWindow;
-      if (
-        !targetWindow ||
-        event.source !== targetWindow ||
-        event.origin !== args.allowedOrigin
-      ) {
+      if (!targetWindow || event.source !== targetWindow || event.origin !== args.allowedOrigin) {
         return;
       }
-      if ((event.data as { type?: unknown } | null)?.type === "truapi-ready") {
-        if (probeMode === "modern") {
+      if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
+        if (probeMode === 'modern') {
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
-          targetWindow.postMessage(
-            { type: "truapi-init" },
-            args.allowedOrigin,
-            [channel.port2],
-          );
+          targetWindow.postMessage({ type: 'truapi-init' }, args.allowedOrigin, [channel.port2]);
         } else {
-          probeMode = "modern";
+          probeMode = 'modern';
         }
         return;
       }
       if (event.data instanceof Uint8Array && !warnedLegacyTransport) {
         warnedLegacyTransport = true;
         showNotification({
-          text: "This product uses the unsupported legacy Nova host API. Update it to @parity/truapi 0.16 or newer with the MessagePort transport.",
-          label: "Product update required",
+          text: 'This product uses the unsupported legacy Nova host API. Update it to @parity/truapi 0.16 or newer with the MessagePort transport.',
+          label: 'Product update required',
           browserNotification: false,
         });
       }
     };
-    window.addEventListener("message", onProbe);
+    window.addEventListener('message', onProbe);
     productProbeCleanup = () => {
-      window.removeEventListener("message", onProbe);
+      window.removeEventListener('message', onProbe);
       productProbeCleanup = null;
     };
-
     return {
       core: coreProvider,
-      generation,
+      wallet: connection.wallet,
+      generation: renderGeneration,
       iframe: host.iframe,
-      requestLogin(reason) {
-        return requestCoreLogin(coreProvider, reason);
-      },
-      cancelLogin() {
-        coreProvider.cancelPairing();
-      },
-      disconnect() {
-        return coreProvider.disconnectSession();
-      },
       dispose() {
         mediatedInputHost.stop();
-        unregisterPermissions();
         disposeViewInsets?.();
         productProbeCleanup?.();
-        cleanupProductSide();
-        coreProvider.dispose();
+        cleanupCoreSide();
         host.dispose();
       },
     };
   } catch (error) {
     disposeViewInsets?.();
-    unregisterPermissions();
     productProbeCleanup?.();
-    cleanupProductSide();
-    coreProvider.dispose();
+    cleanupCoreSide();
     throw error;
   }
 }
 
-async function createCoreProvider(
-  label: string,
-  options: {
-    pairingLabel?: string;
-    pairingDotSuffix?: boolean;
-    pairingHostGlobal?: boolean;
-    productId?: string;
-    archiveCid?: string;
-    walletOwner?: boolean;
-  } = {},
-): Promise<CoreProvider> {
-  if (blockingModalCoordinator === null) {
-    throw new Error(
-      "TrUAPI bridge initialized without a blocking modal coordinator",
-    );
-  }
-  await initializeLocalWalletState();
-  // Bootstrap the persistent owner first; products never own wallet identity.
-  const owner =
-    isExperimentalWalletActive() && options.walletOwner !== true
-      ? await activeLocalWallet()
-      : undefined;
-  const blockingModalScope = blockingModalCoordinator.createScope();
-  const localContext = isExperimentalWalletActive()
-    ? localWalletContext()
-    : undefined;
-  let activatedIdentity: LocalIdentity | undefined;
-  let nativeSessionUiInfo: LiveLocalWallet["nativeSessionUiInfo"];
-  let liveWallet: LiveLocalWallet | undefined;
-  let walletAuthReady = false;
-  let pendingWalletAuthState: AuthState | undefined;
-  let runtimeDisposed = false;
-  const isRuntimeDisposed = (): boolean => runtimeDisposed;
-  let runtime: WorkerPairingHostRuntime | WorkerSigningHostRuntime | undefined;
-  const disposeNativeRuntime = (): void => {
-    runtimeDisposed = true;
-    localRuntimeDisposers.delete(disposeNativeRuntime);
-    if (liveWallet !== undefined) {
-      liveLocalWallets.delete(liveWallet.runtime);
-    }
-    runtime?.dispose();
-  };
-  localRuntimeDisposers.add(disposeNativeRuntime);
-  try {
-    const { createWebWorkerPairingHostRuntime, HostWorker } =
-      await runtimeChunkPromise;
-    const runtimeConfig = createTruapiRuntimeConfig(label, options.productId);
-    const { productId, ...hostConfig } = runtimeConfig;
-    // Chat-capable products get a Worker-kind execution so the core serves
-    // their chat calls; everything an App connection can do still works.
-    // The capability is primed by the host shell before rendering, so
-    // this await settles from cache or the in-flight manifest read.
-    const chatCapable =
-      options.walletOwner !== true && (await chatCapabilityFor(label));
-    const callbacks = createHostCallbacks({
-      label,
-      pairingLabel: options.pairingLabel,
-      pairingDotSuffix: options.pairingDotSuffix,
-      pairingHostGlobal: options.pairingHostGlobal,
-      blockingModalScope,
-    });
-    const forwardAuthState = callbacks.auth.authStateChanged;
-    callbacks.auth.authStateChanged = (state) => {
-      // Worker messages queued before replacement must never repaint a new
-      // identity or overwrite the separate Mobile session UI cache.
-      if (
-        isRuntimeDisposed() ||
-        (localContext === undefined
-          ? isExperimentalWalletActive()
-          : !isCurrentLocalWallet(localContext))
-      ) {
-        return;
+function registerProductChat({ provider, productId }: CoreConnection, archiveCid?: string): () => void {
+  return registerChatConnection(productId, {
+    loadRendererImage: createRendererImageLoader(archiveCid),
+    publish: action =>
+      provider.publishChatAction === undefined
+        ? Promise.reject(new Error('chat publishing unavailable'))
+        : provider.publishChatAction(action),
+    publishRendererAction: item =>
+      provider.publishRendererAction === undefined
+        ? Promise.reject(new Error('renderer actions unavailable'))
+        : provider.publishRendererAction(item),
+    render: (request, sink) => {
+      if (provider.render === undefined) {
+        sink.onError?.(new Error('rendering unavailable'));
+        return noop;
       }
-      if (localContext !== undefined && state.tag === "Connected") {
-        const account = state.value.identityAccountId;
-        if (account !== undefined && /^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
-          activatedIdentity = {
-            identityAccountId: `0x${account.replace(/^0x/, "").toLowerCase()}`,
-            ...((state.value.liteUsername ?? "") !== ""
-              ? { liteUsername: state.value.liteUsername }
-              : {}),
-          };
-          nativeSessionUiInfo = {
-            publicKey: state.value.publicKey,
-            fullUsername: state.value.fullUsername,
-          };
-          if (
-            liveWallet !== undefined &&
-            activatedIdentity.identityAccountId !==
-              liveWallet.binding.identityAccountId
-          ) {
-            return;
-          }
-          if (liveWallet !== undefined) {
-            liveWallet.identity = activatedIdentity;
-            liveWallet.nativeSessionUiInfo = nativeSessionUiInfo;
-          }
-        }
-      }
-      if (localContext === undefined) {
-        forwardAuthState(state);
-      } else if (options.walletOwner === true) {
-        // Activation reports Connected before chain restoration. Publish only
-        // the final restored native session, never a transient bare identity.
-        if (walletAuthReady) {
-          forwardAuthState(state);
-        } else {
-          pendingWalletAuthState = state;
-        }
-      }
-    };
-    if (localContext !== undefined) {
-      await ensureWalletOwner();
-      if (isRuntimeDisposed()) {
-        throw new Error("Wallet host closed while taking the test wallet");
-      }
-      const secret = await readLocalWalletSecret();
-      if (secret === undefined) {
-        throw new Error(
-          "Experimental wallet is unavailable. Disconnect it in the debug bar.",
-        );
-      }
-      try {
-        const { createWebWorkerSigningHostRuntime } = await runtimeChunkPromise;
-        const signing = await createWebWorkerSigningHostRuntime(
-          new HostWorker(),
-          callbacks,
-          {
-            hostConfig: {
-              ...hostConfig,
-              networkSuffix: getActiveServicesConfig().dotns.TLD,
-            },
-          },
-        );
-        runtime = signing;
-        if (isRuntimeDisposed() || !isCurrentLocalWallet(localContext)) {
-          throw new Error(
-            "Test wallet changed while the signing worker was starting.",
-          );
-        }
-        await signing.activateLocalSession(secret);
-        if (
-          isRuntimeDisposed() ||
-          !isCurrentLocalWallet(localContext) ||
-          activatedIdentity === undefined
-        ) {
-          throw new Error(
-            "Test wallet changed or native activation did not report its identity.",
-          );
-        }
-        const binding: LocalWalletIdentityBinding = {
-          ...localContext,
-          identityAccountId: activatedIdentity.identityAccountId,
-        };
-        await withLocalIdentityUpdate(async () => {
-          if (owner !== undefined) {
-            assertInspectorWallet(owner);
-            if (owner.binding.identityAccountId !== binding.identityAccountId) {
-              throw new Error(
-                "The product activated a different test identity.",
-              );
-            }
-          }
-          const usernameHint =
-            owner === undefined
-              ? (await readVerifiedLocalIdentity(binding))?.liteUsername
-              : owner.identity.liteUsername;
-          if (isRuntimeDisposed() || !isCurrentLocalWallet(binding)) {
-            throw new Error("Test wallet changed during username restoration.");
-          }
-          let usernameVerified = false;
-          if (usernameHint !== undefined) {
-            // Neither disk hints nor another runtime's session prove this
-            // product's native identity. Verify without resetting its grants.
-            activatedIdentity = await signing.refreshLocalIdentity();
-            if (
-              activatedIdentity.identityAccountId !== binding.identityAccountId
-            ) {
-              throw new Error(
-                "Restored username did not match the active wallet.",
-              );
-            }
-            usernameVerified = true;
-          } else if (owner === undefined) {
-            // No username is known. A cached absence is not trusted: the
-            // identity is keyed by account, so it outlives re-imports and misses
-            // a claim made in another browser. Look it up, as a known username
-            // is re-verified above. A failed lookup is not evidence of absence
-            // and must not block the wallet; the next load or Check username
-            // retries.
-            try {
-              const lookedUp = await signing.refreshLocalIdentity();
-              if (
-                lookedUp.identityAccountId === binding.identityAccountId &&
-                !isRuntimeDisposed() &&
-                isCurrentLocalWallet(binding)
-              ) {
-                activatedIdentity = lookedUp;
-                usernameVerified = true;
-                await writeVerifiedLocalIdentity(binding, lookedUp);
-              }
-            } catch (error) {
-              log.warn(
-                "[dot.li] automatic test-wallet username lookup failed:",
-                error,
-              );
-            }
-          }
-          if (
-            isRuntimeDisposed() ||
-            !isCurrentLocalWallet(binding) ||
-            activatedIdentity === undefined
-          ) {
-            throw new Error("Test wallet changed during native activation.");
-          }
-          liveWallet = {
-            runtime: signing,
-            binding,
-            identity: activatedIdentity,
-            usernameVerified,
-            nativeSessionUiInfo,
-          };
-          liveLocalWallets.set(signing, liveWallet);
-        });
-      } finally {
-        secret.fill(0);
-      }
-    } else {
-      runtime = await createWebWorkerPairingHostRuntime(
-        new HostWorker(),
-        callbacks,
-        { hostConfig },
-      );
-      if (isRuntimeDisposed() || isExperimentalWalletActive()) {
-        throw new Error(
-          "Wallet mode changed while the Mobile worker was starting.",
-        );
-      }
-    }
-    const provider = await runtime.createProvider({
-      productId,
-      executionKind: chatCapable ? "Worker" : "App",
-    });
-    if (
-      isRuntimeDisposed() ||
-      (localContext === undefined
-        ? isExperimentalWalletActive()
-        : !isCurrentLocalWallet(localContext))
-    ) {
-      provider.dispose();
-      throw new Error(
-        "Wallet changed while the product provider was starting.",
-      );
-    }
-    const unregisterChat = chatCapable
-      ? registerChatConnection(productId, {
-          loadRendererImage: createRendererImageLoader(options.archiveCid),
-          publish: (action) =>
-            provider.publishChatAction === undefined
-              ? Promise.reject(new Error("chat publishing unavailable"))
-              : provider.publishChatAction(action),
-          publishRendererAction: (action) =>
-            provider.publishRendererAction === undefined
-              ? Promise.reject(new Error("renderer publishing unavailable"))
-              : provider.publishRendererAction(action),
-          render: (request, sink) => {
-            if (provider.render === undefined) {
-              sink.onError?.(new Error("rendering unavailable"));
-              return noop;
-            }
-            return provider.render(request, sink);
-          },
-        })
-      : noop;
-    let unsubscribeOwnerClose: (() => void) | undefined;
-    const tracked = trackCoreProvider(
-      wrapCoreProviderForDebug(provider, productId),
-      runtime,
-      () => {
-        runtimeDisposed = true;
-        unsubscribeOwnerClose?.();
-        localRuntimeDisposers.delete(disposeNativeRuntime);
-        if (liveWallet !== undefined) {
-          liveLocalWallets.delete(liveWallet.runtime);
-          providerWallets.delete(tracked);
-        }
-        unregisterChat();
-        blockingModalScope.dispose();
-      },
-    );
-    if (liveWallet !== undefined) {
-      providerWallets.set(tracked, liveWallet);
-    }
-    runtime = undefined;
-    if (options.walletOwner === true) {
-      if (liveWallet !== undefined) {
-        let closeError: Error | undefined;
-        unsubscribeOwnerClose = tracked.subscribeClose?.((error) => {
-          if (isRuntimeDisposed()) {
-            return;
-          }
-          closeError = error;
-          disposeLandingAuthHost();
-          tracked.dispose();
-          dispatchAuthState({
-            tag: "WalletUnavailable",
-            reason: error.message,
-          });
-        });
-        // Subscription can synchronously report an already-closed provider.
-        // Do not publish Connected or return its retired native authority.
-        if (closeError !== undefined) {
-          unsubscribeOwnerClose?.();
-          throw closeError;
-        }
-      }
-      walletAuthReady = true;
-      if (pendingWalletAuthState !== undefined) {
-        forwardAuthState(pendingWalletAuthState);
-        pendingWalletAuthState = undefined;
-      }
-    }
-    return tracked;
-  } catch (error) {
-    disposeNativeRuntime();
-    blockingModalScope.dispose();
-    throw error;
-  }
-}
-
-async function getLandingAuthHost(): Promise<CoreHost> {
-  if (landingAuthHostPromise !== null) {
-    return landingAuthHostPromise;
-  }
-  const generation = landingAuthGeneration;
-  const promise = createLandingAuthHost()
-    .then((host) => {
-      if (
-        generation !== landingAuthGeneration ||
-        landingAuthHostPromise !== promise
-      ) {
-        host.dispose();
-        throw new Error(
-          "Landing auth host was disposed before it became ready",
-        );
-      }
-      return host;
-    })
-    .catch((error: unknown) => {
-      if (landingAuthHostPromise === promise) {
-        landingAuthHostPromise = null;
-      }
-      throw error;
-    });
-  landingAuthHostPromise = promise;
-  return promise;
-}
-
-async function createLandingAuthHost(): Promise<CoreHost> {
-  const coreProvider = await createCoreProvider(LANDING_AUTH_LABEL, {
-    pairingLabel: LANDING_AUTH_DISPLAY_LABEL,
-    pairingDotSuffix: false,
-    pairingHostGlobal: true,
-    walletOwner: true,
+      return provider.render(request, sink);
+    },
   });
-  return {
-    core: coreProvider,
-    requestLogin(reason) {
-      return requestCoreLogin(coreProvider, reason);
-    },
-    cancelLogin() {
-      coreProvider.cancelPairing();
-    },
-    disconnect() {
-      return coreProvider.disconnectSession();
-    },
-    dispose() {
-      coreProvider.dispose();
-    },
-  };
-}
-
-function disposeLandingAuthHost(): void {
-  landingAuthGeneration++;
-  const pending = landingAuthHostPromise;
-  landingAuthHostPromise = null;
-  void pending?.then(
-    (host) => {
-      host.dispose();
-    },
-    () => {
-      /* failed pending host has nothing to dispose */
-    },
-  );
 }
 
 /**
@@ -2459,43 +1607,44 @@ function disposeLandingAuthHost(): void {
 export async function renderIframe(
   url: string,
   label: string,
-  options: { productId?: string } = {},
+  options: { productId?: string | undefined } = {},
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
-  const renderFlowId = newFlowId("render");
-  const bridgeFlowId = newFlowId("bridge");
+  const renderFlowId = newFlowId('render');
+  const bridgeFlowId = newFlowId('bridge');
   const productId = options.productId ?? label;
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_begin",
+    layer: 'render',
+    event: 'iframe_begin',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, url, mode: "iframe" },
+    payload: { label, url, mode: 'iframe' },
   });
   const stopSetup = m.timer(S.BRIDGE_SETUP);
-  // Keep the current product visible while the replacement core initializes.
-  // Core startup can take several seconds. Removing the old iframe first made
-  // permission-triggered reloads look like a permanently blank application.
+  // Keep the current product visible while its replacement frame connects.
+  // A core booting for it can take several seconds. Removing the old iframe
+  // first made permission-triggered reloads look like a permanently blank
+  // application.
   const previousHost = currentHost;
   if (previousHost === null) {
-    app.innerHTML = "";
+    // This path has no loading overlay to keep, so the tracked roots go first
+    // and whatever else the page left in `#app` goes with them.
+    disposeAppRoots();
+    app.innerHTML = '';
   }
-  if (!isExperimentalWalletActive()) {
-    disposeLandingAuthHost();
-  }
+  setPageProduct({ label, productId: options.productId });
 
   currentProduct = {
-    mode: "iframe",
+    mode: 'iframe',
     label,
     url,
     productId: options.productId,
   };
 
-  const hasTopbar = document.getElementById("topbar") !== null;
   const iframeUrl = new URL(url, window.location.href);
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_begin",
+    layer: 'bridge',
+    event: 'setup_begin',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId },
@@ -2504,7 +1653,7 @@ export async function renderIframe(
     iframeUrl: iframeUrl.href,
     allowedOrigin: iframeUrl.origin,
     // Keep parity with the current dotli product sandbox permissions.
-    sandbox: "allow-scripts allow-same-origin allow-forms allow-pointer-lock",
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock',
     label,
     productId: options.productId,
     container: app,
@@ -2516,38 +1665,30 @@ export async function renderIframe(
     return;
   }
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_ready",
+    layer: 'bridge',
+    event: 'setup_ready',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: hasTopbar });
+  applyIframeStyling(host.iframe);
   activateHost(host, previousHost);
   host.iframe.addEventListener(
-    "load",
+    'load',
     () => {
       emitDotliDebugEvent({
-        layer: "bridge",
-        event: "iframe_load",
+        layer: 'bridge',
+        event: 'iframe_load',
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId, mode: "iframe" },
+        payload: { label, productId, mode: 'iframe' },
       });
     },
     { once: true },
   );
 
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
-  ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
-    if (myRenderGeneration !== renderGeneration) {
-      stopSetup();
-      return;
-    }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
@@ -2555,20 +1696,13 @@ export async function renderIframe(
 
   // Carry the runtime productId so listeners key chat data the same way
   // storage does when the debug path overrides the label-derived id.
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: {
-        label,
-        productId: options.productId ?? labelToProductId(label),
-      },
-    }),
-  );
+  setProductLoaded(label, options.productId ?? labelToProductId(label));
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_ready",
+    layer: 'render',
+    event: 'iframe_ready',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, mode: "iframe" },
+    payload: { label, mode: 'iframe' },
   });
 }
 
@@ -2580,15 +1714,15 @@ function isPolkaVmExecutableManifest(value: string | null): boolean {
     const manifest: unknown = JSON.parse(value);
     if (
       manifest === null ||
-      typeof manifest !== "object" ||
-      !("runtime" in manifest) ||
+      typeof manifest !== 'object' ||
+      !('runtime' in manifest) ||
       manifest.runtime === null ||
-      typeof manifest.runtime !== "object" ||
-      !("kind" in manifest.runtime)
+      typeof manifest.runtime !== 'object' ||
+      !('kind' in manifest.runtime)
     ) {
       return false;
     }
-    return manifest.runtime.kind === "polkavm";
+    return manifest.runtime.kind === 'polkavm';
   } catch {
     return false;
   }
@@ -2608,19 +1742,17 @@ export async function renderAppSubdomain(
   executableManifest: string | null = null,
 ): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
-  const renderFlowId = newFlowId("render");
-  const bridgeFlowId = newFlowId("bridge");
+  const renderFlowId = newFlowId('render');
+  const bridgeFlowId = newFlowId('bridge');
   const stopSetup = m.timer(S.BRIDGE_SETUP);
   // Permission changes rebuild this host so the iframe receives a refreshed
   // `allow` attribute. Keep the current product visible until its replacement
-  // core and iframe are ready, just like the direct-iframe render path.
+  // iframe is connected, just like the direct-iframe render path.
   const previousHost = currentHost;
-  if (!isExperimentalWalletActive()) {
-    disposeLandingAuthHost();
-  }
+  setPageProduct({ label });
 
   currentProduct = {
-    mode: "subdomain",
+    mode: 'subdomain',
     label,
     cid,
     executableManifest,
@@ -2631,7 +1763,6 @@ export async function renderAppSubdomain(
   // rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
-  const cache = getCacheSettings();
   const appOrigin = sandboxOriginForLabel(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
@@ -2640,9 +1771,9 @@ export async function renderAppSubdomain(
   // don't keep triggering resets.
   let fullReset = false;
   try {
-    if (sessionStorage.getItem("dotli:pending-reset:sandbox") === "1") {
+    if (sessionStorage.getItem('dotli:pending-reset:sandbox') === '1') {
       fullReset = true;
-      sessionStorage.removeItem("dotli:pending-reset:sandbox");
+      sessionStorage.removeItem('dotli:pending-reset:sandbox');
     }
     // eslint-disable-next-line no-restricted-syntax -- sessionStorage may be unavailable in Safari private mode, so the reset flag defaults to false which is the safe state.
   } catch {
@@ -2653,77 +1784,52 @@ export async function renderAppSubdomain(
     throw new Error(ERRORS.CROSS_ORIGIN_APP_URL);
   }
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.cid, cid);
-  parsedUrl.searchParams.set(
-    SANDBOX_CONTRACT_PARAMS.v,
-    String(SANDBOX_SCHEMA_VERSION),
-  );
-  parsedUrl.searchParams.set(
-    SANDBOX_CONTRACT_PARAMS.chainBackend,
-    chainBackend,
-  );
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, chainBackend);
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
-  parsedUrl.searchParams.set(
-    SANDBOX_CONTRACT_PARAMS.polkaVmEnabled,
-    getPolkaVmAppsEnabled(SITE_ID) ? "1" : "0",
-  );
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.polkaVmEnabled, getPolkaVmAppsEnabled(SITE_ID) ? '1' : '0');
   if (executableManifest !== null) {
-    parsedUrl.searchParams.set(
-      SANDBOX_CONTRACT_PARAMS.executableManifest,
-      executableManifest,
-    );
-  }
-  if (cache.skipArchiveCache) {
-    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.skipArchiveCache, "1");
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.executableManifest, executableManifest);
   }
   if (fullReset) {
-    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, "1");
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
   }
   const resolutionId = getResolutionId();
   if (resolutionId !== null) {
-    parsedUrl.searchParams.set(
-      SANDBOX_CONTRACT_PARAMS.resolutionId,
-      resolutionId,
-    );
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.resolutionId, resolutionId);
   }
   const url = parsedUrl.toString();
 
   // Keep the loading overlay visible. The sandbox will post status
   // messages via dotli:loading-status and a final done=true to dismiss it.
-  // Only prepare it on the initial render. During a permission refresh the
-  // current iframe remains visible until the replacement is ready.
-  const loading =
-    previousHost === null ? app.querySelector<HTMLElement>(".loading") : null;
-  if (previousHost === null) {
-    app.innerHTML = "";
-    if (loading) {
-      app.appendChild(loading);
-    }
-  }
+  // Only on the initial render. During a permission refresh the current
+  // iframe remains visible until the replacement is ready, and the overlay,
+  // if still up, is disposed then.
+  const keepLoading = previousHost === null;
 
   const iframeUrl = new URL(url);
   const isPolkaVm = isPolkaVmExecutableManifest(executableManifest);
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_begin",
+    layer: 'bridge',
+    event: 'setup_begin',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_begin",
+    layer: 'render',
+    event: 'iframe_begin',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, url, mode: "subdomain" },
+    payload: { label, url, mode: 'subdomain' },
   });
   const host = await createHost({
     iframeUrl: url,
     allowedOrigin: iframeUrl.origin,
-    sandbox:
-      "allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups",
+    sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
     label,
     archiveCid: cid,
-    extraAllow: isPolkaVm ? ["accelerometer", "gyroscope"] : [],
+    extraAllow: isPolkaVm ? ['accelerometer', 'gyroscope'] : [],
     viewInsetsRelay: isPolkaVm,
     container: app,
     debugFlowId: bridgeFlowId,
@@ -2734,80 +1840,69 @@ export async function renderAppSubdomain(
     return;
   }
   emitDotliDebugEvent({
-    layer: "bridge",
-    event: "setup_ready",
+    layer: 'bridge',
+    event: 'setup_ready',
     flowId: bridgeFlowId,
     timestamp: Date.now(),
     payload: { label, productId: label },
   });
-  applyIframeStyling(host.iframe, { topbarOffset: true });
-  activateHost(host, previousHost, loading === null ? [] : [loading]);
+  applyIframeStyling(host.iframe);
+  activateHost(host, previousHost, keepLoading);
   host.iframe.addEventListener(
-    "load",
+    'load',
     () => {
       emitDotliDebugEvent({
-        layer: "bridge",
-        event: "iframe_load",
+        layer: 'bridge',
+        event: 'iframe_load',
         flowId: bridgeFlowId,
         timestamp: Date.now(),
-        payload: { label, productId: label, mode: "subdomain" },
+        payload: { label, productId: label, mode: 'subdomain' },
       });
     },
     { once: true },
   );
 
-  if (
-    (import.meta.env.VITE_SANDBOX_CHECKER as string | undefined) !== undefined
-  ) {
-    const { setupViolationPanel } =
-      await import("@dotli/sandbox-checker/sandbox-checker-ui");
-    if (myRenderGeneration !== renderGeneration) {
-      stopSetup();
-      return;
-    }
-    currentPanelDispose = setupViolationPanel(host.iframe);
+  if (import.meta.env.VITE_SANDBOX_CHECKER !== undefined) {
+    currentPanelDispose = mountViolationPanel(host.iframe);
   }
 
   stopSetup();
   document.title = withActiveTld(label);
 
-  window.dispatchEvent(
-    new CustomEvent("dotli:product-loaded", {
-      detail: { label, productId: labelToProductId(label) },
-    }),
-  );
+  setProductLoaded(label, labelToProductId(label));
   emitDotliDebugEvent({
-    layer: "render",
-    event: "iframe_ready",
+    layer: 'render',
+    event: 'iframe_ready',
     flowId: renderFlowId,
     timestamp: Date.now(),
-    payload: { label, mode: "subdomain" },
+    payload: { label, mode: 'subdomain' },
   });
 }
 
-function activateHost(
-  host: ActiveHost,
-  previousHost: ActiveHost | null,
-  retainedChildren: readonly HTMLElement[] = [],
-): void {
+function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoading = false): void {
   stopMotionRelay();
   mediatedInputHost.stop();
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;
   }
+  // The previous frame leaves with its host.
   previousHost?.dispose();
-  const retained = new Set<HTMLElement>([host.iframe, ...retainedChildren]);
-  for (const child of [...app.children]) {
-    if (!retained.has(child as HTMLElement)) {
-      child.remove();
-    }
+  disposeAppRoot('page');
+  if (!keepLoading) {
+    disposeAppRoot('loading');
+  }
+  // The one untracked child: an error page written over a product whose frame
+  // was already up (a failure after `activateHost`), which a later rebuild of
+  // that product has to clear.
+  for (const stray of app.querySelectorAll(':scope > .error-page')) {
+    stray.remove();
   }
   currentHost = host;
 }
 
 function newFlowId(prefix: string): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return crypto.randomUUID();
   }
   return `${prefix}-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;

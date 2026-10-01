@@ -1,24 +1,17 @@
-import type { GenericError, Result } from "@parity/truapi";
-import { err, ok } from "neverthrow";
+import type { GenericError, Result } from '@parity/truapi';
+import { err, ok } from 'neverthrow';
 
 export function createResultStream<T>(
   initial: T[],
-  start: (
-    push: (value: T) => void,
-    pushError: (error: GenericError) => void,
-  ) => () => void,
+  start: (push: (value: T) => void, pushError: (error: GenericError) => void) => () => void,
 ): AsyncIterable<Result<T, GenericError>> {
   return {
     [Symbol.asyncIterator](): AsyncIterator<Result<T, GenericError>> {
-      const queue: Result<T, GenericError>[] = initial.map((value) =>
-        ok(value),
-      );
+      const queue: Result<T, GenericError>[] = initial.map(value => ok(value));
       const state = { stopped: false };
       let cleanup: (() => void) | null = null;
       let cleanedUp = false;
-      let resolve:
-        ((result: IteratorResult<Result<T, GenericError>>) => void) | null =
-        null;
+      let resolve: ((result: IteratorResult<Result<T, GenericError>>) => void) | null = null;
 
       const complete = (): IteratorResult<Result<T, GenericError>> => ({
         done: true,
@@ -72,7 +65,7 @@ export function createResultStream<T>(
           if (state.stopped) {
             return Promise.resolve(complete());
           }
-          return new Promise((r) => {
+          return new Promise(r => {
             resolve = r;
           });
         },

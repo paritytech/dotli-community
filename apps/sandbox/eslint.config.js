@@ -1,9 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { config } from "@dotli/eslint-config/vite";
+/// <reference types="node" />
 
-export default [
+import { defineConfig } from 'eslint/config';
+import { config } from '@dotli/eslint-config/vite';
+
+export default defineConfig([
+  // Byte-pinned upstream runtime assets are attested by the runtime sync check.
+  { ignores: ['public/polkavm-runtime/**'] },
   ...config,
   {
     languageOptions: {
@@ -12,4 +17,4 @@ export default [
       },
     },
   },
-];
+]);

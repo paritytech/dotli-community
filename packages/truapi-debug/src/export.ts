@@ -6,11 +6,11 @@
 // Serializes stored debug events for file download and clipboard copy.
 // Unlike the display formatters in format.ts, nothing is truncated.
 
-import { toHex } from "@dotli/shared/hex";
+import { toHex } from '@dotli/shared';
 
-import type { StoredEvent } from "./event-store.ts";
-import type { FilterState } from "./filters.ts";
-import { isUint8ArrayLike } from "./format.ts";
+import type { StoredEvent } from './event-store.js';
+import type { FilterState } from './filters.js';
+import { isUint8ArrayLike } from './format.js';
 
 export interface ExportMeta {
   exportedAt: string;
@@ -23,22 +23,18 @@ export interface ExportMeta {
   filters: FilterState;
 }
 
-function makeExportReplacer(): (
-  this: unknown,
-  k: string,
-  v: unknown,
-) => unknown {
+function makeExportReplacer(): (this: unknown, k: string, v: unknown) => unknown {
   const seen = new WeakSet();
   return function replacer(_k, v) {
-    if (typeof v === "bigint") {
+    if (typeof v === 'bigint') {
       return `${v.toString()}n`;
     }
     if (isUint8ArrayLike(v)) {
-      return { __type: "Uint8Array", length: v.length, hex: toHex(v) };
+      return { __type: 'Uint8Array', length: v.length, hex: toHex(v) };
     }
-    if (typeof v === "object" && v !== null) {
+    if (typeof v === 'object' && v !== null) {
       if (seen.has(v)) {
-        return "[Circular]";
+        return '[Circular]';
       }
       seen.add(v);
     }
@@ -46,24 +42,17 @@ function makeExportReplacer(): (
   };
 }
 
-export function buildExport(
-  events: readonly StoredEvent[],
-  meta: ExportMeta,
-): string {
+export function buildExport(events: readonly StoredEvent[], meta: ExportMeta): string {
   try {
     return JSON.stringify({ meta, events }, makeExportReplacer(), 2);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    return JSON.stringify(
-      { meta, error: `serialization failed: ${reason}` },
-      makeExportReplacer(),
-      2,
-    );
+    return JSON.stringify({ meta, error: `serialization failed: ${reason}` }, makeExportReplacer(), 2);
   }
 }
 
 /** `dotli-debug-2026-07-31T14-30-00.json` */
 export function exportFilename(now: Date): string {
-  const stamp = now.toISOString().slice(0, 19).replace(/:/g, "-");
+  const stamp = now.toISOString().slice(0, 19).replace(/:/g, '-');
   return `dotli-debug-${stamp}.json`;
 }

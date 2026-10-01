@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { CarWriter } from "@ipld/car";
-import * as dagPb from "@ipld/dag-pb";
-import type { PBLink } from "@ipld/dag-pb";
-import type { Page } from "@playwright/test";
-import { UnixFS } from "ipfs-unixfs";
-import { CID } from "multiformats/cid";
-import * as raw from "multiformats/codecs/raw";
-import { sha256 } from "multiformats/hashes/sha2";
+import { CarWriter } from '@ipld/car';
+import * as dagPb from '@ipld/dag-pb';
+import type { PBLink } from '@ipld/dag-pb';
+import type { Page } from '@playwright/test';
+import { UnixFS } from 'ipfs-unixfs';
+import { CID } from 'multiformats/cid';
+import * as raw from 'multiformats/codecs/raw';
+import { sha256 } from 'multiformats/hashes/sha2';
 
 export interface TestCar {
   cid: string;
@@ -16,9 +16,7 @@ export interface TestCar {
 }
 
 /** Build the flat UnixFS directory CAR consumed by the sandbox archive reader. */
-export async function archiveCar(
-  sourceFiles: readonly (readonly [string, Uint8Array])[],
-): Promise<TestCar> {
+export async function archiveCar(sourceFiles: readonly (readonly [string, Uint8Array])[]): Promise<TestCar> {
   const files = await Promise.all(
     sourceFiles.map(async ([name, bytes]) => ({
       name,
@@ -32,19 +30,23 @@ export async function archiveCar(
       Tsize: bytes.length,
       Hash: cid,
     }))
-    .sort((left, right) => (left.Name ?? "").localeCompare(right.Name ?? ""));
+    .sort((left, right) => left.Name.localeCompare(right.Name));
   const rootBytes = dagPb.encode({
-    Data: new UnixFS({ type: "directory" }).marshal(),
+    Data: new UnixFS({ type: 'directory' }).marshal(),
     Links: links,
   });
   const root = CID.createV1(dagPb.code, await sha256.digest(rootBytes));
   const { writer, out } = CarWriter.create([root]);
   const chunksPromise = (async (): Promise<Uint8Array[]> => {
     const chunks: Uint8Array[] = [];
-    for await (const chunk of out) chunks.push(chunk);
+    for await (const chunk of out) {
+      chunks.push(chunk);
+    }
     return chunks;
   })();
-  for (const { cid, bytes } of files) await writer.put({ cid, bytes });
+  for (const { cid, bytes } of files) {
+    await writer.put({ cid, bytes });
+  }
   await writer.put({ cid: root, bytes: rootBytes });
   await writer.close();
   const chunks = await chunksPromise;
@@ -65,7 +67,7 @@ export async function installTruapiPortResponder(page: Page): Promise<void> {
     const scope = window as typeof window & {
       __HOST_API_PORT__?: MessagePort;
     };
-    channel.port2.onmessage = (event) => {
+    channel.port2.onmessage = event => {
       if (!(event.data instanceof Uint8Array)) {
         return;
       }
@@ -96,25 +98,26 @@ export async function installTruapiPortResponder(page: Page): Promise<void> {
 }
 
 /** Issue a fresh TrUAPI port whenever a product restarts in the same iframe. */
-export async function installRepeatedTruapiPortResponder(
-  page: Page,
-  allowedOrigin: string,
-): Promise<void> {
-  await page.evaluate((allowedOrigin) => {
+export async function installRepeatedTruapiPortResponder(page: Page, allowedOrigin: string): Promise<void> {
+  await page.evaluate(allowedOrigin => {
     const scope = window as typeof window & {
       __dotliTestPortsIssued?: number;
     };
     scope.__dotliTestPortsIssued = 0;
-    window.addEventListener("message", (event) => {
+    window.addEventListener('message', event => {
+      const message = event.data as unknown;
       if (
-        event.data?.type !== "truapi-ready" ||
+        message === null ||
+        typeof message !== 'object' ||
+        !('type' in message) ||
+        message.type !== 'truapi-ready' ||
         event.source === null ||
         event.origin !== allowedOrigin
       ) {
         return;
       }
       const channel = new MessageChannel();
-      channel.port2.onmessage = (portEvent) => {
+      channel.port2.onmessage = portEvent => {
         if (!(portEvent.data instanceof Uint8Array)) {
           return;
         }
@@ -140,7 +143,7 @@ export async function installRepeatedTruapiPortResponder(
       channel.port2.start();
       scope.__dotliTestPortsIssued = (scope.__dotliTestPortsIssued ?? 0) + 1;
       event.source.postMessage(
-        { type: "truapi-init" },
+        { type: 'truapi-init' },
         {
           targetOrigin: event.origin,
           transfer: [channel.port1],

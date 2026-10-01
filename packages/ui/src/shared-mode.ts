@@ -25,8 +25,9 @@
 // (`getBackend`, `getCacheSettings`, …) resolves against the cache.
 // Writes go through the same channel that produced the read.
 
-import { SITE_ID, isLocalhost } from "@dotli/config/config";
 import {
+  SITE_ID,
+  isLocalhost,
   BACKEND_KEY,
   CACHE_KEY,
   POLKAVM_APPS_KEY,
@@ -35,21 +36,18 @@ import {
   localStorageAdapter,
   migrateLegacyOn,
   type ModeStorage,
-} from "@dotli/config/mode";
+} from '@dotli/config';
+
 import {
   getProtocolOrigin,
   readSharedModeStorage,
   resetProtocolFrame,
   writeSharedModeStorage,
   clearSharedModeStorage,
-} from "@dotli/protocol/client";
-import { log } from "@dotli/shared/log";
+} from '@dotli/protocol';
+import { log } from '@dotli/shared';
 
-const SHARED_KEYS: readonly string[] = [
-  BACKEND_KEY,
-  CACHE_KEY,
-  POLKAVM_APPS_KEY,
-];
+const SHARED_KEYS: readonly string[] = [BACKEND_KEY, CACHE_KEY, POLKAVM_APPS_KEY];
 
 let bootstrapped = false;
 const pendingWrites = new Set<Promise<void>>();
@@ -71,8 +69,8 @@ function devHttpChannel(): SharedChannel {
   const baseUrl = `${getProtocolOrigin()}/__dotli-mode/`;
   const url = (key: string): string => `${baseUrl}${encodeURIComponent(key)}`;
   return {
-    read: async (key) => {
-      const res = await fetch(url(key), { cache: "no-store" });
+    read: async key => {
+      const res = await fetch(url(key), { cache: 'no-store' });
       // 204 (= absent) is symmetric with the raw-text PUT side.
       if (res.status === 204) {
         return null;
@@ -81,22 +79,22 @@ function devHttpChannel(): SharedChannel {
         throw new Error(`mode sync read ${key} → HTTP ${String(res.status)}`);
       }
       const text = await res.text();
-      return text === "" ? null : text;
+      return text === '' ? null : text;
     },
     write: async (key, value) => {
       const res = await fetch(url(key), {
-        method: "PUT",
+        method: 'PUT',
         body: value,
-        cache: "no-store",
+        cache: 'no-store',
       });
       if (!res.ok) {
         throw new Error(`mode sync write ${key} → HTTP ${String(res.status)}`);
       }
     },
-    clear: async (key) => {
+    clear: async key => {
       const res = await fetch(url(key), {
-        method: "DELETE",
-        cache: "no-store",
+        method: 'DELETE',
+        cache: 'no-store',
       });
       if (!res.ok && res.status !== 404) {
         throw new Error(`mode sync clear ${key} → HTTP ${String(res.status)}`);
@@ -107,9 +105,9 @@ function devHttpChannel(): SharedChannel {
 
 function iframeChannel(): SharedChannel {
   return {
-    read: (key) => readSharedModeStorage(SITE_ID, key),
+    read: key => readSharedModeStorage(SITE_ID, key),
     write: (key, value) => writeSharedModeStorage(SITE_ID, key, value),
-    clear: (key) => clearSharedModeStorage(SITE_ID, key),
+    clear: key => clearSharedModeStorage(SITE_ID, key),
   };
 }
 
@@ -157,9 +155,7 @@ export async function bootstrapSharedMode(): Promise<void> {
   // reader between here and the async overlay still resolves to a real
   // value instead of a missing slot.
   const channel = getSharedChannel();
-  const cache = new Map<string, string | null>(
-    SHARED_KEYS.map((key) => [key, localStorageAdapter.getItem(key)]),
-  );
+  const cache = new Map<string, string | null>(SHARED_KEYS.map(key => [key, localStorageAdapter.getItem(key)]));
 
   // On unreachable shared store (preview down or iframe blocked) we leave
   // the cache as already hydrated from localStorage and never install
@@ -167,29 +163,19 @@ export async function bootstrapSharedMode(): Promise<void> {
   // per-origin path.
   let sharedReads: readonly (string | null)[];
   try {
-    sharedReads = await Promise.all(
-      SHARED_KEYS.map((key) => channel.read(key)),
-    );
+    sharedReads = await Promise.all(SHARED_KEYS.map(key => channel.read(key)));
   } catch (error: unknown) {
     log.warn(
-      "[dot.li shared-mode] Initial read failed; using per-origin localStorage:",
+      '[dot.li shared-mode] Initial read failed; using per-origin localStorage:',
       error instanceof Error ? error.message : error,
     );
     return;
   }
 
-  const trackWrite = (
-    operation: Promise<void>,
-    key: string,
-    label: string,
-  ): void => {
+  const trackWrite = (operation: Promise<void>, key: string, label: string): void => {
     const pending = operation
       .catch((err: unknown) => {
-        log.warn(
-          `[dot.li shared-mode] ${label} failed for`,
-          key,
-          err instanceof Error ? err.message : err,
-        );
+        log.warn(`[dot.li shared-mode] ${label} failed for`, key, err instanceof Error ? err.message : err);
       })
       .finally(() => {
         pendingWrites.delete(pending);
@@ -198,7 +184,7 @@ export async function bootstrapSharedMode(): Promise<void> {
   };
 
   SHARED_KEYS.forEach((key, i) => {
-    const shared = sharedReads[i];
+    const shared = sharedReads[i] ?? null;
     const seed = cache.get(key) ?? null;
 
     // Localhost dev prefers the per-origin seed over the shared store.
@@ -209,7 +195,7 @@ export async function bootstrapSharedMode(): Promise<void> {
     // Production keeps shared over local below (real eTLD+1 sharing).
     if (isLocalhost && seed !== null) {
       if (shared !== seed) {
-        trackWrite(channel.write(key, seed), key, "Localhost mirror-up");
+        trackWrite(channel.write(key, seed), key, 'Localhost mirror-up');
       }
       return;
     }
@@ -218,12 +204,12 @@ export async function bootstrapSharedMode(): Promise<void> {
       return;
     }
     if (seed !== null) {
-      trackWrite(channel.write(key, seed), key, "Migration write");
+      trackWrite(channel.write(key, seed), key, 'Migration write');
     }
   });
 
   const adapter: ModeStorage = {
-    getItem: (key) => cache.get(key) ?? null,
+    getItem: key => cache.get(key) ?? null,
     setItem: (key, value) => {
       cache.set(key, value);
       // Mirror to per-origin localStorage as a fallback so a later boot
@@ -234,9 +220,9 @@ export async function bootstrapSharedMode(): Promise<void> {
       } catch {
         /* localStorage unavailable */
       }
-      trackWrite(channel.write(key, value), key, "Write");
+      trackWrite(channel.write(key, value), key, 'Write');
     },
-    removeItem: (key) => {
+    removeItem: key => {
       cache.set(key, null);
       try {
         localStorage.removeItem(key);
@@ -244,7 +230,7 @@ export async function bootstrapSharedMode(): Promise<void> {
       } catch {
         /* localStorage unavailable */
       }
-      trackWrite(channel.clear(key), key, "Clear");
+      trackWrite(channel.clear(key), key, 'Clear');
     },
   };
 

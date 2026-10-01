@@ -1,0 +1,36 @@
+{
+  "name": "@dotli/astro-solid",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "version": "0.6.0",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./client.js": "./src/client.ts",
+    "./server.js": "./src/server.ts",
+    "./container-renderer": "./src/container-renderer.ts",
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@dotli/eslint-config": "*",
+    "@dotli/typescript-config": "*",
+    "@solidjs/web": "2.0.0-rc.13",
+    "astro": "^7.3.5",
+    "solid-js": "2.0.0-rc.13"
+  },
+  "dependencies": {
+    "@solidjs/vite-plugin": "3.0.0-next.47",
+    "vitefu": "^1.1.3"
+  },
+  "peerDependencies": {
+    "@solidjs/web": "2.0.0-rc.13",
+    "astro": "^7.3.5",
+    "solid-js": "2.0.0-rc.13"
+  }
+}
