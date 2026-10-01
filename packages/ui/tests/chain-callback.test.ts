@@ -40,7 +40,10 @@ vi.mock('../../resolver/src/rpc-chain.js', () => ({
 }));
 
 /** A transport factory that records each transport it builds. */
-function recordingTransport(_genesisHash: string, hooks: ChainTransportHooks): (onMessage: (message: JsonRpcMessage) => void) => JsonRpcConnection {
+function recordingTransport(
+  _genesisHash: string,
+  hooks: ChainTransportHooks,
+): (onMessage: (message: JsonRpcMessage) => void) => JsonRpcConnection {
   let listener: ((message: JsonRpcMessage) => void) | null = null;
   const upstream: Upstream = {
     sent: [],
@@ -133,8 +136,16 @@ describe('createChainConnect', () => {
     // Then
     const firstResponses = first.responses()[Symbol.asyncIterator]();
     const secondResponses = second.responses()[Symbol.asyncIterator]();
-    expect(JSON.parse(yielded(await firstResponses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'first' });
-    expect(JSON.parse(yielded(await secondResponses.next()))).toEqual({ jsonrpc: '2.0', id: 'truapi:1', result: 'second' });
+    expect(JSON.parse(yielded(await firstResponses.next()))).toEqual({
+      jsonrpc: '2.0',
+      id: 'truapi:1',
+      result: 'first',
+    });
+    expect(JSON.parse(yielded(await secondResponses.next()))).toEqual({
+      jsonrpc: '2.0',
+      id: 'truapi:1',
+      result: 'second',
+    });
     first.close();
     second.close();
   });
@@ -155,7 +166,14 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, a halted chain transport still delivers the messages queued before it, then ends the stream', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:1', method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] }));
+    connection.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 'truapi:1',
+        method: 'transactionWatch_v1_submitAndWatch',
+        params: ['0xdead'],
+      }),
+    );
     const upstream = must(mocks.upstreams[0], 'upstream');
     upstream.emit({ jsonrpc: '2.0', id: must(must(upstream.sent[0], 'upstream submit').id, 'id'), result: 'watch-1' });
 
@@ -178,7 +196,9 @@ describe('createChainConnect', () => {
   it('As a dotli integrator, a halted chain transport answers a request in flight before the stream ends', async () => {
     // Given
     const connection = await createChainConnect(createHostChainPool(0))(hexBytes(people));
-    connection.send(JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }));
+    connection.send(
+      JSON.stringify({ jsonrpc: '2.0', id: 'truapi:9', method: 'chainHead_v1_header', params: ['tok', '0xabc'] }),
+    );
     const upstream = must(mocks.upstreams[0], 'upstream');
     expect(upstream.sent).toHaveLength(1);
 

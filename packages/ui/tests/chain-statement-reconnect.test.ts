@@ -83,7 +83,9 @@ describe('host chain connection over Trusted Providers', () => {
     connection.close();
 
     // Then: the live server subscription is released and the socket closed.
-    expect(second.requests('statement_unsubscribeStatement').map((request): unknown => request.params)).toEqual([['srv-2']]);
+    expect(second.requests('statement_unsubscribeStatement').map((request): unknown => request.params)).toEqual([
+      ['srv-2'],
+    ]);
     expect(second.readyState).toBe(FakeWebSocket.CLOSED);
   });
 });

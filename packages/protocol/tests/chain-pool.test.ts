@@ -283,7 +283,10 @@ describe('createChainPool', () => {
     // Given
     const { createTransport, built } = createTransports();
     const pool = createChainPool({ createTransport, destroyDelay: 0 });
-    const remote = must(pool.connectRemote('0xaa', 'conn-1', () => undefined), 'remote connection');
+    const remote = must(
+      pool.connectRemote('0xaa', 'conn-1', () => undefined),
+      'remote connection',
+    );
 
     // When
     expect(() => pool.connectRemote('0xaa', 'conn-1', () => undefined)).toThrow('Duplicate broker session');
@@ -357,7 +360,11 @@ describe('createChainPool', () => {
     );
     connection.send({ jsonrpc: '2.0', id: 1, method: 'transactionWatch_v1_submitAndWatch', params: ['0xdead'] });
     const transport = must(built[0], 'transport');
-    transport.emit({ jsonrpc: '2.0', id: must(must(transport.sent[0], 'upstream submit').id, 'id'), result: 'watch-1' });
+    transport.emit({
+      jsonrpc: '2.0',
+      id: must(must(transport.sent[0], 'upstream submit').id, 'id'),
+      result: 'watch-1',
+    });
     events.length = 0;
 
     // When
@@ -429,7 +436,9 @@ describe('createChainPool pausing', () => {
     const plain = createTransports();
     const pool = createChainPool({
       createTransport: (genesisHash, hooks) =>
-        genesisHash === '0xaa' ? pausable.createTransport(genesisHash, hooks) : plain.createTransport(genesisHash, hooks),
+        genesisHash === '0xaa'
+          ? pausable.createTransport(genesisHash, hooks)
+          : plain.createTransport(genesisHash, hooks),
     });
     lease(pool, '0xaa');
     lease(pool, '0xbb');
@@ -486,7 +495,9 @@ describe('createChainPool pausing', () => {
     vi.stubGlobal('WebSocket', FakeWebSocket);
     FakeWebSocket.instances = [];
     const people = getActiveServicesConfig().people.genesis;
-    const pool = createChainPool({ createTransport: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, hooks) });
+    const pool = createChainPool({
+      createTransport: (genesisHash, hooks) => createCoreRpcChainProvider(genesisHash, hooks),
+    });
     const received: JsonRpcMessage[] = [];
     const connection = lease(pool, people, message => {
       received.push(message);
@@ -519,7 +530,10 @@ describe('createChainPool pausing', () => {
     second.deliver({
       jsonrpc: '2.0',
       method: 'statement_statement',
-      params: { subscription: 'srv-2', result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } } },
+      params: {
+        subscription: 'srv-2',
+        result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } },
+      },
     });
 
     // Then
@@ -528,7 +542,10 @@ describe('createChainPool pausing', () => {
     expect(received.at(-1)).toEqual({
       jsonrpc: '2.0',
       method: 'statement_statement',
-      params: { subscription: localToken, result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } } },
+      params: {
+        subscription: localToken,
+        result: { event: 'newStatements', data: { statements: ['0x01'], remaining: 0 } },
+      },
     });
   });
 });

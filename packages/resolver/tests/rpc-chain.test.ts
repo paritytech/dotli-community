@@ -21,7 +21,10 @@ function must<T>(value: T | null | undefined, what: string): T {
 }
 
 /** Open a connection on `provider` and its first socket. */
-async function connect(provider: RpcChainProvider, received: JsonRpcMessage[] = []): Promise<{
+async function connect(
+  provider: RpcChainProvider,
+  received: JsonRpcMessage[] = [],
+): Promise<{
   socket: FakeWebSocket;
   connection: ReturnType<RpcChainProvider>;
 }> {
@@ -86,7 +89,10 @@ describe('rpc-chain', () => {
   it('As a dotli integrator, the socket reports its status to the pool', async () => {
     // Given
     const onStatus = vi.fn();
-    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }), 'provider');
+    const provider = must(
+      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }),
+      'provider',
+    );
 
     // When
     await connect(provider);
@@ -98,7 +104,10 @@ describe('rpc-chain', () => {
   it('As a dotli user on Trusted Providers, a socket counts as dead only after 120 seconds without a message', async () => {
     // Given
     const onStatus = vi.fn();
-    const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }), 'provider');
+    const provider = must(
+      createCoreRpcChainProvider(getActiveServicesConfig().people.genesis, { onStatus }),
+      'provider',
+    );
     const { socket } = await connect(provider);
     onStatus.mockClear();
 
@@ -181,7 +190,10 @@ describe('rpc-chain', () => {
     second.deliver({
       jsonrpc: '2.0',
       method: 'statement_statement',
-      params: { subscription: 'srv-2', result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } } },
+      params: {
+        subscription: 'srv-2',
+        result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } },
+      },
     });
 
     // Then
@@ -191,7 +203,10 @@ describe('rpc-chain', () => {
       {
         jsonrpc: '2.0',
         method: 'statement_statement',
-        params: { subscription: 'srv-1', result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } } },
+        params: {
+          subscription: 'srv-1',
+          result: { event: 'newStatements', data: { statements: ['0x03'], remaining: 0 } },
+        },
       },
     ]);
   });
@@ -212,7 +227,7 @@ describe('rpc-chain', () => {
     expect(second.sent.map(raw => (JSON.parse(raw) as { method: string }).method)[0]).toBe('rpc_methods');
   });
 
-  it('As a dotli integrator, requests reach the node with numeric ids and their responses keep the caller\'s id', async () => {
+  it("As a dotli integrator, requests reach the node with numeric ids and their responses keep the caller's id", async () => {
     // Given
     const received: JsonRpcMessage[] = [];
     const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');
@@ -228,7 +243,7 @@ describe('rpc-chain', () => {
     expect(received).toEqual([{ jsonrpc: '2.0', id: 'core-1', result: '0x01' }]);
   });
 
-  it('As a dotli integrator, a request in flight when a socket dies is answered on the next socket under the caller\'s id', async () => {
+  it("As a dotli integrator, a request in flight when a socket dies is answered on the next socket under the caller's id", async () => {
     // Given
     const received: JsonRpcMessage[] = [];
     const provider = must(createCoreRpcChainProvider(getActiveServicesConfig().people.genesis), 'provider');

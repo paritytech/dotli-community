@@ -92,9 +92,7 @@ export class FakeWebSocket {
 
   /** The requests sent on this socket with `method`, in order. */
   requests(method: string): JsonRpcRequest[] {
-    return this.sent
-      .map(raw => JSON.parse(raw) as JsonRpcRequest)
-      .filter(message => message.method === method);
+    return this.sent.map(raw => JSON.parse(raw) as JsonRpcRequest).filter(message => message.method === method);
   }
 
   private emit(type: string, event: unknown): void {
