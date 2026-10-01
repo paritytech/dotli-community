@@ -55,7 +55,13 @@ window.addEventListener('vite:preloadError', event => {
 });
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import type { StringJsonRpcConnection } from '@dotli/protocol';
-import type { ChainTransportHooks, ExecutableManifest, ManifestResult, RootManifest, ResolveOptions } from '@dotli/resolver';
+import type {
+  ChainTransportHooks,
+  ExecutableManifest,
+  ManifestResult,
+  RootManifest,
+  ResolveOptions,
+} from '@dotli/resolver';
 
 import { isExecutableKind, log, errorName, serializeError } from '@dotli/shared';
 import {

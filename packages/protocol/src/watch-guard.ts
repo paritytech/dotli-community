@@ -46,8 +46,12 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
       if (typeof subscription !== 'string') {
         return;
       }
-      if (message.method === WATCH_EVENT && isRecord(result) &&
-          typeof result['event'] === 'string' && TERMINAL_EVENTS.has(result['event'])) {
+      if (
+        message.method === WATCH_EVENT &&
+        isRecord(result) &&
+        typeof result['event'] === 'string' &&
+        TERMINAL_EVENTS.has(result['event'])
+      ) {
         watches.delete(subscription);
       } else if (message.method === LEGACY_EVENT) {
         const kind = typeof result === 'string' ? result : isRecord(result) ? Object.keys(result)[0] : undefined;
@@ -78,8 +82,11 @@ export function createWatchGuard(transport: JsonRpcProvider): WatchGuard {
     });
     return {
       send(message) {
-        if ((message.method === SUBMIT_AND_WATCH || message.method === LEGACY_SUBMIT) &&
-            message.id !== undefined && message.id !== null) {
+        if (
+          (message.method === SUBMIT_AND_WATCH || message.method === LEGACY_SUBMIT) &&
+          message.id !== undefined &&
+          message.id !== null
+        ) {
           pending.set(message.id, message.method === LEGACY_SUBMIT);
         } else if (message.method === UNWATCH || message.method === LEGACY_UNWATCH) {
           const params: unknown = message.params;

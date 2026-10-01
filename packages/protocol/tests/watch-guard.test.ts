@@ -212,11 +212,13 @@ describe('createWatchGuard', () => {
     guard.onStatus('disconnected');
     guard.onStatus('connected');
     guard.onStatus('disconnected');
-    expect(received).toEqual([{
-      jsonrpc: '2.0',
-      method: 'author_extrinsicUpdate',
-      params: { subscription: 'legacy-watch', result: 'dropped' },
-    }]);
+    expect(received).toEqual([
+      {
+        jsonrpc: '2.0',
+        method: 'author_extrinsicUpdate',
+        params: { subscription: 'legacy-watch', result: 'dropped' },
+      },
+    ]);
     expect(sent).toEqual([{ jsonrpc: '2.0', id: 1, method: 'author_submitAndWatchExtrinsic', params: ['0xdead'] }]);
   });
 
@@ -230,7 +232,8 @@ describe('createWatchGuard', () => {
       emit({ jsonrpc: '2.0', id, result: `watch-${String(id)}` });
     }
     emit({
-      jsonrpc: '2.0', method: 'author_extrinsicUpdate',
+      jsonrpc: '2.0',
+      method: 'author_extrinsicUpdate',
       params: { subscription: 'watch-1', result: { finalized: '0xblock' } },
     });
     connection.send({ jsonrpc: '2.0', id: 3, method: 'author_unwatchExtrinsic', params: ['watch-2'] });

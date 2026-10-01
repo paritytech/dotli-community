@@ -103,8 +103,7 @@ function signingHostConfig(): SigningHostConfig {
     productId: PRODUCT_ID,
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
-    session:
-      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : SIGNING_HOST_SESSION,
+    session: (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : SIGNING_HOST_SESSION,
   };
 }
 
