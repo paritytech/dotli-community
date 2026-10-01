@@ -91,13 +91,11 @@ function closingWebSocketClass(): typeof WebSocket {
  * Hands the layers below a copy of every request.
  *
  * Works around `@polkadot-api/ws-middleware` 0.4.2, whose numeric-ids
- * middleware assigns `msg.id` on the caller's object. This layer can be
- * deleted once numeric-ids sends a copy.
- *
- * Those numeric ids rewrite `id` on the request object itself, but
- * the subscription replay keeps its subscribe payloads and the provider proxy
- * its in-flight requests, to send again after a reconnect. A rewritten id
- * would come back on the new socket as the numeric one, not the caller's.
+ * middleware assigns `msg.id` on the caller's object. The subscription replay
+ * keeps its subscribe payloads and the provider proxy its in-flight requests,
+ * to send again after a reconnect; a rewritten id would come back on the new
+ * socket as the numeric one, not the caller's. This layer can be deleted once
+ * numeric-ids sends a copy.
  */
 function withOwnMessages(inner: InnerJsonRpcProvider): InnerJsonRpcProvider {
   return (onMessage, onHalt) => {
