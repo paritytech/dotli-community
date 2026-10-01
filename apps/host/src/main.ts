@@ -60,7 +60,6 @@ import {
   prefetchOverlays,
   initScheduledNotifications,
   loadSharedMode,
-  loadHostChain,
   loadTruapiDebugMount,
   loadBridge,
 } from '@dotli/ui';
@@ -439,14 +438,15 @@ let rpcResolveReady: Promise<RpcResolveModule> | null = null;
 
 /**
  * The gateway resolver, wired to the host pool's Asset Hub connection before
- * its first use. The resolver cannot import the pool itself.
+ * its first use. The resolver cannot import the pool itself; the lease comes
+ * from the bridge module, which boot has already awaited by then.
  */
 function loadRpcResolve(): Promise<RpcResolveModule> {
   if (rpcResolveReady !== null) {
     return rpcResolveReady;
   }
-  const ready = Promise.all([loadRpcResolveModule(), loadHostChain()]).then(([mod, chain]) => {
-    mod.setRpcAssetHubProvider(chain.hostAssetHubProvider);
+  const ready = Promise.all([loadRpcResolveModule(), loadBridge()]).then(([mod, bridge]) => {
+    mod.setRpcAssetHubProvider(bridge.hostAssetHubProvider);
     return mod;
   });
   rpcResolveReady = ready;

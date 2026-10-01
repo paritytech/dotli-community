@@ -48,8 +48,6 @@ export {
   loadBridge,
   loadTruapiDebugMount,
   loadSharedMode,
-  loadHostChain,
-  type HostChainModule,
   type BridgeModule,
   type TruapiDebugMountModule,
   type SharedModeModule,
