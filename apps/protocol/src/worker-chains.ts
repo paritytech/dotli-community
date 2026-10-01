@@ -2,12 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // The SharedWorker's remote chain connections: one pool lease each, tied to
-// the port and the origin that opened it, under the worker's connection limits.
+// the port and the origin that opened it. The limits are counted per port, so
+// each tab has the budget its own iframe has in smoldot-direct. There is no
+// worker-wide cap: the pool shares the chains, so a session is a broker entry.
 
 import { MAX_CONNECTIONS_PER_ORIGIN } from '@dotli/config';
 import type { ChainPool, ProtocolEnvelope, StringJsonRpcConnection } from '@dotli/protocol';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 
+/** Chain connections one port (one tab) may hold. */
 export const MAX_CHAIN_CONNECTIONS = 10;
 
 export interface WorkerChainSessions {
@@ -35,7 +38,7 @@ export function createWorkerChainSessions(
   log: (...args: unknown[]) => void,
 ): WorkerChainSessions {
   const sessions = new Map<string, Session>();
-  const originConnections = new Map<string, Set<string>>();
+  const portConnections = new Map<MessagePort, Set<string>>();
 
   /** Connection ids are the client's own, so each origin has its own namespace (origins contain no spaces). */
   function connectionKey(origin: string, connectionId: string): string {
@@ -48,10 +51,10 @@ export function createWorkerChainSessions(
       return null;
     }
     sessions.delete(key);
-    const owned = originConnections.get(session.origin);
+    const owned = portConnections.get(session.port);
     owned?.delete(key);
     if (owned?.size === 0) {
-      originConnections.delete(session.origin);
+      portConnections.delete(session.port);
     }
     return session;
   }
@@ -62,11 +65,12 @@ export function createWorkerChainSessions(
       if (sessions.has(key)) {
         throw new Error(`Duplicate chain connection: ${connectionId}`);
       }
-      if (sessions.size >= MAX_CHAIN_CONNECTIONS) {
+      const portConns = portConnections.get(port) ?? new Set<string>();
+      if (portConns.size >= MAX_CHAIN_CONNECTIONS) {
         throw new Error(`Connection limit reached (max ${String(MAX_CHAIN_CONNECTIONS)})`);
       }
-      const originConns = originConnections.get(origin) ?? new Set<string>();
-      if (originConns.size >= MAX_CONNECTIONS_PER_ORIGIN) {
+      const originCount = [...portConns].filter(owned => sessions.get(owned)?.origin === origin).length;
+      if (originCount >= MAX_CONNECTIONS_PER_ORIGIN) {
         throw new Error(`Per-origin connection limit reached (max ${String(MAX_CONNECTIONS_PER_ORIGIN)})`);
       }
       if (!isChainSupported(genesisHash)) {
@@ -104,8 +108,8 @@ export function createWorkerChainSessions(
         throw new Error(PROTOCOL_APP_ERRORS.CHAIN_BROKER_FAILED);
       }
       sessions.set(key, { connection, port, origin });
-      originConns.add(key);
-      originConnections.set(origin, originConns);
+      portConns.add(key);
+      portConnections.set(port, portConns);
       log(`Chain connected: ${connectionId} (${String(sessions.size)} total)`);
     },
 

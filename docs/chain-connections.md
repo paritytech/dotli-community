@@ -90,9 +90,12 @@ In simple terms:
 - **The protocol iframe** has a pool in `smoldot-direct` (light client in the
   iframe) and `rpc-gateway` (WebSockets). In `smoldot-shared-worker` it only
   relays to the **SharedWorker**, whose pool serves every tab.
-- The iframe allows 10 chain connections per origin
-  (`MAX_CONNECTIONS_PER_ORIGIN`). Through the host pool the host page holds at
-  most one per chain, plus bitswap's.
+- Each tab has a budget of 10 chain connections (`MAX_CHAIN_CONNECTIONS` in
+  the SharedWorker, `MAX_CONNS` in the iframe), and 10 per origin within it
+  (`MAX_CONNECTIONS_PER_ORIGIN`). In `smoldot-direct` that is the tab's own
+  iframe; in `smoldot-shared-worker` the worker counts it per port, with no
+  worker-wide cap, since its pool shares the chains between tabs. Through the
+  host pool a tab holds at most one connection per chain, plus bitswap's.
 
 Which transport a pool builds depends on the backend:
 

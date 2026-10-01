@@ -238,7 +238,64 @@ describe('createWorkerChainSessions halts and origins', () => {
     expect(sessions.size).toBe(1);
   });
 
-  it('As a dotli user on the shared light client, the worker stops accepting connections at its limit', () => {
+  it('As a dotli user on the shared light client, three tabs each holding five connections all connect', () => {
+    // Given
+    const { sessions } = setup();
+    const ports = [{}, {}, {}] as MessagePort[];
+
+    // When
+    const connectAll = (): void => {
+      ports.forEach((port, tab) => {
+        for (let i = 0; i < 5; i++) {
+          sessions.connect(port, `https://tab${String(tab)}.example`, '0xaa', `c${String(i)}`);
+        }
+      });
+    };
+
+    // Then
+    expect(connectAll).not.toThrow();
+    expect(sessions.size).toBe(15);
+  });
+
+  it('As a dotli user on the shared light client, two tabs of one site each get the per-site limit', () => {
+    // Given
+    const { sessions, portA, portB } = setup();
+
+    // When
+    const connectAll = (): void => {
+      for (const [tab, port] of [portA, portB].entries()) {
+        for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i++) {
+          sessions.connect(port, ORIGIN_A, '0xaa', `t${String(tab)}c${String(i)}`);
+        }
+      }
+    };
+
+    // Then
+    expect(connectAll).not.toThrow();
+    expect(sessions.size).toBe(2 * MAX_CONNECTIONS_PER_ORIGIN);
+  });
+
+  it("As a dotli user on the shared light client, a closed tab's connections no longer count against its limit", () => {
+    // Given
+    const { sessions, portA } = setup();
+    for (let i = 0; i < MAX_CHAIN_CONNECTIONS; i++) {
+      sessions.connect(portA, ORIGIN_A, '0xaa', `c${String(i)}`);
+    }
+
+    // When
+    sessions.removePort(portA);
+    const reconnect = (): void => {
+      for (let i = 0; i < MAX_CHAIN_CONNECTIONS; i++) {
+        sessions.connect(portA, ORIGIN_A, '0xaa', `again${String(i)}`);
+      }
+    };
+
+    // Then
+    expect(reconnect).not.toThrow();
+    expect(sessions.size).toBe(MAX_CHAIN_CONNECTIONS);
+  });
+
+  it('As a dotli user on the shared light client, a tab stops getting connections at its limit', () => {
     // Given
     const { sessions, portA } = setup();
     for (let i = 0; i < MAX_CHAIN_CONNECTIONS; i++) {
@@ -256,9 +313,9 @@ describe('createWorkerChainSessions halts and origins', () => {
 
   it('As a dotli user on the shared light client, one site hitting its limit is told so by the limit that applies', () => {
     // Given
-    // Both limits are 10, so the worker-wide one is reached first for a single site.
+    // Both limits are 10, so the tab's own one is reached first for a single site.
     expect(MAX_CONNECTIONS_PER_ORIGIN).toBe(MAX_CHAIN_CONNECTIONS);
-    const { sessions, portA, portB } = setup();
+    const { sessions, portA } = setup();
     for (let i = 0; i < MAX_CONNECTIONS_PER_ORIGIN; i++) {
       sessions.connect(portA, ORIGIN_A, '0xaa', `c${String(i)}`);
     }
@@ -271,7 +328,7 @@ describe('createWorkerChainSessions halts and origins', () => {
     // Then
     expect(overflow).toThrow('Connection limit reached (max 10)');
     sessions.disconnect(ORIGIN_A, 'c0');
-    sessions.connect(portB, ORIGIN_B, '0xaa', 'c0');
+    sessions.connect(portA, ORIGIN_A, '0xaa', 'c0');
     expect(sessions.size).toBe(MAX_CHAIN_CONNECTIONS);
   });
 
