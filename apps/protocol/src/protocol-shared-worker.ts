@@ -237,11 +237,17 @@ async function presync(): Promise<void> {
     m.breadcrumb('smoldot presync failed', { reason: msg });
 
     // Surface the actual cause to every waiting port. Engine remains
-    // permanently dead. The user must reload to retry.
-    presyncFailureMessage = msg;
-    for (const port of pendingPorts) {
-      const errorMsg: SWError = { type: 'error', message: msg };
-      port.postMessage(errorMsg);
+    // permanently dead. The user must reload to retry. A light client that
+    // died during pre-sync is that cause, and this failure only its symptom:
+    // the fatal broadcast already told the waiting ports, and later ones hear
+    // the fatal's message.
+    const fatalSent = presyncFailureMessage !== null;
+    presyncFailureMessage ??= msg;
+    if (!fatalSent) {
+      for (const port of pendingPorts) {
+        const errorMsg: SWError = { type: 'error', message: msg };
+        port.postMessage(errorMsg);
+      }
     }
     pendingPorts.length = 0;
   }
