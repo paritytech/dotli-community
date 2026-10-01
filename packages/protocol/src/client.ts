@@ -894,21 +894,20 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
     };
 
     chainConnections.set(connectionId, remote);
-    // Disconnected before the frame accepted the connection. Before the
-    // connect is posted, the frame never hears of it. After, it is closed in
-    // the frame once the connect settles, not before, or the frame would keep
-    // a connection opened after its disconnect.
-    let disconnectedEarly = false;
-    // A call, so the check after the connect isn't narrowed by the one before.
-    const isDisconnectedEarly = (): boolean => disconnectedEarly;
+    // Not yet halted or disconnected. Whoever removes it tells the consumer.
+    const isOpen = (): boolean => chainConnections.get(connectionId) === remote;
 
     void ensureProtocolFrame()
       .then(async () => {
-        if (isDisconnectedEarly()) {
+        // Disconnected before the connect is posted: the frame never hears of it.
+        if (!isOpen()) {
           return;
         }
         await postRequest('chainConnect', { genesisHash, connectionId });
-        if (isDisconnectedEarly()) {
+        // Disconnected while the connect was in flight: it is closed in the
+        // frame now that the connect settled, not before, or the frame would
+        // keep a connection opened after its disconnect.
+        if (!isOpen()) {
           postDisconnect(connectionId);
           return;
         }
@@ -918,8 +917,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
             connectionId,
             message: JSON.stringify(message),
           }).catch((error: unknown) => {
-            // Already halted or disconnected: whoever removed it has told the consumer.
-            if (chainConnections.get(connectionId) !== remote) {
+            if (!isOpen()) {
               return;
             }
             const errResponse = buildJsonRpcError(message, serializeError(error));
@@ -931,8 +929,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         remote.pendingMessages = [];
       })
       .catch((error: unknown) => {
-        // Already halted or disconnected: whoever removed it has told the consumer.
-        if (chainConnections.get(connectionId) !== remote) {
+        if (!isOpen()) {
           return;
         }
         // No frame came up, or it refused the connection. Either way the
@@ -947,8 +944,7 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
 
     return {
       send(message) {
-        const current = chainConnections.get(connectionId);
-        if (!current) {
+        if (!isOpen()) {
           // Connection was removed (failed or disconnected).
           // Respond with an error so the caller doesn't hang.
           const errResponse = buildJsonRpcError(message, 'Chain connection is closed');
@@ -957,19 +953,18 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
           }
           return;
         }
-        if (!current.connected) {
-          current.pendingMessages.push(message);
+        if (!remote.connected) {
+          remote.pendingMessages.push(message);
           return;
         }
         void postRequest('chainSend', {
           connectionId,
           message: JSON.stringify(message),
         }).catch((error: unknown) => {
-          // Already halted or disconnected: whoever removed it has told the
-          // consumer. A papi client re-follows on the `stop` that comes before
+          // A papi client re-follows on the `stop` that comes before
           // `chain-halt`, and the frame refuses that send for a connection it
           // has already forgotten.
-          if (chainConnections.get(connectionId) !== current) {
+          if (!isOpen()) {
             return;
           }
           const reason = serializeError(error);
@@ -981,18 +976,13 @@ export function createRemoteChainProvider(genesisHash: string): RemoteChainProvi
         });
       },
       disconnect() {
-        const current = chainConnections.get(connectionId);
+        const wasOpen = isOpen();
         chainConnections.delete(connectionId);
-        if (!current) {
-          return;
+        // Not accepted yet: a connect not posted is never posted, and one in
+        // flight is closed in the frame once it settles.
+        if (wasOpen && remote.connected) {
+          postDisconnect(connectionId);
         }
-        if (!current.connected) {
-          // Nothing queued is sent. A connect already posted settles first.
-          current.pendingMessages = [];
-          disconnectedEarly = true;
-          return;
-        }
-        postDisconnect(connectionId);
       },
     };
   };
