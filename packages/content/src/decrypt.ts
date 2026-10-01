@@ -9,7 +9,7 @@
 // Key derivation: PBKDF2-SHA256 (100k iterations) over password and salt yields a 32-byte ChaCha20 key.
 // AEAD: ChaCha20-Poly1305 via @noble/ciphers, since Web Crypto does not support it natively.
 
-import { chacha20poly1305 } from "@noble/ciphers/chacha.js";
+import { chacha20poly1305 } from '@noble/ciphers/chacha.js';
 
 const MAGIC = new Uint8Array([
   0x44,
@@ -50,24 +50,17 @@ export function isEncrypted(data: Uint8Array): boolean {
 /**
  * Derive a 32-byte ChaCha20 key from a password and salt via PBKDF2-SHA256.
  */
-async function deriveKey(
-  password: string,
-  salt: Uint8Array,
-): Promise<Uint8Array> {
+async function deriveKey(password: string, salt: Uint8Array): Promise<Uint8Array> {
   const enc = new TextEncoder();
-  const keyMaterial = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(password).buffer,
-    "PBKDF2",
-    false,
-    ["deriveBits"],
-  );
+  const keyMaterial = await crypto.subtle.importKey('raw', enc.encode(password).buffer, 'PBKDF2', false, [
+    'deriveBits',
+  ]);
   const bits = await crypto.subtle.deriveBits(
     {
-      name: "PBKDF2",
+      name: 'PBKDF2',
       salt: salt.buffer as ArrayBuffer,
       iterations: PBKDF2_ITERATIONS,
-      hash: "SHA-256",
+      hash: 'SHA-256',
     },
     keyMaterial,
     KEY_LEN * 8,
@@ -78,10 +71,7 @@ async function deriveKey(
 /**
  * Decrypt an encrypted SPA blob. Throws on wrong password or corrupted data.
  */
-export async function decryptContent(
-  data: Uint8Array,
-  password: string,
-): Promise<Uint8Array> {
+export async function decryptContent(data: Uint8Array, password: string): Promise<Uint8Array> {
   const salt = data.slice(MAGIC.length, MAGIC.length + SALT_LEN);
   const nonce = data.slice(MAGIC.length + SALT_LEN, HEADER_LEN);
   const ciphertext = data.slice(HEADER_LEN);

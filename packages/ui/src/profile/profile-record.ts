@@ -9,15 +9,8 @@
 // seity-reference.ts) and `mood`. Unknown kinds are skipped, so the record can
 // grow without this host changing.
 
-export const MOOD_KINDS = [
-  "calm",
-  "focused",
-  "hyped",
-  "social",
-  "low-key",
-  "away",
-] as const;
-export const MOOD_INTENSITIES = ["soft", "steady", "loud"] as const;
+export const MOOD_KINDS = ['calm', 'focused', 'hyped', 'social', 'low-key', 'away'] as const;
+export const MOOD_INTENSITIES = ['soft', 'steady', 'loud'] as const;
 export type MoodKind = (typeof MOOD_KINDS)[number];
 export type MoodIntensity = (typeof MOOD_INTENSITIES)[number];
 
@@ -39,13 +32,15 @@ const MAX_RECORD_BYTES = 8 * 1024;
 class Reader {
   private offset = 0;
   private readonly bytes: Uint8Array;
+  private readonly view: DataView;
   constructor(bytes: Uint8Array) {
     this.bytes = bytes;
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   }
 
   private take(n: number): Uint8Array {
     if (this.offset + n > this.bytes.length) {
-      throw new Error("profile record is truncated");
+      throw new Error('profile record is truncated');
     }
     const out = this.bytes.subarray(this.offset, this.offset + n);
     this.offset += n;
@@ -53,12 +48,15 @@ class Reader {
   }
 
   u8(): number {
-    return this.take(1)[0];
+    const value = this.view.getUint8(this.offset);
+    this.offset++;
+    return value;
   }
 
   u32(): number {
-    const b = this.take(4);
-    return (b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24)) >>> 0;
+    const value = this.view.getUint32(this.offset, true);
+    this.offset += 4;
+    return value;
   }
 
   u64(): number {
@@ -75,15 +73,10 @@ class Reader {
       case 1:
         return ((first | (this.u8() << 8)) >>> 2) & 0x3fff;
       case 2: {
-        const rest = this.take(3);
-        return (
-          ((first | (rest[0] << 8) | (rest[1] << 16) | (rest[2] << 24)) >>>
-            2) >>>
-          0
-        );
+        return ((first | (this.u8() << 8) | (this.u8() << 16) | (this.u8() << 24)) >>> 2) >>> 0;
       }
       default:
-        throw new Error("profile record uses a big-integer length");
+        throw new Error('profile record uses a big-integer length');
     }
   }
 
@@ -114,11 +107,11 @@ function decodeMood(payload: Uint8Array): Mood | undefined {
 
 export function decodeProfileRecord(bytes: Uint8Array): ProfileRecord {
   if (bytes.length > MAX_RECORD_BYTES) {
-    throw new Error("profile record is too large");
+    throw new Error('profile record is too large');
   }
   const reader = new Reader(bytes);
-  const text = new TextDecoder("utf-8", { fatal: true });
-  const lenient = new TextDecoder("utf-8");
+  const text = new TextDecoder('utf-8', { fatal: true });
+  const lenient = new TextDecoder('utf-8');
   const count = reader.compact();
   let avatarReference: string | undefined;
   let mood: Mood | undefined;
@@ -127,22 +120,22 @@ export function decodeProfileRecord(bytes: Uint8Array): ProfileRecord {
     const payload = reader.bytesField();
     // One unreadable signal degrades the drawer; it never sinks the read. A
     // malformed avatar reference is refused later by its own parser.
-    if (kind === "avatar" && avatarReference === undefined) {
+    if (kind === 'avatar' && avatarReference === undefined) {
       avatarReference = lenient.decode(payload);
-    } else if (kind === "mood" && mood === undefined) {
+    } else if (kind === 'mood' && mood === undefined) {
       mood = decodeMood(payload);
     }
   }
   if (!reader.done()) {
-    throw new Error("profile record has trailing bytes");
+    throw new Error('profile record has trailing bytes');
   }
-  return { avatarReference, mood };
+  return {
+    ...(avatarReference === undefined ? {} : { avatarReference }),
+    ...(mood === undefined ? {} : { mood }),
+  };
 }
 
 /** True while the mood still counts, on this host's clock. */
-export function moodIsCurrent(
-  mood: Mood,
-  nowSecs: number = Math.floor(Date.now() / 1000),
-): boolean {
+export function moodIsCurrent(mood: Mood, nowSecs: number = Math.floor(Date.now() / 1000)): boolean {
   return nowSecs < mood.setAt + mood.ttlSecs;
 }

@@ -10,8 +10,10 @@
  * the product Frame we read `window.location` from.
  */
 
-import { expect, type Frame, type Page } from "@playwright/test";
-import { SANDBOX_CONTRACT_PARAMS } from "@dotli/config/host-sandbox-contract";
+import { expect, type Frame, type Page } from '@playwright/test';
+// From its source file, not the `@dotli/config` barrel, which cannot load in
+// Node (it reads `self.location` and `import.meta.env` at load).
+import { SANDBOX_CONTRACT_PARAMS } from '../../../packages/config/src/host-sandbox-contract.js';
 
 export interface ProductLocation {
   pathname: string;
@@ -25,10 +27,7 @@ export interface ProductLocation {
  * Returns null on timeout. Use this when the caller wants to handle a missing
  * frame itself (e.g. perf harness logs a warning and continues).
  */
-export async function findAppFrame(
-  page: Page,
-  timeoutMs: number,
-): Promise<Frame | null> {
+export async function findAppFrame(page: Page, timeoutMs: number): Promise<Frame | null> {
   // `page.frames()` checks the live frame tree which catches an iframe
   // whose URL was set via `contentWindow.location` (not the DOM `src`
   // attribute). The locator-based wait misses that case. Bounded poll
@@ -36,7 +35,7 @@ export async function findAppFrame(
   // iterations.
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const frame = page.frames().find((f) => f.url().includes(".app.localhost"));
+    const frame = page.frames().find(f => f.url().includes('.app.localhost'));
     if (frame !== undefined) {
       return frame;
     }
@@ -47,34 +46,59 @@ export async function findAppFrame(
 
 /**
  * Wait for the sandbox iframe to attach AND finish `document.write` so the
- * product's URL is the one the test should observe. Throws on timeout.
+ * product's URL is the one the test should observe. Throws on timeout, and
+ * right away when the sandbox shows its error page instead (a failed content
+ * fetch never sets `dotli:app:end`, so waiting on the mark alone only ends at
+ * the test timeout).
  */
-export async function getProductFrame(
-  page: Page,
-  timeoutMs: number,
-): Promise<Frame> {
+export async function getProductFrame(page: Page, timeoutMs: number): Promise<Frame> {
   const start = Date.now();
   const frame = await findAppFrame(page, timeoutMs);
   if (frame === null) {
-    throw new Error(
-      `Sandbox iframe never appeared within ${String(timeoutMs)}ms`,
-    );
+    throw new Error(`Sandbox iframe never appeared within ${String(timeoutMs)}ms`);
   }
   const remaining = Math.max(1000, timeoutMs - (Date.now() - start));
-  await frame.waitForFunction(
-    () =>
-      performance
-        .getEntriesByType("mark")
-        .some((m) => m.name === "dotli:app:end"),
-    { timeout: remaining, polling: 500 },
-  );
-  return frame;
+  const rendered = frame
+    .waitForFunction(() => performance.getEntriesByType('mark').some(m => m.name === 'dotli:app:end'), {
+      timeout: remaining,
+      polling: 500,
+    })
+    .then(() => ({ kind: 'ok' as const }));
+  // Never settles when no error page shows up, so its own timeout cannot win
+  // the race with a misleading locator error.
+  const failed = frame
+    .locator('.error-page-title')
+    .first()
+    .waitFor({ timeout: remaining })
+    .then(async () => ({
+      kind: 'error' as const,
+      reason: await readErrorText(frame),
+    }))
+    .catch(() => new Promise<never>(() => undefined));
+  // Also enforced here: a sandbox frame that stopped answering has held
+  // `waitForFunction` past its own timeout until the 900s test timeout.
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<{ kind: 'timeout' }>(resolve => {
+    timer = setTimeout(() => {
+      resolve({ kind: 'timeout' });
+    }, remaining + 1000);
+  });
+  try {
+    const result = await Promise.race([rendered, failed, deadline]);
+    if (result.kind === 'error') {
+      throw new Error(`Sandbox rendered error page: ${result.reason}`);
+    }
+    if (result.kind === 'timeout') {
+      throw new Error(`Product never rendered within ${String(timeoutMs)}ms (no dotli:app:end mark)`);
+    }
+    return frame;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Read `window.location` from inside the product Frame in one round-trip. */
-export async function getProductLocation(
-  frame: Frame,
-): Promise<ProductLocation> {
+export async function getProductLocation(frame: Frame): Promise<ProductLocation> {
   return frame.evaluate(() => ({
     pathname: window.location.pathname,
     search: window.location.search,
@@ -91,42 +115,38 @@ export async function getProductLocation(
 export function assertNoContractKeys(search: string): void {
   const params = new URLSearchParams(search);
   for (const key of Object.values(SANDBOX_CONTRACT_PARAMS)) {
-    expect(
-      params.has(key),
-      `contract key "${key}" leaked into product location.search`,
-    ).toBe(false);
+    expect(params.has(key), `contract key "${key}" leaked into product location.search`).toBe(false);
   }
 }
 
-/** Wait for the host's error page; returns "title: detail" or "" on timeout. */
-export async function waitForErrorPage(
-  page: Page,
-  timeoutMs: number,
-): Promise<string> {
-  try {
-    await page
-      .locator(".error-page-title")
-      .first()
-      .waitFor({ timeout: timeoutMs });
-  } catch {
-    return "";
-  }
+/** "title: detail" of the error page in `scope`, or "" when it has no title. */
+async function readErrorText(scope: Page | Frame): Promise<string> {
   const title =
-    (await page
-      .locator(".error-page-title")
+    (await scope
+      .locator('.error-page-title')
       .first()
       .textContent()
-      .catch(() => "")) ?? "";
+      .catch(() => '')) ?? '';
   if (title.length === 0) {
-    return "";
+    return '';
   }
   const detail =
-    (await page
-      .locator(".error-page-detail")
+    (await scope
+      .locator('.error-page-detail')
       .first()
       .textContent()
-      .catch(() => "")) ?? "";
+      .catch(() => '')) ?? '';
   return `${title}: ${detail}`;
+}
+
+/** Wait for the host's error page; returns "title: detail" or "" on timeout. */
+export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
+  try {
+    await page.locator('.error-page-title').first().waitFor({ timeout: timeoutMs });
+  } catch {
+    return '';
+  }
+  return readErrorText(page);
 }
 
 /**
@@ -138,38 +158,17 @@ export async function waitForErrorPage(
  *
  * Returns "title: detail" or "" on timeout.
  */
-export async function waitForSandboxErrorPage(
-  page: Page,
-  timeoutMs: number,
-): Promise<string> {
+export async function waitForSandboxErrorPage(page: Page, timeoutMs: number): Promise<string> {
   const frame = await findAppFrame(page, timeoutMs);
   if (frame === null) {
-    return "";
+    return '';
   }
   try {
-    await frame
-      .locator(".error-page-title")
-      .first()
-      .waitFor({ timeout: timeoutMs });
+    await frame.locator('.error-page-title').first().waitFor({ timeout: timeoutMs });
   } catch {
-    return "";
+    return '';
   }
-  const title =
-    (await frame
-      .locator(".error-page-title")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  if (title.length === 0) {
-    return "";
-  }
-  const detail =
-    (await frame
-      .locator(".error-page-detail")
-      .first()
-      .textContent()
-      .catch(() => "")) ?? "";
-  return `${title}: ${detail}`;
+  return readErrorText(frame);
 }
 
 /**
@@ -178,26 +177,18 @@ export async function waitForSandboxErrorPage(
  * outcome appears within `timeoutMs`. `label` is appended to the error
  * message so failing tests point at the right variant.
  */
-export async function waitForResolutionOutcome(
-  page: Page,
-  timeoutMs: number,
-  label: string,
-): Promise<void> {
+export async function waitForResolutionOutcome(page: Page, timeoutMs: number, label: string): Promise<void> {
   const successPromise = getProductFrame(page, timeoutMs).then(() => ({
-    kind: "ok" as const,
+    kind: 'ok' as const,
   }));
-  const errorPromise = waitForErrorPage(page, timeoutMs).then((reason) =>
-    reason.length > 0
-      ? { kind: "error" as const, reason }
-      : { kind: "timeout" as const },
+  const errorPromise = waitForErrorPage(page, timeoutMs).then(reason =>
+    reason.length > 0 ? { kind: 'error' as const, reason } : { kind: 'timeout' as const },
   );
   const result = await Promise.race([successPromise, errorPromise]);
-  if (result.kind === "error") {
+  if (result.kind === 'error') {
     throw new Error(`Shell rendered error page (${label}): ${result.reason}`);
   }
-  if (result.kind === "timeout") {
-    throw new Error(
-      `Neither success nor error-page appeared within ${String(timeoutMs)}ms (${label})`,
-    );
+  if (result.kind === 'timeout') {
+    throw new Error(`Neither success nor error-page appeared within ${String(timeoutMs)}ms (${label})`);
   }
 }

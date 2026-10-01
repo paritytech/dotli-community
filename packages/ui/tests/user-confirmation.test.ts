@@ -1,41 +1,38 @@
-import type { UserConfirmation } from "@parity/truapi-host";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createUserConfirmationAdapters } from "@dotli/ui/host-callbacks/UserConfirmation";
-import * as network from "@dotli/config/network";
-import { hexToBytes } from "@parity/truapi/scale";
-
-type UserConfirmationReview = Parameters<
-  Required<UserConfirmation>["confirmUserAction"]
->[0];
+import type { UserConfirmationReview } from '@parity/truapi-host';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
+import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import * as network from '@dotli/config';
+import { hexToBytes } from '@parity/truapi/scale';
+import { must } from './support.js';
 
 afterEach(() => {
   vi.restoreAllMocks();
+  resetOverlays();
   document.body.replaceChildren();
 });
 
 function modalFields(): Record<string, string> {
   return Object.fromEntries(
-    Array.from(document.querySelectorAll(".signing-field")).map((field) => {
-      const label = field.querySelector(".signing-field-label")?.textContent;
-      const value = field.querySelector(".signing-field-value")?.textContent;
-      return [label ?? "", value ?? ""];
+    Array.from(document.querySelectorAll('.signing-field')).map(field => {
+      const label = field.querySelector('.signing-field-label')?.textContent;
+      const value = field.querySelector('.signing-field-value')?.textContent;
+      return [label ?? '', value ?? ''];
     }),
   );
 }
 
-describe("user confirmation modal", () => {
-  it("reviews each main-purse spend separately without rounding u64 cents", async () => {
-    const services =
-      network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
-    vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("egui-chat.paseo");
+describe('user confirmation modal', () => {
+  it('reviews each main-purse spend separately without rounding u64 cents', async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    vi.spyOn(network, 'getActiveServicesConfig').mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters('egui-chat.paseo');
     const review = {
-      tag: "MainPurseChatPayment",
+      tag: 'MainPurseChatPayment',
       value: {
-        callingProductId: "egui-chat.paseo",
+        callingProductId: 'egui-chat.paseo',
         recipientIdentity: new Uint8Array(32).fill(7),
-        recipientUsername: "recipient.paseo",
+        recipientUsername: 'recipient.paseo',
         amountCents: 9007199254740993n,
         maxDebitCents: 9007199254740994n,
         genesisHash: hexToBytes(services.people.genesis),
@@ -44,34 +41,34 @@ describe("user confirmation modal", () => {
       },
     } satisfies UserConfirmationReview;
     const first = confirmUserAction(review);
+    await overlaysReady();
     expect(modalFields()).toMatchObject({
-      "Requesting product": "egui-chat.paseo",
-      "Recipient identity": `0x${"07".repeat(32)}`,
-      "Recipient amount": "90071992547409.93 pUSD",
-      "Maximum purse debit (including fees)": "90071992547409.94 pUSD",
-      "Chain genesis": services.people.genesis,
-      "Coinage asset instance": "0",
-      "Payment operation": `0x${"09".repeat(32)}`,
+      'Requesting product': 'egui-chat.paseo',
+      'Recipient identity': `0x${'07'.repeat(32)}`,
+      'Recipient amount': '90071992547409.93 pUSD',
+      'Maximum purse debit (including fees)': '90071992547409.94 pUSD',
+      'Chain genesis': services.people.genesis,
+      'Coinage asset instance': '0',
+      'Payment operation': `0x${'09'.repeat(32)}`,
     });
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")!.click();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Approve payment').click();
     await expect(first).resolves.toBe(true);
     const second = confirmUserAction({
       ...review,
       value: { ...review.value, operationId: new Uint8Array(32).fill(10) },
     });
-    expect(document.querySelector(".signing-modal")).not.toBeNull();
-    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")!.click();
+    await overlaysReady();
+    expect(document.querySelector('.signing-modal')).not.toBeNull();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel payment').click();
     await expect(second).resolves.toBe(false);
   });
 
-  it("does not offer approval for a payment on an unconfigured chain or asset", async () => {
-    const services =
-      network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
-    vi.spyOn(network, "getActiveServicesConfig").mockReturnValue(services);
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("egui-chat.paseo");
+  it('does not offer approval for a payment on an unconfigured chain or asset', async () => {
+    const services = network.NETWORK_NAME_TO_SERVICES_CONFIG[network.NetworkName.PASEO];
+    vi.spyOn(network, 'getActiveServicesConfig').mockReturnValue(services);
+    const { confirmUserAction } = createUserConfirmationAdapters('egui-chat.paseo');
     const value = {
-      callingProductId: "egui-chat.paseo",
+      callingProductId: 'egui-chat.paseo',
       recipientIdentity: new Uint8Array(32).fill(7),
       amountCents: 1n,
       maxDebitCents: 1n,
@@ -81,91 +78,81 @@ describe("user confirmation modal", () => {
     };
     await expect(
       confirmUserAction({
-        tag: "MainPurseChatPayment",
+        tag: 'MainPurseChatPayment',
         value: { ...value, genesisHash: new Uint8Array(32) },
       }),
     ).rejects.toThrow();
     await expect(
       confirmUserAction({
-        tag: "MainPurseChatPayment",
+        tag: 'MainPurseChatPayment',
         value: { ...value, coinageInstanceId: 1 },
       }),
     ).rejects.toThrow();
-    expect(document.querySelector(".signing-modal")).toBeNull();
+    expect(document.querySelector('.signing-modal')).toBeNull();
   });
 
-  it("As a dotli integrator, the host shows concurrent confirmation requests one at a time", async () => {
+  it('As a dotli integrator, the host shows concurrent confirmation requests one at a time', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
 
     // When
     const accountAccess = confirmUserAction({
-      tag: "AccountAccess",
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
     const identityDisclosure = confirmUserAction({
-      tag: "IdentityDisclosure",
-      value: { productId: "truapi-playground.dot" },
+      tag: 'IdentityDisclosure',
+      value: { productId: 'truapi-playground.dot' },
     });
+    await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Account Access",
-    );
+    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
-      1,
-    );
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Identity Disclosure",
-    );
+    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Identity Disclosure');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(identityDisclosure).resolves.toBe(true);
-    expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
+    await overlaysReady();
+    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
   });
 
-  it("As a dotli integrator, the host renders legacy payload signing as structured transaction fields", async () => {
+  it('As a dotli integrator, the host renders legacy payload signing as structured transaction fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "SignPayload",
+      tag: 'SignPayload',
       value: {
-        tag: "LegacyAccount",
+        tag: 'LegacyAccount',
         value: {
-          signer:
-            "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
+          signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
           payload: {
-            blockHash:
-              "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-            blockNumber: "0x00000000",
-            era: "0x00",
-            genesisHash:
-              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-            method: "0x0000",
-            nonce: "0x00000000",
+            blockHash: '0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2',
+            blockNumber: '0x00000000',
+            era: '0x00',
+            genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+            method: '0x0000',
+            nonce: '0x00000000',
             signedExtensions: [],
-            specVersion: "0x00000000",
-            tip: "0x00000000000000000000000000000000",
-            transactionVersion: "0x00000000",
+            specVersion: '0x00000000',
+            tip: '0x00000000000000000000000000000000',
+            transactionVersion: '0x00000000',
             version: 4,
           },
         },
@@ -174,57 +161,50 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Sign Transaction",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign Transaction');
     expect(modalFields()).toEqual({
-      App: "localhost:3000",
-      Signer:
-        "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-      "Genesis Hash":
-        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-      "Call Data": "0x0000",
-      Version: "4",
+      App: 'localhost:3000',
+      Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
+      'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+      'Call Data': '0x0000',
+      Version: '4',
     });
-    expect(document.body.textContent).not.toContain("Request");
+    expect(document.body.textContent).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders product payload signing with the derived account", async () => {
+  it('As a dotli integrator, the host renders product payload signing with the derived account', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "SignPayload",
+      tag: 'SignPayload',
       value: {
-        tag: "Product",
+        tag: 'Product',
         value: {
-          callingProductId: "truapi-playground.dot",
           request: {
             account: {
-              dotNsIdentifier: "truapi-playground.dot",
-              derivationIndex: { tag: "Index", value: 2 },
+              dotNsIdentifier: 'truapi-playground.dot',
+              derivationIndex: { tag: 'Index', value: 2 },
             },
             payload: {
-              blockHash:
-                "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-              blockNumber: "0x00000000",
-              era: "0x00",
-              genesisHash:
-                "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-              method: "0x0500",
-              nonce: "0x00000000",
+              blockHash: '0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2',
+              blockNumber: '0x00000000',
+              era: '0x00',
+              genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+              method: '0x0500',
+              nonce: '0x00000000',
               signedExtensions: [],
-              specVersion: "0x00000000",
-              tip: "0x00000000000000000000000000000000",
-              transactionVersion: "0x00000000",
+              specVersion: '0x00000000',
+              tip: '0x00000000000000000000000000000000',
+              transactionVersion: '0x00000000',
               version: 4,
             },
           },
@@ -234,65 +214,63 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(modalFields()).toEqual({
-      App: "localhost:3000",
-      Signer: "truapi-playground.dot / 2",
-      "Genesis Hash":
-        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-      "Call Data": "0x0500",
-      Version: "4",
+      App: 'localhost:3000',
+      Signer: 'truapi-playground.dot / 2',
+      'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+      'Call Data': '0x0500',
+      Version: '4',
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("shows protected signing bytes without double-wrapping an existing watermark", async () => {
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
-    const signedBytes = "0x3c42797465733e68693c2f42797465733e";
-    for (const bytes of ["0x6869", signedBytes] as const) {
+  it('shows protected signing bytes without double-wrapping an existing watermark', async () => {
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
+    const signedBytes = '0x3c42797465733e68693c2f42797465733e';
+    for (const bytes of ['0x6869', signedBytes] as const) {
       const confirmation = confirmUserAction({
-        tag: "SignRaw",
+        tag: 'SignRaw',
         value: {
-          tag: "LegacyAccount",
+          tag: 'LegacyAccount',
           value: {
             request: {
-              signer:
-                "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-              payload: { tag: "Bytes", value: { bytes } },
+              signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
+              payload: { tag: 'Bytes', value: { bytes } },
             },
             watermarked: true,
           },
         },
       });
-      expect(modalFields().Message).toBe(signedBytes);
-      expect(document.querySelector(".signing-field-warning")).toBeNull();
-      document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+      await overlaysReady();
+      expect(modalFields()['Message']).toBe(signedBytes);
+      expect(document.querySelector('.signing-field-warning')).toBeNull();
+      document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
       await expect(confirmation).resolves.toBe(true);
     }
   });
 
-  it("As a dotli integrator, the host warns before an unwatermarked raw signature", async () => {
+  it('As a dotli integrator, the host warns before an unwatermarked raw signature', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "SignRaw",
+      tag: 'SignRaw',
       value: {
-        tag: "Product",
+        tag: 'Product',
         value: {
           request: {
             account: {
-              dotNsIdentifier: "truapi-playground.dot",
-              derivationIndex: { tag: "Index", value: 0 },
+              dotNsIdentifier: 'truapi-playground.dot',
+              derivationIndex: { tag: 'Index', value: 0 },
             },
-            payload: { tag: "Bytes", value: { bytes: "0x0304" } },
+            payload: { tag: 'Bytes', value: { bytes: '0x0304' } },
           },
           watermarked: false,
         },
@@ -301,43 +279,78 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
     expect(modalFields()).toEqual({
-      App: "localhost:3000",
-      Signer: "truapi-playground.dot / 0",
-      Message: "0x0304",
-      Warning: "Unprotected signature: may authorize transactions",
+      App: 'localhost:3000',
+      Signer: 'truapi-playground.dot / 0',
+      Message: '0x0304',
+      Warning: 'Unprotected signature: may authorize transactions',
     });
-    expect(
-      document.querySelector(".signing-field-warning .signing-field-label")
-        ?.textContent,
-    ).toBe("Warning");
+    expect(document.querySelector('.signing-field-warning .signing-field-label')?.textContent).toBe('Warning');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders VRF signing as structured transcript fields", async () => {
+  it("As a dotli integrator, the host names the product that signs with another product's account", async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "SignVrf",
+      tag: 'SignRaw',
       value: {
-        callingProductId: "truapi-playground.dot",
+        tag: 'Product',
+        value: {
+          callingProductId: 'truapi-playground.dot',
+          request: {
+            account: {
+              dotNsIdentifier: 'other-product.dot',
+              derivationIndex: { tag: 'Index', value: 1 },
+            },
+            payload: { tag: 'Bytes', value: { bytes: '0x0304' } },
+          },
+          watermarked: true,
+        },
+      },
+    };
+
+    // When
+    const confirmation = confirmUserAction(review);
+    await overlaysReady();
+
+    // Then
+    expect(modalFields()).toMatchObject({
+      'Requesting product': 'truapi-playground.dot',
+      Signer: 'other-product.dot / 1',
+    });
+
+    // When
+    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+
+    // Then
+    await expect(confirmation).resolves.toBe(false);
+  });
+
+  it('As a dotli integrator, the host renders VRF signing as structured transcript fields', async () => {
+    // Given
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
+    const review: UserConfirmationReview = {
+      tag: 'SignVrf',
+      value: {
+        callingProductId: 'truapi-playground.dot',
         request: {
           account: {
-            dotNsIdentifier: "other-product.dot",
-            derivationIndex: { tag: "Index", value: 4 },
+            dotNsIdentifier: 'other-product.dot',
+            derivationIndex: { tag: 'Index', value: 4 },
           },
-          transcriptLabel: "0x706f703a61697264726f70",
+          transcriptLabel: '0x706f703a61697264726f70',
           items: [
-            { label: "0x646f6d61696e", value: "0x01" },
-            { label: "0x7369676e6572", value: "0x02" },
+            { label: '0x646f6d61696e', value: '0x01' },
+            { label: '0x7369676e6572', value: '0x02' },
           ],
         },
       },
@@ -345,45 +358,42 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Sign VRF Transcript",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign VRF Transcript');
     expect(modalFields()).toEqual({
-      "Requesting product": "truapi-playground.dot",
-      Signer: "other-product.dot / 4",
-      "Transcript label": "0x706f703a61697264726f70",
-      "Transcript items": "2",
+      'Requesting product': 'truapi-playground.dot',
+      Signer: 'other-product.dot / 4',
+      'Transcript label': '0x706f703a61697264726f70',
+      'Transcript items': '2',
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders product transaction creation as structured fields", async () => {
+  it('As a dotli integrator, the host renders product transaction creation as structured fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "CreateTransaction",
+      tag: 'CreateTransaction',
       value: {
-        tag: "Product",
+        tag: 'Product',
         value: {
-          callingProductId: "truapi-playground.dot",
           payload: {
             signer: {
-              dotNsIdentifier: "truapi-playground.dot",
-              derivationIndex: { tag: "Index", value: 3 },
+              dotNsIdentifier: 'truapi-playground.dot',
+              derivationIndex: { tag: 'Index', value: 3 },
             },
-            genesisHash:
-              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-            callData: "0x0500",
+            genesisHash: '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+            callData: '0x0500',
             extensions: [],
             txExtVersion: 5,
+            contacts: [],
           },
         },
       },
@@ -391,125 +401,114 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Sign Transaction",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign Transaction');
     expect(modalFields()).toEqual({
-      App: "localhost:3000",
-      Signer: "truapi-playground.dot / 3",
-      "Genesis Hash":
-        "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-      "Call Data": "0x0500",
-      "Tx Ext Version": "5",
+      App: 'localhost:3000',
+      Signer: 'truapi-playground.dot / 3',
+      'Genesis Hash': '0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f',
+      'Call Data': '0x0500',
+      'Tx Ext Version': '5',
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders resource allocation as structured resource fields", async () => {
+  it('As a dotli integrator, the host renders resource allocation as structured resource fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "ResourceAllocation",
+      tag: 'ResourceAllocation',
       value: {
-        resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
+        callingProductId: 'localhost:3000',
+        resources: [{ tag: 'StatementStoreAllowance' }, { tag: 'AutoSigning' }],
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Resource Allocation",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Resource Allocation');
     const fields = modalFields();
     expect(fields).toEqual({
-      Resources: "StatementStoreAllowance, AutoSigning",
+      'Requesting product': 'localhost:3000',
+      Resources: 'StatementStoreAllowance, AutoSigning',
     });
-    expect(Object.keys(fields)).not.toContain("Application");
-    expect(Object.keys(fields)).not.toContain("Request");
+    expect(Object.keys(fields)).not.toContain('Application');
+    expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders account alias permission as structured product fields", async () => {
+  it('As a dotli integrator, the host renders account alias permission as structured product fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "AccountAlias",
+      tag: 'AccountAlias',
       value: {
-        callingProductId: "truapi-playground.dot",
+        callingProductId: 'truapi-playground.dot',
         context: {
-          productId: "truapix-playground.dot",
-          suffix: { tag: "Index", value: 0 },
+          productId: 'truapix-playground.dot',
+          suffix: { tag: 'Index', value: 0 },
         },
         ringLocation: {
-          chainId:
-            "0x0000000000000000000000000000000000000000000000000000000000000000",
-          junctions: [{ tag: "PalletInstance", value: 42 }],
+          chainId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+          junctions: [{ tag: 'PalletInstance', value: 42 }],
         },
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Alias Permission",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Alias Permission');
     const fields = modalFields();
     expect(fields).toEqual({
-      "Requesting product": "truapi-playground.dot",
-      "Context product": "truapix-playground.dot",
-      "Context suffix": "0",
-      Chain:
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "Ring path": "PalletInstance(42)",
+      'Requesting product': 'truapi-playground.dot',
+      'Context product': 'truapix-playground.dot',
+      'Context suffix': '0',
+      Chain: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      'Ring path': 'PalletInstance(42)',
     });
-    expect(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
-        ?.textContent,
-    ).toBe("Deny");
-    expect(Object.keys(fields)).not.toContain("Application");
-    expect(Object.keys(fields)).not.toContain("Request");
+    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(Object.keys(fields)).not.toContain('Application');
+    expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders proof permission as structured ring fields", async () => {
+  it('As a dotli integrator, the host renders proof permission as structured ring fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "CreateProof",
+      tag: 'CreateProof',
       value: {
-        callingProductId: "truapi-playground.dot",
+        callingProductId: 'truapi-playground.dot',
         context: {
-          productId: "truapix-playground.dot",
-          suffix: { tag: "Index", value: 0 },
+          productId: 'truapix-playground.dot',
+          suffix: { tag: 'Index', value: 0 },
         },
         ringLocation: {
-          chainId:
-            "0x0000000000000000000000000000000000000000000000000000000000000000",
-          junctions: [{ tag: "PalletInstance", value: 42 }],
+          chainId: '0x0000000000000000000000000000000000000000000000000000000000000000',
+          junctions: [{ tag: 'PalletInstance', value: 42 }],
         },
         message: new Uint8Array([0x48, 0x69]),
       },
@@ -517,372 +516,351 @@ describe("user confirmation modal", () => {
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Proof Permission",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Proof Permission');
     expect(modalFields()).toEqual({
-      "Requesting product": "truapi-playground.dot",
-      "Context product": "truapix-playground.dot",
-      "Context suffix": "0",
-      Chain:
-        "0x0000000000000000000000000000000000000000000000000000000000000000",
-      "Ring path": "PalletInstance(42)",
-      Message: "0x4869",
+      'Requesting product': 'truapi-playground.dot',
+      'Context product': 'truapix-playground.dot',
+      'Context suffix': '0',
+      Chain: '0x0000000000000000000000000000000000000000000000000000000000000000',
+      'Ring path': 'PalletInstance(42)',
+      Message: '0x4869',
     });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders account access permission as structured product fields", async () => {
+  it('As a dotli integrator, the host renders account access permission as structured product fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "AccountAccess",
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Account Access",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
     const fields = modalFields();
     expect(fields).toEqual({
-      "Requesting product": "truapi-playground.dot",
-      "Requested account": "other-product.dot",
+      'Requesting product': 'truapi-playground.dot',
+      'Requested account': 'other-product.dot',
     });
-    expect(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
-        ?.textContent,
-    ).toBe("Deny");
-    expect(Object.keys(fields)).not.toContain("Application");
-    expect(Object.keys(fields)).not.toContain("Request");
+    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(Object.keys(fields)).not.toContain('Application');
+    expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders identity disclosure as structured product fields", async () => {
+  it('As a dotli integrator, the host renders identity disclosure as structured product fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "IdentityDisclosure",
+      tag: 'IdentityDisclosure',
       value: {
-        productId: "truapi-playground.dot",
+        productId: 'truapi-playground.dot',
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Identity Disclosure",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Identity Disclosure');
     const fields = modalFields();
     expect(fields).toEqual({
-      "Requesting product": "truapi-playground.dot",
+      'Requesting product': 'truapi-playground.dot',
     });
-    expect(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
-        ?.textContent,
-    ).toBe("Deny");
-    expect(Object.keys(fields)).not.toContain("Application");
-    expect(Object.keys(fields)).not.toContain("Request");
+    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(Object.keys(fields)).not.toContain('Application');
+    expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host renders product subtree resolution as structured product fields", async () => {
+  it('As a dotli integrator, the host renders product subtree resolution as structured product fields', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "ProductSubtree",
+      tag: 'ProductSubtree',
       value: {
-        productId: "truapi-playground.dot",
+        productId: 'truapi-playground.dot',
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Product Account",
-    );
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Product Account');
     expect(modalFields()).toEqual({
-      "Requesting product": "truapi-playground.dot",
+      'Requesting product': 'truapi-playground.dot',
     });
     // The answer is fixed for the pairing and cached, so the wording has to
     // read as granting access rather than as signing something.
-    expect(
-      document.querySelector<HTMLButtonElement>(".signing-btn-sign")
-        ?.textContent,
-    ).toBe("Allow");
-    expect(
-      document.querySelector<HTMLButtonElement>(".signing-btn-cancel")
-        ?.textContent,
-    ).toBe("Deny");
+    expect(document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.textContent).toBe('Allow');
+    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(false);
   });
 
-  it("As a dotli integrator, the host rejects identity disclosure when the dialog is dismissed", async () => {
+  it('As a dotli integrator, the host rejects identity disclosure when the dialog is dismissed', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     const review: UserConfirmationReview = {
-      tag: "IdentityDisclosure",
+      tag: 'IdentityDisclosure',
       value: {
-        productId: "truapi-playground.dot",
+        productId: 'truapi-playground.dot',
       },
     };
 
     // When
     const confirmation = confirmUserAction(review);
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
 
     // Then
-    await expect(confirmation).rejects.toThrow(
-      "User dismissed identity disclosure dialog",
-    );
+    await expect(confirmation).rejects.toThrow('User dismissed identity disclosure dialog');
   });
 
-  it("As a dotli integrator, the host allows preimage submission from its dedicated dialog", async () => {
+  it('As a dotli integrator, the host allows preimage submission from its dedicated dialog', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     // When
     const confirmation = confirmUserAction({
-      tag: "PreimageSubmit",
+      tag: 'PreimageSubmit',
       value: { size: 2048n },
     });
+    await overlaysReady();
 
     // Then
-    expect(document.querySelector(".signing-modal h2")?.textContent).toBe(
-      "Submit Preimage",
-    );
-    expect(modalFields()).toEqual({ "Data size": "2 KB" });
+    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Submit Preimage');
+    expect(modalFields()).toEqual({ 'Data size': '2 KB' });
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
   });
 
-  it("As a dotli integrator, the host denies preimage submission when the user cancels", async () => {
+  it('As a dotli integrator, the host denies preimage submission when the user cancels', async () => {
     // Given
-    const { confirmUserAction } =
-      createUserConfirmationAdapters("localhost:3000");
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
     // When
     const confirmation = confirmUserAction({
-      tag: "PreimageSubmit",
+      tag: 'PreimageSubmit',
       value: { size: 512n },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(false);
   });
 
-  it("As a dotli user, an account access prompt highlights Allow once", () => {
+  it('As a dotli user, an account access prompt highlights Allow once', async () => {
     // When
-    void createUserConfirmationAdapters("localhost:3000").confirmPermission({
-      tag: "AccountAccess",
+    void createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
+    await overlaysReady();
 
     // Then
     expect(footerButtons()).toEqual([
-      { text: "Deny", className: "signing-btn-cancel" },
-      { text: "Always allow", className: "signing-btn-secondary" },
-      { text: "Allow once", className: "signing-btn-sign" },
+      { text: 'Deny', className: 'signing-btn-cancel' },
+      { text: 'Always allow', className: 'signing-btn-secondary' },
+      { text: 'Allow once', className: 'signing-btn-sign' },
     ]);
   });
 
-  it("As a dotli user, allowing account access once is not remembered", async () => {
+  it('As a dotli user, allowing account access once is not remembered', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "AccountAccess",
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
-    await expect(decision).resolves.toBe("AllowOnce");
+    await expect(decision).resolves.toBe('AllowOnce');
   });
 
-  it("As a dotli user, always allowing account access is remembered", async () => {
+  it('As a dotli user, always allowing account access is remembered', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "AccountAccess",
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
+    await overlaysReady();
 
     // When
-    document
-      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
-      ?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
 
     // Then
-    await expect(decision).resolves.toBe("AllowAlways");
+    await expect(decision).resolves.toBe('AllowAlways');
   });
 
-  it("As a dotli user, denying account access is remembered", async () => {
+  it('As a dotli user, denying account access is remembered', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "AccountAccess",
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
 
     // Then
-    await expect(decision).resolves.toBe("Deny");
+    await expect(decision).resolves.toBe('Deny');
   });
 
-  it("As a dotli user, allowing identity disclosure once is not remembered", async () => {
+  it('As a dotli user, allowing identity disclosure once is not remembered', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "IdentityDisclosure",
-      value: { productId: "truapi-playground.dot" },
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'IdentityDisclosure',
+      value: { productId: 'truapi-playground.dot' },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
 
     // Then
-    await expect(decision).resolves.toBe("AllowOnce");
+    await expect(decision).resolves.toBe('AllowOnce');
   });
 
-  it("As a dotli user, dismissing identity disclosure records no decision", async () => {
+  it('As a dotli user, dismissing identity disclosure records no decision', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "IdentityDisclosure",
-      value: { productId: "truapi-playground.dot" },
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'IdentityDisclosure',
+      value: { productId: 'truapi-playground.dot' },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
 
     // Then
-    await expect(decision).rejects.toThrow(
-      "User dismissed identity disclosure dialog",
-    );
+    await expect(decision).rejects.toThrow('User dismissed identity disclosure dialog');
   });
 
-  it("As a dotli user, always allowing profile disclosure is remembered", async () => {
+  it('As a dotli user, always allowing profile disclosure is remembered', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "ProfileDisclosure",
-      value: { productId: "egui-chat.dot" },
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'ProfileDisclosure',
+      value: { productId: 'egui-chat.dot' },
     });
+    await overlaysReady();
 
     // When
-    document
-      .querySelector<HTMLButtonElement>(".signing-btn-secondary")
-      ?.click();
+    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
 
     // Then
-    await expect(decision).resolves.toBe("AllowAlways");
+    await expect(decision).resolves.toBe('AllowAlways');
   });
 
-  it("As a dotli user, dismissing profile disclosure records no decision", async () => {
+  it('As a dotli user, dismissing profile disclosure records no decision', async () => {
     // Given
-    const decision = createUserConfirmationAdapters(
-      "localhost:3000",
-    ).confirmPermission({
-      tag: "ProfileDisclosure",
-      value: { productId: "egui-chat.dot" },
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'ProfileDisclosure',
+      value: { productId: 'egui-chat.dot' },
     });
+    await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>(".signing-modal-backdrop")?.click();
+    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
 
     // Then
-    await expect(decision).rejects.toThrow("User dismissed permission dialog");
+    await expect(decision).rejects.toThrow('User dismissed permission dialog');
   });
 
-  it("As a dotli user, a per-action confirmation keeps two buttons", () => {
+  it('As a dotli user, a per-action confirmation keeps two buttons', async () => {
     // When
-    void createUserConfirmationAdapters("localhost:3000").confirmUserAction({
-      tag: "AccountAccess",
+    void createUserConfirmationAdapters('localhost:3000').confirmUserAction({
+      tag: 'AccountAccess',
       value: {
-        requestingProductId: "truapi-playground.dot",
-        targetProductId: "other-product.dot",
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
       },
     });
+    await overlaysReady();
 
     // Then
-    expect(footerButtons().map(({ text }) => text)).toEqual(["Deny", "Allow"]);
+    expect(footerButtons().map(({ text }) => text)).toEqual(['Deny', 'Allow']);
+  });
+
+  it('As a dotli user, the confirmation dialog is announced as a dialog and dismissed with Escape', async () => {
+    // Given
+    const { confirmUserAction } = createUserConfirmationAdapters('localhost:3000');
+    const accepted = confirmUserAction({
+      tag: 'AccountAccess',
+      value: { requestingProductId: 'a.dot', targetProductId: 'b.dot' },
+    });
+    await overlaysReady();
+
+    // Then
+    expect(document.querySelector('.signing-modal')?.getAttribute('role')).toBe('dialog');
+
+    // When
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+
+    // Then
+    await expect(accepted).resolves.toBe(false);
   });
 });
 
 function footerButtons(): { text: string; className: string }[] {
-  return Array.from(
-    document.querySelectorAll<HTMLButtonElement>(
-      ".signing-modal-footer button",
-    ),
-    (button) => ({
-      text: button.textContent ?? "",
-      className: button.className,
-    }),
-  );
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'), button => ({
+    text: button.textContent,
+    className: button.className,
+  }));
 }

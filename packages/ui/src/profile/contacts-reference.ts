@@ -13,9 +13,9 @@
 // committed vector. The reference is a bearer capability: parsed and used
 // here, never logged or handed back to the product.
 
-import { InvalidProfileReferenceError } from "./seity-reference";
+import { InvalidProfileReferenceError } from './seity-reference.js';
 
-export const CONTACTS_REFERENCE_PREFIX = "seity-contacts:v1:";
+export const CONTACTS_REFERENCE_PREFIX = 'seity-contacts:v1:';
 const BODY_PATTERN = /^[0-9a-f]{128}$/;
 const NONCE_BYTES = 12;
 
@@ -30,16 +30,12 @@ export function isContactsReference(reference: string): boolean {
   return reference.startsWith(CONTACTS_REFERENCE_PREFIX);
 }
 
-export function parseContactsReference(
-  reference: string,
-): SeityContactsReference {
+export function parseContactsReference(reference: string): SeityContactsReference {
   // Hex is case-insensitive, like the blob references; the lookup key is
   // normalised because it becomes a storage-slot input.
   const body = reference.slice(CONTACTS_REFERENCE_PREFIX.length).toLowerCase();
   if (!isContactsReference(reference) || !BODY_PATTERN.test(body)) {
-    throw new InvalidProfileReferenceError(
-      "expected seity-contacts:v1:<32-byte lookup key><32-byte seed>",
-    );
+    throw new InvalidProfileReferenceError('expected seity-contacts:v1:<32-byte lookup key><32-byte seed>');
   }
   const seed = new Uint8Array(32);
   for (let i = 0; i < 32; i++) {
@@ -54,20 +50,14 @@ export function parseContactsReference(
  */
 export async function openContactsRecord(
   sealed: Uint8Array<ArrayBuffer>,
-  reference: Pick<SeityContactsReference, "seed">,
+  reference: Pick<SeityContactsReference, 'seed'>,
 ): Promise<Uint8Array> {
   if (sealed.length <= NONCE_BYTES) {
-    throw new Error("sealed profile record is truncated");
+    throw new Error('sealed profile record is truncated');
   }
-  const key = await crypto.subtle.importKey(
-    "raw",
-    reference.seed,
-    "AES-GCM",
-    false,
-    ["decrypt"],
-  );
+  const key = await crypto.subtle.importKey('raw', reference.seed, 'AES-GCM', false, ['decrypt']);
   const plaintext = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: sealed.slice(0, NONCE_BYTES) },
+    { name: 'AES-GCM', iv: sealed.slice(0, NONCE_BYTES) },
     key,
     sealed.slice(NONCE_BYTES),
   );

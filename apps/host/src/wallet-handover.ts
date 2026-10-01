@@ -13,10 +13,7 @@
  * Focus still inside the app frame would never move into it again, so a click
  * there would go unnoticed; hand focus back to the shell first.
  */
-export function onNextInteraction(
-  resume: () => void,
-  win: Window = window,
-): () => void {
+export function onNextInteraction(resume: () => void, win: Window = window): () => void {
   let done = false;
   const focused = win.document.activeElement;
   if (focused instanceof HTMLIFrameElement) {
@@ -24,15 +21,15 @@ export function onNextInteraction(
   }
   const onBlur = (): void => {
     setTimeout(() => {
-      if (win.document.activeElement?.tagName === "IFRAME") {
+      if (win.document.activeElement?.tagName === 'IFRAME') {
         fire();
       }
     }, 0);
   };
   const stop = (): void => {
-    win.removeEventListener("pointerdown", fire, true);
-    win.removeEventListener("keydown", fire, true);
-    win.removeEventListener("blur", onBlur);
+    win.removeEventListener('pointerdown', fire, true);
+    win.removeEventListener('keydown', fire, true);
+    win.removeEventListener('blur', onBlur);
   };
   function fire(): void {
     if (done) {
@@ -42,8 +39,8 @@ export function onNextInteraction(
     stop();
     resume();
   }
-  win.addEventListener("pointerdown", fire, true);
-  win.addEventListener("keydown", fire, true);
-  win.addEventListener("blur", onBlur);
+  win.addEventListener('pointerdown', fire, true);
+  win.addEventListener('keydown', fire, true);
+  win.addEventListener('blur', onBlur);
   return stop;
 }

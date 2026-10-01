@@ -15,61 +15,36 @@
 // Intentionally does NOT import from `./smoldot` so Vite can tree-shake the
 // smoldot worker out of any bundle that only pulls in this module.
 
-import {
-  createClient,
-  type SubstrateClient,
-} from "@polkadot-api/substrate-client";
-import { getWsProvider } from "polkadot-api/ws";
-import { TIMEOUTS } from "@dotli/config/config";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { log } from "@dotli/shared/log";
-import { dur } from "@dotli/shared/perf";
-import { namehash, toHex, decodeIpfsContenthashResult } from "./abi";
-import {
-  ContenthashDecodeError,
-  UnsupportedContenthashCodecError,
-} from "./errors";
-import { raceSyncTimeout } from "./sync-deadline";
-import { readMappingBytes, readMappingAddress } from "./access-raw-storage";
-import type { StatusCallback } from "./access-raw-storage";
-import { ApiStoppedError, createRawApi, type Api } from "./api";
-import { readExecutableManifest, readRootManifest } from "./manifest";
-import { readSeitySlot, type SeitySlot } from "./seity-registry";
-import type {
-  ExecutableKind,
-  ExecutableManifest,
-  ManifestResult,
-  RootManifest,
-} from "./manifest";
+import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
+import { getWsProvider, type WsJsonRpcProvider } from 'polkadot-api/ws';
+import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
-export type { StatusCallback } from "./access-raw-storage";
+import { log, dur } from '@dotli/shared';
 
-/**
- * `WsJsonRpcProvider` from `polkadot-api/ws-provider`. Its type is not
- * re-exported from the top-level entry point, so we derive it here.
- * Gives us `.getStatus()` which returns `{ type: "CONNECTED"|..., uri }`
- * so callers can read which node we actually dialed (the round-robin
- * rotates on failure, so the first entry of the candidate list may not
- * be the currently answering endpoint).
- */
-type WsProviderHandle = ReturnType<typeof getWsProvider>;
+import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
+import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './errors.js';
+import { raceSyncTimeout } from './sync-deadline.js';
+import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
+import type { StatusCallback } from './access-raw-storage.js';
+import { ApiStoppedError, createRawApi, type Api } from './api.js';
+import { readExecutableManifest, readRootManifest } from './manifest.js';
+import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
+import { readSeitySlot, type SeitySlot } from './seity-registry.js';
+
+export type { StatusCallback } from './access-raw-storage.js';
 
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
-let providerInstance: WsProviderHandle | null = null;
-async function retryStoppedGeneration<T>(
-  operation: () => Promise<T>,
-): Promise<T> {
+let providerInstance: WsJsonRpcProvider | null = null;
+async function retryStoppedGeneration<T>(operation: () => Promise<T>): Promise<T> {
   try {
     return await operation();
   } catch (error) {
     if (!(error instanceof ApiStoppedError)) {
       throw error;
     }
-    log.warn(
-      "[dot.li rpc-resolve] chainHead follow stopped during resolution; retrying once",
-    );
+    log.warn('[dot.li rpc-resolve] chainHead follow stopped during resolution; retrying once');
     return operation();
   }
 }
@@ -111,11 +86,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   // Unlike the smoldot path this gets no caller deadline, so the 90s protocol
   // request timer still wins and the host reports the generic message.
   try {
-    await raceSyncTimeout(
-      api.whenReady(),
-      "Asset Hub RPC",
-      TIMEOUTS.HUB_FINALIZED_SYNC,
-    );
+    await raceSyncTimeout(api.whenReady(), 'Asset Hub RPC', TIMEOUTS.HUB_FINALIZED_SYNC);
     log.warn(`[dot.li rpc-resolve] RPC chain head ready (${dur(t0)})`);
   } catch (err) {
     try {
@@ -125,9 +96,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     } catch {
       /* already dead */
     }
-    log.error(
-      `[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    log.error(`[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`);
     providerInstance = null;
     throw err;
   }
@@ -142,14 +111,12 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
     if (apiInstance !== api) {
       return;
     }
-    log.warn(
-      "[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client",
-    );
+    log.warn('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
     destroyRpcClient();
   });
   await api.whenReady();
 
-  onStatus?.("Connected to Asset Hub RPC");
+  onStatus?.('Connected to Asset Hub RPC');
   return api;
 }
 
@@ -160,10 +127,7 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
  * This is the "trusted gateway" path: a normal client-server request to
  * a known Polkadot RPC node instead of running a light client in-browser.
  */
-export async function resolveDotNameViaRpc(
-  label: string,
-  onStatus?: StatusCallback,
-): Promise<string | null> {
+export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
   return retryStoppedGeneration(async () => {
     log.warn(
       `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
@@ -184,9 +148,7 @@ export async function resolveDotNameViaRpc(
       dotns.STORAGE_SLOTS.CONTENTHASH,
     );
 
-    log.warn(
-      `[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`,
-    );
+    log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
 
     if (contenthashBytes === null) {
       onStatus?.(`Domain "${domain}" not found or no content set`);
@@ -197,18 +159,16 @@ export async function resolveDotNameViaRpc(
     // "non-IPFS contenthash" / "decode error".
     const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
     switch (decoded.kind) {
-      case "ok":
-        log.warn(
-          `[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`,
-        );
+      case 'ok':
+        log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
         onStatus?.(`Resolved "${domain}" via Trusted Provider`);
         return decoded.cid;
-      case "empty":
+      case 'empty':
         onStatus?.(`Domain "${domain}" not found or no content set`);
         return null;
-      case "unsupported-codec":
+      case 'unsupported-codec':
         throw new UnsupportedContenthashCodecError(domain, decoded.codec);
-      case "decode-error":
+      case 'decode-error':
         throw new ContenthashDecodeError(domain, decoded.cause);
     }
   });
@@ -233,9 +193,7 @@ export async function resolveExecutableManifestViaRpc(
 }
 
 /** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
-export async function resolveRootManifestViaRpc(
-  label: string,
-): Promise<ManifestResult<RootManifest>> {
+export async function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
   return retryStoppedGeneration(async () => {
     const api = await ensureClient();
     const dotns = getActiveServicesConfig().dotns;
@@ -247,9 +205,7 @@ export async function resolveRootManifestViaRpc(
  * Resolve the owner address of a `.dot` label by reading the dotNS registry
  * contract storage over JSON-RPC.
  */
-export async function resolveOwnerViaRpc(
-  label: string,
-): Promise<string | null> {
+export async function resolveOwnerViaRpc(label: string): Promise<string | null> {
   return retryStoppedGeneration(async () => {
     const api = await ensureClient();
 
@@ -257,12 +213,7 @@ export async function resolveOwnerViaRpc(
     const node = namehash(domain);
 
     const dotns = getActiveServicesConfig().dotns;
-    return readMappingAddress(
-      api,
-      dotns.DOTNS_REGISTRY,
-      node,
-      dotns.STORAGE_SLOTS.REGISTRY_RECORDS,
-    );
+    return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
   });
 }
 
@@ -271,16 +222,12 @@ export async function resolveOwnerViaRpc(
  * `resolveSeitySlot`. Null when the network has no Seity registry, matching
  * the protocol-worker path.
  */
-export async function resolveSeitySlotViaRpc(
-  lookupKey: `0x${string}`,
-): Promise<SeitySlot | null> {
+export async function resolveSeitySlotViaRpc(lookupKey: `0x${string}`): Promise<SeitySlot | null> {
   const registry = getActiveServicesConfig().seity?.REGISTRY;
   if (registry === undefined) {
     return null;
   }
-  return retryStoppedGeneration(async () =>
-    readSeitySlot(await ensureClient(), registry, lookupKey),
-  );
+  return retryStoppedGeneration(async () => readSeitySlot(await ensureClient(), registry, lookupKey));
 }
 
 /**
@@ -304,7 +251,7 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
   // narrowing path that doesn't require importing the `WsEvent` enum.
   // We surface CONNECTING too so the popover shows the URI the provider
   // is currently trying, not a stale "n/a" during transient reconnects.
-  if ("uri" in status) {
+  if ('uri' in status) {
     return status.uri;
   }
   return null;

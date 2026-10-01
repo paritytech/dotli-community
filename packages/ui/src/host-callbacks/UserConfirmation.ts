@@ -17,7 +17,7 @@ import type {
   StatementStoreProductSignReview,
   UserConfirmation as UserConfirmationHost,
   UserConfirmationReview,
-} from "@parity/truapi-host";
+} from '@parity/truapi-host';
 import type {
   AllocatableResource,
   DerivationIndex,
@@ -25,17 +25,14 @@ import type {
   ProductAccountId,
   RawPayload,
   RingLocationJunction,
-} from "@parity/truapi";
-import { hexToBytes } from "@parity/truapi/scale";
-import { getActiveServicesConfig } from "@dotli/config/network";
-import { showPreimageSubmitModal } from "../preimage-modal";
-import { ERRORS } from "../errors";
-import {
-  blockingModalAbortError,
-  createBlockingModalScope,
-  throwIfAborted,
-  type BlockingModalScope,
-} from "../blocking-modal-queue";
+} from '@parity/truapi';
+import { hexToBytes } from '@parity/truapi/scale';
+import { getActiveServicesConfig } from '@dotli/config';
+import { showPreimageSubmitModal } from '../preimage-modal.js';
+import { ERRORS } from '../errors.js';
+import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { presentModal } from '../overlays/load.js';
+import type { ModalButton, ModalField } from '../state/modals.js';
 
 interface ConfirmationCopy {
   title: string;
@@ -43,180 +40,87 @@ interface ConfirmationCopy {
   cancelAction?: string;
 }
 
-interface ConfirmationField {
-  label: string;
-  value: string;
-  mono?: boolean;
-  warning?: boolean;
-}
+type ConfirmationField = ModalField;
 
-type ConfirmationDecision =
-  "accepted" | "accepted-once" | "rejected" | "dismissed";
+type ConfirmationDecision = 'accepted' | 'accepted-once' | 'rejected' | 'dismissed';
 
 /** Reviews rendered by the generic confirmation modal; PreimageSubmit gets its own. */
-type ModalReview = Exclude<UserConfirmationReview, { tag: "PreimageSubmit" }>;
+type ModalReview = Exclude<UserConfirmationReview, { tag: 'PreimageSubmit' }>;
 
 /**
  * With `allowOnce`, "Allow once" is offered and highlighted, and the lasting
  * grant is labelled "Always allow".
  */
-function showConfirmationModal(
+async function showConfirmationModal(
   label: string,
   copy: ConfirmationCopy,
   review: ModalReview,
   signal: AbortSignal,
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
-  throwIfAborted(signal);
-  return new Promise((resolve, reject) => {
-    const display = confirmationDisplay(label, review);
-    const backdrop = document.createElement("div");
-    backdrop.className = "signing-modal-backdrop";
-
-    const modal = document.createElement("div");
-    modal.className = "signing-modal";
-
-    const heading = document.createElement("h2");
-    heading.textContent = copy.title;
-    modal.appendChild(heading);
-
-    const fields = document.createElement("div");
-    fields.className = "signing-fields";
-
-    for (const field of display.fields) {
-      fields.appendChild(createField(field));
-    }
-
-    modal.appendChild(fields);
-
-    const footer = document.createElement("div");
-    footer.className = "signing-modal-footer";
-
-    const cancelBtn = document.createElement("button");
-    cancelBtn.className = "signing-btn-cancel";
-    cancelBtn.textContent = copy.cancelAction ?? "Cancel";
-    footer.appendChild(cancelBtn);
-
-    const allowBtn = document.createElement("button");
-    allowBtn.className = allowOnce
-      ? "signing-btn-secondary"
-      : "signing-btn-sign";
-    allowBtn.textContent = allowOnce ? "Always allow" : copy.action;
-    footer.appendChild(allowBtn);
-
-    const onceBtn = allowOnce ? document.createElement("button") : null;
-    if (onceBtn !== null) {
-      onceBtn.className = "signing-btn-sign";
-      onceBtn.textContent = "Allow once";
-      footer.appendChild(onceBtn);
-    }
-
-    modal.appendChild(footer);
-    backdrop.appendChild(modal);
-    document.body.appendChild(backdrop);
-
-    let settled = false;
-    const cleanup = (): void => {
-      signal.removeEventListener("abort", onAbort);
-      backdrop.remove();
-    };
-    const finish = (decision: ConfirmationDecision): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      resolve(decision);
-    };
-    const onAbort = (): void => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      reject(blockingModalAbortError(signal.reason));
-    };
-
-    signal.addEventListener("abort", onAbort, { once: true });
-
-    cancelBtn.addEventListener("click", () => {
-      finish("rejected");
+  const buttons: ModalButton<ConfirmationDecision>[] = [
+    {
+      label: copy.cancelAction ?? 'Cancel',
+      variant: 'cancel',
+      result: 'rejected',
+    },
+    allowOnce
+      ? { label: 'Always allow', variant: 'secondary', result: 'accepted' }
+      : { label: copy.action, variant: 'primary', result: 'accepted' },
+  ];
+  if (allowOnce) {
+    buttons.push({
+      label: 'Allow once',
+      variant: 'primary',
+      result: 'accepted-once',
     });
-    allowBtn.addEventListener("click", () => {
-      finish("accepted");
-    });
-    onceBtn?.addEventListener("click", () => {
-      finish("accepted-once");
-    });
-    backdrop.addEventListener("click", (e) => {
-      if (e.target === backdrop) {
-        finish("dismissed");
-      }
-    });
-  });
-}
-
-function createField(field: ConfirmationField): HTMLDivElement {
-  const group = document.createElement("div");
-  group.className = "signing-field";
-  if (field.warning === true) {
-    group.setAttribute("role", "alert");
-    group.classList.add("signing-field-warning");
   }
-
-  const label = document.createElement("div");
-  label.className = "signing-field-label";
-  label.textContent = field.label;
-  group.appendChild(label);
-
-  const value = document.createElement("div");
-  value.className = "signing-field-value";
-  if (field.mono === true) {
-    value.classList.add("mono");
-  }
-  value.textContent = field.value;
-  group.appendChild(value);
-
-  return group;
+  const { result } = await presentModal<ConfirmationDecision>(
+    {
+      title: copy.title,
+      fields: confirmationDisplay(label, review).fields,
+      buttons,
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    },
+    signal,
+  );
+  return result;
 }
 
 function formatBytes(value: Uint8Array): string {
-  return `0x${Array.from(value, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("")}`;
+  return `0x${Array.from(value, byte => byte.toString(16).padStart(2, '0')).join('')}`;
 }
 
-function confirmationDisplay(
-  label: string,
-  review: ModalReview,
-): { fields: ConfirmationField[] } {
+function confirmationDisplay(label: string, review: ModalReview): { fields: ConfirmationField[] } {
   switch (review.tag) {
-    case "SignPayload":
+    case 'SignPayload':
       return { fields: createSignPayloadFields(label, review.value) };
-    case "SignRaw":
+    case 'SignRaw':
       return { fields: createSignRawFields(label, review.value) };
-    case "StatementStoreProductSign":
+    case 'StatementStoreProductSign':
       return { fields: createStatementSignFields(label, review.value) };
-    case "SignVrf":
+    case 'SignVrf':
       return { fields: createSignVrfFields(review.value) };
-    case "CreateTransaction":
+    case 'CreateTransaction':
       return { fields: createTransactionFields(label, review.value) };
-    case "AccountAlias":
+    case 'AccountAlias':
       return { fields: createRingContextFields(review.value) };
-    case "CreateProof":
+    case 'CreateProof':
       return { fields: createProofFields(review.value) };
-    case "AccountAccess":
+    case 'AccountAccess':
       return { fields: createAccountAccessFields(review.value) };
-    case "IdentityDisclosure":
-    case "ProductSubtree":
+    case 'IdentityDisclosure':
+    case 'ProductSubtree':
       return { fields: createRequestingProductFields(review.value) };
-    case "ChatAuthority":
+    case 'ChatAuthority':
       return { fields: createChatAuthorityFields(review.value) };
-    case "MainPurseChatPayment":
+    case 'MainPurseChatPayment':
       return { fields: createMainPurseChatPaymentFields(review.value) };
-    case "ProfileDisclosure":
+    case 'ProfileDisclosure':
       return { fields: createProfileDisclosureFields(review.value) };
-    case "ResourceAllocation":
+    case 'ResourceAllocation':
       return { fields: createResourceAllocationFields(review.value) };
   }
 }
@@ -226,358 +130,339 @@ function truncateHex(value: string): string {
 }
 
 function formatRawPayload(payload: RawPayload, watermarked: boolean): string {
-  const value =
-    payload.tag === "Bytes" ? payload.value.bytes : payload.value.payload;
+  const value = payload.tag === 'Bytes' ? payload.value.bytes : payload.value.payload;
   const raw =
-    payload.tag === "Bytes" ||
-    (value.startsWith("0x") && value.length % 2 === 0)
+    payload.tag === 'Bytes' || (value.startsWith('0x') && value.length % 2 === 0)
       ? hexToBytes(value)
       : new TextEncoder().encode(value);
   const hex = formatBytes(raw);
-  const prefix = "3c42797465733e";
-  const suffix = "3c2f42797465733e";
+  const prefix = '3c42797465733e';
+  const suffix = '3c2f42797465733e';
   return watermarked && !(hex.startsWith(`0x${prefix}`) && hex.endsWith(suffix))
     ? `0x${prefix}${hex.slice(2)}${suffix}`
     : hex;
 }
 
 function formatDerivationIndex(index: DerivationIndex): string {
-  return index.tag === "Index" ? String(index.value) : index.value;
+  return index.tag === 'Index' ? String(index.value) : index.value;
 }
 
 function formatProductAccount(account: ProductAccountId): string {
   return `${account.dotNsIdentifier} / ${formatDerivationIndex(account.derivationIndex)}`;
 }
 
-function createPayloadFields(
-  app: string,
-  signer: string,
-  payload: HostSignPayloadData,
+/**
+ * Name the calling product when it signs with another product's account.
+ *
+ * A manifest `context` grant lets one product sign with an account derived for
+ * another. The core always asks the user about such a request, and the prompt
+ * has to say who is asking, not only whose account it is.
+ */
+function withCallingProduct(
+  fields: ConfirmationField[],
+  callingProductId: string | undefined,
+  account: ProductAccountId,
 ): ConfirmationField[] {
+  if (callingProductId === undefined || callingProductId === account.dotNsIdentifier) {
+    return fields;
+  }
+  return [{ label: 'Requesting product', value: callingProductId }, ...fields];
+}
+
+function createPayloadFields(app: string, signer: string, payload: HostSignPayloadData): ConfirmationField[] {
   return [
-    { label: "App", value: app },
-    { label: "Signer", value: signer },
-    { label: "Genesis Hash", value: payload.genesisHash, mono: true },
-    { label: "Call Data", value: truncateHex(payload.method), mono: true },
-    { label: "Version", value: String(payload.version) },
+    { label: 'App', value: app },
+    { label: 'Signer', value: signer },
+    { label: 'Genesis Hash', value: payload.genesisHash, mono: true },
+    { label: 'Call Data', value: truncateHex(payload.method), mono: true },
+    { label: 'Version', value: String(payload.version) },
   ];
 }
 
-function createSignPayloadFields(
-  label: string,
-  review: SignPayloadReview,
-): ConfirmationField[] {
-  if (review.tag === "Product") {
-    return createPayloadFields(
-      label,
-      formatProductAccount(review.value.request.account),
-      review.value.request.payload,
+function createSignPayloadFields(label: string, review: SignPayloadReview): ConfirmationField[] {
+  if (review.tag === 'Product') {
+    const { callingProductId, request } = review.value;
+    return withCallingProduct(
+      createPayloadFields(label, formatProductAccount(request.account), request.payload),
+      callingProductId,
+      request.account,
     );
   }
 
   return createPayloadFields(label, review.value.signer, review.value.payload);
 }
 
-function createSignRawFields(
-  label: string,
-  review: SignRawReview,
-): ConfirmationField[] {
+function createSignRawFields(label: string, review: SignRawReview): ConfirmationField[] {
   const signer =
-    review.tag === "Product"
-      ? formatProductAccount(review.value.request.account)
-      : review.value.request.signer;
-  const fields: ConfirmationField[] = [
-    { label: "App", value: label },
-    { label: "Signer", value: signer },
+    review.tag === 'Product' ? formatProductAccount(review.value.request.account) : review.value.request.signer;
+  const base: ConfirmationField[] = [
+    { label: 'App', value: label },
+    { label: 'Signer', value: signer },
     {
-      label: "Message",
-      value: formatRawPayload(
-        review.value.request.payload,
-        review.value.watermarked,
-      ),
+      label: 'Message',
+      value: formatRawPayload(review.value.request.payload, review.value.watermarked),
       mono: true,
     },
   ];
+  const fields =
+    review.tag === 'Product'
+      ? withCallingProduct(base, review.value.callingProductId, review.value.request.account)
+      : base;
   // Without the <Bytes> watermark the signed bytes could be a valid
   // transaction, so the user has to be told before approving.
   if (!review.value.watermarked) {
     fields.push({
-      label: "Warning",
-      value: "Unprotected signature: may authorize transactions",
+      label: 'Warning',
+      value: 'Unprotected signature: may authorize transactions',
       warning: true,
     });
   }
   return fields;
 }
 
-function createTransactionFields(
-  label: string,
-  review: CreateTransactionReview,
-): ConfirmationField[] {
-  const payload =
-    review.tag === "Product" ? review.value.payload : review.value;
-  const signer =
-    review.tag === "Product"
-      ? formatProductAccount(review.value.payload.signer)
-      : review.value.signer;
+function createTransactionFields(label: string, review: CreateTransactionReview): ConfirmationField[] {
+  const payload = review.tag === 'Product' ? review.value.payload : review.value;
+  const signer = review.tag === 'Product' ? formatProductAccount(review.value.payload.signer) : review.value.signer;
 
-  return [
-    { label: "App", value: label },
-    { label: "Signer", value: signer },
-    { label: "Genesis Hash", value: payload.genesisHash, mono: true },
-    { label: "Call Data", value: truncateHex(payload.callData), mono: true },
-    { label: "Tx Ext Version", value: String(payload.txExtVersion) },
+  const fields: ConfirmationField[] = [
+    { label: 'App', value: label },
+    { label: 'Signer', value: signer },
+    { label: 'Genesis Hash', value: payload.genesisHash, mono: true },
+    { label: 'Call Data', value: truncateHex(payload.callData), mono: true },
+    { label: 'Tx Ext Version', value: String(payload.txExtVersion) },
   ];
+  return review.tag === 'Product'
+    ? withCallingProduct(fields, review.value.callingProductId, review.value.payload.signer)
+    : fields;
 }
 
 function formatRingJunction(junction: RingLocationJunction): string {
   return `${junction.tag}(${String(junction.value)})`;
 }
 
-function createRingContextFields(
-  review: AccountAliasReview | CreateProofReview,
-): ConfirmationField[] {
+function createRingContextFields(review: AccountAliasReview | CreateProofReview): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.callingProductId },
-    { label: "Context product", value: review.context.productId },
+    { label: 'Requesting product', value: review.callingProductId },
+    { label: 'Context product', value: review.context.productId },
     {
-      label: "Context suffix",
+      label: 'Context suffix',
       value: formatDerivationIndex(review.context.suffix),
       mono: true,
     },
-    { label: "Chain", value: review.ringLocation.chainId, mono: true },
+    { label: 'Chain', value: review.ringLocation.chainId, mono: true },
     {
-      label: "Ring path",
-      value: review.ringLocation.junctions.map(formatRingJunction).join(" / "),
+      label: 'Ring path',
+      value: review.ringLocation.junctions.map(formatRingJunction).join(' / '),
     },
   ];
 }
 
 function createProofFields(review: CreateProofReview): ConfirmationField[] {
-  return [
-    ...createRingContextFields(review),
-    { label: "Message", value: formatBytes(review.message), mono: true },
-  ];
+  return [...createRingContextFields(review), { label: 'Message', value: formatBytes(review.message), mono: true }];
 }
 
-function createStatementSignFields(
-  label: string,
-  review: StatementStoreProductSignReview,
-): ConfirmationField[] {
-  return [
-    { label: "App", value: label },
-    { label: "Signer", value: formatProductAccount(review.account) },
-    {
-      label: "Statement",
-      value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
-      mono: true,
-    },
-  ];
+function createStatementSignFields(label: string, review: StatementStoreProductSignReview): ConfirmationField[] {
+  return withCallingProduct(
+    [
+      { label: 'App', value: label },
+      { label: 'Signer', value: formatProductAccount(review.account) },
+      {
+        label: 'Statement',
+        value: truncateHex(formatBytes(review.payload.subarray(0, 41))),
+        mono: true,
+      },
+    ],
+    review.callingProductId,
+    review.account,
+  );
 }
 
 function createSignVrfFields(review: SignVrfReview): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.callingProductId },
-    { label: "Signer", value: formatProductAccount(review.request.account) },
+    { label: 'Requesting product', value: review.callingProductId },
+    { label: 'Signer', value: formatProductAccount(review.request.account) },
     {
-      label: "Transcript label",
+      label: 'Transcript label',
       value: review.request.transcriptLabel,
       mono: true,
     },
-    { label: "Transcript items", value: String(review.request.items.length) },
+    { label: 'Transcript items', value: String(review.request.items.length) },
   ];
 }
 
-function createAccountAccessFields(
-  review: AccountAccessReview,
-): ConfirmationField[] {
+function createAccountAccessFields(review: AccountAccessReview): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.requestingProductId },
-    { label: "Requested account", value: review.targetProductId },
+    { label: 'Requesting product', value: review.requestingProductId },
+    { label: 'Requested account', value: review.targetProductId },
   ];
 }
 
-function createRequestingProductFields(
-  review: IdentityDisclosureReview | ProductSubtreeReview,
-): ConfirmationField[] {
-  return [{ label: "Requesting product", value: review.productId }];
+function createRequestingProductFields(review: IdentityDisclosureReview | ProductSubtreeReview): ConfirmationField[] {
+  return [{ label: 'Requesting product', value: review.productId }];
 }
 
-function createChatAuthorityFields(
-  review: ChatAuthorityReview,
-): ConfirmationField[] {
+function createChatAuthorityFields(review: ChatAuthorityReview): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.productId },
+    { label: 'Requesting product', value: review.productId },
     {
-      label: "Permission",
-      value:
-        "Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data",
+      label: 'Permission',
+      value: 'Bind its device account to your wallet Chat identity and encrypt or decrypt Chat routing data',
     },
   ];
 }
 
-function createProfileDisclosureFields(
-  review: ProfileDisclosureReview,
-): ConfirmationField[] {
+function createProfileDisclosureFields(review: ProfileDisclosureReview): ConfirmationField[] {
   return [
-    { label: "Requesting product", value: review.productId },
+    { label: 'Requesting product', value: review.productId },
     {
-      label: "Permission",
+      label: 'Permission',
       value:
         "Share this app's profile with app audiences or selected contacts. Personally shared profiles may be shown across the recipients' apps.",
     },
     {
-      label: "Audience changes",
+      label: 'Audience changes',
       value:
-        "This authorizes the app to choose and update recipients. Always allow remembers that permission; it does not ask again for each audience change.",
+        'This authorizes the app to choose and update recipients. Always allow remembers that permission; it does not ask again for each audience change.',
     },
   ];
 }
 
-function createMainPurseChatPaymentFields(
-  review: MainPurseChatPaymentReview,
-): ConfirmationField[] {
+function createMainPurseChatPaymentFields(review: MainPurseChatPaymentReview): ConfirmationField[] {
   const services = getActiveServicesConfig();
   if (
     services.coinage === undefined ||
     review.coinageInstanceId !== services.coinage.instanceId ||
     formatBytes(review.genesisHash) !== services.people.genesis.toLowerCase()
   ) {
-    throw new Error(
-      "Main-purse payment does not match the configured chain and asset",
-    );
+    throw new Error('Main-purse payment does not match the configured chain and asset');
   }
   // Keep u64 amounts exact through the review; Number loses cents above 2^53.
   const symbol = services.coinage.symbol;
   const amount = (cents: bigint): string =>
-    `${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, "0")} ${symbol}`;
+    `${(cents / 100n).toString()}.${(cents % 100n).toString().padStart(2, '0')} ${symbol}`;
   return [
-    { label: "Requesting product", value: review.callingProductId },
+    { label: 'Requesting product', value: review.callingProductId },
     {
-      label: "Recipient",
-      value: review.recipientUsername ?? "Unnamed identity",
+      label: 'Recipient',
+      value: review.recipientUsername ?? 'Unnamed identity',
     },
     {
-      label: "Recipient identity",
+      label: 'Recipient identity',
       value: formatBytes(review.recipientIdentity),
       mono: true,
     },
-    { label: "Recipient amount", value: amount(review.amountCents) },
+    { label: 'Recipient amount', value: amount(review.amountCents) },
     {
-      label: "Maximum purse debit (including fees)",
+      label: 'Maximum purse debit (including fees)',
       value: amount(review.maxDebitCents),
     },
     {
-      label: "Chain genesis",
+      label: 'Chain genesis',
       value: formatBytes(review.genesisHash),
       mono: true,
     },
     {
-      label: "Coinage asset instance",
+      label: 'Coinage asset instance',
       value: String(review.coinageInstanceId),
     },
     {
-      label: "Payment operation",
+      label: 'Payment operation',
       value: formatBytes(review.operationId),
       mono: true,
     },
     {
-      label: "One-time payment",
+      label: 'One-time payment',
       value:
-        "Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.",
+        'Spend from your main purse for this payment only. Chat access and automatic signing never approve payments.',
       warning: true,
     },
   ];
 }
 
 function formatResource(resource: AllocatableResource): string {
-  return resource.tag === "SmartContractAllowance"
+  return resource.tag === 'SmartContractAllowance'
     ? `SmartContractAllowance / ${formatDerivationIndex(resource.value)}`
     : resource.tag;
 }
 
-function createResourceAllocationFields(
-  review: ResourceAllocationReview,
-): ConfirmationField[] {
+function createResourceAllocationFields(review: ResourceAllocationReview): ConfirmationField[] {
   return [
+    { label: 'Requesting product', value: review.callingProductId },
     {
-      label: "Resources",
-      value: review.resources.map(formatResource).join(", "),
+      label: 'Resources',
+      value: review.resources.map(formatResource).join(', '),
     },
   ];
 }
 
 function confirmationCopy(review: ModalReview): ConfirmationCopy {
   switch (review.tag) {
-    case "SignPayload":
-      return { title: "Sign Transaction", action: "Sign" };
-    case "SignRaw":
+    case 'SignPayload':
+      return { title: 'Sign Transaction', action: 'Sign' };
+    case 'SignRaw':
       return review.value.value.watermarked
-        ? { title: "Sign Message", action: "Sign" }
-        : { title: "Sign Unwatermarked Payload", action: "Sign Unwatermarked" };
-    case "StatementStoreProductSign":
-      return { title: "Sign Statement", action: "Sign" };
-    case "SignVrf":
-      return { title: "Sign VRF Transcript", action: "Sign" };
-    case "CreateTransaction":
-      return { title: "Sign Transaction", action: "Sign" };
-    case "AccountAlias":
+        ? { title: 'Sign Message', action: 'Sign' }
+        : { title: 'Sign Unwatermarked Payload', action: 'Sign Unwatermarked' };
+    case 'StatementStoreProductSign':
+      return { title: 'Sign Statement', action: 'Sign' };
+    case 'SignVrf':
+      return { title: 'Sign VRF Transcript', action: 'Sign' };
+    case 'CreateTransaction':
+      return { title: 'Sign Transaction', action: 'Sign' };
+    case 'AccountAlias':
       return {
-        title: "Alias Permission",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Alias Permission',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "CreateProof":
+    case 'CreateProof':
       return {
-        title: "Proof Permission",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Proof Permission',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "AccountAccess":
+    case 'AccountAccess':
       return {
-        title: "Account Access",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Account Access',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "IdentityDisclosure":
+    case 'IdentityDisclosure':
       return {
-        title: "Identity Disclosure",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Identity Disclosure',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "ChatAuthority":
+    case 'ChatAuthority':
       return {
-        title: "Chat Identity Authority",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Chat Identity Authority',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "MainPurseChatPayment":
+    case 'MainPurseChatPayment':
       return {
-        title: "Send Main-Purse Payment",
-        action: "Send payment",
-        cancelAction: "Reject",
+        title: 'Send Main-Purse Payment',
+        action: 'Send payment',
+        cancelAction: 'Reject',
       };
-    case "ProductSubtree":
+    case 'ProductSubtree':
       return {
-        title: "Product Account",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Product Account',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
-    case "ResourceAllocation":
-      return { title: "Resource Allocation", action: "Allow" };
-    case "ProfileDisclosure":
+    case 'ResourceAllocation':
+      return { title: 'Resource Allocation', action: 'Allow' };
+    case 'ProfileDisclosure':
       return {
-        title: "Allow Profile Sharing",
-        action: "Allow",
-        cancelAction: "Deny",
+        title: 'Allow Profile Sharing',
+        action: 'Allow',
+        cancelAction: 'Deny',
       };
   }
 }
 
-async function handlePreimageSubmitReview(
-  review: PreimageSubmitReview,
-  signal: AbortSignal,
-): Promise<boolean> {
+async function handlePreimageSubmitReview(review: PreimageSubmitReview, signal: AbortSignal): Promise<boolean> {
   try {
     await showPreimageSubmitModal(Number(review.size), signal);
     return true;
@@ -593,35 +478,27 @@ async function handleConfirmationReview(
   signal: AbortSignal,
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
-  const decision = await showConfirmationModal(
-    label,
-    confirmationCopy(review),
-    review,
-    signal,
-    allowOnce,
-  );
-  if (decision === "dismissed" && review.tag === "IdentityDisclosure") {
+  const decision = await showConfirmationModal(label, confirmationCopy(review), review, signal, allowOnce);
+  if (decision === 'dismissed' && review.tag === 'IdentityDisclosure') {
     throw new Error(ERRORS.IDENTITY_DISCLOSURE_DISMISSED);
   }
   // A failed prompt leaves the grant undetermined in the core, so dismissing
   // the dialog asks again next time instead of storing a refusal.
-  if (decision === "dismissed" && review.tag === "ProfileDisclosure") {
+  if (decision === 'dismissed' && review.tag === 'ProfileDisclosure') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
   }
   return decision;
 }
 
-function permissionDecision(
-  decision: ConfirmationDecision,
-): PermissionDecision {
+function permissionDecision(decision: ConfirmationDecision): PermissionDecision {
   switch (decision) {
-    case "accepted-once":
-      return "AllowOnce";
-    case "accepted":
-      return "AllowAlways";
-    case "rejected":
-    case "dismissed":
-      return "Deny";
+    case 'accepted-once':
+      return 'AllowOnce';
+    case 'accepted':
+      return 'AllowAlways';
+    case 'rejected':
+    case 'dismissed':
+      return 'Deny';
   }
 }
 
@@ -632,24 +509,21 @@ export function createUserConfirmationAdapters(
   return {
     // Per-action reviews confirm a single operation, so there is no lifetime
     // to choose and the modal keeps two buttons.
-    confirmUserAction: (review) =>
-      modalScope.enqueue(async (signal) =>
-        review.tag === "PreimageSubmit"
+    confirmUserAction: review =>
+      modalScope.enqueue(async signal =>
+        review.tag === 'PreimageSubmit'
           ? handlePreimageSubmitReview(review.value, signal)
-          : (await handleConfirmationReview(label, review, signal, false)) ===
-            "accepted",
+          : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
       ),
     // Identity disclosure and account access: the core stores AllowAlways and
     // Deny, and honours AllowOnce for this request only.
-    confirmPermission: (review) =>
-      modalScope.enqueue(async (signal) =>
-        review.tag === "PreimageSubmit"
+    confirmPermission: review =>
+      modalScope.enqueue(async signal =>
+        review.tag === 'PreimageSubmit'
           ? (await handlePreimageSubmitReview(review.value, signal))
-            ? "AllowOnce"
-            : "Deny"
-          : permissionDecision(
-              await handleConfirmationReview(label, review, signal, true),
-            ),
+            ? 'AllowOnce'
+            : 'Deny'
+          : permissionDecision(await handleConfirmationReview(label, review, signal, true)),
       ),
   };
 }

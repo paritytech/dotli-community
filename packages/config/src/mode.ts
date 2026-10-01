@@ -11,10 +11,9 @@
 //   rpc-gateway: chain access via WSS JSON-RPC to a trusted node, content
 //                fetch via HTTPS IPFS gateway. No smoldot.
 
-import type { SiteId } from "./config";
+import type { SiteId } from './config.js';
 
-export type Backend =
-  "smoldot-direct" | "smoldot-shared-worker" | "rpc-gateway";
+export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';
 
 /**
  * What the Settings panel calls each backend.
@@ -24,15 +23,15 @@ export type Backend =
  * tip naming a control that does not exist is worse than no tip.
  */
 export const BACKEND_LABELS: Record<Backend, string> = {
-  "smoldot-direct": "Light Client Per-Tab",
-  "smoldot-shared-worker": "Light Client Shared",
-  "rpc-gateway": "Trusted Providers",
+  'smoldot-direct': 'Light Client Per-Tab',
+  'smoldot-shared-worker': 'Light Client Shared',
+  'rpc-gateway': 'Trusted Providers',
 };
 
 export interface CacheSettings {
   /** When true, skip CID cache reads. Always resolve from chain/RPC. */
   skipCidCache: boolean;
-  /** When true, skip SW archive cache reads. Always fetch content. */
+  /** When true, the host block cache is neither read nor written. Always fetch content. */
   skipArchiveCache: boolean;
   /**
    * When true, the protocol iframe purges its persistent worker caches
@@ -43,24 +42,24 @@ export interface CacheSettings {
   skipWorkerCache: boolean;
 }
 
-export const BACKEND_KEY = "dotli:chain-backend";
-export const CACHE_KEY = "dotli:cache-settings";
-export const POLKAVM_APPS_KEY = "dotli:experimental-polkavm-apps";
+export const BACKEND_KEY = 'dotli:chain-backend';
+export const CACHE_KEY = 'dotli:cache-settings';
+export const POLKAVM_APPS_KEY = 'dotli:experimental-polkavm-apps';
 
 export function isSharedWorkerAvailable(): boolean {
-  return typeof SharedWorker !== "undefined";
+  return typeof SharedWorker !== 'undefined';
 }
 
 // Pre-collapse keys. `rpc` chain backend maps to `rpc-gateway`. Legacy
 // `dotli:mode` and `dotli:content-backend` carried the content axis that
 // no longer exists. Read once, migrate, delete.
-const LEGACY_MODE_KEY = "dotli:mode";
-const LEGACY_CONTENT_BACKEND_KEY = "dotli:content-backend";
+const LEGACY_MODE_KEY = 'dotli:mode';
+const LEGACY_CONTENT_BACKEND_KEY = 'dotli:content-backend';
 
 const VALID_BACKENDS: ReadonlySet<string> = new Set<Backend>([
-  "smoldot-direct",
-  "smoldot-shared-worker",
-  "rpc-gateway",
+  'smoldot-direct',
+  'smoldot-shared-worker',
+  'rpc-gateway',
 ]);
 
 /**
@@ -76,7 +75,7 @@ export interface ModeStorage {
 }
 
 export const localStorageAdapter: ModeStorage = {
-  getItem: (key) => {
+  getItem: key => {
     try {
       return localStorage.getItem(key);
     } catch {
@@ -91,7 +90,7 @@ export const localStorageAdapter: ModeStorage = {
       /* localStorage unavailable */
     }
   },
-  removeItem: (key) => {
+  removeItem: key => {
     try {
       localStorage.removeItem(key);
       // eslint-disable-next-line no-restricted-syntax -- mirror cleanup; readers tolerate the stale value on the next boot.
@@ -133,17 +132,17 @@ export function migrateLegacyOn(target: ModeStorage): Backend | null {
 export function getBackend(): Backend {
   const stored = storage.getItem(BACKEND_KEY);
   if (stored !== null && VALID_BACKENDS.has(stored)) {
-    if (stored === "smoldot-shared-worker" && !isSharedWorkerAvailable()) {
+    if (stored === 'smoldot-shared-worker' && !isSharedWorkerAvailable()) {
       storage.removeItem(BACKEND_KEY);
-      return "smoldot-direct";
+      return 'smoldot-direct';
     }
     return stored as Backend;
   }
   const migrated = migrateLegacyOn(storage);
   if (migrated !== null) {
-    if (migrated === "smoldot-shared-worker" && !isSharedWorkerAvailable()) {
+    if (migrated === 'smoldot-shared-worker' && !isSharedWorkerAvailable()) {
       storage.removeItem(BACKEND_KEY);
-      return "smoldot-direct";
+      return 'smoldot-direct';
     }
     return migrated;
   }
@@ -157,7 +156,7 @@ export function setBackend(chainBackend: Backend): void {
 }
 
 export function defaultBackend(): Backend {
-  return "smoldot-direct";
+  return 'smoldot-direct';
 }
 
 /**
@@ -172,14 +171,14 @@ function readAndClearLegacy(target: ModeStorage): Backend | null {
   const content = target.getItem(LEGACY_CONTENT_BACKEND_KEY);
   const legacyMode = target.getItem(LEGACY_MODE_KEY);
   let chosen: Backend | null = null;
-  if (chain === "rpc" || content === "ipfs-gateway") {
-    chosen = "rpc-gateway";
-  } else if (legacyMode === "p2p-shared-worker" || legacyMode === "p2p") {
-    chosen = "smoldot-shared-worker";
-  } else if (legacyMode === "p2p-direct") {
-    chosen = "smoldot-direct";
-  } else if (legacyMode === "gateway" || legacyMode === "centralized") {
-    chosen = "rpc-gateway";
+  if (chain === 'rpc' || content === 'ipfs-gateway') {
+    chosen = 'rpc-gateway';
+  } else if (legacyMode === 'p2p-shared-worker' || legacyMode === 'p2p') {
+    chosen = 'smoldot-shared-worker';
+  } else if (legacyMode === 'p2p-direct') {
+    chosen = 'smoldot-direct';
+  } else if (legacyMode === 'gateway' || legacyMode === 'centralized') {
+    chosen = 'rpc-gateway';
   }
   if (chosen !== null) {
     target.removeItem(LEGACY_MODE_KEY);
@@ -196,7 +195,7 @@ function readAndClearLegacy(target: ModeStorage): Backend | null {
  * trusted operators, so it's "trusted" rather than "verified".
  */
 export function isVerifiedSession(chainBackend: Backend): boolean {
-  return chainBackend !== "rpc-gateway";
+  return chainBackend !== 'rpc-gateway';
 }
 
 // Fresh-install default. Persisted preferences override these.
@@ -224,18 +223,11 @@ export function getCacheSettings(): CacheSettings {
     try {
       const parsed = JSON.parse(stored) as Partial<CacheSettings>;
       return {
-        skipCidCache:
-          typeof parsed.skipCidCache === "boolean"
-            ? parsed.skipCidCache
-            : DEFAULT_CACHE.skipCidCache,
+        skipCidCache: typeof parsed.skipCidCache === 'boolean' ? parsed.skipCidCache : DEFAULT_CACHE.skipCidCache,
         skipArchiveCache:
-          typeof parsed.skipArchiveCache === "boolean"
-            ? parsed.skipArchiveCache
-            : DEFAULT_CACHE.skipArchiveCache,
+          typeof parsed.skipArchiveCache === 'boolean' ? parsed.skipArchiveCache : DEFAULT_CACHE.skipArchiveCache,
         skipWorkerCache:
-          typeof parsed.skipWorkerCache === "boolean"
-            ? parsed.skipWorkerCache
-            : DEFAULT_CACHE.skipWorkerCache,
+          typeof parsed.skipWorkerCache === 'boolean' ? parsed.skipWorkerCache : DEFAULT_CACHE.skipWorkerCache,
       };
       // eslint-disable-next-line no-restricted-syntax -- malformed JSON from an older build; defaults are the safe fallback.
     } catch {
@@ -255,16 +247,16 @@ export function setCacheSettings(settings: CacheSettings): void {
  * test environment where the runtime is on unless the user turned it off.
  */
 export function defaultPolkaVmAppsEnabled(siteId: SiteId): boolean {
-  return siteId !== "dot.li";
+  return siteId !== 'dot.li';
 }
 
 /** Whether the PolkaVM App runtime runs: the user's choice, else the site default. */
 export function getPolkaVmAppsEnabled(siteId: SiteId): boolean {
   const stored = storage.getItem(POLKAVM_APPS_KEY);
-  if (stored === "1") {
+  if (stored === '1') {
     return true;
   }
-  if (stored === "0") {
+  if (stored === '0') {
     return false;
   }
   return defaultPolkaVmAppsEnabled(siteId);
@@ -272,5 +264,5 @@ export function getPolkaVmAppsEnabled(siteId: SiteId): boolean {
 
 /** Persist the user's experimental PolkaVM App runtime preference. */
 export function setPolkaVmAppsEnabled(enabled: boolean): void {
-  storage.setItem(POLKAVM_APPS_KEY, enabled ? "1" : "0");
+  storage.setItem(POLKAVM_APPS_KEY, enabled ? '1' : '0');
 }

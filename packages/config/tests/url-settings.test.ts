@@ -1,20 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, it, expect } from "vitest";
-import {
-  parseSettingsFromSearch,
-  writeSettingsToSearch,
-} from "@dotli/config/url-settings";
-import { NetworkName } from "@dotli/config/network";
+import { describe, it, expect } from 'vitest';
+import { parseSettingsFromSearch, writeSettingsToSearch } from '../src/url-settings.js';
+import { NetworkName } from '../src/network.js';
 
 const globalAny = globalThis as { SharedWorker?: unknown };
 
 function withSharedWorker<T>(present: boolean, fn: () => T): T {
-  const hadPrior = "SharedWorker" in globalAny;
+  const hadPrior = 'SharedWorker' in globalAny;
   const prior = globalAny.SharedWorker;
   if (present) {
-    globalAny.SharedWorker = class {};
+    globalAny.SharedWorker = class {
+      readonly port: unknown = null;
+    };
   } else if (hadPrior) {
     delete globalAny.SharedWorker;
   }
@@ -29,8 +28,8 @@ function withSharedWorker<T>(present: boolean, fn: () => T): T {
   }
 }
 
-describe("parseSettingsFromSearch", () => {
-  it("returns nulls for absent or invalid values", () => {
+describe('parseSettingsFromSearch', () => {
+  it('returns nulls for absent or invalid values', () => {
     const empty = parseSettingsFromSearch(new URLSearchParams());
     expect(empty).toEqual({
       network: null,
@@ -40,54 +39,48 @@ describe("parseSettingsFromSearch", () => {
       skipWorkerCache: null,
     });
 
-    const invalid = parseSettingsFromSearch(
-      new URLSearchParams("network=bogus&chainBackend=nope&skipCidCache=true"),
-    );
+    const invalid = parseSettingsFromSearch(new URLSearchParams('network=bogus&chainBackend=nope&skipCidCache=true'));
     expect(invalid.network).toBeNull();
     expect(invalid.chainBackend).toBeNull();
     expect(invalid.skipCidCache).toBeNull();
   });
 
-  it("returns the typed value for each valid axis", () => {
+  it('returns the typed value for each valid axis', () => {
     const parsed = parseSettingsFromSearch(
       new URLSearchParams(
         `network=${NetworkName.PASEO}&chainBackend=rpc-gateway&skipArchiveCache=0&skipCidCache=1&skipWorkerCache=1`,
       ),
     );
     expect(parsed.network).toBe(NetworkName.PASEO);
-    expect(parsed.chainBackend).toBe("rpc-gateway");
+    expect(parsed.chainBackend).toBe('rpc-gateway');
     expect(parsed.skipArchiveCache).toBe(false);
     expect(parsed.skipCidCache).toBe(true);
     expect(parsed.skipWorkerCache).toBe(true);
   });
 
-  it("returns chainBackend=smoldot-shared-worker when SharedWorker is available", () => {
+  it('returns chainBackend=smoldot-shared-worker when SharedWorker is available', () => {
     withSharedWorker(true, () => {
-      const parsed = parseSettingsFromSearch(
-        new URLSearchParams("chainBackend=smoldot-shared-worker"),
-      );
-      expect(parsed.chainBackend).toBe("smoldot-shared-worker");
+      const parsed = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
+      expect(parsed.chainBackend).toBe('smoldot-shared-worker');
     });
   });
 
-  it("treats chainBackend=smoldot-shared-worker as absent when SharedWorker is missing", () => {
+  it('treats chainBackend=smoldot-shared-worker as absent when SharedWorker is missing', () => {
     withSharedWorker(false, () => {
-      const parsed = parseSettingsFromSearch(
-        new URLSearchParams("chainBackend=smoldot-shared-worker"),
-      );
+      const parsed = parseSettingsFromSearch(new URLSearchParams('chainBackend=smoldot-shared-worker'));
       expect(parsed.chainBackend).toBeNull();
     });
   });
 });
 
-describe("writeSettingsToSearch against the smoldot-direct default", () => {
-  it("strips chainBackend=smoldot-direct when SharedWorker is available", () => {
+describe('writeSettingsToSearch against the smoldot-direct default', () => {
+  it('strips chainBackend=smoldot-direct when SharedWorker is available', () => {
     withSharedWorker(true, () => {
-      const search = new URLSearchParams("chainBackend=smoldot-direct");
+      const search = new URLSearchParams('chainBackend=smoldot-direct');
       const changed = writeSettingsToSearch(
         {
           network: NetworkName.PREVIEWNET,
-          chainBackend: "smoldot-direct",
+          chainBackend: 'smoldot-direct',
           cache: {
             skipCidCache: true,
             skipArchiveCache: true,
@@ -97,17 +90,17 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
         search,
       );
       expect(changed).toBe(true);
-      expect(search.get("chainBackend")).toBeNull();
+      expect(search.get('chainBackend')).toBeNull();
     });
   });
 
-  it("keeps chainBackend=smoldot-shared-worker in the URL because the default is smoldot-direct", () => {
+  it('keeps chainBackend=smoldot-shared-worker in the URL because the default is smoldot-direct', () => {
     withSharedWorker(true, () => {
       const search = new URLSearchParams();
       writeSettingsToSearch(
         {
           network: NetworkName.PREVIEWNET,
-          chainBackend: "smoldot-shared-worker",
+          chainBackend: 'smoldot-shared-worker',
           cache: {
             skipCidCache: true,
             skipArchiveCache: true,
@@ -116,17 +109,17 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
         },
         search,
       );
-      expect(search.get("chainBackend")).toBe("smoldot-shared-worker");
+      expect(search.get('chainBackend')).toBe('smoldot-shared-worker');
     });
   });
 
-  it("strips chainBackend=smoldot-direct when SharedWorker is missing", () => {
+  it('strips chainBackend=smoldot-direct when SharedWorker is missing', () => {
     withSharedWorker(false, () => {
-      const search = new URLSearchParams("chainBackend=smoldot-direct");
+      const search = new URLSearchParams('chainBackend=smoldot-direct');
       writeSettingsToSearch(
         {
           network: NetworkName.PREVIEWNET,
-          chainBackend: "smoldot-direct",
+          chainBackend: 'smoldot-direct',
           cache: {
             skipCidCache: true,
             skipArchiveCache: true,
@@ -135,20 +128,18 @@ describe("writeSettingsToSearch against the smoldot-direct default", () => {
         },
         search,
       );
-      expect(search.get("chainBackend")).toBeNull();
+      expect(search.get('chainBackend')).toBeNull();
     });
   });
 });
 
-describe("writeSettingsToSearch", () => {
-  it("drops default-valued axes and preserves unrelated params", () => {
-    const search = new URLSearchParams(
-      "network=previewnet&chainBackend=rpc-gateway&skipArchiveCache=1&keep=me",
-    );
+describe('writeSettingsToSearch', () => {
+  it('drops default-valued axes and preserves unrelated params', () => {
+    const search = new URLSearchParams('network=previewnet&chainBackend=rpc-gateway&skipArchiveCache=1&keep=me');
     const changed = writeSettingsToSearch(
       {
         network: NetworkName.PASEO,
-        chainBackend: "smoldot-direct",
+        chainBackend: 'smoldot-direct',
         cache: {
           skipCidCache: false,
           skipArchiveCache: false,
@@ -158,19 +149,19 @@ describe("writeSettingsToSearch", () => {
       search,
     );
     expect(changed).toBe(true);
-    expect(search.get("network")).toBeNull();
-    expect(search.get("chainBackend")).toBeNull();
-    expect(search.get("skipArchiveCache")).toBeNull();
-    expect(search.get("skipWorkerCache")).toBeNull();
-    expect(search.get("keep")).toBe("me");
+    expect(search.get('network')).toBeNull();
+    expect(search.get('chainBackend')).toBeNull();
+    expect(search.get('skipArchiveCache')).toBeNull();
+    expect(search.get('skipWorkerCache')).toBeNull();
+    expect(search.get('keep')).toBe('me');
   });
 
-  it("keeps non-default axes with explicit boolean encoding", () => {
+  it('keeps non-default axes with explicit boolean encoding', () => {
     const search = new URLSearchParams();
     writeSettingsToSearch(
       {
         network: NetworkName.PREVIEWNET,
-        chainBackend: "smoldot-direct",
+        chainBackend: 'smoldot-direct',
         cache: {
           skipCidCache: true,
           skipArchiveCache: false,
@@ -179,10 +170,10 @@ describe("writeSettingsToSearch", () => {
       },
       search,
     );
-    expect(search.get("network")).toBe(NetworkName.PREVIEWNET);
-    expect(search.get("chainBackend")).toBeNull();
-    expect(search.get("skipCidCache")).toBe("1");
-    expect(search.get("skipArchiveCache")).toBeNull();
-    expect(search.get("skipWorkerCache")).toBeNull();
+    expect(search.get('network')).toBe(NetworkName.PREVIEWNET);
+    expect(search.get('chainBackend')).toBeNull();
+    expect(search.get('skipCidCache')).toBe('1');
+    expect(search.get('skipArchiveCache')).toBeNull();
+    expect(search.get('skipWorkerCache')).toBeNull();
   });
 });

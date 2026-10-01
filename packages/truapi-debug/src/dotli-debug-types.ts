@@ -13,21 +13,14 @@
 // event flows become pills.
 
 export type DotliDebugEvent =
-  | BootEvent
-  | ResolveEvent
-  | RenderEvent
-  | BridgeEvent
-  | FailoverEvent
-  | MainEvent
-  | SandboxEvent
-  | ChainEvent;
+  BootEvent | ResolveEvent | RenderEvent | BridgeEvent | FailoverEvent | MainEvent | SandboxEvent | ChainEvent;
 
 /** Latest PolkaVM runtime diagnostics reported by the product sandbox.
  * Snapshots replace one another in the debug panel instead of entering the
  * event timeline, which keeps continuously sampled FPS data out of the event
  * ring buffer. */
 export interface PolkaVmDebugSnapshot {
-  backend: "compiler" | "interpreter" | "starting";
+  backend: 'compiler' | 'interpreter' | 'starting';
   /** Present only when compiler startup failed, not for a forced interpreter. */
   compilerFallbackReason?: string;
   compilerFallbackStage?: string;
@@ -49,7 +42,7 @@ export interface PolkaVmDebugSnapshot {
 }
 
 export interface PolkaVmDebugMessage {
-  type: "dotli:polkavm-metrics";
+  type: 'dotli:polkavm-metrics';
   metrics: PolkaVmDebugSnapshot;
 }
 
@@ -66,8 +59,8 @@ export interface PolkaVmDebugMessage {
  *  unless these events are surfaced. */
 export type SandboxEvent =
   | {
-      layer: "sandbox";
-      event: "started";
+      layer: 'sandbox';
+      event: 'started';
       flowId: string;
       timestamp: number;
       payload: {
@@ -76,8 +69,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "sw_register_begin";
+      layer: 'sandbox';
+      event: 'sw_register_begin';
       flowId: string;
       timestamp: number;
       payload: {
@@ -86,8 +79,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "sw_ready";
+      layer: 'sandbox';
+      event: 'sw_ready';
       flowId: string;
       timestamp: number;
       payload: {
@@ -96,19 +89,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "cache_checked";
-      flowId: string;
-      timestamp: number;
-      payload: {
-        cid: string;
-        hit: boolean;
-        fileCount?: number;
-      };
-    }
-  | {
-      layer: "sandbox";
-      event: "fetch_begin";
+      layer: 'sandbox';
+      event: 'fetch_begin';
       flowId: string;
       timestamp: number;
       payload: {
@@ -117,8 +99,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "helia_ready";
+      layer: 'sandbox';
+      event: 'helia_ready';
       flowId: string;
       timestamp: number;
       payload: {
@@ -127,8 +109,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "status";
+      layer: 'sandbox';
+      event: 'status';
       flowId: string;
       timestamp: number;
       payload: {
@@ -140,33 +122,33 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "fetch_complete";
+      layer: 'sandbox';
+      event: 'fetch_complete';
       flowId: string;
       timestamp: number;
       payload: {
         cid: string;
-        kind: "single" | "archive";
+        kind: 'single' | 'archive';
         durationMs: number;
       };
     }
   | {
-      layer: "sandbox";
-      event: "decrypt_started";
+      layer: 'sandbox';
+      event: 'decrypt_started';
       flowId: string;
       timestamp: number;
       payload: { cid: string };
     }
   | {
-      layer: "sandbox";
-      event: "decrypt_complete";
+      layer: 'sandbox';
+      event: 'decrypt_complete';
       flowId: string;
       timestamp: number;
       payload: { cid: string };
     }
   | {
-      layer: "sandbox";
-      event: "archive_stored";
+      layer: 'sandbox';
+      event: 'archive_stored';
       flowId: string;
       timestamp: number;
       payload: {
@@ -176,8 +158,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "document_written";
+      layer: 'sandbox';
+      event: 'document_written';
       flowId: string;
       timestamp: number;
       payload: {
@@ -190,8 +172,8 @@ export type SandboxEvent =
       };
     }
   | {
-      layer: "sandbox";
-      event: "failed";
+      layer: 'sandbox';
+      event: 'failed';
       flowId: string;
       timestamp: number;
       payload: {
@@ -205,8 +187,8 @@ export type SandboxEvent =
  *  system swimlane. */
 export type MainEvent =
   | {
-      layer: "main";
-      event: "stall_detected";
+      layer: 'main';
+      event: 'stall_detected';
       flowId: string;
       timestamp: number;
       payload: {
@@ -218,8 +200,8 @@ export type MainEvent =
       };
     }
   | {
-      layer: "main";
-      event: "heartbeat";
+      layer: 'main';
+      event: 'heartbeat';
       flowId: string;
       timestamp: number;
       payload: {
@@ -229,20 +211,20 @@ export type MainEvent =
       };
     }
   | {
-      layer: "main";
-      event: "monitor_stopped";
+      layer: 'main';
+      event: 'monitor_stopped';
       flowId: string;
       timestamp: number;
       payload: {
-        reason: "bridge_ready" | "max_duration";
+        reason: 'bridge_ready' | 'max_duration';
       };
     };
 
 /** High-level orchestration of the host's boot sequence (per tab). */
 export type BootEvent =
   | {
-      layer: "boot";
-      event: "started";
+      layer: 'boot';
+      event: 'started';
       flowId: string;
       timestamp: number;
       payload: {
@@ -252,22 +234,22 @@ export type BootEvent =
       };
     }
   | {
-      layer: "boot";
-      event: "protocol_warmup_started";
+      layer: 'boot';
+      event: 'protocol_warmup_started';
       flowId: string;
       timestamp: number;
-      payload: { subMode: "shared-worker" | "direct" | "rpc" };
+      payload: { subMode: 'shared-worker' | 'direct' | 'rpc' };
     }
   | {
-      layer: "boot";
-      event: "topbar_ready";
+      layer: 'boot';
+      event: 'topbar_ready';
       flowId: string;
       timestamp: number;
       payload: Record<string, never>;
     }
   | {
-      layer: "boot";
-      event: "url_parsed";
+      layer: 'boot';
+      event: 'url_parsed';
       flowId: string;
       timestamp: number;
       payload: {
@@ -277,8 +259,8 @@ export type BootEvent =
       };
     }
   | {
-      layer: "boot";
-      event: "installed_executable_cache_checked";
+      layer: 'boot';
+      event: 'installed_executable_cache_checked';
       flowId: string;
       timestamp: number;
       payload: {
@@ -288,26 +270,38 @@ export type BootEvent =
       };
     }
   | {
-      layer: "boot";
-      event: "landing_page_shown";
+      layer: 'boot';
+      event: 'block_cache';
+      flowId: string;
+      timestamp: number;
+      payload: {
+        /** Blocks the relay answered from the host's block cache. */
+        hits: number;
+        /** Blocks it had to fetch over the network. */
+        misses: number;
+      };
+    }
+  | {
+      layer: 'boot';
+      event: 'landing_page_shown';
       flowId: string;
       timestamp: number;
       payload: Record<string, never>;
     }
   | {
-      layer: "boot";
-      event: "ready";
+      layer: 'boot';
+      event: 'ready';
       flowId: string;
       timestamp: number;
       payload: {
         label: string | null;
         totalMs: number;
-        path: "fast" | "slow" | "localhost";
+        path: 'fast' | 'slow' | 'localhost';
       };
     }
   | {
-      layer: "boot";
-      event: "failed";
+      layer: 'boot';
+      event: 'failed';
       flowId: string;
       timestamp: number;
       payload: {
@@ -320,18 +314,18 @@ export type BootEvent =
 /** Dot-name resolution. Covers both smoldot (P2P) and RPC paths. */
 export type ResolveEvent =
   | {
-      layer: "resolve";
-      event: "started";
+      layer: 'resolve';
+      event: 'started';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
-        source: "smoldot" | "rpc-gateway";
+        source: 'smoldot' | 'rpc-gateway';
       };
     }
   | {
-      layer: "resolve";
-      event: "phase";
+      layer: 'resolve';
+      event: 'phase';
       flowId: string;
       timestamp: number;
       payload: {
@@ -341,8 +335,8 @@ export type ResolveEvent =
       };
     }
   | {
-      layer: "resolve";
-      event: "storage_read";
+      layer: 'resolve';
+      event: 'storage_read';
       flowId: string;
       timestamp: number;
       payload: {
@@ -352,25 +346,25 @@ export type ResolveEvent =
       };
     }
   | {
-      layer: "resolve";
-      event: "completed";
+      layer: 'resolve';
+      event: 'completed';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
-        source: "smoldot" | "rpc-gateway";
+        source: 'smoldot' | 'rpc-gateway';
         cid: string | null;
         durationMs: number;
       };
     }
   | {
-      layer: "resolve";
-      event: "failed";
+      layer: 'resolve';
+      event: 'failed';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
-        source: "smoldot" | "rpc-gateway";
+        source: 'smoldot' | 'rpc-gateway';
         reason: string;
       };
     };
@@ -378,32 +372,32 @@ export type ResolveEvent =
 /** Iframe render lifecycle (renderIframe / renderAppSubdomain). */
 export type RenderEvent =
   | {
-      layer: "render";
-      event: "iframe_begin";
+      layer: 'render';
+      event: 'iframe_begin';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
         url: string;
-        mode: "iframe" | "subdomain" | "localhost";
+        mode: 'iframe' | 'subdomain' | 'localhost';
       };
     }
   | {
-      layer: "render";
-      event: "iframe_ready";
+      layer: 'render';
+      event: 'iframe_ready';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
-        mode: "iframe" | "subdomain" | "localhost";
+        mode: 'iframe' | 'subdomain' | 'localhost';
       };
     };
 
 /** Container bridge setup (TrUAPI bridge, per dApp iframe). */
 export type BridgeEvent =
   | {
-      layer: "bridge";
-      event: "setup_begin";
+      layer: 'bridge';
+      event: 'setup_begin';
       flowId: string;
       timestamp: number;
       payload: {
@@ -412,8 +406,8 @@ export type BridgeEvent =
       };
     }
   | {
-      layer: "bridge";
-      event: "setup_ready";
+      layer: 'bridge';
+      event: 'setup_ready';
       flowId: string;
       timestamp: number;
       payload: {
@@ -422,19 +416,19 @@ export type BridgeEvent =
       };
     }
   | {
-      layer: "bridge";
-      event: "iframe_load";
+      layer: 'bridge';
+      event: 'iframe_load';
       flowId: string;
       timestamp: number;
       payload: {
         label: string;
         productId: string;
-        mode: "iframe" | "subdomain";
+        mode: 'iframe' | 'subdomain';
       };
     }
   | {
-      layer: "bridge";
-      event: "first_inbound";
+      layer: 'bridge';
+      event: 'first_inbound';
       flowId: string;
       timestamp: number;
       payload: {
@@ -443,8 +437,8 @@ export type BridgeEvent =
       };
     }
   | {
-      layer: "bridge";
-      event: "first_outbound";
+      layer: 'bridge';
+      event: 'first_outbound';
       flowId: string;
       timestamp: number;
       payload: {
@@ -455,8 +449,8 @@ export type BridgeEvent =
 
 /** Backend failover decisions (chain backend switch on resolution error). */
 export interface FailoverEvent {
-  layer: "failover";
-  event: "chain_backend";
+  layer: 'failover';
+  event: 'chain_backend';
   flowId: string;
   timestamp: number;
   payload: {
@@ -480,8 +474,8 @@ export interface FailoverEvent {
  *  cumulative received total, sampled on a tick. */
 export type ChainEvent =
   | {
-      layer: "chain";
-      event: "phase";
+      layer: 'chain';
+      event: 'phase';
       flowId: string;
       timestamp: number;
       payload: {
@@ -494,18 +488,18 @@ export type ChainEvent =
       };
     }
   | {
-      layer: "chain";
-      event: "dbcache";
+      layer: 'chain';
+      event: 'dbcache';
       flowId: string;
       timestamp: number;
       payload: {
         chain: string;
-        dbCache: "hit" | "miss";
+        dbCache: 'hit' | 'miss';
       };
     }
   | {
-      layer: "chain";
-      event: "peers";
+      layer: 'chain';
+      event: 'peers';
       flowId: string;
       timestamp: number;
       payload: {
@@ -514,8 +508,8 @@ export type ChainEvent =
       };
     }
   | {
-      layer: "chain";
-      event: "bytes";
+      layer: 'chain';
+      event: 'bytes';
       flowId: string;
       timestamp: number;
       payload: {

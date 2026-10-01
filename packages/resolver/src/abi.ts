@@ -6,16 +6,9 @@
 // Provides ENS-style namehash and storage slot key computation for
 // reading Solidity contract storage directly via ReviveApi.get_storage.
 
-import { keccak_256 } from "@noble/hashes/sha3.js";
-import {
-  bytesToHex,
-  concatBytes,
-  hexToBytes as nobleHexToBytes,
-} from "@noble/hashes/utils.js";
-import {
-  decode as decodeContentHash,
-  getCodec,
-} from "@ensdomains/content-hash";
+import { keccak_256 } from '@noble/hashes/sha3.js';
+import { bytesToHex, concatBytes, hexToBytes as nobleHexToBytes } from '@noble/hashes/utils.js';
+import { decode as decodeContentHash, getCodec } from '@ensdomains/content-hash';
 
 /** Convert bytes to 0x-prefixed hex string. */
 export function toHex(bytes: Uint8Array): `0x${string}` {
@@ -30,10 +23,10 @@ function hexToBytes(hex: `0x${string}`): Uint8Array {
 /** Compute the ENS-style namehash of a dotted name. */
 export function namehash(name: string): `0x${string}` {
   let node = new Uint8Array(32); // 0x00...00
-  if (name === "") {
+  if (name === '') {
     return toHex(node);
   }
-  const labels = name.split(".").reverse();
+  const labels = name.split('.').reverse();
   for (const label of labels) {
     const labelHash = keccak_256(new TextEncoder().encode(label));
     const combined = new Uint8Array(64);
@@ -59,10 +52,7 @@ export function namehash(name: string): `0x${string}` {
  *   keccak256(abi.encode(key, slot_number))
  *   = keccak256(key[32 bytes] ++ slot[32 bytes])
  */
-export function computeMappingSlot(
-  key: `0x${string}`,
-  slotNumber: number,
-): `0x${string}` {
+export function computeMappingSlot(key: `0x${string}`, slotNumber: number): `0x${string}` {
   const slotBytes = new Uint8Array(32);
   let n = slotNumber;
   for (let i = 31; i >= 0 && n > 0; i--) {
@@ -70,9 +60,7 @@ export function computeMappingSlot(
     n >>>= 8;
   }
 
-  return toHex(
-    new Uint8Array(keccak_256(concatBytes(hexToBytes(key), slotBytes))),
-  );
+  return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(key), slotBytes))));
 }
 
 /**
@@ -87,11 +75,7 @@ export function computeNestedBytes32MappingSlot(
   slotNumber: number,
 ): `0x${string}` {
   const midSlot = computeMappingSlot(outerKey, slotNumber);
-  return toHex(
-    new Uint8Array(
-      keccak_256(concatBytes(hexToBytes(innerKey), hexToBytes(midSlot))),
-    ),
-  );
+  return toHex(new Uint8Array(keccak_256(concatBytes(hexToBytes(innerKey), hexToBytes(midSlot)))));
 }
 
 /**
@@ -122,9 +106,7 @@ export function computeNestedStringMappingSlot(
 ): `0x${string}` {
   const midSlot = computeMappingSlot(outerKey, outerSlot);
   const innerBytes = new TextEncoder().encode(innerKey);
-  return toHex(
-    new Uint8Array(keccak_256(concatBytes(innerBytes, hexToBytes(midSlot)))),
-  );
+  return toHex(new Uint8Array(keccak_256(concatBytes(innerBytes, hexToBytes(midSlot)))));
 }
 
 /**
@@ -139,7 +121,11 @@ export function addToSlot(slot: `0x${string}`, offset: number): `0x${string}` {
   const bytes = hexToBytes(slot);
   let carry = offset;
   for (let i = 31; i >= 0 && carry > 0; i--) {
-    const sum = bytes[i] + (carry & 0xff);
+    const byte = bytes[i];
+    if (byte === undefined) {
+      throw new Error(`Storage slot must be 32 bytes, got ${String(bytes.length)}`);
+    }
+    const sum = byte + (carry & 0xff);
     bytes[i] = sum & 0xff;
     carry = (carry >>> 8) + (sum >>> 8);
   }
@@ -179,15 +165,15 @@ export function extractAddress(data: Uint8Array): string {
 export function decodeBytesSlot(
   slotData: Uint8Array,
   baseSlotKey: `0x${string}`,
-):
-  | { inline: true; data: Uint8Array }
-  | { inline: false; length: number; dataSlot: `0x${string}` }
-  | null {
-  if (slotData.every((b) => b === 0)) {
+): { inline: true; data: Uint8Array } | { inline: false; length: number; dataSlot: `0x${string}` } | null {
+  if (slotData.every(b => b === 0)) {
     return null;
   }
 
   const lowestByte = slotData[31];
+  if (lowestByte === undefined) {
+    throw new Error(`Storage slot data must be 32 bytes, got ${String(slotData.length)}`);
+  }
   if ((lowestByte & 1) === 0) {
     // Short bytes: inline storage
     const length = lowestByte / 2;
@@ -223,40 +209,36 @@ export function decodeBytesSlot(
  * "no record set".
  */
 export type ContenthashResult =
-  | { kind: "ok"; cid: string }
-  | { kind: "empty" }
-  | { kind: "unsupported-codec"; codec: string | null }
-  | { kind: "decode-error"; cause: unknown };
+  | { kind: 'ok'; cid: string }
+  | { kind: 'empty' }
+  | { kind: 'unsupported-codec'; codec: string | null }
+  | { kind: 'decode-error'; cause: unknown };
 
-export function decodeIpfsContenthashResult(
-  contenthashHex: string,
-): ContenthashResult {
-  const hex = contenthashHex.startsWith("0x")
-    ? contenthashHex.slice(2)
-    : contenthashHex;
-  if (!hex || hex === "0" || hex.length < 4) {
-    return { kind: "empty" };
+export function decodeIpfsContenthashResult(contenthashHex: string): ContenthashResult {
+  const hex = contenthashHex.startsWith('0x') ? contenthashHex.slice(2) : contenthashHex;
+  if (!hex || hex === '0' || hex.length < 4) {
+    return { kind: 'empty' };
   }
   let codec: string | null;
   try {
     codec = getCodec(hex) ?? null;
   } catch (cause) {
-    return { kind: "decode-error", cause };
+    return { kind: 'decode-error', cause };
   }
-  if (codec !== "ipfs") {
-    return { kind: "unsupported-codec", codec };
+  if (codec !== 'ipfs') {
+    return { kind: 'unsupported-codec', codec };
   }
   try {
     const cid = decodeContentHash(hex);
-    if (typeof cid === "string" && cid.length > 0) {
-      return { kind: "ok", cid };
+    if (typeof cid === 'string' && cid.length > 0) {
+      return { kind: 'ok', cid };
     }
     return {
-      kind: "decode-error",
-      cause: new Error("decodeContentHash returned empty"),
+      kind: 'decode-error',
+      cause: new Error('decodeContentHash returned empty'),
     };
   } catch (cause) {
-    return { kind: "decode-error", cause };
+    return { kind: 'decode-error', cause };
   }
 }
 
@@ -267,5 +249,5 @@ export function decodeIpfsContenthashResult(
  */
 export function decodeIpfsContenthash(contenthashHex: string): string | null {
   const result = decodeIpfsContenthashResult(contenthashHex);
-  return result.kind === "ok" ? result.cid : null;
+  return result.kind === 'ok' ? result.cid : null;
 }

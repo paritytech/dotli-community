@@ -14,60 +14,45 @@
 // the same loader, and every placement answers success: the product must not
 // learn which of its contacts shared a profile.
 
-import type { ProfilePlatform } from "@parity/truapi-host";
-import { fromHex } from "@dotli/shared/hex";
-import { showProfileDrawer, type LoadedProfile } from "../profile/drawer";
+import type { ProfilePlatform } from '@parity/truapi-host';
+import { fromHex, log } from '@dotli/shared';
+import { showProfileDrawer, type LoadedProfile } from '../profile/drawer.js';
 import {
   createAvatarProfileCache,
   createContactAvatarOverlay,
   type ContactAvatarOverlay,
-} from "../profile/avatar-overlay";
+} from '../profile/avatar-overlay.js';
 import {
   isContactsReference,
   openContactsRecord,
   parseContactsReference,
   type SeityContactsReference,
-} from "../profile/contacts-reference";
-import { decodeProfileRecord } from "../profile/profile-record";
-import {
-  openSeityBlob,
-  parseSeityBlobReference,
-} from "../profile/seity-reference";
-import {
-  resolveSeitySlotRemote,
-  type RemoteSeitySlot,
-} from "@dotli/protocol/client";
-import { getBackend } from "@dotli/config/mode";
-import { resolveSeitySlotViaRpc } from "@dotli/resolver/rpc-resolve";
-import { createPreimageAdapters } from "./Preimage";
+} from '../profile/contacts-reference.js';
+import { decodeProfileRecord } from '../profile/profile-record.js';
+import { openSeityBlob, parseSeityBlobReference } from '../profile/seity-reference.js';
+import { resolveSeitySlotRemote, type RemoteSeitySlot } from '@dotli/protocol';
+import { getBackend } from '@dotli/config';
+import { loadRpcResolve } from '@dotli/resolver';
+import { createPreimageAdapters } from './Preimage.js';
 
 /** Bulletin retrieval can wait on bitswap providers attaching. */
 const AVATAR_FETCH_TIMEOUT_MS = 90_000;
 
-async function fetchCiphertext(
-  preimageKey: `0x${string}`,
-  signal: AbortSignal,
-): Promise<Uint8Array<ArrayBuffer>> {
-  const deadline = AbortSignal.any([
-    signal,
-    AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS),
-  ]);
-  const { lookupPreimage } = createPreimageAdapters("profile");
+async function fetchCiphertext(preimageKey: `0x${string}`, signal: AbortSignal): Promise<Uint8Array<ArrayBuffer>> {
+  signal.throwIfAborted();
+  const deadline = AbortSignal.any([signal, AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS)]);
+  const { lookupPreimage } = createPreimageAdapters('profile');
   const iterator = lookupPreimage(fromHex(preimageKey))[Symbol.asyncIterator]();
+  let abort: (() => void) | undefined;
   const stopped = new Promise<never>((_, reject) => {
-    const abort = (): void => {
-      // Timeout and close both abort with a DOMException, which the drawer
-      // tells apart by name.
-      reject(
-        deadline.reason instanceof Error
-          ? deadline.reason
-          : new Error("profile fetch aborted"),
-      );
+    abort = () => {
+      reject(deadline.reason);
     };
     if (deadline.aborted) {
       abort();
+    } else {
+      deadline.addEventListener('abort', abort, { once: true });
     }
-    deadline.addEventListener("abort", abort, { once: true });
   });
   // Settled by whichever finishes first; never left as an unhandled rejection.
   stopped.catch(() => undefined);
@@ -75,7 +60,7 @@ async function fetchCiphertext(
     for (;;) {
       const next = await Promise.race([iterator.next(), stopped]);
       if (next.done === true) {
-        throw new Error("preimage lookup ended without a value");
+        throw new Error('preimage lookup ended without a value');
       }
       if (next.value.isErr()) {
         throw new Error(next.value.error.reason);
@@ -85,41 +70,52 @@ async function fetchCiphertext(
       }
     }
   } finally {
+    if (abort !== undefined) {
+      deadline.removeEventListener('abort', abort);
+    }
     void iterator.return?.();
   }
 }
 
 /**
- * Show the profile a reference names, attributed to `productId`. Throws for a
+ * Show the profile a reference names, attributed to `productId`. Rejects for a
  * reference this host cannot parse, before any UI appears.
  */
-export function presentProfileReference(
+export async function presentProfileReference(
   productId: string,
   reference: string,
-): void {
-  showProfileDrawer({ productId, loadProfile: profileLoader(reference) });
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
+  await showProfileDrawer({
+    productId,
+    loadProfile: profileLoader(reference),
+    ...(signal === undefined ? {} : { signal }),
+  });
 }
 
 /** How a contact the host knows no username for is named. */
-const UNNAMED_CONTACT = "this contact";
+const UNNAMED_CONTACT = 'this contact';
 
 /**
  * Show the profile a Chat contact shared, attributed to that contact by the
  * username the core resolved for them, or generically when it knows none,
  * and shown in `productId`. The contact is never named by an address or by
- * anything the product said. Throws for a reference this host cannot parse,
+ * anything the product said. Rejects for a reference this host cannot parse,
  * before any UI appears.
  */
-export function presentContactProfileReference(
+export async function presentContactProfileReference(
   productId: string,
   reference: string,
   username: string | undefined,
-): void {
-  showProfileDrawer({
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
+  await showProfileDrawer({
     productId,
-    sharedBy:
-      username === undefined || username === "" ? UNNAMED_CONTACT : username,
+    sharedBy: username === undefined || username === '' ? UNNAMED_CONTACT : username,
     loadProfile: profileLoader(reference),
+    ...(signal === undefined ? {} : { signal }),
   });
 }
 
@@ -131,19 +127,14 @@ export function presentContactProfileReference(
  *   sealed record, then fetch and open the avatar the record names.
  * - A bare `cid#key` names one avatar blob (the #287 path, unchanged).
  */
-function profileLoader(
-  reference: string,
-): (signal: AbortSignal) => Promise<LoadedProfile> {
+function profileLoader(reference: string): (signal: AbortSignal) => Promise<LoadedProfile> {
   if (isContactsReference(reference)) {
     const parsed = parseContactsReference(reference);
-    return (signal) => loadContactsProfile(parsed, signal);
+    return signal => loadContactsProfile(parsed, signal);
   }
   const parsed = parseSeityBlobReference(reference);
-  return async (signal) => ({
-    avatar: await openSeityBlob(
-      await fetchCiphertext(parsed.preimageKey, signal),
-      parsed,
-    ),
+  return async signal => ({
+    avatar: await openSeityBlob(await fetchCiphertext(parsed.preimageKey, signal), parsed),
   });
 }
 
@@ -152,61 +143,59 @@ function profileLoader(
  * worker's light client, or the gateway RPC for "Trusted Providers", which
  * does not route resolution through the protocol iframe.
  */
-async function readSeitySlot(
-  lookupKey: `0x${string}`,
-): Promise<RemoteSeitySlot | null> {
-  if (getBackend() === "rpc-gateway") {
+async function readSeitySlot(lookupKey: `0x${string}`): Promise<RemoteSeitySlot | null> {
+  if (getBackend() === 'rpc-gateway') {
+    const { resolveSeitySlotViaRpc } = await loadRpcResolve();
     const slot = await resolveSeitySlotViaRpc(lookupKey);
     return slot === null ? null : { ...slot, version: slot.version.toString() };
   }
   return resolveSeitySlotRemote(lookupKey);
 }
 
-async function loadContactsProfile(
-  reference: SeityContactsReference,
-  signal: AbortSignal,
-): Promise<LoadedProfile> {
+async function loadContactsProfile(reference: SeityContactsReference, signal: AbortSignal): Promise<LoadedProfile> {
+  signal.throwIfAborted();
   const slot = await readSeitySlot(reference.lookupKey);
+  signal.throwIfAborted();
   // Never anchored, revoked (zero digest) or no registry: nothing to show.
-  if (
-    slot === null ||
-    slot.version === "0" ||
-    /^0x0{64}$/.test(slot.cidDigest)
-  ) {
+  if (slot === null || slot.version === '0' || /^0x0{64}$/.test(slot.cidDigest)) {
     return { avatar: null };
   }
   const sealed = await fetchCiphertext(slot.cidDigest, signal);
-  const record = decodeProfileRecord(
-    await openContactsRecord(sealed, reference),
-  );
+  const record = decodeProfileRecord(await openContactsRecord(sealed, reference));
+  signal.throwIfAborted();
   if (record.avatarReference === undefined) {
-    return { avatar: null, mood: record.mood };
+    return { avatar: null, ...(record.mood === undefined ? {} : { mood: record.mood }) };
   }
   // An avatar that cannot be fetched or opened still leaves the mood, which
   // the drawer shows on its own.
-  const avatar = await openAvatar(record.avatarReference, signal).catch(
-    () => null,
-  );
-  return { avatar, mood: record.mood };
+  const avatar = await openAvatar(record.avatarReference, signal).catch(() => {
+    signal.throwIfAborted();
+    return null;
+  });
+  return { avatar, ...(record.mood === undefined ? {} : { mood: record.mood }) };
 }
 
-async function openAvatar(
-  reference: string,
-  signal: AbortSignal,
-): Promise<Uint8Array> {
+async function openAvatar(reference: string, signal: AbortSignal): Promise<Uint8Array> {
   const parsed = parseSeityBlobReference(reference);
-  return openSeityBlob(
-    await fetchCiphertext(parsed.preimageKey, signal),
-    parsed,
-  );
+  return openSeityBlob(await fetchCiphertext(parsed.preimageKey, signal), parsed);
 }
 
-/** Profiles behind placed avatars, shared by every product frame. */
-const avatarProfiles = createAvatarProfileCache(profileLoader);
-
-/** A product frame's avatar layer, drawing from the shared profile cache. */
+/** A product frame's avatar layer, with capabilities retired when it closes. */
 export function createContactAvatars(): ContactAvatarOverlay {
-  return createContactAvatarOverlay(avatarProfiles);
+  const cache = createAvatarProfileCache(profileLoader, 0);
+  const overlay = createContactAvatarOverlay(cache);
+  let disposed = false;
+  return {
+    ...overlay,
+    dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      overlay.dispose();
+      cache.clear();
+    },
+  };
 }
 
 /**
@@ -215,30 +204,18 @@ export function createContactAvatars(): ContactAvatarOverlay {
  */
 export function createProfilePlatform(
   avatars: ContactAvatarOverlay | null = null,
+  signal?: AbortSignal,
 ): Required<ProfilePlatform> {
   return {
     presentProfile(product, request) {
-      // A parse failure thrown here rejects the call instead of escaping it.
-      return new Promise<void>((resolve) => {
-        presentProfileReference(product.productId, request.reference);
-        resolve();
-      });
+      return presentProfileReference(product.productId, request.reference, signal);
     },
     presentContactProfile(product, presented) {
-      return new Promise<void>((resolve) => {
-        presentContactProfileReference(
-          product.productId,
-          presented.reference,
-          presented.username,
-        );
-        resolve();
-      });
+      return presentContactProfileReference(product.productId, presented.reference, presented.username, signal);
     },
-    placeContactAvatars(_product, placed) {
-      return new Promise<void>((resolve) => {
-        avatars?.place(placed);
-        resolve();
-      });
+    async placeContactAvatars(_product, placed) {
+      signal?.throwIfAborted();
+      avatars?.place(placed);
     },
   };
 }
@@ -253,7 +230,9 @@ export function installProfileDebugTrigger(): void {
     window as typeof window & {
       __dotliPresentProfile?: (reference: string) => void;
     }
-  ).__dotliPresentProfile = (reference) => {
-    presentProfileReference("debug", reference);
+  ).__dotliPresentProfile = reference => {
+    void presentProfileReference('debug', reference).catch(() => {
+      log.warn('[dot.li] profile debug presentation failed');
+    });
   };
 }

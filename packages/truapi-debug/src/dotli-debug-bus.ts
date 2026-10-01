@@ -19,24 +19,22 @@
 // shell. The panel chunk itself is still dynamically imported, so
 // the heavy UI code stays out of the eager bundle.
 
-import { createNanoEvents, type Emitter } from "nanoevents";
+import { createNanoEvents, type Emitter } from 'nanoevents';
 
-import type {
-  DotliDebugEvent,
-  PolkaVmDebugSnapshot,
-} from "./dotli-debug-types.ts";
-import type { TruapiDebugMessageEvent } from "./event-store.ts";
+import type { DotliDebugEvent, PolkaVmDebugSnapshot } from './dotli-debug-types.js';
+import type { TruapiDebugMessageEvent } from './event-store.js';
 
 export type DotliDebugBusEvent = DotliDebugEvent | TruapiDebugMessageEvent;
 
 interface DebugBusEvents {
   event: (event: DotliDebugBusEvent) => void;
-  polkavm: (snapshot: PolkaVmDebugSnapshot) => void;
+  polkavm: (snapshot: PolkaVmDebugSnapshot | null) => void;
 }
 
 let bus: Emitter<DebugBusEvents> | null = null;
 let listenerCount = 0;
 let latestPolkaVmSnapshot: PolkaVmDebugSnapshot | null = null;
+let polkaVmListenerCount = 0;
 
 /**
  * Early-event buffer. The debug panel is dynamically imported from
@@ -77,7 +75,7 @@ export function emitDotliDebugEvent(event: DotliDebugBusEvent): void {
     return;
   }
   if (listenerCount > 0) {
-    bus.emit("event", event);
+    bus.emit('event', event);
     return;
   }
   if (bufferingEnabled) {
@@ -95,22 +93,39 @@ export function emitPolkaVmDebugSnapshot(snapshot: PolkaVmDebugSnapshot): void {
     return;
   }
   latestPolkaVmSnapshot = snapshot;
-  bus.emit("polkavm", snapshot);
+  if (polkaVmListenerCount > 0) {
+    bus.emit('polkavm', snapshot);
+  }
+}
+
+/** Forget the previous product's metrics, including the late-subscriber replay. */
+export function clearPolkaVmDebugSnapshot(): void {
+  latestPolkaVmSnapshot = null;
+  if (bus !== null && polkaVmListenerCount > 0) {
+    bus.emit('polkavm', null);
+  }
 }
 
 /** Subscribe to live PolkaVM runtime state. The current snapshot is replayed
  * immediately so a dynamically imported panel cannot miss startup metrics. */
-export function onPolkaVmDebugSnapshot(
-  callback: (snapshot: PolkaVmDebugSnapshot) => void,
-): () => void {
+export function onPolkaVmDebugSnapshot(callback: (snapshot: PolkaVmDebugSnapshot | null) => void): () => void {
   if (bus === null) {
     return noopUnsubscribe;
   }
-  const unsubscribe = bus.on("polkavm", callback);
+  const unsubscribe = bus.on('polkavm', callback);
+  polkaVmListenerCount++;
   if (latestPolkaVmSnapshot !== null) {
     callback(latestPolkaVmSnapshot);
   }
-  return unsubscribe;
+  let disposed = false;
+  return () => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    polkaVmListenerCount--;
+    unsubscribe();
+  };
 }
 
 /** Cheap gate for emit sites that build non-trivial payloads. */
@@ -127,15 +142,13 @@ export function hasDotliDebugListeners(): boolean {
  * buffering is then switched off for the rest of the session (this
  * is a catch-up mechanism, not a persistent replay log).
  */
-export function onDotliDebugEvent(
-  callback: (event: DotliDebugBusEvent) => void,
-): () => void {
+export function onDotliDebugEvent(callback: (event: DotliDebugBusEvent) => void): () => void {
   if (bus === null) {
     return noopUnsubscribe;
   }
   const wasCold = listenerCount === 0;
   listenerCount++;
-  const unsub = bus.on("event", callback);
+  const unsub = bus.on('event', callback);
   if (wasCold && bufferedEvents.length > 0) {
     const replay = bufferedEvents;
     bufferedEvents = [];

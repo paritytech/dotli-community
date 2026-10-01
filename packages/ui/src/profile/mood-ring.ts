@@ -9,7 +9,7 @@
 // Without WebGL it falls back to a static conic gradient, and under
 // prefers-reduced-motion it draws one still frame.
 
-import type { Mood, MoodIntensity, MoodKind } from "./profile-record";
+import type { Mood, MoodIntensity, MoodKind } from './profile-record.js';
 
 interface Palette {
   readonly label: string;
@@ -22,59 +22,59 @@ interface Palette {
 
 export const MOOD_PALETTE: Record<MoodKind, Palette> = {
   calm: {
-    label: "Calm",
-    a: "#2dd4bf",
-    b: "#38bdf8",
-    c: "#0e7490",
+    label: 'Calm',
+    a: '#2dd4bf',
+    b: '#38bdf8',
+    c: '#0e7490',
     speed: 0.25,
     turb: 0.3,
   },
   focused: {
-    label: "Focused",
-    a: "#8b5cf6",
-    b: "#c4b5fd",
-    c: "#4338ca",
+    label: 'Focused',
+    a: '#8b5cf6',
+    b: '#c4b5fd',
+    c: '#4338ca',
     speed: 0.4,
     turb: 0.15,
   },
   hyped: {
-    label: "Hyped",
-    a: "#e6007a",
-    b: "#ff8a3d",
-    c: "#ffd166",
+    label: 'Hyped',
+    a: '#e6007a',
+    b: '#ff8a3d',
+    c: '#ffd166',
     speed: 1.3,
     turb: 0.9,
   },
   social: {
-    label: "Social",
-    a: "#fbbf24",
-    b: "#fde68a",
-    c: "#ea580c",
+    label: 'Social',
+    a: '#fbbf24',
+    b: '#fde68a',
+    c: '#ea580c',
     speed: 0.8,
     turb: 0.5,
   },
-  "low-key": {
-    label: "Low-key",
-    a: "#b48ead",
-    b: "#6b4d78",
-    c: "#3b2a4a",
+  'low-key': {
+    label: 'Low-key',
+    a: '#b48ead',
+    b: '#6b4d78',
+    c: '#3b2a4a',
     speed: 0.2,
     turb: 0.2,
   },
   away: {
-    label: "Away",
-    a: "#8c8f98",
-    b: "#dadbe0",
-    c: "#404249",
+    label: 'Away',
+    a: '#8c8f98',
+    b: '#dadbe0',
+    c: '#404249',
     speed: 0.08,
     turb: 0.05,
   },
 };
 
 export const INTENSITY: Record<MoodIntensity, { label: string; k: number }> = {
-  soft: { label: "Soft", k: 0.55 },
-  steady: { label: "Steady", k: 1 },
-  loud: { label: "Loud", k: 1.8 },
+  soft: { label: 'Soft', k: 0.55 },
+  steady: { label: 'Steady', k: 1 },
+  loud: { label: 'Loud', k: 1.8 },
 };
 
 const VS = `attribute vec2 a_pos;varying vec2 v_uv;
@@ -120,55 +120,20 @@ export function moodAge(mood: Mood, nowSecs = Date.now() / 1000): number {
   return Math.min(1, Math.max(0, (nowSecs - mood.setAt) / mood.ttlSecs));
 }
 
-export interface MoodRingHandle {
-  readonly element: HTMLElement;
-  stop(): void;
-}
-
-/**
- * A ring layer sized to wrap an avatar of `avatarPx`. Place the returned
- * element centred over the avatar; it paints nothing over the avatar itself.
- *
- * `webgl: false` draws the still ring without a WebGL context. A layer that
- * shows many rings at once uses it: browsers cap live contexts per page and
- * drop the oldest, which could be the drawer's or a product's.
- */
-export function createMoodRing(
-  mood: Mood,
-  avatarPx: number,
-  options: { readonly webgl?: boolean } = {},
-): MoodRingHandle {
+/** Paint into a Solid-owned canvas; null requests the static CSS fallback. */
+export function animateMoodRing(canvas: HTMLCanvasElement, mood: Mood, avatarPx: number): (() => void) | null {
   const palette = MOOD_PALETTE[mood.kind];
   const k = INTENSITY[mood.intensity].k;
   const age = moodAge(mood);
   const size = Math.round(avatarPx * 1.5);
 
-  const element = document.createElement("div");
-  element.className = "profile-mood-ring";
-  element.style.width = `${String(size)}px`;
-  element.style.height = `${String(size)}px`;
-  element.setAttribute("aria-hidden", "true");
-
-  const fallback = (): MoodRingHandle => {
-    element.classList.add("profile-mood-ring-static");
-    element.style.setProperty("--ring-a", palette.a);
-    element.style.setProperty("--ring-b", palette.b);
-    element.style.setProperty("--ring-c", palette.c);
-    element.style.opacity = String(1 - 0.62 * age);
-    return { element, stop: () => undefined };
-  };
-
-  if (options.webgl === false) {
-    return fallback();
-  }
-  const canvas = document.createElement("canvas");
-  const gl = canvas.getContext("webgl", {
+  const gl = canvas.getContext('webgl', {
     alpha: true,
     premultipliedAlpha: true,
     antialias: true,
   });
   if (gl === null) {
-    return fallback();
+    return null;
   }
   const compile = (type: number, source: string): WebGLShader | null => {
     const shader = gl.createShader(type);
@@ -182,53 +147,54 @@ export function createMoodRing(
   const vs = compile(gl.VERTEX_SHADER, VS);
   const fs = compile(gl.FRAGMENT_SHADER, FS);
   const program = gl.createProgram();
-  if (vs === null || fs === null) {
-    return fallback();
+  if (vs === null || fs === null || program === null) {
+    if (vs !== null) gl.deleteShader(vs);
+    if (fs !== null) gl.deleteShader(fs);
+    if (program !== null) gl.deleteProgram(program);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return null;
   }
   gl.attachShader(program, vs);
   gl.attachShader(program, fs);
   gl.linkProgram(program);
   if (!(gl.getProgramParameter(program, gl.LINK_STATUS) as boolean)) {
-    return fallback();
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    gl.deleteProgram(program);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    return null;
   }
   gl.useProgram(program);
 
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   canvas.width = Math.round(size * dpr);
   canvas.height = Math.round(size * dpr);
-  element.appendChild(canvas);
 
   const buffer = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
-  gl.bufferData(
-    gl.ARRAY_BUFFER,
-    new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-    gl.STATIC_DRAW,
-  );
-  const position = gl.getAttribLocation(program, "a_pos");
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]), gl.STATIC_DRAW);
+  const position = gl.getAttribLocation(program, 'a_pos');
   gl.enableVertexAttribArray(position);
   gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
   gl.enable(gl.BLEND);
   gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   gl.viewport(0, 0, canvas.width, canvas.height);
 
-  const u = (name: string): WebGLUniformLocation | null =>
-    gl.getUniformLocation(program, name);
+  const u = (name: string): WebGLUniformLocation | null => gl.getUniformLocation(program, name);
   const half = (size / 2) * dpr;
-  const widthPx =
-    Math.max(3, Math.min(6, avatarPx * 0.05)) * (0.7 + 0.32 * k) * dpr;
-  gl.uniform1f(u("u_half"), half);
-  gl.uniform1f(u("u_inner"), ((avatarPx / 2 + 3) * dpr) / half);
-  gl.uniform1f(u("u_width"), widthPx / half);
-  gl.uniform1f(u("u_speed"), palette.speed * k);
-  gl.uniform1f(u("u_turb"), Math.min(1, palette.turb * k));
-  gl.uniform1f(u("u_bright"), 0.62 + 0.36 * k);
-  gl.uniform1f(u("u_halo"), k);
-  gl.uniform1f(u("u_age"), age);
-  gl.uniform3f(u("u_a"), ...rgb(palette.a));
-  gl.uniform3f(u("u_b"), ...rgb(palette.b));
-  gl.uniform3f(u("u_c"), ...rgb(palette.c));
-  const timeUniform = u("u_time");
+  const widthPx = Math.max(3, Math.min(6, avatarPx * 0.05)) * (0.7 + 0.32 * k) * dpr;
+  gl.uniform1f(u('u_half'), half);
+  gl.uniform1f(u('u_inner'), ((avatarPx / 2 + 3) * dpr) / half);
+  gl.uniform1f(u('u_width'), widthPx / half);
+  gl.uniform1f(u('u_speed'), palette.speed * k);
+  gl.uniform1f(u('u_turb'), Math.min(1, palette.turb * k));
+  gl.uniform1f(u('u_bright'), 0.62 + 0.36 * k);
+  gl.uniform1f(u('u_halo'), k);
+  gl.uniform1f(u('u_age'), age);
+  gl.uniform3f(u('u_a'), ...rgb(palette.a));
+  gl.uniform3f(u('u_b'), ...rgb(palette.b));
+  gl.uniform3f(u('u_c'), ...rgb(palette.c));
+  const timeUniform = u('u_time');
 
   const draw = (ms: number): void => {
     gl.uniform1f(timeUniform, ms / 1000);
@@ -237,7 +203,7 @@ export function createMoodRing(
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   };
 
-  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   let frame = 0;
   let stopped = false;
   const loop = (ms: number): void => {
@@ -253,12 +219,13 @@ export function createMoodRing(
     frame = requestAnimationFrame(loop);
   }
 
-  return {
-    element,
-    stop(): void {
-      stopped = true;
-      cancelAnimationFrame(frame);
-      gl.getExtension("WEBGL_lose_context")?.loseContext();
-    },
+  return () => {
+    stopped = true;
+    cancelAnimationFrame(frame);
+    gl.deleteBuffer(buffer);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    gl.deleteProgram(program);
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
   };
 }

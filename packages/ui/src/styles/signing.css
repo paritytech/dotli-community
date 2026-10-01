@@ -158,12 +158,6 @@
   cursor: not-allowed;
 }
 
-.contacts-modal > p {
-  overflow-wrap: anywhere;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  margin-bottom: 16px;
-}
 .contacts-picker-list {
   display: flex;
   flex-direction: column;

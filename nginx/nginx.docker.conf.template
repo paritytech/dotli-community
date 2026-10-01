@@ -46,6 +46,8 @@ server {
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
+    include /etc/nginx/snippets/dotli-host-version.conf;
+
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -73,6 +75,8 @@ server {
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
 
+    include /etc/nginx/snippets/dotli-host-version.conf;
+
     location / {
         try_files $uri /index.html;
     }
@@ -98,6 +102,8 @@ server {
     location ^~ /__dotli-identity { return 404; }
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;
@@ -125,6 +131,8 @@ server {
     include /etc/nginx/snippets/dotli-identity-proxy.conf;
 
     include /etc/nginx/snippets/dotli-runtime-network.conf;
+
+    include /etc/nginx/snippets/dotli-host-version.conf;
 
     location / {
         try_files $uri /index.html;
