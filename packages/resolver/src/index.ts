@@ -41,7 +41,7 @@ export {
   type ResolveOptions,
 } from './resolve.js';
 export { type SeitySlot } from './seity-registry.js';
-export { createCoreRpcChainProvider, isCoreRpcChainSupported, isRpcChainSupported } from './rpc-chain.js';
+export { createCoreRpcChainProvider, getConnectedRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
 export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
 export {
   loadProvider,

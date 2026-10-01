@@ -15,8 +15,9 @@
 // Intentionally does NOT import from `./smoldot` so Vite can tree-shake the
 // smoldot worker out of any bundle that only pulls in this module.
 
+import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
-import { getWsProvider, type WsJsonRpcProvider } from 'polkadot-api/ws';
+
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { log, dur } from '@dotli/shared';
@@ -26,28 +27,29 @@ import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './erro
 import { raceSyncTimeout } from './sync-deadline.js';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
 import type { StatusCallback } from './access-raw-storage.js';
-import { ApiStoppedError, createRawApi, type Api } from './api.js';
+import { createRawApi, type Api } from './api.js';
+import { getConnectedRpcEndpoint } from './rpc-chain.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
 import { readSeitySlot, type SeitySlot } from './seity-registry.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
 
+let assetHubProviderFactory: (() => JsonRpcProvider) | null = null;
+
+/**
+ * Install the factory that opens a connection to Asset Hub. The resolver
+ * cannot import the host's chain pool, so the host injects a lease on it
+ * (mirrors `setResolverAssetHubProvider` in `resolve.ts`). Each client takes
+ * a fresh provider from it, and tearing the client down releases it.
+ */
+export function setRpcAssetHubProvider(factory: () => JsonRpcProvider): void {
+  assetHubProviderFactory = factory;
+}
+
 let clientInstance: SubstrateClient | null = null;
 let apiInstance: Api | null = null;
 let clientPromise: Promise<Api> | null = null;
-let providerInstance: WsJsonRpcProvider | null = null;
-async function retryStoppedGeneration<T>(operation: () => Promise<T>): Promise<T> {
-  try {
-    return await operation();
-  } catch (error) {
-    if (!(error instanceof ApiStoppedError)) {
-      throw error;
-    }
-    log.warn('[dot.li rpc-resolve] chainHead follow stopped during resolution; retrying once');
-    return operation();
-  }
-}
 
 function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (apiInstance !== null) {
@@ -68,12 +70,10 @@ function ensureClient(onStatus?: StatusCallback): Promise<Api> {
 async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   const t0 = performance.now();
   onStatus?.(`Connecting to Asset Hub RPC...`);
-  const provider = getWsProvider([...getActiveServicesConfig().assethub.rpcs], {
-    // Public RPC endpoints can be tunnel-gated. The default 40s heartbeat
-    // is occasionally too tight.
-    heartbeatTimeout: 120_000,
-  });
-  providerInstance = provider;
+  if (assetHubProviderFactory === null) {
+    throw new Error('No Asset Hub provider for RPC resolution');
+  }
+  const provider = assetHubProviderFactory();
 
   const client = createClient(provider);
   const api = createRawApi(client);
@@ -97,7 +97,6 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
       /* already dead */
     }
     log.error(`[dot.li rpc-resolve] RPC connection failed: ${err instanceof Error ? err.message : String(err)}`);
-    providerInstance = null;
     throw err;
   }
 
@@ -128,50 +127,48 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
  * a known Polkadot RPC node instead of running a light client in-browser.
  */
 export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
-  return retryStoppedGeneration(async () => {
-    log.warn(
-      `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
-    );
-    const api = await ensureClient(onStatus);
+  log.warn(
+    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
+  );
+  const api = await ensureClient(onStatus);
 
-    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-    const node = namehash(domain);
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+  const node = namehash(domain);
 
-    onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
-    const t0 = performance.now();
+  onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
+  const t0 = performance.now();
 
-    const dotns = getActiveServicesConfig().dotns;
-    const contenthashBytes = await readMappingBytes(
-      api,
-      dotns.DOTNS_CONTENT_RESOLVER,
-      node,
-      dotns.STORAGE_SLOTS.CONTENTHASH,
-    );
+  const dotns = getActiveServicesConfig().dotns;
+  const contenthashBytes = await readMappingBytes(
+    api,
+    dotns.DOTNS_CONTENT_RESOLVER,
+    node,
+    dotns.STORAGE_SLOTS.CONTENTHASH,
+  );
 
-    log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
+  log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
 
-    if (contenthashBytes === null) {
+  if (contenthashBytes === null) {
+    onStatus?.(`Domain "${domain}" not found or no content set`);
+    return null;
+  }
+
+  // Mirror the smoldot-side resolver in distinguishing "not registered" /
+  // "non-IPFS contenthash" / "decode error".
+  const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
+  switch (decoded.kind) {
+    case 'ok':
+      log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
+      onStatus?.(`Resolved "${domain}" via Trusted Provider`);
+      return decoded.cid;
+    case 'empty':
       onStatus?.(`Domain "${domain}" not found or no content set`);
       return null;
-    }
-
-    // Mirror the smoldot-side resolver in distinguishing "not registered" /
-    // "non-IPFS contenthash" / "decode error".
-    const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
-    switch (decoded.kind) {
-      case 'ok':
-        log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
-        onStatus?.(`Resolved "${domain}" via Trusted Provider`);
-        return decoded.cid;
-      case 'empty':
-        onStatus?.(`Domain "${domain}" not found or no content set`);
-        return null;
-      case 'unsupported-codec':
-        throw new UnsupportedContenthashCodecError(domain, decoded.codec);
-      case 'decode-error':
-        throw new ContenthashDecodeError(domain, decoded.cause);
-    }
-  });
+    case 'unsupported-codec':
+      throw new UnsupportedContenthashCodecError(domain, decoded.codec);
+    case 'decode-error':
+      throw new ContenthashDecodeError(domain, decoded.cause);
+  }
 }
 
 /**
@@ -185,20 +182,16 @@ export async function resolveExecutableManifestViaRpc(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  return retryStoppedGeneration(async () => {
-    const api = await ensureClient();
-    const dotns = getActiveServicesConfig().dotns;
-    return readExecutableManifest(api, dotns, label, kind);
-  });
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readExecutableManifest(api, dotns, label, kind);
 }
 
 /** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
 export async function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
-  return retryStoppedGeneration(async () => {
-    const api = await ensureClient();
-    const dotns = getActiveServicesConfig().dotns;
-    return readRootManifest(api, dotns, label);
-  });
+  const api = await ensureClient();
+  const dotns = getActiveServicesConfig().dotns;
+  return readRootManifest(api, dotns, label);
 }
 
 /**
@@ -206,15 +199,13 @@ export async function resolveRootManifestViaRpc(label: string): Promise<Manifest
  * contract storage over JSON-RPC.
  */
 export async function resolveOwnerViaRpc(label: string): Promise<string | null> {
-  return retryStoppedGeneration(async () => {
-    const api = await ensureClient();
+  const api = await ensureClient();
 
-    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-    const node = namehash(domain);
+  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+  const node = namehash(domain);
 
-    const dotns = getActiveServicesConfig().dotns;
-    return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
-  });
+  const dotns = getActiveServicesConfig().dotns;
+  return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
 }
 
 /**
@@ -227,34 +218,18 @@ export async function resolveSeitySlotViaRpc(lookupKey: `0x${string}`): Promise<
   if (registry === undefined) {
     return null;
   }
-  return retryStoppedGeneration(async () => readSeitySlot(await ensureClient(), registry, lookupKey));
+  return readSeitySlot(await ensureClient(), registry, lookupKey);
 }
 
 /**
- * Return the Asset Hub RPC endpoint URI the shared ws-provider is
- * currently dialing, or `null` when no client has been instantiated
- * yet. The URI may not be the first entry of the candidate list,
- * because polkadot-api's ws-provider rotates on failure. Callers that
- * want to display which node is actually answering (e.g. the
+ * Return the Asset Hub RPC endpoint URI the shared chain connection is
+ * currently on, or `null` while none is open. The URI may not be the first
+ * entry of the candidate list, because the transport rotates on failure.
+ * Callers that want to display which node is actually answering (e.g. the
  * diagnostics popover) should read this instead of the config list.
- *
- * Returns `null` while in CONNECTING / ERROR / CLOSE states too, so
- * the caller can decide whether to fall back to a placeholder.
  */
 export function getConnectedAssetHubRpcEndpoint(): string | null {
-  if (providerInstance === null) {
-    return null;
-  }
-  const status = providerInstance.getStatus();
-  // Discriminated union: the CONNECTED and CONNECTING variants carry a
-  // `uri` field, ERROR and CLOSE don't. `"uri" in status` is the
-  // narrowing path that doesn't require importing the `WsEvent` enum.
-  // We surface CONNECTING too so the popover shows the URI the provider
-  // is currently trying, not a stale "n/a" during transient reconnects.
-  if ('uri' in status) {
-    return status.uri;
-  }
-  return null;
+  return getConnectedRpcEndpoint(getActiveServicesConfig().assethub.genesis);
 }
 
 /**
@@ -268,7 +243,7 @@ export function destroyRpcClient(): void {
   clientInstance = null;
   apiInstance = null;
   clientPromise = null;
-  providerInstance = null;
+
   if (client !== null) {
     try {
       api?.destroy();
