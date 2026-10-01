@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname } from 'node:path';
 import {
   formatSigningHostExit,
+  persistentSigningHostSession,
   signingHostVersion,
   startSigningHostPair,
   stopSigningHost,
@@ -91,9 +92,9 @@ const CLI_USAGE_EXIT_CODE = 2;
 // identity backend is down" apart from "dot.li tests asserted false".
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-// A bare session name restores the newest saved account and retries unfinished
-// provisioning in the same base path. Do not mint another name on each attempt.
-const SIGNING_HOST_SESSION = nonEmptyEnv('SIGNING_HOST_SESSION') ?? 'dotlitest';
+// A session name is an on-chain username, not a globally reusable prefix.
+// Persist a unique default once per base path, never once per pairing attempt.
+const SIGNING_HOST_SESSION = nonEmptyEnv('SIGNING_HOST_SESSION');
 
 function signingHostConfig(): SigningHostConfig {
   return {
@@ -103,7 +104,10 @@ function signingHostConfig(): SigningHostConfig {
     productId: PRODUCT_ID,
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
-    session: (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : SIGNING_HOST_SESSION,
+    session:
+      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== ''
+        ? undefined
+        : (SIGNING_HOST_SESSION ?? persistentSigningHostSession(SIGNING_HOST_BASE_PATH)),
   };
 }
 
