@@ -10,6 +10,7 @@ import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutio
 
 import { mountRoot } from '../../mount/root.js';
 import { Panel, PANEL_ID } from './Panel.js';
+import { productArchiveLoader, type BlockSource } from './archive-source.js';
 
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
@@ -25,6 +26,11 @@ export interface SetupOptions {
    * mount expanded.
    */
   startCollapsed?: boolean;
+  /**
+   * Where the Archive tab reads blocks on the light client: the host's own
+   * source, cache first. Without one it reads over the IPFS gateway.
+   */
+  blockSource?: BlockSource;
 }
 
 function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBusEvent, { kind: 'truapi' }> {
@@ -95,7 +101,14 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
   const disposeView = mountRoot(
     ROOT,
     container,
-    () => <Panel store={store} resolution={resolution} startCollapsed={options.startCollapsed ?? false} />,
+    () => (
+      <Panel
+        store={store}
+        resolution={resolution}
+        startCollapsed={options.startCollapsed ?? false}
+        loadArchive={productArchiveLoader(options.blockSource)}
+      />
+    ),
     // A render error, even a late one, tears the panel down instead of
     // leaving it frozen with its timers running.
     { onBroken: unsubscribe, removeContainer: true },

@@ -4,7 +4,11 @@
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
 
 export type ProductState =
-  { status: 'none' } | { status: 'loaded'; label: string; productId: string } | { status: 'error' };
+  | { status: 'none' }
+  // `cid` when the product was loaded from one (a dotNS product, not a local
+  // or preview URL).
+  | { status: 'loaded'; label: string; productId: string; cid?: string }
+  | { status: 'error' };
 
 // Reloading the same product notifies nobody; the setters still dispatch
 // their events.
@@ -14,8 +18,8 @@ export const productStore: ReadableStore<ProductState> = product;
 export const getProductState = product.get;
 
 /** Also dispatches `dotli:product-loaded` with `{ label, productId }`. */
-export function setProductLoaded(label: string, productId: string): void {
-  product.set({ status: 'loaded', label, productId });
+export function setProductLoaded(label: string, productId: string, cid?: string): void {
+  product.set({ status: 'loaded', label, productId, ...(cid !== undefined ? { cid } : {}) });
   window.dispatchEvent(new CustomEvent('dotli:product-loaded', { detail: { label, productId } }));
 }
 

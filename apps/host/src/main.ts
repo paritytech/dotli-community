@@ -857,7 +857,12 @@ async function main(): Promise<void> {
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
     void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
-      setupTruapiDebugPanel({ startCollapsed: !debugMode.explicit });
+      setupTruapiDebugPanel({
+        startCollapsed: !debugMode.explicit,
+        // The Archive tab reads the product's blocks the way the sandbox
+        // relay serves them: from the block cache, else over bitswap.
+        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
+      });
       log.warn(`[dot.li] TrUAPI debug panel enabled`);
     });
   }

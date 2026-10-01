@@ -4,12 +4,13 @@
 import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 
-export type PanelView = 'list' | 'timeline' | 'resolution';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
   { view: 'timeline', label: 'Timeline' },
   { view: 'resolution', label: 'Resolution' },
+  { view: 'archive', label: 'Archive' },
 ];
 
 export function Tabs(props: { view: PanelView; onSelect: (view: PanelView) => void }): JSX.Element {

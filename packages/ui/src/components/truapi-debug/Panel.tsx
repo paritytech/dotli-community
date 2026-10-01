@@ -48,6 +48,8 @@ import { EventList, type Selection } from './EventList.js';
 import { Filters } from './Filters.js';
 import { Header } from './Header.js';
 import { BodySplitter, ResizeHandle } from './Resizers.js';
+import { ArchiveView } from './ArchiveView.js';
+import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
@@ -162,6 +164,8 @@ export function Panel(props: {
    *  of the load the Resolution view is drawing. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
+  /** Reads the product's archive for the Archive tab. */
+  loadArchive: ArchiveLoader;
 }): JSX.Element {
   const store = untrack(() => props.store);
   const recorder = untrack(() => props.resolution);
@@ -417,6 +421,7 @@ export function Panel(props: {
         collapsed: collapsed(),
         'docked-right': dock() === 'right',
         'res-view': view() === 'resolution',
+        'archive-view': view() === 'archive',
       }}
       ref={el => {
         panelEl = el;
@@ -508,6 +513,7 @@ export function Panel(props: {
             tooltip={() => tooltipEl}
             panel={() => panelEl}
           />
+          <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
         </div>
         <BodySplitter panel={() => panelEl} dock={dock()} />
         <DetailPane
