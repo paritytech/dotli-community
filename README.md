@@ -251,8 +251,8 @@ Local development uses wildcard subdomains:
 
 ### Running the functional browser suite locally
 
-Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN
-lets the preview server collect their same-origin `/t` envelopes without contacting an external collector.
+Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN lets
+the preview server collect their same-origin `/t` envelopes without contacting an external collector.
 
 ```bash
 VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true VITE_METRICS=true \
