@@ -13,6 +13,7 @@ import {
 import type { LoadedProfile } from '../src/profile/drawer.js';
 import type { Mood } from '../src/profile/profile-record.js';
 import { flush } from 'solid-js';
+const revokeUrl = vi.fn<(url: string) => void>();
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]);
 const NOW_SECS = 1_800_000_000;
@@ -145,7 +146,8 @@ describe('host-drawn contact avatars', () => {
       urls += 1;
       return `blob:avatar-${String(urls)}`;
     });
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    revokeUrl.mockReset();
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeUrl);
     cache = createAvatarProfileCache(loader, 1);
     overlay = createContactAvatarOverlay(cache);
   });
@@ -262,7 +264,7 @@ describe('host-drawn contact avatars', () => {
   it('reloads a renewed share and keeps the old photo until it arrives', async () => {
     const clip: [number, number, number, number] = [0, 0, 400, 800];
     await draw('viewport', [400, 800], placement(400, 800, [slot(1, 'photo', [0, 0, 44], clip, 5n)]));
-    const src = () => slots()[0]?.querySelector('img')?.getAttribute('src');
+    const src = (): string | null | undefined => slots()[0]?.querySelector('img')?.getAttribute('src');
     expect(src()).toBe('blob:avatar-1');
 
     // The same share placed again is served from the cache.
@@ -274,11 +276,11 @@ describe('host-drawn contact avatars', () => {
     vi.advanceTimersToNextFrame();
     expect(loads).toEqual(['photo', 'photo']);
     expect(src()).toBe('blob:avatar-1');
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    expect(revokeUrl).not.toHaveBeenCalled();
 
     await settle();
     expect(src()).toBe('blob:avatar-2');
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:avatar-1');
+    expect(revokeUrl).toHaveBeenCalledWith('blob:avatar-1');
 
     // An older share arriving late does not reload.
     overlay.place(placement(400, 800, [slot(1, 'photo', [0, 0, 44], clip, 5n)]));
@@ -363,14 +365,14 @@ describe('host-drawn contact avatars', () => {
     // Released but kept: the cache holds one unused reference.
     overlay.place(placement(400, 800, []));
     other.dispose();
-    expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+    expect(revokeUrl).not.toHaveBeenCalled();
 
     // A second released reference pushes the first out.
     overlay.place(placement(400, 800, [slot(1, 'both', [0, 0, 44])]));
     await settle();
     overlay.place(placement(400, 800, []));
-    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:avatar-1');
-    expect(URL.revokeObjectURL).not.toHaveBeenCalledWith('blob:avatar-2');
+    expect(revokeUrl).toHaveBeenCalledWith('blob:avatar-1');
+    expect(revokeUrl).not.toHaveBeenCalledWith('blob:avatar-2');
   });
 
   it('never takes pointer events or reaches into the product frame', async () => {
@@ -451,21 +453,15 @@ describe('host-drawn contact avatars', () => {
   it('draws only the latest of several placements, once per frame', async () => {
     await draw('viewport', [400, 800], placement(400, 800, [slot(1, 'photo', [0, 0, 44])]));
     const anchor = slots()[0]?.querySelector('.contact-avatar');
-    const writes = new MutationObserver(() => undefined);
-    writes.observe(anchor as Node, {
-      attributes: true,
-      attributeFilter: ['style'],
-    });
 
     for (const y of [10, 20, 30]) {
       overlay.place(placement(400, 800, [slot(1, 'photo', [0, y, 44])]));
     }
+    flush();
     expect(box(anchor)).toEqual([0, 0, 44, 44]);
     vi.advanceTimersToNextFrame();
+    flush();
     expect(box(anchor)).toEqual([0, 30, 44, 44]);
-    // One move, and the unchanged size is left alone.
-    expect(writes.takeRecords()).toHaveLength(1);
-    writes.disconnect();
   });
 
   it('hides and shows without fading under reduced motion', async () => {

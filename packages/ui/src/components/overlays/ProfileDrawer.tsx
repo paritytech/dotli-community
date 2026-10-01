@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, onCleanup, Show } from 'solid-js';
+import { createSignal, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { log } from '@dotli/shared';
 import { rasterImageType, type ProfileDrawerOptions } from '../../profile/drawer.js';
@@ -13,7 +13,7 @@ import { MoodRing } from './MoodRing.js';
 export function ProfileDrawer(props: {
   options: ProfileDrawerOptions;
   signal: AbortSignal;
-  onClose(): void;
+  onClose: () => void;
 }): JSX.Element {
   const [loading, setLoading] = createSignal(true);
   const [photo, setPhoto] = createSignal<string | null>(null);
@@ -25,54 +25,72 @@ export function ProfileDrawer(props: {
   let disposed = false;
   onCleanup(() => {
     disposed = true;
-    if (objectUrl !== undefined) URL.revokeObjectURL(objectUrl);
+    if (objectUrl !== undefined) {
+      URL.revokeObjectURL(objectUrl);
+    }
     props.onClose();
   });
   const fail = (message: string): void => {
     setFailed(true);
     setStatus(message);
   };
-  void props.options.loadProfile(props.signal).then(
-    ({ avatar, mood: nextMood }) => {
-      if (disposed || props.signal.aborted) return;
-      setLoading(false);
-      const activeMood = nextMood !== undefined && moodIsCurrent(nextMood) ? nextMood : undefined;
-      setMood(activeMood);
-      setStatus('');
-      if (avatar === null) {
-        if (activeMood === undefined) fail('This person is not sharing a profile right now.');
-        return;
-      }
-      const type = rasterImageType(avatar);
-      if (type === null) {
-        fail('The profile image is not a supported format.');
-        return;
-      }
-      objectUrl = URL.createObjectURL(new Blob([avatar as Uint8Array<ArrayBuffer>], { type }));
-      setPhoto(objectUrl);
-    },
-    (error: unknown) => {
-      if (disposed || props.signal.aborted) return;
-      setLoading(false);
-      // Never include bearer references or decrypted content in diagnostics.
-      const name = error instanceof Error ? error.name : 'Error';
-      log.warn('[profile] drawer load failed:', name);
-      fail(
-        name === 'TimeoutError'
-          ? 'The profile could not be fetched. Try again later.'
-          : name === 'OperationError'
-            ? 'The profile could not be opened. The reference may be wrong or out of date.'
-            : 'The profile is unavailable.',
-      );
-    },
-  );
+  // A root is created per presentation; start its loader after mount and
+  // retain that presentation's signal through every asynchronous continuation.
+  onSettled(() => {
+    const { options, signal } = untrack(() => ({ options: props.options, signal: props.signal }));
+    if (signal.aborted) {
+      return;
+    }
+    void options.loadProfile(signal).then(
+      ({ avatar, mood: nextMood }) => {
+        if (disposed || signal.aborted) {
+          return;
+        }
+        setLoading(false);
+        const activeMood = nextMood !== undefined && moodIsCurrent(nextMood) ? nextMood : undefined;
+        setMood(activeMood);
+        setStatus('');
+        if (avatar === null) {
+          if (activeMood === undefined) {
+            fail('This person is not sharing a profile right now.');
+          }
+          return;
+        }
+        const type = rasterImageType(avatar);
+        if (type === null) {
+          fail('The profile image is not a supported format.');
+          return;
+        }
+        objectUrl = URL.createObjectURL(new Blob([avatar as Uint8Array<ArrayBuffer>], { type }));
+        setPhoto(objectUrl);
+      },
+      (error: unknown) => {
+        if (disposed || signal.aborted) {
+          return;
+        }
+        setLoading(false);
+        // Never include bearer references or decrypted content in diagnostics.
+        const name = error instanceof Error ? error.name : 'Error';
+        log.warn('[profile] drawer load failed:', name);
+        fail(
+          name === 'TimeoutError'
+            ? 'The profile could not be fetched. Try again later.'
+            : name === 'OperationError'
+              ? 'The profile could not be opened. The reference may be wrong or out of date.'
+              : 'The profile is unavailable.',
+        );
+      },
+    );
+  });
   return (
     <Dialog
       titleId="profile-drawer-title"
       backdropClass="profile-drawer-backdrop"
       dialogClass="profile-drawer"
       initialFocus={() => closeButton}
-      onDismiss={props.onClose}
+      onDismiss={() => {
+        props.onClose();
+      }}
     >
       <header class="profile-drawer-header">
         <h2 id="profile-drawer-title">Profile</h2>
@@ -83,7 +101,9 @@ export function ProfileDrawer(props: {
           type="button"
           class="profile-drawer-close"
           aria-label="Close profile"
-          onClick={props.onClose}
+          onClick={() => {
+            props.onClose();
+          }}
         >
           ×
         </button>
@@ -110,9 +130,9 @@ export function ProfileDrawer(props: {
       </div>
       <p class="profile-drawer-mood">
         <Show when={mood()}>
-          {value =>
-            `${MOOD_PALETTE[value().kind].label} · ${INTENSITY[value().intensity].label.toLowerCase()} · ${String(Math.max(1, Math.round((value().setAt + value().ttlSecs - Date.now() / 1000) / 3600)))} h left`
-          }
+          {value => (
+            <>{`${MOOD_PALETTE[value().kind].label} · ${INTENSITY[value().intensity].label.toLowerCase()} · ${String(Math.max(1, Math.round((value().setAt + value().ttlSecs - Date.now() / 1000) / 3600)))} h left`}</>
+          )}
         </Show>
       </p>
       <p class={['profile-drawer-status', { 'profile-drawer-status-error': failed() }]} role="status">
