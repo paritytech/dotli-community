@@ -5,9 +5,10 @@
 // api tests), while papi's real `createClient` runs over a fake provider so
 // the provider's `disconnect` is observable.
 
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { getActiveServicesConfig } from '@dotli/config';
+import { log } from '@dotli/shared';
 import type { Api } from '../src/api.js';
 
 const mocks = vi.hoisted(() => ({
@@ -43,8 +44,11 @@ function fakeApi(): Api {
 describe('rpc-resolve', () => {
   let disconnect: Mock<() => void>;
   let factory: Mock<() => JsonRpcProvider>;
+  let warn: Mock<(...args: unknown[]) => void>;
 
   beforeEach(() => {
+    warn = vi.fn<(...args: unknown[]) => void>();
+    vi.spyOn(log, 'warn').mockImplementation(warn);
     destroyRpcClient();
     vi.clearAllMocks();
     mocks.stops = [];
@@ -53,6 +57,10 @@ describe('rpc-resolve', () => {
       () => () => ({ send: vi.fn<JsonRpcConnection['send']>(), disconnect }) satisfies JsonRpcConnection,
     );
     mocks.createRawApi.mockImplementation(fakeApi);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('As a dotli user, resolving without an Asset Hub provider fails with a named error', async () => {
@@ -81,6 +89,8 @@ describe('rpc-resolve', () => {
     // Then
     expect(factory).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
+    expect(warn).toHaveBeenCalledTimes(3);
   });
 
   it('As a dotli user, destroying the RPC client releases the provider and the next resolve takes a new one', async () => {
@@ -95,6 +105,8 @@ describe('rpc-resolve', () => {
     // Then
     expect(disconnect).toHaveBeenCalledTimes(1);
     expect(factory).toHaveBeenCalledTimes(2);
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\[dot\.li rpc-resolve\] RPC chain head ready/));
+    expect(warn).toHaveBeenCalledTimes(2);
   });
 
   it('As a dotli user, the diagnostics endpoint is the one Asset Hub is connected on', () => {

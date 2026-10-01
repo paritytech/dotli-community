@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createChainPool, type ChainPool } from '@dotli/protocol';
 import type { ChainTransportHooks } from '@dotli/resolver';
+import { log } from '@dotli/shared';
 import { observeChains } from '../src/observe-chains.js';
 
 interface Built {
@@ -31,6 +32,20 @@ function setup(destroyDelay: number, unsupported: readonly string[] = []): { poo
 }
 
 describe('observeChains', () => {
+  // The broker traces each lease it opens and closes at debug level.
+  let debug: Mock<(...args: unknown[]) => void>;
+
+  beforeEach(() => {
+    debug = vi.fn<(...args: unknown[]) => void>();
+    vi.spyOn(log, 'debug').mockImplementation(debug);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const traced = (line: string): unknown[] => ['[dot.li broker]', expect.stringContaining(line)];
+
   it('As a dotli user on a light client, the chains the loading bar watches are opened once and kept', () => {
     // Given
     const { pool, built } = setup(Infinity);
@@ -41,6 +56,7 @@ describe('observeChains', () => {
 
     // Then
     expect(built.map(b => b.genesisHash)).toEqual(['0xaa', '0xbb']);
+    expect(debug).toHaveBeenCalledWith(...traced('Session remote:c1 connecting'));
   });
 
   it('As a dotli integrator, stopping the watch releases its leases', () => {
@@ -54,6 +70,8 @@ describe('observeChains', () => {
 
     // Then
     expect(built.map(b => b.disconnect.mock.calls.length)).toEqual([1, 1]);
+    expect(debug).toHaveBeenCalledWith(...traced('disconnectSession(local:0)'));
+    expect(debug).toHaveBeenCalledWith(...traced('disconnectSession(local:1)'));
   });
 
   it('As a dotli user on a network without a chain, the watch skips it', () => {
@@ -68,5 +86,6 @@ describe('observeChains', () => {
     expect(() => {
       stop();
     }).not.toThrow();
+    expect(debug).toHaveBeenCalledWith(...traced('disconnectSession(local:0)'));
   });
 });
