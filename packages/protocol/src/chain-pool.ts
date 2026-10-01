@@ -226,9 +226,15 @@ export function createChainPool(options: ChainPoolOptions): ChainPool {
         return null;
       }
       try {
+        // Prefixed so no remote id can collide with a local lease's `local:N`.
         return lease(
           entry,
-          entry.broker.connect(connectionId, onMessage as (message: unknown) => void, 'string', onHalt ?? null),
+          entry.broker.connect(
+            `remote:${connectionId}`,
+            onMessage as (message: unknown) => void,
+            'string',
+            onHalt ?? null,
+          ),
         );
       } catch (error) {
         idle(entry);
