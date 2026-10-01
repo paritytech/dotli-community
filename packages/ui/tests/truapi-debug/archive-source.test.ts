@@ -6,31 +6,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
   backend: 'smoldot-direct',
   readArchiveFiles: vi.fn(),
-  bitswapGet: vi.fn(),
-  getCachedBlock: vi.fn(),
 }));
 
 vi.mock('@dotli/config', () => ({ getBackend: () => mocks.backend }));
 vi.mock('@dotli/content', () => ({
-  bitswapGet: mocks.bitswapGet,
   loadFetch: () => Promise.resolve({ readArchiveFiles: mocks.readArchiveFiles }),
 }));
-vi.mock('@dotli/storage', () => ({ getCachedBlock: mocks.getCachedBlock }));
 
-const { loadProductArchive } = await import('../../src/components/truapi-debug/archive-source.js');
+const { productArchiveLoader } = await import('../../src/components/truapi-debug/archive-source.js');
 
-type Transport = { gateway: true } | { blockSource: (cid: string) => Promise<Uint8Array> };
-
-/** The transport `loadProductArchive` handed to `readArchiveFiles`. */
-function transport(): Transport {
-  const call = mocks.readArchiveFiles.mock.calls[0] as [string, Transport] | undefined;
-  if (call === undefined) {
-    throw new Error('readArchiveFiles was not called');
-  }
-  return call[1];
-}
-
-describe('loadProductArchive', () => {
+describe('productArchiveLoader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.readArchiveFiles.mockResolvedValue({ 'index.html': new Uint8Array([1]) });
@@ -39,36 +24,37 @@ describe('loadProductArchive', () => {
   it('As a dotli developer on rpc-gateway, the archive is read from the IPFS gateway, as the sandbox reads it', async () => {
     // Given
     mocks.backend = 'rpc-gateway';
+    const blockSource = vi.fn<(cid: string) => Promise<Uint8Array>>();
 
     // When
-    const files = await loadProductArchive('bafyroot');
+    const files = await productArchiveLoader(blockSource)('bafyroot');
 
     // Then
     expect(mocks.readArchiveFiles).toHaveBeenCalledWith('bafyroot', { gateway: true });
+    expect(blockSource).not.toHaveBeenCalled();
     expect(Object.keys(files)).toEqual(['index.html']);
   });
 
-  it('As a dotli developer on the light client, blocks come from the block cache before bitswap', async () => {
+  it('As a dotli developer on the light client, blocks come from the block source the host hands in', async () => {
     // Given
     mocks.backend = 'smoldot-direct';
-    const cached = new Uint8Array([7]);
-    const fetched = new Uint8Array([9]);
-    mocks.getCachedBlock.mockImplementation((cid: string) => Promise.resolve(cid === 'bafyhit' ? cached : null));
-    mocks.bitswapGet.mockResolvedValue(fetched);
-    await loadProductArchive('bafyroot');
-    const source = transport();
-    if (!('blockSource' in source)) {
-      throw new Error('expected a block source');
-    }
+    const blockSource = vi.fn<(cid: string) => Promise<Uint8Array>>();
 
     // When
-    const hit = await source.blockSource('bafyhit');
-    const miss = await source.blockSource('bafymiss');
+    await productArchiveLoader(blockSource)('bafyroot');
 
     // Then
-    expect(hit).toBe(cached);
-    expect(miss).toBe(fetched);
-    expect(mocks.bitswapGet).toHaveBeenCalledTimes(1);
-    expect(mocks.bitswapGet).toHaveBeenCalledWith('bafymiss');
+    expect(mocks.readArchiveFiles).toHaveBeenCalledWith('bafyroot', { blockSource });
+  });
+
+  it('As a dotli developer on the light client with no block source, the archive is read from the gateway', async () => {
+    // Given
+    mocks.backend = 'smoldot-direct';
+
+    // When
+    await productArchiveLoader()('bafyroot');
+
+    // Then
+    expect(mocks.readArchiveFiles).toHaveBeenCalledWith('bafyroot', { gateway: true });
   });
 });

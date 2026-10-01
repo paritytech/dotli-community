@@ -10,7 +10,7 @@ import type { JSX } from '@solidjs/web';
 import { isEncrypted, type ArchiveFiles } from '@dotli/content';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
-import { loadProductArchive, type ArchiveLoader } from './archive-source.js';
+import type { ArchiveLoader } from './archive-source.js';
 
 interface ArchiveFile {
   path: string;
@@ -86,8 +86,8 @@ function toFiles(files: ArchiveFiles): ArchiveRead {
 
 export function ArchiveView(props: {
   active: boolean;
-  /** Reads the archive behind a CID; the host's own read by default. */
-  load?: ArchiveLoader;
+  /** Reads the archive behind a CID. */
+  load: ArchiveLoader;
 }): JSX.Element {
   const product = useStore(productStore);
   const cid = (): string | undefined => {
@@ -110,8 +110,7 @@ export function ArchiveView(props: {
       readCid = next;
       setSelectedPath(null);
       setRead({ status: 'loading' });
-      const load = props.load ?? loadProductArchive;
-      load(next).then(
+      props.load(next).then(
         files => {
           if (readCid === next) {
             setRead(toFiles(files));
