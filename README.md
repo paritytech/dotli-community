@@ -143,8 +143,8 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
-On this branch, the canonical SDK is source-pinned to `c73e072c96cff7d363af9a61e378ee22621e9f5b`
-(`feat/pvm-peer-transport`, client/host 0.23.0 and provider 0.3.1). JAM peer transport is execution-local in the
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to
+`feat/jam-peer-transport-on-seity`. JAM peer transport is execution-local in the
 sandbox. Before dialing a network, it requests `JamPeers` permission through the product's authenticated port to the
 shared page core. The host's Solid permission dialog shows the full genesis hash and offers **Allow once**, **Always
 allow**, and **Deny**; dismissal saves no decision. Durable decisions are scoped to product and genesis, while a
