@@ -94,6 +94,23 @@ let engineReady = false;
 // Why the engine is dead for good: pre-sync failed, or the light client could
 // not connect a chain. Every port that connects later is told, never `ready`.
 let presyncFailureMessage: string | null = null;
+let workerStopped = false;
+
+// An uncaught worker error is terminal, not a socket reconnect. Tell every
+// attached frame before retiring this worker, so the host's existing frame
+// halt/backoff path can take a fresh lease without replacing its native Core.
+self.addEventListener('error', event => {
+  if (workerStopped) {
+    return;
+  }
+  workerStopped = true;
+  engineReady = false;
+  const message = event.message || 'Protocol SharedWorker crashed';
+  presyncFailureMessage = message;
+  broadcastToPorts({ namespace: 'dotli:protocol', kind: 'fatal', message });
+  pendingPorts.length = 0;
+  self.close();
+});
 
 const NETWORK_NAME_PREFIX = 'dotli-protocol-';
 let networkInitFailure: string | null = null;
@@ -118,6 +135,9 @@ if (requestedNetwork === null) {
 // a port that connects later (another tab, or this one after its retry) gets
 // the cause through the same path as a failed pre-sync, never `ready`.
 onProviderFatal(message => {
+  if (workerStopped) {
+    return;
+  }
   swError(`Chain death detected, broadcasting fatal to ${String(ports.size)} port(s)`);
   engineReady = false;
   presyncFailureMessage = message;
@@ -261,6 +281,11 @@ function broadcastToPorts(envelope: ProtocolEnvelope): void {
 }
 
 function sendToPort(port: MessagePort, envelope: ProtocolEnvelope): void {
+  // Promise continuations and queued chain events belong to the retired
+  // worker generation. Only its terminal notification may still leave it.
+  if (workerStopped && envelope.kind !== 'fatal') {
+    return;
+  }
   try {
     const msg: SWRelayResponse = { type: 'relay-response', envelope };
     port.postMessage(msg);
@@ -478,6 +503,9 @@ function cleanStalePorts(): void {
 }
 
 self.addEventListener('connect', event => {
+  if (workerStopped) {
+    return;
+  }
   const port = event.ports[0];
   if (port === undefined) {
     return;
@@ -490,6 +518,9 @@ self.addEventListener('connect', event => {
   swLog(`Port connected (${String(ports.size)} total, engine ${engineReady ? 'ready' : 'syncing'})`);
 
   port.addEventListener('message', (msgEvent: MessageEvent) => {
+    if (workerStopped) {
+      return;
+    }
     const data = msgEvent.data as { type?: string } | null;
 
     // Handle disconnect signal from iframe beforeunload
