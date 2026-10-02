@@ -54,9 +54,9 @@ from there (`import { log } from "@dotli/shared"`). Every other module under `sr
 
 ### Commit hook
 
-`npm install` sets up a husky pre-commit hook. It runs lint-staged, which formats the staged files with Prettier (the
-extensions `npm run format:check` covers) and stages the result, then lints every workspace the commit touches (turbo's
-`--filter=[HEAD]`), each whole and with its own config. Skip it with `git commit --no-verify`. CI still checks
+`npm install` sets up a husky pre-commit hook. It runs lint-staged, which formats the staged files with Prettier
+(`--ignore-unknown` skips the types it can't parse) and stages the result, then lints every workspace the commit touches
+(turbo's `--filter=[HEAD]`), each whole and with its own config. Skip it with `git commit --no-verify`. CI still checks
 everything.
 
 ### How to Document
