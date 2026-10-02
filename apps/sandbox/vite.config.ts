@@ -7,13 +7,7 @@ import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import solid from '@solidjs/vite-plugin';
 import wasmPlugin from 'vite-plugin-wasm';
-import {
-  appBuildOptions,
-  rolldownOptions,
-  buildInfo,
-  runtimeNetworkConfigScript,
-  socialMetaTags,
-} from '@dotli/config/vite';
+import { appBuildOptions, rolldownOptions, buildInfo, runtimeNetworkConfigScript, socialMetaTags } from '@config/vite';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so

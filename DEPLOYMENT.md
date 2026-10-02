@@ -99,7 +99,7 @@ curl -fsS https://paseo.li/host_version.json
 ```
 
 `hash` is a SHA-256 of the build's output, so it changes whenever the bundle's contents do. It is written by the build
-(`packages/config/src/build-info-plugin.ts`) and served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three
+(`config/vite/src/build-info-plugin.ts`) and served `no-cache` (`nginx/snippets/dotli-host-version.conf`). The three
 builds are rsynced separately, so check each origin to cover all of them:
 
 | URL                                      | Build    |

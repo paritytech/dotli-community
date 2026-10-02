@@ -5,7 +5,7 @@ import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { defineConfig, type Plugin, type PluginOption } from 'vite';
 import { resolve } from 'node:path';
 import wasmPlugin from 'vite-plugin-wasm';
-import { buildInfo, runtimeNetworkConfigScript, appBuildOptions, rolldownOptions } from '@dotli/config/vite';
+import { buildInfo, runtimeNetworkConfigScript, appBuildOptions, rolldownOptions } from '@config/vite';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so

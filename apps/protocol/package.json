@@ -13,8 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*",
+    "@config/eslint": "*",
+    "@config/typescript": "*",
+    "@config/vite": "*",
     "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 {
-  "name": "@dotli/astro-solid",
+  "name": "@config/astro-solid",
   "private": true,
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
@@ -18,8 +18,8 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*",
+    "@config/eslint": "*",
+    "@config/typescript": "*",
     "@solidjs/web": "2.0.0-rc.13",
     "astro": "^7.3.5",
     "solid-js": "2.0.0-rc.13"

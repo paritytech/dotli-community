@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { join, extname } from 'node:path';
 import { Readable } from 'node:stream';
 import type { ReadableStream } from 'node:stream/web';
-import { runtimeNetworkConfigScriptBody } from '@dotli/config/vite';
+import { runtimeNetworkConfigScriptBody } from '@config/vite';
 
 // Node's types have no global `BodyInit`, so take it from `Response` itself.
 type BodyInit = NonNullable<ConstructorParameters<typeof Response>[0]>;

@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Build-time entry for the app vite configs and the preview/serve scripts,
-// loaded by Node directly, hence the `.ts` specifiers. Kept apart from the
-// `@dotli/config` barrel so no browser bundle reaches the Node-only plugins.
+// loaded by Node directly, hence the `.ts` specifiers. A package of its own,
+// apart from the runtime `@dotli/config`, so no browser bundle reaches the
+// Node-only plugins.
 
 export { appBuildOptions, rolldownOptions } from './build-options.ts';
 export { buildInfo, readPackageVersion } from './build-info-plugin.ts';

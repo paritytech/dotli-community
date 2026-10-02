@@ -1,5 +1,5 @@
 {
-  "name": "@dotli/eslint-config",
+  "name": "@config/eslint",
   "version": "0.6.0",
   "type": "module",
   "sideEffects": false,
@@ -15,7 +15,7 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@dotli/typescript-config": "*",
+    "@config/typescript": "*",
     "@eslint/js": "^10.0.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-astro": "^3.2.1",

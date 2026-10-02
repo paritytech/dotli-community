@@ -20,22 +20,25 @@
     "test:e2e:local": "E2E_PRODUCT_REPO=${E2E_PRODUCT_REPO:-../../../host-playground} E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
     "lint": "turbo run lint lint:root",
     "lint:root": "eslint .",
-    "format": "prettier --write \"**/*.{ts,tsx,js,mjs,json,md,astro}\"",
-    "format:check": "prettier --check \"**/*.{ts,tsx,js,mjs,json,md,astro}\"",
+    "format": "prettier --write --ignore-unknown .",
+    "format:check": "prettier --check --ignore-unknown .",
     "typecheck": "turbo run typecheck typecheck:root",
     "typecheck:root": "tsc --noEmit -p .",
     "set-version": "node scripts/set-version.ts",
     "link:truapi": "node scripts/link-truapi-local.ts",
     "unlink:truapi": "node scripts/unlink-truapi-local.ts",
-    "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
+    "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +",
+    "prepare": "husky"
   },
   "devDependencies": {
-    "@dotli/config": "*",
-    "@dotli/eslint-config": "*",
+    "@config/eslint": "*",
+    "@config/vite": "*",
     "@types/node": "^26.6.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "happy-dom": "^20.14.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "prettier": "3.9.9",
     "prettier-plugin-astro": "1.1.0",
     "terser": "^5.51.2",
@@ -47,6 +50,7 @@
   "packageManager": "npm@12.1.0",
   "workspaces": [
     "apps/*",
+    "config/*",
     "packages/*"
   ],
   "dependencies": {

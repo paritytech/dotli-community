@@ -60,9 +60,7 @@
     transition: none !important;
   }
 }
-@supports not (
-  (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))
-) {
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .auth-modal {
     background: rgba(22, 22, 22, 0.97);
   }

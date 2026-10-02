@@ -200,7 +200,7 @@ that survives every release is cheaper to abuse than patching a hash-named
 bundle, and the hosted deployments have no use for it. Both halves are gated
 independently, so neither alone turns it on:
 
-- `packages/config/src/runtime-network-config-plugin.ts` **injects** the script
+- `config/vite/src/runtime-network-config-plugin.ts` **injects** the script
   tag on opt-in rather than stripping it on opt-out, so the default is safe by
   construction: a default build's HTML is byte-identical to one from before
   runtime config existed.

@@ -67,20 +67,24 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         working-directory: apps/host
         env:
-          PERF_RUNS: "20"
-          PERF_SAVE_BASE: "1"
+          PERF_RUNS: '20'
+          PERF_SAVE_BASE: '1'
           PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run:
+          npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts ||
+          true
 
       - name: Run perf tests (PR)
         if: github.event_name == 'pull_request'
         working-directory: apps/host
         env:
-          PERF_RUNS: "10"
+          PERF_RUNS: '10'
           PERF_DOMAIN_A: browse
           PERF_DOMAIN_B: host-playground
-        run: npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts || true
+        run:
+          npx playwright test --config=tests/performance/playwright.config.ts tests/performance/cold-start.spec.ts ||
+          true
 
       # ── main: upload baseline artifact ─────────────────────────
       - name: Upload baseline artifact

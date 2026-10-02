@@ -1,8 +1,10 @@
 name: Setup Node
-description: "Install Node (from .nvmrc), the npm pinned in package.json's packageManager, and the workspace dependencies. Requires checkout first."
+description:
+  "Install Node (from .nvmrc), the npm pinned in package.json's packageManager, and the workspace dependencies. Requires
+  checkout first."
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Setup Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0

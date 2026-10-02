@@ -6,7 +6,7 @@ on:
       - main
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
       # out.
       - name: Build
         env:
-          VITE_METRICS: "true"
+          VITE_METRICS: 'true'
         run: npx turbo run build:prod
 
       - name: Remove source maps
