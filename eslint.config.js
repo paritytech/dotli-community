@@ -9,7 +9,7 @@ import { config } from '@config/eslint/vite';
 // The repository root holds only the Node scripts under scripts/. Every
 // workspace lints itself through its own config.
 export default defineConfig([
-  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**'] },
+  { ignores: ['apps/**', 'config/**', 'packages/**', 'docs/**', 'vendor/**'] },
   ...config,
   {
     languageOptions: {

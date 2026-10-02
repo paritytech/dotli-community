@@ -22,6 +22,7 @@ import { buildInfo, readPackageVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { stripAnalytics } from '@dotli/metrics/vite';
+import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -340,6 +341,27 @@ export default defineConfig({
     plugins: [
       stripAnalytics(process.env['VITE_METRICS'] !== 'true'),
       wasm(),
+      {
+        name: 'dotli-identity-proxy',
+        configureServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
+              void handleNodeIdentityProxy(req, res);
+            } else {
+              next();
+            }
+          });
+        },
+        configurePreviewServer(server) {
+          server.middlewares.use((req, res, next) => {
+            if (req.url?.startsWith(IDENTITY_PROXY_PREFIX) === true) {
+              void handleNodeIdentityProxy(req, res);
+            } else {
+              next();
+            }
+          });
+        },
+      },
       // Serves /dotli-network.js under `astro dev`; the page links it
       // (src/pages/index.astro).
       runtimeNetworkConfigScript(),

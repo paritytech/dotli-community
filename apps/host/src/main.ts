@@ -69,6 +69,7 @@ import type { ChainSyncKind, ResolvePhase } from '@dotli/resolver';
 
 import type { ChainRole } from '@dotli/config';
 import { PHASE_BY_MILESTONE, startResolutionTrace } from './resolution-trace.js';
+import { HOST_ERRORS } from './error-copy.js';
 
 import {
   describeProgressStall,
@@ -160,6 +161,27 @@ import {
   type ProductManifests,
 } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
+import { WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
+import { onNextInteraction } from './wallet-handover.js';
+
+// Another tab took the test wallet. Keep this app on screen, paused, and take
+// the wallet back when the user next interacts with this tab: reloading asks
+// the other tab to hand it over.
+function showWalletPaused(): void {
+  if (document.querySelector('.wallet-paused-banner') !== null) {
+    return;
+  }
+  const banner = document.createElement('div');
+  banner.className = 'wallet-paused-banner';
+  banner.setAttribute('role', 'status');
+  banner.textContent = HOST_ERRORS.WALLET_PAUSED;
+  document.body.append(banner);
+  onNextInteraction(() => {
+    banner.textContent = HOST_ERRORS.WALLET_RESUMING;
+    window.location.reload();
+  });
+}
+window.addEventListener(WALLET_OWNER_REVOKED_EVENT, showWalletPaused);
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -347,7 +369,7 @@ let shieldVerified = false;
 // once the shield is verified, logout pins the topbar visible.
 function bindTopbarAutoHide(): void {
   window.addEventListener('dotli:authenticated', () => {
-    if (shieldVerified) {
+    if (shieldVerified && !(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
       armTopbarAutoHide();
     }
   });
@@ -360,7 +382,9 @@ function bindTopbarAutoHide(): void {
 function setShieldState(state: ShieldState): void {
   setVerificationShieldState(state);
   shieldVerified = true;
-  armTopbarAutoHide();
+  if (!(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
+    armTopbarAutoHide();
+  }
 }
 
 /**
@@ -926,15 +950,6 @@ async function main(): Promise<void> {
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
     enableDotliDebugBuffering();
-    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
-      setupTruapiDebugPanel({
-        startCollapsed: !debugMode.explicit,
-        // The Archive tab reads the product's blocks the way the sandbox
-        // relay serves them: from the block cache, else over bitswap.
-        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
-      });
-      log.warn(`[dot.li] TrUAPI debug panel enabled`);
-    });
   }
 
   // Per-tab boot flow id. Every boot/resolve/render/bridge event from
@@ -1036,7 +1051,6 @@ async function main(): Promise<void> {
 
   const bridgeModulePromise = loadBridge();
   const bridgeModule = await bridgeModulePromise;
-  bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
 
   // Initialize top bar UI.
   const t0 = performance.now();
@@ -1052,11 +1066,33 @@ async function main(): Promise<void> {
 
   const label = parseDotLabel();
   const productIdOverride = parseLocalProductIdOverride();
+  const localhostUrl = parseLocalhostUrl();
+  const directUrl = previewTargetUrl ?? localhostUrl;
+  if (label !== null) {
+    bridgeModule.setPageProduct({ label });
+  } else if (directUrl !== null) {
+    bridgeModule.setPageProduct({ label: new URL(directUrl).host, productId: productIdOverride });
+  }
+  // Binding the bridge eagerly resumes an active browser wallet. Scope the
+  // singleton first so that resume cannot briefly create a landing core.
+  bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
+
+  // Wallet verification may acquire the page core as soon as the debug view
+  // mounts. Its product selection must already be installed.
+  if (debugMode.enabled) {
+    void loadTruapiDebugMount().then(({ setupTruapiDebugPanel }) => {
+      setupTruapiDebugPanel({
+        startCollapsed: !debugMode.explicit,
+        blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
+        ...(DEBUG ? { experimentalWallet: bridgeModule.experimentalWalletControls } : {}),
+      });
+      log.warn(`[dot.li] TrUAPI debug panel enabled`);
+    });
+  }
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
     log.warn(`[dot.li perf] Preview route: ${host} (${elapsed(T0)})`);
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
 
@@ -1079,7 +1115,6 @@ async function main(): Promise<void> {
     return;
   }
 
-  const localhostUrl = parseLocalhostUrl();
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'url_parsed',
@@ -1094,7 +1129,6 @@ async function main(): Promise<void> {
   if (label === null && localhostUrl !== null) {
     const host = new URL(localhostUrl).host;
     log.warn(`[dot.li perf] Localhost proxy: ${host} (${elapsed(T0)})`);
-    bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
 
@@ -1106,7 +1140,9 @@ async function main(): Promise<void> {
 
     shieldVerified = true;
     bindTopbarAutoHide();
-    armTopbarAutoHide();
+    if (!(DEBUG && document.documentElement.classList.contains('experimental-wallet-active'))) {
+      armTopbarAutoHide();
+    }
 
     // Deep path was forwarded to the product iframe, so strip it so the URL bar doesn't show a stale path
     history.replaceState(
@@ -1149,9 +1185,6 @@ async function main(): Promise<void> {
   bindTopbarAutoHide();
 
   log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
-  // Before resolution starts, so a login clicked while the product resolves
-  // boots the product's core rather than a second one.
-  bridgeModule.setPageProduct({ label });
 
   initScheduledNotifications({ label });
 

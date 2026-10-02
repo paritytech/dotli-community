@@ -61,7 +61,7 @@ if ! echo "$CONFIG" | jq -e "$SHAPE" >/dev/null 2>&1; then
     echo '   "networks":{"paseo-next-v2":{"assethub":{"rpcs":["ws://host.docker.internal:9944"]}}}}' >&2
     echo >&2
     echo "See docs/docker.md. Overridable fields are endpoints only: label, rpcs," >&2
-    echo "ipfsGateways. genesis and dotns are fixed at build time." >&2
+    echo "ipfsGateways, identityBackendBaseUrl. genesis and dotns are fixed at build time." >&2
     exit 1
 fi
 

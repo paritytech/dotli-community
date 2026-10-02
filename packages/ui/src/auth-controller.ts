@@ -13,6 +13,7 @@ import { ERRORS } from './errors.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
 import { authStore, setLoggedIn } from './state/auth.js';
 import { resetAuthModal, updateAuthModal } from './state/auth-modal.js';
+import { isExperimentalWalletActive } from './host-callbacks/SessionStore.js';
 
 let blockingModalCoordinator: BlockingModalCoordinator | null = null;
 let authModalScope: BlockingModalScope | null = null;
@@ -46,6 +47,7 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
   // Default logged-out state until the core or the boot rehydration says
   // otherwise.
   setLoggedIn(false);
+  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
 }
 
 /**
@@ -56,8 +58,13 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
  * can never close an active pairing modal.
  */
 function applyAuthState(state: DotliAuthState): void {
+  document.documentElement.classList.toggle('experimental-wallet-active', isExperimentalWalletActive());
   switch (state.tag) {
     case 'Disconnected':
+      setLoggedIn(false);
+      break;
+    case 'WalletUnavailable':
+      closeAuthModal({ skipTruapiCancel: true });
       setLoggedIn(false);
       break;
     case 'Pairing':
@@ -208,6 +215,10 @@ export function friendlyAuthError(message: string): FriendlyAuthError {
 
 /** The login button while logged out, and the error view's Retry. */
 export function startLogin(): void {
+  if (isExperimentalWalletActive()) {
+    window.dispatchEvent(new Event('dotli:wallet-open'));
+    return;
+  }
   if (openAuthModal()) {
     requestTruapiLogin();
   }

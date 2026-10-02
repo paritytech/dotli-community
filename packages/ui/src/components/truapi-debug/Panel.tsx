@@ -21,7 +21,10 @@
 // - The detail pane is rebuilt only on user actions (`detailRevision`), never
 //   because traffic arrived.
 
-import { createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
+import { createEffect, createMemo, createSignal, flush, onCleanup, onSettled, untrack } from 'solid-js';
+import { DEBUG } from '@dotli/config';
+import type { ExperimentalWalletControls } from '@dotli/truapi-debug';
+import { createWalletControls } from './wallet-controls.js';
 import type { JSX } from '@solidjs/web';
 import {
   readStoredDock,
@@ -171,6 +174,7 @@ export function Panel(props: {
    *  of the load the Resolution view is drawing. */
   resolution: ResolutionRecorder;
   startCollapsed: boolean;
+  wallet?: ExperimentalWalletControls | undefined;
   /** Reads the product's archive for the Archive tab. */
   loadArchive: ArchiveLoader;
 }): JSX.Element {
@@ -434,6 +438,41 @@ export function Panel(props: {
     return buildExport(events, meta);
   };
 
+  // Like ResolutionView, the renderer's DOM is owned by this Solid root.
+  // Keep the safety-sensitive controller across tab swaps; visibility clears
+  // secrets and invalidates late reads, while disposal removes all listeners.
+  const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
+  const openWallet = (): void => {
+    if (wallet === undefined) {
+      return;
+    }
+    if (collapsed()) {
+      if (panelEl !== undefined && expandedHeight !== '') {
+        panelEl.style.height = expandedHeight;
+      }
+      commit(() => {
+        setCollapsed(false);
+        setCollapsedCounts(null);
+        refreshSnapshot();
+      });
+    }
+    selectView('wallet');
+    refit();
+    walletView?.content.focus();
+  };
+  const walletView = wallet === undefined ? undefined : createWalletControls(wallet, store, openWallet);
+  createEffect(
+    () => view() === 'wallet' && !collapsed(),
+    visible => walletView?.setVisible(visible),
+  );
+  if (walletView !== undefined) {
+    window.addEventListener('dotli:wallet-open', openWallet);
+  }
+  onCleanup(() => {
+    window.removeEventListener('dotli:wallet-open', openWallet);
+    walletView?.dispose();
+  });
+
   return (
     <div
       id={PANEL_ID}
@@ -442,6 +481,7 @@ export function Panel(props: {
         'docked-right': placement() === 'right',
         stacked: stacked(),
         'res-view': view() === 'resolution',
+        'wallet-view': view() === 'wallet',
         'archive-view': view() === 'archive',
       }}
       ref={el => {
@@ -450,6 +490,7 @@ export function Panel(props: {
     >
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
+        walletEntry={walletView?.entry}
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -504,7 +545,8 @@ export function Panel(props: {
       <Filters filters={filters()} products={snapshot().products} onChange={changeFilters} />
       <div class="td-body">
         <div class="td-views">
-          <Tabs view={view()} onSelect={selectView} />
+          <Tabs view={view()} wallet={wallet !== undefined} onSelect={selectView} />
+          {walletView?.content}
           <EventList
             events={visible()}
             allEvents={snapshot().events}

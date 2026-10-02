@@ -65,8 +65,13 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
    * A click toggles the user popover, else opens the auth modal (see
    * onClick), so the ARIA says so.
    */
-  const opensPopover = account.connected;
-  const label = (): string => (account.loggedIn() ? 'Account' : 'Login with Polkadot Mobile');
+  const opensPopover = (): boolean => !account.experimental() && account.connected();
+  const label = (): string =>
+    account.experimental()
+      ? 'Open Wallet tab — experimental test wallet'
+      : account.loggedIn()
+        ? 'Account'
+        : 'Login with Polkadot Mobile';
   // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => (button === undefined ? undefined : setAuthModalTrigger(button)));
 
@@ -78,7 +83,9 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
       content={Account}
       trigger={t => {
         const onClick = (ev?: Event): void => {
-          if (getAuthState().tag === 'Connected') {
+          if (account.experimental()) {
+            window.dispatchEvent(new Event('dotli:wallet-open'));
+          } else if (getAuthState().tag === 'Connected') {
             t.onClick(ev);
           } else {
             startLogin();
@@ -97,22 +104,50 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
               class="topbar-btn"
               title={label()}
               aria-label={label()}
-              aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
-              aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
+              aria-expanded={
+                account.experimental()
+                  ? undefined
+                  : (opensPopover() ? t['aria-expanded'] === 'true' : authModal().open)
+                    ? 'true'
+                    : 'false'
+              }
+              aria-controls={
+                account.experimental() ? 'td-wallet-view' : opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'
+              }
             >
-              <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
-                {session => (
-                  <Show
-                    when={sessionInitials(session())}
-                    fallback={
-                      <div class="user-badge user-badge-anon">
-                        <UserIcon />
-                      </div>
-                    }
-                  >
-                    {initials => <div class="user-badge">{initials()}</div>}
+              <Show
+                when={account.experimental()}
+                fallback={
+                  <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
+                    {session => (
+                      <Show
+                        when={sessionInitials(session())}
+                        fallback={
+                          <div class="user-badge user-badge-anon">
+                            <UserIcon />
+                          </div>
+                        }
+                      >
+                        {initials => <div class="user-badge">{initials()}</div>}
+                      </Show>
+                    )}
                   </Show>
-                )}
+                }
+              >
+                <div class="user-badge user-badge-experimental">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    aria-hidden="true"
+                  >
+                    <path d="M20 8V5a2 2 0 0 0-2-2H5a3 3 0 0 0 0 6h15v12H5a2 2 0 0 1-2-2V6" />
+                    <path d="M20 12h-4a2 2 0 0 0 0 4h4" />
+                  </svg>
+                </div>
               </Show>
             </button>
           </TopbarItem>

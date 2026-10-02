@@ -452,25 +452,42 @@ export function attachChainSync(
     return { intercept, stop: () => undefined };
   }
 
-  void (async () => {
+  // 0.3.1 queues ordinary health RPCs until ready. Lifecycle snapshots prove
+  // that loading detail is working even while the chain is still syncing.
+  const watchdog = setTimeout(() => {
+    log.warn(`[dot.li chain-sync] lifecycle not observed for ${chain} within 5s, loading detail will not update`);
+  }, 5_000);
+  if (typeof watchdog === 'object' && 'unref' in watchdog) {
+    watchdog.unref();
+  }
+
+  const consumeLifecycle = async (): Promise<void> => {
     try {
       // `undefined` once the watch is closed, which `stop` does, or once the
       // chain is gone.
       for (let state; (state = await watch.next()) !== undefined;) {
+        clearTimeout(watchdog);
+        if (stopped) {
+          break;
+        }
         applyLifecycleState(state);
       }
     } catch (err: unknown) {
       log.warn(
         `[dot.li chain-sync] lifecycle watch failed for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
       );
+    } finally {
+      clearTimeout(watchdog);
     }
-  })();
+  };
+  void consumeLifecycle();
 
   const stop = (): void => {
     if (stopped) {
       return;
     }
     stopped = true;
+    clearTimeout(watchdog);
     watch.close();
   };
 

@@ -382,6 +382,34 @@ describe('Light client sync reporting works', () => {
     expect(pipe.forwarded).toEqual([appResponse]);
   });
 
+  it('As a user waiting for sync, lifecycle progress does not report a broken side channel while health is queued', async () => {
+    vi.useFakeTimers();
+    // Match the fresh module graph created by beforeEach's vi.resetModules().
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn');
+    try {
+      enableSyncReporting(['relay']);
+      const pipe = requirePipe('relay');
+      const seen: unknown[] = [];
+      onChainSync(event => seen.push(event));
+
+      // 0.3.1 holds system_health until ready, but not lifecycle traffic.
+      await pipe.push(state(syncing(20, 100), 3));
+      await vi.advanceTimersByTimeAsync(5_000);
+
+      expect(seen).toEqual([
+        { chain: 'relay', kind: 'firstPeer' },
+        { chain: 'relay', kind: 'peers', peers: 3, isSyncing: true },
+        { chain: 'relay', kind: 'warpSyncProgress', at: 20, target: 100 },
+      ]);
+      expect(warn).not.toHaveBeenCalled();
+      pipe.tap.stop();
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
+
   it('As a user leaving the page, stopping the tap closes the lifecycle watch', () => {
     // Given
     enableSyncReporting(['relay']);

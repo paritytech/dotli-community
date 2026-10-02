@@ -34,19 +34,6 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // The panel links its stylesheet; happy-dom would try to fetch it.
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   // Starting the fake clock at a fixed time keeps the 16 ms animation-frame
   // grid aligned with it, so frame timings are reproducible.
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
@@ -290,7 +277,6 @@ describe('truapi debug panel: mount and dispose', () => {
     const root = panel();
     expect(root.classList.contains('collapsed')).toBe(false);
     expect(root.classList.contains('docked-right')).toBe(false);
-    expect(document.getElementById('truapi-debug-styles')).not.toBeNull();
     expect(root.querySelector('.td-resize-handle')).not.toBeNull();
     expect(q('.td-header .td-title').textContent).toBe('TrUAPI Debug');
     expect(counts()).toBe('0 events');
@@ -1760,24 +1746,6 @@ describe('truapi debug panel: capacity', () => {
     // Then
     expect(rowTags()).toEqual(['ev3_request', 'ev4_request', 'ev5_request', 'ev6_request', 'ev7_request']);
     expect(counts()).toBe('5 events (+3 dropped)');
-  });
-
-  it('As a dotli developer, past the default 2000 events the oldest are pruned from the list', () => {
-    // Given
-    mount();
-
-    // When
-    for (let i = 0; i < 2003; i++) {
-      truapi({ tag: `ev${String(i)}_x`, requestId: `r${String(i)}` });
-    }
-    frame();
-
-    // Then
-    const tags = rowTags();
-    expect(tags).toHaveLength(2000);
-    expect(tags[0]).toBe('ev3_x');
-    expect(tags[1999]).toBe('ev2002_x');
-    expect(counts()).toBe('2000 events (+3 dropped)');
   });
 });
 

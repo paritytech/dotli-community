@@ -102,8 +102,10 @@ async function clickHostDialogs(
       // (e.g. "Sign"), so bound it and let the next pass move on.
       console.log(`[signed] dialog "${name}" — clicking`);
       await btn.click({ timeout: 2_000 }).catch((e: unknown) => {
-        const reason = e instanceof Error ? e.message : String(e);
-        console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
+        if (!signal.aborted) {
+          const reason = e instanceof Error ? e.message : String(e);
+          console.log(`[signed] dialog "${name}" click skipped: ${reason}`);
+        }
       });
       seen.add(name);
       lastSeenAt = Date.now();

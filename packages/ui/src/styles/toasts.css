@@ -18,6 +18,26 @@
   }
 }
 
+/* Test wallet paused because another tab took it */
+.wallet-paused-banner {
+  position: fixed;
+  top: calc(var(--topbar-height) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 900;
+  max-width: min(560px, calc(100vw - 32px));
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: #fff;
+  color: #1a1a1a;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.12);
+  font:
+    14px/1.4 system-ui,
+    sans-serif;
+  text-align: center;
+  pointer-events: none;
+}
+
 /* Cards: collapsed = grid-stacked, expanded = column list */
 .notif-cards {
   display: grid;

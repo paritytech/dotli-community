@@ -39,7 +39,7 @@ export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBl
   // Rehydrate the persisted same-origin session on idle so a reload shows
   // the logged-in badge before any core instance boots.
   scheduleIdle(() => {
-    emitPersistedSessionUiState();
+    void emitPersistedSessionUiState();
   });
 }
 

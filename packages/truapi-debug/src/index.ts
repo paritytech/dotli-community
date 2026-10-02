@@ -37,3 +37,12 @@ export {
 export { rowClassName, systemRowData, truapiRowData } from './row-format.js';
 export { applyTimelineSelection, buildTimelineContainer, renderSwimlanes, resolveTimelineClick } from './timeline.js';
 export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';
+export type {
+  ExperimentalWalletControls,
+  InspectorIdentity,
+  InspectorProduct,
+  InspectorResource,
+  LocalIdentityProgress,
+} from './wallet-types.js';
+export { createWalletView, type WalletView } from './wallet-view.js';
+export { renderAllowanceSnapshot } from './wallet-allowances.js';

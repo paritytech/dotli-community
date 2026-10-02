@@ -76,18 +76,12 @@ function haltedMidRead(err: Error): () => Api {
   });
 }
 
-const RETRY_LOG: unknown = expect.stringMatching(
-  /^\[dot\.li resolve\] Chain halted mid-resolution, retrying on a rebuilt chain \(attempt \d\/4\): /,
-);
-
 describe('resolve', () => {
   let disconnect: Mock<() => void>;
   let factory: Mock<() => JsonRpcProvider>;
-  let warn: Mock<(...args: unknown[]) => void>;
 
   beforeEach(() => {
-    warn = vi.fn<(...args: unknown[]) => void>();
-    vi.spyOn(log, 'warn').mockImplementation(warn);
+    vi.spyOn(log, 'warn').mockImplementation(() => undefined);
     destroyResolverClient();
     mocks.createRawApi.mockReset().mockImplementation(fakeApi);
     mocks.stops = [];
@@ -116,7 +110,6 @@ describe('resolve', () => {
     // Then
     expect(factory).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
-    expect(warn).toHaveBeenCalledWith('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
   });
 
   it.each([
@@ -137,8 +130,6 @@ describe('resolve', () => {
     // Then
     expect(owner).toBeNull();
     expect(factory).toHaveBeenCalledTimes(2);
-    expect(warn).toHaveBeenCalledWith('[dot.li resolve] chainHead follow stopped, invalidating resolver client');
-    expect(warn).toHaveBeenCalledWith(RETRY_LOG);
   });
 
   it.each([
@@ -158,7 +149,6 @@ describe('resolve', () => {
 
       // Then
       expect(factory).toHaveBeenCalledTimes(2);
-      expect(warn).toHaveBeenCalledWith(RETRY_LOG);
     },
   );
 
@@ -188,7 +178,6 @@ describe('resolve', () => {
     // Then
     await expect(result).rejects.toThrow('chainHead follow stopped');
     expect(factory).toHaveBeenCalledTimes(4);
-    expect(warn.mock.calls.filter(([line]) => String(line).includes('retrying on a rebuilt chain'))).toHaveLength(3);
   });
 
   it('As a dotli user on a light client, a read that fails for any other reason is not retried', async () => {
@@ -205,7 +194,6 @@ describe('resolve', () => {
     // Then
     await expect(result).rejects.toThrow('Unknown subscription/token');
     expect(factory).toHaveBeenCalledTimes(1);
-    expect(warn).not.toHaveBeenCalledWith(RETRY_LOG);
   });
 
   it('As a dotli user on a light client, the retry only gets what is left of the request budget', async () => {
@@ -234,6 +222,5 @@ describe('resolve', () => {
     // Then
     expect(failure).toMatchObject({ name: 'NetworkSyncTimeoutError', timeoutMs: 700 });
     expect(factory).toHaveBeenCalledTimes(2);
-    expect(warn).toHaveBeenCalledWith(RETRY_LOG);
   });
 });

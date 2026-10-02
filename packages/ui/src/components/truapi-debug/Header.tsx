@@ -92,6 +92,7 @@ function DockBottomIcon(): JSX.Element {
 
 export function Header(props: {
   counts: string;
+  walletEntry?: JSX.Element | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
@@ -180,6 +181,7 @@ export function Header(props: {
 
   return (
     <div class="td-header">
+      {props.walletEntry}
       <span class="td-title">TrUAPI Debug</span>
       <span class="td-counts">{props.counts}</span>
       <span class="td-spacer" />

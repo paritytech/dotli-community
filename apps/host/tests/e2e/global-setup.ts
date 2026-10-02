@@ -6,6 +6,7 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node
 import { dirname } from 'node:path';
 import {
   formatSigningHostExit,
+  persistentSigningHostSession,
   signingHostVersion,
   startSigningHostPair,
   stopSigningHost,
@@ -91,23 +92,10 @@ const CLI_USAGE_EXIT_CODE = 2;
 // identity backend is down" apart from "dot.li tests asserted false".
 export const SIGNING_UNAVAILABLE_EXIT_CODE = 99;
 
-// The CLI registers this prefix verbatim as the lite username, and a name can
-// only be claimed once, so a fixed value burns on the first run and every later
-// run fails as taken. Six lowercase letters give a ~3·10^8 namespace. Lowercase
-// ASCII only: the CLI rejects digits and separators.
-function randomLiteUsernamePrefix(): string {
-  const alphabet = 'abcdefghijklmnopqrstuvwxyz';
-  let suffix = '';
-  for (let i = 0; i < 6; i++) {
-    suffix += alphabet.charAt(Math.floor(Math.random() * alphabet.length));
-  }
-  return `dotlitest${suffix}`;
-}
+// A session name is an on-chain username, not a globally reusable prefix.
+// Persist a unique default once per base path, never once per pairing attempt.
+const SIGNING_HOST_SESSION = nonEmptyEnv('SIGNING_HOST_SESSION');
 
-// Built per pair attempt, not once: a failed attempt can leave its name
-// registered but unattested, and the CLI creates a fresh account rather than
-// reusing one it has not attested. Sharing one name across attempts would make
-// every retry ask for a name the first attempt already claimed.
 function signingHostConfig(): SigningHostConfig {
   return {
     binary: SIGNING_HOST_BIN,
@@ -116,8 +104,10 @@ function signingHostConfig(): SigningHostConfig {
     productId: PRODUCT_ID,
     // With an explicit mnemonic the CLI signs as that account directly and
     // rejects auto-account naming flags.
-    liteUsernamePrefix:
-      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== '' ? undefined : randomLiteUsernamePrefix(),
+    session:
+      (process.env['HOST_CLI_SIGNER_MNEMONIC']?.trim() ?? '') !== ''
+        ? undefined
+        : (SIGNING_HOST_SESSION ?? persistentSigningHostSession(SIGNING_HOST_BASE_PATH)),
   };
 }
 

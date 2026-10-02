@@ -4,11 +4,12 @@ import { setAuthState } from '../state/auth.js';
 
 /**
  * UI-level auth state held in `authStore`. Mirrors the core's `AuthState`
- * with byte fields already converted for rendering, plus the pairing
- * presentation context the topbar modal needs.
+ * with byte fields converted for rendering, pairing presentation context,
+ * and persistent wallet availability.
  */
 export type DotliAuthState =
   | { tag: 'Disconnected' }
+  | { tag: 'WalletUnavailable'; reason: string }
   | {
       tag: 'Pairing';
       deeplink: string;

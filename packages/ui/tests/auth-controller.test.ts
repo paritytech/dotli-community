@@ -424,6 +424,19 @@ describe('auth controller: auth states', () => {
     expect(getLoggedIn()).toBe(true);
   });
 
+  it('revokes authentication and closes pending login without falling back to Mobile when the wallet becomes unavailable', async () => {
+    const { getAuthModalState, getLoggedIn, setAuthState } = await load();
+    const requests = countEvents('dotli:truapi-login-request');
+    const cancels = countEvents('dotli:truapi-cancel-login');
+    setAuthState({ tag: 'Connected', session: { connected: true } });
+    setAuthState(pairing);
+    setAuthState({ tag: 'WalletUnavailable', reason: 'Native worker stopped' });
+    expect(getLoggedIn()).toBe(false);
+    expect(getAuthModalState().open).toBe(false);
+    expect(requests.count).toBe(0);
+    expect(cancels.count).toBe(0);
+  });
+
   it('As the core, Disconnected logs out but never tears down an active pairing', async () => {
     // Given
     const { getAuthModalState, getLoggedIn, setAuthState } = await load();

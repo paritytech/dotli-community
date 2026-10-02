@@ -49,6 +49,7 @@ export interface BulletinService extends ChainService {
 export interface ServicesConfig {
   readonly label: string;
   readonly description: string;
+  readonly identityBackendBaseUrl: string;
   readonly relay: ChainService;
   readonly assethub: ChainService;
   readonly bulletin: BulletinService;
@@ -60,6 +61,8 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PASEO]: {
     label: 'Paseo',
     description: 'Paseo Next Network',
+    // Same-origin proxy to https://identity.dotspark.app/api/v1.
+    identityBackendBaseUrl: '/__dotli-identity/paseo',
     relay: {
       genesis: '0x374057be67b355151f271ff70c3db98308c62c8adc48dc6724b6a009a1a014fd',
       rpcs: [
@@ -96,24 +99,26 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
   [NetworkName.PREVIEWNET]: {
     label: 'Previewnet',
     description: 'Product Preview Network',
+    // Same-origin proxy to https://identity-previewnet.dotspark.app/api/v1.
+    identityBackendBaseUrl: '/__dotli-identity/testnet',
     relay: {
-      genesis: '0x0459cb8394c5cddc4604a8ec64329d029400756ef615f56c90ab84b169fd4a9e',
+      genesis: '0x860145753657e73c29b9388ffa0a8aebc643ea87434b4b271b6c3c3cc9e6bf92',
       rpcs: ['wss://previewnet.substrate.dev/relay/alice', 'wss://previewnet.substrate.dev/relay/bob'],
       blockTimeMs: 6000,
     },
     assethub: {
-      genesis: '0xc27c8bf3f13f96dc2130cd2b0a3debe57618fd02521ecc1902bd7dd4ed83d2fe',
+      genesis: '0xbac97e23fc8f4bccae72a98f8aeb2bcab20bf755862304e4b46ad6473456e896',
       rpcs: ['wss://previewnet.substrate.dev/asset-hub'],
       blockTimeMs: 2000,
     },
     bulletin: {
-      genesis: '0xea9158d768971553e315b76323cbffda238b6b865f3d3d5e138350b12312173d',
+      genesis: '0xa081192b90c1f6a3f8e9ce7b2a8246f41af805c66456c84e05fd97c2b3502425',
       rpcs: ['wss://previewnet.substrate.dev/bulletin'],
       blockTimeMs: 6000,
       ipfsGateways: ['https://previewnet.substrate.dev'],
     },
     people: {
-      genesis: '0xf720c28fe3315e67fa799a616fc59abad47dd257b1a336af6538435844d35218',
+      genesis: '0x55e3e689ecfa9d2fffcf7d309b8011956671493982230bfd0420c683542249e9',
       rpcs: ['wss://previewnet.substrate.dev/people'],
       blockTimeMs: 2000,
     },
@@ -140,15 +145,14 @@ const BUILTIN_NETWORK_SERVICES: Record<NetworkName, ServicesConfig> = {
  *
  * Three deliberate limits keep this small and safe:
  *
- *   * **Endpoints only** — `label`, `rpcs` and `ipfsGateways`. Never `genesis` or
- *     `dotns`, which are the trust root for name resolution: an override that
- *     could repoint the DotNS registry would let anything running in the page
- *     redirect every dotNS lookup while `isVerifiedSession()` still reported
- *     "verified". Limiting it to endpoints means the worst an override can do is
- *     move you to a different node for the *same* chain identity, which the light
- *     client verifies against the compiled-in genesis anyway. It is also why only
- *     documents need this: the protocol SharedWorker reads solely `genesis` and
- *     `dotns`, so it needs no runtime config and none is plumbed to it.
+ *   * **Endpoints only** — `label`, `rpcs`, `ipfsGateways` and
+ *     `identityBackendBaseUrl`. Never `genesis` or `dotns`, which are the trust
+ *     root for name resolution. Chain identity is still verified against the
+ *     compiled-in genesis; identity registration must confirm chain ownership,
+ *     never trust an HTTP acceptance response. Backend overrides receive public
+ *     account proofs, not wallet entropy. Same-origin root-relative proxy paths,
+ *     HTTPS, and HTTP on loopback are allowed. The protocol SharedWorker reads solely
+ *     `genesis` and `dotns`, so it needs no runtime config.
  *   * **Patches existing networks** — no new names, so `NetworkName` stays a
  *     closed union. Use `label` to say what a repointed network really is.
  *   * **Arrays replace, never concatenate.** Appending would leave the fork's
@@ -243,6 +247,25 @@ function asString(value: unknown, path: string): string {
   return value;
 }
 
+function asIdentityBackendUrl(value: unknown, path: string): string {
+  const raw = asString(value, path);
+  const relative = raw.startsWith('/') && !raw.startsWith('//') && !raw.includes('\\');
+  const url = relative ? new URL(raw, 'https://dotli.invalid') : new URL(raw);
+  const loopback = ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+  if (
+    (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) ||
+    url.username !== '' ||
+    url.password !== '' ||
+    url.search !== '' ||
+    url.hash !== ''
+  ) {
+    throw new Error(
+      `${path} must be a root-relative proxy path or HTTPS base URL (HTTP only on loopback), without credentials, query or fragment.`,
+    );
+  }
+  return (relative ? url.pathname : url.toString()).replace(/\/+$/, '');
+}
+
 // The merges below are written out field by field rather than as a generic deep
 // merge. With this few fields it is shorter, it cannot walk the prototype chain,
 // and the exact set of things an override may reach is legible at a glance —
@@ -273,10 +296,14 @@ function mergeBulletin(base: BulletinService, patch: unknown, path: string): Bul
 
 function mergeNetwork(base: ServicesConfig, patch: unknown, path: string): ServicesConfig {
   const p = asObject(patch, path);
-  checkFields(p, ['label', 'relay', 'assethub', 'bulletin', 'people'], path);
+  checkFields(p, ['label', 'identityBackendBaseUrl', 'relay', 'assethub', 'bulletin', 'people'], path);
   return {
     ...base,
     label: p['label'] === undefined ? base.label : asString(p['label'], `${path}.label`),
+    identityBackendBaseUrl:
+      p['identityBackendBaseUrl'] === undefined
+        ? base.identityBackendBaseUrl
+        : asIdentityBackendUrl(p['identityBackendBaseUrl'], `${path}.identityBackendBaseUrl`),
     relay: p['relay'] === undefined ? base.relay : mergeChain(base.relay, p['relay'], `${path}.relay`),
     assethub:
       p['assethub'] === undefined ? base.assethub : mergeChain(base.assethub, p['assethub'], `${path}.assethub`),

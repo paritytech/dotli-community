@@ -132,7 +132,7 @@ test.describe('Settings works', () => {
     // Then
     const state = await readChainBackendState(page, 'smoldot-direct');
     expect(state.chainBackend).toBe('smoldot-direct');
-    expect(state.url).not.toContain('chainBackend=');
+    await expect(page).not.toHaveURL(/[?&]chainBackend=/);
   });
 
   test('As a user who arrived through such a link, reloading without it keeps me in the mode I landed in', async ({
@@ -234,14 +234,13 @@ test.describe('Settings works', () => {
     expect(cache['skipWorkerCache']).toBe(false);
     expect(state.url).toContain('skipCidCache=1');
     expect(state.url).toContain('skipArchiveCache=1');
-    expect(state.url).not.toContain('skipWorkerCache=');
+    await expect(page).not.toHaveURL(/[?&]skipWorkerCache=/);
   });
 
   for (const backend of BACKENDS) {
     test(`As a user on ${backend} with the dotNS cache on, revisiting a site skips looking its name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,
@@ -267,7 +266,6 @@ test.describe('Settings works', () => {
     test(`As a user on ${backend} who turns the dotNS cache off, every visit looks the name up again`, async ({
       browser,
     }) => {
-      test.skip(backend === 'rpc-gateway', 'flaky on CI over public RPC nodes');
       // Given
       const { context, page } = await setupTest(browser, {
         backend,

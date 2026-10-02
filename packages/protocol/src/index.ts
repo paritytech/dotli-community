@@ -42,11 +42,15 @@ export {
   readSharedAuthStorage,
   readSharedModeStorage,
   resetProtocolFrame,
+  requestSharedWallet,
+  requestWalletOwner,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
   resolveRootManifestRemote,
   setProtocolSubMode,
   subscribeSharedAuthStorage,
+  subscribeSharedWallet,
+  subscribeWalletOwnerRevoked,
   type RemoteChainProvider,
   warmupProtocol,
   writeSharedAuthStorage,
@@ -63,3 +67,19 @@ export {
   type SmoldotDbOutcome,
 } from './messages.js';
 export { METHOD_TIMEOUTS } from './method-timeouts.js';
+export {
+  isSharedWalletOperation,
+  isSharedWalletState,
+  type SharedWalletOperation,
+  type SharedWalletResult,
+  type SharedWalletState,
+} from './wallet-storage.js';
+export {
+  createWalletOwner,
+  isWalletOwnerOperation,
+  WALLET_OWNER_BUSY_ERROR,
+  WALLET_OWNER_REVOKED_EVENT,
+  type WalletOwner,
+  type WalletOwnerDeps,
+  type WalletOwnerOperation,
+} from './wallet-owner.js';

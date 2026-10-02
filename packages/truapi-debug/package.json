@@ -23,6 +23,7 @@
   "dependencies": {
     "@dotli/config": "*",
     "@dotli/shared": "*",
+    "@parity/truapi-host": "file:../../vendor/truapi-host",
     "nanoevents": "^10.0.0"
   }
 }

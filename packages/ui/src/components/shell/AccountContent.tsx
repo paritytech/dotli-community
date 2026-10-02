@@ -40,15 +40,21 @@ export function AccountContent(): JSX.Element {
   return (
     <>
       <div class="user-popover-name">
-        <div class="label">Welcome back</div>
+        <div class="label">{account.experimental() ? 'Experimental test wallet' : 'Welcome back'}</div>
         <div class="name" id={id('username')}>
           {name()}
         </div>
         {/* Explains the username-less state instead of leaving a bare
             address that reads as a rendering bug. */}
-        <Show when={account.loggedIn() && (username() ?? '').length === 0}>
+        <Show when={!account.experimental() && account.loggedIn() && (username() ?? '').length === 0}>
           <div id={id('hint')} class="user-popover-hint">
             No username found for this account on this network.
+          </div>
+        </Show>
+        <Show when={account.experimental()}>
+          <div id="experimental-wallet-hint" class="user-popover-hint">
+            Testing only. Open Debug → Wallet for username, allowances and Recovery settings. Disconnect to sign in with
+            Polkadot Mobile.
           </div>
         </Show>
       </div>
@@ -66,7 +72,7 @@ export function AccountContent(): JSX.Element {
           <polyline points="16 17 21 12 16 7" />
           <line x1="21" y1="12" x2="9" y2="12" />
         </svg>
-        Log out
+        {account.experimental() ? 'Disconnect test wallet' : 'Log out'}
       </button>
     </>
   );

@@ -21,18 +21,59 @@ client for Rust-core `chain.connect` requests.
 | Protocol iframe (`host.localhost`, production `paseo.li`) | Domain resolution (Asset Hub query to CID), chain RPC brokering, bitswap content fetching | `apps/protocol/src/main.ts` (direct/shared-worker submodes) and `apps/protocol/src/protocol-shared-worker.ts` |
 | Host shell (user's destination domain, e.g. `foo.dot`) | Rust-core chain access for auth, product requests, and Bulletin submission when Light Client is selected | `packages/ui/src/host-callbacks/Chain.ts` |
 
-Both origins construct smoldot through the singletons in
-`packages/resolver/src/smoldot.ts`. RPC Gateway mode routes Rust-core requests
-to configured WebSocket endpoints and does not start the host-shell client.
+Both origins use the singleton in `packages/resolver/src/provider.ts`,
+backed by **`@parity/truapi-provider` 0.3.1**. RPC Gateway mode routes
+requests to configured WebSocket endpoints instead.
 
-## Smoldot factories
+In `rpc-gateway` mode, `createCoreRpcChainProvider(genesisHash, hooks)` composes
+the WebSocket provider, compatibility middleware, pause controller, and
+subscription replay. The provider's 120-second heartbeat replaces silent
+sockets; there is no additional health-probe timer or fatal-on-disconnect
+policy. Confirmed statement subscriptions are replayed with stable consumer
+tokens, and requests still in flight remain owned by the provider proxy.
+Acknowledged modern and legacy transaction watches receive their terminal
+`dropped` event rather than being resubmitted after a disconnect.
 
-Two factories live in `packages/resolver/src/smoldot.ts`:
+The host's chain pool owns one transport and broker per chain. RPC entries
+close 60 seconds after their last lease; smoldot entries remain warm. The
+protocol iframe and SharedWorker use the same hook-aware pool with an infinite
+idle delay. A true terminal halt (such as a smoldot stream ending) retires the
+entry before consumer callbacks: pending calls get errors, follows stop, and
+statement/transaction subscriptions receive their protocol terminal forms.
+Old callbacks and released leases cannot touch a replacement entry.
 
-- `getSmoldot()` (line 171) calls `startFromWorker(new SmWorker(), …)`. Smoldot runs in a dedicated Web Worker. Used in iframe main-thread contexts.
-- `getSmoldotDirect()` (line 158) calls `start(…)`. Smoldot runs on the calling thread. Used inside the SharedWorker, where the `Worker` constructor is unavailable.
+The Rust-core adapter delivers those terminal responses while keeping its
+underlying response stream open. Its next request takes a fresh lease through
+the canonical chain/frame backoff gate; explicit consumer shutdown still closes
+the connection. A stopped follow completes and must be followed again.
 
-Both share the same `smoldotInstance` cell (line 148). Calling either returns the existing client if one is already constructed.
+An uncaught SharedWorker error retires the worker and fences late requests and
+replies. Before reporting fatal, the iframe advances a per-network worker URL
+generation under a shared-origin Web Lock. The generation is stored in
+localStorage, so tabs in the same storage partition share the replacement and
+late retirement callbacks cannot supersede it. This avoids reconnecting to a
+closed worker identity retained by the browser, without replacing the native
+core or requiring every tab to close.
+
+## Provider contract
+
+`createChainProvider(genesisHash, hooks)` adapts the provider's raw JSON-RPC
+`Connection` to polkadot-api. It queues only while asynchronous initialization
+and connection opening are pending. After connection, the provider itself holds
+requests until the chain first syncs, then forwards them in order. Chain-spec,
+statement-store, Bitswap, and lifecycle requests bypass that sync wait.
+
+Held requests share the provider's 1024-frame connection budget. The adapter
+continuously drains `nextResponse()`; budget refusals arrive as JSON-RPC errors,
+not a closed connection. An unexpected end of the response stream is fatal.
+
+The existing `lifecycle_unstable_follow` side channel remains active during sync.
+Its snapshots count as watchdog proof even while `system_health` is held until
+ready, so healthy sync progress does not report a broken loading-detail channel.
+
+The optional `setConnectionTypes({ secure, localhost, unsecure })` API is not
+used here: the upgrade preserves the existing connection policy and browser
+restrictions rather than adding a new settings control.
 
 ## Chains
 
@@ -86,13 +127,15 @@ Bulletin preimage submission is built, signed, and submitted entirely by the Rus
 
 ## Persistence
 
-Smoldot persists chain DBs to IndexedDB internally. dotli does not manage save/load. The comment at `smoldot.ts:8-9` is explicit on this.
-
-Pre-cutover host-side smoldot may have left an IndexedDB chain DB at the user's destination origin. Stale state from the deleted code path stays on disk until the user clears storage. There is no `dotli doctor` command for this today.
+dotli supplies origin-scoped IndexedDB storage through `createSmoldotDb()` and
+`ChainProviderBuilder.setStorage()`. Before connecting, it calls `loadDatabase()`
+so the first chain add can resume from stored finalized state. Cache outcomes
+remain observable through the existing sync reporting; a storage failure leaves
+the chain starting from its bundled checkpoint.
 
 ## Failure modes
 
-- **Smoldot panic.** The log callback (`smoldot.ts:122-127`) detects `"Smoldot has panicked"` and `"panicked at"` and broadcasts a fatal signal via `onSmoldotFatal`. The protocol iframe forwards `fatal` envelopes to the host client, which rejects every pending request. Recovery requires a reload.
+- **Smoldot panic.** The log callback detects `"Smoldot has panicked"` and `"panicked at"` and broadcasts a fatal signal via `onSmoldotFatal`. The protocol iframe forwards `fatal` envelopes to the host client, which rejects pending requests and retires the frame. A product's next request can rebuild it through the canonical backoff gate; a failed page can reload. SharedWorker recovery advances the shared URL generation rather than requiring other tabs to close.
 - **Bootnode connection issues.** Patterns at `smoldot.ts:98-106` (`reset by remote`, `refused`, `closed`, `timeout`, `no longer reachable`, `handshake`, `all bootnodes`) trigger `onConnectionIssue` listeners. The UI surfaces these to the user.
 - **CPU long-task warnings.** Smoldot's WASM warns when a single Rust `poll()` blocks the thread for at least 150ms (smoldot upstream `wasm-node/rust/src/platform.rs:167`). Format: `` The task named `add-chain-N` has occupied the CPU for an unreasonable amount of time (Xms). `` The `N` suffix comes from the spawned task name. How the counter is scoped (per-client vs. process-global) has not been verified, so do not infer correlations from `N` alone.
 - **Cached chain promises.** Each `get*Chain()` factory caches its promise. On rejection the promise is nulled out so the next call retries. On `terminateSmoldot()` (`smoldot.ts:194`) every cached chain promise is cleared so a freshly-restarted smoldot doesn't hand back dead-chain handles.
@@ -108,17 +151,34 @@ These resolver-package exports are owner-only and must not be imported outside
 
 ## Adding a new chain
 
-Steps to make a parachain reachable through the protocol iframe. The sequence below is inferred from the existing layout (relay, Asset Hub, Bulletin), and has not been exercised end-to-end in this branch.
+The provider resolves supported genesis hashes through its bundled catalogue,
+including parachain relay wiring. Add chains to that catalogue and the active
+network service configuration in `packages/config/src/network.ts`; merely adding
+a local chain-spec JSON file does not register a chain with this adapter.
 
-1. Drop the chain spec JSON into `packages/resolver/src/chain-specs/`.
-2. Add a loader in `packages/resolver/src/chain-specs/index.ts`. Mirror `getBulletinPaseoChainSpec`.
-3. Add a `get<Name>Chain()` factory in `packages/resolver/src/smoldot.ts`. Mirror `getBulletinChain`. Set `potentialRelayChains` correctly.
-4. Add the chain's genesis hash as a `0x…` constant in `packages/config/src/config.ts`. Include it in `SUPPORTED_GENESIS_HASHES`.
-5. Wire the factory into `createChainProvider` in `packages/resolver/src/chains.ts` so the protocol iframe routes the genesis hash to the new chain.
-6. Sandbox consumers call `createRemoteChainProvider(<your-genesis>)` from `@dotli/protocol`. Rust-core access uses the host `chain.connect` callback.
+The 0.3.1 package includes refreshed Paseo and Previewnet relay checkpoints.
+These apply to catalogue-backed light-client connections; stored finalized
+state still takes precedence. This adapter does not call `addLightChain()` or
+load external spec overrides. The legacy `VITE_SS_RELAY_CHAIN` setting is not
+consumed by the provider. Runtime endpoint overrides apply to `rpc-gateway`,
+not to the catalogue or its checkpoints; custom external specs and remote RPC
+nodes are not refreshed by this package upgrade.
 
-Steps 4 and 5 make a chain reachable from both the protocol broker and the
-host callback. Skip them and the request fails with `"Unsupported chain"`.
+Previewnet also reset its four chain genesis hashes
+([upstream #995](https://github.com/paritytech/host-rust-core/pull/995)).
+The active network configuration tracks the 0.3.1 catalogue's relay, Asset Hub,
+Bulletin, and People hashes; the previous hashes are no longer registered.
+DotNS addresses, storage slots, network suffix, and endpoint settings are unchanged.
+
+Qualification used the real 0.3.1 WASM through `createChainProvider()` in a
+browser: Paseo returned its genesis before an earlier `system_health` request,
+reported connecting/warp progress/ready through the existing side channel, and
+then answered health with `isSyncing: false` and four peers. Resolver unit tests
+and typechecking passed. Deployment backend and product qualification remains
+separate from this provider-level check.
+The Previewnet browser check returned the configured genesis hash and synchronized
+health with a peer for all four chains. It does not qualify Previewnet product
+publication or identity registration.
 
 ## Related
 

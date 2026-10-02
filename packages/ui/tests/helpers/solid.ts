@@ -97,11 +97,14 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
 }
 
 /**
- * The body of popover `#id` once its lazy content has loaded: the content
- * chunk is a dynamic import, which resolves over several microtasks.
+ * The body of popover `#id` once its lazy content has loaded. Await Vite's
+ * import barrier before polling the DOM; module compilation is not a UI timeout.
  */
 export async function waitForContent(id: string): Promise<HTMLElement> {
+  flush();
+  await vi.dynamicImportSettled();
   const body = await vi.waitFor(() => {
+    flush();
     const found = document.querySelector<HTMLElement>(`#${id} > .popover-body`);
     const loaded =
       found !== null && found.firstElementChild !== null && found.querySelector('.popover-loading') === null;

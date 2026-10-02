@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For } from 'solid-js';
+import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 
-export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'wallet';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
@@ -13,7 +13,7 @@ const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'archive', label: 'Archive' },
 ];
 
-export function Tabs(props: { view: PanelView; onSelect: (view: PanelView) => void }): JSX.Element {
+export function Tabs(props: { view: PanelView; wallet?: boolean; onSelect: (view: PanelView) => void }): JSX.Element {
   return (
     <div class="td-tabs" role="tablist">
       <For each={TABS}>
@@ -31,6 +31,20 @@ export function Tabs(props: { view: PanelView; onSelect: (view: PanelView) => vo
           </button>
         )}
       </For>
+      <Show when={props.wallet}>
+        <button
+          id="td-tab-wallet"
+          class={props.view === 'wallet' ? 'td-tab active' : 'td-tab'}
+          role="tab"
+          data-view="wallet"
+          type="button"
+          onClick={() => {
+            props.onSelect('wallet');
+          }}
+        >
+          Wallet
+        </button>
+      </Show>
     </div>
   );
 }

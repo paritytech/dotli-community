@@ -34,13 +34,7 @@ async function seedBackend(page: Page): Promise<void> {
   await seedChainBackend(page, 'rpc-gateway');
 }
 
-// Every test that waits for the product to render is flaky on CI: on
-// rpc-gateway the product comes from the uncached IPFS gateway.
-const GATEWAY_FLAKY = 'flaky on CI: the product loads from the uncached IPFS gateway';
-
 test.describe('URL parameters are forwarded into the product', () => {
-  test.skip(true, GATEWAY_FLAKY);
-
   test('when I open http://<label>.dot.li/foo?a=b#h, I land on /foo?a=b#h inside the product', async ({ page }) => {
     // Given
     await seedBackend(page);
@@ -99,8 +93,6 @@ test.describe('URL parameters are forwarded into the product', () => {
 });
 
 test.describe('Host URL bar preserves the entered URL after render', () => {
-  test.skip(true, GATEWAY_FLAKY);
-
   // `applyUrlSettings` canonicalises the URL on every load so non-default
   // settings axes (rpc-gateway here) get re-inserted. Assert the user's
   // own params survive, not that canonicalisation is a no-op.
@@ -123,8 +115,6 @@ test.describe('Host URL bar preserves the entered URL after render', () => {
 });
 
 test.describe('Reloading the page preserves the URL', () => {
-  test.skip(true, GATEWAY_FLAKY);
-
   test('when I reload http://<label>.dot.li/foo?a=b, the path and query survive the reload', async ({ page }) => {
     // Given
     await seedBackend(page);
@@ -144,8 +134,6 @@ test.describe('Reloading the page preserves the URL', () => {
 });
 
 test.describe('Sandbox URL hygiene: host contract keys never reach the product', () => {
-  test.skip(true, GATEWAY_FLAKY);
-
   test("with a cold cache, when the product loads, the host contract keys are not visible in the product's URL", async ({
     page,
   }) => {
@@ -227,7 +215,6 @@ test.describe('Validator regression guards', () => {
   test('when I open http://<label>.dot.li/?ref=42, the unknown key reaches the product and does not trigger the validator', async ({
     page,
   }) => {
-    test.skip(true, GATEWAY_FLAKY);
     // Given
     await seedBackend(page);
 
@@ -252,7 +239,6 @@ test.describe('Validator regression guards', () => {
   test("when I open http://<label>.dot.li/?chainBackend=foo, the host's valid value wins and my value is dropped from the product's URL", async ({
     page,
   }) => {
-    test.skip(true, GATEWAY_FLAKY);
     // Given
     await seedBackend(page);
 
@@ -274,8 +260,6 @@ test.describe('Validator regression guards', () => {
 });
 
 test.describe('Sandbox side-effects from URL contract keys', () => {
-  test.skip(true, GATEWAY_FLAKY);
-
   test('when I open http://<label>.dot.li/?fullReset=1, sandbox-origin IndexedDB is purged before the product loads', async ({
     browser,
   }) => {

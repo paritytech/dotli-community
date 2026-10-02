@@ -91,17 +91,18 @@ describe('topbar boot rehydration', () => {
     const { initTopBar } = await import('../src/topbar.js');
     const { getAuthState, getLoggedIn } = await import('../src/state/auth.js');
     initTopBar();
-    await flushMicrotasks();
 
     // Then: the stores the auth islands render, whenever they mount.
-    expect(getAuthState()).toEqual({
-      tag: 'Connected',
-      session: {
-        connected: true,
-        publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
-        liteUsername: 'pgherveou.04',
-        primaryUsername: 'pgherveou.04',
-      },
+    await vi.waitFor(() => {
+      expect(getAuthState()).toEqual({
+        tag: 'Connected',
+        session: {
+          connected: true,
+          publicKey: '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f',
+          liteUsername: 'pgherveou.04',
+          primaryUsername: 'pgherveou.04',
+        },
+      });
     });
     expect(getLoggedIn()).toBe(true);
   });

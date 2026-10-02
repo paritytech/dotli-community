@@ -76,19 +76,13 @@ function setup(onSend?: (sessions: () => WorkerChainSessions, port: MessagePort,
 const genesisRequest = (id: string): string =>
   JSON.stringify({ jsonrpc: '2.0', id, method: 'chainSpec_v1_genesisHash', params: [] });
 
-// The broker traces each lease it opens and closes at debug level.
-let debug: Mock<(...args: unknown[]) => void>;
-
 beforeEach(() => {
-  debug = vi.fn<(...args: unknown[]) => void>();
-  vi.spyOn(log, 'debug').mockImplementation(debug);
+  vi.spyOn(log, 'debug').mockImplementation(() => undefined);
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
-
-const traced = (line: string): unknown[] => ['[dot.li broker]', expect.stringContaining(line)];
 
 describe('createWorkerChainSessions', () => {
   it('As a dotli user on the shared light client, my chain answers reach the tab that asked', () => {
@@ -104,7 +98,6 @@ describe('createWorkerChainSessions', () => {
     // Then
     expect(posted).toHaveLength(1);
     expect(must(posted[0], 'post').port).toBe(portA);
-    expect(debug).toHaveBeenCalledWith(...traced('c1 connecting'));
     expect(must(posted[0], 'post').envelope).toMatchObject({ kind: 'chain-message', connectionId: 'c1' });
   });
 

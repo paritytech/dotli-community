@@ -29,6 +29,30 @@
   outline: 2px solid #737373;
   outline-offset: 2px;
 }
+/* iOS Safari zooms the page into any focused text field whose font is smaller
+   than 16px, and leaves it zoomed. Touch devices get a 16px floor on every
+   editable field; desktop keeps each component's own size. `!important`
+   because component rules set their sizes with more specific class selectors.
+   Disabling zoom in the viewport meta tag instead would also block pinch zoom
+   on Android. */
+@media (pointer: coarse) {
+  input:not(
+    [type='button'],
+    [type='checkbox'],
+    [type='color'],
+    [type='file'],
+    [type='image'],
+    [type='radio'],
+    [type='range'],
+    [type='reset'],
+    [type='submit']
+  ),
+  select,
+  textarea,
+  [contenteditable]:not([contenteditable='false']) {
+    font-size: 16px !important;
+  }
+}
 body {
   background: #0a0a0a;
   color: #e0e0e0;
@@ -72,6 +96,7 @@ body:has(#topbar[data-landing]) #app-loading {
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
   min-height: var(--content-height);
   margin-top: var(--topbar-height);
   text-align: center;

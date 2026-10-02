@@ -274,7 +274,8 @@ async function resumeFromStore(handle: ChainProviderHandle, key: string): Promis
  *
  * papi providers are object-wire. The truapi connection is a raw string pipe,
  * so messages are stringified on send and parsed on receipt. Messages sent
- * before the async connect resolves are queued and flushed in order.
+ * before the async connect resolves are queued and flushed in order. Once
+ * connected, the provider owns sync-aware buffering; do not wait for ready here.
  *
  * `hooks` hears each connection's status, and a halt when it fails or its
  * stream ends without `disconnect()`: smoldot does not reconnect underneath

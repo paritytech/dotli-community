@@ -86,15 +86,24 @@ Only **endpoints** are overridable, per network:
 | Field | Overridable | Notes |
 |---|---|---|
 | `label`, `rpcs`, `ipfsGateways` | yes | which node you talk to, and what it is called |
+| `identityBackendBaseUrl` | yes | debug-wallet registration backend; root-relative proxy path or HTTPS (HTTP only on loopback), without credentials, query or fragment |
 | `genesis`, `dotns` | **no** | the trust root for name resolution, fixed at build time |
 
 Fixing `genesis` and `dotns` is what keeps this small and safe. An override cannot
-repoint the DotNS registry, so the worst it can do is move you to a different node
-for the *same* chain identity — which the light client verifies against the
-compiled-in genesis anyway. It also means only documents need the config: the
+repoint the DotNS registry: chain endpoints still serve the *same* chain identity,
+which the light client verifies against the compiled-in genesis. Identity backend
+overrides receive public account proofs, never wallet entropy, and registration
+must confirm ownership on chain rather than trusting HTTP acceptance. Only documents need the config: the
 protocol SharedWorker reads solely `genesis` and `dotns`, so nothing is plumbed to
 it. A zombie-bite fork preserves both, so endpoints are the only axis that has to
 move.
+
+The bundled servers expose `/__dotli-identity/paseo` and `/__dotli-identity/testnet`
+only on root and trusted shell origins. They forward a fixed set of identity API
+routes to the configured upstreams without cookies, redirects, CORS or response
+caching. Nginx deployments must install `nginx/snippets/dotli-identity-proxy.conf`
+and provide CA certificates and a working resolver; the Docker image includes
+both the snippet and CA roots and uses Docker DNS.
 
 Two more rules:
 
