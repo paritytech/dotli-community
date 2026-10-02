@@ -151,7 +151,22 @@ describe('resolve', () => {
     },
   );
 
-  it('As a dotli user on a light client, a chain that halts again on the retry fails the resolution', async () => {
+  it('As a dotli user on a light client resuming from a recent stored database, a name still resolves when smoldot resets the chain twice while catching up', async () => {
+    // Given
+    setResolverAssetHubProvider(factory);
+    mocks.createRawApi
+      .mockImplementationOnce(haltedMidRead(new DisjointError()))
+      .mockImplementationOnce(haltedMidRead(new DisjointError()));
+
+    // When
+    const owner = await resolveOwner('alice');
+
+    // Then
+    expect(owner).toBeNull();
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it('As a dotli user on a light client, a chain that keeps halting fails the resolution after four attempts', async () => {
     // Given
     setResolverAssetHubProvider(factory);
     mocks.createRawApi.mockImplementation(haltedBeforeReady);
@@ -160,22 +175,21 @@ describe('resolve', () => {
     const result = resolveOwner('alice');
 
     // Then
-    await expect(result).rejects.toThrow('chainHead follow stopped');
-    expect(factory).toHaveBeenCalledTimes(2);
+    await expect(result).rejects.toMatchObject({ name: 'ApiStoppedError' });
+    expect(factory).toHaveBeenCalledTimes(4);
   });
 
   it('As a dotli user on a light client, a read that fails for any other reason is not retried', async () => {
     // Given
     setResolverAssetHubProvider(factory);
-    mocks.createRawApi.mockImplementationOnce(() =>
-      fakeApi(() => Promise.reject(new RpcError({ code: -32603, message: 'Unknown subscription/token' }))),
-    );
+    const failure = new RpcError({ code: -32603, message: 'Unknown subscription/token' });
+    mocks.createRawApi.mockImplementationOnce(() => fakeApi(() => Promise.reject(failure)));
 
     // When
     const result = resolveOwner('alice');
 
     // Then
-    await expect(result).rejects.toThrow('Unknown subscription/token');
+    await expect(result).rejects.toBe(failure);
     expect(factory).toHaveBeenCalledTimes(1);
   });
 

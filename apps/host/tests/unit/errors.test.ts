@@ -4,6 +4,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { describeError } from '../../src/errors.js';
+import { ManifestRejectedError } from '../../src/manifest-gate.js';
 
 /** An error as the protocol client rebuilds it from a failed response. */
 function crossedBoundary(message: string, name: string): Error {
@@ -52,4 +53,25 @@ describe('host error classification', () => {
       });
     },
   );
+
+  it.each([
+    [
+      'a manifest version this host does not read',
+      new ManifestRejectedError('unsupported-version', 'app', '$v 2'),
+      'manifest-unsupported-version',
+    ],
+    [
+      'an invalid manifest',
+      new ManifestRejectedError('invalid', 'root', 'root manifest displayName must be a non-empty string'),
+      'manifest-invalid',
+    ],
+    [
+      'an app manifest without a root manifest',
+      new ManifestRejectedError('missing-root', 'root', 'no root manifest'),
+      'manifest-invalid',
+    ],
+  ])('As a dotli user, an app rejected for %s offers no retry', (_case, err, kind) => {
+    const error = describeError(err, true);
+    expect({ kind: error.kind, recovery: error.recovery }).toEqual({ kind, recovery: 'none' });
+  });
 });

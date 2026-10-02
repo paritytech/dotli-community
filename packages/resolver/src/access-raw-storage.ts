@@ -119,7 +119,7 @@ export async function readMappingBytes(
  * Returns `null` when the value is unset. Throws when a multi-slot read
  * aborts partway, mirroring [`readMappingBytes`](./storage.ts).
  */
-export async function readNestedMappingString(
+export function readNestedMappingString(
   api: Api,
   contractAddress: string,
   outerKey: `0x${string}`,

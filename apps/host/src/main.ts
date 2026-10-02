@@ -65,7 +65,7 @@ import {
 } from '@dotli/ui';
 
 import type { LoadingPhase, ShieldState, BridgeModule as RenderModule } from '@dotli/ui';
-import type { ChainSyncKind, ExecutableManifest, ManifestResult, RootManifest, ResolvePhase } from '@dotli/resolver';
+import type { ChainSyncKind, ResolvePhase } from '@dotli/resolver';
 
 import type { ChainRole } from '@dotli/config';
 import { PHASE_BY_MILESTONE, startResolutionTrace } from './resolution-trace.js';
@@ -95,7 +95,6 @@ import {
   warmupProtocol,
 } from '@dotli/protocol';
 import {
-  evictCachedInstalledExecutable,
   getCachedInstalledExecutable,
   reconcileInstalledExecutable,
   setCachedInstalledExecutable,
@@ -118,7 +117,6 @@ import {
   isValidDotLabel,
   isMobileDevice,
 } from '@dotli/shared';
-import { parseExecutableManifest } from '@dotli/resolver';
 import {
   BASE_DOMAIN,
   BLOCK_CACHE_MAX_BYTES,
@@ -148,13 +146,18 @@ import {
   describeError,
   FAILOVER_BTN_LABELS,
   GO_BACK_BTN_LABEL,
-  InvalidAppExecutableManifestError,
   OPEN_SETTINGS_BTN_LABEL,
   RELOAD_BTN_LABEL,
   trustedProviderHosts,
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
 } from './errors.js';
+import {
+  assertLaunchable,
+  fromCache,
+  toCache,
+  type ProductManifests,
+} from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 import { WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
 import { onNextInteraction } from './wallet-handover.js';
@@ -383,49 +386,12 @@ function setShieldState(state: ShieldState): void {
   }
 }
 
-async function resolveAppExecutableManifest(
-  label: string,
-  chainBackend: Backend,
-): Promise<ManifestResult<ExecutableManifest>> {
-  if (chainBackend === 'rpc-gateway') {
-    const mod = await loadRpcResolve();
-    return mod.resolveExecutableManifestViaRpc(label, 'app');
-  }
-  return resolveExecutableManifestRemote(label, 'app');
-}
-
-function executableManifestText(result: ManifestResult<ExecutableManifest>): string | null {
-  switch (result.kind) {
-    case 'ok':
-      if (result.value.kind !== 'app') {
-        throw new InvalidAppExecutableManifestError([`expected kind 'app', received '${result.value.kind}'`]);
-      }
-      return result.raw;
-    case 'empty':
-    case 'unsupported':
-      return null;
-    case 'invalid':
-      throw new InvalidAppExecutableManifestError(result.errors);
-  }
-}
-
-function installedExecutableFromManifest(
+function installedExecutableFromManifests(
   contenthash: string,
-  result: ManifestResult<ExecutableManifest>,
+  manifests: ProductManifests,
 ): InstalledExecutable | null {
-  const executableManifest = executableManifestText(result);
-  return executableManifest === null ? null : { contenthash, executableManifest };
-}
-
-function cachedAppManifest(executable: InstalledExecutable): ManifestResult<ExecutableManifest> | null {
-  const parsed = parseExecutableManifest(executable.executableManifest);
-  return parsed.ok && parsed.value.kind === 'app'
-    ? {
-        kind: 'ok',
-        value: parsed.value,
-        raw: executable.executableManifest,
-      }
-    : null;
+  const raw = toCache(manifests);
+  return raw.app === null ? null : { contenthash, executableManifest: raw.app, rootManifest: raw.root };
 }
 
 async function resolveAppContenthash(
@@ -449,24 +415,35 @@ async function resolveAppContenthash(
 }
 
 /**
- * Apply the product's branding from the root manifest at `<label>.dot`.
- *
- * Runs after the app iframe is rendered. The executable manifest result is
- * reused from the launch path; only cosmetic root metadata and icon bytes are
- * fetched here, so branding never delays the application.
+ * Read the product's root manifest at `<label>.<tld>` and its app manifest at
+ * `app.<label>.<tld>`, through the user's selected backend (smoldot or RPC).
+ */
+async function readProductManifests(label: string, chainBackend: Backend): Promise<ProductManifests> {
+  if (chainBackend === 'rpc-gateway') {
+    const mod = await loadRpcResolve();
+    const [root, app] = await Promise.all([
+      mod.resolveRootManifestViaRpc(label),
+      mod.resolveExecutableManifestViaRpc(label, 'app'),
+    ]);
+    return { root, app };
+  }
+  const [root, app] = await Promise.all([
+    resolveRootManifestRemote(label),
+    resolveExecutableManifestRemote(label, 'app'),
+  ]);
+  return { root, app };
+}
+
+/**
+ * Apply the product's branding from its manifests, read before the app was
+ * rendered. Runs after the app iframe is rendered so the icon fetch never
+ * blocks first paint. The icon bytes flow through the selected backend via
+ * `bitswapGet`, which dispatches through the protocol bridge.
  */
 async function applyProductBranding(
   label: string,
-  chainBackend: Backend,
-  appResult: ManifestResult<ExecutableManifest>,
+  { root: rootResult, app: appResult }: ProductManifests,
 ): Promise<void> {
-  let rootResult: ManifestResult<RootManifest>;
-  if (chainBackend === 'rpc-gateway') {
-    const mod = await loadRpcResolve();
-    rootResult = await mod.resolveRootManifestViaRpc(label);
-  } else {
-    rootResult = await resolveRootManifestRemote(label);
-  }
   if (rootResult.kind === 'ok') {
     const root = rootResult.value;
     document.title = root.displayName;
@@ -480,24 +457,29 @@ async function applyProductBranding(
     // full budget a CID no connected peer holds would keep a retry loop open
     // for minutes, competing for smoldot request slots against the content
     // the user is actually waiting on.
-    const iconAborter = new AbortController();
-    const iconDeadline = setTimeout(() => {
-      iconAborter.abort();
-    }, ICON_FETCH_BUDGET_MS);
-    try {
-      const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
-      const blob = new Blob([new Uint8Array(bytes)], {
-        type: `image/${root.icon.format}`,
-      });
-      setFavicon(URL.createObjectURL(blob), root.icon.format);
-      // Favicon fetch is cosmetic. A failure must not affect the tab title or
-      // the loaded app, and is logged so it stays observable in diagnostics.
-    } catch (err: unknown) {
-      log.warn(
-        `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      clearTimeout(iconDeadline);
+    const format: string = root.icon.format;
+    // A format v1 does not define keeps the default icon: the RFC forbids
+    // sniffing or correcting it, and the product stays launchable.
+    if (format === 'jpeg' || format === 'png') {
+      const iconAborter = new AbortController();
+      const iconDeadline = setTimeout(() => {
+        iconAborter.abort();
+      }, ICON_FETCH_BUDGET_MS);
+      try {
+        const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
+        const blob = new Blob([new Uint8Array(bytes)], {
+          type: `image/${format}`,
+        });
+        setFavicon(URL.createObjectURL(blob), format);
+        // Favicon fetch is cosmetic. A failure must not affect the tab title or
+        // the loaded app, and is logged so it stays observable in diagnostics.
+      } catch (err: unknown) {
+        log.warn(
+          `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        clearTimeout(iconDeadline);
+      }
     }
   }
   if (appResult.kind === 'ok' && appResult.value.kind === 'app') {
@@ -770,6 +752,7 @@ function listenForSandboxDebugMessages(
     }
   });
 }
+
 
 /** Best-effort `localStorage.getItem`, returning null on Safari-private-mode failure. */
 function readRawLocalStorage(key: string): string | null {
@@ -1242,7 +1225,7 @@ async function main(): Promise<void> {
       chainBackend === 'rpc-gateway'
         ? await (await loadRpcResolve()).resolveExecutableManifestViaRpc(label, 'worker')
         : await resolveExecutableManifestRemote(label, 'worker');
-    return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat;
+    return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
 
   // Pre-load render chunk in parallel (overlap with CID resolution)
@@ -1410,16 +1393,15 @@ async function main(): Promise<void> {
   setLoadingDomain(label);
   advancePhase(0);
   const network = getNetwork();
-  let appManifestPromise: Promise<ManifestResult<ExecutableManifest>> | undefined;
-  const appManifest = (): Promise<ManifestResult<ExecutableManifest>> => {
-    if (appManifestPromise === undefined) {
-      appManifestPromise = resolveAppExecutableManifest(label, chainBackend);
-      // CID and manifest resolution run in parallel. Attach a handler now so a
-      // fast manifest rejection is not reported as unhandled while the CID is
-      // still resolving; awaiting this same promise below preserves the error.
-      void appManifestPromise.catch(() => undefined);
+  let manifestsPromise: Promise<ProductManifests> | undefined;
+  const manifestsForLaunch = (): Promise<ProductManifests> => {
+    if (manifestsPromise === undefined) {
+      manifestsPromise = readProductManifests(label, chainBackend);
+      // CID and manifest reads run in parallel. Awaiting this same promise
+      // below preserves the rejection even if contenthash resolution fails first.
+      void manifestsPromise.catch(() => undefined);
     }
-    return appManifestPromise;
+    return manifestsPromise;
   };
   let resolvedContenthash: string | undefined;
 
@@ -1868,107 +1850,106 @@ async function main(): Promise<void> {
           : { label, hit: true, contenthash: cachedExecutable.contenthash },
     });
     if (cachedExecutable !== null) {
-      const cachedManifest = cachedAppManifest(cachedExecutable);
-      if (cachedManifest === null) {
-        await evictCachedInstalledExecutable(label, network, 'app');
-        log.warn(`[dot.li installed-executable-cache] evicted invalid app record for ${label}`);
-      } else {
-        const stopRevalidate = m.timer(S.CACHE_REVALIDATE_LATENCY);
-        let freshContenthash: string | null;
-        let freshManifestResult: ManifestResult<ExecutableManifest>;
-        try {
-          const [contenthashResult, manifestResult] = await Promise.allSettled([
-            resolveAppContenthash(label, chainBackend),
-            resolveAppExecutableManifest(label, chainBackend),
-          ]);
-          if (contenthashResult.status === 'rejected') {
-            throw contenthashResult.reason;
-          }
-          freshContenthash = contenthashResult.value;
-          if (manifestResult.status === 'rejected') {
-            if (freshContenthash !== null && freshContenthash !== cachedExecutable.contenthash) {
-              throw manifestResult.reason;
-            }
-            if (freshContenthash !== null) {
-              m.count(S.CACHE_REVALIDATE_ERROR);
-              log.warn(
-                `[dot.li installed-executable-cache] manifest revalidation failed; reusing the cached pair: ${serializeError(manifestResult.reason)}`,
-              );
-            }
-            freshManifestResult = cachedManifest;
-          } else {
-            freshManifestResult = manifestResult.value;
-          }
-          appManifestPromise = Promise.resolve(freshManifestResult);
-        } catch (error) {
-          m.count(S.CACHE_REVALIDATE_ERROR);
-          throw error;
-        } finally {
-          stopRevalidate();
+      const cachedManifests = fromCache({
+        root: cachedExecutable.rootManifest,
+        app: cachedExecutable.executableManifest,
+      });
+      const stopRevalidate = m.timer(S.CACHE_REVALIDATE_LATENCY);
+      let freshContenthash: string | null;
+      let freshManifests: ProductManifests;
+      try {
+        const [contenthashResult, manifestResult] = await Promise.allSettled([
+          resolveAppContenthash(label, chainBackend),
+          readProductManifests(label, chainBackend),
+        ]);
+        if (contenthashResult.status === 'rejected') {
+          throw contenthashResult.reason;
         }
-        const outcome = await reconcileInstalledExecutable(
-          label,
-          network,
-          'app',
-          cachedExecutable,
-          freshContenthash,
-          executableManifestText(freshManifestResult),
-        );
-        if (outcome.kind === 'cleared') {
-          stopStatusTick();
-          showNoContentError(label);
-          trace.nameResolved(null);
-          trace.finish('error', 'no contenthash');
-          captureResolveResult('no_content');
-          performance.mark('dotli:main:end');
-          return;
-        }
-        if (outcome.kind === 'match') {
-          m.count(S.CACHE_HIT);
-          log.warn(
-            `[dot.li resolve] path=installed-executable (${chainBackend}) (${elapsed(T0)}) -> ${cachedExecutable.contenthash}`,
-          );
-          await m.span(S.E2E_FAST, async () => {
-            setShieldState(shieldState);
-            setChainsButtonVisible(true);
-            const { renderAppSubdomain } = await renderChunkPromise;
-            advancePhase(contentFetchPhase);
-            await renderAppSubdomain(cachedExecutable.contenthash, label, cachedExecutable.executableManifest);
-          });
-          forgetError();
-          void recordRecentLabel(label);
-          void applyProductBranding(label, chainBackend, cachedManifest).catch((err: unknown) => {
+        freshContenthash = contenthashResult.value;
+        if (manifestResult.status === 'rejected') {
+          if (freshContenthash !== null && freshContenthash !== cachedExecutable.contenthash) {
+            throw manifestResult.reason;
+          }
+          if (freshContenthash !== null) {
+            m.count(S.CACHE_REVALIDATE_ERROR);
             log.warn(
-              `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+              `[dot.li installed-executable-cache] manifest revalidation failed; reusing the cached record: ${serializeError(manifestResult.reason)}`,
             );
-          });
-          performance.mark('dotli:main:end');
-          log.warn(`[dot.li perf] === TOTAL (validated installed executable): ${dur(T0)} ===`);
-          emitDotliDebugEvent({
-            layer: 'boot',
-            event: 'ready',
-            flowId: bootFlowId,
-            timestamp: Date.now(),
-            payload: {
-              label,
-              totalMs: performance.now() - T0,
-              path: 'fast',
-            },
-          });
-          trace.nameResolved(cachedExecutable.contenthash);
-          trace.finish('rendered');
-          captureResolveOkAfterContent();
-          return;
+          }
+          freshManifests = cachedManifests;
+        } else {
+          freshManifests = manifestResult.value;
         }
-        resolvedContenthash = outcome.contenthash;
-        log.warn(`[dot.li installed-executable-cache] executable pair changed; resolving ${resolvedContenthash}`);
+        manifestsPromise = Promise.resolve(freshManifests);
+      } catch (error) {
+        m.count(S.CACHE_REVALIDATE_ERROR);
+        throw error;
+      } finally {
+        stopRevalidate();
       }
+      const outcome = await reconcileInstalledExecutable(
+        label,
+        network,
+        'app',
+        cachedExecutable,
+        freshContenthash,
+        toCache(freshManifests),
+      );
+      if (outcome.kind === 'cleared') {
+        stopStatusTick();
+        showNoContentError(label);
+        trace.nameResolved(null);
+        trace.finish('error', 'no contenthash');
+        captureResolveResult('no_content');
+        performance.mark('dotli:main:end');
+        return;
+      }
+      assertLaunchable(freshManifests.root, freshManifests.app);
+      if (outcome.kind === 'match') {
+        m.count(S.CACHE_HIT);
+        log.warn(
+          `[dot.li resolve] path=installed-executable (${chainBackend}) (${elapsed(T0)}) -> ${cachedExecutable.contenthash}`,
+        );
+        await m.span(S.E2E_FAST, async () => {
+          setShieldState(shieldState);
+          setChainsButtonVisible(true);
+          const { renderAppSubdomain } = await renderChunkPromise;
+          advancePhase(contentFetchPhase);
+          await renderAppSubdomain(cachedExecutable.contenthash, label, cachedExecutable.executableManifest);
+        });
+        forgetError();
+        void recordRecentLabel(label);
+        void applyProductBranding(label, freshManifests).catch((err: unknown) => {
+          log.warn(
+            `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        });
+        performance.mark('dotli:main:end');
+        log.warn(`[dot.li perf] === TOTAL (validated installed executable): ${dur(T0)} ===`);
+        emitDotliDebugEvent({
+          layer: 'boot',
+          event: 'ready',
+          flowId: bootFlowId,
+          timestamp: Date.now(),
+          payload: {
+            label,
+            totalMs: performance.now() - T0,
+            path: 'fast',
+          },
+        });
+        trace.nameResolved(cachedExecutable.contenthash);
+        trace.finish('rendered');
+        captureResolveOkAfterContent();
+        return;
+      }
+      resolvedContenthash = outcome.contenthash;
+      log.warn(`[dot.li installed-executable-cache] executable record changed; resolving ${resolvedContenthash}`);
     }
     cidCache = 'miss';
     trace.cidCache(cidCache);
     m.count(S.CACHE_MISS);
     log.warn(`[dot.li perf] installed-executable cache MISS (${elapsed(T0)})`);
-    const appManifestPromiseForRender = appManifest();
+    const manifestsRead = manifestsForLaunch();
 
     // One event per cold resolve attempt, BEFORE anything that can fail.
     Sentry.captureMessage('dotli.resolve_attempt', {
@@ -2060,6 +2041,8 @@ async function main(): Promise<void> {
 
     trace.nameResolved(cid);
 
+    // A name with no contenthash has nothing to launch, whatever its
+    // manifests say, so it does not wait on them.
     if (cid === null) {
       // No pruning here: a name with no contenthash on the *selected* network
       // still resolves on another, so dropping its pill would lose good
@@ -2071,8 +2054,9 @@ async function main(): Promise<void> {
       return;
     }
 
-    const appManifestResult = await appManifestPromiseForRender;
-    const installedExecutable = installedExecutableFromManifest(cid, appManifestResult);
+    const manifests = await manifestsRead;
+    assertLaunchable(manifests.root, manifests.app);
+    const installedExecutable = installedExecutableFromManifests(cid, manifests);
     if (!cacheSettings.skipCidCache && installedExecutable !== null) {
       requestIdleCallback(() => {
         void setCachedInstalledExecutable(label, network, 'app', installedExecutable);
@@ -2083,10 +2067,10 @@ async function main(): Promise<void> {
     setChainsButtonVisible(true);
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
-    await renderAppSubdomain(cid, label, executableManifestText(appManifestResult));
+    await renderAppSubdomain(cid, label, toCache(manifests).app);
     forgetError();
     void recordRecentLabel(label);
-    void applyProductBranding(label, chainBackend, appManifestResult).catch((err: unknown) => {
+    void applyProductBranding(label, manifests).catch((err: unknown) => {
       log.warn(
         `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );

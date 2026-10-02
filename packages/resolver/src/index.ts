@@ -8,10 +8,12 @@ export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
 export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
-export { type ExecutableManifest, type ManifestResult, type RootManifest } from './manifest.js';
+// Keep cached-manifest validation free of the chain-storage reader.
 export {
   parseExecutableManifest,
   parseRootManifest,
+  toExecutableManifestResult,
+  toRootManifestResult,
   validateExecutableManifest,
   validateRootManifest,
   type AppManifest,
@@ -19,9 +21,13 @@ export {
   type AppManifestV2,
   type AppVersion,
   type ExecutableKind,
+  type ExecutableManifest,
   type FileInputHandler,
   type FileInputRequirement,
+  type ManifestRecordResult,
+  type ManifestResult,
   type PolkaVmAppManifestV2,
+  type RootManifest,
   type WebAppManifestV2,
   type WidgetManifest,
   type WorkerManifest,

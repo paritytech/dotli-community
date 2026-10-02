@@ -139,7 +139,7 @@ const successfulResolveResponse = (cid: string): string => `
     if (!e.data || e.data.namespace !== "dotli:protocol") {
       return;
     }
-    if (e.data.method === "resolveExecutableManifest") {
+    if (e.data.method === "resolveExecutableManifest" || e.data.method === "resolveRootManifest") {
       window.parent.postMessage({
         namespace: "dotli:protocol",
         kind: "response",
@@ -176,6 +176,17 @@ const successfulContenthashWithAppManifestResponse = (
         id: e.data.id,
         ok: true,
         result: "bafyfakebafyfakebafyfakebafyfakebafyfakebafyfa",
+      }, "*");
+      return;
+    }
+    if (e.data.method === "resolveRootManifest") {
+      var root = { $v: 1, displayName: "Fixture", description: "", icon: { cid: "bafyicon", format: "png" } };
+      window.parent.postMessage({
+        namespace: "dotli:protocol",
+        kind: "response",
+        id: e.data.id,
+        ok: true,
+        result: { kind: "ok", value: root, raw: JSON.stringify(root) },
       }, "*");
       return;
     }
@@ -266,6 +277,7 @@ test('As a user, when the app executable manifest is invalid, I see its validati
       result: {
         kind: 'invalid',
         errors: ['runtime.entrypoint must be a non-empty string'],
+        raw: '{"$v":2,"kind":"app","appVersion":[1,0,0]}',
       },
     }),
   );
@@ -274,10 +286,8 @@ test('As a user, when the app executable manifest is invalid, I see its validati
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.APP_UNUSABLE, { timeout: 10_000 });
-  await expect(page.locator('.error-page-detail')).toHaveText(
-    'Invalid app executable manifest: runtime.entrypoint must be a non-empty string',
-  );
+  await expect(page.locator('.error-page-title')).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('#error-retry-btn')).toHaveCount(0);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
 

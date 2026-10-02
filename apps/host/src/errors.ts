@@ -8,6 +8,7 @@ import { getActiveServicesConfig, BACKEND_LABELS } from '@dotli/config';
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
+import { ManifestRejectedError } from './manifest-gate.js';
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived
@@ -16,13 +17,6 @@ const NETWORK_SYNC_TIMEOUT: ResolverErrorName = 'NetworkSyncTimeoutError';
 // `ApiStoppedError` in `packages/resolver/src/api.ts`, which is not one of the
 // package's public error classes, so its name cannot be annotated the same way.
 const API_STOPPED = 'ApiStoppedError';
-
-export class InvalidAppExecutableManifestError extends Error {
-  constructor(errors: readonly string[]) {
-    super(`Invalid app executable manifest: ${errors.join('; ')}`);
-    this.name = 'InvalidAppExecutableManifestError';
-  }
-}
 
 export {
   ERROR_TITLES,
@@ -98,6 +92,8 @@ export type ErrorKind =
   | 'module-fetch-failed'
   | 'executable-manifest-invalid'
   | 'contenthash-unsupported'
+  | 'manifest-unsupported-version'
+  | 'manifest-invalid'
   | 'chainhead-disjointed'
   | 'chain-halted'
   | 'bitswap-no-peers'
@@ -216,20 +212,23 @@ function classifyError(
       recovery: 'reload',
     };
   }
+  // Decided from the records before any download, so a reload or another
+  // transport reads the same manifests and reaches the same verdict.
+  if (err instanceof ManifestRejectedError) {
+    return {
+      kind: err.reason === 'unsupported-version' ? 'manifest-unsupported-version' : 'manifest-invalid',
+      title: ERROR_TITLES.APP_UNUSABLE,
+      message:
+        err.reason === 'unsupported-version' ? HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION : HOST_ERRORS.MANIFEST_INVALID,
+      recovery: 'none',
+      tips: MAINTAINER_TIPS,
+    };
+  }
   if (msg.includes('non-IPFS contenthash') || msg.includes('Failed to decode contenthash')) {
     return {
       kind: 'contenthash-unsupported',
       message: HOST_ERRORS.CONTENTHASH_UNSUPPORTED,
       recovery: 'none',
-    };
-  }
-  if (err instanceof InvalidAppExecutableManifestError) {
-    return {
-      kind: 'executable-manifest-invalid',
-      title: ERROR_TITLES.APP_UNUSABLE,
-      message: err.message,
-      recovery: 'none',
-      tips: MAINTAINER_TIPS,
     };
   }
   // polkadot-api's `DisjointError`, matched on its message because the error
