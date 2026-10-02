@@ -32,7 +32,7 @@ import { getLoadingState, updateLoading } from '../../../src/state/loading.js';
 import { showErrorPage } from '../../../src/ui.js';
 import { LandingPage } from '../../../src/islands/LandingPage.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
-import { byId } from '../../support.js';
+import { byId, byTestId, query } from '../../support.js';
 
 /** The mounted screens' disposers. */
 const mounted: (() => void)[] = [];
@@ -207,7 +207,7 @@ describe('Loading screen island', () => {
     expect(getLoadingState().phase).toBe('gone');
     updateLoading({ statusText: 'late line' });
     await settle();
-    expect(screen.querySelector('#status')?.textContent).not.toBe('late line');
+    expect(query(screen, '#status').textContent).not.toBe('late line');
     expect(frames.size).toBe(0);
   });
 
@@ -232,7 +232,7 @@ describe('Loading screen island', () => {
     expect(getLoadingState().phase).toBe('gone');
     expect(getLoadingState().progress).toBe(frozen);
     expect(frames.size).toBe(0);
-    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe('Failed');
+    expect(byTestId('error-page-title').textContent).toBe('Failed');
   });
 
   it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {

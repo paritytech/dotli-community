@@ -34,6 +34,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#dotli-nav-form')).toBeVisible();
+    await expect(page.locator('body')).toHaveAttribute('data-landing', '');
     const pills = page.locator('#dotli-recent').getByTestId('landing-recent-pill');
     await expect(pills).toHaveCount(2);
     await expect(pills.first()).toHaveAttribute('href', /browse/);
@@ -217,6 +218,7 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LABEL_URL);
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+    await expect(page.locator('body')).not.toHaveAttribute('data-landing');
 
     // Then
     await expect(page.locator('#mode-button')).toBeVisible();

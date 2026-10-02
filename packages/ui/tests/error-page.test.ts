@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { showError, showErrorPage, showNoContentError, showRetryScreen } from '../src/ui.js';
-import { byTestId } from './support.js';
+import { byTestId, query } from './support.js';
 
 const XSS = '<img src=x onerror="alert(1)">';
 
@@ -17,13 +17,13 @@ describe('showErrorPage escaping', () => {
   it('As a visitor, markup in an error message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: XSS });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('[data-testid="error-page-detail"]')?.textContent).toBe(XSS);
+    expect(byTestId('error-page-detail').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in the plain parts of a message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: [XSS, ' tail'] });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('[data-testid="error-page-detail"]')?.textContent).toBe(`${XSS} tail`);
+    expect(byTestId('error-page-detail').textContent).toBe(`${XSS} tail`);
   });
 
   it('As a visitor, markup in the bolded parts of a message is shown to me as text', () => {
@@ -42,14 +42,14 @@ describe('showErrorPage escaping', () => {
   it('As a visitor, markup in an error title is shown to me as text', () => {
     showErrorPage({ title: XSS });
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe(XSS);
+    expect(byTestId('error-page-title').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in a tip is shown to me as text', () => {
     showErrorPage({ title: 't', tips: [XSS] });
     byTestId('error-page-tips');
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('[data-testid="error-page-tips-list"] li')?.textContent).toBe(XSS);
+    expect(query(document, '[data-testid="error-page-tips-list"] li').textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in a button label is shown to me as text', () => {
@@ -59,7 +59,7 @@ describe('showErrorPage escaping', () => {
     });
     byTestId('error-page-actions');
     expect(document.querySelector('img')).toBeNull();
-    expect(document.querySelector('#error-retry-btn [data-testid="error-page-retry-label"]')?.textContent).toBe(XSS);
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe(XSS);
   });
 });
 
@@ -68,7 +68,7 @@ describe('showErrorPage primary action', () => {
 
   it('As a visitor, a lone button is the recommended one', () => {
     showErrorPage({ title: 't', actions: [{ label: 'A', onClick: noop }] });
-    expect(document.querySelector('#error-retry-btn')?.hasAttribute('data-primary')).toBe(true);
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(true);
   });
 
   it('As a visitor, the first button is recommended when none is marked', () => {
@@ -79,8 +79,8 @@ describe('showErrorPage primary action', () => {
         { label: 'B', onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn')?.hasAttribute('data-primary')).toBe(true);
-    expect(document.querySelector('#error-retry-btn-1')?.hasAttribute('data-primary')).toBe(false);
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(true);
+    expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(false);
   });
 
   // The gated failover screen puts `Go Back` second and marks it primary, so
@@ -93,8 +93,8 @@ describe('showErrorPage primary action', () => {
         { label: 'B', primary: true, onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn')?.hasAttribute('data-primary')).toBe(false);
-    expect(document.querySelector('#error-retry-btn-1')?.hasAttribute('data-primary')).toBe(true);
+    expect(query(document, '#error-retry-btn').hasAttribute('data-primary')).toBe(false);
+    expect(query(document, '#error-retry-btn-1').hasAttribute('data-primary')).toBe(true);
   });
 
   // Reading order, DOM order and tab order have to agree. Placing the primary
@@ -132,10 +132,8 @@ describe('showErrorPage primary action', () => {
         { label: 'Open Settings', onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn [data-testid="error-page-retry-label"]')?.textContent).toBe(
-      'Reload',
-    );
-    expect(document.querySelector('#error-retry-btn-1 [data-testid="error-page-retry-label"]')?.textContent).toBe(
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe('Reload');
+    expect(query(document, '#error-retry-btn-1 [data-testid="error-page-retry-label"]').textContent).toBe(
       'Open Settings',
     );
   });
@@ -148,9 +146,7 @@ describe('showErrorPage primary action', () => {
         { label: 'Second', primary: true, onClick: noop },
       ],
     });
-    expect(document.querySelector('#error-retry-btn [data-testid="error-page-retry-label"]')?.textContent).toBe(
-      'First',
-    );
+    expect(query(document, '#error-retry-btn [data-testid="error-page-retry-label"]').textContent).toBe('First');
   });
 });
 
@@ -206,7 +202,7 @@ describe('showErrorPage focus', () => {
 
   it('As a keyboard user, the title does not take a tab stop', () => {
     showErrorPage({ title: 't' });
-    expect(document.querySelector('[data-testid="error-page-title"]')?.getAttribute('tabindex')).toBe('-1');
+    expect(byTestId('error-page-title').getAttribute('tabindex')).toBe('-1');
   });
 });
 
@@ -214,7 +210,7 @@ describe('showError shim', () => {
   it('As a visitor, tips passed to the shorthand still reach the page', () => {
     showError('t', 'd', undefined, ['Check the cable.']);
     byTestId('error-page-tips');
-    expect(document.querySelector('[data-testid="error-page-tips-list"] li')?.textContent).toBe('Check the cable.');
+    expect(query(document, '[data-testid="error-page-tips-list"] li').textContent).toBe('Check the cable.');
   });
 
   it('As a visitor, a bare retry callback becomes a Retry button', () => {
@@ -239,7 +235,7 @@ describe('showRetryScreen', () => {
 
     // Then
     expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
-    expect(byTestId('retry-screen').querySelector('h1')?.textContent).toBe('dot.li');
+    expect(query(byTestId('retry-screen'), 'h1').textContent).toBe('dot.li');
     expect(document.getElementById('status')?.textContent).toBe('Retrying...');
   });
 });

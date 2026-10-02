@@ -7,6 +7,7 @@ import type * as UiModule from '../src/ui.js';
 import type * as LoadingControllerModule from '../src/loading-controller.js';
 import type * as AppRootsModule from '../src/mount/app-roots.js';
 import type * as LoadingModule from '../src/state/loading.js';
+import { byTestId } from './support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../metrics/src/sentry.js', () => sentry);
@@ -106,7 +107,7 @@ describe('The loading screen is a tracked app root', () => {
 
     // Then no crawl tick lands after the error
     expect(progress()).toBe(frozen);
-    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe("This app can't be reached");
+    expect(byTestId('error-page-title').textContent).toBe("This app can't be reached");
   });
 
   it('As a visitor whose load failed, the loading bar stops ticking behind the error', () => {

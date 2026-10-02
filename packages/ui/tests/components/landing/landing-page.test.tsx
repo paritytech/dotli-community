@@ -11,7 +11,7 @@ import type * as AppRootsModule from '../../../src/mount/app-roots.js';
 import type * as UiModule from '../../../src/ui.js';
 import type * as LoadingModule from '../../../src/state/loading.js';
 import type * as TopbarModule from '../../../src/state/topbar.js';
-import { must } from '../../support.js';
+import { byTestId, must } from '../../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -196,7 +196,7 @@ describe('landing page island', () => {
       expect(document.querySelector('[data-testid="landing"]')).toBeNull();
       expect(topbar.getTopbarState().landing).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
-      expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe('Failed');
+      expect(byTestId('error-page-title').textContent).toBe('Failed');
     } finally {
       vi.useRealTimers();
     }
@@ -219,10 +219,8 @@ describe('landing page island', () => {
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'page' });
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe(
-      'Something went wrong on our side',
-    );
-    expect(document.querySelector('[data-testid="error-page-detail"]')?.textContent).toBe(
+    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
+    expect(byTestId('error-page-detail').textContent).toBe(
       "This page didn't load properly. Reloading usually fixes it.",
     );
     const button = byId('error-retry-btn') as HTMLButtonElement;
