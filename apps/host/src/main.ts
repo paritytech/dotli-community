@@ -65,7 +65,7 @@ import {
 } from '@dotli/ui';
 
 import type { LoadingPhase, ShieldState, BridgeModule as RenderModule } from '@dotli/ui';
-import type { ChainSyncKind, ExecutableManifest, ManifestResult, RootManifest, ResolvePhase } from '@dotli/resolver';
+import type { ChainSyncKind, ResolvePhase } from '@dotli/resolver';
 
 import type { ChainRole } from '@dotli/config';
 import { PHASE_BY_MILESTONE, startResolutionTrace } from './resolution-trace.js';
@@ -94,9 +94,9 @@ import {
   warmupProtocol,
 } from '@dotli/protocol';
 import {
+  evictCachedCid,
   getCachedCid,
   setCachedCid,
-  recordRevalidateOutcome,
   deleteCachedBlock,
   getCachedBlock,
   pruneBlockCache,
@@ -152,6 +152,13 @@ import {
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
 } from './errors.js';
+import {
+  assertLaunchable,
+  fromCache,
+  revalidateCachedProduct,
+  toCache,
+  type ProductManifests,
+} from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
 // Surface chunk-load failures explicitly: capture the original cause to
@@ -357,28 +364,35 @@ function setShieldState(state: ShieldState): void {
 }
 
 /**
- * Apply the product's branding from the root manifest at `<label>.dot`.
- *
- * Runs after the app iframe is rendered so a slow or absent manifest never
- * blocks first paint. The manifest itself is read through the user's
- * selected backend (smoldot or RPC). The icon bytes flow through the same
- * backend via `bitswapGet`, which dispatches through the protocol bridge.
+ * Read the product's root manifest at `<label>.<tld>` and its app manifest at
+ * `app.<label>.<tld>`, through the user's selected backend (smoldot or RPC).
  */
-async function applyProductBranding(label: string, chainBackend: Backend): Promise<void> {
-  let rootResult: ManifestResult<RootManifest>;
-  let appResult: ManifestResult<ExecutableManifest>;
+async function readProductManifests(label: string, chainBackend: Backend): Promise<ProductManifests> {
   if (chainBackend === 'rpc-gateway') {
     const mod = await loadRpcResolve();
-    [rootResult, appResult] = await Promise.all([
+    const [root, app] = await Promise.all([
       mod.resolveRootManifestViaRpc(label),
       mod.resolveExecutableManifestViaRpc(label, 'app'),
     ]);
-  } else {
-    [rootResult, appResult] = await Promise.all([
-      resolveRootManifestRemote(label),
-      resolveExecutableManifestRemote(label, 'app'),
-    ]);
+    return { root, app };
   }
+  const [root, app] = await Promise.all([
+    resolveRootManifestRemote(label),
+    resolveExecutableManifestRemote(label, 'app'),
+  ]);
+  return { root, app };
+}
+
+/**
+ * Apply the product's branding from its manifests, read before the app was
+ * rendered. Runs after the app iframe is rendered so the icon fetch never
+ * blocks first paint. The icon bytes flow through the selected backend via
+ * `bitswapGet`, which dispatches through the protocol bridge.
+ */
+async function applyProductBranding(
+  label: string,
+  { root: rootResult, app: appResult }: ProductManifests,
+): Promise<void> {
   if (rootResult.kind === 'ok') {
     const root = rootResult.value;
     document.title = root.displayName;
@@ -392,24 +406,29 @@ async function applyProductBranding(label: string, chainBackend: Backend): Promi
     // full budget a CID no connected peer holds would keep a retry loop open
     // for minutes, competing for smoldot request slots against the content
     // the user is actually waiting on.
-    const iconAborter = new AbortController();
-    const iconDeadline = setTimeout(() => {
-      iconAborter.abort();
-    }, ICON_FETCH_BUDGET_MS);
-    try {
-      const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
-      const blob = new Blob([new Uint8Array(bytes)], {
-        type: `image/${root.icon.format}`,
-      });
-      setFavicon(URL.createObjectURL(blob), root.icon.format);
-      // Favicon fetch is cosmetic. A failure must not affect the tab title or
-      // the loaded app, and is logged so it stays observable in diagnostics.
-    } catch (err: unknown) {
-      log.warn(
-        `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    } finally {
-      clearTimeout(iconDeadline);
+    const format: string = root.icon.format;
+    // A format v1 does not define keeps the default icon: the RFC forbids
+    // sniffing or correcting it, and the product stays launchable.
+    if (format === 'jpeg' || format === 'png') {
+      const iconAborter = new AbortController();
+      const iconDeadline = setTimeout(() => {
+        iconAborter.abort();
+      }, ICON_FETCH_BUDGET_MS);
+      try {
+        const bytes = await bitswapGet(root.icon.cid, iconAborter.signal);
+        const blob = new Blob([new Uint8Array(bytes)], {
+          type: `image/${format}`,
+        });
+        setFavicon(URL.createObjectURL(blob), format);
+        // Favicon fetch is cosmetic. A failure must not affect the tab title or
+        // the loaded app, and is logged so it stays observable in diagnostics.
+      } catch (err: unknown) {
+        log.warn(
+          `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      } finally {
+        clearTimeout(iconDeadline);
+      }
     }
   }
   if (appResult.kind === 'ok' && appResult.value.kind === 'app') {
@@ -627,21 +646,37 @@ function listenForSandboxDebugEvents(emit: EmitFn): void {
   });
 }
 
-/** SWR pass after fast-path render. Re-resolves, updates cache, surfaces a reload notice on change. */
-async function runBackgroundRevalidate(label: string, servedCid: string, chainBackend: Backend): Promise<void> {
+/**
+ * SWR pass after a cache hit. Re-resolves the CID and applies
+ * `revalidateCachedProduct`: the cached manifests stay unless the app was
+ * redeployed or its name cleared. `onScreen` is false when the cached copy was
+ * refused rather than rendered, so an eviction has no page to reload.
+ */
+async function runBackgroundRevalidate(
+  label: string,
+  servedCid: string,
+  chainBackend: Backend,
+  onScreen: boolean,
+): Promise<void> {
   const stopTimer = m.timer(S.CACHE_REVALIDATE_LATENCY);
   try {
-    let freshCid: string | null;
-    if (chainBackend !== 'rpc-gateway') {
-      freshCid = await resolveDotNameRemote(label);
-    } else {
-      const { resolveDotNameViaRpc } = await loadRpcResolve();
-      freshCid = await resolveDotNameViaRpc(label);
-    }
+    const decision = await revalidateCachedProduct(
+      servedCid,
+      async () =>
+        chainBackend === 'rpc-gateway'
+          ? (await loadRpcResolve()).resolveDotNameViaRpc(label)
+          : resolveDotNameRemote(label),
+      () => readProductManifests(label, chainBackend),
+    );
     stopTimer();
-    const outcome = await recordRevalidateOutcome(label, servedCid, freshCid);
-    if (outcome.kind === 'update') {
-      log.warn(`[dot.li cid-cache] revalidate: ${label} updated ${servedCid} -> ${outcome.cid}`);
+    if (decision.kind === 'keep') {
+      m.count(S.CACHE_REVALIDATE_MATCH);
+      return;
+    }
+    if (decision.kind === 'update') {
+      await setCachedCid(label, getNetwork(), decision.cid, decision.manifests);
+      m.count(S.CACHE_REVALIDATE_UPDATE);
+      log.warn(`[dot.li cid-cache] revalidate: ${label} updated ${servedCid} -> ${decision.cid}`);
       showNotification({
         label: 'New version available',
         text: 'This site has been updated. Reload to see the latest version.',
@@ -653,9 +688,15 @@ async function runBackgroundRevalidate(label: string, servedCid: string, chainBa
           },
         },
       });
-    } else if (outcome.kind === 'cleared') {
-      // Owner unset the pointer. Cache is already evicted, so reload to show the cold-path error.
-      log.warn(`[dot.li cid-cache] revalidate: ${label} cleared on-chain, reloading`);
+      return;
+    }
+    // The name was cleared, or redeployed with manifests this host cannot
+    // read. Either way the cached copy is gone; reloading takes the cold path,
+    // which shows why.
+    await evictCachedCid(label);
+    m.count(S.CACHE_REVALIDATE_CLEARED);
+    log.warn(`[dot.li cid-cache] revalidate: ${label} ${decision.reason} on-chain, evicted`);
+    if (onScreen) {
       window.location.reload();
     }
   } catch (err) {
@@ -1123,7 +1164,7 @@ async function main(): Promise<void> {
       chainBackend === 'rpc-gateway'
         ? await (await loadRpcResolve()).resolveExecutableManifestViaRpc(label, 'worker')
         : await resolveExecutableManifestRemote(label, 'worker');
-    return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat;
+    return result.kind === 'ok' && result.value.kind === 'worker' && result.value.includes.chat === true;
   });
 
   // Pre-load render chunk in parallel (overlap with CID resolution)
@@ -1713,7 +1754,8 @@ async function main(): Promise<void> {
   };
 
   try {
-    const cachedCid = cacheSettings.skipCidCache ? null : await getCachedCid(label);
+    const cached = cacheSettings.skipCidCache ? null : await getCachedCid(label, getNetwork());
+    const cachedCid = cached?.cid ?? null;
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'cid_cache_checked',
@@ -1726,10 +1768,23 @@ async function main(): Promise<void> {
       },
     });
     trace.cidCache(cachedCid !== null ? 'hit' : 'miss');
-    if (cachedCid !== null) {
+    if (cached !== null) {
       cidCache = 'hit';
       m.count(S.CACHE_HIT);
-      log.warn(`[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cachedCid}`);
+      log.warn(`[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cached.cid}`);
+      // Judged again by today's validator, before anything renders. A copy
+      // that no longer passes is refused but kept: only a cleanup or a
+      // redeploy drops cached manifests, and the CID check below is what
+      // notices a redeploy that fixed them.
+      const cachedManifests = fromCache(cached.manifests);
+      try {
+        assertLaunchable(cachedManifests.root, cachedManifests.app);
+      } catch (err) {
+        requestIdleCallback(() => {
+          void runBackgroundRevalidate(label, cached.cid, chainBackend, false);
+        });
+        throw err;
+      }
       // Wrap the warm-path render in a span so its duration is queryable
       // as `dotli.e2e.fast_path` alongside `dotli.e2e.slow_path`.
       await m.span(S.E2E_FAST, async () => {
@@ -1737,11 +1792,11 @@ async function main(): Promise<void> {
         setChainsButtonVisible(true);
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
-        await renderAppSubdomain(cachedCid, label);
+        await renderAppSubdomain(cached.cid, label);
       });
       forgetError();
       void recordRecentLabel(label);
-      void applyProductBranding(label, chainBackend).catch((err: unknown) => {
+      void applyProductBranding(label, cachedManifests).catch((err: unknown) => {
         log.warn(
           `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
         );
@@ -1759,12 +1814,12 @@ async function main(): Promise<void> {
           path: 'fast',
         },
       });
-      trace.nameResolved(cachedCid);
+      trace.nameResolved(cached.cid);
       trace.finish('rendered');
       captureResolveResult('ok');
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
-        void runBackgroundRevalidate(label, cachedCid, chainBackend);
+        void runBackgroundRevalidate(label, cached.cid, chainBackend, true);
       });
       return;
     }
@@ -1787,6 +1842,12 @@ async function main(): Promise<void> {
     // smoldot path (closure detachment across postMessage awaits).
     const coldStartMs = performance.now();
     performance.mark('dotli:resolve:start');
+    // Read in parallel with the CID and awaited before anything renders, so a
+    // product whose manifests rule it out is refused before its download.
+    const manifestsRead = readProductManifests(label, chainBackend);
+    manifestsRead.catch(() => {
+      /* awaited below; a CID failure first must not leave this unhandled */
+    });
     const resolveStart = performance.now();
 
     const resolveFlowId =
@@ -1874,6 +1935,9 @@ async function main(): Promise<void> {
 
     trace.nameResolved(cid);
 
+    const manifests = await manifestsRead;
+    assertLaunchable(manifests.root, manifests.app);
+
     if (cid === null) {
       // No pruning here: a name with no contenthash on the *selected* network
       // still resolves on another, so dropping its pill would lose good
@@ -1887,7 +1951,7 @@ async function main(): Promise<void> {
 
     if (!cacheSettings.skipCidCache) {
       requestIdleCallback(() => {
-        void setCachedCid(label, cid);
+        void setCachedCid(label, getNetwork(), cid, toCache(manifests));
       });
     }
 
@@ -1899,7 +1963,7 @@ async function main(): Promise<void> {
     await renderAppSubdomain(cid, label);
     forgetError();
     void recordRecentLabel(label);
-    void applyProductBranding(label, chainBackend).catch((err: unknown) => {
+    void applyProductBranding(label, manifests).catch((err: unknown) => {
       log.warn(
         `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
       );
