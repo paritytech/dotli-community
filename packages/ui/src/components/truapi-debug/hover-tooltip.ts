@@ -7,8 +7,8 @@
  * position, `pointerleave` hides it. Bypasses the browser-native `<title>`
  * delay so the information appears the instant the cursor lands.
  *
- * Delegated from `root` rather than bound per element, so a pane that rebuilds
- * its `innerHTML` on a timer keeps working without re-wiring. The tooltip is
+ * Delegated from `root` rather than bound per element, so a view whose
+ * elements come and go keeps working without re-wiring. The tooltip is
  * positioned on every pointer move, so it is driven directly rather than
  * through signals.
  *

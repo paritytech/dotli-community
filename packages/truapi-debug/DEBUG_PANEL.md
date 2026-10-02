@@ -251,6 +251,9 @@ rail, tick, label, connector) carries a `data-key` derived from its stable id (e
 render we walk the new layout and either update an existing element's attributes in place or create it if it didn't
 exist; elements whose key is absent from the new layout are removed.
 
+The Resolution view does the same with Solid: its facts are keyed by name, its rows by chain role and its blocks by
+position, and a redraw whose model did not change stops before touching anything.
+
 This keeps hover state stable and means clicks don't get dropped between pointerdown and click when events are streaming
 in — the earlier bug class where `<details>` expansion and timeline-box selection were flaky under heavy traffic.
 

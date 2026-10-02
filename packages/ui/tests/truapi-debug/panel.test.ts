@@ -209,12 +209,7 @@ function tab(view: 'list' | 'timeline' | 'resolution' | 'archive'): HTMLElement 
 }
 
 function resolutionFact(name: string): string {
-  for (const fact of panel().querySelectorAll('.td-res .td-res-fact')) {
-    if (fact.querySelector('dt')?.firstChild?.textContent === name) {
-      return fact.querySelector('dd')?.textContent ?? '';
-    }
-  }
-  throw new Error(`no resolution fact ${name}`);
+  return query(panel(), `[data-testid="td-res"] [data-testid="td-res-fact"][data-fact="${name}"] dd`).textContent;
 }
 
 /** happy-dom lays nothing out: give the panel element a box. */
@@ -334,7 +329,7 @@ describe('truapi debug panel: mount and dispose', () => {
       'No events match the current filter.',
     );
     expect(q('.td-timeline').hidden).toBe(true);
-    expect(q('.td-res').hidden).toBe(true);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
     expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
@@ -560,10 +555,10 @@ describe('truapi debug panel: header actions', () => {
     frame();
 
     // Then
-    expect(q('.td-res .td-res-empty').textContent).toBe(
+    expect(q('[data-testid="td-res"] [data-testid="td-res-empty"]').textContent).toBe(
       'No page load recorded yet. Reload the page with the panel open.',
     );
-    expect(panel().querySelector('.td-res-summary')).toBeNull();
+    expect(panel().querySelector('[data-testid="td-res-summary"]')).toBeNull();
   });
 
   it('As a dotli developer, Clear empties the list, the counts, the selection and the Resolution view', () => {
@@ -587,7 +582,7 @@ describe('truapi debug panel: header actions', () => {
       'Select an event on the left to inspect its payload.',
     );
     click(tab('resolution'));
-    expect(panel().querySelector('.td-res .td-res-empty')).not.toBeNull();
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
   });
 
   it('As a dotli developer, Export downloads the filtered events as JSON', async () => {
@@ -1125,7 +1120,7 @@ describe('truapi debug panel: views', () => {
     expect(tab('list').getAttribute('aria-selected')).toBe('false');
     expect(q('[data-testid="td-list"]').hidden).toBe(true);
     expect(q('.td-timeline').hidden).toBe(false);
-    expect(q('.td-res').hidden).toBe(true);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(panel().getAttribute('data-view')).not.toBe('resolution');
     const headers = [...panel().querySelectorAll('.td-timeline .td-sw-col .td-sw-header-label')].map(
       h => h.textContent,
@@ -1141,7 +1136,7 @@ describe('truapi debug panel: views', () => {
     // Then
     expect(tab('resolution').getAttribute('aria-selected')).toBe('true');
     expect(q('.td-timeline').hidden).toBe(true);
-    expect(q('.td-res').hidden).toBe(false);
+    expect(q('[data-testid="td-res"]').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).toBe('resolution');
     expect(q('[data-testid="td-body-splitter"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(true);
@@ -1151,7 +1146,7 @@ describe('truapi debug panel: views', () => {
 
     // Then
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
-    expect(q('.td-res').hidden).toBe(true);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).not.toBe('resolution');
     expect(rows()).toHaveLength(3);
@@ -1263,7 +1258,7 @@ describe('truapi debug panel: views', () => {
     // Given
     mount();
     click(tab('resolution'));
-    expect(q('.td-res .td-res-empty')).not.toBeNull();
+    expect(q('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
 
     // When
     system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
@@ -1274,7 +1269,7 @@ describe('truapi debug panel: views', () => {
     frame();
 
     // Then
-    expect(panel().querySelector('.td-res .td-res-summary')).not.toBeNull();
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-summary"]')).not.toBeNull();
     expect(resolutionFact('name')).toBe('myapp');
     const first = resolutionFact('elapsed');
 
@@ -1291,6 +1286,76 @@ describe('truapi debug panel: views', () => {
 
     // Then
     expect(resolutionFact('elapsed')).toBe(second);
+  });
+
+  it('As a dotli developer, the Resolution chart shows each phase, the open block and the chains that never started', () => {
+    // Given
+    mount();
+    click(tab('resolution'));
+
+    // When the relay connects, then syncs, and the load fails
+    system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'connecting' });
+    vi.advanceTimersByTime(300);
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'warping' });
+    frame();
+
+    // Then
+    const res = q('[data-testid="td-res"]');
+    const relay = query(res, '[data-testid="td-res-row"][data-role="relay"]');
+    const blocks = [...relay.querySelectorAll('[data-testid="td-res-block"]')];
+    expect(blocks.map(b => b.getAttribute('data-phase'))).toEqual(['connecting', 'unknown']);
+    expect(blocks.map(b => b.hasAttribute('data-open'))).toEqual([false, true]);
+    expect(blocks[1]?.textContent).toBe('warping');
+    expect(res.querySelectorAll('[data-testid="td-res-idle"]')).toHaveLength(3);
+    expect(query(res, '[data-fact="outcome"] [data-testid="td-res-value"]').getAttribute('data-tone')).toBe('running');
+
+    // When
+    system('boot', 'failed', 'flow-boot', { reason: 'no peers' });
+    frame();
+
+    // Then the load is over, so no block is open, and the reason is a tooltip
+    expect(relay.querySelector('[data-testid="td-res-block"][data-open]')).toBeNull();
+    const outcome = query(res, '[data-fact="outcome"] [data-testid="td-res-value"]');
+    expect(outcome.textContent).toBe('failed');
+    expect(outcome.getAttribute('data-tone')).toBe('bad');
+    expect(outcome.getAttribute('data-tooltip')).toBe('no peers');
+    expect(outcome.hasAttribute('data-tooltip-prose')).toBe(true);
+  });
+
+  it('As a dotli developer, a Resolution redraw keeps the nodes it draws, and a finished load is not touched at all', () => {
+    // Given an in-flight load: a closed block and an open one
+    mount();
+    click(tab('resolution'));
+    system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'connecting' });
+    vi.advanceTimersByTime(300);
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'syncing' });
+    frame();
+    const res = q('[data-testid="td-res"]');
+    const block = query(res, '[data-role="relay"] [data-testid="td-res-block"]');
+    const info = query(res, '[data-fact="elapsed"] [data-testid="td-res-info"]');
+    const width = block.style.width;
+
+    // When a tick passes
+    vi.advanceTimersByTime(500);
+
+    // Then the closed block narrows as the axis grows, in the same node
+    expect(query(res, '[data-role="relay"] [data-testid="td-res-block"]')).toBe(block);
+    expect(block.style.width).not.toBe(width);
+    expect(query(res, '[data-fact="elapsed"] [data-testid="td-res-info"]')).toBe(info);
+
+    // When the load finishes and more ticks pass
+    system('boot', 'ready', 'flow-boot');
+    frame();
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(res, { subtree: true, childList: true, attributes: true, characterData: true });
+    vi.advanceTimersByTime(1500);
+
+    // Then nothing in the view changed
+    expect(observer.takeRecords()).toEqual([]);
+    observer.disconnect();
+    expect(query(res, '[data-role="relay"] [data-testid="td-res-block"]')).toBe(block);
   });
 });
 

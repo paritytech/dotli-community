@@ -381,7 +381,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
 
     // Then
     expect(calls.buildResolution).toBe(1);
-    expect(panel().querySelector('.td-res .td-res-summary')).not.toBeNull();
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-summary"]')).not.toBeNull();
   });
 
   it('As a dotli developer, the timeline does not re-lay out for a frame whose events are all filtered out', () => {

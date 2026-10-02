@@ -45,10 +45,13 @@ export { panelDockInset } from './iframe-layout.js';
 export { OpenCallTracker, SLOW_AFTER_MS, formatPending, openCalls, pendingKeyOf } from './pending.js';
 export {
   buildResolution,
-  buildResolutionContainer,
   createResolutionRecorder,
-  renderResolution,
+  type CacheResult,
+  type ResolutionBlock,
+  type ResolutionModel,
   type ResolutionRecorder,
+  type ResolutionRow,
+  type ResolutionSummary,
 } from './resolution-view.js';
 export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData, type TagKind } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';

@@ -58,6 +58,12 @@
   --td-teal-pale: #99f6e4;
   --td-teal-bg: #0b1410;
   --td-teal-tint: rgba(45, 212, 191, 0.08);
+  /* The network panel's block-health colours: the Resolution phase blocks
+     and its outcome and cache values. */
+  --td-health-ok: #22c55e;
+  --td-health-warn: #eab308;
+  --td-health-bad: #f87171;
+  --td-health-idle: #8f8f8f;
   /* Layer badge fill and edge, one pair per layer. */
   --td-boot-bg: #0f172a;
   --td-boot-line: #1e40af;

@@ -1,0 +1,123 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel Resolution chart: a row per chain of phase
+   blocks on a shared time axis. The phase colours are the network panel's
+   block-health palette, so a chain that reads green there reads green here.
+   A block shows its phase as data-phase, and the block a chain is still
+   sitting in carries data-open. The axis row and track carry data-axis. */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+.row[data-axis] {
+  height: 18px;
+}
+
+.name {
+  flex: 0 0 58px;
+  color: var(--td-fg-muted);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A fixed basis, not `auto`: every track has to start and end at the same x
+   or the shared time axis above them lines up with nothing. */
+.meta {
+  flex: 0 0 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--td-fg-dim);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.track {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 18px;
+  background: var(--td-bg-raised);
+  border-radius: 2px;
+}
+.track[data-axis] {
+  background: none;
+}
+
+.tick {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  color: var(--td-fg-dim);
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+/* First and last labels would otherwise hang off both ends of the track. */
+.tick:first-child {
+  transform: none;
+}
+.tick:last-child {
+  transform: translateX(-100%);
+}
+
+.idle {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  padding-left: 6px;
+  color: var(--td-fg-dim);
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.block {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  box-sizing: border-box;
+}
+.block[data-phase='connecting'] {
+  background: var(--td-health-idle);
+}
+.block[data-phase='syncing'] {
+  background: var(--td-health-warn);
+}
+.block[data-phase='ready'] {
+  background: var(--td-health-ok);
+}
+.block[data-phase='stalled'] {
+  background: var(--td-health-bad);
+}
+.block[data-phase='unknown'] {
+  background: var(--td-line-hover);
+}
+/* The block a chain is still sitting in has no end yet, so it fades out
+   rather than drawing an edge the data does not have. */
+.block[data-open] {
+  mask-image: linear-gradient(to right, #000 70%, transparent 100%);
+}
+
+.label {
+  font-size: 9px;
+  color: var(--td-bg);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block[data-phase='unknown'] .label {
+  color: var(--td-fg-strong);
+}
