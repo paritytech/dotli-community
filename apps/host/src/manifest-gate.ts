@@ -75,4 +75,3 @@ export function assertLaunchable(root: ManifestResult<RootManifest>, app: Manife
   }
   assertReadable(app, 'app');
 }
-

@@ -152,12 +152,7 @@ import {
   trustedProviderWarning,
   TRY_ANYWAY_BTN_LABEL,
 } from './errors.js';
-import {
-  assertLaunchable,
-  fromCache,
-  toCache,
-  type ProductManifests,
-} from './manifest-gate.js';
+import { assertLaunchable, fromCache, toCache, type ProductManifests } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 import { WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
 import { onNextInteraction } from './wallet-handover.js';
@@ -752,7 +747,6 @@ function listenForSandboxDebugMessages(
     }
   });
 }
-
 
 /** Best-effort `localStorage.getItem`, returning null on Safari-private-mode failure. */
 function readRawLocalStorage(key: string): string | null {
