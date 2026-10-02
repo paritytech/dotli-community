@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
+import { astroLazyCss } from '@config/vite/astro-lazy-css';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { buildInfo, readPackageVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
@@ -284,6 +285,9 @@ export default defineConfig({
     // Compiles Solid for the islands: server-rendered at build time and
     // hydrated in the browser (see config/astro-solid).
     astroSolid(),
+    // The CSS of a chunk the page imports on demand loads with that chunk
+    // rather than at boot.
+    astroLazyCss(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The

@@ -1,0 +1,128 @@
+// Copyright 2026 Parity Technologies (UK) Ltd.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+// Lazy chunks' CSS under Astro. Astro gives a page every stylesheet it finds
+// by walking up from each CSS module to the page, through dynamic imports as
+// well as static ones, so a chunk the page imports on demand has its CSS
+// linked (or inlined) at boot. Astro has no option for this, and a dynamic
+// import is the only way to reach such a module. Under plain Vite a
+// dynamically imported chunk loads its own CSS before it runs, and this
+// brings that back.
+
+import type { AstroIntegration } from 'astro';
+import type { Plugin, Rolldown } from 'vite';
+
+type OutputChunk = Rolldown.OutputChunk;
+
+/** The Astro plugin that hands each page its stylesheets. */
+const ASTRO_CSS_PLUGIN = 'astro:rollup-plugin-build-css';
+
+type GenerateBundle = (this: unknown, ...args: unknown[]) => unknown;
+
+interface ModuleInfoLike {
+  readonly dynamicImporters: readonly string[];
+}
+
+interface ContextLike {
+  getModuleInfo(id: string): ModuleInfoLike | null;
+}
+
+/**
+ * The module as Astro's stylesheet walk sees it: only the dynamic importers
+ * that are Astro's own virtual modules (`\0...`) are kept, as Astro imports
+ * each page dynamically from one and recognizes a page by it.
+ */
+function withoutDynamicImporters(info: ModuleInfoLike): ModuleInfoLike {
+  return new Proxy(info, {
+    get: (target, key, receiver) =>
+      key === 'dynamicImporters'
+        ? target.dynamicImporters.filter(id => id.startsWith('\0'))
+        : (Reflect.get(target, key, receiver) as unknown),
+  });
+}
+
+/** The plugin context Astro's stylesheet walk runs with. */
+function staticImportsOnly(context: ContextLike): ContextLike {
+  return new Proxy(context, {
+    get: (target, key) => {
+      if (key === 'getModuleInfo') {
+        return (id: string) => {
+          const info = target.getModuleInfo(id);
+          return info === null ? null : withoutDynamicImporters(info);
+        };
+      }
+      const value = Reflect.get(target, key, target) as unknown;
+      return typeof value === 'function' ? (value as GenerateBundle).bind(target) : value;
+    },
+  });
+}
+
+/**
+ * Pages link the CSS of what they import statically, and a chunk imported
+ * on demand loads its CSS with it (Vite's preload of a dynamic import):
+ * - Astro's walk from a CSS module to the pages follows static imports.
+ * - Astro drops a stylesheet that no page links unless a chunk lists it
+ *   among its assets, so each client chunk the page loads only on demand
+ *   lists its CSS there too. A chunk the page loads up front keeps Astro's
+ *   handling: the page's stylesheets hold its CSS, and its own copy goes.
+ */
+export function astroLazyCss(): AstroIntegration {
+  const plugin: Plugin = {
+    name: 'dotli-lazy-css',
+    apply: 'build',
+    configResolved(config) {
+      const css = config.plugins.find(candidate => candidate.name === ASTRO_CSS_PLUGIN);
+      const hook = css?.generateBundle;
+      if (css === undefined || typeof hook !== 'function') {
+        throw new Error(`${ASTRO_CSS_PLUGIN} not found: check astroLazyCss against this Astro version`);
+      }
+      const generateBundle = hook as GenerateBundle;
+      (css as { generateBundle: GenerateBundle }).generateBundle = function (this: unknown, ...args: unknown[]) {
+        return generateBundle.apply(staticImportsOnly(this as ContextLike), args);
+      };
+    },
+    generateBundle(_, bundle) {
+      if (this.environment.name !== 'client') {
+        return;
+      }
+      const chunks = new Map<string, OutputChunk>();
+      for (const output of Object.values(bundle)) {
+        if (output.type === 'chunk') {
+          chunks.set(output.fileName, output);
+        }
+      }
+      // What the page loads up front: the entries (its scripts and islands)
+      // and what they import statically. The page's own CSS covers them.
+      const boot = new Set<string>();
+      const visit = (file: string): void => {
+        if (!boot.has(file)) {
+          boot.add(file);
+          for (const dependency of chunks.get(file)?.imports ?? []) {
+            visit(dependency);
+          }
+        }
+      };
+      for (const chunk of chunks.values()) {
+        if (chunk.isEntry) {
+          visit(chunk.fileName);
+        }
+      }
+      for (const chunk of chunks.values()) {
+        if (!boot.has(chunk.fileName) && chunk.viteMetadata !== undefined) {
+          const { importedCss, importedAssets } = chunk.viteMetadata;
+          for (const file of importedCss) {
+            importedAssets.add(file);
+          }
+        }
+      }
+    },
+  };
+  return {
+    name: 'dotli-lazy-css',
+    hooks: {
+      'astro:config:setup': ({ updateConfig }) => {
+        updateConfig({ vite: { plugins: [plugin] } });
+      },
+    },
+  };
+}
