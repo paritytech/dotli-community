@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/host-rust-core",
   "upstreamBranch": "feat/pvm-peer-transport",
-  "upstreamRevision": "79cd7de8a7ccb4ef27e81ae158f6e7cf9aedffd6",
+  "upstreamRevision": "ab46811b1e02469119a94706d7b4a01c9fc57839",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -13,14 +13,14 @@
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "a17d04963c096d859699e88f41c473e899a84fa90a5dc3f05ce2018f57752459",
+      "sourceArchiveSha256": "1a99b8c8ab0f9e22ccc24d78273cc2c42d621e368fc31587f93699dc999a8a36",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "cddf79e80de21e517b97ad2156611f09bb77c4c55016994384efb7bb593cbdb2",
+      "wasmSha256": "b80462f2f938ccb3aaef6035bb2dccd71159588cc9d8a887f00450c558bc1113",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "79cd7de8a7ccb4ef27e81ae158f6e7cf9aedffd6",
+  "wasmUpstreamRevision": "ab46811b1e02469119a94706d7b4a01c9fc57839",
   "pullRequest": "https://github.com/paritytech/host-rust-core/pull/1010"
 }
