@@ -90,9 +90,13 @@ describe('locale host callbacks', () => {
 
       const pending = iterator.next();
       timeZone = 'Asia/Tokyo';
-      if (signal === 'timer') vi.advanceTimersByTime(60_000);
-      else if (signal === 'focus') window.dispatchEvent(new Event('focus'));
-      else document.dispatchEvent(new Event('visibilitychange'));
+      if (signal === 'timer') {
+        vi.advanceTimersByTime(60_000);
+      } else if (signal === 'focus') {
+        window.dispatchEvent(new Event('focus'));
+      } else {
+        document.dispatchEvent(new Event('visibilitychange'));
+      }
       expect(yielded(await pending)._unsafeUnwrap().timeZone).toBe('Asia/Tokyo');
 
       const waiting = iterator.next();

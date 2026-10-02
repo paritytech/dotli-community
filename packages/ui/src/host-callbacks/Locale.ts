@@ -21,7 +21,9 @@ export function createLocaleSubscribe(): Required<LocaleHost>['subscribeLocale']
         push(previous);
       } catch (error) {
         pushError({ reason: error instanceof Error ? error.message : String(error) });
-        return () => {};
+        return () => {
+          // No listeners were installed when reading the initial context failed.
+        };
       }
       const onContextChanged = (): void => {
         try {
@@ -35,7 +37,9 @@ export function createLocaleSubscribe(): Required<LocaleHost>['subscribeLocale']
         }
       };
       const onVisible = (): void => {
-        if (document.visibilityState === 'visible') onContextChanged();
+        if (document.visibilityState === 'visible') {
+          onContextChanged();
+        }
       };
       window.addEventListener('languagechange', onContextChanged);
       window.addEventListener('focus', onContextChanged);
