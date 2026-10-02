@@ -2,7 +2,7 @@ name: Tests
 on:
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
   push:
     branches:
       - main
@@ -52,7 +52,7 @@ jobs:
           # deploy.yml builds with metrics on, so this is the shape that ships.
           # network-transport.spec.ts also needs it: `m.gauge` compiles to a
           # no-op without it and the spec skips itself.
-          VITE_METRICS: "true"
+          VITE_METRICS: 'true'
           # Sentry no-ops on an unset DSN and would tunnel nothing. Never
           # dialled: `tunnel: "/t"` keeps every envelope same-origin.
           VITE_SENTRY_DSN: http://publickey@127.0.0.1:5173/1
@@ -61,8 +61,12 @@ jobs:
       - name: Run functional tests
         working-directory: apps/host
         env:
-          VITE_METRICS: "true"
-        run: npx playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts tests/functional/host-settings.spec.ts || true
+          VITE_METRICS: 'true'
+        run:
+          npx playwright test --config=tests/functional/playwright.config.ts tests/functional/loading.spec.ts
+          tests/functional/resolution.spec.ts tests/functional/navigation.spec.ts
+          tests/functional/network-transport.spec.ts tests/functional/ui-smoke.spec.ts
+          tests/functional/host-settings.spec.ts || true
 
       - name: Apply functional threshold
         working-directory: apps/host
@@ -129,7 +133,7 @@ jobs:
       # network bump can't silently leave the CLI on the wrong chain.
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The CLI self-updates by default; keep CI runs deterministic.
-      TRUAPI_HOST_NO_UPDATE: "1"
+      TRUAPI_HOST_NO_UPDATE: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

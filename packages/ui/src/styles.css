@@ -7,13 +7,13 @@
  * Dark theme is the default; light overrides live in themes.css.
  */
 
-@import "./styles/base.css";
-@import "./styles/popover.css";
-@import "./styles/topbar.css";
-@import "./styles/modals.css";
-@import "./styles/signing.css";
-@import "./styles/password-prompt.css";
-@import "./styles/toasts.css";
-@import "./styles/landing.css";
-@import "./styles/sandbox-checker.css";
-@import "./styles/themes.css";
+@import './styles/base.css';
+@import './styles/popover.css';
+@import './styles/topbar.css';
+@import './styles/modals.css';
+@import './styles/signing.css';
+@import './styles/password-prompt.css';
+@import './styles/toasts.css';
+@import './styles/landing.css';
+@import './styles/sandbox-checker.css';
+@import './styles/themes.css';
