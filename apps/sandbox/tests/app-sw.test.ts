@@ -76,7 +76,7 @@ async function replacePersistedArchive(archive: unknown): Promise<void> {
       resolve(opening.result);
     };
     opening.onerror = () => {
-      reject(opening.error);
+      reject(opening.error ?? new Error('archive fixture DB open failed'));
     };
   });
   try {
@@ -87,7 +87,7 @@ async function replacePersistedArchive(archive: unknown): Promise<void> {
         resolve();
       };
       tx.onerror = () => {
-        reject(tx.error);
+        reject(tx.error ?? new Error('archive fixture write failed'));
       };
     });
   } finally {
@@ -163,10 +163,10 @@ describe('app service worker', () => {
     const first = await startWorker();
     await setArchive(first, { 'main.js': 'old' });
     const restarted = await startWorker();
-    const get = IDBObjectStore.prototype.get;
     let replacement: Promise<unknown[]> | undefined;
-    vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementationOnce(function (this: IDBObjectStore, key) {
-      const read = get.call(this, key);
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementationOnce(function (this: IDBObjectStore, key) {
+      get.mockRestore();
+      const read = this.get(key);
       read.addEventListener(
         'success',
         () => {

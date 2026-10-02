@@ -90,7 +90,6 @@ export type ErrorKind =
   | 'worker-init-timeout'
   | 'chain-spec-rejected'
   | 'module-fetch-failed'
-  | 'executable-manifest-invalid'
   | 'contenthash-unsupported'
   | 'manifest-unsupported-version'
   | 'manifest-invalid'
