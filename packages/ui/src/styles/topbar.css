@@ -38,7 +38,7 @@
 }
 
 /* Top Bar */
-/* --topbar-height and the --safe-* insets are defined in base.css. */
+/* --topbar-height and the --safe-* insets are defined in global.css. */
 #topbar {
   position: fixed;
   top: 0;

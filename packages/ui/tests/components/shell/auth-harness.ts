@@ -88,5 +88,6 @@ export { byId };
 export function expectQrSpinnerView(): void {
   const qrBox = byId('auth-modal-qr');
   byTestId('auth-modal-spinner', qrBox);
+  expect(qrBox.childElementCount).toBe(1);
   expect(qrBox.querySelector('canvas')).toBeNull();
 }

@@ -66,7 +66,7 @@ describe('AuthButton', () => {
     subscribe.mockRestore();
   });
 
-  it('As a logged-out user, I see the login button, enabled, with the markup the topbar rendered', async () => {
+  it('As a logged-out user, I see the login button, enabled, with its ids, labels and ARIA state', async () => {
     // When
     const button = await renderButton();
 
@@ -79,7 +79,7 @@ describe('AuthButton', () => {
     expectMarkup(button, 'logged-out');
   });
 
-  it('As a logged-in user, I see my initials in the badge, with the markup the topbar rendered', async () => {
+  it('As a logged-in user, I see my initials in the badge, with its ids, labels and ARIA state', async () => {
     // Given
     const button = await renderButton();
 
@@ -116,7 +116,7 @@ describe('AuthButton', () => {
     expectMarkup(button, { initials: 'AL' });
   });
 
-  it('As a logged-in user without a username, I see the anonymous badge, with the markup the topbar rendered', async () => {
+  it('As a logged-in user without a username, I see the anonymous badge, with its ids, labels and ARIA state', async () => {
     // Given
     const button = await renderButton();
 

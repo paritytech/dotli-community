@@ -20,7 +20,7 @@ import {
   useAuthController,
 } from './auth-harness.js';
 import type * as PopoverModule from '../../../src/components/shell/create-popover.js';
-import { query } from '../../support.js';
+import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const device = vi.hoisted(() => ({ mobile: false }));
@@ -177,7 +177,7 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       expect(tags(qrBox)).toEqual(['DIV']);
       const progress = nth(qrBox.children, 0);
       expect(tags(progress)).toEqual(['DIV', 'P']);
-      expect(progress.children[0]?.childElementCount).toBe(0);
+      byTestId('auth-modal-spinner', progress);
       expect(progress.children[1]?.textContent).toBe('Logging in...');
       break;
     }
@@ -256,7 +256,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe('AuthModal markup', () => {
-  it('As a dotli user, the closed modal has the dialog markup the topbar set up, empty', async () => {
+  it('As a dotli user, the closed modal has its dialog ids, labels and ARIA state, empty', async () => {
     // When
     const backdrop = await renderModal();
 
@@ -272,7 +272,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a desktop user, the login modal opens on the spinner, then shows the QR code the topbar drew', async () => {
+  it('As a desktop user, the login modal opens on the spinner, then shows the QR code', async () => {
     // Given
     const backdrop = await renderModal();
 
@@ -344,6 +344,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(qrText()).toContain('Logging in...');
+    byTestId('auth-modal-spinner', byId('auth-modal-qr'));
     expect(isOpen()).toBe(true);
     expectMarkup(backdrop, {
       open: true,
@@ -353,7 +354,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a new user, a failed login shows the error view the topbar built, and Retry starts over', async () => {
+  it('As a new user, a failed login shows the error view, and Retry starts over', async () => {
     // Given
     const loginRequests = recordEvents('dotli:truapi-login-request');
     const backdrop = await renderModal();
@@ -924,7 +925,7 @@ describe('AuthModal on a phone', () => {
     expect(byId('auth-modal-get-app').hidden).toBe(true);
   });
 
-  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with the markup the topbar built', async () => {
+  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with its ids, labels and ARIA state', async () => {
     // Given
     device.mobile = true;
     const backdrop = await renderModal();

@@ -214,7 +214,7 @@ function expectRow(
 }
 
 /**
- * The popover: the shared Popover's surface, holding what topbar.ts rendered
+ * The popover: the shared Popover's surface, holding its permissions
  * while open, and nothing while closed.
  */
 function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
@@ -269,7 +269,7 @@ function expectBackdrop(open: boolean): void {
 }
 
 describe('PermissionsPopover', () => {
-  it('As a dotli user, the button, backdrop and closed popover have the markup the topbar rendered', async () => {
+  it('As a dotli user, the button, backdrop and closed popover have their ids, labels and ARIA state', async () => {
     // When
     await renderPopover();
 

@@ -40,7 +40,7 @@ function isOpen(): boolean {
 /**
  * The popover: a Radix-style non-modal popover surface (role="dialog", named
  * by its "Welcome back" heading, with the tabindex that lets it take focus)
- * whose body is the markup topbar.ts left in it.
+ * whose body holds the username and hint.
  */
 function expectMarkup(popover: Element, opts: { username: string; hint: boolean; open: boolean }): void {
   expect(popover.getAttribute('role')).toBe('dialog');
@@ -75,7 +75,7 @@ async function openPopover(): Promise<void> {
 }
 
 describe('UserPopover', () => {
-  it('As a logged-in user, the popover shows my username, with the markup the topbar rendered', async () => {
+  it('As a logged-in user, the popover shows my username, with its ids, labels and ARIA state', async () => {
     // When
     const popover = await renderAccount({
       connected: true,

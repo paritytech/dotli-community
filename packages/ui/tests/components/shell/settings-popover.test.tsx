@@ -371,7 +371,7 @@ function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
 
 /**
  * The open popover: the shared Popover's surface, whose body holds the
- * settings topbar.ts rendered. Their sheet header is the Popover's now, and
+ * settings, with their ids, labels and ARIA state. Their sheet header is the Popover's now, and
  * only a sheet's.
  */
 function expectPopoverMatches(settings: Settings): void {
@@ -420,12 +420,13 @@ function expectModeButton(open: boolean): void {
 }
 
 describe('The settings popover island', () => {
-  it('As a dotli user, the closed button, backdrop and popover match what the topbar rendered', async () => {
+  it('As a dotli user, the closed button, backdrop and popover have their ids, labels and ARIA state', async () => {
     // When
     await renderPopover();
 
     // Then
     expectModeButton(false);
+    expect(byId('mode-button').classList.contains('gateway-mode')).toBe(false);
     expectBackdrop(false);
     // The surface is the shared Popover's, and holds nothing until opened.
     expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
@@ -521,7 +522,7 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user opening it with several networks, it matches what the topbar rendered', async () => {
+  it('As a dotli user opening it with several networks, it shows its ids, labels and ARIA state', async () => {
     // Given
     setNetwork('previewnet');
     setCacheSettings({ ...DEFAULT_CACHE, skipArchiveCache: true });
@@ -543,7 +544,7 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it matches what the topbar rendered', async () => {
+  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it shows its ids, labels and ARIA state', async () => {
     // Given
     networks.enabled = ['previewnet'];
     setNetwork('previewnet');
