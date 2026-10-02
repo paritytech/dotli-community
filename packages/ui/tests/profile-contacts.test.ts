@@ -150,7 +150,6 @@ describe('Seity contacts references', () => {
     expect(drawer()?.querySelector('.profile-mood-ring')).toBeNull();
   });
 
-
   it('reads the slot over the gateway RPC on the Trusted Providers backend', async () => {
     mocks.backend = 'rpc-gateway';
     mocks.resolveSeitySlotViaRpc.mockResolvedValue({

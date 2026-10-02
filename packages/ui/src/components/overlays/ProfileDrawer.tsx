@@ -109,9 +109,7 @@ export function ProfileDrawer(props: {
           ×
         </button>
       </header>
-      <Show when={props.options.contactName}>
-        {name => <p class="profile-drawer-contact">{name()}</p>}
-      </Show>
+      <Show when={props.options.contactName}>{name => <p class="profile-drawer-contact">{name()}</p>}</Show>
       <div class="profile-drawer-portrait">
         <Show when={mood()}>{value => <MoodRing mood={value()} size={160} animated />}</Show>
         <div class={['profile-drawer-avatar', { 'profile-drawer-avatar-empty': !loading() && photo() === null }]}>
