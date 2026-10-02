@@ -5,6 +5,18 @@
 // and the chain-connection handle.
 import { hexToBytes } from "@parity/truapi/scale";
 import { errorMessage } from "./error.js";
+/** Optional Contacts UI stays unsupported rather than confirming an empty selection. */
+export function contactsHostAdapter(host) {
+    if (host === undefined)
+        return undefined;
+    return {
+        contacts: (lookup) => host.contacts(lookup),
+        pickContact: (product) => host.pickContact?.(product) ?? Promise.resolve({ tag: "Unsupported" }),
+        pickContacts: (product, selection) => host.pickContacts?.(product, selection) ??
+            Promise.resolve({ tag: "Unsupported" }),
+        placeContactLabels: (product, placed) => host.placeContactLabels?.(product, placed) ?? Promise.resolve(false),
+    };
+}
 /**
  * Normalize both generated `Result<T, GenericError>` values and the plain
  * `{ success, value }` envelope used by some JS fixtures into a raw item.

@@ -58,12 +58,6 @@ export interface TestHostPageOptions {
      */
     allowances?: "granted" | "chain";
     /**
-     * Resource tags answered as refused, whatever `allowances` would otherwise
-     * say. Applied before the product loads, because a product asks for its
-     * resources on connect and a later call would land after that.
-     */
-    withheldResources?: string[];
-    /**
      * Core log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
      *
      * The core logs why a call failed before mapping it to a protocol answer,
@@ -102,21 +96,6 @@ export interface AccountControl {
     setAccounts(names: (DevAccountName | DevAccount)[]): Promise<void>;
     /** Drop the session, leaving the host signed out. */
     signOut(): Promise<void>;
-    /**
-     * The SS58 address of a product account, at the prefix the core mandates.
-     *
-     * Derived from the active session's root, so it answers `undefined` while
-     * the host is signed out and a different address after `switchAccount`. This
-     * is what a suite funds, or asserts on, without reading it out of the
-     * product's own UI.
-     *
-     * Encoded at the prefix the core mandates, which is not necessarily the one
-     * the product displays: a product rendering at another prefix shows a
-     * different string for the same account. Compare against a product's own
-     * rendering by decoding both, and pass this to a faucet or a transfer as it
-     * stands.
-     */
-    getProductAccountAddress(productId?: string, index?: number): Promise<string | undefined>;
 }
 /** What the fixture reaches on `window.__TRUAPI_TEST_HOST__`. */
 export type TestHostControl = MockHost & AccountControl;

@@ -1,14 +1,8 @@
 import type { Page, FrameLocator } from "@playwright/test";
-import { type ChainStatus, type ChatMessageRecord, type MockHostConfig, type NotificationLogEntry, type PermissionLogEntry, type PermissionPolicy, type PermissionPolicyAlias, type SigningLogEntry, type StatementEntry } from "../web/create-mock-host.js";
-import type { StatementInput } from "../web/loopback-statements.js";
-export type { StatementEntry } from "../web/create-mock-host.js";
-export type { StatementInput } from "../web/loopback-statements.js";
-export { productAccountAddress } from "./product-account.js";
-export type { ProductAccountQuery } from "./product-account.js";
+import type { ChainStatus, ChatMessageRecord, MockHostConfig, NotificationLogEntry, PermissionLogEntry, PermissionPolicy, SigningLogEntry } from "../web/create-mock-host.js";
 export { DEFAULT_CHAIN, DEV_ACCOUNTS, LIVE_CHAINS, PASEO_ASSET_HUB, liveChain, } from "./dev-accounts.js";
 export { DEV_ACCOUNT_NAMES } from "./dev-accounts.js";
 export type { DevAccount, DevAccountName } from "./dev-accounts.js";
-export type { HexString } from "@parity/truapi";
 export type { ChatMessageRecord as ChatMessageLogEntry, NotificationLogEntry, PermissionLogEntry, PermissionPolicy as PermissionBehavior, SigningLogEntry, } from "../web/create-mock-host.js";
 export type { LoginBehavior } from "./host-page.js";
 /** Options for {@link createTestHostFixture}. */
@@ -103,29 +97,10 @@ export interface TestHostFixtureOptions {
      */
     allowances?: "granted" | "chain";
     /**
-     * Decisions applied before the product loads.
-     *
-     * `resourceAllocation` names resources the host refuses; anything unlisted
-     * stays granted. A boot option rather than a call, because a product asks for
-     * its resources on connect and a later call would land after that.
-     *
-     * A refusal here is answered as refused whatever {@link allowances} would
-     * otherwise say, which is what makes a product's refusal path reachable: with
-     * allocation granted there is nothing a suite could do to see one.
-     */
-    behaviors?: {
-        resourceAllocation?: Record<string, boolean>;
-    };
-    /**
      * Serve the statement store in-page instead of forwarding it to the chains
      * the host proxies. Defaults to on when `allowances` is `"granted"`, so the
      * two halves of a statement flow agree: a product that is handed an
      * unregistered allowance key can still submit with it.
-     *
-     * The store rides on the People chain's proxy, or on the single proxy of a
-     * one-chain suite. Several chains with no People among them carry no store:
-     * left to the default the fixture serves none, and `true` is refused, because
-     * attaching it to a hub would answer reads a real hub refuses.
      *
      * Nothing submitted this way leaves the page, and a real store would refuse
      * it. Set `false` to send statements to the chain and see what it says.
@@ -160,7 +135,7 @@ export interface TestHost {
     grantPermission(permission: string): Promise<void>;
     revokePermission(permission: string): Promise<void>;
     setEnforcePermissions(enforce: boolean): Promise<void>;
-    setPermissionBehavior(behavior: PermissionPolicy | PermissionPolicyAlias): Promise<void>;
+    setPermissionBehavior(behavior: PermissionPolicy): Promise<void>;
     getChatRooms(): Promise<unknown[]>;
     getChatBots(): Promise<unknown[]>;
     getChatMessageLog(): Promise<ChatMessageRecord[]>;
@@ -173,35 +148,10 @@ export interface TestHost {
      * Find the value the product stored under `key`.
      *
      * The core namespaces product storage keys before the host ever sees them,
-     * so this reads the product's own key back out of that shape rather than
-     * matching the internal string. Answers the bytes, where
-     * {@link TestHost.getProductStorageValue} answers them decoded as UTF-8.
+     * so a test matching on the product's own key wants a suffix match rather
+     * than the full namespaced string, which is an internal shape.
      */
     findProductStorage(key: string): Promise<Uint8Array | undefined>;
-    /**
-     * The SS58 address of a product account, at the prefix the core mandates.
-     *
-     * A product account is derived from the active session's root, so this
-     * answers `undefined` while the host is signed out and a different address
-     * after `switchAccount`. Read it here rather than out of the product's own
-     * UI: a suite funding that account, or asserting on it, should not depend on
-     * the product rendering it.
-     *
-     * Encoded at the prefix the core mandates, which is not necessarily the one
-     * the product displays: a product rendering at another prefix shows a
-     * different string for the same account. Compare against a product's own
-     * rendering by decoding both, and pass this to a faucet or a transfer as it
-     * stands.
-     */
-    getProductAccountAddress(productId?: string, index?: number): Promise<string | undefined>;
-    /**
-     * The value the product stored under `key`, decoded as UTF-8.
-     *
-     * `@parity/host-api-test-sdk` spells this `getProductStorageValue` and
-     * returns a string, so a migrating suite's storage assertions compile
-     * unchanged. Use {@link findProductStorage} for a value that is not text.
-     */
-    getProductStorageValue(key: string): Promise<string | undefined>;
     clearPreimages(): Promise<void>;
     getTheme(): Promise<string>;
     setTheme(variant: string): Promise<void>;
@@ -249,27 +199,21 @@ export interface TestHost {
      * for the host to record -- not a host seam the mock declined to implement.
      */
     /**
-     * Statements the product submitted, decoded, read off the chain transport
-     * rather than a host-side log.
+     * Statements the product submitted, as `0x` hex, read off the chain
+     * transport rather than a host-side log.
      *
      * Empty for a product that asks the host to sign
      * (`createProofAuthorized`): that needs a statement allowance, and without
      * one no statement is ever built to submit. A product that signs its own
      * statements is observable here.
      */
-    getSubmittedStatements(): Promise<StatementEntry[]>;
-    /** Every statement the store holds, submitted or injected, in order. */
-    getStatements(): Promise<StatementEntry[]>;
+    getSubmittedStatements(): Promise<string[]>;
     /**
-     * Deliver a statement to the product as a chain notification, answering the
-     * entry the store retained.
-     *
-     * Takes the topics and payload as a structure, or the SCALE wire bytes the
-     * chain would have sent. Retained either way, so a suite that injects before
-     * its product subscribes has the statement replayed to it on subscribe
-     * rather than losing it.
+     * Deliver a statement to the product as a chain notification, returning how
+     * many live subscriptions it reached. Subscribe first: zero means nothing
+     * was listening.
      */
-    injectStatement(statement: StatementInput | Uint8Array | string): Promise<StatementEntry>;
+    injectStatement(statement: Uint8Array | string): Promise<number>;
     /** Statements injected so far, in order. */
     getInjectedStatements(): Promise<string[]>;
     /** Forget the injected statements. */
@@ -331,25 +275,6 @@ export interface NetworkConfig {
     tokenDecimals?: number;
 }
 /**
- * The product-storage entry `key` names, or `undefined` when nothing holds it.
- *
- * Reads the product's own key out of each stored one with the parse
- * `getProductStorageValue` uses, so the byte reader and the string reader
- * cannot disagree about which entry a key names. Falls back to the whole key
- * for a value written straight through the host seam, which never passed
- * through the core's namespacing.
- */
-export declare function productStorageEntry(stored: Record<string, Uint8Array>, key: string): Uint8Array | undefined;
-/**
- * Whether the loopback statement store is served, and on whose say-so.
- *
- * `"default"` is the store turned on because allocation is granted rather than
- * because a suite named it. The distinction decides what happens when no
- * declared proxy can carry the store: a suite that asked for it is told, a
- * suite that never mentioned it gets no store and builds.
- */
-export type LoopbackStatements = boolean | "default";
-/**
  * Expand `networks` into the three settings that have to agree.
  *
  * A single proxy carries no genesis hash: an unhashed proxy takes every
@@ -361,7 +286,7 @@ export type LoopbackStatements = boolean | "default";
  * chain both unhashed, the hub took the People reads and allowance registration
  * failed looking for personhood collections on a chain that has none.
  */
-export declare function fromNetworks(networks: NetworkConfig[], loopbackStatements?: LoopbackStatements): {
+export declare function fromNetworks(networks: NetworkConfig[], loopbackStatements?: boolean): {
     mock: Pick<MockHostConfig, "chainProxies" | "supportedChains">;
     runtimeConfig: Record<string, unknown>;
 };

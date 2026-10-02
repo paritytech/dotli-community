@@ -6,7 +6,8 @@
 /* The frame's inline geometry is copied onto the layer; these are fallbacks
    and what the product must never get: pointer events. Above the frame, below
    the loading screen, toasts, the topbar, modals and the profile drawer. */
-.contact-avatar-overlay {
+.contact-avatar-overlay,
+.contact-label-overlay {
   position: fixed;
   z-index: 5;
   overflow: hidden;
@@ -15,7 +16,8 @@
   -webkit-user-select: none;
   contain: layout paint;
 }
-.contact-avatar-overlay * {
+.contact-avatar-overlay *,
+.contact-label-overlay * {
   pointer-events: none;
 }
 /* The product's clip: the ring and photo are cut where it ends. Slots and
@@ -66,4 +68,28 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+/* Contact names do not depend on a shared profile or its photo. */
+.contact-label-slot {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+}
+.contact-label-slot.contact-label-moving {
+  visibility: hidden;
+}
+.contact-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+  color: #f3f3f3;
+  background: #151515;
+  border-radius: 4px;
 }

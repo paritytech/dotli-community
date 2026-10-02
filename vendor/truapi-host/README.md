@@ -312,47 +312,31 @@ The index crosses as a SCALE-encoded `DerivationIndex`, the same value a review 
 code behind it stays core-owned and a host never reconstructs it. `productAccountAddress` applies the prefix host-spec
 C.6 fixes, rather than leaving each host to choose one.
 
-### The same name in a test suite
-
-`@parity/truapi-host/testing/playwright` exports a second `productAccountAddress`.
-It is asynchronous, it takes the account and product to derive rather than a
-public key, and it loads the testing WASM bundle itself:
-
-```ts
-import { productAccountAddress } from "@parity/truapi-host/testing/playwright";
-
-const address = await productAccountAddress({
-  account: "bob", // a dev account name, or a `DevAccount`
-  productId: "tx-demo.dot",
-  index: 0, // optional, defaults to 0
-});
-```
-
-Which one to reach for:
-
-- `productAccountAddress(publicKey)` from `@parity/truapi-host/wasm/web` is
-  synchronous and formats a subtree-derived public key the host already holds.
-  This is the one a host ships.
-- `productAccountAddress(query)` from `@parity/truapi-host/testing/playwright`
-  is asynchronous and runs the whole derivation from a dev account's session
-  root. It needs the built testing bundle, so it is for suites only. Because
-  the address depends on nothing but the root, the product id and the index, a
-  suite can work it out in a `globalSetup` and fund it once rather than per
-  test.
-
-A running fixture answers the same address through
-`testHost.getProductAccountAddress(productId?, index?)`, which reads the session
-the host actually holds and so returns `undefined` while it is signed out.
-
-`contacts` needs both callbacks, or the group counts as absent. `pickContact`
-draws the picker and returns the chosen account, or `NoContacts` when there is
-nobody to show. `contacts({ handleKey, handles })` resolves the handles a
-transaction names: one entry per handle, in order, the account or `undefined`.
+The optional `contacts` group resolves handles through `contacts({ handleKey, handles })`:
+one entry per handle, in order, the account or `undefined`. `pickContact` draws a single
+picker and returns the chosen account. `pickContacts(product, { selected })` edits a
+complete selection of at most 256 resolved accounts, returning `Picked { accounts }`,
+`Dismissed`, or `NoContacts`. A confirmed empty array is `Picked`, not dismissal.
+Missing picker callbacks answer `Unsupported`.
 A contact's handle is BLAKE2b-256 keyed with `handleKey` over its 32-byte
 account (`blake2b(account, { key: handleKey, dkLen: 32 })` in `@noble/hashes`).
 The core re-checks every account returned. It caches what it resolves, so call
 `notifyContactsChanged()` whenever a contact is removed or blocked. Omit blocked
 contacts from both. See the contacts RFC (`docs/rfcs/contacts-api.md`).
+
+`placeContactLabels(product, placed)` receives surface dimensions and
+`labels: [{ slot, account, rect, clip }]`. Draw names from the host's contact directory,
+using an account fallback when no username exists. Profile-photo absence must not
+hide a name. Keep this UI host-owned: return no label or per-slot availability.
+Return `true` when the host supports label placement, even when no contact resolves.
+Return `false` when that UI is unsupported; the adapter supplies this answer when
+the callback is omitted. This capability acknowledgment never reports individual
+contact availability. Background Workers are denied label placement.
+Empty placements clear the previous names and cancel queued refreshes. Clear names
+and cancel pending work on frame load, navigation or disconnect. On same-wallet
+directory invalidation, clear stale names and refresh the latest live placement
+without waiting for the product to resend it. The core serializes placements per
+connection and rejects selections from changed sessions.
 
 Browser signing hosts can back this UI with `runtime.getNativeChatContacts()`. It returns
 `{ walletPublicKey, genesisHash, contacts: [{ peerIdentity, username? }] }` to trusted host code only.

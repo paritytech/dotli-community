@@ -126,12 +126,3 @@ export declare function liveChain(chain: {
     };
     runtimeConfig: Record<string, unknown>;
 };
-/**
- * Check a product account's derivation index, refusing one `u32` would reshape.
- *
- * The index is SCALE-encoded as a `u32`, which wraps: `-1` encodes as
- * `4294967295` and `1.5` as `1`. Either names a different account than the
- * caller asked for, and a suite meets that as an address it funded which turns
- * out not to be the one its product signs with.
- */
-export declare function checkDerivationIndex(index: number): number;

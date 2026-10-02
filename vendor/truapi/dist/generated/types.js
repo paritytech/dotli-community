@@ -37,6 +37,8 @@ export const CoinPaymentTransmissionChannel = S.lazy(() => S.TaggedUnion({ Stand
 export const ColorToken = S.lazy(() => S.Status("FgPrimary", "FgSecondary", "FgTertiary", "BgSurfaceMain", "BgSurfaceContainer", "BgSurfaceNested", "FgSuccess", "FgError", "FgWarning"));
 export const ColumnProps = S.lazy(() => S.Struct({ horizontalAlignment: S.Option(HorizontalAlignment), verticalArrangement: S.Option(Arrangement) }));
 export const ContactHandle = S.lazy(() => S.Struct({ bytes: Bytes32 }));
+export const ContactLabelSlot = S.lazy(() => S.Struct({ slot: S.u32, handle: ContactHandle, rect: AvatarRect, clip: AvatarRect }));
+export const ContactPickManyOutcome = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ handles: S.Vector(ContactHandle) }), Dismissed: S._void, NoContacts: S._void }));
 export const ContactPickOutcome = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ handle: ContactHandle }), Dismissed: S._void, NoContacts: S._void }));
 export const ContentAlignment = S.lazy(() => S.Status("TopStart", "TopCenter", "TopEnd", "CenterStart", "Center", "CenterEnd", "BottomStart", "BottomCenter", "BottomEnd"));
 export const ContextualAlias = S.lazy(() => S.Struct({ context: S.Hex(32), alias: S.Hex() }));
@@ -113,8 +115,14 @@ export const VersionedHostCoinPaymentRefundError = S.lazy(() => S.indexedTaggedU
 export const VersionedHostCoinPaymentRefundItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, CoinPaymentStatus] }));
 export const VersionedHostCoinPaymentRefundRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostCoinPaymentRefundRequest] }));
 export const VersionedHostContactsPickError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickError] }));
+export const VersionedHostContactsPickManyError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickManyError] }));
+export const VersionedHostContactsPickManyRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickManyRequest] }));
+export const VersionedHostContactsPickManyResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickManyResponse] }));
 export const VersionedHostContactsPickRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickRequest] }));
 export const VersionedHostContactsPickResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPickResponse] }));
+export const VersionedHostContactsPlaceLabelsError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPlaceLabelsError] }));
+export const VersionedHostContactsPlaceLabelsRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPlaceLabelsRequest] }));
+export const VersionedHostContactsPlaceLabelsResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostContactsPlaceLabelsResponse] }));
 export const VersionedHostCreateTransactionError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostCreateTransactionError] }));
 export const VersionedHostCreateTransactionRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, ProductAccountTxPayload] }));
 export const VersionedHostCreateTransactionResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostCreateTransactionResponse] }));
@@ -444,8 +452,14 @@ export const HostCoinPaymentQueryPurseResponse = S.lazy(() => S.Struct({ info: C
 export const HostCoinPaymentRebalancePurseRequest = S.lazy(() => S.Struct({ from: S.u32, to: S.u32, amount: S.u32 }));
 export const HostCoinPaymentRefundRequest = S.lazy(() => S.Struct({ receivable: S.Hex(32) }));
 export const HostContactsPickError = S.lazy(() => S.TaggedUnion({ NotConnected: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostContactsPickManyError = S.lazy(() => S.TaggedUnion({ NotConnected: S._void, InvalidSelection: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostContactsPickManyRequest = S.lazy(() => S.Struct({ selected: S.Vector(ContactHandle) }));
+export const HostContactsPickManyResponse = S.lazy(() => S.Struct({ outcome: ContactPickManyOutcome }));
 export const HostContactsPickRequest = S.lazy(() => S.Struct({}));
 export const HostContactsPickResponse = S.lazy(() => S.Struct({ outcome: ContactPickOutcome }));
+export const HostContactsPlaceLabelsError = S.lazy(() => S.TaggedUnion({ Unsupported: S._void, NotConnected: S._void, InvalidPlacement: S._void, Unknown: S.Struct({ reason: S.str }) }));
+export const HostContactsPlaceLabelsRequest = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, slots: S.Vector(ContactLabelSlot) }));
+export const HostContactsPlaceLabelsResponse = S.lazy(() => S.Struct({}));
 export const HostCreateTransactionError = S.lazy(() => S.TaggedUnion({ FailedToDecode: S._void, Rejected: S._void, NotSupported: S.Struct({ reason: S.str }), PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }), UnknownContact: S._void }));
 export const HostCreateTransactionResponse = S.lazy(() => S.Struct({ transaction: S.Hex() }));
 export const HostCreateTransactionWithLegacyAccountResponse = S.lazy(() => S.Struct({ transaction: S.Hex() }));
