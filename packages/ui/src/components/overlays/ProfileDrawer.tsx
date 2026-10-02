@@ -15,11 +15,12 @@ export function ProfileDrawer(props: {
   signal: AbortSignal;
   onClose: () => void;
 }): JSX.Element {
-  const [loading, setLoading] = createSignal(props.options.loadProfile !== undefined);
+  const initiallyLoading = untrack(() => props.options.loadProfile !== undefined);
+  const [loading, setLoading] = createSignal(initiallyLoading);
   const [photo, setPhoto] = createSignal<string | null>(null);
   const [mood, setMood] = createSignal<Mood | undefined>(undefined);
   const emptyMessage = 'No information shared with you yet.';
-  const [status, setStatus] = createSignal(props.options.loadProfile === undefined ? emptyMessage : 'Loading profile…');
+  const [status, setStatus] = createSignal(initiallyLoading ? 'Loading profile…' : emptyMessage);
   const [failed, setFailed] = createSignal(false);
   let objectUrl: string | undefined;
   let closeButton: HTMLButtonElement | undefined;
