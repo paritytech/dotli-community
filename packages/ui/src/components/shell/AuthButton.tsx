@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { sessionInitials, useAccount } from './account.js';
 import { Popover } from './Popover.js';
@@ -86,7 +87,7 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
         };
         return (
           <TopbarItem name="auth" label={label()} icon={UserIcon} priority={TOPBAR_PRIORITY.auth} activate={onClick}>
-            <button
+            <IconButton
               {...t}
               ref={el => {
                 button = el;
@@ -94,7 +95,6 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
               }}
               onClick={onClick}
               id={id('auth-button')}
-              class="topbar-btn"
               title={label()}
               aria-label={label()}
               aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
@@ -114,7 +114,7 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
                   </Show>
                 )}
               </Show>
-            </button>
+            </IconButton>
           </TopbarItem>
         );
       }}

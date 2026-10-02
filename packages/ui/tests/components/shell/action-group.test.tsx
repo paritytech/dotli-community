@@ -9,10 +9,12 @@
 import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TopbarContext, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
+import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.js';
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { mouseClick, pointerPress, resetStores, settle } from '../../helpers/solid.js';
+import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, renderTopbar } from './topbar-harness.js';
 
@@ -35,7 +37,7 @@ function Item(props: { name: string; priority: number; visible?: boolean }): JSX
         activations.push({ name: props.name, detail: ev.detail });
       }}
     >
-      <button id={`${props.name}-button`} class="topbar-btn" type="button">
+      <button id={`${props.name}-button`} type="button">
         {props.name}
       </button>
     </TopbarItem>
@@ -60,8 +62,8 @@ function Items(props: { chat?: boolean }): JSX.Element {
 const room = (n: number): number => n * ITEM_WIDTH;
 
 function inline(name: string): boolean {
-  const el = document.querySelector<HTMLElement>(`.topbar-item[data-item="${name}"]`);
-  return el !== null && el.hidden === false && !el.classList.contains('topbar-item-collapsed');
+  const el = document.querySelector<HTMLElement>(`[data-testid="topbar-item"][data-item="${name}"]`);
+  return el !== null && el.hidden === false && !el.hasAttribute('data-collapsed');
 }
 
 function rowNames(): string[] {
@@ -69,7 +71,7 @@ function rowNames(): string[] {
 }
 
 function moreShows(): boolean {
-  return !byId('more-button').classList.contains('topbar-more-idle');
+  return !byId('more-button').hasAttribute('data-idle');
 }
 
 function isOpen(): boolean {
@@ -277,13 +279,40 @@ describe('ActionGroup', () => {
     expect(isOpen()).toBe(false);
   });
 
+  it('As the build-time render, before the bar has measured, the items that may collapse and the More button say so', async () => {
+    // Given: a bar that has not measured yet, as in the host page's build-time render.
+    const bar: TopbarBar = {
+      register: () => () => false,
+      observe: () => undefined,
+      moreButton: () => undefined,
+      measured: () => false,
+    };
+
+    // When
+    renderComponent(() => (
+      <TopbarContext value={bar}>
+        <Items />
+        <OverflowMenu rows={[]} measuring={false} buttonRef={() => undefined} />
+      </TopbarContext>
+    ));
+    await settle();
+
+    // Then: a narrow viewport keeps these out, and shows the More button, until the bar measures.
+    const unmeasured = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
+      .filter(item => item.hasAttribute('data-unmeasured'))
+      .map(item => item.dataset['item']);
+    expect(unmeasured).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
+    expect(byId('more-button').hasAttribute('data-measuring')).toBe(false);
+    expect(byId('more-button').hasAttribute('data-idle')).toBe(true);
+  });
+
   it('As a user, a collapsed item stays in place, out of the tab order, so its surface keeps its anchor', async () => {
     // When
     await renderTopbar(() => <Items />, room(5));
 
     // Then
     const wrapper = byId('settings-button').parentElement;
-    expect(wrapper?.classList.contains('topbar-item-collapsed')).toBe(true);
+    expect(wrapper?.hasAttribute('data-collapsed')).toBe(true);
     expect(byId('settings-button').isConnected).toBe(true);
   });
 });

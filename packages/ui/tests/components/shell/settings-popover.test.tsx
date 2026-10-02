@@ -426,7 +426,7 @@ describe('The settings popover island', () => {
 
     // Then
     expectModeButton(false);
-    expect(byId('mode-button').classList.contains('gateway-mode')).toBe(false);
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
     expectBackdrop(false);
     // The surface is the shared Popover's, and holds nothing until opened.
     expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
@@ -442,7 +442,7 @@ describe('The settings popover island', () => {
 
     // Then
     expectModeButton(false);
-    expect(byId('mode-button').classList.contains('gateway-mode')).toBe(true);
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(true);
   });
 
   it('As the host booting, an island mounted before the settings store is seeded reads no setting itself and follows the store once seeded', async () => {
@@ -457,7 +457,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(localStorage.getItem('dotli:chain-backend')).toBe('smoldot-shared-worker');
-    expect(byId('mode-button').className).toBe('topbar-btn');
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(false);
 
     // When: the host seeds the store.
     setBackend('rpc-gateway');
@@ -465,7 +465,7 @@ describe('The settings popover island', () => {
     await settle();
 
     // Then
-    expect(byId('mode-button').className).toBe('topbar-btn gateway-mode');
+    expect(byId('mode-button').hasAttribute('data-badge')).toBe(true);
   });
 
   it('As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded', async () => {

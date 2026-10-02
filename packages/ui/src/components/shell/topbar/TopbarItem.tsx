@@ -4,6 +4,8 @@
 import { useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { TopbarContext } from './context.js';
+import { PINNED } from './fit.js';
+import s from './TopbarItem.module.css';
 
 export interface TopbarItemProps {
   name: string;
@@ -21,9 +23,11 @@ export interface TopbarItemProps {
  * One item of the topbar's action group: wraps the item's button, and tells
  * the ActionGroup it sits in how to show it as a More menu row. While the
  * bar has collapsed it, the wrapper stays in place, out of flow and
- * invisible (`.topbar-item-collapsed`), so it can still be measured and its
- * button still anchors its surface. Outside an ActionGroup (the landing
- * page) it is always inline.
+ * invisible (`data-collapsed`), so it can still be measured and its button
+ * still anchors its surface. Until the bar measures (its build-time render),
+ * an item that may collapse is marked `data-unmeasured`, and a narrow
+ * viewport hides it. Outside an ActionGroup (the landing page) it is always
+ * inline.
  */
 export function TopbarItem(props: TopbarItemProps): JSX.Element {
   const bar = useContext(TopbarContext);
@@ -54,8 +58,11 @@ export function TopbarItem(props: TopbarItemProps): JSX.Element {
         element = el;
         bar?.observe(el);
       }}
-      class={['topbar-item', { 'topbar-item-collapsed': collapsed() }]}
+      class={s['item']}
+      data-testid="topbar-item"
       data-item={props.name}
+      data-collapsed={collapsed() ? '' : undefined}
+      data-unmeasured={bar !== null && !bar.measured() && props.priority !== PINNED ? '' : undefined}
       hidden={!visible()}
     >
       {props.children}

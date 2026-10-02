@@ -37,18 +37,6 @@
 [data-theme='light'] .localhost-icon {
   color: rgba(0, 0, 0, 0.45);
 }
-[data-theme='light'] .topbar-btn {
-  border-color: transparent;
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme='light'] .topbar-btn:hover {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: #111;
-}
-[data-theme='light'] .topbar-btn:active {
-  background: rgba(0, 0, 0, 0.1);
-}
 
 [data-theme='light'] .verification-shield {
   color: rgba(0, 0, 0, 0.3);
@@ -61,14 +49,6 @@
 }
 [data-theme='light'] .verification-shield.stale {
   color: #dc2626;
-}
-[data-theme='light'] #permissions-button.has-grants::after {
-  background: #0a0a0a;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.8);
-}
-[data-theme='light'] #mode-button.gateway-mode::after {
-  background: #0a0a0a;
-  box-shadow: 0 0 0 1.5px rgba(255, 255, 255, 0.8);
 }
 
 [data-theme='light'] .more-popover,
@@ -388,16 +368,6 @@
 }
 [data-theme='light'] .chains-status-dot.is-idle {
   background: #6b6b6b;
-}
-
-[data-theme='light'] .chat-unread-badge {
-  background: #0a0a0a;
-  color: #fafafa;
-}
-[data-theme='light'] #chat-button.active {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.88);
 }
 
 /* Matches the opaque dark rule in base.css: the network panel sits over the

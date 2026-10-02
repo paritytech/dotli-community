@@ -203,7 +203,8 @@ const texts = (el: Element): (string | null)[] => Array.from(el.children).map(ch
 
 /**
  * The button: its ARIA as a popover trigger, its label and its icon. Whether
- * it is `visible` is a class, which the visibility test reads.
+ * it shows at all (its topbar item's `hidden`) is left to the visibility
+ * test.
  */
 function expectChainsButton(open: boolean): void {
   const button = byId('chains-button');
@@ -723,21 +724,21 @@ describe('The network popover island', () => {
 
     // Then
     expectChainsButton(false);
-    expect(byId('chains-button').classList.contains('visible')).toBe(true);
+    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
 
     // When
     recordChainsButtonVisible(false);
     await settle();
 
     // Then
-    expect(byId('chains-button').classList.contains('visible')).toBe(false);
+    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(true);
 
     // When: revealed after the mount.
     recordChainsButtonVisible(true);
     await settle();
 
     // Then
-    expect(byId('chains-button').classList.contains('visible')).toBe(true);
+    expect(byId('chains-button').closest<HTMLElement>('[data-testid="topbar-item"]')?.hidden).toBe(false);
   });
 });
 

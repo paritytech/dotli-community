@@ -665,7 +665,7 @@ describe('chat panel', () => {
     clickChat();
     expect(byId('chat-panel').hidden).toBe(false);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('true');
-    expect(byId('chat-button').classList.contains('active')).toBe(true);
+    expect(byId('chat-button').hasAttribute('data-active')).toBe(true);
     expect(byId('chat-panel').style.width).toBe('360px');
     expect(iframe.style.width).toBe('calc(calc(100% - 10px) - 360px)');
 

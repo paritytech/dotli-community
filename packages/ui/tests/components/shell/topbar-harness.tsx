@@ -20,7 +20,7 @@ export interface TopbarLayout {
 /**
  * happy-dom lays nothing out: stand in the layout the bar measures. The
  * action group (`#topbar-actions`) has `room` pixels, each item
- * (`.topbar-item[data-item]`) is `widths[name]` or ITEM_WIDTH wide, as is
+ * (`[data-testid="topbar-item"]`) is `widths[name]` or ITEM_WIDTH wide, as is
  * the More button, and there is no gap. ResizeObservers are stubbed so a
  * change can be announced. Restored by `vi.restoreAllMocks()` and
  * `vi.unstubAllGlobals()`.
@@ -57,7 +57,7 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
   });
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
     const name =
-      this instanceof HTMLElement && this.classList.contains('topbar-item') ? this.dataset['item'] : undefined;
+      this instanceof HTMLElement && this.dataset['testid'] === 'topbar-item' ? this.dataset['item'] : undefined;
     const width = name !== undefined ? (sizes[name] ?? ITEM_WIDTH) : this.id === 'more-button' ? ITEM_WIDTH : 0;
     return new DOMRect(0, 0, width, width === 0 ? 0 : 32);
   });

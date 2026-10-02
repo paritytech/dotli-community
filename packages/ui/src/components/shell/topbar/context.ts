@@ -35,6 +35,11 @@ export interface TopbarBar {
   observe: (el: HTMLElement) => void;
   /** The More button, which takes focus for a collapsed item. */
   moreButton: () => HTMLElement | undefined;
+  /**
+   * Whether the bar is mounted and fitting its items. False in the
+   * build-time render, until the group hydrates.
+   */
+  measured: Accessor<boolean>;
 }
 
 /** The bar an item sits in, or null outside one (the landing page). */

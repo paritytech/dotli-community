@@ -123,7 +123,6 @@ describe('ThemeToggle', () => {
 
     // Then
     const btn = themeButton();
-    expect(btn.classList.contains('topbar-btn')).toBe(true);
     expect(btn.getAttribute('aria-haspopup')).toBe('menu');
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(btn.getAttribute('aria-controls')).toBe('theme-popover');

@@ -462,7 +462,7 @@ describe('landing page', () => {
     expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth', 'theme']);
     expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
     expect(query(corner, '[data-item="theme"] > #landing-theme-toggle')).not.toBeNull();
-    expect(corner.querySelector('.topbar-item-collapsed')).toBeNull();
+    expect(corner.querySelector('[data-collapsed]')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
     // The menus render through portals, outside the page.
     expect(byId('landing-theme-popover').parentElement).toBe(document.body);

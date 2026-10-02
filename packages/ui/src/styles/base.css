@@ -19,14 +19,6 @@
   display: none;
 }
 
-/* Network button: appears once a product is on screen, so the loading view
-   stays as bare as the bar it shows. */
-.topbar-chains-btn {
-  display: none;
-}
-.topbar-chains-btn.visible {
-  display: inline-flex;
-}
 /* Settings owns the popover recipe: 6px on the shell from `.more-popover`,
    and each child carries its own inset. This panel keeps that rather than
    padding the shell, so the two popovers have identical edges. The children

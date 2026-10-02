@@ -121,59 +121,6 @@
   line-height: 1;
   align-self: center;
 }
-/* The More button shows while the action group has collapsed items into it
-   (components/shell/topbar/), and on narrow viewports until the group
-   hydrates and measures. */
-.topbar-btn.topbar-more-btn {
-  display: none;
-}
-/* Hamburger icon that morphs to an X when the more-popover is open. The
-   sibling-`:has()` check keeps state in CSS so the button doesn't need a
-   separate `.open` toggle in JS. */
-.hamburger {
-  display: inline-block;
-  position: relative;
-  width: 20px;
-  height: 16px;
-}
-.hamburger-bar {
-  display: block;
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  background: currentColor;
-  border-radius: 1px;
-  transition:
-    top 0.22s ease,
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.12s ease;
-}
-.hamburger-bar:nth-child(1) {
-  top: 1px;
-}
-.hamburger-bar:nth-child(2) {
-  top: 7px;
-}
-.hamburger-bar:nth-child(3) {
-  top: 13px;
-}
-.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(1) {
-  top: 7px;
-  transform: rotate(45deg);
-}
-.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(2) {
-  opacity: 0;
-}
-.topbar-more-btn:has(+ .more-popover.open) .hamburger-bar:nth-child(3) {
-  top: 7px;
-  transform: rotate(-45deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .hamburger-bar {
-    transition: none;
-  }
-}
 .more-popover {
   display: none;
   /* Layout properties live on the base rule (not just `.open`) so they stay
@@ -280,12 +227,6 @@
   .topbar-beta {
     display: none;
   }
-  #topbar-actions:not([data-collapsible]) :is(#chains-button, #permissions-button, #theme-toggle, #mode-button) {
-    display: none;
-  }
-  #topbar-actions:not([data-collapsible]) .topbar-btn.topbar-more-btn {
-    display: inline-flex;
-  }
 }
 .topbar-url {
   grid-column: 2;
@@ -344,40 +285,6 @@
 .topbar-url-pill:not(.localhost-pill) .localhost-icon {
   display: none;
 }
-.topbar-right {
-  grid-column: 3;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  justify-self: end;
-}
-/* The measuring action group fills its grid cell: its width is the room its
-   items are fitted into (components/shell/topbar/ActionGroup.tsx). */
-.topbar-right[data-collapsible] {
-  position: relative;
-  justify-self: stretch;
-  justify-content: flex-end;
-  min-width: 0;
-}
-.topbar-item {
-  display: flex;
-}
-.topbar-item[hidden] {
-  display: none;
-}
-/* Collapsed into the More menu, or the More button with nothing in it: out
-   of flow and invisible, but still laid out, so the bar can measure it. */
-.topbar-item.topbar-item-collapsed,
-.topbar-right[data-collapsible] .topbar-more-idle {
-  position: absolute;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.topbar-right[data-collapsible] .topbar-btn.topbar-more-btn {
-  display: inline-flex;
-}
 @media (max-width: 560px) {
   .topbar-url-pill {
     height: 36px;
@@ -385,54 +292,6 @@
     background: rgba(255, 255, 255, 0.04);
     border-color: rgba(255, 255, 255, 0.07);
   }
-}
-.topbar-btn {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  height: 44px;
-  min-width: 50px;
-  padding: 0 15px;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  color: rgba(255, 255, 255, 0.65);
-  font-size: 0.75rem;
-  font-family: inherit;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
-}
-.topbar-btn[hidden] {
-  display: none;
-}
-.topbar-btn:hover {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: #fff;
-}
-.topbar-btn:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.topbar-btn:disabled:hover {
-  background: transparent;
-  border-color: transparent;
-  color: rgba(255, 255, 255, 0.65);
-}
-.topbar-btn[aria-busy='true'] {
-  cursor: progress;
-}
-.topbar-btn:active {
-  background: rgba(255, 255, 255, 0.11);
-}
-.topbar-btn > svg {
-  width: 18px;
-  height: 18px;
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
@@ -683,18 +542,6 @@
   height: 18px;
 }
 
-/* Mode Button & Popover */
-#mode-button.gateway-mode::after {
-  content: '';
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fafafa;
-  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
-}
 /* The settings popover: a Popover with a backdrop (popover.css), with its
    own width. Bottom padding lives on the popover itself so the gap between the
    last element (Save & Apply when clean, warning text when dirty) and the
@@ -1055,19 +902,6 @@
   display: block;
 }
 
-/* Permissions Button State */
-#permissions-button.has-grants::after {
-  content: '';
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #fafafa;
-  box-shadow: 0 0 0 1.5px rgba(0, 0, 0, 0.35);
-}
-
 /* Permissions Popover: a Popover with a backdrop (popover.css), with its own
    width. */
 .permissions-popover {
@@ -1186,27 +1020,5 @@
   color: #555;
   border-top: 1px solid #2a2a2a;
   margin-top: 4px;
-  text-align: center;
-}
-
-/* The topbar's chat button (ChatButton.tsx). Its rules move to a module in SP4. */
-#chat-button.active {
-  background: rgba(255, 255, 255, 0.07);
-  border-color: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.92);
-}
-.chat-unread-badge {
-  position: absolute;
-  top: 6px;
-  right: 7px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  border-radius: 7px;
-  background: #fafafa;
-  color: #0a0a0a;
-  font-size: 0.6rem;
-  font-weight: 600;
-  line-height: 14px;
   text-align: center;
 }

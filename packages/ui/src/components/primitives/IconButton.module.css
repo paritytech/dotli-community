@@ -1,0 +1,74 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A topbar button around an icon. data-active draws it pressed (what it
+   opens is open), data-badge puts a dot in its top right corner.
+
+   The base rule is wrapped in :where(), so a consumer's class (the More
+   button's visibility) wins over it whatever order the stylesheets load
+   in. */
+
+:where(.button) {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-sizing: border-box;
+  height: 44px;
+  min-width: 50px;
+  margin: 0;
+  padding: 0 15px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.button[hidden] {
+  display: none;
+}
+.button:hover {
+  border-color: var(--border-subtle);
+  background: var(--fill);
+  color: var(--text-strong);
+}
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.button:disabled:hover {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-secondary);
+}
+.button:active {
+  background: var(--fill-strong);
+}
+.button > svg {
+  width: 18px;
+  height: 18px;
+}
+.button[data-active] {
+  border-color: var(--border-subtle);
+  background: var(--fill);
+  color: var(--text-strong);
+}
+/* The ring in the page's tone keeps the dot apart from the icon. */
+.button[data-badge]::after {
+  content: '';
+  position: absolute;
+  top: 9px;
+  right: 10px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--inverse-bg);
+  box-shadow: 0 0 0 1.5px var(--inverse-fg);
+}

@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { TopbarContext, type TopbarBar, type TopbarEntry } from './context.js';
 import { fitActions } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import s from './ActionGroup.module.css';
 
 function sameNames(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
   return a.size === b.size && [...a].every(name => b.has(name));
@@ -32,9 +33,9 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * hiding does too. The More button only shows while something is collapsed.
  *
  * `data-collapsible` marks the group once it is mounted and measuring. The
- * build-time render (the Astro page) goes without it, so until the group
- * hydrates, the topbar's CSS hides the buttons it would most likely collapse
- * on a narrow screen.
+ * build-time render (the Astro page) goes without it, and until the group
+ * hydrates, its items (TopbarItem) and the More button (OverflowMenu) lay
+ * themselves out for a narrow screen as the bar would most likely fit them.
  */
 export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
   let group: HTMLDivElement | undefined;
@@ -88,6 +89,7 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
     },
     observe,
     moreButton: () => more,
+    measured: measuring,
   };
 
   // An item showing or hiding (the chat button, the network button) changes
@@ -113,13 +115,14 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
           group = el;
           observe(el);
         }}
-        class="topbar-right"
+        class={s['group']}
         id="topbar-actions"
         data-collapsible={measuring() ? '' : undefined}
       >
         {props.children}
         <OverflowMenu
           rows={rows()}
+          measuring={measuring()}
           buttonRef={el => {
             more = el;
             observe(el);

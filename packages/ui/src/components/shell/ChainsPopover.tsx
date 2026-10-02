@@ -4,6 +4,7 @@
 import { lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { topbarStore } from '../../state/topbar.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -67,15 +68,9 @@ export function ChainsPopover(): JSX.Element {
           visible={topbar().chainsButtonVisible}
           activate={t.onClick}
         >
-          <button
-            {...t}
-            id="chains-button"
-            class={`topbar-btn topbar-chains-btn${topbar().chainsButtonVisible ? ' visible' : ''}`}
-            title="Network"
-            aria-label="Network"
-          >
+          <IconButton {...t} id="chains-button" title="Network" aria-label="Network">
             <GlobeIcon size={12} />
-          </button>
+          </IconButton>
         </TopbarItem>
       )}
     />

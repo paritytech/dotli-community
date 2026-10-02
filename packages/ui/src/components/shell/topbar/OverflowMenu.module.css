@@ -1,0 +1,73 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The topbar's More button and its hamburger icon. */
+
+/* Shown once the bar measures. On a narrow viewport it shows from the
+   build-time render on, as the bar most likely collapses something there. */
+.more {
+  display: none;
+}
+.more[data-measuring] {
+  display: inline-flex;
+}
+@media (max-width: 560px) {
+  .more {
+    display: inline-flex;
+  }
+}
+/* Nothing collapsed into it: out of flow and invisible, but still laid out,
+   so the bar can measure it. */
+.more[data-measuring][data-idle] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Three bars that cross into an X while the flyout is open. */
+.hamburger {
+  display: inline-block;
+  position: relative;
+  width: 20px;
+  height: 16px;
+}
+.bar {
+  display: block;
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+  transition:
+    top 0.22s ease,
+    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.12s ease;
+}
+.bar:nth-child(1) {
+  top: 1px;
+}
+.bar:nth-child(2) {
+  top: 7px;
+}
+.bar:nth-child(3) {
+  top: 13px;
+}
+.hamburger[data-open] .bar:nth-child(1) {
+  top: 7px;
+  transform: rotate(45deg);
+}
+.hamburger[data-open] .bar:nth-child(2) {
+  opacity: 0;
+}
+.hamburger[data-open] .bar:nth-child(3) {
+  top: 7px;
+  transform: rotate(-45deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar {
+    transition: none;
+  }
+}

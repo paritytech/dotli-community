@@ -5,6 +5,7 @@ import { lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -45,8 +46,8 @@ function GearIcon(props: { size: number }): JSX.Element {
  * transport choices, the cache switches, "Clear all caches" and the
  * diagnostics. Changes stay a draft until Save & Apply, which saves them and
  * reloads (settings-actions.ts); each opening starts from the saved
- * settings. The button carries `.gateway-mode` while the session is not
- * verified (trusted providers).
+ * settings. The button carries its badge (`data-badge`) while the session is
+ * not verified (trusted providers).
  *
  * The saved settings come only from settingsStore, which the host seeds at
  * boot, possibly after this island mounted: until then the button shows no
@@ -89,15 +90,15 @@ export function SettingsPopover(): JSX.Element {
           priority={TOPBAR_PRIORITY.settings}
           activate={t.onClick}
         >
-          <button
+          <IconButton
             {...t}
             id="mode-button"
-            class={settings()?.verified === false ? 'topbar-btn gateway-mode' : 'topbar-btn'}
+            badge={settings()?.verified === false}
             title="Settings"
             aria-label="Settings"
           >
             <GearIcon size={12} />
-          </button>
+          </IconButton>
         </TopbarItem>
       )}
     />

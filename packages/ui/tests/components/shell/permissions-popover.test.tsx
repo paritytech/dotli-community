@@ -249,7 +249,7 @@ function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
 
 /**
  * The button: its label, its icon and the ARIA of a popover trigger. Whether
- * it `has-grants` is a class, which the grants tests read.
+ * it has its grants badge (`data-badge`) is left to the grants tests.
  */
 function expectPermissionsButton(open: boolean): void {
   const button = byId('permissions-button');
@@ -301,7 +301,7 @@ describe('PermissionsPopover', () => {
       },
     });
     expectPermissionsButton(true);
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
     expectBackdrop(true);
     expect(document.activeElement).toBe(byId('permissions-popover'));
 
@@ -369,7 +369,7 @@ describe('PermissionsPopover', () => {
         text: 'Permissions are unavailable for this app.',
       },
     });
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
   it('As a user, allowing a permission stores it and announces { label, permission }; a device permission announces a device change', async () => {
@@ -680,7 +680,7 @@ describe('PermissionsPopover', () => {
     expect(menu()).toBeNull();
   });
 
-  it('As a user, the lock button shows .has-grants while the app has any permission granted, including an app loaded before the island mounted', async () => {
+  it('As a user, the lock button shows its grants badge while the app has any permission granted, including an app loaded before the island mounted', async () => {
     // Given
     const provider = provide(LABEL, { ChainSubmit: 'Authorized' });
     setProductLoaded(LABEL, 'app.dot');
@@ -689,7 +689,7 @@ describe('PermissionsPopover', () => {
     await renderPopover();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
 
     // When
     provider.stored.clear();
@@ -701,7 +701,7 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
 
     // When
     provider.stored.set('Camera', 'Authorized');
@@ -713,14 +713,14 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
 
     // When
     setProductError();
     await settleAll();
 
     // Then
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
   it('As a user, when reads overlap, the last one wins: a slow earlier read never replaces a newer one', async () => {
@@ -742,7 +742,7 @@ describe('PermissionsPopover', () => {
     await renderPopover();
     const all = (status: PermissionAuthorizationStatus) => ALL_PERMISSIONS.map(() => status);
 
-    // When: opening reads (after the mount's .has-grants read), then a
+    // When: opening reads (after the mount's grants read), then a
     // permission change reads again, for the class and for the list.
     await openPopover();
     const beforeChange = reads.length;
@@ -767,7 +767,7 @@ describe('PermissionsPopover', () => {
 
     // Then
     expect(byId('permissions-popover-status-Camera').textContent).toBe('Denied');
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
   });
 
   it('As a user who closed the popover while it was reading, the next open never shows that read', async () => {

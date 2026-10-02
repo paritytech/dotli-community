@@ -4,6 +4,7 @@
 import { Portal, type JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -132,13 +133,12 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
         priority={TOPBAR_PRIORITY.theme}
         activate={menu.toggle}
       >
-        <button
+        <IconButton
           ref={el => {
             button = el;
           }}
           onClick={menu.toggle}
           id={id('theme-toggle')}
-          class="topbar-btn"
           title={title()}
           aria-label={title()}
           aria-haspopup="menu"
@@ -146,7 +146,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           aria-controls={id('theme-popover')}
         >
           <ThemeIcons />
-        </button>
+        </IconButton>
       </TopbarItem>
       <Portal>
         <div
