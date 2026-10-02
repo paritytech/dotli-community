@@ -268,3 +268,65 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
   }
   return errors.length === 0 ? { ok: true, value: input as unknown as ExecutableManifest } : { ok: false, errors };
 }
+
+/**
+ * Discriminated result so callers can tell "no manifest set" apart from
+ * "manifest exists but malformed". Same shape as `decodeIpfsContenthashResult`
+ *  used for legacy contenthash reads.
+ *
+ * Every result read from a record carries its text as `raw`, so a caller can
+ * keep it and validate it again later with `toRootManifestResult` /
+ * `toExecutableManifestResult`. `unsupported` is about the network (it has no
+ * text records), `unsupported-version` about the manifest (a `$v` other than 1).
+ */
+export type ManifestResult<T> =
+  | { kind: 'ok'; value: T; raw: string }
+  | { kind: 'empty' }
+  | { kind: 'unsupported'; reason: string }
+  | { kind: 'unsupported-version'; version: unknown; raw: string }
+  | { kind: 'invalid'; errors: string[]; raw: string };
+
+/** What a manifest record's text can come to: everything but the network-level `unsupported`. */
+export type ManifestRecordResult<T> = Exclude<ManifestResult<T>, { kind: 'unsupported' }>;
+
+function toManifestResult<T>(
+  raw: string | null,
+  parse: (json: string) => ValidationResult<T>,
+): ManifestRecordResult<T> {
+  if (raw === null || raw.length === 0) {
+    return { kind: 'empty' };
+  }
+  const parsed = parse(raw);
+  if (parsed.ok) {
+    return { kind: 'ok', value: parsed.value, raw };
+  }
+  if ('unsupportedVersion' in parsed) {
+    return { kind: 'unsupported-version', version: parsed.unsupportedVersion, raw };
+  }
+  return { kind: 'invalid', errors: parsed.errors, raw };
+}
+
+/** Validate a root manifest record's text (`null` or empty: no record). */
+export function toRootManifestResult(raw: string | null): ManifestRecordResult<RootManifest> {
+  return toManifestResult(raw, parseRootManifest);
+}
+
+/**
+ * Validate the text of the executable manifest read from `<kind>.<label>`.
+ * A manifest whose `kind` disagrees with that subname is invalid, so one
+ * tagged `kind: "worker"` cannot pose as the app.
+ */
+export function toExecutableManifestResult(
+  raw: string | null,
+  kind: ExecutableKind,
+): ManifestRecordResult<ExecutableManifest> {
+  const result = toManifestResult(raw, parseExecutableManifest);
+  if (result.kind === 'ok' && result.value.kind !== kind) {
+    return {
+      kind: 'invalid',
+      errors: [`executable manifest kind '${result.value.kind}' does not match its subname '${kind}'`],
+      raw: result.raw,
+    };
+  }
+  return result;
+}

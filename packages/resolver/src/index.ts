@@ -8,6 +8,9 @@ export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
 export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
+// From the schema module, not `./manifest.js`: the host validates cached
+// manifests on its eager path, and the reader would drag the chain-storage
+// code (namehash, storage reads, hashers) in with it.
 export {
   toExecutableManifestResult,
   toRootManifestResult,
@@ -15,7 +18,7 @@ export {
   type ManifestRecordResult,
   type ManifestResult,
   type RootManifest,
-} from './manifest.js';
+} from './manifest-types.js';
 export { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } from './provider.js';
 export {
   resolveDotName,
