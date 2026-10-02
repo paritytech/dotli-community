@@ -236,7 +236,7 @@ export async function resolveSeitySlotViaRpc(lookupKey: `0x${string}`): Promise<
   if (registry === undefined) {
     return null;
   }
-  return readSeitySlot(await ensureClient(), registry, lookupKey);
+  return withRpcClient(api => readSeitySlot(api, registry, lookupKey));
 }
 
 /**
