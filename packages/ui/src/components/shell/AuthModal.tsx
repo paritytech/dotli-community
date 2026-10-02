@@ -104,8 +104,8 @@ export function AuthModal(): JSX.Element {
   /** The view on show: none while closed, as the topbar emptied it. */
   const view = createMemo<AuthModalView | null>(
     () => {
-      const s = state();
-      return s.open ? s.view : null;
+      const current = state();
+      return current.open ? current.view : null;
     },
     // The store rebuilds the view on writes that keep it.
     { equals: shallowEqual },

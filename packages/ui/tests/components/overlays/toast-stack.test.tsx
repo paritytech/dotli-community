@@ -79,6 +79,8 @@ async function mountStack(): Promise<void> {
 
 afterEach(() => {
   resetToastsForTests();
+  cardStackProps.expanded = undefined;
+  cardStackProps.single = undefined;
   document.body.replaceChildren();
 });
 

@@ -14,11 +14,7 @@ export {
   memberDelta,
   siblingPills,
   type ChainDetail,
-  type ChainField,
-  type ExplanationBlock,
-  type ExplanationDetail,
   type InlineSegment,
-  type SiblingPill,
 } from './detail-format.js';
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export {
@@ -53,13 +49,7 @@ export {
   type ResolutionRow,
   type ResolutionSummary,
 } from './resolution-view.js';
-export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData, type TagKind } from './row-format.js';
+export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';
-export {
-  buildTimeline,
-  type TimelineBox,
-  type TimelineLane,
-  type TimelineRail,
-  type TimelineTick,
-} from './timeline.js';
+export { buildTimeline, type TimelineLane } from './timeline.js';
 export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';
