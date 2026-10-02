@@ -291,28 +291,38 @@ function isChainHalt(err: unknown): boolean {
 }
 
 /**
- * Run a read, and once more if its chain halted under it. Once only: a light
- * client that keeps dying fails its next connect instead, which the protocol
- * context reports as fatal. The retry gets what is left of the caller's sync
- * budget, not a second one.
+ * Attempts a read gets on chains that halt under it. A light client resuming
+ * from a recent stored database sends `stop` on the follows it opened at the
+ * stale head once it catches up, and can do so twice in one catch-up (DOTLI-BY),
+ * so one retry is not enough. Bounded so a chain that dies instantly cannot spin
+ * a caller without a deadline; one that keeps dying fails its next connect
+ * instead, which the protocol context reports as fatal.
+ */
+const MAX_HALT_ATTEMPTS = 4;
+
+/**
+ * Run a read, and again on a rebuilt chain each time its chain halts under it,
+ * up to `MAX_HALT_ATTEMPTS`. Every retry gets what is left of the caller's sync
+ * budget, not a fresh one.
  */
 async function withHaltRetry<T>(opts: ResolveOptions, read: (opts: ResolveOptions) => Promise<T>): Promise<T> {
   const started = performance.now();
-  try {
-    return await read(opts);
-  } catch (err) {
-    if (!isChainHalt(err)) {
-      throw err;
-    }
-    log.warn(
-      `[dot.li resolve] Chain halted mid-resolution, retrying once on a rebuilt chain: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    const budget = opts.syncTimeoutMs;
-    const retryOpts =
-      budget === undefined
+  const budget = opts.syncTimeoutMs;
+  for (let attempt = 1; ; attempt++) {
+    const attemptOpts =
+      attempt === 1 || budget === undefined
         ? opts
         : { ...opts, syncTimeoutMs: Math.max(1, Math.floor(budget - (performance.now() - started))) };
-    return read(retryOpts);
+    try {
+      return await read(attemptOpts);
+    } catch (err) {
+      if (!isChainHalt(err) || attempt === MAX_HALT_ATTEMPTS) {
+        throw err;
+      }
+      log.warn(
+        `[dot.li resolve] Chain halted mid-resolution, retrying on a rebuilt chain (attempt ${String(attempt + 1)}/${String(MAX_HALT_ATTEMPTS)}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
 

@@ -1935,9 +1935,8 @@ async function main(): Promise<void> {
 
     trace.nameResolved(cid);
 
-    const manifests = await manifestsRead;
-    assertLaunchable(manifests.root, manifests.app);
-
+    // A name with no contenthash has nothing to launch, whatever its
+    // manifests say, so it does not wait on them.
     if (cid === null) {
       // No pruning here: a name with no contenthash on the *selected* network
       // still resolves on another, so dropping its pill would lose good
@@ -1948,6 +1947,9 @@ async function main(): Promise<void> {
       performance.mark('dotli:main:end');
       return;
     }
+
+    const manifests = await manifestsRead;
+    assertLaunchable(manifests.root, manifests.app);
 
     if (!cacheSettings.skipCidCache) {
       requestIdleCallback(() => {
