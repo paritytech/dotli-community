@@ -18,6 +18,7 @@ import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
 import { usePopover } from './Popover.js';
+import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
@@ -37,7 +38,8 @@ function currentLabel(): string | null {
  * statuses as it mounts (the popover opening), and again on a product
  * loading or failing and on a permission change, the last read winning. An
  * open row dropdown takes Escape first: the first Escape closes the
- * dropdown, the next the popover.
+ * dropdown, the next the popover. In a sheet, whose header names it, its
+ * heading is left out.
  */
 export function PermissionsContent(): JSX.Element {
   /** The open row dropdown's listbox. */
@@ -193,9 +195,13 @@ export function PermissionsContent(): JSX.Element {
 
   return (
     <>
-      <div class="permissions-popover-header">Permissions</div>
-      <div class="permissions-popover-list" id="permissions-popover-list">
-        <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
+      <Show when={!popover.sheet()}>
+        <div class={s['header']} data-testid="permissions-popover-header">
+          Permissions
+        </div>
+      </Show>
+      <div class={s['list']} id="permissions-popover-list">
+        <Show when={hint()}>{text => <div class={s['footer']}>{text()}</div>}</Show>
         <Show when={statuses()}>
           {list => (
             <>
@@ -205,6 +211,7 @@ export function PermissionsContent(): JSX.Element {
                     perm={perm}
                     status={list()[index()] ?? 'ask'}
                     open={openRow() === perm.name}
+                    sheet={popover.sheet()}
                     toggleMenu={toggleDropdown}
                     choose={choose}
                     menuRef={el => {
@@ -216,7 +223,7 @@ export function PermissionsContent(): JSX.Element {
                   />
                 )}
               </For>
-              <div class="permissions-popover-footer">Changing permissions will reload the app.</div>
+              <div class={s['footer']}>Changing permissions will reload the app.</div>
             </>
           )}
         </Show>

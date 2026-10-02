@@ -1,0 +1,10 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The permissions popover's surface. */
+
+.popover {
+  width: 340px;
+  /* The row dropdowns float out of the popover's bounds. */
+  overflow: visible;
+}

@@ -11,6 +11,7 @@ import { createPermissionChanges } from './permission-changes.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './PermissionsPopover.module.css';
 
 /** The popover's body, its own chunk. */
 const Permissions = lazy(() => import('./PermissionsContent.js'), { export: 'PermissionsContent' });
@@ -90,7 +91,7 @@ export function PermissionsPopover(): JSX.Element {
     <Popover
       id="permissions-popover"
       title="Permissions"
-      class="permissions-popover"
+      class={s['popover']}
       backdrop
       content={Permissions}
       trigger={t => (

@@ -133,12 +133,12 @@ function select(name: string): HTMLButtonElement {
 }
 
 function menu(): HTMLElement | null {
-  return document.querySelector('.permissions-popover-menu');
+  return document.querySelector('[role="listbox"]');
 }
 
 function option(label: string): HTMLButtonElement {
   return must(
-    Array.from(document.querySelectorAll<HTMLButtonElement>('.permissions-popover-menu-item')).find(
+    Array.from(document.querySelectorAll<HTMLButtonElement>('[role="option"]')).find(
       item => item.textContent === label,
     ),
     `the "${label}" menu item`,
@@ -279,6 +279,29 @@ describe('PermissionsPopover', () => {
     expectPopover({ open: false, list: { kind: 'empty' } });
   });
 
+  it('As a phone user, the permissions sheet leaves out its heading and opens each dropdown under its row', async () => {
+    // Given: a phone, where the popover opens as a sheet.
+    vi.stubGlobal('matchMedia', (media: string) => ({
+      matches: media === '(max-width: 560px)',
+      media,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    provide(LABEL);
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId('permissions-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(document.querySelector('[data-testid="permissions-popover-header"]')).toBeNull();
+    const rows = [...document.querySelectorAll('[data-testid="permissions-popover-row"]')];
+    expect(rows).toHaveLength(ALL_PERMISSIONS.length);
+    expect(rows.every(row => row.hasAttribute('data-sheet'))).toBe(true);
+  });
+
   it('As a user of a loaded app, the popover lists every permission with its status, as the topbar did', async () => {
     // Given
     provide(LABEL, { Camera: 'Authorized', ChainSubmit: 'Denied' });
@@ -289,7 +312,7 @@ describe('PermissionsPopover', () => {
     await openPopover();
 
     // Then
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(ALL_PERMISSIONS.length);
     expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
     expect(byId('permissions-popover-status-ChainSubmit').textContent).toBe('Denied');
     expect(byId('permissions-popover-status-Notifications').textContent).toBe('Ask (Default)');
@@ -577,7 +600,9 @@ describe('PermissionsPopover', () => {
     expect(byId('permissions-popover').contains(document.activeElement)).toBe(true);
 
     // Given
-    const selects = byId('permissions-popover').querySelectorAll<HTMLElement>('.permissions-popover-select');
+    const selects = byId('permissions-popover').querySelectorAll<HTMLElement>(
+      '[data-testid="permissions-popover-select"]',
+    );
     expect(selects.length).toBeGreaterThan(0);
     nth(selects, selects.length - 1).focus();
     await settleAll();
@@ -624,7 +649,7 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(document.querySelectorAll('.permissions-popover-menu')).toHaveLength(1);
+    expect(document.querySelectorAll('[role="listbox"]')).toHaveLength(1);
     expect(menu()?.getAttribute('aria-label')).toBe('Microphone permission');
     expect(select('Camera').getAttribute('aria-expanded')).toBe('false');
 
@@ -638,7 +663,7 @@ describe('PermissionsPopover', () => {
     // When
     select('Camera').click();
     await settleAll();
-    document.querySelector<HTMLElement>('.permissions-popover-header')?.click();
+    document.querySelector<HTMLElement>('[data-testid="permissions-popover-header"]')?.click();
     await settleAll();
 
     // Then
@@ -802,7 +827,7 @@ describe('PermissionsPopover', () => {
     await openPopover();
 
     // Then: nothing until the new read answers, then its statuses.
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(0);
     await answer('Denied');
     expect(byId('permissions-popover-status-Camera').textContent).toBe('Denied');
   });
@@ -821,7 +846,7 @@ describe('PermissionsPopover', () => {
     flush();
 
     // Then: nothing until the new app's read lands, then its statuses.
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(0);
     await settleAll();
     expect(byId('permissions-popover-status-Camera').textContent).toBe('Ask (Default)');
   });
@@ -861,6 +886,6 @@ describe('PermissionsPopover', () => {
     // Then
     expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
+    expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(ALL_PERMISSIONS.length);
   });
 });

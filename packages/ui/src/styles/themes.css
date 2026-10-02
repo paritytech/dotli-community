@@ -3,59 +3,6 @@
 
 /* dot.li — Light theme overrides */
 
-[data-theme='light'] .permissions-popover-menu {
-  background: rgba(255, 255, 255, 0.82);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  backdrop-filter: blur(24px) saturate(180%);
-  border-color: rgba(0, 0, 0, 0.08);
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
-}
-@supports (backdrop-filter: blur(1px)) {
-  [data-theme='light'] .permissions-popover-menu {
-    backdrop-filter: blur(24px) saturate(180%);
-  }
-}
-
-[data-theme='light'] .permissions-popover-header {
-  color: rgba(0, 0, 0, 0.5);
-}
-[data-theme='light'] .permissions-popover-row:hover {
-  background: rgba(0, 0, 0, 0.04);
-}
-[data-theme='light'] .permissions-popover-icon {
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme='light'] .permissions-popover-name {
-  color: rgba(0, 0, 0, 0.78);
-}
-[data-theme='light'] .permissions-popover-select {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: rgba(0, 0, 0, 0.85);
-}
-[data-theme='light'] .permissions-popover-select:hover {
-  background: rgba(0, 0, 0, 0.08);
-  border-color: rgba(0, 0, 0, 0.18);
-}
-[data-theme='light'] .permissions-popover-select[aria-expanded='true'] {
-  background: rgba(0, 0, 0, 0.1);
-  border-color: rgba(0, 0, 0, 0.22);
-}
-[data-theme='light'] .permissions-popover-select-caret {
-  color: rgba(0, 0, 0, 0.5);
-}
-[data-theme='light'] .permissions-popover-menu-item {
-  color: rgba(0, 0, 0, 0.78);
-}
-[data-theme='light'] .permissions-popover-menu-item:hover {
-  background: rgba(0, 0, 0, 0.05);
-}
-[data-theme='light'] .permissions-popover-menu-item.selected {
-  color: #111;
-}
-[data-theme='light'] .permissions-popover-menu-check {
-  color: #0a0a0a;
-}
 [data-theme='light'] [data-sheet] .mode-apply-footer {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(0, 0, 0, 0.08);
@@ -170,10 +117,6 @@
 [data-theme='light'] .mode-custom-endpoint-hint.invalid {
   color: #b91c1c;
   font-weight: 500;
-}
-[data-theme='light'] .permissions-popover-footer {
-  color: rgba(0, 0, 0, 0.45);
-  border-top-color: rgba(0, 0, 0, 0.06);
 }
 
 /* Green, amber and red all need darkening on the cream panel to clear 3:1 as
