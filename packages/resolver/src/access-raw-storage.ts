@@ -19,7 +19,6 @@ import {
 } from './abi.js';
 import { PartialStorageReadError } from './errors.js';
 import type { Api } from './api.js';
-import { ApiStoppedError } from './api.js';
 
 export type StatusCallback = (status: string) => void;
 
@@ -72,33 +71,44 @@ export function statusToPhase(message: string): ResolvePhase | null {
 }
 
 /**
- * Pin a single block hash and the contract's `trie_id` for a logical
- * multi-slot read. Throws `ApiStoppedError` if the underlying follow
- * has died. Returns `null` if the contract doesn't exist (no AccountInfoOf
- * or wrong enum tag).
+ * Run a logical multi-slot read against one block and the contract's
+ * `trie_id` there, keeping that block pinned until `read` settles. Throws
+ * `ApiStoppedError` if the underlying follow has died. Returns `null` without
+ * calling `read` if the contract doesn't exist (no AccountInfoOf or wrong
+ * enum tag).
  */
-async function pinContract(api: Api, contractAddress: string): Promise<{ hash: string; trieId: Uint8Array } | null> {
-  const hash = api.bestHash();
-  if (hash === null) {
-    throw new ApiStoppedError();
-  }
-  const trieId = await api.resolveTrieId(contractAddress, hash);
-  if (trieId === null) {
-    return null;
-  }
-  return { hash, trieId };
+function withPinnedContract<T>(
+  api: Api,
+  contractAddress: string,
+  read: (pin: { hash: string; trieId: Uint8Array }) => Promise<T | null>,
+): Promise<T | null> {
+  return api.withBestBlock(async hash => {
+    const trieId = await api.resolveTrieId(contractAddress, hash);
+    if (trieId === null) {
+      return null;
+    }
+    return read({ hash, trieId });
+  });
 }
 
-export async function readMappingBytes(
+export function readMappingBytes(
   api: Api,
   contractAddress: string,
   mappingKey: `0x${string}`,
   mappingSlot: number,
 ): Promise<Uint8Array | null> {
-  const pin = await pinContract(api, contractAddress);
-  if (pin === null) {
-    return null;
-  }
+  return withPinnedContract(api, contractAddress, pin =>
+    readPinnedMappingBytes(api, contractAddress, mappingKey, mappingSlot, pin),
+  );
+}
+
+async function readPinnedMappingBytes(
+  api: Api,
+  contractAddress: string,
+  mappingKey: `0x${string}`,
+  mappingSlot: number,
+  pin: { hash: string; trieId: Uint8Array },
+): Promise<Uint8Array | null> {
   const baseSlotKey = computeMappingSlot(mappingKey, mappingSlot);
   const baseData = await api.readSlot(contractAddress, baseSlotKey, pin.hash, pin.trieId);
   if (baseData === null) {
@@ -141,17 +151,26 @@ export async function readMappingBytes(
  * Returns `null` when the value is unset. Throws when a multi-slot read
  * aborts partway, mirroring [`readMappingBytes`](./storage.ts).
  */
-export async function readNestedMappingString(
+export function readNestedMappingString(
   api: Api,
   contractAddress: string,
   outerKey: `0x${string}`,
   innerKey: string,
   outerSlot: number,
 ): Promise<string | null> {
-  const pin = await pinContract(api, contractAddress);
-  if (pin === null) {
-    return null;
-  }
+  return withPinnedContract(api, contractAddress, pin =>
+    readPinnedNestedMappingString(api, contractAddress, outerKey, innerKey, outerSlot, pin),
+  );
+}
+
+async function readPinnedNestedMappingString(
+  api: Api,
+  contractAddress: string,
+  outerKey: `0x${string}`,
+  innerKey: string,
+  outerSlot: number,
+  pin: { hash: string; trieId: Uint8Array },
+): Promise<string | null> {
   const baseSlotKey = computeNestedStringMappingSlot(outerKey, innerKey, outerSlot);
   const baseData = await api.readSlot(contractAddress, baseSlotKey, pin.hash, pin.trieId);
   if (baseData === null) {

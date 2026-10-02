@@ -37,7 +37,7 @@ function must<T>(value: T | undefined, what: string): T {
 function fakeApi(): Api {
   return {
     whenReady: () => Promise.resolve(),
-    bestHash: () => '0x01',
+    withBestBlock: <T>(read: (hash: string) => Promise<T>) => read('0x01'),
     resolveTrieId: () => Promise.resolve(null),
     destroy: vi.fn<() => void>(),
     onStop: (cb: () => void) => {
