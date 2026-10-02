@@ -1000,6 +1000,59 @@ export const types = [
         ],
     },
     {
+        id: "contact-label-slot",
+        name: "ContactLabelSlot",
+        category: "contacts",
+        definition: "export interface ContactLabelSlot {\n  slot: number;\n  handle: ContactHandle;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "Geometry for a host-owned contact name, independent of profile sharing.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, unique within this placement.",
+            },
+            {
+                name: "handle",
+                type: "ContactHandle",
+                description: "Opaque handle for the contact whose name the host draws.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Name bounds in surface units, with sides from 1 to 16384.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region in surface units; a zero side hides the label.",
+            },
+        ],
+    },
+    {
+        id: "contact-pick-many-outcome",
+        name: "ContactPickManyOutcome",
+        category: "contacts",
+        definition: 'export type ContactPickManyOutcome =\n  | { tag: "Picked"; value: { handles: Array<ContactHandle> } }\n  | { tag: "Dismissed"; value?: undefined }\n  | { tag: "NoContacts"; value?: undefined }\n;',
+        description: "Selection confirmed in the host's multi-contact picker.",
+        variants: [
+            {
+                name: "Picked",
+                type: '{ tag: "Picked"; value: { handles: Array<ContactHandle> } }',
+                description: "The user confirmed this complete selection, including an empty one.",
+            },
+            {
+                name: "Dismissed",
+                type: '{ tag: "Dismissed"; value?: undefined }',
+                description: "The user closed the picker without confirming a change.",
+            },
+            {
+                name: "NoContacts",
+                type: '{ tag: "NoContacts"; value?: undefined }',
+                description: "There are no contacts to show.",
+            },
+        ],
+    },
+    {
         id: "contact-pick-outcome",
         name: "ContactPickOutcome",
         category: "contacts",
@@ -2093,6 +2146,58 @@ export const types = [
         ],
     },
     {
+        id: "host-contacts-pick-many-error",
+        name: "HostContactsPickManyError",
+        category: "contacts",
+        definition: 'export type HostContactsPickManyError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidSelection"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure before a complete selection can be confirmed.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No active session, or the session changed while choosing.",
+            },
+            {
+                name: "InvalidSelection",
+                type: '{ tag: "InvalidSelection"; value?: undefined }',
+                description: "The selection exceeds the bound or contains an unresolved handle.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The host could not complete the picker.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-many-request",
+        name: "HostContactsPickManyRequest",
+        category: "contacts",
+        definition: "export interface HostContactsPickManyRequest {\n  selected: Array<ContactHandle>;\n}",
+        description: "Open the host's picker with the product's current selection.",
+        fields: [
+            {
+                name: "selected",
+                type: "Array<ContactHandle>",
+                description: "At most 256 handles. Duplicates are ignored; an unresolved handle\nrejects the entire request rather than changing the selected audience.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-many-response",
+        name: "HostContactsPickManyResponse",
+        category: "contacts",
+        definition: "export interface HostContactsPickManyResponse {\n  outcome: ContactPickManyOutcome;\n}",
+        description: "The user's confirmed selection or reason no selection was made.",
+        fields: [
+            {
+                name: "outcome",
+                type: "ContactPickManyOutcome",
+                description: "How the picker ended.",
+            },
+        ],
+    },
+    {
         id: "host-contacts-pick-request",
         name: "HostContactsPickRequest",
         category: "contacts",
@@ -2113,6 +2218,67 @@ export const types = [
                 description: "How the pick ended.",
             },
         ],
+    },
+    {
+        id: "host-contacts-place-labels-error",
+        name: "HostContactsPlaceLabelsError",
+        category: "contacts",
+        definition: 'export type HostContactsPlaceLabelsError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidPlacement"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Placement failure, never the availability of any individual contact.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "The host cannot draw labels over the product surface.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No active session, or it changed while placing labels.",
+            },
+            {
+                name: "InvalidPlacement",
+                type: '{ tag: "InvalidPlacement"; value?: undefined }',
+                description: "The surface, slot count, slot ids or rectangles are invalid.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The host could not place the labels.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-place-labels-request",
+        name: "HostContactsPlaceLabelsRequest",
+        category: "contacts",
+        definition: "export interface HostContactsPlaceLabelsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactLabelSlot>;\n}",
+        description: "Replace the contact names drawn over a product's surface.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Surface width in framebuffer pixels or web viewport CSS pixels, 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Surface height in the same units, 1 to 16384.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactLabelSlot>",
+                description: "At most 256 slots. Empty clears the previous placement.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-place-labels-response",
+        name: "HostContactsPlaceLabelsResponse",
+        category: "contacts",
+        definition: "export interface HostContactsPlaceLabelsResponse {\n}",
+        description: "Acknowledges placement without revealing any contact's name or availability.",
+        fields: [],
     },
     {
         id: "host-create-transaction-error",

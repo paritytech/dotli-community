@@ -418,6 +418,16 @@ export declare const CONTACTS_PICK: {
     readonly method: 0;
     readonly kind: "request";
 };
+export declare const CONTACTS_PICK_MANY: {
+    readonly trait: 20;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const CONTACTS_PLACE_LABELS: {
+    readonly trait: 20;
+    readonly method: 2;
+    readonly kind: "request";
+};
 export declare const PROFILE_PRESENT: {
     readonly trait: 69;
     readonly method: 0;

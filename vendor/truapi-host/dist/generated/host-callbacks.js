@@ -24,6 +24,10 @@ export const AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pai
  */
 export const ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
 /**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export const ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(Bytes32) }));
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -77,6 +81,10 @@ export const HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.O
  * How a host's contact picker ended.
  */
 export const HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export const HostContactsPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ accounts: S.Vector(Bytes32) }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -164,6 +172,14 @@ export const PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: AvatarRec
  * contact disclosed.
  */
 export const PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
+/**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export const PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: Bytes32, rect: AvatarRect, clip: AvatarRect }));
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export const PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
 /**
  * Review shown before a preimage is submitted.
  */

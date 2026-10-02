@@ -919,6 +919,38 @@ export interface ContactHandle {
     bytes: Bytes32;
 }
 export const ContactHandle: Codec<ContactHandle>;
+/** Geometry for a host-owned contact name, independent of profile sharing. */
+export interface ContactLabelSlot {
+    /** Product-chosen id, unique within this placement. */
+    slot: number;
+    /** Opaque handle for the contact whose name the host draws. */
+    handle: ContactHandle;
+    /** Name bounds in surface units, with sides from 1 to 16384. */
+    rect: AvatarRect;
+    /** Visible region in surface units; a zero side hides the label. */
+    clip: AvatarRect;
+}
+export const ContactLabelSlot: Codec<ContactLabelSlot>;
+/** Selection confirmed in the host's multi-contact picker. */
+export type ContactPickManyOutcome = 
+/** The user confirmed this complete selection, including an empty one. */
+{
+    tag: "Picked";
+    value: {
+        handles: Array<ContactHandle>;
+    };
+}
+/** The user closed the picker without confirming a change. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/** There are no contacts to show. */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+};
+export const ContactPickManyOutcome: Codec<ContactPickManyOutcome>;
 /**
  * How a contact pick ended.
  *
@@ -1552,6 +1584,30 @@ export type VersionedHostContactsPickError =
     value: HostContactsPickError;
 };
 export const VersionedHostContactsPickError: Codec<VersionedHostContactsPickError>;
+/** Versioned envelope for [\`HostContactsPickManyError\`]. */
+export type VersionedHostContactsPickManyError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyError;
+};
+export const VersionedHostContactsPickManyError: Codec<VersionedHostContactsPickManyError>;
+/** Versioned envelope for [\`HostContactsPickManyRequest\`]. */
+export type VersionedHostContactsPickManyRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyRequest;
+};
+export const VersionedHostContactsPickManyRequest: Codec<VersionedHostContactsPickManyRequest>;
+/** Versioned envelope for [\`HostContactsPickManyResponse\`]. */
+export type VersionedHostContactsPickManyResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyResponse;
+};
+export const VersionedHostContactsPickManyResponse: Codec<VersionedHostContactsPickManyResponse>;
 /** Versioned envelope for [\`HostContactsPickRequest\`]. */
 export type VersionedHostContactsPickRequest = 
 /** Version 1 payload. */
@@ -1568,6 +1624,30 @@ export type VersionedHostContactsPickResponse =
     value: HostContactsPickResponse;
 };
 export const VersionedHostContactsPickResponse: Codec<VersionedHostContactsPickResponse>;
+/** Versioned envelope for [\`HostContactsPlaceLabelsError\`]. */
+export type VersionedHostContactsPlaceLabelsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsError;
+};
+export const VersionedHostContactsPlaceLabelsError: Codec<VersionedHostContactsPlaceLabelsError>;
+/** Versioned envelope for [\`HostContactsPlaceLabelsRequest\`]. */
+export type VersionedHostContactsPlaceLabelsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsRequest;
+};
+export const VersionedHostContactsPlaceLabelsRequest: Codec<VersionedHostContactsPlaceLabelsRequest>;
+/** Versioned envelope for [\`HostContactsPlaceLabelsResponse\`]. */
+export type VersionedHostContactsPlaceLabelsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsResponse;
+};
+export const VersionedHostContactsPlaceLabelsResponse: Codec<VersionedHostContactsPlaceLabelsResponse>;
 /** Versioned envelope for [\`HostCreateTransactionError\`]. */
 export type VersionedHostCreateTransactionError = 
 /** Version 1 payload. */
@@ -5015,6 +5095,41 @@ export type HostContactsPickError =
     };
 };
 export const HostContactsPickError: Codec<HostContactsPickError>;
+/** Failure before a complete selection can be confirmed. */
+export type HostContactsPickManyError = 
+/** No active session, or the session changed while choosing. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The selection exceeds the bound or contains an unresolved handle. */
+ | {
+    tag: "InvalidSelection";
+    value?: undefined;
+}
+/** The host could not complete the picker. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostContactsPickManyError: Codec<HostContactsPickManyError>;
+/** Open the host's picker with the product's current selection. */
+export interface HostContactsPickManyRequest {
+    /**
+     * At most 256 handles. Duplicates are ignored; an unresolved handle
+     * rejects the entire request rather than changing the selected audience.
+     */
+    selected: Array<ContactHandle>;
+}
+export const HostContactsPickManyRequest: Codec<HostContactsPickManyRequest>;
+/** The user's confirmed selection or reason no selection was made. */
+export interface HostContactsPickManyResponse {
+    /** How the picker ended. */
+    outcome: ContactPickManyOutcome;
+}
+export const HostContactsPickManyResponse: Codec<HostContactsPickManyResponse>;
 /**
  * Request to open the host's contact picker.
  *
@@ -5030,6 +5145,45 @@ export interface HostContactsPickResponse {
     outcome: ContactPickOutcome;
 }
 export const HostContactsPickResponse: Codec<HostContactsPickResponse>;
+/** Placement failure, never the availability of any individual contact. */
+export type HostContactsPlaceLabelsError = 
+/** The host cannot draw labels over the product surface. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** No active session, or it changed while placing labels. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The surface, slot count, slot ids or rectangles are invalid. */
+ | {
+    tag: "InvalidPlacement";
+    value?: undefined;
+}
+/** The host could not place the labels. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export const HostContactsPlaceLabelsError: Codec<HostContactsPlaceLabelsError>;
+/** Replace the contact names drawn over a product's surface. */
+export interface HostContactsPlaceLabelsRequest {
+    /** Surface width in framebuffer pixels or web viewport CSS pixels, 1 to 16384. */
+    surfaceWidth: number;
+    /** Surface height in the same units, 1 to 16384. */
+    surfaceHeight: number;
+    /** At most 256 slots. Empty clears the previous placement. */
+    slots: Array<ContactLabelSlot>;
+}
+export const HostContactsPlaceLabelsRequest: Codec<HostContactsPlaceLabelsRequest>;
+/** Acknowledges placement without revealing any contact's name or availability. */
+export interface HostContactsPlaceLabelsResponse {
+}
+export const HostContactsPlaceLabelsResponse: Codec<HostContactsPlaceLabelsResponse>;
 /** Transaction creation error. */
 export type HostCreateTransactionError = 
 /** Payload could not be deserialized. */
@@ -6839,6 +6993,8 @@ export import CoinPaymentTransmissionChannel = T.CoinPaymentTransmissionChannel;
 export import ColorToken = T.ColorToken;
 export import ColumnProps = T.ColumnProps;
 export import ContactHandle = T.ContactHandle;
+export import ContactLabelSlot = T.ContactLabelSlot;
+export import ContactPickManyOutcome = T.ContactPickManyOutcome;
 export import ContactPickOutcome = T.ContactPickOutcome;
 export import ContentAlignment = T.ContentAlignment;
 export import ContextualAlias = T.ContextualAlias;
@@ -6915,8 +7071,14 @@ export import VersionedHostCoinPaymentRefundError = T.VersionedHostCoinPaymentRe
 export import VersionedHostCoinPaymentRefundItem = T.VersionedHostCoinPaymentRefundItem;
 export import VersionedHostCoinPaymentRefundRequest = T.VersionedHostCoinPaymentRefundRequest;
 export import VersionedHostContactsPickError = T.VersionedHostContactsPickError;
+export import VersionedHostContactsPickManyError = T.VersionedHostContactsPickManyError;
+export import VersionedHostContactsPickManyRequest = T.VersionedHostContactsPickManyRequest;
+export import VersionedHostContactsPickManyResponse = T.VersionedHostContactsPickManyResponse;
 export import VersionedHostContactsPickRequest = T.VersionedHostContactsPickRequest;
 export import VersionedHostContactsPickResponse = T.VersionedHostContactsPickResponse;
+export import VersionedHostContactsPlaceLabelsError = T.VersionedHostContactsPlaceLabelsError;
+export import VersionedHostContactsPlaceLabelsRequest = T.VersionedHostContactsPlaceLabelsRequest;
+export import VersionedHostContactsPlaceLabelsResponse = T.VersionedHostContactsPlaceLabelsResponse;
 export import VersionedHostCreateTransactionError = T.VersionedHostCreateTransactionError;
 export import VersionedHostCreateTransactionRequest = T.VersionedHostCreateTransactionRequest;
 export import VersionedHostCreateTransactionResponse = T.VersionedHostCreateTransactionResponse;
@@ -7246,8 +7408,14 @@ export import HostCoinPaymentQueryPurseResponse = T.HostCoinPaymentQueryPurseRes
 export import HostCoinPaymentRebalancePurseRequest = T.HostCoinPaymentRebalancePurseRequest;
 export import HostCoinPaymentRefundRequest = T.HostCoinPaymentRefundRequest;
 export import HostContactsPickError = T.HostContactsPickError;
+export import HostContactsPickManyError = T.HostContactsPickManyError;
+export import HostContactsPickManyRequest = T.HostContactsPickManyRequest;
+export import HostContactsPickManyResponse = T.HostContactsPickManyResponse;
 export import HostContactsPickRequest = T.HostContactsPickRequest;
 export import HostContactsPickResponse = T.HostContactsPickResponse;
+export import HostContactsPlaceLabelsError = T.HostContactsPlaceLabelsError;
+export import HostContactsPlaceLabelsRequest = T.HostContactsPlaceLabelsRequest;
+export import HostContactsPlaceLabelsResponse = T.HostContactsPlaceLabelsResponse;
 export import HostCreateTransactionError = T.HostCreateTransactionError;
 export import HostCreateTransactionResponse = T.HostCreateTransactionResponse;
 export import HostCreateTransactionWithLegacyAccountResponse = T.HostCreateTransactionWithLegacyAccountResponse;
@@ -7841,7 +8009,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "9d439310e8ccad94";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "a08d82b4593af81a";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -8019,8 +8187,8 @@ export declare class CoinPaymentClient {
  *
  * A product never reads the contact list. It opens the host's picker; the host
  * renders an overlay from the chat lists its chat extensions hold, and
- * returns only the person the user selected. Names, accounts, and every other
- * contact the user did not pick stay host-side.
+ * returns only handles for the people the user selected. Names, accounts, and
+ * every other contact the user did not pick stay host-side.
  *
  * That is also why there is no permission to request: the user choosing a
  * contact in host UI is the consent, and a product that is never handed the
@@ -8043,6 +8211,22 @@ export declare class ContactsClient {
      * draw avatars for, without returning accounts or profile contents.
      */
     pick(request: T.HostContactsPickRequest, options?: CallOptions): ResultAsync<T.HostContactsPickResponse, S.CallErrorValue<T.VersionedHostContactsPickError>>;
+    /**
+     * Edit a complete selection in the host's multi-select contact picker.
+     *
+     * \`selected\` preselects existing handles. Confirming none returns \`Picked\`
+     * with an empty \`handles\` list; dismissing never changes the selection.
+     * Unresolvable initial handles reject the entire request.
+     */
+    pickMany(request: T.HostContactsPickManyRequest, options?: CallOptions): ResultAsync<T.HostContactsPickManyResponse, S.CallErrorValue<T.VersionedHostContactsPickManyError>>;
+    /**
+     * Draw contact names in host-owned rectangles over the product surface.
+     *
+     * Labels do not require a shared Profile photo or disclosure. The response
+     * reveals no name, identity or per-slot availability. Each call replaces
+     * the previous placement; empty \`slots\` clears it.
+     */
+    placeLabels(request: T.HostContactsPlaceLabelsRequest, options?: CallOptions): ResultAsync<T.HostContactsPlaceLabelsResponse, S.CallErrorValue<T.VersionedHostContactsPlaceLabelsError>>;
 }
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {

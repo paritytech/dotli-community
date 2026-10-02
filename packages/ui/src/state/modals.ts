@@ -45,6 +45,8 @@ export interface ModalView<R extends string> {
   input?: ModalPasswordInput;
   /** Host-owned choices, rendered separately from the action footer. */
   choices?: ModalChoice<R>[];
+  /** Checkbox choices retain edits until a primary action confirms them. */
+  selection?: { selected: readonly R[]; limit: number };
   /** Display order. */
   buttons: ModalButton<R>[];
   dismissOnBackdrop: boolean;
@@ -58,6 +60,8 @@ export interface ModalOutcome<R extends string> {
   result: R;
   /** The password input's value, for views with an input. */
   value?: string;
+  /** Confirmed checkbox choices; absent on dismissal and fallback. */
+  selected?: R[];
 }
 
 export interface ModalEntry {
@@ -116,8 +120,12 @@ export function openModal<R extends string>(view: ModalView<R>, signal?: AbortSi
 }
 
 /** Settle one dialog. Ignored if it has already settled. */
-export function settleModal(id: number, result: string, value?: string): void {
-  take(id)?.resolve(value === undefined ? { result } : { result, value });
+export function settleModal(id: number, result: string, value?: string, selected?: string[]): void {
+  take(id)?.resolve({
+    result,
+    ...(value === undefined ? {} : { value }),
+    ...(selected === undefined ? {} : { selected }),
+  });
 }
 
 /** Settle every open dialog with its fallback result. */
