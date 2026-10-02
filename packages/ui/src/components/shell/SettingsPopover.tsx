@@ -10,6 +10,7 @@ import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './SettingsPopover.module.css';
 
 /** The popover's body, its own chunk. */
 const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
@@ -76,7 +77,7 @@ export function SettingsPopover(): JSX.Element {
     <Popover
       id="mode-popover"
       title="Settings"
-      class="mode-popover"
+      class={s['popover']}
       backdrop
       sheetInset={false}
       content={Settings}

@@ -9,7 +9,9 @@ import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
-import { CacheToggle, RadioRow, SectionHeader } from './SettingsRows.js';
+import { usePopover } from './Popover.js';
+import { CacheToggle, ClearButton, RadioRow, SettingsRow, SettingsSection } from './SettingsRows.js';
+import s from './SettingsContent.module.css';
 
 const CHAIN_CHOICES: [Backend, string][] = [
   ['smoldot-direct', 'Verified in your browser, separate per tab (recommended)'],
@@ -78,13 +80,13 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   return (
     <>
       {/* Two-column grid. Left: backend / cache. Right: diagnostics. Save &
-          Apply and the footer span both columns at the bottom. Collapses to
-          a single column on narrow viewports (CSS). */}
-      <div class="mode-popover-columns">
-        <div class="mode-popover-col">
+          Apply and the footer span both columns at the bottom. One column in
+          a sheet (CSS). */}
+      <div class={s['columns']} data-testid="mode-popover-columns">
+        <div class={s['col']}>
           {networks.length > 1 && (
             <>
-              <SectionHeader text="Network" />
+              <SettingsSection text="Network" />
               <div role="radiogroup" aria-label="Network">
                 <For each={networks}>
                   {value => (
@@ -106,10 +108,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           {/* Only separate from the Network section when there is one.
               With a single enabled network this header leads the column and
               must line up with Diagnostics opposite. */}
-          <SectionHeader
-            text="Network Transport"
-            modifier={networks.length > 1 ? 'mode-popover-section--spaced' : undefined}
-          />
+          <SettingsSection text="Network Transport" spacing={networks.length > 1 ? 'spaced' : undefined} />
           <div role="radiogroup" aria-label="Network Transport">
             <For each={CHAIN_CHOICES}>
               {([value, description]) => (
@@ -127,7 +126,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
               )}
             </For>
           </div>
-          <SectionHeader text="Cache" modifier="mode-popover-section--bottom" />
+          <SettingsSection text="Cache" spacing="bottom" />
           <CacheToggle
             label="dotNS cache"
             checked={!persisted.cache.skipCidCache}
@@ -156,40 +155,35 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           {/* Manual "clear everything" escape hatch, through the same
               full-reset pipeline as Save & Apply, so users don't have to
               toggle a setting back and forth just to wipe state. */}
-          <div class="mode-cache-row mode-clear-all-row">
-            <button
+          <SettingsRow class={s['clearAllRow']} testId="mode-clear-all-row">
+            <ClearButton
               onClick={clearAll}
-              class="mode-clear-btn"
               title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
               disabled={clearing()}
             >
               {clearing() ? 'Clearing…' : 'Clear all caches'}
-            </button>
-          </div>
+            </ClearButton>
+          </SettingsRow>
         </div>
-        <div class="mode-popover-col">
-          <SectionHeader text="Diagnostics" />
+        <div class={s['col']}>
+          <SettingsSection text="Diagnostics" />
           <Diagnostics backend={persisted.chain} />
         </div>
       </div>
       {/* The footer wraps the divider, Save & Apply, and the warning as one
           unit so it can pin to the bottom of the full-screen sheet on mobile
           (CSS), keeping the primary action reachable. */}
-      <div class="mode-apply-footer">
-        <div class="mode-popover-divider" />
-        <div class="mode-cache-row mode-apply-row">
-          <button
-            onClick={apply}
-            class={`mode-clear-btn${dirty() ? ' mode-apply-dirty' : ''}`}
-            disabled={!dirty() || applying()}
-          >
+      <div class={s['footer']}>
+        <div class={s['divider']} />
+        <SettingsRow class={s['applyRow']} testId="mode-apply-row">
+          <ClearButton onClick={apply} primary={dirty()} disabled={!dirty() || applying()}>
             {applying() ? 'Resetting…' : 'Save & Apply'}
-          </button>
-        </div>
+          </ClearButton>
+        </SettingsRow>
         {/* Applying reloads the app. Backend and network changes keep
             caches warm; only caches the user turns off get cleared. Shown
             only while the draft is dirty so the idle popover isn't noisy. */}
-        <p class={`mode-apply-warning${dirty() ? ' visible' : ''}`}>
+        <p class={s['warning']} data-testid="mode-apply-warning" data-visible={dirty() ? '' : undefined}>
           Applying reloads the app. Caches you turn off are cleared.
         </p>
       </div>
@@ -202,11 +196,14 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * from the saved settings, once the store is seeded. Each opening mounts it
  * afresh (the Popover remounts its content per opening), so its draft starts
  * from what is saved; later writes to the store do not remount it mid-edit.
+ * In a sheet (`data-sheet`) the columns stack and the footer pins to the
+ * sheet's bottom edge.
  */
 export function SettingsContent(): JSX.Element {
+  const popover = usePopover();
   const settings = useStore(settingsStore);
   return (
-    <div class="mode-popover-content" id="mode-popover-content">
+    <div class={s['content']} id="mode-popover-content" data-sheet={popover.sheet() ? '' : undefined}>
       {/* Not keyed: the panel mounts once the store is seeded, and reads the
           saved settings once (untracked). */}
       <Show when={settings()}>{saved => <SettingsPanel saved={saved()} />}</Show>

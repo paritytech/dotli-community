@@ -1,0 +1,77 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The settings popover's body: two columns (the settings, the diagnostics)
+   over a footer with Save & Apply. In a sheet (data-sheet) the columns stack
+   and the footer pins to the sheet's bottom edge, where it pads itself for
+   the home indicator (the Popover's sheetInset is false). */
+
+.content[data-sheet] {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  /* Breathing room, so the section headings do not touch the popover's
+     top border. */
+  padding-top: 10px;
+}
+.content[data-sheet] .columns {
+  grid-template-columns: 1fr;
+}
+/* A flex column, so the last row of each (Clear all caches, the
+   diagnostics' links) sits at its bottom, level with the other's. */
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+/* Clear all caches keeps its distance from the last cache switch. */
+.clear-all-row {
+  padding-top: 10px;
+}
+/* The gap under the footer is the same whether the warning shows or not. */
+.footer {
+  padding-bottom: 10px;
+}
+.content[data-sheet] .footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: 12px 14px calc(12px + var(--safe-bottom));
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+.divider {
+  height: 1px;
+  margin: 6px 14px;
+  background: var(--border-subtle);
+}
+.content[data-sheet] .divider {
+  display: none;
+}
+.apply-row {
+  padding-bottom: 0;
+}
+.content[data-sheet] .apply-row {
+  padding-top: 0;
+}
+/* Shown only while there is something to apply (data-visible). */
+.warning {
+  display: none;
+  margin: 6px 14px 0;
+  padding: 0;
+  color: var(--caution);
+  font-size: 0.7rem;
+  font-style: italic;
+  line-height: 1.35;
+  text-align: center;
+}
+.warning[data-visible] {
+  display: block;
+}

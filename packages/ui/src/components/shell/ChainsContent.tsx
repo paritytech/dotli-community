@@ -9,6 +9,8 @@ import { networkStore, watchNetwork } from '../../state/network.js';
 import { productStore } from '../../state/product.js';
 import { useStore } from '../use-store.js';
 import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
+import { usePopover } from './Popover.js';
+import { SettingsSection } from './SettingsRows.js';
 
 /**
  * How often the pending cells' countdown is recomputed while open and a
@@ -234,6 +236,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
  * tips. Every chain's block arrivals are watched while it is mounted.
  */
 export function ChainsContent(): JSX.Element {
+  const popover = usePopover();
   // Once mounted: the watch goes with the content.
   onSettled(() => watchNetwork());
   const network = useStore(networkStore);
@@ -287,7 +290,10 @@ export function ChainsContent(): JSX.Element {
   };
   return (
     <>
-      <div class="mode-popover-section">Network</div>
+      {/* A sheet's header names it already. */}
+      <Show when={!popover.sheet()}>
+        <SettingsSection text="Network" />
+      </Show>
       <div class="chains-status">
         <span class={`chains-status-dot is-${verdict().tone}`} />
         <span>{verdict().text}</span>

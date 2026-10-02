@@ -1,27 +1,96 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The rows the settings popover (SettingsPopover.tsx) and its diagnostics
-// (Diagnostics.tsx) are made of, rendering what topbar.ts's
-// appendSectionHeader, buildRadioRow, renderCacheToggle and renderInfoRow
-// built.
+// The rows the settings popover (SettingsContent.tsx), its diagnostics
+// (Diagnostics.tsx) and the network popover's heading (ChainsContent.tsx)
+// are made of: section headings, rows, radio choices, cache switches,
+// diagnostics readouts and the outlined action buttons.
 
 import { createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import s from './SettingsRows.module.css';
 
-/** A section heading, with an optional modifier class. */
-export function SectionHeader(props: { text: string; modifier?: string | undefined }): JSX.Element {
+/**
+ * A section heading. `spaced` sets it apart from the section above it;
+ * `bottom` also anchors it, and what follows it, to the bottom of its
+ * column.
+ */
+export function SettingsSection(props: {
+  text: string;
+  spacing?: 'spaced' | 'bottom' | undefined;
+  /** A class of the consumer's own, for placement. */
+  class?: string | undefined;
+  /** Rendered as `data-testid`. */
+  testId?: string;
+}): JSX.Element {
   return (
-    <div class={props.modifier === undefined ? 'mode-popover-section' : `mode-popover-section ${props.modifier}`}>
+    <div
+      class={[
+        s['section'],
+        props.spacing === 'spaced' && s['spaced'],
+        props.spacing === 'bottom' && s['bottom'],
+        props.class,
+      ]}
+      data-testid={props.testId}
+    >
       {props.text}
     </div>
   );
 }
 
+/** A row of a settings column: a label and its control, or a set of buttons. */
+export function SettingsRow(props: {
+  /** A class of the consumer's own, for its spacing. */
+  class?: string | undefined;
+  /** Rendered as `data-testid`. */
+  testId?: string;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <div class={[s['row'], props.class]} data-testid={props.testId}>
+      {props.children}
+    </div>
+  );
+}
+
 /**
- * A radio choice with a label and a description. Picking it calls `choose`
- * and keeps the focus on it (the old popover rebuilt the group and refocused
- * the checked radio, so arrow navigation survived).
+ * An outlined action button spanning its row (Clear all caches, Save &
+ * Apply, the diagnostics' links). `primary` fills it, as `data-primary`:
+ * Save & Apply while there is something to apply.
+ */
+export function ClearButton(props: {
+  onClick: () => void;
+  disabled?: boolean;
+  title?: string;
+  primary?: boolean;
+  /** A class of the consumer's own, for its size in the row. */
+  class?: string | undefined;
+  /** Rendered as `data-testid`. */
+  testId?: string;
+  children: JSX.Element;
+}): JSX.Element {
+  return (
+    <button
+      onClick={() => {
+        props.onClick();
+      }}
+      type="button"
+      class={[s['clear'], props.class]}
+      data-primary={props.primary === true ? '' : undefined}
+      data-testid={props.testId}
+      title={props.title}
+      disabled={props.disabled === true}
+    >
+      {props.children}
+    </button>
+  );
+}
+
+/**
+ * A radio choice with a label and a description, marked `data-selected`
+ * and `data-disabled`. Picking it calls `choose` and keeps the focus on it
+ * (the old popover rebuilt the group and refocused the checked radio, so
+ * arrow navigation survived).
  */
 export function RadioRow(props: {
   name: string;
@@ -34,7 +103,11 @@ export function RadioRow(props: {
 }): JSX.Element {
   const disabled = (): boolean => props.disabled === true;
   return (
-    <label class={`mode-radio-row${props.selected ? ' selected' : ''}${disabled() ? ' disabled' : ''}`}>
+    <label
+      class={s['radio']}
+      data-selected={props.selected ? '' : undefined}
+      data-disabled={disabled() ? '' : undefined}
+    >
       <input
         onChange={e => {
           props.choose();
@@ -45,12 +118,12 @@ export function RadioRow(props: {
         value={props.value}
         checked={props.selected}
         disabled={disabled()}
-        class="mode-radio-input"
+        class={s['radioInput']}
       />
-      <span class="mode-radio-dot" />
-      <span class="mode-radio-text">
-        <span class="mode-radio-label">{props.label}</span>
-        <span class="mode-radio-desc">{props.description}</span>
+      <span class={s['dot']} />
+      <span class={s['radioText']}>
+        <span class={s['radioLabel']}>{props.label}</span>
+        <span class={s['radioDesc']}>{props.description}</span>
       </span>
     </label>
   );
@@ -67,8 +140,8 @@ export function CacheToggle(props: {
 }): JSX.Element {
   const [on, setOn] = createSignal(untrack(() => props.checked));
   return (
-    <div class="mode-cache-row">
-      <span class="mode-cache-label">{props.label}</span>
+    <SettingsRow>
+      <span class={s['cacheLabel']}>{props.label}</span>
       <button
         onClick={() => {
           const next = !untrack(on);
@@ -77,14 +150,14 @@ export function CacheToggle(props: {
         }}
         role="switch"
         aria-label={props.label}
-        class={`permissions-popover-toggle ${on() ? 'on' : ''}`}
+        class={s['switch']}
         aria-checked={on() ? 'true' : 'false'}
       >
-        <span class="permissions-toggle-track">
-          <span class="permissions-toggle-knob" />
+        <span class={s['track']}>
+          <span class={s['knob']} />
         </span>
       </button>
-    </div>
+    </SettingsRow>
   );
 }
 
@@ -93,7 +166,8 @@ const COPIED_MS = 1000;
 
 /**
  * A diagnostics label and value. A copyable row copies its value on click
- * (unless it is empty, "…" or "n/a") and reads "Copied" for a second.
+ * (unless it is empty, "…" or "n/a") and reads "Copied" for a second, marked
+ * `data-copied`.
  */
 export function InfoRow(props: { label: string; value: string; copyable?: boolean }): JSX.Element {
   const [copied, setCopied] = createSignal(false);
@@ -121,11 +195,13 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
           }, COPIED_MS);
         });
       }}
-      class={`mode-endpoint-row mode-info-row${copyable ? ' mode-info-row-copyable' : ''}${copied() ? ' copied' : ''}`}
+      class={[s['info'], copyable && s['copyable']]}
+      data-testid="mode-info-row"
+      data-copied={copied() ? '' : undefined}
       title={copyable ? `Click to copy ${props.label}` : undefined}
     >
-      <span class="mode-endpoint-label">{props.label}</span>
-      <code class="mode-endpoint-value">{copied() ? 'Copied' : props.value}</code>
+      <span class={s['infoLabel']}>{props.label}</span>
+      <code class={s['infoValue']}>{copied() ? 'Copied' : props.value}</code>
     </div>
   );
 }

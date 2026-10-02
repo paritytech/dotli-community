@@ -142,7 +142,7 @@ function button(text: string): HTMLButtonElement {
 }
 
 function applyButton(): HTMLButtonElement {
-  return query(document, '.mode-apply-row button', HTMLButtonElement);
+  return query(document, '[data-testid="mode-apply-row"] button', HTMLButtonElement);
 }
 
 function toggle(label: string): HTMLButtonElement {
@@ -154,7 +154,7 @@ function radio(name: string, value: string): HTMLInputElement {
 }
 
 function infoRow(label: string): HTMLElement {
-  const found = Array.from(document.querySelectorAll<HTMLElement>('.mode-info-row')).find(
+  const found = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mode-info-row"]')).find(
     row => row.firstElementChild?.textContent === label,
   );
   if (found === undefined) {
@@ -478,7 +478,7 @@ describe('The settings popover island', () => {
 
     // Then: no settings yet, but the sheet header and its close button are
     // there.
-    expect(document.querySelector('.mode-popover-columns')).toBeNull();
+    expect(document.querySelector('[data-testid="mode-popover-columns"]')).toBeNull();
     expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull();
 
     // When
@@ -582,10 +582,9 @@ describe('The settings popover island', () => {
 
     // Then
     expect(toggle('dotNS cache').getAttribute('aria-checked')).toBe('false');
-    expect(toggle('dotNS cache').className).toBe('permissions-popover-toggle ');
     expect(applyButton().disabled).toBe(false);
-    expect(applyButton().className).toBe('mode-clear-btn mode-apply-dirty');
-    expect(document.querySelector('.mode-apply-warning')?.classList.contains('visible')).toBe(true);
+    expect(applyButton().hasAttribute('data-primary')).toBe(true);
+    expect(byTestId('mode-apply-warning').hasAttribute('data-visible')).toBe(true);
 
     // When
     toggle('dotNS cache').click();
@@ -593,8 +592,8 @@ describe('The settings popover island', () => {
 
     // Then
     expect(applyButton().disabled).toBe(true);
-    expect(applyButton().className).toBe('mode-clear-btn');
-    expect(document.querySelector('.mode-apply-warning')?.classList.contains('visible')).toBe(false);
+    expect(applyButton().hasAttribute('data-primary')).toBe(false);
+    expect(byTestId('mode-apply-warning').hasAttribute('data-visible')).toBe(false);
 
     // When
     radio('dotli-network', 'previewnet').click();
@@ -637,7 +636,7 @@ describe('The settings popover island', () => {
     );
     expect(checked?.value).toBe('rpc-gateway');
     expect(document.activeElement).toBe(checked);
-    expect(checked?.closest('label')?.className).toBe('mode-radio-row selected');
+    expect(checked?.closest('label')?.hasAttribute('data-selected')).toBe(true);
   });
 
   it('As a dotli user, closing throws the draft away: the next open starts from the saved settings', async () => {
@@ -679,7 +678,7 @@ describe('The settings popover island', () => {
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {
       forceFullWipe: true,
     });
-    const clear = query(document, '.mode-clear-all-row button', HTMLButtonElement);
+    const clear = query(document, '[data-testid="mode-clear-all-row"] button', HTMLButtonElement);
     expect(clear.disabled).toBe(true);
     expect(clear.textContent).toBe('Clearing…');
 
@@ -713,7 +712,7 @@ describe('The settings popover island', () => {
     // Then
     expect(writeText).toHaveBeenCalledWith(window.location.host);
     expect(value.textContent).toBe('Copied');
-    expect(site.className).toBe('mode-endpoint-row mode-info-row mode-info-row-copyable copied');
+    expect(site.hasAttribute('data-copied')).toBe(true);
 
     // When
     vi.advanceTimersByTime(1000);
@@ -721,7 +720,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(value.textContent).toBe(window.location.host);
-    expect(site.className).toBe('mode-endpoint-row mode-info-row mode-info-row-copyable');
+    expect(site.hasAttribute('data-copied')).toBe(false);
 
     // When: a row that is not copyable.
     infoRow('Build').click();
@@ -943,7 +942,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // When
-    query(document, '.mode-popover-columns').click();
+    byTestId('mode-popover-columns').click();
     await settle();
 
     // Then
