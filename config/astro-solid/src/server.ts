@@ -238,7 +238,7 @@ async function renderToStaticMarkup(
 }
 
 const renderer: NamedSSRLoadedRendererValue = {
-  name: '@dotli/astro-solid',
+  name: '@config/astro-solid',
   check,
   renderToStaticMarkup,
   supportsAstroStaticSlot: true,

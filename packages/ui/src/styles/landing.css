@@ -11,8 +11,8 @@
   min-width: 0;
   min-height: 100dvh;
   font-family: system-ui, sans-serif;
-  padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right))
-    calc(2rem + var(--safe-bottom)) calc(2rem + var(--safe-left));
+  padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right)) calc(2rem + var(--safe-bottom))
+    calc(2rem + var(--safe-left));
   background: #0a0a0a;
   color: #e0e0e0;
 }
@@ -193,7 +193,7 @@
   transition: opacity 0.15s;
 }
 .landing-recent-remove::before {
-  content: "";
+  content: '';
   position: absolute;
   inset: 8px;
   background: #2a2a2a;
