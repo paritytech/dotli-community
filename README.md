@@ -310,6 +310,9 @@ small explicit capacity; large timeline workloads have separate work-bound tests
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
 ready before boot finishes rewriting the URL.
 
+Bitswap unit fixtures load a fresh module before installing each case's provider and attach result assertions before
+advancing the fake clock. Cold module loading cannot resume a timed-out case against the next case's provider.
+
 Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
