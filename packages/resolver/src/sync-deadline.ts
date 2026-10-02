@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Bounded waits for chain synchronization.
+ * Bounded waits and one-shot recovery for chain synchronization.
  *
  * `api.whenReady()` never settles when the peer set is unreachable, so every
  * caller has to race a timer. The rejection carries `NetworkSyncTimeoutError`
@@ -10,6 +10,9 @@
  * fired first.
  */
 
+import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
+import { log } from '@dotli/shared';
+import type { ResolveOptions } from './resolve.js';
 import { NetworkSyncTimeoutError } from './errors.js';
 
 /** Race `work` against a `NetworkSyncTimeoutError` naming `chain`. */
@@ -44,4 +47,56 @@ export function withSyncBudget<T>(
     return work;
   }
   return raceSyncTimeout(work, chain, requestedMs);
+}
+
+// The `error.data` the protocol's chain pool puts on its answer to a request
+// whose chain halted under it: `CHAIN_HALTED_ERROR_DATA` in
+// `packages/protocol/src/chain-halted.ts`. The resolver must not import the
+// protocol package, so the value is repeated here.
+const CHAIN_HALTED_ERROR_DATA = 'dotli:chain-halted';
+
+/**
+ * Whether a read failed because the chain under the resolver's client halted.
+ * Each of these comes with the follow's `stop`, which has already dropped the
+ * client (through `onStop`, or before its first block by never caching it), so
+ * the next attempt takes a fresh lease and the pool rebuilds the chain:
+ *
+ * - the pool's answer to a request still in flight, marked with
+ *   `CHAIN_HALTED_ERROR_DATA` (papi keeps the JSON-RPC `data` on `RpcError`);
+ * - `ApiStoppedError` (`api.ts`): the follow stopped before its first block,
+ *   or a read started after it stopped;
+ * - papi's `DisjointError`: the same `stop` cut off an operation already
+ *   running.
+ */
+function isChainHalt(err: unknown): boolean {
+  if (err instanceof RpcError) {
+    return err.data === CHAIN_HALTED_ERROR_DATA;
+  }
+  return err instanceof DisjointError || (err instanceof Error && err.name === 'ApiStoppedError');
+}
+
+/**
+ * Run a read, and once more if its chain halted under it. Once only: a light
+ * client that keeps dying fails its next connect instead, which the protocol
+ * context reports as fatal. The retry gets what is left of the caller's sync
+ * budget, not a second one.
+ */
+export async function withHaltRetry<T>(opts: ResolveOptions, read: (opts: ResolveOptions) => Promise<T>): Promise<T> {
+  const started = performance.now();
+  try {
+    return await read(opts);
+  } catch (err) {
+    if (!isChainHalt(err)) {
+      throw err;
+    }
+    log.warn(
+      `[dot.li resolve] Chain halted mid-resolution, retrying once on a rebuilt chain: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    const budget = opts.syncTimeoutMs;
+    const retryOpts =
+      budget === undefined
+        ? opts
+        : { ...opts, syncTimeoutMs: Math.max(1, Math.floor(budget - (performance.now() - started))) };
+    return read(retryOpts);
+  }
 }
