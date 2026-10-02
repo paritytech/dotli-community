@@ -20,14 +20,16 @@ export {
 export {
   RECENT_KEY,
   clearCidCache,
+  evictCachedCid,
   getCachedCid,
   getRecentLabels,
   parseRecentLabels,
-  recordRevalidateOutcome,
   serializeRecentLabels,
   setCachedCid,
   withRecentLabel,
   writeRecentLabels,
+  type CachedCid,
+  type CachedManifests,
 } from './cid-cache.js';
 export {
   allocateId,

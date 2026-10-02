@@ -8,6 +8,7 @@ import { getActiveServicesConfig, BACKEND_LABELS } from '@dotli/config';
 import { endpointHost, gatewayUnreachable } from '@dotli/shared';
 import type { ResolverErrorName } from '@dotli/resolver';
 import { ERROR_TITLES, HOST_ERRORS } from './error-copy.js';
+import { ManifestRejectedError } from './manifest-gate.js';
 
 // Annotated, not inferred: renaming the resolver's error class has to fail
 // here at compile time. `instanceof` is unavailable because the error arrived
@@ -90,6 +91,8 @@ export type ErrorKind =
   | 'chain-spec-rejected'
   | 'module-fetch-failed'
   | 'contenthash-unsupported'
+  | 'manifest-unsupported-version'
+  | 'manifest-invalid'
   | 'chainhead-disjointed'
   | 'chain-halted'
   | 'bitswap-no-peers'
@@ -206,6 +209,18 @@ function classifyError(
       kind: 'module-fetch-failed',
       message: HOST_ERRORS.MODULE_FETCH_FAILED,
       recovery: 'reload',
+    };
+  }
+  // Decided from the records before any download, so a reload or another
+  // transport reads the same manifests and reaches the same verdict.
+  if (err instanceof ManifestRejectedError) {
+    return {
+      kind: err.reason === 'unsupported-version' ? 'manifest-unsupported-version' : 'manifest-invalid',
+      title: ERROR_TITLES.APP_UNUSABLE,
+      message:
+        err.reason === 'unsupported-version' ? HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION : HOST_ERRORS.MANIFEST_INVALID,
+      recovery: 'none',
+      tips: MAINTAINER_TIPS,
     };
   }
   if (msg.includes('non-IPFS contenthash') || msg.includes('Failed to decode contenthash')) {

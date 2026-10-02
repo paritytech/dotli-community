@@ -37,7 +37,7 @@ function must<T>(value: T | undefined, what: string): T {
 function fakeApi(): Api {
   return {
     whenReady: () => Promise.resolve(),
-    bestHash: () => '0x01',
+    withBestBlock: <T>(read: (hash: string) => Promise<T>) => read('0x01'),
     resolveTrieId: () => Promise.resolve(null),
     destroy: vi.fn<() => void>(),
     onStop: (cb: () => void) => {
@@ -152,7 +152,22 @@ describe('resolve', () => {
     },
   );
 
-  it('As a dotli user on a light client, a chain that halts again on the retry fails the resolution', async () => {
+  it('As a dotli user on a light client resuming from a recent stored database, a name still resolves when smoldot resets the chain twice while catching up', async () => {
+    // Given
+    setResolverAssetHubProvider(factory);
+    mocks.createRawApi
+      .mockImplementationOnce(haltedMidRead(new DisjointError()))
+      .mockImplementationOnce(haltedMidRead(new DisjointError()));
+
+    // When
+    const owner = await resolveOwner('alice');
+
+    // Then
+    expect(owner).toBeNull();
+    expect(factory).toHaveBeenCalledTimes(3);
+  });
+
+  it('As a dotli user on a light client, a chain that keeps halting fails the resolution after four attempts', async () => {
     // Given
     setResolverAssetHubProvider(factory);
     mocks.createRawApi.mockImplementation(haltedBeforeReady);
@@ -162,7 +177,7 @@ describe('resolve', () => {
 
     // Then
     await expect(result).rejects.toThrow('chainHead follow stopped');
-    expect(factory).toHaveBeenCalledTimes(2);
+    expect(factory).toHaveBeenCalledTimes(4);
   });
 
   it('As a dotli user on a light client, a read that fails for any other reason is not retried', async () => {

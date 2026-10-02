@@ -124,6 +124,10 @@
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
   font-size: 12px;
   display: grid;
+  /* `minmax(0, …)`: an `auto` column grows to its widest child's
+     min-content, so a header that does not fit would widen the whole panel
+     past the viewport instead of the header scrolling. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: 5px 32px auto 1fr;
   height: 360px;
   max-height: 80dvh;
@@ -151,7 +155,7 @@
   max-width: min(80vw, max(320px, calc(100vw - 240px)));
   border-top: none;
   border-left: 1px solid #1f1f1f;
-  grid-template-columns: 5px 1fr;
+  grid-template-columns: 5px minmax(0, 1fr);
   grid-template-rows: 32px auto 1fr;
   grid-template-areas:
     'handle header'
@@ -171,23 +175,27 @@
 }
 #truapi-debug-panel.docked-right .td-body {
   grid-area: body;
-  grid-template-columns: 1fr;
+}
+
+/* List above detail: the right dock, and any dock on a narrow viewport. */
+#truapi-debug-panel.stacked .td-body {
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--td-top-height, 50%) 6px 1fr;
 }
-#truapi-debug-panel.docked-right .td-body-splitter {
+#truapi-debug-panel.stacked .td-body-splitter {
   cursor: row-resize;
   border-left: none;
   border-right: none;
   border-top: 1px solid #1f1f1f;
   border-bottom: 1px solid #1f1f1f;
 }
-#truapi-debug-panel.docked-right .td-body-splitter::after {
+#truapi-debug-panel.stacked .td-body-splitter::after {
   inset: -4px 0;
 }
-#truapi-debug-panel.docked-right .td-views {
+#truapi-debug-panel.stacked .td-views {
   border-right: none;
 }
-#truapi-debug-panel.docked-right .td-list {
+#truapi-debug-panel.stacked .td-list {
   border-right: none;
 }
 #truapi-debug-panel.docked-right.collapsed {
@@ -217,17 +225,21 @@
   background: #141414;
   min-width: 0;
   gap: 6px;
-}
-.td-header-tools {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex: 1;
-  min-width: 0;
+  white-space: nowrap;
+  /* A phone is narrower than the toolbar: scroll it rather than clip it. */
   overflow-x: auto;
+  scrollbar-width: none;
 }
-.td-header-tools > * {
-  flex-shrink: 0;
+.td-header > * {
+  flex: none;
+}
+/* The text gives way before the controls do. */
+.td-header > .td-title,
+.td-header > .td-counts {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .td-title {
   color: #a3a3a3;
@@ -549,6 +561,20 @@
   color: #fff;
 }
 
+/* Phones: the panel always docks at the bottom (`NARROW_QUERY` in
+   Panel.tsx), so the dock toggle has nothing to do, and the title gives way
+   so every control fits. */
+@media (max-width: 560px) {
+  .td-header {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .td-title,
+  .td-dock {
+    display: none;
+  }
+}
+
 .td-filters {
   display: flex;
   flex-wrap: wrap;
@@ -624,11 +650,11 @@
    ever say "select an event". The chart takes the whole width instead. The
    Archive view shows its own selection, so it takes the width too. */
 #truapi-debug-panel.res-view .td-body,
-#truapi-debug-panel.docked-right.res-view .td-body,
+#truapi-debug-panel.stacked.res-view .td-body,
 #truapi-debug-panel.wallet-view .td-body,
-#truapi-debug-panel.docked-right.wallet-view .td-body,
+#truapi-debug-panel.stacked.wallet-view .td-body,
 #truapi-debug-panel.archive-view .td-body,
-#truapi-debug-panel.docked-right.archive-view .td-body {
+#truapi-debug-panel.stacked.archive-view .td-body {
   grid-template-columns: 1fr;
   grid-template-rows: 1fr;
 }

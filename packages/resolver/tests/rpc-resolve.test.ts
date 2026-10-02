@@ -109,12 +109,12 @@ describe('rpc-resolve', () => {
     expect(disconnect).toHaveBeenCalledTimes(1);
   });
 
-  it('surfaces a second stopped follow instead of retrying indefinitely', async () => {
+  it('surfaces a fourth stopped follow instead of retrying indefinitely', async () => {
     setRpcAssetHubProvider(factory);
     mocks.createRawApi.mockImplementation(() => fakeApi(stoppedRead));
 
     await expect(resolveOwnerViaRpc('alice')).rejects.toMatchObject({ name: 'ApiStoppedError' });
-    expect(factory).toHaveBeenCalledTimes(2);
+    expect(factory).toHaveBeenCalledTimes(4);
   });
 
   it('As a dotli user, destroying the RPC client releases the provider and the next resolve takes a new one', async () => {

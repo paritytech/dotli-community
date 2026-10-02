@@ -40,7 +40,8 @@ export type MetricOutcome =
   | 'aborted'
   // Manifest reader
   | 'empty'
-  | 'invalid';
+  | 'invalid'
+  | 'unsupported-version';
 
 export type MetricAttributes = {
   mode?: string;

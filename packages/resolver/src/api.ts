@@ -10,10 +10,10 @@
 //   1. read `Revive::AccountInfoOf[address]` from the MAIN trie, decode trie_id
 //   2. read `blake2_256(slot)` from the contract's CHILD trie trie_id
 //
-// Callers pin both `bestHash` and `trie_id` once per logical multi-slot read
-// (see `access-raw-storage.ts`). The API itself does NOT cache `trie_id`
-// across calls, because a contract redeploy would silently return stale
-// data otherwise.
+// Callers hold one best block (`withBestBlock`) and its `trie_id` for a whole
+// logical multi-slot read (see `access-raw-storage.ts`). The API itself does
+// NOT cache `trie_id` across calls, because a contract redeploy would silently
+// return stale data otherwise.
 
 import type { SubstrateClient } from '@polkadot-api/substrate-client';
 import { StopError } from '@polkadot-api/substrate-client';
@@ -46,8 +46,13 @@ export interface Api {
    * Rejects with `ApiStoppedError` if the follow dies before then.
    */
   whenReady(): Promise<void>;
-  /** Latest known best-block hash, or `null` before the first `initialized`. */
-  bestHash(): string | null;
+  /**
+   * Run `read` against the current best block, keeping that block pinned until
+   * `read` settles. Multi-call reads must go through here so the block they
+   * read from is not unpinned under them. Rejects with `ApiStoppedError` once
+   * the follow has stopped.
+   */
+  withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T>;
   /**
    * Walk `Revive::AccountInfoOf[contractAddress]` at `atHash`. Returns the
    * contract's child-trie id, or `null` if the account is missing or not a
@@ -115,16 +120,72 @@ export function createRawApi(client: SubstrateClient): Api {
     }
   }
 
+  // Every block the follow reports stays pinned until it is unpinned, and a
+  // server may `stop` a follow whose client lets pins pile up. A block is done
+  // with once finality leaves it behind or prunes it: reads only ever target
+  // the best block, which descends from the newest finalized one. A block a
+  // read still holds is unpinned when the last such read finishes.
+  let newestFinalized: string | null = null;
+  const holds = new Map<string, number>();
+  const retiredWhileHeld = new Set<string>();
+
+  function unpin(hashes: string[]): void {
+    if (hashes.length === 0 || stopped) {
+      return;
+    }
+    follow.unpin(hashes).catch(() => {
+      /* the follow stopped; its pins went with it */
+    });
+  }
+
+  function retire(hashes: string[]): void {
+    const free: string[] = [];
+    for (const hash of hashes) {
+      if (holds.has(hash)) {
+        retiredWhileHeld.add(hash);
+      } else {
+        free.push(hash);
+      }
+    }
+    unpin(free);
+  }
+
+  function release(hash: string): void {
+    const count = (holds.get(hash) ?? 0) - 1;
+    if (count > 0) {
+      holds.set(hash, count);
+      return;
+    }
+    holds.delete(hash);
+    if (retiredWhileHeld.delete(hash)) {
+      unpin([hash]);
+    }
+  }
+
+  /** Make `hashes` (oldest first) the newest finalized blocks; return the ones left behind. */
+  function advanceFinalized(hashes: string[]): string[] {
+    const newest = hashes.at(-1);
+    if (newest === undefined) {
+      return [];
+    }
+    const behind = newestFinalized === null ? hashes.slice(0, -1) : [newestFinalized, ...hashes.slice(0, -1)];
+    newestFinalized = newest;
+    return behind;
+  }
+
   const follow = client.chainHead(
     false,
     event => {
       if (event.type === 'initialized') {
         bestHashRef = event.finalizedBlockHashes.at(-1) ?? null;
+        retire(advanceFinalized(event.finalizedBlockHashes));
         resolveReady?.();
         resolveReady = null;
         rejectReady = null;
       } else if (event.type === 'bestBlockChanged') {
         bestHashRef = event.bestBlockHash;
+      } else if (event.type === 'finalized') {
+        retire([...advanceFinalized(event.finalizedBlockHashes), ...event.prunedBlockHashes]);
       }
     },
     err => {
@@ -163,23 +224,45 @@ export function createRawApi(client: SubstrateClient): Api {
     return fromHex(decodeVecU8(accountInfo.slice(1)));
   }
 
+  async function withBestBlock<T>(read: (hash: string) => Promise<T>): Promise<T> {
+    await ready;
+    const hash = bestHashRef;
+    if (hash === null || stopped) {
+      throw new ApiStoppedError();
+    }
+    holds.set(hash, (holds.get(hash) ?? 0) + 1);
+    try {
+      return await read(hash);
+    } finally {
+      release(hash);
+    }
+  }
+
+  async function readSlotAt(
+    contractAddress: string,
+    slotKey: `0x${string}`,
+    hash: string,
+    trieId: Uint8Array | undefined,
+  ): Promise<Uint8Array | null> {
+    const trie = trieId ?? (await resolveTrieId(contractAddress, hash));
+    if (trie === null) {
+      return null;
+    }
+    const childKey = Blake2256(fromHex(slotKey)); // Key::Fix hash path
+    const valueHex = await withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie)));
+    return valueHex === null ? null : fromHex(valueHex);
+  }
+
   return {
     whenReady: () => ready,
-    bestHash: () => bestHashRef,
+    withBestBlock,
     resolveTrieId,
     async readSlot(contractAddress, slotKey, atHash, trieId) {
+      if (atHash === undefined) {
+        return withBestBlock(hash => readSlotAt(contractAddress, slotKey, hash, trieId));
+      }
       await ready;
-      const hash = atHash ?? bestHashRef;
-      if (hash === null) {
-        return null;
-      }
-      const trie = trieId ?? (await resolveTrieId(contractAddress, hash));
-      if (trie === null) {
-        return null;
-      }
-      const childKey = Blake2256(fromHex(slotKey)); // Key::Fix hash path
-      const valueHex = await withStopGuard(() => follow.storage(hash, 'value', toHex(childKey), toHex(trie)));
-      return valueHex === null ? null : fromHex(valueHex);
+      return readSlotAt(contractAddress, slotKey, atHash, trieId);
     },
     onStop(cb) {
       if (stopped) {
