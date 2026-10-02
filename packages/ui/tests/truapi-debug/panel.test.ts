@@ -193,7 +193,7 @@ function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
 
 function detailRows(): Record<string, string> {
   const out: Record<string, string> = {};
-  const head = q('.td-detail .td-detail-head');
+  const head = q('[data-testid="td-detail-head"]');
   for (const dt of head.querySelectorAll('dt')) {
     out[dt.textContent] = dt.nextElementSibling?.textContent ?? '';
   }
@@ -337,7 +337,9 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('.td-res').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
-    expect(q('.td-detail .td-detail-empty').textContent).toBe('Select an event on the left to inspect its payload.');
+    expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
+      'Select an event on the left to inspect its payload.',
+    );
     expect(root.querySelector('[data-testid="td-tooltip"]')).not.toBeNull();
   });
 
@@ -474,6 +476,30 @@ describe('truapi debug panel: event rows', () => {
     expect(tag?.getAttribute('data-kind')).toBe('request');
   });
 
+  it('As a dotli developer, a selected chain response shows its summary and its decoded annotations', () => {
+    // Given
+    mount();
+    truapi({
+      tag: 'remote_chain_head_header_response',
+      requestId: 'header-1',
+      direction: 'incoming',
+      value: { tag: 'V1', value: { success: false, value: { reason: 'block not pinned' } } },
+    });
+    frame();
+
+    // When
+    click(nth(rows(), 0));
+
+    // Then
+    expect(q('[data-testid="td-detail-summary"]').textContent).toBe('Header fetch failed: block not pinned.');
+    const chain = q('[data-testid="td-chain-head"]');
+    expect([...chain.querySelectorAll('dt')].map(dt => dt.textContent)).toEqual(['method', 'outcome']);
+    expect([...chain.querySelectorAll('dd')].map(dd => dd.textContent)).toEqual([
+      'chainHead.header',
+      'error: block not pinned',
+    ]);
+  });
+
   it('As a dotli developer, events emitted after buffering is enabled but before the panel mounts are shown', () => {
     // Given the bus is buffering (beforeEach) and nothing listens yet
     system('boot', 'started', 'flow-early', { chainBackend: 'smoldot' });
@@ -557,7 +583,9 @@ describe('truapi debug panel: header actions', () => {
       'No events match the current filter.',
     );
     expect(counts()).toBe('0 events');
-    expect(q('.td-detail .td-detail-empty').textContent).toBe('Select an event on the left to inspect its payload.');
+    expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
+      'Select an event on the left to inspect its payload.',
+    );
     click(tab('resolution'));
     expect(panel().querySelector('.td-res .td-res-empty')).not.toBeNull();
   });
@@ -931,10 +959,10 @@ describe('truapi debug panel: selection and detail', () => {
     expect(detail['tag']).toBe('system_handshake_request');
     expect(detail['requestId']).toBe('req-aa req-aaa-111');
     expect(detail['group']).toBe('2 events — system_handshake_response +50ms');
-    expect(q('.td-detail .td-detail-pre').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
+    expect(q('[data-testid="td-detail-pre"]').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
 
     // When the sibling pill is clicked
-    click(q('.td-detail .td-detail-pair'));
+    click(q('[data-testid="td-detail-pair"]'));
 
     // Then
     expect(rowByTag('system_handshake_response').getAttribute('data-selection')).toBe('selected');
@@ -966,14 +994,14 @@ describe('truapi debug panel: selection and detail', () => {
     expect(detail['event']).toBe('started');
     expect(detail['flowId']).toBe('flow-b flow-boot-1');
     expect(detail['group']).toBe('1 event');
-    expect(q('.td-detail .td-detail-section-title').textContent).toBe('Summary');
-    expect(q('.td-detail .td-detail-summary').textContent).toBe(
+    expect(q('[data-testid="td-detail-section-title"]').textContent).toBe('Summary');
+    expect(q('[data-testid="td-detail-summary"]').textContent).toBe(
       'Host boot started (mode: direct, chain: smoldot, content: helia).',
     );
-    const explanation = query(panel(), '.td-detail details.td-detail-explanation', HTMLDetailsElement);
+    const explanation = query(panel(), 'details[data-testid="td-detail-explanation"]', HTMLDetailsElement);
     expect(explanation.querySelector('summary')?.textContent).toBe('What is this? — Host boot started');
     expect(explanation.querySelector('code')?.textContent).toBe('main()');
-    expect(q('.td-detail .td-detail-pre').textContent).toContain('"smoldot"');
+    expect(q('[data-testid="td-detail-pre"]').textContent).toContain('"smoldot"');
   });
 
   it('As a dotli developer, arrow keys on the list step the selection and clamp at the ends', () => {
@@ -1045,7 +1073,7 @@ describe('truapi debug panel: selection and detail', () => {
     // Then
     expect(panel().querySelector('b')).toBeNull();
     expect(rows()[0]?.querySelector('[data-testid="td-summary"]')?.textContent).toContain('<b>bold</b>');
-    expect(q('.td-detail .td-detail-pre').textContent).toContain('"note": "<b>bold</b>"');
+    expect(q('[data-testid="td-detail-pre"]').textContent).toContain('"note": "<b>bold</b>"');
   });
 
   it('As a dotli developer, incoming events do not rebuild the detail pane', () => {
@@ -1053,7 +1081,7 @@ describe('truapi debug panel: selection and detail', () => {
     mount();
     seedMixedTraffic();
     click(rowByTag('boot.started'));
-    const explanation = query(panel(), '.td-detail details', HTMLDetailsElement);
+    const explanation = query(panel(), '[data-testid="td-detail"] details', HTMLDetailsElement);
     explanation.open = true;
 
     // When
@@ -1063,7 +1091,7 @@ describe('truapi debug panel: selection and detail', () => {
     }
 
     // Then
-    expect(q('.td-detail details')).toBe(explanation);
+    expect(q('[data-testid="td-detail"] details')).toBe(explanation);
     expect(explanation.open).toBe(true);
   });
 
@@ -1116,6 +1144,7 @@ describe('truapi debug panel: views', () => {
     expect(q('.td-res').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).toBe('resolution');
     expect(q('[data-testid="td-body-splitter"]').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(true);
 
     // When
     click(tab('list'));
@@ -1123,6 +1152,7 @@ describe('truapi debug panel: views', () => {
     // Then
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('.td-res').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).not.toBe('resolution');
     expect(rows()).toHaveLength(3);
   });
@@ -1166,10 +1196,15 @@ describe('truapi debug panel: views', () => {
 
     // Then
     expect(box.classList.contains('selected')).toBe(true);
-    const members = [...panel().querySelectorAll('.td-detail .td-detail-member')].map(
-      m => m.querySelector('.td-tag')?.textContent,
+    const members = [...panel().querySelectorAll('[data-testid="td-detail-member"]')].map(
+      m => m.querySelector('[data-testid="td-tag"]')?.textContent,
     );
     expect(members).toEqual(['system_handshake_request', 'system_handshake_response']);
+    expect(
+      [...panel().querySelectorAll('[data-testid="td-detail-member"] [data-testid="td-tag"]')].map(t =>
+        t.getAttribute('data-kind'),
+      ),
+    ).toEqual(['request', 'response']);
     const head = detailRows();
     expect(head['requestId']).toBe('req-aa req-aaa-111');
     expect(head['group']).toBe('2 events');
@@ -1813,7 +1848,7 @@ describe('truapi debug panel: streaming load', () => {
     const before = rows();
     const target = rowByTag('system_handshake_request');
     click(target);
-    const detailPre = q('.td-detail .td-detail-pre');
+    const detailPre = q('[data-testid="td-detail-pre"]');
 
     // When a burst streams in over several frames
     for (let f = 0; f < 10; f++) {
@@ -1834,7 +1869,7 @@ describe('truapi debug panel: streaming load', () => {
     });
     expect(target.isConnected).toBe(true);
     expect(target.getAttribute('data-selection')).toBe('selected');
-    expect(q('.td-detail .td-detail-pre')).toBe(detailPre);
+    expect(q('[data-testid="td-detail-pre"]')).toBe(detailPre);
   });
 
   it('As a dotli developer, a click that lands mid-burst sticks after the next render', () => {

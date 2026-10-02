@@ -4,7 +4,22 @@
 // Public API of @dotli/truapi-debug. Other workspace packages import only from here.
 // Every other module under src/ is private to the package.
 
-export { formatLatency, formatTime, renderGroupDetail, renderSingleDetail } from './detail-html.js';
+export {
+  chainDetail,
+  eventCountLabel,
+  explanationDetail,
+  formatLatency,
+  formatTime,
+  groupDuration,
+  memberDelta,
+  siblingPills,
+  type ChainDetail,
+  type ChainField,
+  type ExplanationBlock,
+  type ExplanationDetail,
+  type InlineSegment,
+  type SiblingPill,
+} from './detail-format.js';
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export {
   emitDotliDebugEvent,
@@ -24,6 +39,7 @@ export {
   type TruapiDebugMessageEvent,
 } from './event-store.js';
 export { buildExport, exportFilename, type ExportMeta } from './export.js';
+export { formatPayloadDetail } from './format.js';
 export { compileQuery, initialFilterState, matches, type DirectionFilter, type FilterState } from './filters.js';
 export { panelDockInset } from './iframe-layout.js';
 export { OpenCallTracker, SLOW_AFTER_MS, formatPending, openCalls, pendingKeyOf } from './pending.js';
@@ -34,6 +50,7 @@ export {
   renderResolution,
   type ResolutionRecorder,
 } from './resolution-view.js';
-export { rowSelection, systemRowData, truapiRowData } from './row-format.js';
+export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData, type TagKind } from './row-format.js';
+export { summariseSystemEvent } from './system-summary.js';
 export { applyTimelineSelection, buildTimelineContainer, renderSwimlanes, resolveTimelineClick } from './timeline.js';
 export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';

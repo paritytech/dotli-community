@@ -38,6 +38,9 @@
   --td-rid-bg: rgba(255, 255, 255, 0.04);
   --td-rid-line: rgba(255, 255, 255, 0.06);
   --td-shadow: rgba(0, 0, 0, 0.4);
+  /* The one-line summary in the detail pane. */
+  --td-info-bg: #0d1b2a;
+  --td-info-fg: #dbeafe;
   /* Hues of tags, arrows and badges. */
   --td-green: #4ade80;
   --td-amber: #fbbf24;
@@ -49,6 +52,12 @@
   --td-sky: #bae6fd;
   --td-pink: #f9a8d4;
   --td-pink-line: #9d174d;
+  /* The "What is this?" block of a system event. */
+  --td-teal: #2dd4bf;
+  --td-teal-soft: #5eead4;
+  --td-teal-pale: #99f6e4;
+  --td-teal-bg: #0b1410;
+  --td-teal-tint: rgba(45, 212, 191, 0.08);
   /* Layer badge fill and edge, one pair per layer. */
   --td-boot-bg: #0f172a;
   --td-boot-line: #1e40af;

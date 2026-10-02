@@ -513,7 +513,7 @@ describe('truapi debug panel work: filters and detail', () => {
     truapi('host_sign_request', 'a1');
     frame();
     click(nth(rows(), 0));
-    const explanation = query(panel(), '.td-detail details', HTMLDetailsElement);
+    const explanation = query(panel(), '[data-testid="td-detail"] details', HTMLDetailsElement);
     explanation.open = true;
 
     // When
@@ -524,7 +524,7 @@ describe('truapi debug panel work: filters and detail', () => {
 
     // Then
     expect(rows()).toHaveLength(1);
-    expect(q('.td-detail details')).toBe(explanation);
+    expect(q('[data-testid="td-detail"] details')).toBe(explanation);
     expect(explanation.open).toBe(true);
   });
 });

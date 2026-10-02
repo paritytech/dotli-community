@@ -60,7 +60,7 @@ export function ridColor(rid: string): string {
   return `hsl(${String(hue)}, 65%, 65%)`;
 }
 
-/** What a TrUAPI tag does, from its suffix: the list colours its tag by it. */
+/** What a TrUAPI tag does, from its suffix: the list and the detail pane colour the tag by it. */
 export type TagKind = 'request' | 'response' | 'subscription' | 'plain';
 
 export function tagKind(tag: string): TagKind {
@@ -74,18 +74,6 @@ export function tagKind(tag: string): TagKind {
     return 'subscription';
   }
   return 'plain';
-}
-
-const TAG_CLASS: Readonly<Record<TagKind, string>> = {
-  request: 'td-tag td-tag-req',
-  response: 'td-tag td-tag-res',
-  subscription: 'td-tag td-tag-sub',
-  plain: 'td-tag',
-};
-
-/** Class attribute of a tag in the detail pane's HTML, styled by styles.css. */
-export function tagClass(tag: string): string {
-  return TAG_CLASS[tagKind(tag)];
 }
 
 export interface TruapiRowData {

@@ -552,6 +552,7 @@ export function Panel(props: {
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
+          hidden={view() === 'resolution' || view() === 'archive'}
           onSelectPair={seq => {
             select(seq);
             listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });

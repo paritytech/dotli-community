@@ -8,22 +8,47 @@
 // swap, clear, mount). Incoming events never
 // touch it: rebuilding under traffic tore down an open "What is this?" block
 // and dropped clicks inside the pane between pointerdown and click.
+//
+// So the pane renders from a snapshot (the event, its group, the view) taken
+// untracked when the revision changes. The components below it get plain
+// values and read nothing reactive.
 
-import { createEffect, untrack } from 'solid-js';
+import { createMemo, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { renderGroupDetail, renderSingleDetail } from '@dotli/truapi-debug';
-import type { EventSeq, EventStore } from '@dotli/truapi-debug';
+import { correlationKeyOf, type EventSeq, type EventStore, type StoredEvent } from '@dotli/truapi-debug';
+import { GroupDetail } from './detail/GroupDetail.js';
+import { SingleDetail } from './detail/SingleDetail.js';
 import type { PanelView } from './Tabs.js';
+import s from './DetailPane.module.css';
 
-function detailHtml(store: EventStore, selectedSeq: EventSeq | null, view: PanelView): string {
+/** What the pane shows. */
+type Content =
+  | { kind: 'empty'; message: string }
+  | {
+      kind: 'single' | 'group';
+      event: StoredEvent;
+      group: StoredEvent[];
+      first: StoredEvent | undefined;
+    };
+
+/** The content, and the revision it was taken at. */
+type Snapshot = Content & { revision: number };
+
+function contentOf(store: EventStore, selectedSeq: EventSeq | null, view: PanelView): Content {
   if (selectedSeq === null) {
-    return `<div class="td-detail-empty">Select an event on the left to inspect its payload.</div>`;
+    return { kind: 'empty', message: 'Select an event on the left to inspect its payload.' };
   }
-  const ev = store.getBySeq(selectedSeq);
-  if (ev === undefined) {
-    return `<div class="td-detail-empty">Selected event was evicted from the ring buffer.</div>`;
+  const event = store.getBySeq(selectedSeq);
+  if (event === undefined) {
+    return { kind: 'empty', message: 'Selected event was evicted from the ring buffer.' };
   }
-  return view === 'timeline' ? renderGroupDetail(ev, store) : renderSingleDetail(ev, store);
+  const key = correlationKeyOf(event);
+  return {
+    kind: view === 'timeline' ? 'group' : 'single',
+    event,
+    group: store.eventsInGroup(key),
+    first: store.firstInGroup(key),
+  };
 }
 
 export function DetailPane(props: {
@@ -32,37 +57,40 @@ export function DetailPane(props: {
   selectedSeq: EventSeq | null;
   view: PanelView;
   store: EventStore;
+  /** A full-width view (Resolution, Archive) is showing. */
+  hidden: boolean;
   /** A sibling pill was clicked. */
   onSelectPair: (seq: EventSeq) => void;
 }): JSX.Element {
-  let pane: HTMLDivElement | undefined;
+  // The revision is the memo's one tracked read, so it alone decides when the
+  // pane rebuilds. The snapshot keeps it: a minifier drops a property read
+  // whose value goes unused, and with it the dependency.
+  const snapshot = createMemo((): Snapshot => {
+    const revision = props.revision;
+    return { revision, ...untrack(() => contentOf(props.store, props.selectedSeq, props.view)) };
+  });
+  const selectPair = (seq: EventSeq): void => {
+    props.onSelectPair(seq);
+  };
 
-  createEffect(
-    () => props.revision,
-    () => {
-      if (pane === undefined) {
-        return;
-      }
-      // Read at rebuild time only: the revision alone decides when.
-      const html = untrack(() => detailHtml(props.store, props.selectedSeq, props.view));
-      // Every product and network value is escaped by detail-html.ts.
-      pane.innerHTML = html;
-    },
-  );
+  const render = (snap: Snapshot): JSX.Element => {
+    switch (snap.kind) {
+      case 'empty':
+        return (
+          <div class={s['empty']} data-testid="td-detail-empty">
+            {snap.message}
+          </div>
+        );
+      case 'group':
+        return <GroupDetail event={snap.event} group={snap.group} first={snap.first} />;
+      case 'single':
+        return <SingleDetail event={snap.event} group={snap.group} first={snap.first} onSelectPair={selectPair} />;
+    }
+  };
 
   return (
-    <div
-      class="td-detail"
-      ref={el => {
-        pane = el;
-      }}
-      onClick={e => {
-        const pair = (e.target as HTMLElement).closest<HTMLElement>('.td-detail-pair');
-        const seqAttr = pair?.dataset['seq'];
-        if (seqAttr !== undefined) {
-          props.onSelectPair(Number(seqAttr));
-        }
-      }}
-    />
+    <div class={s['detail']} data-testid="td-detail" hidden={props.hidden}>
+      {render(snapshot())}
+    </div>
   );
 }
