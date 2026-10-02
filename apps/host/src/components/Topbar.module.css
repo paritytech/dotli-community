@@ -17,7 +17,6 @@
   align-items: center;
   box-sizing: border-box;
   height: var(--topbar-height);
-  margin: 0;
   /* In landscape the side insets clear the notch and the rounded corners. */
   padding: var(--safe-top) calc(14px + var(--safe-right)) 0 calc(14px + var(--safe-left));
   border-bottom: 1px solid var(--border-subtle);

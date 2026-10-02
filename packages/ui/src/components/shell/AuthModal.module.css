@@ -131,8 +131,6 @@
 .qr-link {
   display: inline-flex;
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
   border-radius: 8px;
   line-height: 0;
 }
@@ -143,7 +141,6 @@
 .open-app {
   display: inline-block;
   box-sizing: border-box;
-  margin: 0;
   padding: 8px 20px;
   border-radius: 6px;
   background: var(--inverse-bg);
@@ -277,7 +274,6 @@
 .get-app {
   display: block;
   margin: 14px 0 0;
-  padding: 0;
   color: var(--neutral-solid);
   font-size: 0.8rem;
   text-decoration: underline;

@@ -168,8 +168,6 @@
    solid colors. */
 .pct {
   min-width: 3ch;
-  margin: 0;
-  padding: 0;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 11px;
   text-align: right;

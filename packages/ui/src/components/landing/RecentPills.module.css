@@ -23,15 +23,12 @@
 .item {
   position: relative;
   display: inline-flex;
-  margin: 0;
-  padding: 0;
 }
 
 .pill {
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  margin: 0;
   padding: 8px 4px;
   text-decoration: none;
   -webkit-touch-callout: none;
@@ -40,7 +37,6 @@
 
 .label {
   box-sizing: border-box;
-  margin: 0;
   padding: 6px 14px;
   border: 1px solid var(--border);
   border-radius: 20px;

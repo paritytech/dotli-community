@@ -72,8 +72,6 @@
 
 .text {
   box-sizing: border-box;
-  margin: 0;
-  padding: 0;
   overflow-wrap: anywhere;
 }
 
@@ -87,8 +85,6 @@
 }
 
 .field-label {
-  margin: 0;
-  padding: 0;
   color: var(--chat-fg-secondary);
   font-size: 0.7rem;
 }
