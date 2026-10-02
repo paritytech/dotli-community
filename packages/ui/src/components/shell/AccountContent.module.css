@@ -1,0 +1,53 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The account popover's body: who is logged in, and Log out. */
+
+.identity {
+  padding: 12px 14px 8px;
+}
+.label {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+}
+.name {
+  margin-top: 2px;
+  color: var(--text-strong);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+.hint {
+  margin-top: 6px;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+.divider {
+  border-top: 1px solid var(--border-subtle);
+}
+.disconnect {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 14px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.disconnect:hover {
+  background: var(--fill);
+  color: var(--text-strong);
+}
+.disconnect svg {
+  width: 18px;
+  height: 18px;
+}

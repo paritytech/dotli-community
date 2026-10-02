@@ -1,0 +1,31 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The auth button's account badge (the initials, or the person icon for an
+   account without a username, data-anon), and the account popover's
+   surface: a little lower than the other popovers, and narrow. */
+
+.badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-size: 8px;
+  font-weight: 600;
+  letter-spacing: 0.12px;
+  text-transform: uppercase;
+}
+.badge[data-anon] svg {
+  width: 12px;
+  height: 12px;
+}
+
+.popover {
+  top: calc(var(--topbar-height) + 4px);
+  width: 220px;
+  overflow: hidden;
+}

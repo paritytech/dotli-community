@@ -75,7 +75,7 @@ describe('AuthButton', () => {
     expect(button.getAttribute('aria-label')).toBe('Login with Polkadot Mobile');
     expect(button.hasAttribute('disabled')).toBe(false);
     expect(button.hasAttribute('aria-busy')).toBe(false);
-    expect(button.querySelector('.user-badge')).toBeNull();
+    expect(button.querySelector('[data-testid="user-badge"]')).toBeNull();
     expectMarkup(button, 'logged-out');
   });
 
@@ -128,8 +128,8 @@ describe('AuthButton', () => {
     await settleAll();
 
     // Then
-    const badge = button.querySelector('.user-badge');
-    expect(badge?.classList.contains('user-badge-anon')).toBe(true);
+    const badge = button.querySelector('[data-testid="user-badge"]');
+    expect(badge?.hasAttribute('data-anon')).toBe(true);
     expect(badge?.querySelector('svg')).not.toBeNull();
     expectMarkup(button, { initials: undefined });
   });
@@ -147,7 +147,7 @@ describe('AuthButton', () => {
 
     // Then
     expect(button.querySelector('b')).toBeNull();
-    expect(button.querySelector('.user-badge')?.textContent).toBe('<B');
+    expect(button.querySelector('[data-testid="user-badge"]')?.textContent).toBe('<B');
     expectMarkup(button, { initials: '<B' });
   });
 

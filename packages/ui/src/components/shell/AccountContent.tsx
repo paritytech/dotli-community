@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { requestTruapiDisconnect } from '../../auth-controller.js';
 import { sessionUsername, shortenAccount, useAccount } from './account.js';
 import { usePopover } from './Popover.js';
+import s from './AccountContent.module.css';
 
 /**
  * The account popover's body (AuthButton), its own chunk: the username (or
@@ -39,21 +40,21 @@ export function AccountContent(): JSX.Element {
   };
   return (
     <>
-      <div class="user-popover-name">
-        <div class="label">Welcome back</div>
-        <div class="name" id={id('username')}>
+      <div class={s['identity']}>
+        <div class={s['label']}>Welcome back</div>
+        <div class={s['name']} id={id('username')}>
           {name()}
         </div>
         {/* Explains the username-less state instead of leaving a bare
             address that reads as a rendering bug. */}
         <Show when={account.loggedIn() && (username() ?? '').length === 0}>
-          <div id={id('hint')} class="user-popover-hint">
+          <div id={id('hint')} class={s['hint']}>
             No username found for this account on this network.
           </div>
         </Show>
       </div>
-      <div class="user-popover-divider" />
-      <button onClick={onDisconnect} class="user-popover-disconnect" id={id('disconnect')}>
+      <div class={s['divider']} />
+      <button onClick={onDisconnect} class={s['disconnect']} id={id('disconnect')}>
         <svg
           viewBox="0 0 24 24"
           fill="none"

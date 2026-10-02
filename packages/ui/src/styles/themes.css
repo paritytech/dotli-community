@@ -16,30 +16,6 @@
   }
 }
 
-[data-theme='light'] .user-popover-name .label {
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme='light'] .user-popover-name .name {
-  color: #111;
-}
-[data-theme='light'] .user-popover-hint {
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme='light'] .user-popover-divider {
-  border-top-color: rgba(0, 0, 0, 0.08);
-}
-[data-theme='light'] .user-popover-disconnect {
-  color: rgba(0, 0, 0, 0.72);
-}
-[data-theme='light'] .user-popover-disconnect:hover {
-  background: rgba(0, 0, 0, 0.05);
-  color: #111;
-}
-[data-theme='light'] .user-badge {
-  background: #0a0a0a;
-  color: #fafafa;
-}
-
 [data-theme='light'] .permissions-popover-header {
   color: rgba(0, 0, 0, 0.5);
 }

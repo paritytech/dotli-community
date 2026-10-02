@@ -43,7 +43,7 @@ test.describe('dot.li > host-playground.dot', () => {
 
     test('Get User Identity', async ({ pairedPage, productFrame }) => {
       test.setTimeout(120_000);
-      const badge = pairedPage.locator('.user-badge');
+      const badge = pairedPage.getByTestId('user-badge');
       await expect(badge).toBeVisible({ timeout: 30_000 });
       await expect(badge).not.toHaveText('??', { timeout: 60_000 });
       await runTestExpectSuccess(productFrame, 'get-user-id');

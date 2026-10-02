@@ -46,7 +46,6 @@ function expectMarkup(popover: Element, opts: { username: string; hint: boolean;
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Welcome back');
   expect(popover.getAttribute('tabindex')).toBe('-1');
-  expect(popover.classList.contains('user-popover')).toBe(true);
   expect(popover.hasAttribute('data-open')).toBe(opts.open);
   const body = query(popover, ':scope > [data-testid="popover-body"]');
   expect(Array.from(body.children).map(child => child.tagName)).toEqual(['DIV', 'DIV', 'BUTTON']);

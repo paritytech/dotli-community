@@ -12,6 +12,7 @@ import { sessionInitials, useAccount } from './account.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './AuthButton.module.css';
 
 function UserIcon(): JSX.Element {
   return (
@@ -44,8 +45,8 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * corner.
  *
  * Logged out, the button shows the person icon and a click starts a login.
- * Logged in, it shows the account's initials (`.user-badge`, or the icon as
- * `.user-badge-anon` without a username). A click toggles the user popover
+ * Logged in, it shows the account's initials in its badge, or the icon there
+ * (`data-anon`) without a username. A click toggles the user popover
  * while the auth state is `Connected`, and starts a login, which opens the
  * auth modal, in any other state (a pairing started while logged in
  * included). Its trigger ARIA follows the click, like a Radix
@@ -75,7 +76,7 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
     <Popover
       id={id('user-popover')}
       title="Welcome back"
-      class="user-popover"
+      class={s['popover']}
       content={Account}
       trigger={t => {
         const onClick = (ev?: Event): void => {
@@ -105,12 +106,16 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
                   <Show
                     when={sessionInitials(session())}
                     fallback={
-                      <div class="user-badge user-badge-anon">
+                      <div class={s['badge']} data-testid="user-badge" data-anon="">
                         <UserIcon />
                       </div>
                     }
                   >
-                    {initials => <div class="user-badge">{initials()}</div>}
+                    {initials => (
+                      <div class={s['badge']} data-testid="user-badge">
+                        {initials()}
+                      </div>
+                    )}
                   </Show>
                 )}
               </Show>
