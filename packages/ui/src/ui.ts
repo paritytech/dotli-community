@@ -281,7 +281,8 @@ export function showNoContentError(label: string): void {
  * load runs again: the name, a spinner and a status line.
  */
 export function showRetryScreen(): void {
-  const screen = el('div');
+  const app = appElement();
+  const screen = el('div', app === document.body ? retry['standalone'] : undefined);
   screen.dataset['testid'] = 'retry-screen';
   const title = el('h1', retry['title']);
   title.textContent = 'dot.li';
@@ -289,5 +290,5 @@ export function showRetryScreen(): void {
   status.id = 'status';
   status.textContent = 'Retrying...';
   screen.append(title, el('div', spinner['spinner']), status);
-  appElement().replaceChildren(screen);
+  app.replaceChildren(screen);
 }

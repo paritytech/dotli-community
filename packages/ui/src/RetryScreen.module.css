@@ -2,7 +2,15 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The sandbox's retry screen (ui.ts showRetryScreen): a title, the spinner
-   and a status line, in plain flow on the transparent sandbox body. */
+   and a status line, in plain flow. */
+
+/* The sandbox has no `#app`, so the screen goes straight into its body, which
+   is transparent over the host. It paints the page color and fills the
+   frame. */
+.standalone {
+  height: 100dvh;
+  background: var(--bg-page);
+}
 
 .title {
   margin: 0;
