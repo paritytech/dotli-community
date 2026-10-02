@@ -174,7 +174,7 @@
 .contacts-picker-choice[hidden] {
   display: none;
 }
-.contacts-picker-choice input[type="checkbox"] {
+.contacts-picker-choice input[type='checkbox'] {
   flex-shrink: 0;
   align-self: center;
   width: 18px;
