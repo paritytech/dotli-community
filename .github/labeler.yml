@@ -27,10 +27,6 @@ github-actions:
       - all-globs-to-any-file:
           - 'packages/config/**'
           - '!packages/config/package.json'
-  - changed-files:
-      - all-globs-to-any-file:
-          - 'config/vite/**'
-          - '!config/vite/package.json'
 
 'pkg: shared':
   - changed-files:
@@ -79,6 +75,12 @@ github-actions:
       - all-globs-to-any-file:
           - 'config/typescript/**'
           - '!config/typescript/package.json'
+
+'pkg: vite':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/vite/**'
+          - '!config/vite/package.json'
 
 'pkg: metrics':
   - changed-files:
