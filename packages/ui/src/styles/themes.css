@@ -3,41 +3,6 @@
 
 /* dot.li — Light theme overrides */
 
-[data-theme='light'] #topbar {
-  background: rgba(245, 245, 245, 0.6);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom-color: rgba(0, 0, 0, 0.08);
-}
-[data-theme='light'] .topbar-logo svg path {
-  fill: #111;
-}
-[data-theme='light'] .topbar-brand {
-  color: rgba(0, 0, 0, 0.88);
-}
-[data-theme='light'] .topbar-beta {
-  background: rgba(0, 0, 0, 0.06);
-  color: rgba(0, 0, 0, 0.55);
-  border-color: rgba(0, 0, 0, 0.08);
-}
-[data-theme='light'] .topbar-url-pill {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.55);
-}
-[data-theme='light'] .topbar-url-pill:hover {
-  background: rgba(0, 0, 0, 0.06);
-  border-color: rgba(0, 0, 0, 0.16);
-}
-[data-theme='light'] .topbar-url-pill .dot-domain {
-  color: rgba(0, 0, 0, 0.95);
-}
-[data-theme='light'] .topbar-url-pill .dot-tld {
-  color: rgba(0, 0, 0, 0.35);
-}
-[data-theme='light'] .localhost-icon {
-  color: rgba(0, 0, 0, 0.45);
-}
-
 [data-theme='light'] .verification-shield {
   color: rgba(0, 0, 0, 0.3);
 }
@@ -59,16 +24,8 @@
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
 }
 @supports (backdrop-filter: blur(1px)) {
-  [data-theme='light'] #topbar {
-    backdrop-filter: blur(20px) saturate(180%);
-  }
   [data-theme='light'] .permissions-popover-menu {
     backdrop-filter: blur(24px) saturate(180%);
-  }
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  [data-theme='light'] #topbar {
-    background: rgba(248, 248, 248, 0.97);
   }
 }
 

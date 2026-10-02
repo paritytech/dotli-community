@@ -12,13 +12,6 @@
   box-sizing: border-box;
 }
 
-/* The landing page (the LandingPage island, beside `#app`) hides the
-   topbar. `#app` and the loading screen read the same mode from
-   `body[data-landing]` in their own modules. */
-#topbar[data-landing] {
-  display: none;
-}
-
 /* Settings owns the popover recipe: 6px on the shell from `.more-popover`,
    and each child carries its own inset. This panel keeps that rather than
    padding the shell, so the two popovers have identical edges. The children

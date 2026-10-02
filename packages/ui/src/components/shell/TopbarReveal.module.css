@@ -1,0 +1,28 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The skip link back to the auto-hidden topbar: above the viewport until
+   it has focus, then centred under where the bar sits. */
+
+.reveal {
+  position: fixed;
+  top: -100px;
+  left: 50%;
+  z-index: 1001;
+  margin: 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translateX(-50%);
+}
+.reveal:focus {
+  top: 64px;
+  outline: 2px solid var(--knob);
+  outline-offset: 2px;
+}
