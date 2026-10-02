@@ -107,14 +107,22 @@ async function labelFixture(): Promise<{
     clientHeight: { value: 120 },
   });
   const loaded = new Promise<void>(resolve => {
-    frame.addEventListener('load', () => resolve(), { once: true });
+    frame.addEventListener(
+      'load',
+      () => {
+        resolve();
+      },
+      { once: true },
+    );
   });
   document.body.append(frame);
   // Place into the loaded document, not the initial about:blank navigation.
   await loaded;
   const labels = createContactLabelOverlay();
   labels.attach(frame, 'contain');
-  cleanups.push(() => labels.dispose());
+  cleanups.push(() => {
+    labels.dispose();
+  });
   const state = fixture(labels);
   const placed: PlacedContactLabels = {
     surfaceWidth: 200,
@@ -140,7 +148,9 @@ async function labelFixture(): Promise<{
 async function redraw(): Promise<void> {
   await new Promise<void>(resolve => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => resolve());
+      requestAnimationFrame(() => {
+        resolve();
+      });
     });
   });
 }
@@ -406,9 +416,7 @@ describe('native Chat contacts', () => {
 
   it('does not memoize a failed label-directory read', async () => {
     const { state, adapter, placed } = await labelFixture();
-    state.setRead(async () => {
-      throw new Error('Directory temporarily unavailable');
-    });
+    state.setRead(() => Promise.reject(new Error('Directory temporarily unavailable')));
     await expect(adapter.callbacks.placeContactLabels(product, placed)).rejects.toThrow(
       'Directory temporarily unavailable',
     );
