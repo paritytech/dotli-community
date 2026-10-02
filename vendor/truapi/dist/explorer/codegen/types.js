@@ -4293,7 +4293,7 @@ export const types = [
         name: "HostPushNotificationRequest",
         category: "notifications",
         definition: "export interface HostPushNotificationRequest {\n  text: string;\n  deeplink?: string;\n  scheduledAt?: bigint;\n}",
-        description: "Push notification payload.\n\nWhen `scheduled_at` is `Some`, the notification is deferred to the given\nwall-clock instant (Unix milliseconds UTC). `None` fires immediately,\npreserving prior behaviour. See [RFC 0019].\n\n[RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md",
+        description: "Push notification payload.\n\nWhen `scheduled_at` is `Some`, the notification is deferred to the given\nwall-clock instant (Unix milliseconds UTC). `None` fires immediately,\npreserving prior behaviour. See [RFC 0019].\n\n[RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md",
         fields: [
             {
                 name: "text",
