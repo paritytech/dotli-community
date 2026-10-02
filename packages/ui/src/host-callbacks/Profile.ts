@@ -100,23 +100,22 @@ export async function presentProfileReference(
 const UNNAMED_CONTACT = 'this contact';
 
 /**
- * Show the profile a Chat contact shared, attributed to that contact by the
- * username the core resolved for them, or generically when it knows none,
- * and shown in `productId`. The contact is never named by an address or by
- * anything the product said. Rejects for a reference this host cannot parse,
- * before any UI appears.
+ * Show a contact's shared profile or an empty-profile view when no reference
+ * has arrived. Names come from the core's verified contact directory, never
+ * from an address or the requesting product. A malformed reference fails
+ * before presentation; it is not treated as absent sharing.
  */
 export async function presentContactProfileReference(
   productId: string,
-  reference: string,
+  reference: string | undefined,
   username: string | undefined,
   signal?: AbortSignal,
 ): Promise<void> {
   signal?.throwIfAborted();
   await showProfileDrawer({
     productId,
-    sharedBy: username === undefined || username === '' ? UNNAMED_CONTACT : username,
-    loadProfile: profileLoader(reference),
+    contactName: username === undefined || username === '' ? UNNAMED_CONTACT : username,
+    ...(reference === undefined ? {} : { loadProfile: profileLoader(reference) }),
     ...(signal === undefined ? {} : { signal }),
   });
 }
@@ -213,7 +212,7 @@ export function createProfilePlatform(
       return presentProfileReference(product.productId, request.reference, signal);
     },
     presentContactProfile(product, presented) {
-      return presentContactProfileReference(product.productId, presented.reference, presented.username, signal);
+      return presentContactProfileReference(product.productId, presented.shared?.reference, presented.username, signal);
     },
     placeContactAvatars(_product, placed) {
       return Promise.resolve().then(() => {

@@ -52,7 +52,7 @@ async function settle(): Promise<void> {
   // Initial preimage poll, then the fetch, decrypt and render microtasks.
   await vi.advanceTimersByTimeAsync(1_000);
   await vi.waitFor(() => {
-    expect(drawer()?.querySelector('.profile-drawer-status')?.textContent).not.toBe('Loading profile…');
+    expect(drawer()?.querySelector('.spinner')).toBeNull();
   });
 }
 
@@ -128,9 +128,7 @@ describe('profile drawer', () => {
     await settle();
 
     expect(drawer()?.querySelector('img')).toBeNull();
-    expect(drawer()?.querySelector('.profile-drawer-status')?.textContent).toBe(
-      'The profile could not be opened. The reference may be wrong or out of date.',
-    );
+    expect(drawer()?.querySelector('.profile-drawer-status-error')).not.toBeNull();
   });
 
   it('rejects an unparseable reference without opening UI', async () => {
@@ -150,17 +148,15 @@ describe('profile drawer', () => {
     await createProfilePlatform().presentContactProfile(
       { ...product, productId: '<b>echat.paseo</b>' },
       {
-        reference: VECTOR.reference,
+        shared: { reference: VECTOR.reference, sharedAt: 1_700_000n },
         peerIdentity,
-        sharedAt: 1_700_000n,
         username: 'alice.01',
       },
     );
 
     const attribution = drawer()?.querySelector('.profile-drawer-attribution');
-    expect(attribution?.textContent).toBe(
-      'Shared with you over Chat by alice.01 · shown in <b>echat.paseo</b>. Profile content is self-described; the host confirms who sent it, not who it depicts.',
-    );
+    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('alice.01');
+    expect(attribution?.textContent).toContain('<b>echat.paseo</b>');
     expect(attribution?.children).toHaveLength(0);
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
   });
@@ -169,26 +165,48 @@ describe('profile drawer', () => {
     mocks.bitswapGet.mockReturnValue(new Promise<Uint8Array>(() => undefined));
 
     await createProfilePlatform().presentContactProfile(product, {
-      reference: VECTOR.reference,
+      shared: { reference: VECTOR.reference, sharedAt: 1_700_000n },
       peerIdentity: new Uint8Array(32).fill(0xab),
-      sharedAt: 1_700_000n,
     });
 
-    const attribution = drawer()?.querySelector('.profile-drawer-attribution');
-    expect(attribution?.textContent).toBe(
-      `Shared with you over Chat by this contact · shown in ${product.productId}. Profile content is self-described; the host confirms who sent it, not who it depicts.`,
-    );
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
   });
 
   it('rejects an unparseable contact reference without opening UI', async () => {
     await expect(
       createProfilePlatform().presentContactProfile(product, {
-        reference: 'nope',
+        shared: { reference: 'nope', sharedAt: 0n },
         peerIdentity: new Uint8Array(32),
-        sharedAt: 0n,
       }),
     ).rejects.toBeInstanceOf(InvalidProfileReferenceError);
+    expect(drawer()).toBeNull();
+  });
+
+  it('replaces a loaded profile with an empty contact drawer without fetching or leaking the old image', async () => {
+    mocks.bitswapGet.mockResolvedValue(fromHex(VECTOR.ciphertext));
+    const controller = new AbortController();
+    const platform = createProfilePlatform(null, controller.signal);
+    await platform.presentProfile(product, { reference: VECTOR.reference });
+    await settle();
+    expect(drawer()?.querySelector('img')).not.toBeNull();
+    mocks.bitswapGet.mockClear();
+
+    const contact = { peerIdentity: new Uint8Array(32).fill(0xab), username: '<b>alice.01</b>' };
+    await platform.presentContactProfile(product, contact);
+    expect(document.querySelectorAll('.profile-drawer')).toHaveLength(1);
+    const name = drawer()?.querySelector('.profile-drawer-contact');
+    expect(name?.textContent).toBe(contact.username);
+    expect(name?.children).toHaveLength(0);
+    expect(drawer()?.querySelector('img')).toBeNull();
+    expect(drawer()?.querySelector('.spinner')).toBeNull();
+    expect(drawer()?.querySelector('.profile-drawer-status-error')).toBeNull();
+    expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(mocks.bitswapGet).not.toHaveBeenCalled();
+
+    controller.abort();
+    expect(drawer()).toBeNull();
+    await expect(platform.presentContactProfile(product, contact)).rejects.toMatchObject({ name: 'AbortError' });
     expect(drawer()).toBeNull();
   });
 
