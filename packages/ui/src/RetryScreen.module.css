@@ -17,6 +17,28 @@
   padding: 0;
 }
 
+/* The Spinner primitive's ring, kept here rather than shared: a page script
+   importing Spinner.module.css alongside the AuthModal island makes the page
+   link that island's chunk sheet, a second render-blocking copy of CSS that
+   index.css already holds. */
+.spinner {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin: 1rem auto;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-strong);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .status {
   box-sizing: border-box;
   width: 100%;

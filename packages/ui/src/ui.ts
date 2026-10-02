@@ -12,7 +12,6 @@
 // typed is ever parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
-import spinner from './components/primitives/Spinner.module.css';
 import s from './ErrorPage.module.css';
 import retry from './RetryScreen.module.css';
 import { setProductError } from './state/product.js';
@@ -289,6 +288,6 @@ export function showRetryScreen(): void {
   const status = el('p', retry['status']);
   status.id = 'status';
   status.textContent = 'Retrying...';
-  screen.append(title, el('div', spinner['spinner']), status);
+  screen.append(title, el('div', retry['spinner']), status);
   app.replaceChildren(screen);
 }
