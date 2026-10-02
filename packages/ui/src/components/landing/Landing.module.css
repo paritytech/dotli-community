@@ -1,0 +1,75 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The landing page: a full-height column with the auth and theme buttons in
+   the corner and the name form centred below the logo. */
+
+.landing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  min-height: 100dvh;
+  margin: 0;
+  padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right)) calc(2rem + var(--safe-bottom))
+    calc(2rem + var(--safe-left));
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+/* The landing route hides the topbar, so these buttons are the ones that would
+   sit under the status bar in an installed PWA. */
+.corner {
+  position: absolute;
+  top: calc(16px + var(--safe-top));
+  right: calc(16px + var(--safe-right));
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.center {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.content {
+  box-sizing: border-box;
+  max-width: 520px;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+/* The logo's paths fill with `currentColor`, the page's text color. */
+.logo {
+  box-sizing: border-box;
+  margin: 0 0 1.2rem;
+  padding: 0;
+}
+
+.title {
+  margin: 0 0 0.5rem;
+  padding: 0;
+  font-size: 2.8rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+}
+
+.subtitle {
+  margin: 0 0 1.5rem;
+  padding: 0;
+  font-size: 1.05rem;
+  line-height: 1.7;
+  color: var(--neutral-solid);
+}

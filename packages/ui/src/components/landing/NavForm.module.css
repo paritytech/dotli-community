@@ -1,0 +1,100 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The landing page's name form: one bar holding the input, the TLD and the
+   go button, with the inline error below it. */
+
+.form {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0 0 2rem;
+  padding: 0;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 340px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  transition: border-color 0.15s;
+}
+
+.bar:focus-within {
+  border-color: var(--border-focus);
+}
+
+/* After the focus rule, so an invalid name stays red while the input has
+   focus. */
+.bar[data-invalid],
+.bar[data-invalid]:focus-within {
+  border-color: var(--danger);
+}
+
+.input {
+  flex: 1;
+  box-sizing: border-box;
+  min-width: 0;
+  height: 100%;
+  margin: 0;
+  padding: 0 0 0 16px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: system-ui, sans-serif;
+  font-size: 1rem;
+}
+
+.suffix {
+  margin: 0;
+  padding: 0 12px 0 0;
+  font-size: 1rem;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--text-muted);
+  user-select: none;
+}
+
+.go {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 40px;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+
+/* The arrow lights up once there is a name to go to. */
+.input:not(:placeholder-shown) ~ .go {
+  color: var(--text);
+}
+
+.error {
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-align: center;
+  color: var(--danger);
+}

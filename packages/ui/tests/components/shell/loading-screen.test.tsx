@@ -290,7 +290,7 @@ describe('Loading screen island', () => {
     mounted.push(render(() => <LandingPage />, landing));
     setLandingPage(true);
     await vi.waitFor(() => {
-      expect(document.querySelector('.landing')).not.toBeNull();
+      expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
     });
     await settle();
 

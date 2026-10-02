@@ -1,0 +1,122 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The recently visited names: a wrapping row of pills, each with a round
+   remove button on its corner that shows on hover, on focus, or after a long
+   press. */
+
+.recent {
+  box-sizing: border-box;
+  margin: 0 0 2rem;
+  padding: 0;
+}
+
+.list {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: -8px 0;
+  padding: 0;
+}
+
+.item {
+  position: relative;
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 4px;
+  text-decoration: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.label {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  transition:
+    border-color 0.15s,
+    background 0.15s;
+}
+
+.pill:hover .label {
+  border-color: var(--border-strong);
+  background: var(--fill);
+}
+
+.tld {
+  color: var(--text-faint);
+}
+
+.remove {
+  position: absolute;
+  top: -5px;
+  right: -9px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+/* The visible disc, smaller than the 32px hit area. Opaque, because it
+   overlaps the pill's corner, and ringed in the page color to cut it out. */
+.remove::before {
+  content: '';
+  position: absolute;
+  inset: 8px;
+  border: 1px solid var(--bg-page);
+  border-radius: 50%;
+  background: var(--surface-2);
+  transition: background 0.15s;
+}
+
+.remove-icon {
+  position: relative;
+}
+
+.item:hover .remove,
+.item:focus-within .remove,
+.item[data-removable] .remove {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.remove:hover {
+  color: var(--text-strong);
+}
+
+/* No opaque token is this shade, so the disc mixes toward the text color. */
+.remove:hover::before {
+  background: color-mix(in srgb, var(--surface-2) 85%, var(--text-strong));
+}
+
+@media (hover: none) {
+  .remove::before {
+    inset: 6px;
+  }
+}

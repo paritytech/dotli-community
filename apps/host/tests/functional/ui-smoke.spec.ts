@@ -34,7 +34,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#dotli-nav-form')).toBeVisible();
-    const pills = page.locator('#dotli-recent .landing-recent-pill');
+    const pills = page.locator('#dotli-recent').getByTestId('landing-recent-pill');
     await expect(pills).toHaveCount(2);
     await expect(pills.first()).toHaveAttribute('href', /browse/);
   });
