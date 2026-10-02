@@ -21,7 +21,7 @@ import {
 } from '../../helpers/solid.js';
 import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
 import { focusables } from '../../../src/components/focus.js';
-import { byId, query } from '../../support.js';
+import { byId, byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -181,19 +181,26 @@ function body(): HTMLElement {
   return query(byId('chains-popover'), ':scope > [data-testid="popover-body"]');
 }
 
+/** The open popover's content, inside its body. */
+function content(): HTMLElement {
+  return query(body(), ':scope > [data-testid="chains-content"]');
+}
+
 /** What the open popover's body shows for one chain. */
 interface ExpectedChain {
   label: string;
   peers?: { text: string; aria: string };
   cell:
     | { kind: 'unavailable' }
-    | { kind: 'waiting'; text: string; ghostHeight?: string }
-    | { kind: 'bars'; titles: string[]; firstBlock: number };
+    | { kind: 'waiting'; text: string; ghost: 'searching' | 'counting' | 'due'; ghostHeight?: string }
+    | { kind: 'bars'; titles: string[]; health: string[]; firstBlock: number };
 }
 
 /** What the open popover's body shows, apart from styling. */
 interface ExpectedBody {
   verdict: string;
+  /** The verdict's tone, on its dot. */
+  tone: 'idle' | 'warn' | 'ok';
   chains: ExpectedChain[];
   speed?: [string, string];
   size?: [string, string];
@@ -218,10 +225,11 @@ function expectChainsButton(open: boolean): void {
 
 /** The popover body: heading, verdict, a group per chain, the transfer rows and the tips, in order. */
 function expectBody(expected: ExpectedBody): void {
-  const sections = Array.from(body().children);
+  const sections = Array.from(content().children);
   expect(sections).toHaveLength(2 + expected.chains.length + 2);
   expect(sections[0]?.textContent).toBe('Network');
   expect(sections[1]?.childElementCount).toBe(2);
+  expect(sections[1]?.children[0]?.getAttribute('data-tone')).toBe(expected.tone);
   expect(sections[1]?.children[1]?.textContent).toBe(expected.verdict);
 
   expected.chains.forEach((chainExpected, i) => {
@@ -241,13 +249,15 @@ function expectBody(expected: ExpectedBody): void {
       expect(strip.childElementCount).toBe(2);
       const ghost = strip.children[0] as HTMLElement;
       expect(ghost.textContent).toBe('');
+      expect(ghost.dataset['pending']).toBe(chainExpected.cell.ghost);
       expect(ghost.style.height).toBe(chainExpected.cell.ghostHeight ?? '');
       expect(strip.children[1]?.textContent).toBe(chainExpected.cell.text);
     } else {
       expect(cell.childElementCount).toBe(1);
       const marks = Array.from(nth(cell.children, 0).children) as HTMLElement[];
-      const { titles, firstBlock } = chainExpected.cell;
+      const { titles, health, firstBlock } = chainExpected.cell;
       expect(marks.map(mark => mark.dataset['block'])).toEqual(titles.map((_, n) => String(firstBlock + n)));
+      expect(marks.map(mark => mark.dataset['health'])).toEqual(health);
       expect(marks.map(mark => mark.title)).toEqual(titles);
       expect(marks.map(mark => mark.getAttribute('aria-label'))).toEqual(
         titles.map((title, n) => `Block ${String(firstBlock + n)}, ${title}`),
@@ -269,7 +279,7 @@ function expectBody(expected: ExpectedBody): void {
 }
 
 function waitingText(): string | null | undefined {
-  return document.querySelector('.chains-bars-waiting')?.textContent;
+  return document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
 }
 
 describe('The network popover island', () => {
@@ -298,6 +308,7 @@ describe('The network popover island', () => {
       name: 'starting, with no chain reachable',
       expected: {
         verdict: 'Starting',
+        tone: 'idle',
         chains: [
           { label: 'Relay chain', cell: { kind: 'unavailable' } },
           { label: 'Asset Hub', cell: { kind: 'unavailable' } },
@@ -309,9 +320,10 @@ describe('The network popover island', () => {
       name: 'connecting, before any block or phase',
       expected: {
         verdict: 'Connecting',
+        tone: 'idle',
         chains: [
-          { label: 'Relay chain', cell: { kind: 'waiting', text: 'connecting' } },
-          { label: 'Asset Hub', cell: { kind: 'waiting', text: 'connecting' } },
+          { label: 'Relay chain', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
+          { label: 'Asset Hub', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
         ],
         speed: ['Speed', '512 B/s'],
         size: ['Downloading', '2 kB / 4.0 MB'],
@@ -323,11 +335,12 @@ describe('The network popover island', () => {
       name: 'connecting, a chain syncing and one without an endpoint',
       expected: {
         verdict: 'Connecting',
+        tone: 'idle',
         chains: [
           {
             label: 'Relay chain',
             peers: { text: '1 peer', aria: 'Relay chain: 1 peer connected' },
-            cell: { kind: 'waiting', text: 'syncing' },
+            cell: { kind: 'waiting', text: 'syncing', ghost: 'searching' },
           },
           { label: 'People', cell: { kind: 'unavailable' } },
         ],
@@ -348,18 +361,24 @@ describe('The network popover island', () => {
       name: 'one of two ready, the other counting down to its next block',
       expected: {
         verdict: 'Connecting, 2 of 3 ready',
+        tone: 'idle',
         chains: [
           {
             label: 'Relay chain',
             peers: { text: '4 peers', aria: 'Relay chain: 4 peers connected' },
-            cell: { kind: 'waiting', text: 'next block in about 5s', ghostHeight: '40%' },
+            cell: { kind: 'waiting', text: 'next block in about 5s', ghost: 'counting', ghostHeight: '40%' },
           },
           {
             label: 'Asset Hub',
             peers: { text: '8 peers', aria: 'Asset Hub: 8 peers connected' },
-            cell: { kind: 'bars', firstBlock: 18, titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'] },
+            cell: {
+              kind: 'bars',
+              firstBlock: 18,
+              titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
+              health: ['onTime', 'onTime', 'onTime'],
+            },
           },
-          { label: 'People', cell: { kind: 'waiting', text: 'connecting' } },
+          { label: 'People', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
         ],
         speed: ['Speed', '39 kB/s'],
       },
@@ -381,14 +400,19 @@ describe('The network popover island', () => {
       name: 'waiting on overdue chains, one of them due any moment',
       expected: {
         verdict: 'Waiting on Relay chain and Asset Hub',
+        tone: 'warn',
         chains: [
-          { label: 'Relay chain', cell: { kind: 'waiting', text: 'due any moment', ghostHeight: '100%' } },
+          {
+            label: 'Relay chain',
+            cell: { kind: 'waiting', text: 'due any moment', ghost: 'due', ghostHeight: '100%' },
+          },
           {
             label: 'Asset Hub',
             cell: {
               kind: 'bars',
               firstBlock: 18,
               titles: ['6.0s, on time', '6.0s, on time', '12s, 6.0s late', '30s, 24s late'],
+              health: ['onTime', 'onTime', 'late', 'veryLate'],
             },
           },
         ],
@@ -408,16 +432,27 @@ describe('The network popover island', () => {
       name: 'a good connection, after the product loaded',
       expected: {
         verdict: 'Your connection is good',
+        tone: 'ok',
         chains: [
           {
             label: 'Relay chain',
             peers: { text: '12 peers', aria: 'Relay chain: 12 peers connected' },
-            cell: { kind: 'bars', firstBlock: 8, titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'] },
+            cell: {
+              kind: 'bars',
+              firstBlock: 8,
+              titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'],
+              health: ['onTime', 'onTime', 'onTime'],
+            },
           },
           {
             label: 'Asset Hub',
             peers: { text: '1 peer', aria: 'Asset Hub: 1 peer connected' },
-            cell: { kind: 'bars', firstBlock: 18, titles: ['4.0s, on time', '4.0s, on time', '4.0s, on time'] },
+            cell: {
+              kind: 'bars',
+              firstBlock: 18,
+              titles: ['4.0s, on time', '4.0s, on time', '4.0s, on time'],
+              health: ['onTime', 'onTime', 'onTime'],
+            },
           },
         ],
       },
@@ -482,7 +517,7 @@ describe('The network popover island', () => {
     notify();
     await renderPopover();
     await openPopover();
-    expect(document.querySelectorAll('.chains-bar[data-block]')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-block]')).toHaveLength(0);
 
     // When
     monitor.status = [chain({ latest: 12, bars: bars(11, 2), sinceLast: 0, peers: 2 })];
@@ -490,11 +525,12 @@ describe('The network popover island', () => {
     await settle();
 
     // Then
-    expect([...document.querySelectorAll<HTMLElement>('.chains-bar[data-block]')].map(m => m.dataset['block'])).toEqual(
-      ['11', '12'],
-    );
-    expect(document.querySelector('.chains-group-peers')?.textContent).toBe('2 peers');
-    expect(document.querySelector('.chains-status')?.textContent).toBe('Your connection is good');
+    expect([...document.querySelectorAll<HTMLElement>('[data-block]')].map(m => m.dataset['block'])).toEqual([
+      '11',
+      '12',
+    ]);
+    expect(document.querySelector('[data-testid="chains-group-peers"]')?.textContent).toBe('2 peers');
+    expect(document.querySelector('[data-testid="chains-status"]')?.textContent).toBe('Your connection is good');
   });
 
   it('As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and stops when it closes', async () => {
@@ -577,7 +613,7 @@ describe('The network popover island', () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(document.querySelector('.chains-group-label')?.textContent).toBe('Relay chain');
+    expect(document.querySelector('[data-testid="chains-group-label"]')?.textContent).toBe('Relay chain');
     expect(vi.getTimerCount()).toBe(1);
   });
 
@@ -587,7 +623,8 @@ describe('The network popover island', () => {
     notify();
     await renderPopover();
     await openPopover();
-    const rows = (): string[] => [...document.querySelectorAll('.chains-transfer-row')].map(row => row.textContent);
+    const rows = (): string[] =>
+      [...document.querySelectorAll('[data-testid="chains-transfer-row"]')].map(row => row.textContent);
     expect(rows()).toEqual(['Speed2 kB/s', 'Downloading1 kB / 4 kB']);
 
     // When
@@ -680,7 +717,7 @@ describe('The network popover island', () => {
     await openPopover();
 
     // When
-    query(document, '.chains-tips').click();
+    byTestId('chains-tips').click();
     await settle();
 
     // Then
@@ -781,7 +818,7 @@ describe('The network popover island, on network updates', () => {
     const rects = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: HTMLElement,
     ) {
-      const width = this.classList.contains('chains-bars') ? stripWidth : 0;
+      const width = this.dataset['testid'] === 'chains-bars' ? stripWidth : 0;
       return { width, height: 0 } as DOMRect;
     });
     const styles = vi.spyOn(window, 'getComputedStyle');
@@ -789,9 +826,7 @@ describe('The network popover island, on network updates', () => {
   }
 
   function shownBlocks(): string[] {
-    return [...document.querySelectorAll<HTMLElement>('.chains-bar[data-block]')].map(
-      bar => bar.dataset['block'] ?? '',
-    );
+    return [...document.querySelectorAll<HTMLElement>('[data-block]')].map(bar => bar.dataset['block'] ?? '');
   }
 
   it('As a dotli user watching the download, updates that land no block read no layout', async () => {
@@ -845,7 +880,7 @@ describe('The network popover island, on network updates', () => {
 
     // Then: the older bars are revealed, not slid in as new blocks.
     expect(shownBlocks()).toHaveLength(20);
-    expect(document.querySelectorAll('.chains-bar.is-new')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-block][data-new]')).toHaveLength(0);
   });
 
   it('As a dotli user watching a chain between blocks, the countdown is computed once per tick', async () => {
@@ -887,7 +922,7 @@ describe('The network popover island, on network updates', () => {
 
     // Then
     expect(format.describeLiveNetwork).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('.chains-status')?.textContent).toBe('Your connection is good');
+    expect(document.querySelector('[data-testid="chains-status"]')?.textContent).toBe('Your connection is good');
   });
 
   it('As a dotli user, the countdown ticker stops once no chain is waiting for its first block', async () => {

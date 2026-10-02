@@ -9,6 +9,7 @@ import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './ChainsPopover.module.css';
 
 /** The popover's body, its own chunk. */
 const Chains = lazy(() => import('./ChainsContent.js'), { export: 'ChainsContent' });
@@ -57,7 +58,7 @@ export function ChainsPopover(): JSX.Element {
     <Popover
       id="chains-popover"
       title="Network"
-      class="more-popover chains-popover"
+      class={s['popover']}
       content={Chains}
       trigger={t => (
         <TopbarItem

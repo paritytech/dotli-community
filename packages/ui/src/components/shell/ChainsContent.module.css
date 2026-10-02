@@ -1,0 +1,239 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The network popover's body: the verdict, a strip of block bars per
+   chain, the transfer readouts and the tips. Every row insets itself by
+   14px, the settings popover's inset, so the body has no side padding. In
+   a sheet (data-sheet) the sheet's header sits above it, so it starts
+   flush. */
+
+.content {
+  padding: 6px 0 8px;
+}
+.content[data-sheet] {
+  padding-top: 0;
+}
+
+/* The verdict reads as a banner rather than a line of text, so it is
+   legible at a glance before the strips below are studied. */
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 14px 8px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--fill-subtle);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 500;
+}
+.dot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot[data-tone='ok'] {
+  background: var(--success-solid);
+}
+.dot[data-tone='warn'] {
+  background: var(--warning);
+}
+.dot[data-tone='idle'] {
+  background: var(--neutral-solid);
+}
+
+/* A labelled strip per chain, bars sitting on a baseline. Generously
+   spaced, because the gaps are what make a missing block read as
+   missing. */
+.group {
+  padding: 8px 14px 2px;
+}
+.group-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 5px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 500;
+}
+/* Context for the bars below, not a heading of its own. Tabular figures,
+   so a changing count cannot reflow the row it sits on. */
+.peers {
+  color: var(--neutral-solid);
+  font-size: 10px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.cell {
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+}
+.unavailable,
+.waiting {
+  color: var(--neutral-solid);
+  font-size: 10px;
+  white-space: nowrap;
+}
+.bars {
+  /* Read back by the panel (stripCapacity) to work out how many marks fit,
+     so the width lives in one place instead of being duplicated in JS. */
+  --chains-bar-w: 4px;
+  display: flex;
+  /* Packed to the right, so the newest block lands at the right edge and
+     the oldest run off the left, where `overflow` clips them. */
+  flex-direction: row;
+  justify-content: flex-end;
+  align-items: flex-end;
+  gap: 4px;
+  box-sizing: border-box;
+  /* A flex item defaults to `min-width: auto`, which lets its content set
+     the floor and defeats the clipping. */
+  min-width: 0;
+  height: 22px;
+  padding-bottom: 2px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--border);
+}
+/* Set for one frame after a block lands (slideStrip): the strip starts
+   shifted right by the room the new bar took, then settles to zero, so the
+   row glides left together instead of the bars jumping a step. */
+.bars[data-sliding] {
+  transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+.bar {
+  flex-shrink: 0;
+  width: var(--chains-bar-w);
+  height: 100%;
+  border-radius: 1px;
+  transform-origin: bottom center;
+}
+.bar[data-new] {
+  animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes bar-in {
+  from {
+    opacity: 0;
+    transform: scaleY(0.3);
+  }
+  to {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bars[data-sliding] {
+    transition: none;
+  }
+  .bar[data-new] {
+    animation: none;
+  }
+}
+/* Health is in the height as well as the colour. */
+.bar[data-health='onTime'] {
+  background: var(--success-solid);
+}
+.bar[data-health='late'] {
+  height: 60%;
+  background: var(--warning);
+}
+.bar[data-health='veryLate'] {
+  height: 32%;
+  background: var(--danger);
+}
+/* The ghost bar stands where the next block will: dim, filling with the
+   elapsed share of the chain's block time once a first head anchors the
+   estimate (an inline height), searching before that, and full and pulsing
+   once the block is due. */
+.pending {
+  height: 20%;
+  background: var(--neutral-solid);
+  opacity: 0.75;
+}
+.pending[data-pending='searching'] {
+  height: 45%;
+}
+.pending[data-pending='due'] {
+  height: 100%;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .pending {
+    transition: height 0.25s linear;
+  }
+  .pending[data-pending='searching'],
+  .pending[data-pending='due'] {
+    animation: pending-pulse 1.6s ease-in-out infinite;
+  }
+}
+@keyframes pending-pulse {
+  50% {
+    opacity: 0.35;
+  }
+}
+.waiting {
+  align-self: center;
+  margin-left: 2px;
+}
+
+/* The transfer readouts, under the strips: the label recessive, the value
+   carrying. No rule of its own: the last strip draws one already. */
+.transfer {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 10px 14px 0;
+}
+.transfer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.transfer-row:empty {
+  display: none;
+}
+.transfer-label {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.transfer-value {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Advice, not telemetry: boxed like the verdict, so the two bracket the
+   strips. */
+.tips {
+  margin: 12px 14px 2px;
+  padding: 9px 11px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 9px;
+  background: var(--fill-subtle);
+}
+.tips-title {
+  margin: 0 0 5px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.tips-list {
+  margin: 0;
+  padding: 0 0 0 15px;
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.tip::marker {
+  color: var(--text-muted);
+}
