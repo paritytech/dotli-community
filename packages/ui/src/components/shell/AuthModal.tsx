@@ -9,6 +9,7 @@ import { closeAuthModal, retryLogin } from '../../auth-controller.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
+import { Spinner } from '../primitives/Spinner.js';
 import { createPopover } from './create-popover.js';
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
@@ -22,10 +23,6 @@ type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 interface DrawnQr {
   payload: string;
   canvas: HTMLCanvasElement;
-}
-
-function Spinner(): JSX.Element {
-  return <div class="spinner" />;
 }
 
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
@@ -245,13 +242,13 @@ export function AuthModal(): JSX.Element {
           <Switch>
             <Match when={view()?.kind === 'authenticating'}>
               <div class="attesting">
-                <Spinner />
+                <Spinner testId="auth-modal-spinner" />
                 <p>Logging in...</p>
               </div>
             </Match>
             <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
             <Match when={view() !== null}>
-              <Show when={qr()} fallback={<Spinner />}>
+              <Show when={qr()} fallback={<Spinner testId="auth-modal-spinner" />}>
                 {drawnQr =>
                   mobile() ? (
                     <MobileQr
