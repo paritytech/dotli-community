@@ -6,6 +6,7 @@ import { setBackend } from '@dotli/config';
 import { ProtocolInitFailedError } from '@dotli/protocol';
 
 import { describeError, HOST_ERRORS } from '../../src/errors.js';
+import { ManifestRejectedError } from '../../src/manifest-gate.js';
 
 /** An error as the protocol client rebuilds it from a failed response. */
 function crossedBoundary(message: string, name: string): Error {
@@ -84,5 +85,38 @@ describe('host error classification', () => {
         tips: ['Checking your internet connection.'],
       });
     });
+  });
+
+  it.each([
+    [
+      'a manifest version this host does not read',
+      new ManifestRejectedError('unsupported-version', 'app', '$v 2'),
+      'manifest-unsupported-version',
+      HOST_ERRORS.MANIFEST_UNSUPPORTED_VERSION,
+    ],
+    [
+      'an invalid manifest',
+      new ManifestRejectedError('invalid', 'root', 'root manifest displayName must be a non-empty string'),
+      'manifest-invalid',
+      HOST_ERRORS.MANIFEST_INVALID,
+    ],
+    [
+      'an app manifest without a root manifest',
+      new ManifestRejectedError('missing-root', 'root', 'no root manifest'),
+      'manifest-invalid',
+      HOST_ERRORS.MANIFEST_INVALID,
+    ],
+  ])('As a dotli user, an app rejected for %s says why and offers no retry', (_case, err, kind, message) => {
+    // When
+    const error = describeError(err, true);
+
+    // Then
+    expect({ kind: error.kind, title: error.title, message: error.message, recovery: error.recovery }).toEqual({
+      kind,
+      title: "This app can't be opened",
+      message,
+      recovery: 'none',
+    });
+    expect(error.tips).toEqual(['Contacting the app maintainer.']);
   });
 });

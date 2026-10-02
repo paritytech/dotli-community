@@ -48,8 +48,8 @@ from there (`import { log } from "@dotli/shared"`). Every other module under `sr
 - A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`,
   typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
 - Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. The shared
-  build plugins are `@config/vite`, whose one entry is `src/vite.ts` for the same reason. CSS is exported as
-  `./styles.css`.
+  build plugins are `@config/vite`, one subpath per plugin (`@config/vite/build-info`, …), so a consumer loads only the
+  one it imports. CSS is exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
 
 ### Commit hook

@@ -10,7 +10,8 @@ export interface ActiveRootManifestSnapshot {
   schemaVersion: number;
   displayName: string;
   description: string;
-  icon: { cid: string; format: 'jpeg' | 'png' };
+  /** `format` as published; v1 defines `jpeg` and `png`, and another value only costs the icon. */
+  icon: { cid: string; format: string };
 }
 
 export interface ActiveAppManifestSnapshot {
