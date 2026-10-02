@@ -1,0 +1,110 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li global styles: design tokens and the page base.
+
+   Component styles live in CSS modules next to their components, and each
+   one resets its own elements. Nothing here resets elements. Colors are
+   semantic tokens: dark on :root, light under data-theme='light' on <html>
+   (set by the boot script in apps/host/src/pages/index.astro and by
+   theme-controller.ts). See docs/superpowers/specs/2026-10-02-css-palette.md
+   for how existing colors map onto them. */
+
+:root {
+  --text-strong: rgba(255, 255, 255, 0.95);
+  --text: rgba(255, 255, 255, 0.86);
+  --text-secondary: rgba(255, 255, 255, 0.65);
+  --text-muted: rgba(255, 255, 255, 0.5);
+  --text-faint: rgba(255, 255, 255, 0.35);
+  --bg-page: #0a0a0a;
+  --surface: #161616;
+  --surface-2: #1f1f1f;
+  --surface-glass: rgba(22, 22, 22, 0.92);
+  --fill-subtle: rgba(255, 255, 255, 0.04);
+  --fill: rgba(255, 255, 255, 0.07);
+  --fill-strong: rgba(255, 255, 255, 0.12);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border: rgba(255, 255, 255, 0.14);
+  --border-strong: rgba(255, 255, 255, 0.28);
+  --border-focus: rgba(255, 255, 255, 0.5);
+  --inverse-bg: #fafafa;
+  --inverse-fg: #0a0a0a;
+  --backdrop: rgba(0, 0, 0, 0.6);
+  --shadow: rgba(0, 0, 0, 0.4);
+  --danger: #f87171;
+  --danger-strong: #d93b30;
+  --success: #4ade80;
+  --success-solid: #22c55e;
+  --warning: #eab308;
+  --warning-bg: #b45309;
+  --caution: #f0c060;
+  --trusted: #ff8c00;
+  --neutral-solid: #8f8f8f;
+  --knob: rgba(255, 255, 255, 0.7);
+
+  /* Layout tokens shared by every stylesheet and by the inline styles in JS.
+
+     The host sets `viewport-fit=cover`, so the viewport spans the whole display
+     and every edge needs its own inset. `env()` carries the 0px fallback here, so
+     rules in the stylesheets use the tokens bare. Inline styles set from JS repeat
+     a px fallback instead, because they do not ship with this file. They live in
+     global.css so every module can read them. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --topbar-height: calc(56px + var(--safe-top));
+  --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
+}
+
+:root[data-theme='light'] {
+  --text-strong: rgba(0, 0, 0, 0.92);
+  --text: rgba(0, 0, 0, 0.82);
+  --text-secondary: rgba(0, 0, 0, 0.65);
+  --text-muted: rgba(0, 0, 0, 0.5);
+  --text-faint: rgba(0, 0, 0, 0.35);
+  --bg-page: #f5f5f5;
+  --surface: #ffffff;
+  --surface-2: #ebebeb;
+  --surface-glass: rgba(255, 255, 255, 0.92);
+  --fill-subtle: rgba(0, 0, 0, 0.03);
+  --fill: rgba(0, 0, 0, 0.05);
+  --fill-strong: rgba(0, 0, 0, 0.09);
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.14);
+  --border-strong: rgba(0, 0, 0, 0.28);
+  --border-focus: rgba(0, 0, 0, 0.45);
+  --inverse-bg: #0a0a0a;
+  --inverse-fg: #fafafa;
+  --backdrop: rgba(0, 0, 0, 0.3);
+  --shadow: rgba(0, 0, 0, 0.14);
+  --danger: #dc2626;
+  --danger-strong: #b91c1c;
+  --success: #16a34a;
+  --success-solid: #15803d;
+  --warning: #b45309;
+  --warning-bg: #b45309;
+  --caution: #8a5a00;
+  --trusted: #ff8c00;
+  --neutral-solid: #6b6b6b;
+  --knob: rgba(0, 0, 0, 0.55);
+}
+
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+}
+
+/* A modal shell dialog is open (components/shell/create-popover.ts lockScroll):
+   the page does not scroll. An attribute, not the inline style, so the page's
+   own inline overflow (bridge.ts sets one) survives the dialog. */
+body[data-scroll-locked] {
+  overflow: hidden !important;
+}
+
+:focus-visible {
+  outline: 2px solid var(--text-muted);
+  outline-offset: 2px;
+}

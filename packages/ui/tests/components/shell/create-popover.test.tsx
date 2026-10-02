@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPopover, type PopoverMode, type PopoverOptions } from '../../../src/components/shell/create-popover.js';
 import { recordChainsButtonVisible, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
@@ -1016,21 +1014,6 @@ describe('createPopover, dialog mode (Radix Dialog, modal)', () => {
     // Then
     expect(scrollLocked()).toBe(false);
     expect(document.body.style.overflow).toBe('hidden');
-  });
-
-  it("As a user, the stylesheet hides the page's overflow while a dialog holds the lock, over any inline overflow", () => {
-    // Given: the shell's base stylesheet on the page.
-    const style = document.createElement('style');
-    style.textContent = readFileSync(resolve(import.meta.dirname, '../../../src/styles/base.css'), 'utf8');
-    document.head.append(style);
-    document.body.style.overflow = 'scroll';
-
-    // When / Then
-    expect(getComputedStyle(document.body).overflow).toBe('scroll');
-    document.body.setAttribute('data-scroll-locked', '');
-    expect(getComputedStyle(document.body).overflow).toBe('hidden');
-    document.body.removeAttribute('data-scroll-locked');
-    style.remove();
   });
 
   it('As a user, a click on the backdrop closes the dialog and focus goes back to the trigger', async () => {

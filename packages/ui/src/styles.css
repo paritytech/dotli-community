@@ -3,10 +3,12 @@
 
 /* dot.li — Main stylesheet (index)
  *
- * Component-scoped CSS files are imported here.
+ * global.css first (tokens and the page base), then the legacy stylesheets
+ * that are being moved to CSS modules.
  * Dark theme is the default; light overrides live in themes.css.
  */
 
+@import './global.css';
 @import './styles/base.css';
 @import './styles/popover.css';
 @import './styles/topbar.css';
