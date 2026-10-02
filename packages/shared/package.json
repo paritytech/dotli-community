@@ -15,8 +15,8 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*"
+    "@config/eslint": "*",
+    "@config/typescript": "*"
   },
   "dependencies": {
     "@dotli/config": "*",

@@ -6,8 +6,8 @@ import type { AstroRenderer } from 'astro';
 /** The Solid renderer, for Astro's integration and Container API. */
 export function getContainerRenderer(): AstroRenderer {
   return {
-    name: '@dotli/astro-solid',
-    clientEntrypoint: '@dotli/astro-solid/client.js',
-    serverEntrypoint: '@dotli/astro-solid/server.js',
+    name: '@config/astro-solid',
+    clientEntrypoint: '@config/astro-solid/client.js',
+    serverEntrypoint: '@config/astro-solid/server.js',
   };
 }

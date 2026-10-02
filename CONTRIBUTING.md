@@ -47,9 +47,17 @@ from there (`import { log } from "@dotli/shared"`). Every other module under `sr
   requires. ESLint rejects a `.ts` extension.
 - A module other packages load on demand is not re-exported directly. It gets a loader in `src/lazy.ts` (`loadBridge()`,
   typed `BridgeModule`), which `index.ts` re-exports, so it stays a separate chunk.
-- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. CSS is
-  exported as `./styles.css`.
+- Build-time code that Node runs (vite plugins) lives behind the `./vite` subpath and uses `.ts` specifiers. The shared
+  build plugins are `@config/vite`, one subpath per plugin (`@config/vite/build-info`, …), so a consumer loads only the
+  one it imports. CSS is exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
+
+### Commit hook
+
+`npm install` sets up a husky pre-commit hook. It runs lint-staged, which formats the staged files with Prettier
+(`--ignore-unknown` skips the types it can't parse) and stages the result, then lints every workspace the commit touches
+(turbo's `--filter=[HEAD]`), each whole and with its own config. Skip it with `git commit --no-verify`. CI still checks
+everything.
 
 ### How to Document
 
