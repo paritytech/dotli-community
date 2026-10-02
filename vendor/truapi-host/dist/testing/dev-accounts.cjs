@@ -26,6 +26,7 @@ __export(dev_accounts_exports, {
   DEV_ACCOUNT_NAMES: () => DEV_ACCOUNT_NAMES,
   LIVE_CHAINS: () => LIVE_CHAINS,
   PASEO_ASSET_HUB: () => PASEO_ASSET_HUB,
+  checkDerivationIndex: () => checkDerivationIndex,
   isDevAccountName: () => isDevAccountName,
   liveChain: () => liveChain,
   resolveAccount: () => resolveAccount
@@ -100,6 +101,12 @@ function liveChain(chain) {
     runtimeConfig: { assetHub: { genesisHash } }
   };
 }
+function checkDerivationIndex(index) {
+  if (!Number.isInteger(index) || index < 0 || index > 4294967295) {
+    throw new RangeError(`product account index ${index} is not a u32: a derivation index is a whole number from 0 to 4294967295.`);
+  }
+  return index;
+}
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
   DEFAULT_CHAIN,
@@ -107,6 +114,7 @@ function liveChain(chain) {
   DEV_ACCOUNT_NAMES,
   LIVE_CHAINS,
   PASEO_ASSET_HUB,
+  checkDerivationIndex,
   isDevAccountName,
   liveChain,
   resolveAccount

@@ -318,6 +318,15 @@ export class WasmSigningHostRuntime {
 export function deriveProductAccountPublicKey(product_subtree_public_key: Uint8Array, derivation_index: Uint8Array): Uint8Array;
 
 /**
+ * Derive a product's hard-subtree public key from a session's root entropy.
+ *
+ * Pure: no runtime and no session, so a test harness can work out the address
+ * a product will be given before it starts a host. The entropy is the same 32
+ * bytes `activateLocalSession` takes.
+ */
+export function deriveProductSubtreePublicKey(root_entropy: Uint8Array, product_id: string): Uint8Array;
+
+/**
  * Strictly decode a SCALE-encoded core-storage key for host storage policy.
  */
 export function describeCoreStorageKey(encoded: Uint8Array): any;
@@ -369,6 +378,7 @@ export interface InitOutput {
     readonly __wbg_wasmrenderersubscription_free: (a: number, b: number) => void;
     readonly __wbg_wasmsigninghostruntime_free: (a: number, b: number) => void;
     readonly deriveProductAccountPublicKey: (a: number, b: number, c: number, d: number, e: number) => void;
+    readonly deriveProductSubtreePublicKey: (a: number, b: number, c: number, d: number, e: number) => void;
     readonly describeCoreStorageKey: (a: number, b: number, c: number) => void;
     readonly hasTrustedRemotePermissions: (a: number, b: number) => number;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
@@ -427,12 +437,12 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_9463: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_9521: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_4321: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_4314: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_9345: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_4318: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_9485: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_9543: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_4329: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_4322: (a: number, b: number, c: number) => void;
+    readonly __wasm_bindgen_func_elem_9366: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_4326: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;
