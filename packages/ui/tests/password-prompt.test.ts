@@ -7,7 +7,7 @@ import { ERRORS } from '../src/errors.js';
 import { failAllModals } from '../src/state/modals.js';
 import { settle } from './helpers/solid.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
-import { byTestId } from './support.js';
+import { byTestId, query } from './support.js';
 
 afterEach(() => {
   resetOverlays();
@@ -27,9 +27,9 @@ describe('password prompt', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Encrypted Content');
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Encrypted Content');
     expect(document.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
-    expect(document.querySelector('[data-testid="password-prompt-hint"]')?.textContent).toBe(
+    expect(byTestId('password-prompt-hint').textContent).toBe(
       'This content is password-protected. Enter the password to decrypt.',
     );
     expect(document.querySelector('[data-testid="password-prompt-error"]')).toBeNull();
@@ -37,7 +37,7 @@ describe('password prompt', () => {
     // When
     type('hunter2');
     await settle();
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(password).resolves.toBe('hunter2');
@@ -49,10 +49,10 @@ describe('password prompt', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('[data-testid="password-prompt-error"]')?.textContent).toBe('Wrong password');
+    expect(byTestId('password-prompt-error').textContent).toBe('Wrong password');
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
+    byTestId('signing-btn-cancel').click();
 
     // Then
     await expect(password).rejects.toThrow(ERRORS.DECRYPTION_CANCELLED);

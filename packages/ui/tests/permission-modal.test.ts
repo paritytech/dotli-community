@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { showPermissionRequestModal } from '../src/permission-modal.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId } from './support.js';
 
 afterEach(() => {
   resetOverlays();
@@ -14,7 +15,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(decision).resolves.toBe('granted');
@@ -26,7 +27,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
+    byTestId('signing-btn-cancel').click();
 
     // Then
     await expect(decision).resolves.toBe('denied');
@@ -38,7 +39,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>('[data-testid="signing-modal-backdrop"]')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
     await expect(decision).resolves.toBe('dismissed');
@@ -77,7 +78,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(decision).resolves.toBe('granted-once');
@@ -89,7 +90,7 @@ describe('permission request modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-secondary"]')?.click();
+    byTestId('signing-btn-secondary').click();
 
     // Then
     await expect(decision).resolves.toBe('granted');

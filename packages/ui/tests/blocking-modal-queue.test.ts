@@ -6,6 +6,7 @@ import { createPromptPermission } from '../src/host-callbacks/PromptPermission.j
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId, query } from './support.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -39,21 +40,21 @@ describe('blocking modal queue', () => {
 
     // Then
     expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
-    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Account Access');
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Account Access');
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
     await overlaysReady();
     await vi.waitFor(() => {
-      expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Permission Request');
+      expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Permission Request');
     });
     expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(camera).resolves.toEqual('AllowAlways');
@@ -88,7 +89,7 @@ describe('blocking modal queue', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-secondary"]')?.click();
+    byTestId('signing-btn-secondary').click();
 
     // Then: the duplicate reads the saved grant instead of prompting, and
     // answers without upgrading what it found.
@@ -116,7 +117,7 @@ describe('blocking modal queue', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('first.dot');
+    expect(byTestId('signing-field-value').textContent).toBe('first.dot');
 
     // When
     firstScope.dispose();
@@ -125,10 +126,10 @@ describe('blocking modal queue', () => {
     await expect(first).rejects.toMatchObject({ name: 'AbortError' });
     await overlaysReady();
     expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
-    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('second.dot');
+    expect(byTestId('signing-field-value').textContent).toBe('second.dot');
 
     // When
-    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(second).resolves.toBe(true);

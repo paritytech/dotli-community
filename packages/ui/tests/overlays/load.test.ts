@@ -10,6 +10,7 @@ import { presentModal, presentToast, prefetchOverlays } from '../../src/overlays
 import { toastsStore } from '../../src/state/toasts.js';
 import type { ModalView } from '../../src/state/modals.js';
 import { overlaysReady, resetOverlays } from '../helpers/overlays.js';
+import { byId, byTestId } from '../support.js';
 
 const VIEW: ModalView<'no' | 'yes' | 'dismissed'> = {
   title: 'Question',
@@ -46,7 +47,7 @@ describe('overlays loader', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Hello');
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
   });
 
   it('As a dotli user, a dialog renders into the overlay root and settles from its buttons', async () => {
@@ -55,7 +56,7 @@ describe('overlays loader', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('#overlay-root [data-testid="signing-btn-sign"]')?.click();
+    byTestId('signing-btn-sign', byId('overlay-root')).click();
 
     // Then
     await expect(outcome).resolves.toEqual({ result: 'yes' });
@@ -123,7 +124,7 @@ describe('overlays loader', () => {
 
     // Then
     expect(toastsStore.get().items.map(t => t.label)).toEqual(['A']);
-    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('A');
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('A');
   });
 
   it('As a dotli user, a render error settles the open dialog and lets the overlays recover for what comes next', async () => {
@@ -155,7 +156,7 @@ describe('overlays loader', () => {
       // from its own button, instead of hanging forever.
       const recovered = presentModal(VIEW);
       await overlaysReady();
-      document.querySelector<HTMLButtonElement>('#overlay-root [data-testid="signing-btn-sign"]')?.click();
+      byTestId('signing-btn-sign', byId('overlay-root')).click();
 
       // Then
       await expect(recovered).resolves.toEqual({ result: 'yes' });
@@ -170,7 +171,7 @@ describe('overlays loader', () => {
       await overlaysReady();
 
       // Then
-      expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Recovered');
+      expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Recovered');
     } finally {
       getSpy.mockRestore();
     }

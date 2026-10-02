@@ -7,7 +7,7 @@ import { ModalOutlet } from '../../../src/components/overlays/ModalOutlet.js';
 import { openModal, resetModalsForTests, type ModalView } from '../../../src/state/modals.js';
 import { attachProductFrame, resetProductFrameLayout } from '../../../src/product-frame-layout.js';
 import { renderComponent, settle } from '../../helpers/solid.js';
-import { byTestId } from '../../support.js';
+import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -73,21 +73,18 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // Then
-    const modal = document.querySelector<HTMLElement>(
-      '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]',
-    );
-    expect(modal).not.toBeNull();
-    expect(modal?.getAttribute('role')).toBe('dialog');
-    expect(modal?.getAttribute('aria-modal')).toBe('true');
-    const title = modal?.querySelector('h2');
-    expect(title?.textContent).toBe('Permission Request');
-    expect(modal?.getAttribute('aria-labelledby')).toBe(title?.id);
-    expect(modal?.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
+    const modal = query(document, '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]');
+    expect(modal.getAttribute('role')).toBe('dialog');
+    expect(modal.getAttribute('aria-modal')).toBe('true');
+    const title = query(modal, 'h2');
+    expect(title.textContent).toBe('Permission Request');
+    expect(modal.getAttribute('aria-labelledby')).toBe(title.id);
+    expect(modal.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
     expect(
       [...document.querySelectorAll('[data-testid="signing-field"]')].map(f => f.hasAttribute('data-warning')),
     ).toEqual([false, false, true]);
-    expect(document.querySelector('[data-testid="signing-field-value"][data-mono]')?.textContent).toBe('0x1234');
-    expect(document.querySelector('[data-testid="permission-modal-notice"]')?.textContent).toBe(
+    expect(query(document, '[data-testid="signing-field-value"][data-mono]').textContent).toBe('0x1234');
+    expect(byTestId('permission-modal-notice').textContent).toBe(
       'Granting this permission will reload the application.',
     );
     expect(
@@ -127,7 +124,7 @@ describe('signing dialog', () => {
     await settle();
 
     // Then
-    expect(document.querySelector('h2')?.textContent).toBe('Permission Request');
+    expect(query(document, 'h2').textContent).toBe('Permission Request');
 
     // When
     fireEvent.click(byTestId('signing-modal-backdrop', document));
@@ -135,7 +132,7 @@ describe('signing dialog', () => {
 
     // Then
     await expect(first).resolves.toEqual({ result: 'dismissed' });
-    expect(document.querySelector('h2')?.textContent).toBe('Second');
+    expect(query(document, 'h2').textContent).toBe('Second');
 
     // When
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -239,7 +236,7 @@ describe('signing dialog', () => {
     expect(input.placeholder).toBe('Password');
     expect(input.getAttribute('autocomplete')).toBe('off');
     expect(input.getAttribute('spellcheck')).toBe('false');
-    expect(document.querySelector('[data-testid="password-prompt-error"]')?.textContent).toBe('Wrong password');
+    expect(byTestId('password-prompt-error').textContent).toBe('Wrong password');
     expect(unlock.disabled).toBe(true);
 
     // When
@@ -295,7 +292,7 @@ describe('signing dialog', () => {
     await settle();
 
     // Then
-    expect(document.querySelector('h2')?.textContent).toBe('Second');
+    expect(query(document, 'h2').textContent).toBe('Second');
     expect(document.activeElement).toBe(document.querySelector('[data-testid="signing-modal"]'));
   });
 

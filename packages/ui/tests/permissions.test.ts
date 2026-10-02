@@ -21,6 +21,7 @@ import {
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId } from './support.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -494,7 +495,7 @@ describe('three-way permission prompts', () => {
     });
 
     // When
-    document.querySelector<HTMLDivElement>('[data-testid="signing-modal-backdrop"]')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');

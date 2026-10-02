@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NOTIFICATION_DISMISS_MS, showNotification } from '../src/notification.js';
 import { toastsStore } from '../src/state/toasts.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byId, byTestId } from './support.js';
 
 function setVisibility(state: 'visible' | 'hidden'): void {
   Object.defineProperty(document, 'visibilityState', {
@@ -30,8 +31,8 @@ describe('showNotification', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Hello');
-    expect(document.querySelector('#overlay-root [data-testid="notif-body"]')?.textContent).toBe('World');
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
+    expect(byTestId('notif-body', byId('overlay-root')).textContent).toBe('World');
     expect(document.querySelector('#overlay-root [data-testid="notif-icon"] svg')).not.toBeNull();
   });
 
