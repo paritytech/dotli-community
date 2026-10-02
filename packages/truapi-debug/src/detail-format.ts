@@ -40,7 +40,7 @@ export function eventCountLabel(count: number): string {
 }
 
 /** A link from the single-event detail to another event of its group. */
-export interface SiblingPill {
+interface SiblingPill {
   seq: EventSeq;
   /** The sibling's tag (or layer.event) and its offset from the shown event. */
   label: string;
@@ -89,7 +89,7 @@ export interface InlineSegment {
  * Split text on backticked `identifiers`, so prose can name them without a
  * Markdown engine. A lone backtick stays literal text.
  */
-export function formatInlineCode(text: string): InlineSegment[] {
+function formatInlineCode(text: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
   let last = 0;
   for (const match of text.matchAll(/`([^`]+)`/g)) {
@@ -106,10 +106,9 @@ export function formatInlineCode(text: string): InlineSegment[] {
 }
 
 /** A paragraph of the explanation, or a list made of `• ` lines. */
-export type ExplanationBlock =
-  { kind: 'paragraph'; segments: InlineSegment[] } | { kind: 'list'; items: InlineSegment[][] };
+type ExplanationBlock = { kind: 'paragraph'; segments: InlineSegment[] } | { kind: 'list'; items: InlineSegment[][] };
 
-export interface ExplanationDetail {
+interface ExplanationDetail {
   title: string;
   blocks: ExplanationBlock[];
 }
@@ -139,7 +138,7 @@ function explanationBlock(paragraph: string): ExplanationBlock {
 }
 
 /** One row of the chain annotation list. */
-export interface ChainField {
+interface ChainField {
   name: string;
   value: string;
   /** An id or hash, shown as code. */

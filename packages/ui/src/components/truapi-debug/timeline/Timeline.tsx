@@ -43,7 +43,7 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
   });
   const viewBox = (): string => `0 0 ${String(props.lane.width)} ${String(props.lane.height)}`;
   return (
-    <div class={s['col']} data-testid="td-sw-col" data-sw-key={props.lane.key}>
+    <div class={s['col']} data-testid="td-sw-col">
       <div class={s['header']} data-testid="td-sw-header" style={{ '--lane-accent': props.lane.color }}>
         <span class={s['label']} data-testid="td-sw-header-label">
           {props.lane.header}

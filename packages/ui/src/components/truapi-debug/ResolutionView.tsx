@@ -72,8 +72,10 @@ export function ResolutionView(props: {
   // A collapsed panel is not on screen, so it redraws nothing. Outside
   // Solid's update pass, so it applies its write at once, as the effect's
   // does.
+  // Only a load still running grows with time, so a finished or empty one
+  // skips the rebuild; a new load arrives through the refresh effect.
   const tick = window.setInterval(() => {
-    if (props.active && !props.collapsed) {
+    if (props.active && !props.collapsed && model()?.summary.outcome === 'running') {
       flush(draw);
     }
   }, RESOLUTION_TICK_MS);

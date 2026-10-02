@@ -86,7 +86,6 @@ export function ToastStack(): JSX.Element {
         class={s['stack']}
         data-testid="notif-stack"
         data-expanded={expanded() ? '' : undefined}
-        data-single={many() ? undefined : ''}
         onClick={onStackClick}
       >
         <div

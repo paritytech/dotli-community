@@ -14,9 +14,9 @@ import type {
 } from '@dotli/truapi-debug';
 
 /** How a fact value is coloured. `undefined` is the normal value colour. */
-export type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
+type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
 
-export interface FactValue {
+interface FactValue {
   text: string;
   tone?: FactTone;
   /** Shown on hover, as prose. */
@@ -29,7 +29,7 @@ export interface FactValue {
  * chain traffic and `app size` counts the dApp files, and nothing else on
  * screen says so.
  */
-export interface Fact {
+interface Fact {
   key: string;
   value: FactValue;
   hint: string;
@@ -157,7 +157,7 @@ function cacheValue(result: CacheResult): FactValue {
 /** How many labels the time axis carries. */
 const AXIS_TICKS = 5;
 
-export interface AxisTick {
+interface AxisTick {
   /** CSS `left`, a percentage of the track. */
   left: string;
   label: string;
@@ -174,7 +174,7 @@ export function axisTicks(span: number): AxisTick[] {
 /** Phases with a colour of their own; anything else falls back to neutral. */
 const COLOURED_PHASES = new Set(['connecting', 'syncing', 'ready', 'stalled']);
 
-export interface BlockView {
+interface BlockView {
   phase: string;
   /** The phase colour: the phase itself, or `unknown`. */
   tone: string;

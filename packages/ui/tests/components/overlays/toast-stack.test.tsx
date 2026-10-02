@@ -112,7 +112,6 @@ describe('toast stack', () => {
     expect(byTestId('notif-card-close', card).getAttribute('aria-label')).toBe('Dismiss');
     expect(byTestId('notif-cards').getAttribute('aria-live')).toBe('polite');
     expect(byTestId('notif-cards').getAttribute('role')).toBe('status');
-    expect(byTestId('notif-stack').hasAttribute('data-single')).toBe(true);
     expect(cardStackProps.single).toBe(true);
     expect(byTestId('notif-close-all').style.display).toBe('none');
 
@@ -144,7 +143,7 @@ describe('toast stack', () => {
         .map(c => c.style.getPropertyValue('--i')),
     ).toEqual(['2', '1', '0']);
     expect(byTestId('notif-close-all').style.display).toBe('');
-    expect(byTestId('notif-stack').hasAttribute('data-single')).toBe(false);
+    expect(cardStackProps.single).toBe(false);
   });
 
   it('As a dotli user, closing a toast plays its exit and removes it when the animation ends', async () => {
@@ -352,7 +351,7 @@ describe('toast stack', () => {
     await mountStack();
     dismissToast(first);
     await settle();
-    expect(byTestId('notif-stack').hasAttribute('data-single')).toBe(true);
+    expect(cardStackProps.single).toBe(true);
 
     // When
     fireEvent.click(

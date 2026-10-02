@@ -202,22 +202,22 @@ export function EventList(props: {
         if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') {
           return;
         }
-        const seqs = props.events.map(ev => ev.seq);
-        if (seqs.length === 0) {
+        const events = props.events;
+        if (events.length === 0) {
           return;
         }
         e.preventDefault();
         const selected = props.selection;
-        const currentIdx = selected === null ? -1 : seqs.indexOf(selected.seq);
+        const currentIdx = selected === null ? -1 : events.findIndex(ev => ev.seq === selected.seq);
         let nextIdx: number;
         if (e.key === 'ArrowDown') {
           // From nothing, the first row; otherwise the next, clamped to the last.
-          nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, seqs.length - 1);
+          nextIdx = currentIdx < 0 ? 0 : Math.min(currentIdx + 1, events.length - 1);
         } else {
           // From nothing, the last row; otherwise the previous, clamped to the first.
-          nextIdx = currentIdx < 0 ? seqs.length - 1 : Math.max(currentIdx - 1, 0);
+          nextIdx = currentIdx < 0 ? events.length - 1 : Math.max(currentIdx - 1, 0);
         }
-        const nextSeq = seqs[nextIdx];
+        const nextSeq = events[nextIdx]?.seq;
         if (nextIdx === currentIdx || nextSeq === undefined) {
           return;
         }
@@ -265,7 +265,6 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
       data-selection={selection()}
       data-system={ev.kind === 'system' ? '' : undefined}
       data-seq={String(ev.seq)}
-      data-rid={key}
       role="listitem"
     >
       <span class={s['time']} data-testid="td-time">
