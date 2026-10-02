@@ -252,14 +252,10 @@ describe('reconcileInstalledExecutable', () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
     expect(
-      await reconcileInstalledExecutable(
-        'myapp',
-        NETWORK,
-        'app',
-        OLD_EXECUTABLE,
-        OLD_EXECUTABLE.contenthash,
-        { app: OLD_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
-      ),
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: OLD_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
     ).toEqual({ kind: 'match' });
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
       kind: 'hit',
@@ -271,14 +267,10 @@ describe('reconcileInstalledExecutable', () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
     expect(
-      await reconcileInstalledExecutable(
-        'myapp',
-        NETWORK,
-        'app',
-        OLD_EXECUTABLE,
-        NEW_EXECUTABLE.contenthash,
-        { app: NEW_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
-      ),
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, NEW_EXECUTABLE.contenthash, {
+        app: NEW_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
     ).toEqual({
       kind: 'update',
       contenthash: NEW_EXECUTABLE.contenthash,
@@ -296,14 +288,10 @@ describe('reconcileInstalledExecutable', () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
     expect(
-      await reconcileInstalledExecutable(
-        'myapp',
-        NETWORK,
-        'app',
-        OLD_EXECUTABLE,
-        OLD_EXECUTABLE.contenthash,
-        { app: NEW_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
-      ),
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: NEW_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
     ).toEqual({
       kind: 'update',
       contenthash: OLD_EXECUTABLE.contenthash,
@@ -315,14 +303,10 @@ describe('reconcileInstalledExecutable', () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
     expect(
-      await reconcileInstalledExecutable(
-        'myapp',
-        NETWORK,
-        'app',
-        OLD_EXECUTABLE,
-        OLD_EXECUTABLE.contenthash,
-        { app: OLD_EXECUTABLE.executableManifest, root: '{"$v":2}' },
-      ),
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: OLD_EXECUTABLE.executableManifest,
+        root: '{"$v":2}',
+      }),
     ).toEqual({ kind: 'update', contenthash: OLD_EXECUTABLE.contenthash });
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
   });
@@ -330,7 +314,9 @@ describe('reconcileInstalledExecutable', () => {
   it('evicts the pair when contenthash is cleared', async () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
-    expect(await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, null, { root: null, app: null })).toEqual({
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, null, { root: null, app: null }),
+    ).toEqual({
       kind: 'cleared',
     });
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
