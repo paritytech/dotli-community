@@ -6,7 +6,7 @@ on:
       - main
   pull_request:
     paths-ignore:
-      - "**.md"
+      - '**.md'
 
 permissions:
   contents: read
@@ -31,7 +31,7 @@ jobs:
       # out.
       - name: Build
         env:
-          VITE_METRICS: "true"
+          VITE_METRICS: 'true'
         run: npx turbo run build:prod
 
       - name: Remove source maps
@@ -133,11 +133,7 @@ jobs:
             echo "::warning::No baseline found — sizes shown without comparison"
           fi
 
-          # Strip content hashes: "fetch-CMRV9u5T.js" → "fetch.js"
-          strip_hash() {
-            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
-          }
-
+          # Format bytes as human-readable
           fmt() {
             local bytes=$1
             if (( bytes >= 1048576 )); then
@@ -174,101 +170,41 @@ jobs:
             fi
           }
 
-          # Read a value from the baseline JSON
-          baseline_val() {
-            local name=$1 field=$2
-            if $HAS_BASELINE; then
-              python3 -c "
-          import json, sys
-          d = json.load(open('$BASELINE_FILE'))
-          e = d.get('$name', {})
-          print(e.get('$field', ''))" 2>/dev/null
-            fi
+          # One cell: the size, and its diff against the baseline.
+          cell() {
+            echo "$(fmt $1)$(fmt_diff $1 "$2")"
           }
 
           rows=""
           large_rows=""
-          total_raw=0
-          total_br=0
-          total_gz=0
-          base_total_raw=0
-          base_total_br=0
-          base_total_gz=0
-
-          for app_dist in apps/host/dist apps/sandbox/dist; do
-            [ -d "$app_dist" ] || continue
-            app_name=$(basename "$(dirname "$app_dist")")
-            while IFS= read -r file; do
-              rel="${app_name}/${file#${app_dist}/}"
-              name=$(strip_hash "$rel")
-              raw=$(stat --format=%s "$file")
-              total_raw=$((total_raw + raw))
-
-              if [[ -f "${file}.br" ]]; then
-                br=$(stat --format=%s "${file}.br")
-              else
-                br=$raw
-              fi
-              total_br=$((total_br + br))
-
-              if [[ -f "${file}.gz" ]]; then
-                gz=$(stat --format=%s "${file}.gz")
-              else
-                gz=$raw
-              fi
-              total_gz=$((total_gz + gz))
-
-              # Look up baseline
-              base_raw=$(baseline_val "$name" "raw")
-              base_br=$(baseline_val "$name" "br")
-              base_gz=$(baseline_val "$name" "gz")
-
-              if [[ -n "$base_raw" ]]; then
-                base_total_raw=$((base_total_raw + base_raw))
-                base_total_br=$((base_total_br + base_br))
-                base_total_gz=$((base_total_gz + base_gz))
-              fi
-
-              raw_diff=$(fmt_diff $raw "$base_raw")
-              br_diff=$(fmt_diff $br "$base_br")
-              gz_diff=$(fmt_diff $gz "$base_gz")
-
-              raw_fmt="$(fmt $raw)${raw_diff}"
-              br_fmt="$(fmt $br)${br_diff}"
-              gz_fmt="$(fmt $gz)${gz_diff}"
-
-              row="| \`${name}\` | ${raw_fmt} | ${br_fmt} | ${gz_fmt} |"
-              rows="${rows}${row}"$'\n'
-
-              if (( raw >= SIZE_THRESHOLD )); then
-                large_rows="${large_rows}${row}"$'\n'
-              fi
-            done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
-          done
-
-          # Format totals with diffs
-          total_raw_diff=""
-          total_br_diff=""
-          total_gz_diff=""
-          if $HAS_BASELINE && (( base_total_raw > 0 )); then
-            total_raw_diff=$(fmt_diff $total_raw $base_total_raw)
-            total_br_diff=$(fmt_diff $total_br $base_total_br)
-            total_gz_diff=$(fmt_diff $total_gz $base_total_gz)
-          fi
-
-          total_raw_fmt="$(fmt $total_raw)${total_raw_diff}"
-          total_br_fmt="$(fmt $total_br)${total_br_diff}"
-          total_gz_fmt="$(fmt $total_gz)${total_gz_diff}"
-          br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $total_br/$total_raw) * 100}")
-
           eager_rows=""
-          for app in host sandbox; do
-            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || continue
-            read -r e_raw e_br e_gz < <(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['raw'], d['br'], d['gz'])")
-            name="${app}/(eager path)"
-            e_row="| \`${name}\` | $(fmt $e_raw)$(fmt_diff $e_raw "$(baseline_val "$name" raw)") | $(fmt $e_br)$(fmt_diff $e_br "$(baseline_val "$name" br)") | $(fmt $e_gz)$(fmt_diff $e_gz "$(baseline_val "$name" gz)") |"
-            eager_rows="${eager_rows}${e_row}"$'\n'
-          done
+          # Tab-separated, and a tab is whitespace to `read`: empty fields would
+          # collapse, so the script writes `-` for a missing count and leaves
+          # only the trailing base fields empty.
+          while IFS=$'\t' read -r kind name count raw br gz base_raw base_br base_gz; do
+            case "$kind" in
+              file)
+                label="\`${name}\`"
+                if (( count > 1 )); then
+                  label="${label} (×${count})"
+                fi
+                row="| ${label} | $(cell $raw "$base_raw") | $(cell $br "$base_br") | $(cell $gz "$base_gz") |"
+                rows="${rows}${row}"$'\n'
+                if (( raw >= SIZE_THRESHOLD )); then
+                  large_rows="${large_rows}${row}"$'\n'
+                fi
+                ;;
+              eager)
+                eager_rows="${eager_rows}| \`${name}\` | $(cell $raw "$base_raw") | $(cell $br "$base_br") | $(cell $gz "$base_gz") |"$'\n'
+                ;;
+              total)
+                total_raw_fmt=$(cell $raw "$base_raw")
+                total_br_fmt=$(cell $br "$base_br")
+                total_gz_fmt=$(cell $gz "$base_gz")
+                br_pct=$(awk "BEGIN {printf \"%.0f\", (1 - $br/$raw) * 100}")
+                ;;
+            esac
+          done < <(node scripts/bundle-sizes.ts compare "$BASELINE_FILE" host sandbox)
 
           {
             echo "## Bundle Size Report"
@@ -301,11 +237,11 @@ jobs:
               echo "| File | Raw | Brotli | Gzip |"
               echo "|------|----:|-------:|-----:|"
               echo -n "$large_rows"
-              echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (-${br_pct}%) | **${total_gz_fmt}** |"
+              echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (compression rate: ${br_pct}%) | **${total_gz_fmt}** |"
             else
               echo "No chunks over 500 KB."
               echo ""
-              echo "**Total:** ${total_raw_fmt} raw / ${total_br_fmt} brotli (-${br_pct}%) / ${total_gz_fmt} gzip"
+              echo "**Total:** ${total_raw_fmt} raw / ${total_br_fmt} brotli (compression rate: ${br_pct}%) / ${total_gz_fmt} gzip"
             fi
 
             # Full file list in expandable section
@@ -316,7 +252,7 @@ jobs:
             echo "| File | Raw | Brotli | Gzip |"
             echo "|------|----:|-------:|-----:|"
             echo -n "$rows"
-            echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (-${br_pct}%) | **${total_gz_fmt}** |"
+            echo "| **Total** | **${total_raw_fmt}** | **${total_br_fmt}** (compression rate: ${br_pct}%) | **${total_gz_fmt}** |"
             echo ""
             echo "</details>"
             echo ""
@@ -360,41 +296,7 @@ jobs:
       # ── main: generate and upload baseline sizes ───────────────
       - name: Generate baseline sizes
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          # Strip content hashes from filenames: "fetch-CMRV9u5T.js" → "fetch.js"
-          strip_hash() {
-            echo "$1" | sed -E 's/[.-][A-Za-z0-9_-]{8}\./\./'
-          }
-
-          echo "{" > /tmp/bundle-baseline.json
-          first=true
-          for app_dist in apps/host/dist apps/sandbox/dist; do
-            [ -d "$app_dist" ] || continue
-            app_name=$(basename "$(dirname "$app_dist")")
-            while IFS= read -r file; do
-              rel="${app_name}/${file#${app_dist}/}"
-              name=$(strip_hash "$rel")
-              raw=$(stat --format=%s "$file")
-
-              br=$raw
-              [[ -f "${file}.br" ]] && br=$(stat --format=%s "${file}.br")
-
-              gz=$raw
-              [[ -f "${file}.gz" ]] && gz=$(stat --format=%s "${file}.gz")
-
-              $first || echo "," >> /tmp/bundle-baseline.json
-              first=false
-              printf '  "%s": {"raw": %d, "br": %d, "gz": %d}' "$name" "$raw" "$br" "$gz" >> /tmp/bundle-baseline.json
-            done < <(find "$app_dist" -type f ! -name '*.br' ! -name '*.gz' | sort)
-          done
-          for app in host sandbox; do
-            json=$(node scripts/eager-path-size.ts "apps/${app}/dist") || { echo "::warning::${app}: could not measure the eager path for the baseline"; continue; }
-            printf ',\n  "%s/(eager path)": %s' "$app" \
-              "$(echo "$json" | python3 -c "import json,sys; d=json.load(sys.stdin); print(json.dumps({'raw': d['raw'], 'br': d['br'], 'gz': d['gz']}))")" \
-              >> /tmp/bundle-baseline.json
-          done
-          echo "" >> /tmp/bundle-baseline.json
-          echo "}" >> /tmp/bundle-baseline.json
+        run: node scripts/bundle-sizes.ts baseline host sandbox > /tmp/bundle-baseline.json
 
       - name: Upload baseline artifact
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

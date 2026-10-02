@@ -1,4 +1,0 @@
-{
-  "extends": "@dotli/typescript-config/node.json",
-  "include": ["*.js"]
-}

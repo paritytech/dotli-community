@@ -42,7 +42,7 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { runtimeNetworkConfigScriptBody } from '@dotli/config/vite';
+import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from './identity-proxy.ts';
 
 const PORT = Number(process.env['PORT'] ?? '5173');

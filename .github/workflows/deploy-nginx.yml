@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "Environment to deploy the nginx config to"
+        description: 'Environment to deploy the nginx config to'
         required: true
         type: choice
         options:
