@@ -151,10 +151,10 @@ function requestHostRerender(reason: string): void {
 
 /**
  * Render the sandbox-local error page AND tell the host shell its loading
- * overlay is finished. Without the parent notify, the host's `.loading`
- * stays visible (the host keeps it around as a sibling of the sandbox
- * iframe so progress updates can land) and the two screens stack visibly:
- * the error title plus the still-ticking progress bar from above.
+ * overlay is finished. Without the parent notify, the host's loading screen
+ * (`#app-loading`) stays visible (the host keeps it around as a sibling of the
+ * sandbox iframe so progress updates can land) and the two screens stack
+ * visibly: the error title plus the still-ticking progress bar from above.
  */
 function failLoading(...args: Parameters<typeof showError>): void {
   notifyLoadingDone();

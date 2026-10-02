@@ -107,7 +107,13 @@ describe('landing page', () => {
     expect(view.children).toHaveLength(1);
     expect(nth(view.children, 0).getAttribute('data-testid')).toBe('landing');
     expect(query(view, 'h1').textContent).toBe('Polkadot Web');
+    expect(query(view, 'p').textContent).toBe('The decentralized web, in your browser.');
     expect(byId('dotli-nav-input', HTMLInputElement).getAttribute('aria-label')).toBe(`Search a ${SUFFIX} name`);
+    const input = byId('dotli-nav-input', HTMLInputElement);
+    expect(input.getAttribute('aria-describedby')).toBe('dotli-nav-error');
+    expect(input.getAttribute('spellcheck')).toBe('false');
+    expect(input.getAttribute('autocomplete')).toBe('off');
+    expect(query(view, 'button[type="submit"]').getAttribute('aria-label')).toBe('Go');
     expect(byId('dotli-nav-error').hidden).toBe(true);
     expect(byId('dotli-recent').hidden).toBe(true);
     expect(sentry.captureException).not.toHaveBeenCalled();

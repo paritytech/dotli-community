@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { showError, showErrorPage, showRetryScreen } from '../src/ui.js';
+import { showError, showErrorPage, showNoContentError, showRetryScreen } from '../src/ui.js';
 import { byTestId } from './support.js';
 
 const XSS = '<img src=x onerror="alert(1)">';
@@ -33,6 +33,12 @@ describe('showErrorPage escaping', () => {
     expect(strong?.textContent).toBe(XSS);
   });
 
+  it('As a visitor, markup in the domain of a no-content error is shown to me as text', () => {
+    showNoContentError(XSS);
+    expect(document.querySelector('img')).toBeNull();
+    expect(byTestId('error-page-domain').textContent.startsWith(XSS)).toBe(true);
+  });
+
   it('As a visitor, markup in an error title is shown to me as text', () => {
     showErrorPage({ title: XSS });
     expect(document.querySelector('img')).toBeNull();
@@ -41,6 +47,7 @@ describe('showErrorPage escaping', () => {
 
   it('As a visitor, markup in a tip is shown to me as text', () => {
     showErrorPage({ title: 't', tips: [XSS] });
+    byTestId('error-page-tips');
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('[data-testid="error-page-tips-list"] li')?.textContent).toBe(XSS);
   });
@@ -50,6 +57,7 @@ describe('showErrorPage escaping', () => {
       title: 't',
       actions: [{ label: XSS, onClick: () => undefined }],
     });
+    byTestId('error-page-actions');
     expect(document.querySelector('img')).toBeNull();
     expect(document.querySelector('#error-retry-btn [data-testid="error-page-retry-label"]')?.textContent).toBe(XSS);
   });
@@ -149,11 +157,13 @@ describe('showErrorPage primary action', () => {
 describe('showErrorPage optional blocks', () => {
   it('As a visitor, I see no empty Try list when there is nothing to suggest', () => {
     showErrorPage({ title: 't', tips: [] });
+    byTestId('error-page');
     expect(document.querySelector('[data-testid="error-page-tips"]')).toBeNull();
   });
 
   it('As a visitor, I see no empty button row when there is nothing to click', () => {
     showErrorPage({ title: 't', actions: [] });
+    byTestId('error-page');
     expect(document.querySelector('[data-testid="error-page-actions"]')).toBeNull();
   });
 
@@ -203,6 +213,7 @@ describe('showErrorPage focus', () => {
 describe('showError shim', () => {
   it('As a visitor, tips passed to the shorthand still reach the page', () => {
     showError('t', 'd', undefined, ['Check the cable.']);
+    byTestId('error-page-tips');
     expect(document.querySelector('[data-testid="error-page-tips-list"] li')?.textContent).toBe('Check the cable.');
   });
 
