@@ -95,7 +95,7 @@ export function ResizeHandle(props: {
  * on the panel element. Clamped to keep either side from collapsing so far
  * that its controls become unusable. Double-click restores the default.
  */
-export function BodySplitter(props: { panel: () => HTMLElement | undefined; dock: DockPosition }): JSX.Element {
+export function BodySplitter(props: { panel: () => HTMLElement | undefined; stacked: boolean }): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let splitter: HTMLDivElement | undefined;
   let stopDrag: (() => void) | undefined;
@@ -111,7 +111,7 @@ export function BodySplitter(props: { panel: () => HTMLElement | undefined; dock
     if (panel === undefined) {
       return;
     }
-    if (props.dock === 'right') {
+    if (props.stacked) {
       const relY = e.clientY - body.top;
       const maxTop = Math.max(MIN_PRIMARY_PX, body.height - MIN_SECONDARY_PX - SPLITTER_PX);
       const clamped = Math.max(MIN_PRIMARY_PX, Math.min(relY, maxTop));
@@ -128,7 +128,7 @@ export function BodySplitter(props: { panel: () => HTMLElement | undefined; dock
     <div
       class="td-body-splitter"
       role="separator"
-      aria-orientation="vertical"
+      aria-orientation={props.stacked ? 'horizontal' : 'vertical'}
       tabindex="-1"
       title="Drag to resize"
       ref={el => {

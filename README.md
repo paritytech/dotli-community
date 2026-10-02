@@ -213,11 +213,14 @@ checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; e
 
 dotli uses three cache layers:
 
-1. **Installed executable cache** (host IndexedDB) — stores the contenthash and exact executable manifest together,
-   keyed by network, modality, and label. The host revalidates the pair before selecting the runtime; a changed
-   contenthash never runs with the previous contenthash's manifest.
+1. **Installed executable cache** (host IndexedDB) — stores the contenthash and exact root/executable manifests
+   together, keyed by network, modality, and label. The host revalidates the record before selecting the runtime; a
+   changed contenthash never runs with the previous contenthash's manifest. Entries predating root-manifest storage
+   resolve again. Unknown manifest versions, invalid records, and apps without their root manifest are rejected before
+   content downloads; supported App v1 and web/PolkaVM App v2 retain their runtime-specific validation.
 2. **Block cache** (host IndexedDB) — keeps the content blocks the host relays to the sandbox, hash-checked against
-   their CIDs. The credentialless sandbox does not persist fetched archives.
+   their CIDs. The credentialless sandbox retains its archive in partitioned IndexedDB across service-worker restarts,
+   but not across top-level host-page reloads.
 3. **PolkaVM translation cache** (sandbox IndexedDB) — stores translated Wasm bytes keyed by translator version and
    program digest for the current top-level document's lifetime.
 

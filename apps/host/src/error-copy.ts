@@ -25,6 +25,8 @@ export const HOST_ERRORS = {
     'Only one tab can use the test wallet at a time, and the tab that has it did not hand it over. Close that tab, then reload this one.',
   WALLET_PAUSED: 'Paused: the test wallet is in use in another tab. Click or type here to use it in this tab.',
   WALLET_RESUMING: 'Moving the test wallet to this tab…',
+  MANIFEST_UNSUPPORTED_VERSION: "This app is published in a format dot.li doesn't support yet.",
+  MANIFEST_INVALID: "This app's manifest is invalid, so dot.li can't tell how to open it.",
 } as const;
 
 /**

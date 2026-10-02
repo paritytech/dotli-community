@@ -121,13 +121,16 @@ describe('removeRecentLabel', () => {
 
 const NETWORK = 'paseo-next-v2';
 const OTHER_NETWORK = 'previewnet';
+const ROOT_MANIFEST = '{"$v":1,"displayName":"App","description":"","icon":{"cid":"bafy-icon","format":"png"}}';
 const OLD_EXECUTABLE: InstalledExecutable = {
   contenthash: 'bafy-old',
   executableManifest: '{"$v":1,"kind":"app","appVersion":[1,0,0]}',
+  rootManifest: ROOT_MANIFEST,
 };
 const NEW_EXECUTABLE: InstalledExecutable = {
   contenthash: 'bafy-new',
   executableManifest: '{"$v":1,"kind":"app","appVersion":[2,0,0]}',
+  rootManifest: ROOT_MANIFEST,
 };
 
 interface RawInstalledExecutable extends InstalledExecutable {
@@ -181,11 +184,31 @@ describe('installed executable IndexedDB cache', () => {
     });
   });
 
+  it('treats a record written before root manifests were retained as a cache miss', async () => {
+    const db = await openInstalledExecutableDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('installed_executables', 'readwrite');
+      tx.objectStore('installed_executables').put({
+        label: 'legacy',
+        network: NETWORK,
+        modality: 'app',
+        timestamp: 1,
+        contenthash: OLD_EXECUTABLE.contenthash,
+        executableManifest: OLD_EXECUTABLE.executableManifest,
+      });
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error);
+    });
+    db.close();
+    expect(await getCachedInstalledExecutable('legacy', NETWORK, 'app')).toEqual({ kind: 'miss' });
+  });
+
   it('scopes records by network and modality', async () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
     await setCachedInstalledExecutable('myapp', OTHER_NETWORK, 'app', NEW_EXECUTABLE);
     await setCachedInstalledExecutable('myapp', NETWORK, 'worker', {
       contenthash: 'bafy-worker',
+      rootManifest: null,
       executableManifest:
         '{"$v":1,"kind":"worker","appVersion":[1,0,0],"entrypoint":"worker.js","includes":{"chat":false,"pocket":false}}',
     });
@@ -212,6 +235,7 @@ describe('installed executable IndexedDB cache', () => {
       const after = await readRawEntry('myapp');
       expect(after?.contenthash).toBe(NEW_EXECUTABLE.contenthash);
       expect(after?.executableManifest).toBe(NEW_EXECUTABLE.executableManifest);
+      expect(after?.rootManifest).toBe(NEW_EXECUTABLE.rootManifest);
       expect(after?.timestamp ?? 0).toBeGreaterThan(before?.timestamp ?? 0);
     } finally {
       now.mockRestore();
@@ -234,7 +258,7 @@ describe('reconcileInstalledExecutable', () => {
         'app',
         OLD_EXECUTABLE,
         OLD_EXECUTABLE.contenthash,
-        OLD_EXECUTABLE.executableManifest,
+        { app: OLD_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
       ),
     ).toEqual({ kind: 'match' });
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
@@ -253,7 +277,7 @@ describe('reconcileInstalledExecutable', () => {
         'app',
         OLD_EXECUTABLE,
         NEW_EXECUTABLE.contenthash,
-        NEW_EXECUTABLE.executableManifest,
+        { app: NEW_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
       ),
     ).toEqual({
       kind: 'update',
@@ -278,7 +302,7 @@ describe('reconcileInstalledExecutable', () => {
         'app',
         OLD_EXECUTABLE,
         OLD_EXECUTABLE.contenthash,
-        NEW_EXECUTABLE.executableManifest,
+        { app: NEW_EXECUTABLE.executableManifest, root: ROOT_MANIFEST },
       ),
     ).toEqual({
       kind: 'update',
@@ -287,10 +311,26 @@ describe('reconcileInstalledExecutable', () => {
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
   });
 
+  it('evicts the record when the root manifest changes at the same contenthash', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable(
+        'myapp',
+        NETWORK,
+        'app',
+        OLD_EXECUTABLE,
+        OLD_EXECUTABLE.contenthash,
+        { app: OLD_EXECUTABLE.executableManifest, root: '{"$v":2}' },
+      ),
+    ).toEqual({ kind: 'update', contenthash: OLD_EXECUTABLE.contenthash });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+  });
+
   it('evicts the pair when contenthash is cleared', async () => {
     await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
-    expect(await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, null, null)).toEqual({
+    expect(await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, null, { root: null, app: null })).toEqual({
       kind: 'cleared',
     });
     expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });

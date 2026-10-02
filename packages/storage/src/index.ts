@@ -31,6 +31,7 @@ export {
   setCachedInstalledExecutable,
   withRecentLabel,
   writeRecentLabels,
+  type CachedManifests,
   type ExecutableModality,
   type InstalledExecutable,
   type InstalledExecutableCacheResult,
