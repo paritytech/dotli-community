@@ -225,4 +225,5 @@
 .clear[data-primary]:hover {
   border-color: var(--inverse-bg-hover);
   background: var(--inverse-bg-hover);
+  color: var(--inverse-fg);
 }

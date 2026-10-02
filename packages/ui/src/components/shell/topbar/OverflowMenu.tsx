@@ -76,7 +76,12 @@ export function OverflowMenu(props: {
         aria-controls="more-popover"
       >
         {/* Three bars that cross into an X while the flyout is open. */}
-        <span class={s['hamburger']} data-open={menu.open() ? '' : undefined} aria-hidden="true">
+        <span
+          class={s['hamburger']}
+          data-testid="more-hamburger"
+          data-open={menu.open() ? '' : undefined}
+          aria-hidden="true"
+        >
           <span class={s['bar']} />
           <span class={s['bar']} />
           <span class={s['bar']} />

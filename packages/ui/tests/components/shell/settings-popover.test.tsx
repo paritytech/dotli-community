@@ -252,6 +252,8 @@ function expectRadioRow(
   expect(input.value).toBe(opts.value);
   expect(input.checked).toBe(opts.selected);
   expect(input.disabled).toBe(opts.disabled === true);
+  expect(row?.hasAttribute('data-selected')).toBe(opts.selected);
+  expect(row?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
   const texts = Array.from(row?.querySelectorAll('span > span') ?? []).map(span => span.textContent);
   expect(texts).toEqual([opts.label, opts.description]);
 }
@@ -480,6 +482,7 @@ describe('The settings popover island', () => {
     // there.
     expect(document.querySelector('[data-testid="mode-popover-columns"]')).toBeNull();
     expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull();
+    expect(byId('mode-popover-content').hasAttribute('data-sheet')).toBe(true);
 
     // When
     press('Escape');

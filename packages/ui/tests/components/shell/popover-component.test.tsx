@@ -504,7 +504,7 @@ describe('Popover', () => {
     stubViewport(true);
     const { Content, release } = chunk(Body);
     release();
-    renderPopover(Content);
+    renderPopover(Content, { backdrop: true });
     await settle();
 
     // When
@@ -513,6 +513,7 @@ describe('Popover', () => {
 
     // Then
     expect(surface().hasAttribute('data-sheet')).toBe(true);
+    expect(byId('test-popover-backdrop').hasAttribute('data-sheet')).toBe(true);
     expect(surface().getAttribute('aria-modal')).toBe('true');
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
     expect(byId('test-popover-backdrop').hasAttribute('data-open')).toBe(true);

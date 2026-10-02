@@ -54,7 +54,6 @@
 .tooltip {
   z-index: 1600;
   width: 268px;
-  border-color: var(--border-subtle);
   border-radius: 10px;
   box-shadow: 0 12px 28px var(--shadow);
   color: var(--text);

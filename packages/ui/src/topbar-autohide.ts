@@ -23,7 +23,7 @@ import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surf
 
 const HIDE_DELAY_MS = 5000;
 
-/** The bar's slide (#topbar in topbar.css), unless the user asks for reduced motion. */
+/** The bar's slide (#topbar in Topbar.module.css), unless the user asks for reduced motion. */
 export const SLIDE_TRANSITION = 'transform 0.3s ease';
 /** How long the slide takes, after which the app fits below the shown bar. */
 const SLIDE_MS = 300;

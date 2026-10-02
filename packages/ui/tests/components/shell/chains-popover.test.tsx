@@ -492,6 +492,25 @@ describe('The network popover island', () => {
     });
   }
 
+  it('As a phone user, the chains open as a sheet whose header names it, so the body has no Network heading', async () => {
+    // Given
+    vi.stubGlobal('matchMedia', (media: string) => ({
+      matches: media === '(max-width: 560px)',
+      media,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId('chains-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('chains-content').hasAttribute('data-sheet')).toBe(true);
+    expect(texts(content())).not.toContain('Network');
+  });
+
   it('As a dotli user, opening it starts watching the chains and closing it lets the watch lapse', async () => {
     // Given
     await renderPopover();

@@ -128,7 +128,8 @@ export function usePopover(): PopoverContextValue {
  * `dialog` mode as a sheet).
  *
  * The surface carries its state as `data-open`, `data-sheet`, `data-peek`
- * (shown while a mouse rests on the trigger) and `data-anchor="trigger"`,
+ * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
+ * `data-dragging` (while a sheet is being dragged),
  * and the backdrop `data-open` and `data-sheet`. A consumer's class on the
  * surface may react to them. Content that lays out differently in a sheet
  * reads `usePopover().sheet()` and marks its own elements.

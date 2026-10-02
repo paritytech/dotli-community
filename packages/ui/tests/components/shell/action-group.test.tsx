@@ -15,7 +15,7 @@ import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
-import { byId } from '../../support.js';
+import { byId, byTestId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, renderTopbar } from './topbar-harness.js';
 
 interface Activation {
@@ -147,6 +147,7 @@ describe('ActionGroup', () => {
     mouseClick(byId('more-button'));
     await settle();
     expect(isOpen()).toBe(true);
+    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(true);
 
     // When
     layout.setRoom(room(6));
@@ -158,6 +159,7 @@ describe('ActionGroup', () => {
     expect(rowNames()).toEqual([]);
     expect(moreShows()).toBe(false);
     expect(isOpen()).toBe(false);
+    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(false);
   });
 
   it('As a user, a hidden item shows neither in the bar nor in More, and takes its share of the room once it shows', async () => {

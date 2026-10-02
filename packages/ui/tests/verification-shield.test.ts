@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
 import { showProductPill } from '../src/state/url-pill.js';
 import { setBlockingModalActive } from '../src/state/topbar.js';
@@ -62,10 +62,29 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   resetStores();
 });
 
 describe('verification shield', () => {
+  it('As a phone user, the explainer opens as a sheet whose header names it, so the body has no title of its own', async () => {
+    // Given
+    vi.stubGlobal('matchMedia', (media: string) => ({
+      matches: media === '(max-width: 560px)',
+      media,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+
+    // When
+    await openShield();
+
+    // Then
+    expect(panel().hasAttribute('data-sheet')).toBe(true);
+    expect(panel().querySelector('[data-testid="verification-tooltip-title"]')).toBeNull();
+    expect(panel().querySelectorAll('[data-testid="verification-tooltip-row"]').length).toBeGreaterThan(0);
+  });
+
   it('As a keyboard user, the shield is a real button that toggles the explainer', async () => {
     // Given
     const trigger = button();
