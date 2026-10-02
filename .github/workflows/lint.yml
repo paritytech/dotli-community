@@ -24,7 +24,7 @@ jobs:
         uses: ./.github/actions/setup-node
 
       - name: Check formatting
-        run: npx prettier --check "**/*.{ts,tsx,js,mjs,json,md,astro}"
+        run: npm run format:check
 
       - name: Run linter
         run: npx turbo run lint lint:root

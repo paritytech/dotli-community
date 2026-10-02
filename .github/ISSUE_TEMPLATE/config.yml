@@ -1,5 +1,5 @@
 blank_issues_enabled: true
 contact_links:
-    - name: dotli website
-      url: https://paseo.li
-      about: Visit paseo.li to learn more about the project.
+  - name: dotli website
+    url: https://paseo.li
+    about: Visit paseo.li to learn more about the project.
