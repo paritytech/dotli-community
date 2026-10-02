@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@dotli/eslint-config/astro';
+import { config } from '@config/eslint/astro';
 
 export default defineConfig([
   ...config,

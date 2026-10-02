@@ -4,7 +4,7 @@
 /// <reference types="node" />
 
 import { defineConfig } from 'eslint/config';
-import { config } from '@dotli/eslint-config/vite';
+import { config } from '@config/eslint/vite';
 
 export default defineConfig([
   ...config,
@@ -13,14 +13,6 @@ export default defineConfig([
       parserOptions: {
         tsconfigRootDir: import.meta.dirname,
       },
-    },
-  },
-  {
-    // The integration entry is imported by astro.config.ts, which Node
-    // loads directly, like a vite.config.ts: its imports name `.ts` files.
-    files: ['src/index.ts'],
-    rules: {
-      'no-restricted-imports': 'off',
     },
   },
 ]);

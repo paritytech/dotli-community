@@ -1,8 +1,8 @@
 name: Setup Playwright
-description: "Install Node dependencies and Playwright Chromium browser. Requires checkout first."
+description: 'Install Node dependencies and Playwright Chromium browser. Requires checkout first.'
 
 runs:
-  using: "composite"
+  using: 'composite'
   steps:
     - name: Setup Node
       uses: ./.github/actions/setup-node

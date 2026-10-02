@@ -118,8 +118,11 @@ function setVisible(next: boolean): void {
   if (!next) {
     appFrameTracking = true;
   }
+  // A hover or focus on the bar that is already up must not restart the
+  // frame's slide from under it.
+  const changed = getTopbarState().visible !== next;
   setTopbarVisible(next);
-  if (appFrameTracking) {
+  if (appFrameTracking && changed) {
     syncFrameLayout();
   }
 }

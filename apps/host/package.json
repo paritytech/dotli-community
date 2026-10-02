@@ -28,8 +28,9 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*",
+    "@config/eslint": "*",
+    "@config/typescript": "*",
+    "@config/vite": "*",
     "@ipld/car": "^5.4.3",
     "@ipld/dag-pb": "^4.1.5",
     "@playwright/test": "^1.63.0",
@@ -45,7 +46,7 @@
     "workbox-window": "^7.4.1"
   },
   "dependencies": {
-    "@dotli/astro-solid": "*",
+    "@config/astro-solid": "*",
     "@dotli/config": "*",
     "@dotli/content": "*",
     "@dotli/metrics": "*",

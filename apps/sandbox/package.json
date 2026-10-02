@@ -13,8 +13,9 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*",
+    "@config/eslint": "*",
+    "@config/typescript": "*",
+    "@config/vite": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",
     "@solidjs/vite-plugin": "3.0.0-next.47",
     "vite-plugin-wasm": "^3.6.0"

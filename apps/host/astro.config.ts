@@ -3,7 +3,7 @@
 
 // The host is a static Astro site: one page (src/pages/index.astro), whose
 // shell is plain markup with the reactive pieces as Solid islands
-// (@dotli/astro-solid), server-rendered at build time and hydrated. Astro
+// (@config/astro-solid), server-rendered at build time and hydrated. Astro
 // drives Vite; the build's Vite setup is under `vite` below.
 
 import { sentryVitePlugin } from '@sentry/vite-plugin';
@@ -16,16 +16,12 @@ import { execSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
-import astroSolid from '@dotli/astro-solid';
-import {
-  appBuildOptions,
-  astroPwa,
-  rolldownOptions,
-  buildInfo,
-  readPackageVersion,
-  runtimeNetworkConfigScript,
-  SANDBOX_SCHEMA_VERSION,
-} from '@dotli/config/vite';
+import astroSolid from '@config/astro-solid';
+import { astroPwa } from '@config/vite/astro-pwa';
+import { buildInfo, readPackageVersion } from '@config/vite/build-info';
+import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
+import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-version.ts';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 
@@ -319,7 +315,7 @@ export default defineConfig({
   build: { assets: 'assets' },
   integrations: [
     // Compiles Solid for the islands: server-rendered at build time and
-    // hydrated in the browser (see packages/astro-solid).
+    // hydrated in the browser (see config/astro-solid).
     astroSolid(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),

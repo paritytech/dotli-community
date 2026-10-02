@@ -39,7 +39,7 @@ const products: readonly ProductSmoke[] = [
     interaction: 'gameplay-pointer-capture',
   },
   {
-    label: 'egui-chat',
+    label: 'echat',
     profile: 'tri2d',
     keys: [],
     scheduling: 'demand-driven',

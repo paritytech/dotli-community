@@ -4,91 +4,97 @@ github-actions:
   - changed-files:
       - any-glob-to-any-file: '.github/**'
 
-"app: host":
+'app: host':
   - changed-files:
       - all-globs-to-any-file:
           - 'apps/host/**'
           - '!apps/host/package.json'
 
-"app: sandbox":
+'app: sandbox':
   - changed-files:
       - all-globs-to-any-file:
           - 'apps/sandbox/**'
           - '!apps/sandbox/package.json'
 
-"app: protocol":
+'app: protocol':
   - changed-files:
       - all-globs-to-any-file:
           - 'apps/protocol/**'
           - '!apps/protocol/package.json'
 
-"pkg: config":
+'pkg: config':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/config/**'
           - '!packages/config/package.json'
 
-"pkg: shared":
+'pkg: shared':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/shared/**'
           - '!packages/shared/package.json'
 
-"pkg: storage":
+'pkg: storage':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/storage/**'
           - '!packages/storage/package.json'
 
-"pkg: resolver":
+'pkg: resolver':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/resolver/**'
           - '!packages/resolver/package.json'
 
-"pkg: content":
+'pkg: content':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/content/**'
           - '!packages/content/package.json'
 
-"pkg: ui":
+'pkg: ui':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/ui/**'
           - '!packages/ui/package.json'
 
-"pkg: sandbox-checker":
+'pkg: sandbox-checker':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/sandbox-checker/**'
           - '!packages/sandbox-checker/package.json'
 
-"pkg: eslint":
+'pkg: eslint':
   - changed-files:
       - all-globs-to-any-file:
-          - 'packages/eslint-config/**'
-          - '!packages/eslint-config/package.json'
+          - 'config/eslint/**'
+          - '!config/eslint/package.json'
 
-"pkg: typescript":
+'pkg: typescript':
   - changed-files:
       - all-globs-to-any-file:
-          - 'packages/typescript-config/**'
-          - '!packages/typescript-config/package.json'
+          - 'config/typescript/**'
+          - '!config/typescript/package.json'
 
-"pkg: metrics":
+'pkg: vite':
+  - changed-files:
+      - all-globs-to-any-file:
+          - 'config/vite/**'
+          - '!config/vite/package.json'
+
+'pkg: metrics':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/metrics/**'
           - '!packages/metrics/package.json'
 
-"pkg: protocol":
+'pkg: protocol':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/protocol/**'
           - '!packages/protocol/package.json'
 
-"pkg: truapi-debug":
+'pkg: truapi-debug':
   - changed-files:
       - all-globs-to-any-file:
           - 'packages/truapi-debug/**'
