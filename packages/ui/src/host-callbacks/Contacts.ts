@@ -215,17 +215,15 @@ export function createContactsPlatform(
     }
     const signal = AbortSignal.any([lifetime.signal, directorySignal]);
     if (labelSnapshot === undefined) {
-      const pending = directory
-        .snapshot(signal)
-        .then(
-          snapshot =>
-            new Map(
-              snapshot.contacts.map(contact => [
-                contact.peerIdentity,
-                contact.username?.trim() || contact.peerIdentity,
-              ]),
-            ),
-        );
+      const pending = directory.snapshot(signal).then(
+        snapshot =>
+          new Map(
+            snapshot.contacts.map(contact => {
+              const name = contact.username?.trim();
+              return [contact.peerIdentity, name === undefined || name === '' ? contact.peerIdentity : name];
+            }),
+          ),
+      );
       labelSnapshot = pending;
       void pending.catch(() => {
         // A failed read is not a reusable snapshot. Do not clear a newer read.
@@ -363,11 +361,14 @@ async function showContactPicker(
       title: multiple ? 'Choose contacts' : 'Choose a contact',
       fields: [],
       notice: `${product.productId} is asking you to choose ${multiple ? 'Chat contacts' : 'a Chat contact'}. Names and account identities stay in this host picker.`,
-      choices: [...unique.values()].map(contact => ({
-        label: contact.username?.trim() || 'Chat contact',
-        detail: contact.peerIdentity,
-        result: contact.peerIdentity,
-      })),
+      choices: [...unique.values()].map(contact => {
+        const name = contact.username?.trim();
+        return {
+          label: name === undefined || name === '' ? 'Chat contact' : name,
+          detail: contact.peerIdentity,
+          result: contact.peerIdentity,
+        };
+      }),
       ...(initial === undefined ? {} : { selection: { selected: initial, limit: MAX_CONTACTS } }),
       buttons: multiple
         ? [

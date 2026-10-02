@@ -114,7 +114,7 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
       const textY = (rect.y - y0) * map.scaleY;
       const textWidth = rect.width * map.scaleX;
       const textHeight = rect.height * map.scaleY;
-      const geometry = `${x},${y},${width},${height},${textX},${textY},${textWidth},${textHeight}`;
+      const geometry = `${String(x)},${String(y)},${String(width)},${String(height)},${String(textX)},${String(textY)},${String(textWidth)},${String(textHeight)}`;
       if (view.geometry !== geometry) {
         view.geometry = geometry;
         view.root.style.transform = `translate(${String(x)}px, ${String(y)}px)`;
