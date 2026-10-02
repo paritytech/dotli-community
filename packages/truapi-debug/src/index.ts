@@ -34,6 +34,6 @@ export {
   renderResolution,
   type ResolutionRecorder,
 } from './resolution-view.js';
-export { rowClassName, systemRowData, truapiRowData } from './row-format.js';
+export { rowSelection, systemRowData, truapiRowData } from './row-format.js';
 export { applyTimelineSelection, buildTimelineContainer, renderSwimlanes, resolveTimelineClick } from './timeline.js';
 export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';

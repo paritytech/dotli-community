@@ -33,7 +33,7 @@ export function TimelineView(props: {
   createEffect(
     () => props.active,
     active => {
-      container.classList.toggle('hidden', !active);
+      container.hidden = !active;
     },
   );
 

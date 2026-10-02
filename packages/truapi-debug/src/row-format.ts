@@ -60,17 +60,32 @@ export function ridColor(rid: string): string {
   return `hsl(${String(hue)}, 65%, 65%)`;
 }
 
-export function tagClass(tag: string): string {
+/** What a TrUAPI tag does, from its suffix: the list colours its tag by it. */
+export type TagKind = 'request' | 'response' | 'subscription' | 'plain';
+
+export function tagKind(tag: string): TagKind {
   if (tag.endsWith('_request') || tag.endsWith('_start') || tag.endsWith('_submit')) {
-    return 'td-tag td-tag-req';
+    return 'request';
   }
   if (tag.endsWith('_response')) {
-    return 'td-tag td-tag-res';
+    return 'response';
   }
   if (tag.endsWith('_receive') || tag.endsWith('_interrupt') || tag.endsWith('_stop') || tag.endsWith('_subscribe')) {
-    return 'td-tag td-tag-sub';
+    return 'subscription';
   }
-  return 'td-tag';
+  return 'plain';
+}
+
+const TAG_CLASS: Readonly<Record<TagKind, string>> = {
+  request: 'td-tag td-tag-req',
+  response: 'td-tag td-tag-res',
+  subscription: 'td-tag td-tag-sub',
+  plain: 'td-tag',
+};
+
+/** Class attribute of a tag in the detail pane's HTML, styled by styles.css. */
+export function tagClass(tag: string): string {
+  return TAG_CLASS[tagKind(tag)];
 }
 
 export interface TruapiRowData {
@@ -79,7 +94,7 @@ export interface TruapiRowData {
   requestId: string;
   ridShort: string;
   ridColor: string;
-  tagClassName: string;
+  tagKind: TagKind;
   displayTag: string;
   summary: string;
   pendingKey: string | null;
@@ -100,7 +115,7 @@ export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null):
     requestId: ev.requestId,
     ridShort: ev.requestId.slice(0, 6),
     ridColor: ridColor(ev.requestId),
-    tagClassName: tagClass(ev.tag),
+    tagKind: tagKind(ev.tag),
     displayTag,
     summary,
     pendingKey,
@@ -130,20 +145,17 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
   };
 }
 
+/** How a list row relates to the selected event, if at all. */
+export type RowSelection = 'selected' | 'paired';
+
 /**
- * Class attribute of a list row. Order is part of the markup contract:
- * td-row, selected, paired, system.
+ * A row is `selected` when it is the selected event, and `paired` when it
+ * shares the selected event's correlation key. A selected row is never also
+ * paired.
  */
-export function rowClassName(selected: boolean, paired: boolean, system: boolean): string {
-  let out = 'td-row';
+export function rowSelection(selected: boolean, inSelectedGroup: boolean): RowSelection | undefined {
   if (selected) {
-    out += ' selected';
+    return 'selected';
   }
-  if (paired) {
-    out += ' paired';
-  }
-  if (system) {
-    out += ' system';
-  }
-  return out;
+  return inSelectedGroup ? 'paired' : undefined;
 }

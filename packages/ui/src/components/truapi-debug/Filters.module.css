@@ -1,0 +1,91 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel filter bar. The bar carries the panel's
+   placement as data-dock and hides itself on data-collapsed. */
+
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-bar);
+}
+.filters[data-dock='right'] {
+  grid-area: filters;
+}
+.filters[data-collapsed] {
+  display: none;
+}
+
+.group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.label {
+  color: var(--td-fg-dim);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-right: 2px;
+}
+
+/* Kind checkboxes: TrUAPI vs System. */
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--td-fg-muted);
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  cursor: pointer;
+}
+.checkbox {
+  margin: 0;
+  padding: 0;
+  accent-color: var(--td-accent);
+}
+
+.chip {
+  margin: 0;
+  background: var(--td-bg-chip);
+  border: 1px solid var(--td-line-strong);
+  color: var(--td-fg-muted);
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.chip:hover {
+  border-color: var(--td-line-hover);
+  color: var(--td-fg);
+}
+.chip[data-active] {
+  background: var(--td-selected);
+  border-color: var(--td-focus);
+  color: var(--td-fg-strong);
+}
+
+.input {
+  box-sizing: border-box;
+  width: 140px;
+  margin: 0;
+  background: var(--td-bg);
+  border: 1px solid var(--td-line-strong);
+  color: var(--td-fg);
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--td-focus);
+}
+.input[aria-invalid='true'] {
+  border-color: var(--td-danger);
+}

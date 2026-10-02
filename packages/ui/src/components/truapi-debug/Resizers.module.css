@@ -1,0 +1,56 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel drag handles: the panel edge (data-dock,
+   data-collapsed) and the splitter between the views and the detail pane
+   (data-layout, data-dragging). */
+
+.handle {
+  cursor: ns-resize;
+  background: transparent;
+  transition: background 0.15s;
+}
+.handle:hover,
+.handle:active {
+  background: var(--td-accent);
+}
+.handle[data-dock='right'] {
+  grid-area: handle;
+  cursor: ew-resize;
+}
+.handle[data-collapsed] {
+  visibility: hidden;
+}
+
+.splitter {
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid var(--td-line);
+  border-right: 1px solid var(--td-line);
+  transition: background 0.12s;
+  position: relative;
+  user-select: none;
+}
+.splitter:hover,
+.splitter[data-dragging] {
+  background: var(--td-accent);
+  border-color: var(--td-accent);
+}
+.splitter::after {
+  /* Wider invisible hit area so the cursor grabs reliably even when
+     the visible line is narrow. */
+  content: '';
+  position: absolute;
+  inset: 0 -4px;
+}
+/* List above detail: the splitter is a row between them. */
+.splitter[data-layout='stacked'] {
+  cursor: row-resize;
+  border-left: none;
+  border-right: none;
+  border-top: 1px solid var(--td-line);
+  border-bottom: 1px solid var(--td-line);
+}
+.splitter[data-layout='stacked']::after {
+  inset: -4px 0;
+}

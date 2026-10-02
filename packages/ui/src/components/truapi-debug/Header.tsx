@@ -8,6 +8,7 @@ import { createSignal, flush, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
 import { exportFilename } from '@dotli/truapi-debug';
+import s from './Header.module.css';
 
 const DEBUG_SESSION_KEY = 'dotli:truapi-debug';
 const COPY_FLASH_MS = 1200;
@@ -94,7 +95,10 @@ export function Header(props: {
   counts: string;
   paused: boolean;
   collapsed: boolean;
+  /** The dock the user picked, which the dock toggle flips. */
   dock: DockPosition;
+  /** Where the panel sits: the picked dock, or the bottom on a phone. */
+  placement: DockPosition;
   /** The filtered events as export JSON: what the user currently sees. */
   exportJson: () => string;
   onTogglePause: () => void;
@@ -179,12 +183,18 @@ export function Header(props: {
   const dockLabel = (): string => (props.dock === 'right' ? 'Dock to bottom' : 'Dock to right');
 
   return (
-    <div class="td-header">
-      <span class="td-title">TrUAPI Debug</span>
-      <span class="td-counts">{props.counts}</span>
-      <span class="td-spacer" />
+    <div class={s['header']} data-testid="td-header" data-dock={props.placement}>
+      <span class={s['title']} data-testid="td-title">
+        TrUAPI Debug
+      </span>
+      <span class={s['counts']} data-testid="td-counts">
+        {props.counts}
+      </span>
+      <span class={s['spacer']} />
       <button
-        class={props.paused ? 'td-btn td-pause active' : 'td-btn td-pause'}
+        class={s['btn']}
+        data-testid="td-pause"
+        data-active={props.paused ? '' : undefined}
         type="button"
         onClick={() => {
           props.onTogglePause();
@@ -193,7 +203,8 @@ export function Header(props: {
         {props.paused ? 'Resume' : 'Pause'}
       </button>
       <button
-        class="td-btn td-clear"
+        class={s['btn']}
+        data-testid="td-clear"
         type="button"
         onClick={() => {
           props.onClear();
@@ -202,7 +213,8 @@ export function Header(props: {
         Clear
       </button>
       <button
-        class="td-btn td-btn-icon td-export"
+        class={[s['btn'], s['icon'], s['glyph']]}
+        data-testid="td-export"
         type="button"
         title="Download as JSON"
         aria-label="Download as JSON"
@@ -211,7 +223,8 @@ export function Header(props: {
         <ExportIcon />
       </button>
       <button
-        class="td-btn td-btn-icon td-copy"
+        class={[s['btn'], s['icon'], s['glyph']]}
+        data-testid="td-copy"
         type="button"
         title="Copy to clipboard"
         aria-label="Copy to clipboard"
@@ -223,7 +236,8 @@ export function Header(props: {
         </Show>
       </button>
       <button
-        class="td-btn td-btn-icon td-dock"
+        class={[s['btn'], s['icon'], s['glyph'], s['dock']]}
+        data-testid="td-dock"
         type="button"
         title={dockLabel()}
         aria-label={dockLabel()}
@@ -234,7 +248,8 @@ export function Header(props: {
         {props.dock === 'right' ? <DockBottomIcon /> : <DockRightIcon />}
       </button>
       <button
-        class="td-btn td-btn-icon td-collapse"
+        class={[s['btn'], s['icon']]}
+        data-testid="td-collapse"
         type="button"
         title="Collapse"
         onClick={() => {
@@ -243,7 +258,13 @@ export function Header(props: {
       >
         {props.collapsed ? '▲' : '▼'}
       </button>
-      <button class="td-close" type="button" title="Hide (Ctrl+Shift+D)" onClick={exitDebugMode}>
+      <button
+        class={s['close']}
+        data-testid="td-close"
+        type="button"
+        title="Hide (Ctrl+Shift+D)"
+        onClick={exitDebugMode}
+      >
         ×
       </button>
     </div>

@@ -25,7 +25,7 @@ const ENCRYPTED = new Uint8Array([
 ]);
 
 function view(container: HTMLElement): HTMLElement {
-  const el = container.querySelector<HTMLElement>('.td-archive');
+  const el = container.querySelector<HTMLElement>('[data-testid="td-archive"]');
   if (el === null) {
     throw new Error('no archive view');
   }
@@ -33,7 +33,7 @@ function view(container: HTMLElement): HTMLElement {
 }
 
 function fileButton(container: HTMLElement, path: string): HTMLElement {
-  const el = container.querySelector<HTMLElement>(`.td-archive-file[data-path="${path}"]`);
+  const el = container.querySelector<HTMLElement>(`[data-testid="td-archive-file"][data-path="${path}"]`);
   if (el === null) {
     throw new Error(`no file ${path}`);
   }
@@ -41,7 +41,7 @@ function fileButton(container: HTMLElement, path: string): HTMLElement {
 }
 
 function content(container: HTMLElement): HTMLElement {
-  const el = container.querySelector<HTMLElement>('.td-archive-content');
+  const el = container.querySelector<HTMLElement>('[data-testid="td-archive-content"]');
   if (el === null) {
     throw new Error('no content pane');
   }
@@ -75,9 +75,11 @@ describe('ArchiveView', () => {
 
     // Then
     expect(load).toHaveBeenCalledWith('bafyroot');
-    const paths = [...container.querySelectorAll<HTMLElement>('.td-archive-file')].map(el => el.dataset['path']);
+    const paths = [...container.querySelectorAll<HTMLElement>('[data-testid="td-archive-file"]')].map(
+      el => el.dataset['path'],
+    );
     expect(paths).toEqual(['assets/app.js', 'index.html']);
-    expect(view(container).querySelector('.td-archive-summary')?.textContent).toContain('2 files');
+    expect(view(container).querySelector('[data-testid="td-archive-summary"]')?.textContent).toContain('2 files');
     expect(fileButton(container, 'index.html').textContent).toContain('11 B');
   });
 
@@ -90,7 +92,7 @@ describe('ArchiveView', () => {
     await settle();
 
     // Then
-    expect(fileButton(container, 'index.html').classList.contains('active')).toBe(true);
+    expect(fileButton(container, 'index.html').hasAttribute('data-active')).toBe(true);
     expect(content(container).querySelector('pre')?.textContent).toBe('<h1>hi</h1>');
   });
 
@@ -179,7 +181,7 @@ describe('ArchiveView', () => {
 
     // Then: hidden, nothing read yet
     expect(load).not.toHaveBeenCalled();
-    expect(view(container).classList.contains('hidden')).toBe(true);
+    expect(view(container).hidden).toBe(true);
 
     // When: shown, hidden, shown again
     setActive(true);
@@ -191,6 +193,6 @@ describe('ArchiveView', () => {
 
     // Then
     expect(load).toHaveBeenCalledTimes(1);
-    expect(view(container).classList.contains('hidden')).toBe(false);
+    expect(view(container).hidden).toBe(false);
   });
 });

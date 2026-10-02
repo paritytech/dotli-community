@@ -1,0 +1,186 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel list view. A row carries its state as
+   data-selection (selected or paired) and data-system, a tag its kind as data-kind,
+   a layer badge its layer as data-layer and a pending badge data-slow. */
+
+.list {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
+  outline: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 72px 16px 90px 58px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 10px;
+  border-bottom: 1px solid var(--td-bg-raised);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A system row has a layer badge in place of the arrow and product, and a
+   subtle left edge. */
+.row[data-system] {
+  grid-template-columns: 72px max-content 90px minmax(0, 1fr);
+  border-left: 2px solid var(--td-system-edge);
+}
+.row:hover {
+  background: var(--td-bg-raised);
+}
+.row[data-selection='selected'] {
+  background: var(--td-selected);
+}
+.row[data-selection='paired'] {
+  background: var(--td-paired);
+}
+
+/* The cells of a row. */
+.time,
+.arrowIn,
+.arrowOut,
+.product,
+.layer,
+.rid,
+.tagAndSummary {
+  min-width: 0;
+}
+.time {
+  color: var(--td-fg-faint);
+  font-size: 10.5px;
+}
+.arrowIn {
+  color: var(--td-green);
+  font-weight: bold;
+}
+.arrowOut {
+  color: var(--td-amber);
+  font-weight: bold;
+}
+.product {
+  color: var(--td-slate);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11px;
+}
+.product[data-anon] {
+  color: var(--td-fg-faint);
+  font-style: italic;
+}
+.rid {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--td-rid-bg);
+  border: 1px solid var(--td-rid-line);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tagAndSummary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tag {
+  color: var(--td-fg-strong);
+}
+.tag[data-kind='request'] {
+  color: var(--td-amber);
+}
+.tag[data-kind='response'] {
+  color: var(--td-green);
+}
+.tag[data-kind='subscription'] {
+  color: var(--td-purple);
+}
+.tag[data-kind='system'] {
+  color: var(--td-sky);
+}
+.summary {
+  color: var(--td-fg-dim);
+  margin-left: 8px;
+  font-size: 11px;
+}
+.latency {
+  color: var(--td-green);
+  margin-left: 6px;
+  font-size: 10.5px;
+}
+
+/* The layer badge of a system row. */
+.layer {
+  display: inline-flex;
+  align-items: center;
+  font-family: system-ui, sans-serif;
+  font-size: 9.5px;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--td-slate-bg);
+  color: var(--td-slate);
+  border: 1px solid var(--td-slate-line);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.layer[data-layer='boot'] {
+  background: var(--td-boot-bg);
+  color: var(--td-blue);
+  border-color: var(--td-boot-line);
+}
+.layer[data-layer='resolve'] {
+  background: var(--td-resolve-bg);
+  color: var(--td-green);
+  border-color: var(--td-resolve-line);
+}
+.layer[data-layer='render'] {
+  background: var(--td-render-bg);
+  color: var(--td-amber);
+  border-color: var(--td-render-line);
+}
+.layer[data-layer='bridge'] {
+  background: var(--td-bridge-bg);
+  color: var(--td-purple);
+  border-color: var(--td-bridge-line);
+}
+.layer[data-layer='failover'] {
+  background: var(--td-failover-bg);
+  color: var(--td-orange);
+  border-color: var(--td-failover-line);
+}
+.layer[data-layer='chain'] {
+  background: var(--td-chain-bg);
+  color: var(--td-cyan);
+  border-color: var(--td-chain-line);
+}
+
+/* Sits beside the tag on a request row until its reply arrives, counting up
+   on its own timer. Without it an unanswered call is indistinguishable from
+   an instant one, because the `+Xs` latency needs both halves of the pair. */
+.pending {
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 3px;
+  background: var(--td-slate-bg);
+  color: var(--td-blue-soft);
+  border: 1px solid var(--td-slate-line);
+  font-size: 9.5px;
+  white-space: nowrap;
+}
+.pending[data-slow] {
+  background: var(--td-accent-bg);
+  color: var(--td-pink);
+  border-color: var(--td-pink-line);
+}
+
+.empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--td-fg-faint);
+}

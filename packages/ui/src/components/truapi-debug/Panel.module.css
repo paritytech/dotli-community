@@ -1,0 +1,186 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel: the docked box, its body grid and the hover
+   tooltip. The panel is dark whatever the page theme, so it carries its own
+   palette as --td-* properties on its root. The other modules of the panel
+   read them, and so does anything rendered inside the root. The root shows
+   its state as data-dock, data-layout, data-view and data-collapsed. */
+
+.panel {
+  /* Surfaces, darkest first. */
+  --td-bg: #0b0b0b;
+  --td-bg-bar: #0f0f0f;
+  --td-bg-raised: #141414;
+  --td-bg-chip: #1a1a1a;
+  /* Lines, also the button and tooltip fill. */
+  --td-line: #1f1f1f;
+  --td-line-strong: #2a2a2a;
+  --td-line-hover: #3a3a3a;
+  /* Text. */
+  --td-fg-bright: #fff;
+  --td-fg-strong: #e0e0e0;
+  --td-fg: #d4d4d4;
+  --td-fg-muted: #a3a3a3;
+  --td-fg-dim: #6b7280;
+  --td-fg-faint: #525252;
+  --td-slate: #94a3b8;
+  --td-slate-bg: #1f2937;
+  --td-slate-line: #334155;
+  /* State. */
+  --td-accent: #e6007a;
+  --td-accent-bg: #2a0f1d;
+  --td-focus: #3b82f6;
+  --td-selected: #1e3a5f;
+  --td-paired: #1a2a1a;
+  --td-danger: #dc2626;
+  --td-system-edge: rgba(45, 212, 191, 0.3);
+  --td-rid-bg: rgba(255, 255, 255, 0.04);
+  --td-rid-line: rgba(255, 255, 255, 0.06);
+  --td-shadow: rgba(0, 0, 0, 0.4);
+  /* Hues of tags, arrows and badges. */
+  --td-green: #4ade80;
+  --td-amber: #fbbf24;
+  --td-purple: #c084fc;
+  --td-orange: #fb923c;
+  --td-cyan: #38bdf8;
+  --td-blue: #60a5fa;
+  --td-blue-soft: #93c5fd;
+  --td-sky: #bae6fd;
+  --td-pink: #f9a8d4;
+  --td-pink-line: #9d174d;
+  /* Layer badge fill and edge, one pair per layer. */
+  --td-boot-bg: #0f172a;
+  --td-boot-line: #1e40af;
+  --td-resolve-bg: #0f1714;
+  --td-resolve-line: #166534;
+  --td-render-bg: #1a1306;
+  --td-render-line: #92400e;
+  --td-bridge-bg: #1a0f1a;
+  --td-bridge-line: #6b21a8;
+  --td-failover-bg: #1f1313;
+  --td-failover-line: #9a3412;
+  --td-chain-bg: #0b1418;
+  --td-chain-line: #075985;
+
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  box-sizing: border-box;
+  background: var(--td-bg);
+  color: var(--td-fg);
+  border-top: 1px solid var(--td-line);
+  z-index: 950;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  font-size: 12px;
+  display: grid;
+  /* `minmax(0, …)`: an `auto` column grows to its widest child's
+     min-content, so a header that does not fit would widen the whole panel
+     past the viewport instead of the header scrolling. */
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 5px 32px auto 1fr;
+  height: 360px;
+  max-height: 80dvh;
+  box-shadow: 0 -4px 12px var(--td-shadow);
+}
+.panel[data-collapsed] {
+  grid-template-rows: 0 32px 0 0;
+  height: 32px;
+}
+
+/* Docked right: pinned to the right edge spanning full viewport height.
+   Events list on top, inspector on the bottom. The resize handle moves from
+   the top edge to a 5px column on the left. */
+.panel[data-dock='right'] {
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: auto;
+  width: 480px;
+  height: auto;
+  max-height: none;
+  max-width: 80vw;
+  border-top: none;
+  border-left: 1px solid var(--td-line);
+  grid-template-columns: 5px minmax(0, 1fr);
+  grid-template-rows: 32px auto 1fr;
+  grid-template-areas:
+    'handle header'
+    'handle filters'
+    'handle body';
+  box-shadow: -4px 0 12px var(--td-shadow);
+}
+.panel[data-dock='right'][data-collapsed] {
+  bottom: auto;
+  height: 32px;
+  grid-template-rows: 32px 0 0;
+}
+
+.body {
+  display: grid;
+  grid-template-columns: var(--td-left-width, 33%) 6px 1fr;
+  overflow: hidden;
+  min-height: 0;
+}
+.panel[data-dock='right'] .body {
+  grid-area: body;
+}
+/* List above detail: the right dock, and any dock on a narrow viewport. */
+.panel[data-layout='stacked'] .body {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--td-top-height, 50%) 6px 1fr;
+}
+.panel[data-collapsed] .body {
+  display: none;
+}
+/* The Resolution view has nothing to select, so the detail pane would only
+   ever say "select an event". The chart takes the whole width instead. The
+   Archive view shows its own selection, so it takes the width too. */
+.panel[data-view='resolution'] .body,
+.panel[data-view='archive'] .body {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* Views (list, timeline, resolution, archive) stacked in the same region
+   with a tab strip above. Only the active one is shown, the others carry
+   `hidden`. */
+.views {
+  display: grid;
+  grid-template-rows: 26px 1fr;
+  overflow: hidden;
+  min-height: 0;
+  border-right: 1px solid var(--td-line);
+}
+.panel[data-layout='stacked'] .views {
+  border-right: none;
+}
+
+.tooltip {
+  position: absolute;
+  z-index: 1000;
+  pointer-events: none;
+  box-sizing: border-box;
+  background: var(--td-line);
+  color: var(--td-fg-strong);
+  border: 1px solid var(--td-line-hover);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.05s;
+  box-shadow: 0 4px 10px var(--td-shadow);
+}
+.tooltip[data-visible] {
+  opacity: 1;
+}
+/* A sentence needs to wrap; the short timeline strings do not, so the
+   single-line default stays put and this is opt-in per element. */
+.tooltip[data-prose] {
+  white-space: normal;
+  max-width: 46ch;
+  line-height: 1.45;
+}

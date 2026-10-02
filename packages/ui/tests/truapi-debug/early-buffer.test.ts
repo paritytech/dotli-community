@@ -82,15 +82,15 @@ function q(selector: string): HTMLElement {
 }
 
 function rows(): HTMLElement[] {
-  return [...panel().querySelectorAll<HTMLElement>('.td-list .td-row')];
+  return [...panel().querySelectorAll<HTMLElement>('[data-testid="td-list"] [data-testid="td-row"]')];
 }
 
 function rowTags(): string[] {
-  return rows().map(r => r.querySelector('.td-tag')?.textContent ?? '');
+  return rows().map(r => r.querySelector('[data-testid="td-tag"]')?.textContent ?? '');
 }
 
 function counts(): string {
-  return q('.td-counts').textContent;
+  return q('[data-testid="td-counts"]').textContent;
 }
 
 function truapi(tag: string, requestId: string): void {

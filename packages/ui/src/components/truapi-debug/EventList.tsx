@@ -24,12 +24,13 @@ import {
   OpenCallTracker,
   pendingKeyOf,
   SLOW_AFTER_MS,
-  rowClassName,
+  rowSelection,
   systemRowData,
   truapiRowData,
 } from '@dotli/truapi-debug';
 
 import { createKeyedSignals, type KeyedSignals } from './keyed-signals.js';
+import s from './EventList.module.css';
 
 /** A pending badge counts up with the clock rather than with traffic, and a
  *  host that has stalled is precisely one that has stopped emitting events,
@@ -170,11 +171,13 @@ export function EventList(props: {
   const ctx: RowContext = { selectedSeq, selectedKey, waiting };
 
   const rowFor = (seq: EventSeq): HTMLElement | null =>
-    list?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`) ?? null;
+    list?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`) ?? null;
 
   return (
     <div
-      class={props.active ? 'td-list' : 'td-list hidden'}
+      class={s['list']}
+      data-testid="td-list"
+      hidden={!props.active}
       role="list"
       tabindex="0"
       ref={el => {
@@ -182,7 +185,7 @@ export function EventList(props: {
         props.listRef(el);
       }}
       onClick={e => {
-        const row = (e.target as HTMLElement).closest<HTMLElement>('.td-row');
+        const row = (e.target as HTMLElement).closest<HTMLElement>('[data-seq]');
         const seqAttr = row?.dataset['seq'];
         if (seqAttr === undefined) {
           return;
@@ -225,7 +228,11 @@ export function EventList(props: {
       <For
         each={props.events}
         keyed={ev => ev.seq}
-        fallback={<div class="td-empty">No events match the current filter.</div>}
+        fallback={
+          <div class={s['empty']} data-testid="td-empty">
+            No events match the current filter.
+          </div>
+        }
       >
         {ev => renderRow(untrack(ev), props.store, ctx)}
       </For>
@@ -248,15 +255,22 @@ function renderRow(ev: StoredEvent, store: EventStore, ctx: RowContext): JSX.Ele
   const anchor = store.anchorOf(ev);
   const latency = anchor !== undefined ? `+${formatLatency(ev.receivedAt - anchor.receivedAt)}` : null;
 
-  const rowClass = (): string => {
-    const isSelected = ctx.selectedSeq.read(ev.seq) === true;
-    const isPaired = !isSelected && ctx.selectedKey.read(key) === true;
-    return rowClassName(isSelected, isPaired, ev.kind === 'system');
-  };
+  const selection = (): string | undefined =>
+    rowSelection(ctx.selectedSeq.read(ev.seq) === true, ctx.selectedKey.read(key) === true);
 
   return (
-    <div class={rowClass()} data-seq={String(ev.seq)} data-rid={key} role="listitem">
-      <span class="td-time">{formatTime(ev.receivedAt)}</span>
+    <div
+      class={s['row']}
+      data-testid="td-row"
+      data-selection={selection()}
+      data-system={ev.kind === 'system' ? '' : undefined}
+      data-seq={String(ev.seq)}
+      data-rid={key}
+      role="listitem"
+    >
+      <span class={s['time']} data-testid="td-time">
+        {formatTime(ev.receivedAt)}
+      </span>
       {ev.kind === 'truapi' ? (
         <TruapiCells event={ev} latency={latency} ctx={ctx} />
       ) : (
@@ -272,7 +286,9 @@ function Latency(props: { text: string | null }): JSX.Element {
       {text => (
         <>
           {' '}
-          <span class="td-latency">{text()}</span>
+          <span class={s['latency']} data-testid="td-latency">
+            {text()}
+          </span>
         </>
       )}
     </Show>
@@ -289,30 +305,53 @@ function TruapiCells(props: { event: StoredTruapiEvent; latency: string | null; 
 
   return (
     <>
-      {data.direction === 'outgoing' ? <span class="td-arrow-out">▶</span> : <span class="td-arrow-in">◀</span>}
-      {data.productId === undefined ? (
-        <span class="td-product anon">(no id)</span>
+      {data.direction === 'outgoing' ? (
+        <span class={s['arrowOut']} data-testid="td-arrow-out">
+          ▶
+        </span>
       ) : (
-        <span class="td-product" title={data.productId}>
+        <span class={s['arrowIn']} data-testid="td-arrow-in">
+          ◀
+        </span>
+      )}
+      {data.productId === undefined ? (
+        <span class={s['product']} data-testid="td-product" data-anon="">
+          (no id)
+        </span>
+      ) : (
+        <span class={s['product']} data-testid="td-product" title={data.productId}>
           {data.productId}
         </span>
       )}
-      <span class="td-rid" style={{ color: data.ridColor }} title={`requestId: ${data.requestId}`}>
+      <span
+        class={s['rid']}
+        data-testid="td-rid"
+        style={{ color: data.ridColor }}
+        title={`requestId: ${data.requestId}`}
+      >
         {data.ridShort}
       </span>
-      <span class="td-tag-and-summary">
-        <span class={data.tagClassName}>{data.displayTag}</span>
+      <span class={s['tagAndSummary']}>
+        <span class={s['tag']} data-testid="td-tag" data-kind={data.tagKind}>
+          {data.displayTag}
+        </span>
         <Latency text={untrack(() => props.latency)} />
         {/* Present until the reply lands, counting up on the clock. */}
         <Show when={waiting() !== undefined}>
           <span
-            class={(waiting() ?? 0) >= SLOW_AFTER_MS ? 'td-pending slow' : 'td-pending'}
+            class={s['pending']}
+            data-testid="td-pending"
+            data-slow={(waiting() ?? 0) >= SLOW_AFTER_MS ? '' : undefined}
             data-pending-key={pendingKey ?? ''}
           >
             {`⟳ ${formatPending(waiting() ?? 0)} pending`}
           </span>
         </Show>
-        {data.summary !== '' ? <span class="td-summary">{data.summary}</span> : null}
+        {data.summary !== '' ? (
+          <span class={s['summary']} data-testid="td-summary">
+            {data.summary}
+          </span>
+        ) : null}
       </span>
     </>
   );
@@ -322,16 +361,20 @@ function SystemCells(props: { event: StoredSystemEvent; latency: string | null }
   const data = systemRowData(untrack(() => props.event));
   return (
     <>
-      <span class={`td-layer-badge td-layer-${data.layer}`} title={`source: ${data.source}`}>
+      <span class={s['layer']} data-testid="td-layer-badge" data-layer={data.layer} title={`source: ${data.source}`}>
         {data.layer}
       </span>
-      <span class="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
+      <span class={s['rid']} data-testid="td-rid" style={{ color: data.ridColor }} title={`flowId: ${data.flowId}`}>
         {data.flowIdShort}
       </span>
-      <span class="td-tag-and-summary">
-        <span class="td-tag td-tag-sys">{data.eventText}</span>
+      <span class={s['tagAndSummary']}>
+        <span class={s['tag']} data-testid="td-tag" data-kind="system">
+          {data.eventText}
+        </span>
         <Latency text={untrack(() => props.latency)} />
-        <span class="td-summary">{data.summary}</span>
+        <span class={s['summary']} data-testid="td-summary">
+          {data.summary}
+        </span>
       </span>
     </>
   );

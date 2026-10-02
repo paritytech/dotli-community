@@ -3,6 +3,7 @@
 
 import { For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import s from './Tabs.module.css';
 
 export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive';
 
@@ -15,12 +16,14 @@ const TABS: readonly { view: PanelView; label: string }[] = [
 
 export function Tabs(props: { view: PanelView; onSelect: (view: PanelView) => void }): JSX.Element {
   return (
-    <div class="td-tabs" role="tablist">
+    <div class={s['tabs']} data-testid="td-tabs" role="tablist">
       <For each={TABS}>
         {tab => (
           <button
-            class={props.view === tab.view ? 'td-tab active' : 'td-tab'}
+            class={s['tab']}
+            data-testid="td-tab"
             role="tab"
+            aria-selected={props.view === tab.view ? 'true' : 'false'}
             data-view={tab.view}
             type="button"
             onClick={() => {
