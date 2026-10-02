@@ -150,6 +150,11 @@ genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissa
 are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
 signing, storage, or arbitrary web access.
 
+The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
+the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
+the app can continue with its verified snapshot. Supported versions are Chrome or Edge 100+, Firefox 125+, and
+Safari/iOS 26.4+.
+
 The canonical session uses WebTransport to validators, with at most eight connections, sixteen streams per connection,
 and 1 MiB messages. Received data remains unverified until the guest checks it. The runtime menu's **Network access**
 section lists this execution's grants. Network updates continue while its display/audio menu is paused. Stop,

@@ -157,7 +157,7 @@ function execution(answer: (genesis: string) => boolean): {
       });
     },
   };
-  requester = new JamPeersPermissionRequester(port);
+  requester = new JamPeersPermissionRequester(port, { webTransportAvailable: true });
   const session = createJamPeerTransportSession({
     authorize: requester.authorize,
     connect: url => {
@@ -281,7 +281,7 @@ describe('PolkaVM JAM peer access as a runtime permission', () => {
 
   it('leaves guest replies to the guest and refuses outstanding requests on stop', async () => {
     const port = { postMessage: vi.fn() };
-    const requester = new JamPeersPermissionRequester(port);
+    const requester = new JamPeersPermissionRequester(port, { webTransportAvailable: true });
     const guestReply = frame(
       PERMISSIONS_REQUEST_REMOTE_PERMISSION,
       permissionResult.enc({
@@ -299,6 +299,22 @@ describe('PolkaVM JAM peer access as a runtime permission', () => {
     await expect(answer).resolves.toBe(false);
     await expect(requester.authorize(GENESIS)).resolves.toBe(false);
     expect(port.postMessage).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses locally and reports once when WebTransport is unavailable', async () => {
+    const port = { postMessage: vi.fn() };
+    const onWebTransportUnavailable = vi.fn();
+    const requester = new JamPeersPermissionRequester(port, {
+      webTransportAvailable: false,
+      onWebTransportUnavailable,
+    });
+
+    await expect(Promise.all([requester.authorize(GENESIS), requester.authorize(OTHER_GENESIS)])).resolves.toEqual([
+      false,
+      false,
+    ]);
+    expect(port.postMessage).not.toHaveBeenCalled();
+    expect(onWebTransportUnavailable).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the 1 MiB host bound for non-peer frames', () => {

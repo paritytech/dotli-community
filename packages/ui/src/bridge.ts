@@ -96,6 +96,7 @@ import { createRendererImageLoader, registerChatConnection } from './chat/servic
 import { showNotification } from './notification.js';
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
+import { jamPeerTransportUnavailableMessage } from './jam-peer-browser-support.js';
 import { mountViolationPanel } from './components/sandbox-checker/mount.js';
 import { CameraInputCancelledError, CameraInputPermissionError, scanCameraUr } from './mediated-input-camera.js';
 import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-input-host.js';
@@ -853,6 +854,7 @@ window.addEventListener('message', (event: MessageEvent) => {
   if (
     type !== 'dotli:sandbox-recover' &&
     type !== 'dotli:host-update-required' &&
+    type !== 'dotli:jam-peer-transport-unavailable' &&
     type !== 'dotli:polkavm-motion-request' &&
     type !== 'dotli:polkavm-mediated-input-request' &&
     type !== 'dotli:polkavm-mediated-input-cancel'
@@ -868,6 +870,17 @@ window.addEventListener('message', (event: MessageEvent) => {
     source === undefined ||
     event.source !== source
   ) {
+    return;
+  }
+  if (type === 'dotli:jam-peer-transport-unavailable') {
+    if (typeof Reflect.get(globalThis, 'WebTransport') !== 'function') {
+      showNotification({
+        label: 'Live JAM unavailable',
+        text: jamPeerTransportUnavailableMessage(navigator.userAgent),
+        dismissMs: 0,
+        browserNotification: false,
+      });
+    }
     return;
   }
   if (type === 'dotli:polkavm-motion-request') {

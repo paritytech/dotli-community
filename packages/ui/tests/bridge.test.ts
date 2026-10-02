@@ -807,6 +807,46 @@ describe('bridge render lifecycle', () => {
     expect(updateRequired).toHaveBeenCalledTimes(1);
   });
 
+  it('shows browser requirements for an authenticated unsupported JAM transport signal', async () => {
+    vi.stubGlobal('WebTransport', undefined);
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const notification = await import('../src/notification.js');
+    const showNotification = vi.spyOn(notification, 'showNotification').mockImplementation(() => () => undefined);
+    const render = renderAppSubdomain('manifest-cid', 'jam-app');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const targetWindow = nth(mocks.iframeHosts, 0).iframe.contentWindow;
+    if (targetWindow === null) {
+      throw new Error('app frame has no content window');
+    }
+    const appOrigin = new URL(nth(mocks.iframeHosts, 0).iframeUrl).origin;
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:jam-peer-transport-unavailable' },
+        origin: 'https://evil.example',
+        source: targetWindow,
+      }),
+    );
+    expect(showNotification).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:jam-peer-transport-unavailable' },
+        origin: appOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    const notificationCall = showNotification.mock.calls[0]?.[0];
+    expect(notificationCall?.label).toBe('Live JAM unavailable');
+    expect(notificationCall?.text).toContain('Chrome or Edge 100+, Firefox 125+, or Safari/iOS 26.4+');
+    expect(notificationCall?.dismissMs).toBe(0);
+    expect(notificationCall?.browserNotification).toBe(false);
+    showNotification.mockRestore();
+  });
+
   it.each(['/x.dot@evil.com/pay', '/foo.dotify/pay'])(
     'As a user, the host keeps an adversarial deep path on the app sandbox origin: %s',
     async path => {

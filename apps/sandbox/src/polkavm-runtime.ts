@@ -2762,7 +2762,11 @@ async function startPolkaVmApplication(
   // travels over the authenticated host port with the sandbox's own request
   // id and its reply never reaches the guest. The grant is execution-local
   // and carries no account, signing, storage or arbitrary-URL authority.
-  const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort);
+  const jamPeersPermission = new JamPeersPermissionRequester(hostFramePort, {
+    onWebTransportUnavailable: () => {
+      window.parent.postMessage({ type: 'dotli:jam-peer-transport-unavailable' }, parentOrigin);
+    },
+  });
   const peerSession = createJamPeerTransportSession({
     authorize: jamPeersPermission.authorize,
   });
