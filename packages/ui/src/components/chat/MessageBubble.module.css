@@ -1,0 +1,86 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* One message row: a bubble, at the end of the row for the user's own
+   messages, with its time under the content. */
+
+.row {
+  display: flex;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+.row[data-author='user'] {
+  justify-content: flex-end;
+}
+
+.bubble {
+  box-sizing: border-box;
+  max-width: 85%;
+  margin: 0;
+  padding: 7px 11px;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+  font-size: 0.8rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+.row[data-author='user'] .bubble {
+  background: var(--fill-strong);
+}
+
+/* Reactions and messages this host can't draw read as a quiet line. */
+.bubble[data-event] {
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-style: italic;
+}
+
+/* A custom message gets a fixed width for its tree to lay out in. */
+.bubble[data-custom] {
+  width: 85%;
+  max-width: 85%;
+  padding: 10px 12px;
+}
+
+.meta {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.time {
+  display: block;
+  box-sizing: border-box;
+  margin: 3px 0 0;
+  padding: 0;
+  color: var(--text-faint);
+  font-size: 0.62rem;
+  font-style: normal;
+  cursor: default;
+}
+.row[data-author='user'] .time {
+  text-align: right;
+}
+.bubble[data-custom] .time,
+.actions + .time {
+  margin-top: 8px;
+}
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 10px 0 2px;
+  padding: 0;
+}
+.actions:first-child {
+  margin-top: 2px;
+}
+.actions[data-layout='grid'] {
+  flex-direction: row;
+  flex-wrap: wrap;
+}

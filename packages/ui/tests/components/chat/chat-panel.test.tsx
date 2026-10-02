@@ -353,7 +353,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(1);
     expect(byId('chat-panel-hint').hidden).toBe(true);
   });
 
@@ -371,7 +371,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(1);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
 
     // When: back on the list, a message and a re-read that works.
@@ -410,7 +410,7 @@ describe('chat panel, message reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
   });
 
   it('As a user who went back to the list, a conversation read that lands late shows nothing and marks nothing seen', async () => {
@@ -437,7 +437,7 @@ describe('chat panel, message reads', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(0);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(0);
     expect(rows()[1]?.querySelector('.chat-room-unread')?.textContent).toBe('1');
   });
 });
@@ -522,7 +522,7 @@ describe('chat panel, scrolling', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
     expect(list.scrollTop).toBe(100);
   });
 
@@ -568,7 +568,7 @@ describe('chat panel, scrolling', () => {
     await idle();
     expect(list.scrollTop).toBe(1000);
     const observer = observers.observing(thread());
-    expect(thread().querySelectorAll(':scope > .chat-msg')).toHaveLength(2);
+    expect(thread().querySelectorAll(':scope > [data-testid="chat-msg"]')).toHaveLength(2);
 
     // When: the list gets shorter (the window shrinks), which leaves the
     // scroll position short of the bottom without a scroll event, and the
@@ -647,7 +647,7 @@ describe('chat panel, scrolling', () => {
     await idle();
 
     // Then
-    expect(document.querySelectorAll('.chat-msg')).toHaveLength(3);
+    expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(3);
     expect(list.scrollTop).toBe(1100);
   });
 

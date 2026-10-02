@@ -11,7 +11,7 @@ import type { RenderSink } from '@parity/truapi-host';
 import type * as AuthModule from '../src/state/auth.js';
 import type * as TopbarModule from '../src/state/topbar.js';
 import type * as ServiceModule from '../src/chat/service.js';
-import { byId, query } from './support.js';
+import { byId, byTestId, query } from './support.js';
 import { moreRow, stubTopbarLayout } from './components/shell/topbar-harness.js';
 import { nth } from './helpers/nth.js';
 
@@ -344,7 +344,7 @@ describe('chat panel', () => {
     await settle(() => byId('chat-panel-messages').textContent.includes('hello from the app'));
     expect(byId('chat-panel-messages').textContent).toContain('hello from the app');
     // Bubbles carry a relative timestamp with the exact time on hover.
-    const time = document.querySelector<HTMLTimeElement>('.chat-msg-time');
+    const time = document.querySelector<HTMLTimeElement>('[data-testid="chat-msg-time"]');
     expect(time?.textContent).toBe('just now');
     expect(time?.title).not.toBe('');
 
@@ -437,8 +437,9 @@ describe('chat panel', () => {
       value: { text: 'hi, I am the bot' },
     });
     await settle(() => byId('chat-panel-messages').textContent.includes('hi, I am the bot'));
-    // Messages carry no sender label above them.
-    expect(document.querySelector('.chat-msg-sender')).toBeNull();
+    // Messages carry no sender label above them: the row holds the bubble only.
+    const botMessage = byTestId('chat-msg', byId('chat-panel-messages'));
+    expect([...botMessage.children].map(child => child.getAttribute('data-testid'))).toEqual(['chat-msg-bubble']);
 
     // With the newest message, the bot now leads the list.
     byId('chat-panel-back').click();
@@ -540,7 +541,7 @@ describe('chat panel', () => {
 
       // Tapping the rendered button publishes a renderer action naming the
       // same body; the chat action stream stays untouched.
-      document.querySelector<HTMLButtonElement>('.chat-custom-btn')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-custom-btn"]')?.click();
       await settle(() => rendererActions.length === 1);
       expect(rendererActions).toEqual([{ context, actionId: 'pick:a', payload: '0x' }]);
       expect(published).toHaveLength(0);

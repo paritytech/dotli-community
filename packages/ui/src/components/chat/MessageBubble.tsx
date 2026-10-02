@@ -9,8 +9,10 @@ import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ChatMessageContent } from '@parity/truapi';
 import { userTriggerAction, type ChatMessageRecord } from '../../chat/service.js';
+import { ChatActionButton } from '../primitives/ChatActionButton.js';
 import { CustomMessage } from './CustomMessage.js';
 import { relativeTime } from './contacts.js';
+import s from './MessageBubble.module.css';
 
 export function MessageBubble(props: {
   record: ChatMessageRecord;
@@ -25,7 +27,8 @@ export function MessageBubble(props: {
 
   const time = (
     <time
-      class="chat-msg-time"
+      class={s['time']}
+      data-testid="chat-msg-time"
       data-timestamp={String(record.timestamp)}
       title={new Date(record.timestamp).toLocaleString()}
     >
@@ -37,7 +40,7 @@ export function MessageBubble(props: {
     switch (content.tag) {
       case 'Text':
         return (
-          <div class="chat-msg-bubble">
+          <div class={s['bubble']} data-testid="chat-msg-bubble">
             {content.value.text}
             {time}
           </div>
@@ -45,10 +48,12 @@ export function MessageBubble(props: {
       case 'RichText': {
         const count = content.value.media.length;
         return (
-          <div class="chat-msg-bubble">
+          <div class={s['bubble']} data-testid="chat-msg-bubble">
             {content.value.text ?? ''}
             <Show when={count > 0}>
-              <span class="chat-msg-meta">{` [${String(count)} attachment${count === 1 ? '' : 's'}]`}</span>
+              <span class={s['meta']} data-testid="chat-msg-meta">
+                {` [${String(count)} attachment${count === 1 ? '' : 's'}]`}
+              </span>
             </Show>
             {time}
           </div>
@@ -56,37 +61,41 @@ export function MessageBubble(props: {
       }
       case 'Reaction':
         return (
-          <div class="chat-msg-bubble chat-msg-event">
+          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
             {`reacted ${content.value.emoji}`}
             {time}
           </div>
         );
       case 'ReactionRemoved':
         return (
-          <div class="chat-msg-bubble chat-msg-event">
+          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
             {`removed reaction ${content.value.emoji}`}
             {time}
           </div>
         );
       case 'File':
         return (
-          <div class="chat-msg-bubble">
+          <div class={s['bubble']} data-testid="chat-msg-bubble">
             {`[file] ${content.value.fileName}`}
             {time}
           </div>
         );
       case 'Actions':
         return (
-          <div class="chat-msg-bubble">
+          <div class={s['bubble']} data-testid="chat-msg-bubble">
             <Show when={content.value.text !== undefined && content.value.text !== ''}>
               <span>{content.value.text}</span>
             </Show>
-            <div class={`chat-msg-actions chat-msg-actions-${content.value.layout === 'Grid' ? 'grid' : 'column'}`}>
+            <div
+              class={s['actions']}
+              data-testid="chat-msg-actions"
+              data-layout={content.value.layout === 'Grid' ? 'grid' : 'column'}
+            >
               <For each={content.value.actions}>
                 {action => (
-                  <button
-                    type="button"
-                    class="chat-custom-btn chat-custom-btn-secondary"
+                  <ChatActionButton
+                    variant="secondary"
+                    testId="chat-msg-action"
                     onClick={() => {
                       void userTriggerAction(record.productId, record.roomId, {
                         messageId: record.messageId,
@@ -98,7 +107,7 @@ export function MessageBubble(props: {
                     }}
                   >
                     {action.title}
-                  </button>
+                  </ChatActionButton>
                 )}
               </For>
             </div>
@@ -107,7 +116,7 @@ export function MessageBubble(props: {
         );
       case 'Custom':
         return (
-          <div class="chat-msg-bubble chat-msg-custom">
+          <div class={s['bubble']} data-testid="chat-msg-bubble" data-custom="">
             <CustomMessage
               productId={record.productId}
               roomId={record.roomId}
@@ -120,7 +129,7 @@ export function MessageBubble(props: {
         );
       default:
         return (
-          <div class="chat-msg-bubble chat-msg-event">
+          <div class={s['bubble']} data-testid="chat-msg-bubble" data-event="">
             [unsupported message]
             {time}
           </div>
@@ -128,5 +137,9 @@ export function MessageBubble(props: {
     }
   };
 
-  return <div class={`chat-msg ${record.author === 'user' ? 'chat-msg-user' : 'chat-msg-product'}`}>{bubble()}</div>;
+  return (
+    <div class={s['row']} data-testid="chat-msg" data-author={record.author}>
+      {bubble()}
+    </div>
+  );
 }
