@@ -100,6 +100,8 @@ import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
 import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
+import protocolSharedWorkerUrl from './protocol-shared-worker.ts?sharedworker&url';
+import { sharedWorkerGeneration } from './shared-worker-generation.js';
 
 initSentry('host');
 installGlobalErrorHandlers('host');
@@ -685,14 +687,14 @@ function signalError(message: string): void {
 async function initSharedWorkerMode(network: Network): Promise<void> {
   const swStartTime = performance.now();
 
-  // Vite statically rewrites `new SharedWorker(new URL("./worker.ts",
-  // import.meta.url), ...)` to point at the bundled chunk. The `new URL`
-  // MUST be a literal argument to the SharedWorker constructor. Assigning
-  // it to a variable (even briefly to set a query param) breaks the
-  // rewrite and the browser ends up fetching the unresolved `.ts` path,
-  // which 404s in production. Network is therefore propagated via the
-  // worker name and read inside the worker via `self.name`.
-  const worker = new SharedWorker(new URL('./protocol-shared-worker.ts', import.meta.url), {
+  // The URL import keeps Vite's worker bundling while allowing a fresh URL
+  // after a crash. Reusing the closed worker's exact URL/name can attach to a
+  // retired Chromium worker without starting it. All tabs share this network
+  // generation; the name still supplies the worker's validated network.
+  const generation = await sharedWorkerGeneration(network);
+  const workerUrl = new URL(protocolSharedWorkerUrl, import.meta.url);
+  workerUrl.searchParams.set('generation', generation);
+  const worker = new SharedWorker(workerUrl, {
     type: 'module',
     name: `dotli-protocol-${network}`,
   });
@@ -705,11 +707,19 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     }
     halted = true;
     port.close();
-    rejectReady?.(new Error(message));
-    rejectReady = null;
-    if (window.parent !== window) {
-      window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message }, '*');
-    }
+    // Commit the replacement identity before the host can boot another
+    // frame. The lock serializes simultaneous fatals from every attached tab.
+    void sharedWorkerGeneration(network, generation)
+      .catch((error: unknown) => {
+        message = `${message}; SharedWorker generation retirement failed: ${serializeError(error)}`;
+      })
+      .then(() => {
+        rejectReady?.(new Error(message));
+        rejectReady = null;
+        if (window.parent !== window) {
+          window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message }, '*');
+        }
+      });
   };
 
   // Script-load and runtime worker failures must reach the host's typed

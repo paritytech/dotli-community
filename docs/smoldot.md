@@ -42,14 +42,18 @@ entry before consumer callbacks: pending calls get errors, follows stop, and
 statement/transaction subscriptions receive their protocol terminal forms.
 Old callbacks and released leases cannot touch a replacement entry.
 
-The Rust-core adapter drains those terminal responses before ending its
-stream and rejects subsequent sends on the retired connection. New leases
-create a fresh transport. Explicit consumer shutdown is not a transport halt.
-The pinned native worker adapter ignores iterator completion and logs rejected
-sends without notifying the core. Requests submitted by the core after lease
-retirement can therefore still wait; fixing native connection interruption is
-outside the frontend transport's contract. Pending-at-halt requests are answered
-by the broker, not left to iterator completion.
+The Rust-core adapter delivers those terminal responses while keeping its
+underlying response stream open. Its next request takes a fresh lease through
+the canonical chain/frame backoff gate; explicit consumer shutdown still closes
+the connection. A stopped follow completes and must be followed again.
+
+An uncaught SharedWorker error retires the worker and fences late requests and
+replies. Before reporting fatal, the iframe advances a per-network worker URL
+generation under a shared-origin Web Lock. The generation is stored in
+localStorage, so tabs in the same storage partition share the replacement and
+late retirement callbacks cannot supersede it. This avoids reconnecting to a
+closed worker identity retained by the browser, without replacing the native
+core or requiring every tab to close.
 
 ## Provider contract
 
@@ -131,7 +135,7 @@ the chain starting from its bundled checkpoint.
 
 ## Failure modes
 
-- **Smoldot panic.** The log callback (`smoldot.ts:122-127`) detects `"Smoldot has panicked"` and `"panicked at"` and broadcasts a fatal signal via `onSmoldotFatal`. The protocol iframe forwards `fatal` envelopes to the host client, which rejects every pending request. Recovery requires a reload.
+- **Smoldot panic.** The log callback detects `"Smoldot has panicked"` and `"panicked at"` and broadcasts a fatal signal via `onSmoldotFatal`. The protocol iframe forwards `fatal` envelopes to the host client, which rejects pending requests and retires the frame. A product's next request can rebuild it through the canonical backoff gate; a failed page can reload. SharedWorker recovery advances the shared URL generation rather than requiring other tabs to close.
 - **Bootnode connection issues.** Patterns at `smoldot.ts:98-106` (`reset by remote`, `refused`, `closed`, `timeout`, `no longer reachable`, `handshake`, `all bootnodes`) trigger `onConnectionIssue` listeners. The UI surfaces these to the user.
 - **CPU long-task warnings.** Smoldot's WASM warns when a single Rust `poll()` blocks the thread for at least 150ms (smoldot upstream `wasm-node/rust/src/platform.rs:167`). Format: `` The task named `add-chain-N` has occupied the CPU for an unreasonable amount of time (Xms). `` The `N` suffix comes from the spawned task name. How the counter is scoped (per-client vs. process-global) has not been verified, so do not infer correlations from `N` alone.
 - **Cached chain promises.** Each `get*Chain()` factory caches its promise. On rejection the promise is nulled out so the next call retries. On `terminateSmoldot()` (`smoldot.ts:194`) every cached chain promise is cleared so a freshly-restarted smoldot doesn't hand back dead-chain handles.

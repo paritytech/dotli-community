@@ -118,10 +118,11 @@ notifying each lease. The protocol iframe and SharedWorker use the same transpor
 chain pools. The temporary light-client submit fallback remains independent and uses trusted RPC only for the existing
 dropped legacy-extrinsic case (see ADR 0002).
 
-Native boundary limitation: the pinned worker adapter ignores chain response-stream completion and only logs a rejected
-send. Requests already pending at a terminal halt receive broker errors/events, but newly issued requests on that
-retired native connection still require native connection interruption; the frontend does not conceal this with
-automatic retries.
+The native connection stays open across a halt: queued requests receive terminal errors, existing follows stop, and the
+same core/client can take a fresh lease on its next request through the canonical backoff gate. A crashed SharedWorker
+retires its URL generation under a shared-origin Web Lock before the iframe reports fatal. Tabs in the same storage
+partition share the replacement generation; late callbacks cannot retire it. Recovery does not require closing other
+tabs.
 
 ## How multi-file SPAs work
 
