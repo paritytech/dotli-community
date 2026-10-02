@@ -25,6 +25,7 @@ export interface RawCallbacks {
     hopConnect: HopConnect;
     identityUsernameCandidates?(username: string, peopleChainGenesisHash: Uint8Array): Promise<Uint8Array>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    localizeTimestamps(request: Uint8Array): Promise<Uint8Array>;
     pickChatFiles(request: Uint8Array): Promise<Uint8Array>;
     readChatFile(sourceId: string, offset: bigint, length: number): Promise<Uint8Array>;
     releaseChatFile(sourceId: string): Promise<void>;

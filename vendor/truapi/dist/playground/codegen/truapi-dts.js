@@ -1916,27 +1916,63 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export const VersionedHostLocalStorageWriteResponse: Codec<VersionedHostLocalStorageWriteResponse>;
-/** Versioned envelope for [\`HostLocaleSubscribeError\`]. */
-export type VersionedHostLocaleSubscribeError = 
+/** Versioned envelope for [\`HostLocaleLocalizeTimestampsError\`]. */
+export type VersionedHostLocaleLocalizeTimestampsError = 
 /** Version 1 payload. */
 {
     tag: "V1";
     value: GenericError;
 };
-export const VersionedHostLocaleSubscribeError: Codec<VersionedHostLocaleSubscribeError>;
-/** Versioned envelope for [\`HostLocaleSubscribeItem\`]. */
-export type VersionedHostLocaleSubscribeItem = 
+export const VersionedHostLocaleLocalizeTimestampsError: Codec<VersionedHostLocaleLocalizeTimestampsError>;
+/** Versioned envelope for [\`HostLocaleLocalizeTimestampsRequest\`]. */
+export type VersionedHostLocaleLocalizeTimestampsRequest = 
 /** Version 1 payload. */
 {
     tag: "V1";
+    value: HostLocaleLocalizeTimestampsRequest;
+};
+export const VersionedHostLocaleLocalizeTimestampsRequest: Codec<VersionedHostLocaleLocalizeTimestampsRequest>;
+/** Versioned envelope for [\`HostLocaleLocalizeTimestampsResponse\`]. */
+export type VersionedHostLocaleLocalizeTimestampsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocaleLocalizeTimestampsResponse;
+};
+export const VersionedHostLocaleLocalizeTimestampsResponse: Codec<VersionedHostLocaleLocalizeTimestampsResponse>;
+/** One timestamp's calendar identity and presentation in the requested context. */
+export interface HostLocaleLocalizedTimestamp {
+    /** Gregorian YYYY-MM-DD local date, independent of display language/calendar. */
+    localDate: string;
+    /** Localized short time, including the host language's hour-cycle convention. */
+    time: string;
+    /** Localized date label. */
+    date: string;
+    /** Localized date and time with a time-zone indication for detail views. */
+    dateTime: string;
+}
+export const HostLocaleLocalizedTimestamp: Codec<HostLocaleLocalizedTimestamp>;
+/** Versioned envelope for [\`HostLocaleSubscribeError\`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 2 payload. */
+{
+    tag: "V2";
+    value: GenericError;
+};
+export const VersionedHostLocaleSubscribeError: Codec<VersionedHostLocaleSubscribeError>;
+/** Versioned envelope for [\`HostLocaleSubscribeItem\`]. */
+export type VersionedHostLocaleSubscribeItem = 
+/** Version 2 payload. */
+{
+    tag: "V2";
     value: HostLocaleSubscribeItem;
 };
 export const VersionedHostLocaleSubscribeItem: Codec<VersionedHostLocaleSubscribeItem>;
 /** Versioned envelope for [\`HostLocaleSubscribeRequest\`]. */
 export type VersionedHostLocaleSubscribeRequest = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export const VersionedHostLocaleSubscribeRequest: Codec<VersionedHostLocaleSubscribeRequest>;
@@ -4822,14 +4858,14 @@ export interface HostLocalStorageWriteRequest {
 }
 export const HostLocalStorageWriteRequest: Codec<HostLocalStorageWriteRequest>;
 /** Locale the host currently presents its interface in, pushed to subscribers. */
-export interface HostLocaleSubscribeItem {
+export interface V01HostLocaleSubscribeItem {
     /**
      * BCP 47 language tag, such as \`en\`, \`pt-BR\` or \`zh-Hans\`. The set is
      * open: a product that does not ship the tag chooses its own fallback.
      */
     languageTag: string;
 }
-export const HostLocaleSubscribeItem: Codec<HostLocaleSubscribeItem>;
+export const V01HostLocaleSubscribeItem: Codec<V01HostLocaleSubscribeItem>;
 /** Error from [\`crate::api::System::navigate_to\`]. */
 export type HostNavigateToError = 
 /**
@@ -5690,6 +5726,30 @@ export interface HostLocalStorageReadRequest {
     key: string;
 }
 export const HostLocalStorageReadRequest: Codec<HostLocalStorageReadRequest>;
+/** Convert UTC instants using a snapshot of the host's locale subscription. */
+export interface HostLocaleLocalizeTimestampsRequest {
+    /** At most 128 Unix millisecond instants, no later than year 9999. */
+    timestampsMs: Array<bigint>;
+    /** Language tag from the locale subscription, not a guessed language. */
+    languageTag: string;
+    /** Time zone from the locale subscription; evaluated separately at each instant. */
+    timeZone: string;
+}
+export const HostLocaleLocalizeTimestampsRequest: Codec<HostLocaleLocalizeTimestampsRequest>;
+/** Local timestamps in exactly the request's order. */
+export interface HostLocaleLocalizeTimestampsResponse {
+    /** One result per requested timestamp; partial success is not returned. */
+    timestamps: Array<HostLocaleLocalizedTimestamp>;
+}
+export const HostLocaleLocalizeTimestampsResponse: Codec<HostLocaleLocalizeTimestampsResponse>;
+/** Host language and local time zone, replaced together when either changes. */
+export interface HostLocaleSubscribeItem {
+    /** BCP 47 language tag selected by the host. */
+    languageTag: string;
+    /** IANA time zone, or absent when the host cannot supply local time. */
+    timeZone?: string;
+}
+export const HostLocaleSubscribeItem: Codec<HostLocaleSubscribeItem>;
 /** Failure of a Host-owned Chat operation before a public update is available. */
 export type HostProductDeviceChatError = "NotConnected" | "AccessNotGranted" | "UserRejected" | "AllowanceRequired" | "PeerNotReady" | "OperationConflict" | "InvalidRequest" | "InvalidStatement" | "RecipientNotFound" | "InsufficientBalance" | "StorageUnavailable" | "NetworkUnavailable" | "OperationNotFound" | "AttachmentsUnavailable";
 export const HostProductDeviceChatError: Codec<HostProductDeviceChatError>;
@@ -6105,6 +6165,10 @@ export import VersionedHostLocalStorageSubscribeRequest = T.VersionedHostLocalSt
 export import VersionedHostLocalStorageWriteError = T.VersionedHostLocalStorageWriteError;
 export import VersionedHostLocalStorageWriteRequest = T.VersionedHostLocalStorageWriteRequest;
 export import VersionedHostLocalStorageWriteResponse = T.VersionedHostLocalStorageWriteResponse;
+export import VersionedHostLocaleLocalizeTimestampsError = T.VersionedHostLocaleLocalizeTimestampsError;
+export import VersionedHostLocaleLocalizeTimestampsRequest = T.VersionedHostLocaleLocalizeTimestampsRequest;
+export import VersionedHostLocaleLocalizeTimestampsResponse = T.VersionedHostLocaleLocalizeTimestampsResponse;
+export import HostLocaleLocalizedTimestamp = T.HostLocaleLocalizedTimestamp;
 export import VersionedHostLocaleSubscribeError = T.VersionedHostLocaleSubscribeError;
 export import VersionedHostLocaleSubscribeItem = T.VersionedHostLocaleSubscribeItem;
 export import VersionedHostLocaleSubscribeRequest = T.VersionedHostLocaleSubscribeRequest;
@@ -6369,7 +6433,7 @@ export import V01HostLocalStorageReadRequest = T.V01HostLocalStorageReadRequest;
 export import HostLocalStorageReadResponse = T.HostLocalStorageReadResponse;
 export import HostLocalStorageSubscribeRequest = T.HostLocalStorageSubscribeRequest;
 export import HostLocalStorageWriteRequest = T.HostLocalStorageWriteRequest;
-export import HostLocaleSubscribeItem = T.HostLocaleSubscribeItem;
+export import V01HostLocaleSubscribeItem = T.V01HostLocaleSubscribeItem;
 export import HostNavigateToError = T.HostNavigateToError;
 export import HostNavigateToRequest = T.HostNavigateToRequest;
 export import HostPaymentBalanceSubscribeError = T.HostPaymentBalanceSubscribeError;
@@ -6443,6 +6507,9 @@ export import RemoteStatementStoreSubscribeItem = T.RemoteStatementStoreSubscrib
 export import RemoteStatementStoreSubscribeRequest = T.RemoteStatementStoreSubscribeRequest;
 export import HostLocalStorageReadError = T.HostLocalStorageReadError;
 export import HostLocalStorageReadRequest = T.HostLocalStorageReadRequest;
+export import HostLocaleLocalizeTimestampsRequest = T.HostLocaleLocalizeTimestampsRequest;
+export import HostLocaleLocalizeTimestampsResponse = T.HostLocaleLocalizeTimestampsResponse;
+export import HostLocaleSubscribeItem = T.HostLocaleSubscribeItem;
 export import HostProductDeviceChatError = T.HostProductDeviceChatError;
 export import V02HostProductDeviceChatRequest = T.V02HostProductDeviceChatRequest;
 export import V02HostProductDeviceChatResponse = T.V02HostProductDeviceChatResponse;
@@ -6905,7 +6972,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "193ba518e8c1a8ec";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "f7be28c22289b365";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -7141,6 +7208,8 @@ export declare class LocaleClient {
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
     subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
+    /** Localize a bounded batch of UTC instants in a host locale snapshot. */
+    localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {

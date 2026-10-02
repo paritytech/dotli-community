@@ -21,6 +21,7 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { err, ok } from "neverthrow";
 import { scale } from "@parity/truapi";
+import { localizeTimestamps } from "../locale.js";
 /** Resolve a policy name, rejecting one that means nothing here. */
 function normalizePermissionPolicy(behavior) {
     if (behavior === "allow-all" || behavior === "deny-all")
@@ -346,7 +347,7 @@ function hex(bytes) {
  * did.
  */
 export function createMockHost(config = {}) {
-    const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", faults = {}, supportedChains = {
+    const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, supportedChains = {
         network: "mock",
         chains: [
             { identifier: "People", genesisHash: MOCK_GENESIS.people },
@@ -793,11 +794,10 @@ export function createMockHost(config = {}) {
             },
         },
         locale: {
-            async *subscribeLocale() {
-                yield ok({ languageTag });
-                // A live subscription never ends, matching `subscribeTheme`.
-                await new Promise(() => { });
+            subscribeLocale() {
+                return liveSubscription({ languageTag, timeZone }, subscriptionClosers, () => () => { });
             },
+            localizeTimestamps,
         },
         preimage: {
             async *lookupPreimage(key) {
