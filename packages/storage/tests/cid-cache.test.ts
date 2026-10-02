@@ -196,8 +196,12 @@ describe('installed executable IndexedDB cache', () => {
         contenthash: OLD_EXECUTABLE.contenthash,
         executableManifest: OLD_EXECUTABLE.executableManifest,
       });
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error);
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error('legacy cache fixture write failed'));
+      };
     });
     db.close();
     expect(await getCachedInstalledExecutable('legacy', NETWORK, 'app')).toEqual({ kind: 'miss' });

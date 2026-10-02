@@ -67,7 +67,8 @@ export interface InstalledExecutable {
   rootManifest: string | null;
 }
 
-interface InstalledExecutableEntry extends InstalledExecutable {
+interface InstalledExecutableEntry extends Omit<InstalledExecutable, 'rootManifest'> {
+  rootManifest?: string | null;
   label: string;
   network: Network;
   modality: ExecutableModality;
@@ -114,7 +115,7 @@ export async function getCachedInstalledExecutable(
         const entry = req.result as InstalledExecutableEntry | undefined;
         stop();
         resolve(
-          entry === undefined || entry.rootManifest === undefined
+          entry?.rootManifest === undefined
             ? { kind: 'miss' }
             : {
                 kind: 'hit',
