@@ -10,11 +10,7 @@ import {
   type RootManifest,
 } from '@dotli/resolver';
 
-import {
-  assertLaunchable,
-  fromCache,
-  ManifestRejectedError,
-} from '../../src/manifest-gate.js';
+import { assertLaunchable, fromCache, ManifestRejectedError } from '../../src/manifest-gate.js';
 
 const ROOT = toRootManifestResult(
   JSON.stringify({ $v: 1, displayName: 'DOOM', description: 'Doom', icon: { cid: 'bafk', format: 'png' } }),
@@ -111,6 +107,4 @@ describe('cached manifests', () => {
     // Then
     expect(verdict).toEqual({ reason: 'unsupported-version', record: 'app' });
   });
-
 });
-
