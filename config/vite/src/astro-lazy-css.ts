@@ -70,6 +70,11 @@ async function htmlFiles(dir: string): Promise<string[]> {
  */
 async function checkPages(dir: string, sheets: ReadonlyMap<string, string>, lazy: ReadonlySet<string>): Promise<void> {
   const lazyClasses = new Set([...lazy].flatMap(file => [...classesOf(sheets.get(file) ?? '')]));
+  const lazyContents = [...lazy]
+    .map(file => [file, withoutComments(sheets.get(file) ?? '')] as const)
+    .filter(([, content]) => content !== '');
+  // Hashed asset names are unique, so a link's basename names its sheet.
+  const sheetByBasename = new Map([...sheets.keys()].map(file => [file.slice(file.lastIndexOf('/') + 1), file]));
   for (const page of await htmlFiles(dir)) {
     const html = await readFile(page, 'utf8');
     const fail = (problem: string): never => {
@@ -84,16 +89,15 @@ async function checkPages(dir: string, sheets: ReadonlyMap<string, string>, lazy
       if (!/\srel="stylesheet"/.test(link) || href === undefined) {
         continue;
       }
-      const file = [...sheets.keys()].find(name => href.endsWith(`/${name}`) || href === name);
+      const file = sheetByBasename.get(href.slice(href.lastIndexOf('/') + 1));
       if (file !== undefined && lazy.has(file)) {
         fail(`links the lazy sheet ${file}`);
       }
       boot += file === undefined ? '' : (sheets.get(file) ?? '');
     }
     const text = withoutComments(html);
-    for (const file of lazy) {
-      const content = withoutComments(sheets.get(file) ?? '');
-      if (content !== '' && text.includes(content)) {
+    for (const [file, content] of lazyContents) {
+      if (text.includes(content)) {
         fail(`inlines the lazy sheet ${file}`);
       }
     }

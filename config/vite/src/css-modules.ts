@@ -17,7 +17,7 @@ import type { CSSModulesOptions } from 'vite';
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 
 /** The scoped name of class `local` in the module at `file`. */
-export function scopedClassName(local: string, file: string, production: boolean): string {
+function scopedClassName(local: string, file: string, production: boolean): string {
   const path = file.replace(/\?.*$/, '');
   const hash = createHash('sha256')
     .update(`${relative(REPO_ROOT, path)}:${local}`)
