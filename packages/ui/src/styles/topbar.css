@@ -9,73 +9,6 @@
   }
 }
 
-/* Verification Shield */
-.verification-shield-wrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  flex-shrink: 0;
-  margin: 0 -15px;
-}
-.verification-shield {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 44px;
-  height: 44px;
-  padding: 0;
-  background: transparent;
-  border: 0;
-  border-radius: 10px;
-  color: rgba(255, 255, 255, 0.32);
-  cursor: pointer;
-  transition: color 0.3s ease;
-}
-.verification-shield:focus-visible {
-  outline-offset: -6px;
-}
-.verification-shield.trusted {
-  color: #ff8c00;
-}
-.verification-shield.verified {
-  color: #4ade80;
-}
-.verification-shield.stale {
-  color: #f87171;
-}
-.verification-shield-icon {
-  display: none;
-  width: 14px;
-  height: 14px;
-}
-.verification-shield:not(.trusted) .verification-shield-icon.is-verified,
-.verification-shield.trusted .verification-shield-icon.is-trusted {
-  display: block;
-}
-
-/* The explainer: a Popover under the shield (popover.css), with its own
-   look. */
-.verification-tooltip {
-  width: 268px;
-  padding: 12px 14px;
-  background: rgba(28, 28, 28, 0.96);
-  border-color: rgba(255, 255, 255, 0.1);
-  border-radius: 10px;
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5);
-  font-family: system-ui, sans-serif;
-  color: rgba(255, 255, 255, 0.78);
-  text-align: left;
-  z-index: 1600;
-}
-.verification-tooltip[data-sheet] {
-  width: 100%;
-  padding: 0;
-  border-radius: 16px 16px 0 0;
-}
-.verification-tooltip[data-sheet] > :last-child {
-  padding: 12px 14px;
-}
 /* In a sheet, which scrolls, a row's dropdown opens as a list under its row
    instead of floating past the sheet's bottom edge. */
 [data-sheet] .permissions-popover-row {
@@ -90,7 +23,6 @@
   margin-top: 4px;
 }
 /* The sheet's header names it: the content's own heading would repeat it. */
-[data-sheet] .verification-tooltip-title,
 [data-sheet] .permissions-popover-header,
 .chains-popover[data-sheet] .mode-popover-section:first-child {
   display: none;
@@ -100,69 +32,6 @@
 .more-popover.chains-popover[data-sheet] {
   gap: 0;
   padding: 0 0 calc(8px + var(--safe-bottom));
-}
-.verification-tooltip-title {
-  font-size: 0.68rem;
-  display: block;
-  font-weight: 600;
-  color: rgba(255, 255, 255, 0.45);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 10px;
-}
-.verification-tooltip-row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  column-gap: 8px;
-  font-size: 0.74rem;
-  line-height: 1.45;
-  margin-bottom: 10px;
-}
-.verification-tooltip-row:last-child {
-  margin-bottom: 0;
-}
-.verification-tooltip-icon {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
-}
-.verification-tooltip-icon.is-verified {
-  color: #4ade80;
-}
-.verification-tooltip-icon.is-trusted {
-  color: #ff8c00;
-}
-.verification-tooltip-text {
-  display: block;
-  min-width: 0;
-}
-.verification-tooltip-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.verification-tooltip-row strong,
-.verification-tooltip-label {
-  color: rgba(255, 255, 255, 0.95);
-  font-weight: 600;
-}
-.verification-tooltip-current {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.8);
-  font-size: 0.58rem;
-  font-weight: 600;
-  line-height: 1.4;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-.verification-tooltip-row:not(.is-current) .verification-tooltip-current {
-  display: none;
-}
-.verification-tooltip-desc {
-  display: block;
 }
 
 /* User Badge */

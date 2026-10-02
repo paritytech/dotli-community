@@ -3,19 +3,6 @@
 
 /* dot.li — Light theme overrides */
 
-[data-theme='light'] .verification-shield {
-  color: rgba(0, 0, 0, 0.3);
-}
-[data-theme='light'] .verification-shield.trusted {
-  color: #ff8c00;
-}
-[data-theme='light'] .verification-shield.verified {
-  color: #16a34a;
-}
-[data-theme='light'] .verification-shield.stale {
-  color: #dc2626;
-}
-
 [data-theme='light'] .permissions-popover-menu {
   background: rgba(255, 255, 255, 0.82);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
@@ -27,29 +14,6 @@
   [data-theme='light'] .permissions-popover-menu {
     backdrop-filter: blur(24px) saturate(180%);
   }
-}
-
-[data-theme='light'] .verification-tooltip {
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(0, 0, 0, 0.1);
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
-  color: rgba(0, 0, 0, 0.7);
-}
-[data-theme='light'] .verification-tooltip-title {
-  color: rgba(0, 0, 0, 0.5);
-}
-[data-theme='light'] .verification-tooltip-row strong {
-  color: #111;
-}
-[data-theme='light'] .verification-tooltip-icon.is-verified {
-  color: #16a34a;
-}
-[data-theme='light'] .verification-tooltip-icon.is-trusted {
-  color: #ff8c00;
-}
-[data-theme='light'] .verification-tooltip-current {
-  background: rgba(0, 0, 0, 0.08);
-  color: rgba(0, 0, 0, 0.65);
 }
 
 [data-theme='light'] .user-popover-name .label {

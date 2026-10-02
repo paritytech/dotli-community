@@ -61,7 +61,7 @@ export interface PopoverProps {
    * The surface's own class: its place, width and look. It may react to the
    * surface's `data-open` and `data-sheet`.
    */
-  class?: string;
+  class?: string | undefined;
   /**
    * Pad a sheet's bottom edge for the home indicator (the default). False
    * when the content pins a footer there that pads itself.

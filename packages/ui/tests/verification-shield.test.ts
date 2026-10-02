@@ -40,7 +40,7 @@ function isClosed(): boolean {
 }
 
 function rowFor(state: string): HTMLElement {
-  return query(panel(), `.verification-tooltip-row[data-state="${state}"]`);
+  return query(panel(), `[data-testid="verification-tooltip-row"][data-state="${state}"]`);
 }
 
 /** Open the explainer, and wait for its body (its own chunk). */
@@ -176,7 +176,7 @@ describe('verification shield', () => {
 
     // When: a tap lands on the panel copy
     panel()
-      .querySelector('.verification-tooltip-title')
+      .querySelector('[data-testid="verification-tooltip-title"]')
       ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await settle();
 
@@ -220,29 +220,27 @@ describe('verification shield', () => {
     // open (its rows are its body).
     expect(button().getAttribute('aria-label')).toBe('How was this site loaded?');
     await openShield();
-    expect(panel().querySelector('.is-current')).toBeNull();
+    expect(panel().querySelector('[data-current]')).toBeNull();
 
     // When
     setVerificationShieldState('trusted');
     await settle();
 
     // Then
-    expect(button().classList.contains('trusted')).toBe(true);
-    expect(button().classList.contains('verified')).toBe(false);
+    expect(button().getAttribute('data-state')).toBe('trusted');
     expect(button().getAttribute('aria-label')).toBe('Loaded from a trusted provider. How was this site loaded?');
-    expect(rowFor('trusted').classList.contains('is-current')).toBe(true);
-    expect(rowFor('verified').classList.contains('is-current')).toBe(false);
+    expect(rowFor('trusted').hasAttribute('data-current')).toBe(true);
+    expect(rowFor('verified').hasAttribute('data-current')).toBe(false);
 
     // When
     setVerificationShieldState('verified');
     await settle();
 
     // Then
-    expect(button().classList.contains('verified')).toBe(true);
-    expect(button().classList.contains('trusted')).toBe(false);
+    expect(button().getAttribute('data-state')).toBe('verified');
     expect(button().getAttribute('aria-label')).toBe('Verified via light client. How was this site loaded?');
-    expect(rowFor('verified').classList.contains('is-current')).toBe(true);
-    expect(rowFor('trusted').classList.contains('is-current')).toBe(false);
+    expect(rowFor('verified').hasAttribute('data-current')).toBe(true);
+    expect(rowFor('trusted').hasAttribute('data-current')).toBe(false);
   });
 
   it('As a dotli user, a state change keeps an open explainer open', async () => {
@@ -262,12 +260,12 @@ describe('verification shield', () => {
     await openShield();
 
     // Then
-    const glyphs = button().querySelectorAll('.verification-shield-icon');
+    const glyphs = button().querySelectorAll('[data-testid="verification-shield-icon"]');
     expect(glyphs).toHaveLength(2);
     const [verified, trusted] = Array.from(glyphs).map(svg => svg.querySelector('path')?.getAttribute('d') ?? '');
     expect(verified).not.toBe(trusted);
     for (const state of ['verified', 'trusted']) {
-      expect(rowFor(state).querySelector(`.verification-tooltip-icon.is-${state}`)).not.toBeNull();
+      expect(rowFor(state).querySelector('[data-testid="verification-tooltip-icon"]')).not.toBeNull();
     }
   });
 });
