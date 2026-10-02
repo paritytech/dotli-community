@@ -4560,7 +4560,7 @@ export declare const HostPushNotificationError: S.Codec<HostPushNotificationErro
  * wall-clock instant (Unix milliseconds UTC). `None` fires immediately,
  * preserving prior behaviour. See [RFC 0019].
  *
- * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+ * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
  */
 export interface HostPushNotificationRequest {
     /** Notification text. */
