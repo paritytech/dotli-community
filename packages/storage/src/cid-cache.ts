@@ -3,10 +3,9 @@
 
 // dot.li IndexedDB-backed installed-executable cache.
 //
-// A cached executable is one atomic manifest/contenthash pair, scoped to
-// the network and executable modality that produced it. Contenthash changes
-// evict the whole pair; a newly resolved hash is never written without the
-// manifest resolved alongside it.
+// A cached executable is one atomic manifest/contenthash record, scoped to
+// its network and executable modality. Root and executable manifests are
+// retained as raw text so the current validator can gate every launch.
 
 import type { Network } from '@dotli/config';
 import { m, captureException, spans as S } from '@dotli/metrics';
@@ -56,9 +55,16 @@ function getInstalledExecutableDb(): Promise<IDBDatabase> {
 
 export type ExecutableModality = 'app' | 'widget' | 'worker';
 
+/** Raw root and app manifest record text; null means the record is unset. */
+export interface CachedManifests {
+  root: string | null;
+  app: string | null;
+}
+
 export interface InstalledExecutable {
   contenthash: string;
   executableManifest: string;
+  rootManifest: string | null;
 }
 
 interface InstalledExecutableEntry extends InstalledExecutable {
@@ -108,13 +114,14 @@ export async function getCachedInstalledExecutable(
         const entry = req.result as InstalledExecutableEntry | undefined;
         stop();
         resolve(
-          entry === undefined
+          entry === undefined || entry.rootManifest === undefined
             ? { kind: 'miss' }
             : {
                 kind: 'hit',
                 executable: {
                   contenthash: entry.contenthash,
                   executableManifest: entry.executableManifest,
+                  rootManifest: entry.rootManifest,
                 },
               },
         );
@@ -223,6 +230,7 @@ export async function setCachedInstalledExecutable(
       modality,
       contenthash: executable.contenthash,
       executableManifest: executable.executableManifest,
+      rootManifest: executable.rootManifest,
       timestamp: Date.now(),
     };
     tx.objectStore(STORE).put(entry);
@@ -282,10 +290,9 @@ export async function evictCachedInstalledExecutable(
 export type RevalidateOutcome = { kind: 'match' } | { kind: 'update'; contenthash: string } | { kind: 'cleared' };
 
 /**
- * Reconcile a freshly resolved executable pair against its cached copy.
- *
- * Either half changing evicts the old pair. A newly resolved hash is never
- * written until the caller has resolved and validated its matching manifest.
+ * Reconcile freshly resolved content and both manifests against their cached copy.
+ * A changed field evicts the whole record. The caller validates the replacement
+ * before publishing it, never caching an unpaired contenthash.
  */
 export async function reconcileInstalledExecutable(
   label: string,
@@ -293,14 +300,18 @@ export async function reconcileInstalledExecutable(
   modality: ExecutableModality,
   installed: InstalledExecutable,
   freshContenthash: string | null,
-  freshExecutableManifest: string | null,
+  freshManifests: CachedManifests,
 ): Promise<RevalidateOutcome> {
   if (freshContenthash === null) {
     await evictCachedInstalledExecutable(label, network, modality);
     m.count(S.CACHE_REVALIDATE_CLEARED);
     return { kind: 'cleared' };
   }
-  if (freshContenthash === installed.contenthash && freshExecutableManifest === installed.executableManifest) {
+  if (
+    freshContenthash === installed.contenthash &&
+    freshManifests.app === installed.executableManifest &&
+    freshManifests.root === installed.rootManifest
+  ) {
     await setCachedInstalledExecutable(label, network, modality, installed);
     m.count(S.CACHE_REVALIDATE_MATCH);
     return { kind: 'match' };

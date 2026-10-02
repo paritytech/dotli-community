@@ -20,10 +20,12 @@ import { namehash } from './abi.js';
 import { readNestedMappingString } from './access-raw-storage.js';
 import type { Api } from './api.js';
 import {
-  parseExecutableManifest,
-  parseRootManifest,
+  toExecutableManifestResult,
+  toRootManifestResult,
   type ExecutableKind,
   type ExecutableManifest,
+  type ManifestRecordResult,
+  type ManifestResult,
   type RootManifest,
 } from './manifest-types.js';
 
@@ -31,17 +33,7 @@ export const ROOT_MANIFEST_KEY = 'manifest';
 export const EXECUTABLE_MANIFEST_KEY = 'executable';
 
 /**
- * Discriminated result so callers can tell "no manifest set" apart from
- * "manifest exists but malformed". Same shape as `decodeIpfsContenthashResult`
- *  used for legacy contenthash reads.
- */
-export type ManifestResult<T> =
-  | { kind: 'ok'; value: T; raw: string }
-  | { kind: 'empty' }
-  | { kind: 'unsupported'; reason: string }
-  | { kind: 'invalid'; errors: string[] };
 
-/**
  * Read the root manifest at `<label>.<tld>` text-record key `"manifest"`.
  *
  * Returns `{ kind: "unsupported" }` when the active network's content
@@ -65,17 +57,14 @@ export async function readRootManifest(
     ROOT_MANIFEST_KEY,
     slot,
     'root',
-    parseRootManifest,
+    toRootManifestResult,
   );
 }
 
 /**
  * Read the executable manifest at `<kind>.<label>.<tld>` text-record key
- * `"executable"`.
- *
- * Each executable lives on its own well-known subname. The reader rejects
- * any manifest whose `kind` field disagrees with the subname it was read
- * from, so a manifest tagged `kind: "worker"` cannot pose as the app.
+ * `"executable"`. Each executable lives on its own well-known subname; see
+ * `toExecutableManifestResult` for how the record is judged.
  */
 export async function readExecutableManifest(
   api: Api,
@@ -87,24 +76,15 @@ export async function readExecutableManifest(
   if (slot === undefined) {
     return { kind: 'unsupported', reason: 'TEXT_RECORDS slot not configured' };
   }
-  const result = await readManifestText(
+  return readManifestText(
     api,
     dotns,
     namehash(`${kind}.${label}.${dotns.TLD}`),
     EXECUTABLE_MANIFEST_KEY,
     slot,
     kind,
-    parseExecutableManifest,
+    raw => toExecutableManifestResult(raw, kind),
   );
-  if (result.kind === 'ok' && result.value.kind !== kind) {
-    return {
-      kind: 'invalid',
-      errors: [
-        `executable manifest kind '${result.value.kind}' does not match subname '${kind}.${label}.${dotns.TLD}'`,
-      ],
-    };
-  }
-  return result;
 }
 
 async function readManifestText<T>(
@@ -114,7 +94,7 @@ async function readManifestText<T>(
   key: string,
   textRecordsSlot: number,
   metricKind: string,
-  parse: (json: string) => { ok: true; value: T } | { ok: false; errors: string[] },
+  judge: (raw: string | null) => ManifestRecordResult<T>,
 ): Promise<ManifestResult<T>> {
   const t0 = performance.now();
   log.warn(
@@ -146,12 +126,19 @@ async function readManifestText<T>(
   log.warn(
     `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> ${String(raw.length)} bytes (${(performance.now() - t0).toFixed(0)}ms): ${raw.slice(0, 200)}${raw.length > 200 ? '…' : ''}`,
   );
-  const parsed = parse(raw);
+  const result = judge(raw);
   m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
     kind: metricKind,
-    outcome: parsed.ok ? 'ok' : 'invalid',
+    outcome: result.kind,
   });
-  return parsed.ok ? { kind: 'ok', value: parsed.value, raw } : { kind: 'invalid', errors: parsed.errors };
+  return result;
 }
 
-export type { ExecutableKind, ExecutableManifest, RootManifest } from './manifest-types.js';
+export type {
+  ExecutableKind,
+  ExecutableManifest,
+  ManifestRecordResult,
+  ManifestResult,
+  RootManifest,
+} from './manifest-types.js';
+export { toExecutableManifestResult, toRootManifestResult } from './manifest-types.js';
