@@ -13,13 +13,14 @@
 // Validators are handwritten so the resolver package stays free of a
 // schema library at runtime.
 
+/** Formats v1 defines. A manifest may carry another; that only costs the icon. */
 export type IconFormat = 'jpeg' | 'png';
 
 export type AppVersion = readonly [number, number, number] | readonly [number, number, number, string];
 
 export interface Icon {
   cid: string;
-  format: IconFormat;
+  format: IconFormat | (string & {});
 }
 
 export interface RootManifest {
@@ -27,6 +28,8 @@ export interface RootManifest {
   displayName: string;
   description: string;
   icon: Icon;
+  /** `<product_id>` → what that product may do to this one. Unrecognised grants are kept, not fatal. */
+  trustedProducts?: Record<string, readonly string[]>;
 }
 
 interface CommonExecutableFields {
@@ -49,9 +52,11 @@ export interface WidgetManifest extends CommonExecutableFields {
   dimensions: WidgetDimensions;
 }
 
+/** Surfaces a worker serves. An omitted key means `false`; all off is a background-only worker. */
 export interface WorkerIncludes {
-  chat: boolean;
-  pocket: boolean;
+  chat?: boolean;
+  pocket?: boolean;
+  input?: boolean;
 }
 
 export interface WorkerManifest extends CommonExecutableFields {
@@ -70,10 +75,30 @@ export interface ValidationOk<T> {
 export interface ValidationErr {
   ok: false;
   errors: string[];
+  /**
+   * Set when `$v` is not 1, the only version this host reads. The fields are
+   * not checked then: they belong to a schema this host does not know.
+   */
+  unsupportedVersion?: unknown;
 }
 export type ValidationResult<T> = ValidationOk<T> | ValidationErr;
 
-const ICON_FORMATS: readonly IconFormat[] = ['jpeg', 'png'];
+const WORKER_SURFACES = ['chat', 'pocket', 'input'] as const;
+
+/** The `$v` check every manifest starts with. `null` when the version is 1. */
+function checkVersion(input: Record<string, unknown>, what: string): ValidationErr | null {
+  const version = input['$v'];
+  if (version === 1) {
+    return null;
+  }
+  return {
+    ok: false,
+    unsupportedVersion: version,
+    errors: [
+      `${what} $v ${version === undefined ? 'undefined' : JSON.stringify(version)} is not supported (expected 1)`,
+    ],
+  };
+}
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -138,14 +163,23 @@ function validateWorkerFields(input: Record<string, unknown>, p: string): string
     return errors;
   }
   const inc = input['includes'];
-  if (typeof inc['chat'] !== 'boolean') {
-    errors.push(`${p}includes.chat must be a boolean`);
+  for (const surface of WORKER_SURFACES) {
+    if (surface in inc && typeof inc[surface] !== 'boolean') {
+      errors.push(`${p}includes.${surface} must be a boolean when present`);
+    }
   }
-  if (typeof inc['pocket'] !== 'boolean') {
-    errors.push(`${p}includes.pocket must be a boolean`);
+  return errors;
+}
+
+function validateTrustedProducts(value: unknown): string[] {
+  if (!isPlainObject(value)) {
+    return ['root manifest trustedProducts must be an object when present'];
   }
-  if (inc['chat'] === false && inc['pocket'] === false) {
-    errors.push(`${p}includes must have at least one of chat / pocket = true`);
+  const errors: string[] = [];
+  for (const [product, grants] of Object.entries(value)) {
+    if (!Array.isArray(grants) || !grants.every(g => typeof g === 'string')) {
+      errors.push(`root manifest trustedProducts.${product} must be an array of strings`);
+    }
   }
   return errors;
 }
@@ -183,8 +217,9 @@ export function validateRootManifest(input: unknown): ValidationResult<RootManif
   if (!isPlainObject(input)) {
     return { ok: false, errors: ['root manifest must be an object'] };
   }
-  if (input['$v'] !== 1) {
-    errors.push(`root manifest $v must be 1 (got ${JSON.stringify(input['$v'])})`);
+  const unsupported = checkVersion(input, 'root manifest');
+  if (unsupported !== null) {
+    return unsupported;
   }
   if (!isNonEmptyString(input['displayName'])) {
     errors.push('root manifest displayName must be a non-empty string');
@@ -198,11 +233,12 @@ export function validateRootManifest(input: unknown): ValidationResult<RootManif
     if (!isNonEmptyString(input['icon']['cid'])) {
       errors.push('root manifest icon.cid must be a non-empty string');
     }
-    if (!ICON_FORMATS.includes(input['icon']['format'] as IconFormat)) {
-      errors.push(
-        `root manifest icon.format must be one of ${ICON_FORMATS.join(', ')} (got ${JSON.stringify(input['icon']['format'])})`,
-      );
+    if (typeof input['icon']['format'] !== 'string') {
+      errors.push('root manifest icon.format must be a string');
     }
+  }
+  if (input['trustedProducts'] !== undefined) {
+    errors.push(...validateTrustedProducts(input['trustedProducts']));
   }
   return errors.length === 0 ? { ok: true, value: input as unknown as RootManifest } : { ok: false, errors };
 }
@@ -212,8 +248,9 @@ export function validateExecutableManifest(input: unknown): ValidationResult<Exe
   if (!isPlainObject(input)) {
     return { ok: false, errors: ['executable manifest must be an object'] };
   }
-  if (input['$v'] !== 1) {
-    errors.push(`executable manifest $v must be 1 (got ${JSON.stringify(input['$v'])})`);
+  const unsupported = checkVersion(input, 'executable manifest');
+  if (unsupported !== null) {
+    return unsupported;
   }
   if (!isAppVersion(input['appVersion'])) {
     errors.push('executable manifest appVersion must be [major, minor, patch] or [major, minor, patch, build]');

@@ -11,7 +11,6 @@ import {
   getCachedCidResult,
   setCachedCid,
   evictCachedCid,
-  recordRevalidateOutcome,
 } from '../src/cid-cache.js';
 import { getDb } from '../src/db.js';
 
@@ -116,6 +115,24 @@ describe('removeRecentLabel', () => {
   });
 });
 
+const NO_MANIFESTS = { root: null, app: null };
+const ROOT = '{"$v":1,"displayName":"DOOM","description":"","icon":{"cid":"bafk","format":"png"}}';
+const APP = '{"$v":1,"kind":"app","appVersion":[0,1,9]}';
+
+async function putRawEntry(entry: object): Promise<void> {
+  const db = await getDb();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction('cids', 'readwrite');
+    tx.objectStore('cids').put(entry);
+    tx.oncomplete = () => {
+      resolve();
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error('put failed'));
+    };
+  });
+}
+
 async function clearCidStore(): Promise<void> {
   const db = await getDb();
   await new Promise<void>((resolve, reject) => {
@@ -150,11 +167,26 @@ describe('CID IndexedDB round-trip', () => {
   });
 
   it('setCachedCid → getCachedCidResult returns hit', async () => {
-    await setCachedCid('myapp', 'bafy123');
+    await setCachedCid('myapp', 'bafy123', NO_MANIFESTS);
     expect(await getCachedCidResult('myapp')).toEqual({
       kind: 'hit',
       cid: 'bafy123',
+      manifests: NO_MANIFESTS,
     });
+  });
+
+  it('keeps the manifest records next to the CID', async () => {
+    await setCachedCid('doom', 'bafy-doom', { root: ROOT, app: APP });
+    expect(await getCachedCidResult('doom')).toEqual({
+      kind: 'hit',
+      cid: 'bafy-doom',
+      manifests: { root: ROOT, app: APP },
+    });
+  });
+
+  it('reads an entry cached before manifests were kept as a miss, so the next load re-reads them', async () => {
+    await putRawEntry({ label: 'doom', cid: 'bafy-doom', timestamp: Date.now() });
+    expect(await getCachedCidResult('doom')).toEqual({ kind: 'miss' });
   });
 
   it('getCachedCidResult returns miss for unset label', async () => {
@@ -166,58 +198,22 @@ describe('CID IndexedDB round-trip', () => {
   });
 
   it('legacy getCachedCid returns the cid on hit', async () => {
-    await setCachedCid('myapp', 'bafy456');
-    expect(await getCachedCid('myapp')).toBe('bafy456');
+    await setCachedCid('myapp', 'bafy456', NO_MANIFESTS);
+    expect(await getCachedCid('myapp')).toEqual({ cid: 'bafy456', manifests: NO_MANIFESTS });
   });
 
   it('setCachedCid overwrites the existing entry and refreshes timestamp', async () => {
-    await setCachedCid('myapp', 'bafy-old');
+    await setCachedCid('myapp', 'bafy-old', NO_MANIFESTS);
     const first = await readRawEntry('myapp');
     expect(first?.cid).toBe('bafy-old');
 
     // Force a measurable timestamp delta even on fast machines / coarse clocks.
     await new Promise(resolve => setTimeout(resolve, 2));
 
-    await setCachedCid('myapp', 'bafy-new');
+    await setCachedCid('myapp', 'bafy-new', NO_MANIFESTS);
     const second = await readRawEntry('myapp');
     expect(second?.cid).toBe('bafy-new');
     expect(second?.timestamp ?? 0).toBeGreaterThan(first?.timestamp ?? 0);
-  });
-});
-
-describe('recordRevalidateOutcome', () => {
-  beforeEach(async () => {
-    await clearCidStore();
-  });
-
-  it("returns 'match' and refreshes timestamp when fresh CID equals served", async () => {
-    await setCachedCid('myapp', 'bafy123');
-    const before = await readRawEntry('myapp');
-    await new Promise(resolve => setTimeout(resolve, 2));
-
-    const outcome = await recordRevalidateOutcome('myapp', 'bafy123', 'bafy123');
-    expect(outcome).toEqual({ kind: 'match' });
-
-    const after = await readRawEntry('myapp');
-    expect(after?.cid).toBe('bafy123');
-    expect(after?.timestamp ?? 0).toBeGreaterThan(before?.timestamp ?? 0);
-  });
-
-  it("returns 'update' and writes the new CID when it differs", async () => {
-    await setCachedCid('myapp', 'bafy-old');
-
-    const outcome = await recordRevalidateOutcome('myapp', 'bafy-old', 'bafy-new');
-    expect(outcome).toEqual({ kind: 'update', cid: 'bafy-new' });
-    expect(await getCachedCid('myapp')).toBe('bafy-new');
-  });
-
-  it("returns 'cleared' and evicts the cache entry when fresh is null", async () => {
-    await setCachedCid('myapp', 'bafy-served');
-    expect(await getCachedCid('myapp')).toBe('bafy-served');
-
-    const outcome = await recordRevalidateOutcome('myapp', 'bafy-served', null);
-    expect(outcome).toEqual({ kind: 'cleared' });
-    expect(await getCachedCidResult('myapp')).toEqual({ kind: 'miss' });
   });
 });
 
@@ -227,8 +223,8 @@ describe('evictCachedCid', () => {
   });
 
   it('removes an existing entry', async () => {
-    await setCachedCid('myapp', 'bafy-doomed');
-    expect(await getCachedCid('myapp')).toBe('bafy-doomed');
+    await setCachedCid('myapp', 'bafy-doomed', NO_MANIFESTS);
+    expect((await getCachedCid('myapp'))?.cid).toBe('bafy-doomed');
 
     await evictCachedCid('myapp');
     expect(await getCachedCidResult('myapp')).toEqual({ kind: 'miss' });

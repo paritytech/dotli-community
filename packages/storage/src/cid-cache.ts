@@ -6,6 +6,10 @@
 // Enables stale-while-revalidate: on repeat visits, render from
 // the cached CID instantly while smoldot validates in the background.
 //
+// The product's root and app manifest records are kept as raw text next to
+// the CID, so a cache hit can be validated before rendering, by whatever
+// validator the host ships today, without a chain read.
+//
 // The canonical surface is the discriminated `getCachedCidResult` so
 // callers can distinguish "miss" (run full resolution) from "error"
 // (storage broken, surface to user). The legacy `getCachedCid` remains
@@ -17,13 +21,26 @@ import { isValidDotLabel, log } from '@dotli/shared';
 
 const STORE = 'cids';
 
+/** Raw manifest record text, as read from dotNS. `null`: the record is unset. */
+export interface CachedManifests {
+  root: string | null;
+  app: string | null;
+}
+
 interface CidEntry {
   label: string;
   cid: string;
+  /** Absent on entries cached before manifests were kept: those read as a miss. */
+  manifests?: CachedManifests;
   timestamp: number;
 }
 
-export type CidCacheResult = { kind: 'hit'; cid: string } | { kind: 'miss' } | { kind: 'error'; cause: unknown };
+export interface CachedCid {
+  cid: string;
+  manifests: CachedManifests;
+}
+
+export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | { kind: 'error'; cause: unknown };
 
 export async function getCachedCidResult(label: string): Promise<CidCacheResult> {
   const stop = m.timer(S.CACHE_READ_LATENCY);
@@ -35,7 +52,11 @@ export async function getCachedCidResult(label: string): Promise<CidCacheResult>
       req.onsuccess = () => {
         const entry = req.result as CidEntry | undefined;
         stop();
-        resolve(entry === undefined ? { kind: 'miss' } : { kind: 'hit', cid: entry.cid });
+        resolve(
+          entry?.manifests === undefined
+            ? { kind: 'miss' }
+            : { kind: 'hit', cid: entry.cid, manifests: entry.manifests },
+        );
       };
       req.onerror = () => {
         stop();
@@ -57,14 +78,14 @@ export async function getCachedCidResult(label: string): Promise<CidCacheResult>
  * New callers should use `getCachedCidResult` so storage failures can be
  * surfaced rather than silently treated as "no cache".
  */
-export async function getCachedCid(label: string): Promise<string | null> {
+export async function getCachedCid(label: string): Promise<CachedCid | null> {
   const result = await getCachedCidResult(label);
   if (result.kind === 'error') {
     log.error('[dot.li cid-cache] read error:', result.cause);
     captureException(result.cause, { kind: 'cid_cache_read_error' });
     return null;
   }
-  return result.kind === 'hit' ? result.cid : null;
+  return result.kind === 'hit' ? { cid: result.cid, manifests: result.manifests } : null;
 }
 
 export const RECENT_KEY = 'dotli_recent';
@@ -140,7 +161,7 @@ export function writeRecentLabels(labels: string[]): void {
   }
 }
 
-export async function setCachedCid(label: string, cid: string): Promise<void> {
+export async function setCachedCid(label: string, cid: string, manifests: CachedManifests): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getDb();
@@ -148,6 +169,7 @@ export async function setCachedCid(label: string, cid: string): Promise<void> {
     const entry: CidEntry = {
       label,
       cid,
+      manifests,
       timestamp: Date.now(),
     };
     tx.objectStore(STORE).put(entry);
@@ -201,26 +223,4 @@ export async function evictCachedCid(label: string): Promise<void> {
     log.error('[dot.li cid-cache] evict error:', err);
     captureException(err, { kind: 'cid_cache_evict_error' });
   }
-}
-
-export type RevalidateOutcome = { kind: 'match' } | { kind: 'update'; cid: string } | { kind: 'cleared' };
-
-/** Reconcile a freshly-resolved CID against the served one: write, evict, or noop. */
-export async function recordRevalidateOutcome(
-  label: string,
-  servedCid: string,
-  freshCid: string | null,
-): Promise<RevalidateOutcome> {
-  if (freshCid === null) {
-    await evictCachedCid(label);
-    m.count(S.CACHE_REVALIDATE_CLEARED);
-    return { kind: 'cleared' };
-  }
-  await setCachedCid(label, freshCid);
-  if (freshCid === servedCid) {
-    m.count(S.CACHE_REVALIDATE_MATCH);
-    return { kind: 'match' };
-  }
-  m.count(S.CACHE_REVALIDATE_UPDATE);
-  return { kind: 'update', cid: freshCid };
 }

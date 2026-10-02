@@ -8,7 +8,14 @@ export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
 export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
-export { type ExecutableManifest, type ManifestResult, type RootManifest } from './manifest.js';
+export {
+  toExecutableManifestResult,
+  toRootManifestResult,
+  type ExecutableManifest,
+  type ManifestRecordResult,
+  type ManifestResult,
+  type RootManifest,
+} from './manifest.js';
 export { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } from './provider.js';
 export {
   resolveDotName,

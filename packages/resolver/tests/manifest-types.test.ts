@@ -43,12 +43,17 @@ describe('validateRootManifest', () => {
     expect(r.ok).toBe(true);
   });
 
-  it('rejects wrong $v', () => {
-    const r = validateRootManifest({ ...VALID_ROOT, $v: 2 });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.errors[0]).toMatch(/\$v must be 1/);
-    }
+  it('reports a $v other than 1 as an unsupported version, without checking the fields', () => {
+    expect(validateRootManifest({ $v: 2, title: 'not a v1 shape' })).toEqual({
+      ok: false,
+      unsupportedVersion: 2,
+      errors: ['root manifest $v 2 is not supported (expected 1)'],
+    });
+  });
+
+  it('reports a missing $v as an unsupported version', () => {
+    const { $v: _omitted, ...withoutVersion } = VALID_ROOT;
+    expect(validateRootManifest(withoutVersion)).toMatchObject({ ok: false, unsupportedVersion: undefined });
   });
 
   it('rejects empty displayName', () => {
@@ -56,15 +61,24 @@ describe('validateRootManifest', () => {
     expect(r.ok).toBe(false);
   });
 
-  it('rejects unknown icon.format', () => {
-    const r = validateRootManifest({
-      ...VALID_ROOT,
-      icon: { cid: 'bafy', format: 'gif' },
-    });
-    expect(r.ok).toBe(false);
-    if (!r.ok) {
-      expect(r.errors.some(e => e.includes('icon.format'))).toBe(true);
-    }
+  it('accepts an unrecognised icon.format, which only costs the icon', () => {
+    expect(validateRootManifest({ ...VALID_ROOT, icon: { cid: 'bafy', format: 'gif' } }).ok).toBe(true);
+  });
+
+  it('rejects an icon.format that is not a string', () => {
+    expect(validateRootManifest({ ...VALID_ROOT, icon: { cid: 'bafy', format: 7 } }).ok).toBe(false);
+  });
+
+  it('accepts trustedProducts, unrecognised grant values included', () => {
+    expect(validateRootManifest({ ...VALID_ROOT, trustedProducts: { wallet: ['all', 'teleport'] } }).ok).toBe(true);
+  });
+
+  it.each([
+    ['an array', ['wallet']],
+    ['a grant list that is not an array', { wallet: 'all' }],
+    ['a grant that is not a string', { wallet: [1] }],
+  ])('rejects trustedProducts that is %s', (_case, trustedProducts) => {
+    expect(validateRootManifest({ ...VALID_ROOT, trustedProducts }).ok).toBe(false);
   });
 
   it('rejects non-object input', () => {
@@ -113,13 +127,25 @@ describe('validateExecutableManifest', () => {
     expect(validateExecutableManifest({ ...VALID_WORKER, entrypoint: '/index.js' }).ok).toBe(false);
   });
 
-  it('rejects worker with both includes off', () => {
-    expect(
-      validateExecutableManifest({
-        ...VALID_WORKER,
-        includes: { chat: false, pocket: false },
-      }).ok,
-    ).toBe(false);
+  it.each([
+    ['every surface off, a background-only worker', { chat: false, pocket: false, input: false }],
+    ['omitted keys, which mean false', {}],
+    ['the input surface', { input: true }],
+  ])('accepts worker includes with %s', (_case, includes) => {
+    expect(validateExecutableManifest({ ...VALID_WORKER, includes }).ok).toBe(true);
+  });
+
+  it('rejects worker includes with a non-boolean surface', () => {
+    expect(validateExecutableManifest({ ...VALID_WORKER, includes: { chat: 'yes' } }).ok).toBe(false);
+  });
+
+  it('reports a $v other than 1 as an unsupported version, without checking the fields', () => {
+    const v2 = { $v: 2, kind: 'app', appVersion: [0, 1, 9], runtime: { kind: 'polkavm', entrypoint: 'app.polkavm' } };
+    expect(validateExecutableManifest(v2)).toEqual({
+      ok: false,
+      unsupportedVersion: 2,
+      errors: ['executable manifest $v 2 is not supported (expected 1)'],
+    });
   });
 
   it('rejects unknown kind', () => {
