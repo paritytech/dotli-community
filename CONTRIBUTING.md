@@ -15,6 +15,8 @@
 - **Test selectors, not styles.** Tests find elements by `data-testid`, ARIA role or id, never by CSS class, because
   module class names are hashed. Reusable components take an optional `testId` prop that becomes `data-testid` on their
   root. In ui tests, use `byTestId(id, root)` from `tests/support.ts`. In Playwright, use `page.getByTestId(id)`.
+- **Don't check CSS in tests.** Don't write tests that check CSS (stylesheets, computed styles or class names). Check
+  styling visually.
 
 ```ts
 test('As a user using per-product smoldot, the host must only spawn one instance of the light client', async ({
@@ -59,7 +61,7 @@ from there (`import { log } from "@dotli/shared"`). Every other module under `sr
 
 Each component's styles live in a CSS module beside it (`Foo.module.css` next to `Foo.tsx`), imported as
 `import s from './Foo.module.css'`. Class names are kebab-case in CSS and read camelCase in TypeScript with bracket
-access (`s['signingModal']`), required by `noPropertyAccessFromIndexSignature` in tsconfig.
+access (`s['signingModal']`). Bracket access is required by `noPropertyAccessFromIndexSignature` in tsconfig.
 
 - A module styles only the elements its component renders. To react to page-level state, use the attribute on `<html>`
   or `<body>` through `:global(...)`, for example `:global([data-theme-pref='light']) .icon`. Never target another
