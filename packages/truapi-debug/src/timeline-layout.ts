@@ -8,7 +8,8 @@
 // (everything else with a request/response lifetime), and ticks (zero-
 // duration chain-lifecycle events drawn on the left margin strip).
 //
-// No DOM, no SVG. The renderer consumes the `Layout` shape verbatim.
+// No DOM, no SVG. `timeline.ts` turns the `Layout` into pixel geometry for
+// the Timeline view.
 //
 // Correlation strategy:
 //   1. TrUAPI requestId groups every event that shares a single

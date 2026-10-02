@@ -55,5 +55,11 @@ export {
 } from './resolution-view.js';
 export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData, type TagKind } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';
-export { applyTimelineSelection, buildTimelineContainer, renderSwimlanes, resolveTimelineClick } from './timeline.js';
+export {
+  buildTimeline,
+  type TimelineBox,
+  type TimelineLane,
+  type TimelineRail,
+  type TimelineTick,
+} from './timeline.js';
 export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';

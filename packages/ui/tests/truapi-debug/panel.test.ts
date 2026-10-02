@@ -34,19 +34,6 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // The panel links its stylesheet; happy-dom would try to fetch it.
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   // Starting the fake clock at a fixed time keeps the 16 ms animation-frame
   // grid aligned with it, so frame timings are reproducible.
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
@@ -252,6 +239,17 @@ function restoreClipboard(): void {
 }
 
 /** A request/response pair plus one system event, one frame apart. */
+/** The timeline box whose tooltip mentions `text`. */
+function timelineBox(text: string): SVGRectElement {
+  const box = [
+    ...panel().querySelectorAll<SVGRectElement>('[data-testid="td-timeline"] [data-testid="td-tl-segment"]'),
+  ].find(r => r.getAttribute('data-tooltip')?.includes(text) === true);
+  if (box === undefined) {
+    throw new Error(`no timeline box for ${text}`);
+  }
+  return box;
+}
+
 function seedMixedTraffic(): void {
   truapi({
     tag: 'system_handshake_request',
@@ -285,7 +283,6 @@ describe('truapi debug panel: mount and dispose', () => {
     const root = panel();
     expect(root.hasAttribute('data-collapsed')).toBe(false);
     expect(root.getAttribute('data-dock')).toBe('bottom');
-    expect(document.getElementById('truapi-debug-styles')).not.toBeNull();
     expect(root.querySelector('[data-testid="td-resize-handle"]')).not.toBeNull();
     expect(q('[data-testid="td-header"] [data-testid="td-title"]').textContent).toBe('TrUAPI Debug');
     expect(counts()).toBe('0 events');
@@ -328,7 +325,7 @@ describe('truapi debug panel: mount and dispose', () => {
     expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
       'No events match the current filter.',
     );
-    expect(q('.td-timeline').hidden).toBe(true);
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
     expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
@@ -1119,23 +1116,25 @@ describe('truapi debug panel: views', () => {
     expect(tab('timeline').getAttribute('aria-selected')).toBe('true');
     expect(tab('list').getAttribute('aria-selected')).toBe('false');
     expect(q('[data-testid="td-list"]').hidden).toBe(true);
-    expect(q('.td-timeline').hidden).toBe(false);
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(false);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(panel().getAttribute('data-view')).not.toBe('resolution');
-    const headers = [...panel().querySelectorAll('.td-timeline .td-sw-col .td-sw-header-label')].map(
-      h => h.textContent,
-    );
+    const headers = [
+      ...panel().querySelectorAll(
+        '[data-testid="td-timeline"] [data-testid="td-sw-col"] [data-testid="td-sw-header-label"]',
+      ),
+    ].map(h => h.textContent);
     expect(headers).toEqual(['System', 'Other']);
-    expect(panel().querySelectorAll('.td-timeline svg.td-tl-svg').length).toBe(2);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-svg"]').length).toBe(2);
     // One box for the request/response pair, one for the boot flow.
-    expect(panel().querySelectorAll('.td-timeline rect.td-tl-segment')).toHaveLength(2);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(2);
 
     // When
     click(tab('resolution'));
 
     // Then
     expect(tab('resolution').getAttribute('aria-selected')).toBe('true');
-    expect(q('.td-timeline').hidden).toBe(true);
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
     expect(q('[data-testid="td-res"]').hidden).toBe(false);
     expect(panel().getAttribute('data-view')).toBe('resolution');
     expect(q('[data-testid="td-body-splitter"]').hidden).toBe(true);
@@ -1179,9 +1178,9 @@ describe('truapi debug panel: views', () => {
     mount();
     seedMixedTraffic();
     click(tab('timeline'));
-    const box = [...panel().querySelectorAll<SVGRectElement>('.td-timeline rect.td-tl-segment')].find(
-      r => r.getAttribute('data-tooltip')?.includes('handshake') === true,
-    );
+    const box = [
+      ...panel().querySelectorAll<SVGRectElement>('[data-testid="td-timeline"] [data-testid="td-tl-segment"]'),
+    ].find(r => r.getAttribute('data-tooltip')?.includes('handshake') === true);
     if (box === undefined) {
       throw new Error('no handshake box');
     }
@@ -1190,7 +1189,7 @@ describe('truapi debug panel: views', () => {
     click(box);
 
     // Then
-    expect(box.classList.contains('selected')).toBe(true);
+    expect(box.hasAttribute('data-selected')).toBe(true);
     const members = [...panel().querySelectorAll('[data-testid="td-detail-member"]')].map(
       m => m.querySelector('[data-testid="td-tag"]')?.textContent,
     );
@@ -1216,7 +1215,62 @@ describe('truapi debug panel: views', () => {
     frame();
 
     // Then
-    expect(panel().querySelectorAll('.td-timeline rect.td-tl-segment')).toHaveLength(1);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(1);
+  });
+
+  it('As a dotli developer, streaming traffic keeps the hovered timeline box, its tooltip and a click that started on it', () => {
+    // Given
+    mount();
+    seedMixedTraffic();
+    click(tab('timeline'));
+    const box = timelineBox('handshake');
+    const tooltip = q('[data-testid="td-tooltip"]');
+    box.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, clientX: 30, clientY: 40 }));
+    box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+
+    // When
+    for (let i = 0; i < 3; i++) {
+      truapi({ tag: 'late_request', requestId: `late-${String(i)}` });
+      frame();
+    }
+    click(box);
+
+    // Then
+    expect(timelineBox('handshake')).toBe(box);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(5);
+    expect(tooltip.hasAttribute('data-visible')).toBe(true);
+    expect(box.hasAttribute('data-selected')).toBe(true);
+    expect(detailRows()['group']).toBe('2 events');
+  });
+
+  it('As a dotli developer, the selected timeline box follows the selection, and a box shows while it is pending', () => {
+    // Given
+    mount();
+    truapi({ tag: 'first_request', requestId: 'a-1' });
+    truapi({ tag: 'second_request', requestId: 'b-1' });
+    frame();
+    click(tab('timeline'));
+    const first = timelineBox('first');
+    const second = timelineBox('second');
+    expect(first.hasAttribute('data-pending')).toBe(true);
+
+    // When
+    click(first);
+
+    // Then
+    expect(first.hasAttribute('data-selected')).toBe(true);
+    expect(second.hasAttribute('data-selected')).toBe(false);
+
+    // When
+    click(second);
+    truapi({ tag: 'first_response', requestId: 'a-1', direction: 'incoming' });
+    frame();
+
+    // Then
+    expect(first.hasAttribute('data-selected')).toBe(false);
+    expect(second.hasAttribute('data-selected')).toBe(true);
+    expect(timelineBox('first')).toBe(first);
+    expect(first.hasAttribute('data-pending')).toBe(false);
   });
 
   it('As a dotli developer, hovering a timeline box shows its tooltip at once, and leaving or switching tabs hides it', () => {
@@ -1224,7 +1278,11 @@ describe('truapi debug panel: views', () => {
     mount();
     seedMixedTraffic();
     click(tab('timeline'));
-    const box = query(panel(), '.td-timeline rect.td-tl-segment[data-tooltip]', SVGRectElement);
+    const box = query(
+      panel(),
+      '[data-testid="td-timeline"] [data-testid="td-tl-segment"][data-tooltip]',
+      SVGRectElement,
+    );
     const tooltip = q('[data-testid="td-tooltip"]');
 
     // When
@@ -1241,7 +1299,7 @@ describe('truapi debug panel: views', () => {
     expect(tooltip.textContent).toBe(box.getAttribute('data-tooltip'));
 
     // When
-    q('.td-timeline').dispatchEvent(new PointerEvent('pointerleave'));
+    q('[data-testid="td-timeline"]').dispatchEvent(new PointerEvent('pointerleave'));
 
     // Then
     expect(tooltip.hasAttribute('data-visible')).toBe(false);

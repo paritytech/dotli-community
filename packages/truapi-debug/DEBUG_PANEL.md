@@ -246,10 +246,11 @@ long after the panel is up.
 
 ### Keyed reconciliation
 
-Both the list and the timeline renderers avoid `innerHTML =` on steady-state updates. Every logical element (row, box,
-rail, tick, label, connector) carries a `data-key` derived from its stable id (event seq, segment anchor, etc.). On each
-render we walk the new layout and either update an existing element's attributes in place or create it if it didn't
-exist; elements whose key is absent from the new layout are removed.
+No view rebuilds its markup on steady-state updates. The list and the Timeline are Solid components that key every
+logical element on its stable id: a row on its event seq, a swimlane on its lane key, and a rail, tick or box on its
+anchor seq. A redraw updates an element that is still there in place, creates one that is new and removes one whose key
+is gone. The Timeline's geometry comes from `buildTimeline` in `timeline.ts`, a pure function over `timeline-layout.ts`.
+Its selection is reactive: the box holding the selected seq carries `data-selected`, so a click redraws nothing.
 
 The Resolution view does the same with Solid: its facts are keyed by name, its rows by chain role and its blocks by
 position, and a redraw whose model did not change stops before touching anything.

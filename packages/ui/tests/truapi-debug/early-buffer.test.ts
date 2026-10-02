@@ -27,19 +27,6 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // The panel links its stylesheet; happy-dom would try to fetch it.
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   vi.resetModules();
   document.head.replaceChildren();

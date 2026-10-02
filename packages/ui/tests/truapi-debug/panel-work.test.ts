@@ -30,7 +30,7 @@ const calls = vi.hoisted(() => ({
   openCalls: 0,
   formatPending: 0,
   rowSelection: 0,
-  renderSwimlanes: 0,
+  buildTimeline: 0,
   buildResolution: 0,
 }));
 
@@ -78,9 +78,9 @@ vi.mock('../../../truapi-debug/src/timeline.js', async importOriginal => {
   const real = await importOriginal<typeof TimelineModule>();
   return {
     ...real,
-    renderSwimlanes: (...args: Parameters<typeof real.renderSwimlanes>) => {
-      calls.renderSwimlanes++;
-      real.renderSwimlanes(...args);
+    buildTimeline: (...args: Parameters<typeof real.buildTimeline>) => {
+      calls.buildTimeline++;
+      return real.buildTimeline(...args);
     },
   };
 });
@@ -122,18 +122,6 @@ let disposers: (() => void)[] = [];
 let warn: MockInstance<typeof console.warn>;
 
 beforeEach(async () => {
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 0, 0) });
   vi.resetModules();
   document.head.replaceChildren();
@@ -400,7 +388,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     }
 
     // Then
-    expect(calls.renderSwimlanes).toBe(0);
+    expect(calls.buildTimeline).toBe(0);
   });
 });
 
@@ -656,7 +644,11 @@ describe('truapi debug panel work: pointer moves', () => {
     truapi('host_sign_response', 'r1', 'incoming');
     frame();
     click(q('[data-testid="td-tab"][data-view="timeline"]'));
-    const box = query(panel(), '.td-timeline rect.td-tl-segment[data-tooltip]', SVGRectElement);
+    const box = query(
+      panel(),
+      '[data-testid="td-timeline"] [data-testid="td-tl-segment"][data-tooltip]',
+      SVGRectElement,
+    );
     const tooltip = q('[data-testid="td-tooltip"]');
     // happy-dom lays nothing out: give the panel and the tooltip a box.
     let measures = 0;

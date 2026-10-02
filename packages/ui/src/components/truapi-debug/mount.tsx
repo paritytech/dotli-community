@@ -5,7 +5,6 @@
 // dynamically, only in debug mode.
 
 import { flush } from 'solid-js';
-import stylesheetUrl from '@dotli/truapi-debug/styles.css?url';
 import { onDotliDebugEvent, type DotliDebugBusEvent, EventStore, createResolutionRecorder } from '@dotli/truapi-debug';
 
 import { mountRoot } from '../../mount/root.js';
@@ -14,7 +13,6 @@ import { productArchiveLoader, type BlockSource } from './archive-source.js';
 
 const ROOT = 'truapi-debug';
 const DEFAULT_CAPACITY = 2000;
-const STYLE_ID = 'truapi-debug-styles';
 
 export interface SetupOptions {
   /** Hard cap on retained events before oldest are evicted. */
@@ -37,18 +35,6 @@ function isTruapiDebugEvent(ev: DotliDebugBusEvent): ev is Extract<DotliDebugBus
   return 'kind' in ev;
 }
 
-/** Link the panel stylesheet once per document. */
-function injectStyles(): void {
-  if (document.getElementById(STYLE_ID) !== null) {
-    return;
-  }
-  const link = document.createElement('link');
-  link.id = STYLE_ID;
-  link.rel = 'stylesheet';
-  link.href = stylesheetUrl;
-  document.head.appendChild(link);
-}
-
 /**
  * Install the TrUAPI debug panel into the current document.
  *
@@ -68,8 +54,6 @@ export function setupTruapiDebugPanel(options: SetupOptions = {}): () => void {
       /* already mounted; owner should dispose the original handle */
     };
   }
-
-  injectStyles();
 
   const store = new EventStore({
     capacity: options.capacity ?? DEFAULT_CAPACITY,
