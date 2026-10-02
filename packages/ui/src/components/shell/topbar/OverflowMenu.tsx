@@ -12,7 +12,8 @@ import s from './OverflowMenu.module.css';
 /**
  * The topbar's More button (`#more-button`) and its flyout
  * (`#more-popover`), holding a row for each item the bar has collapsed
- * (`rows`, in bar order). Once the bar measures (`measuring`), the button
+ * (`rows`, in bar order). Once the bar measures (the group's
+ * `data-collapsible`), the button
  * shows only while there is a row; until then it stays measurable, out of
  * flow and invisible (`data-idle`), so the bar knows the room it takes.
  * Before the bar measures (its build-time render), it shows on a narrow
@@ -28,8 +29,6 @@ import s from './OverflowMenu.module.css';
  */
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
-  /** Whether the bar is mounted and fitting its items. */
-  measuring: boolean;
   buttonRef: (el: HTMLButtonElement) => void;
 }): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -67,7 +66,6 @@ export function OverflowMenu(props: {
         onClick={menu.toggle}
         id="more-button"
         class={s['more']}
-        data-measuring={props.measuring ? '' : undefined}
         data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
         aria-label="More"

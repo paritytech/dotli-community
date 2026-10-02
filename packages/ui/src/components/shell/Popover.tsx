@@ -62,11 +62,6 @@ export interface PopoverProps {
    * surface's `data-open` and `data-sheet`.
    */
   class?: string | undefined;
-  /**
-   * Pad a sheet's bottom edge for the home indicator (the default). False
-   * when the content pins a footer there that pads itself.
-   */
-  sheetInset?: boolean;
   /** Dim the page under the anchored surface; a press on it closes. */
   backdrop?: boolean;
   /** `end`: under the topbar at its right edge. `trigger`: under the trigger. */
@@ -360,7 +355,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           ref={el => {
             surfaceEl = el;
           }}
-          class={[s['surface'], props.class, props.sheetInset === false && s['flush']]}
+          class={[s['surface'], props.class]}
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
           data-peek={peek() ? '' : undefined}

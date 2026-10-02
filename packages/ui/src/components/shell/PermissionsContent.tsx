@@ -211,7 +211,6 @@ export function PermissionsContent(): JSX.Element {
                     perm={perm}
                     status={list()[index()] ?? 'ask'}
                     open={openRow() === perm.name}
-                    sheet={popover.sheet()}
                     toggleMenu={toggleDropdown}
                     choose={choose}
                     menuRef={el => {

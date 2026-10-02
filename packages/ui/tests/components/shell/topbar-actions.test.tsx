@@ -153,8 +153,6 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
-    expect(byId('more-button').hasAttribute('data-measuring')).toBe(true);
-    expect(document.querySelector('[data-unmeasured]')).toBeNull();
   });
 
   it("As a visitor on the landing page, the group renders nothing, so the page's own account and theme buttons are the only ones", async () => {

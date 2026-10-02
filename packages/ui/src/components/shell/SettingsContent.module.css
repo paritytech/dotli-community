@@ -4,7 +4,7 @@
 /* The settings popover's body: two columns (the settings, the diagnostics)
    over a footer with Save & Apply. In a sheet (data-sheet) the columns stack
    and the footer pins to the sheet's bottom edge, where it pads itself for
-   the home indicator (the Popover's sheetInset is false). */
+   the home indicator (SettingsPopover sets --sheet-inset: 0). */
 
 .content[data-sheet] {
   display: flex;

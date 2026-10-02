@@ -24,9 +24,9 @@ export interface TopbarItemProps {
  * the ActionGroup it sits in how to show it as a More menu row. While the
  * bar has collapsed it, the wrapper stays in place, out of flow and
  * invisible (`data-collapsed`), so it can still be measured and its button
- * still anchors its surface. Until the bar measures (its build-time render),
- * an item that may collapse is marked `data-unmeasured`, and a narrow
- * viewport hides it. Outside an ActionGroup (the landing page) it is always
+ * still anchors its surface. An item that may collapse is marked
+ * `data-may-collapse`, and until the bar measures (its build-time render,
+ * before the group's `data-collapsible`) a narrow viewport hides it. Outside an ActionGroup (the landing page) it is always
  * inline.
  */
 export function TopbarItem(props: TopbarItemProps): JSX.Element {
@@ -62,7 +62,7 @@ export function TopbarItem(props: TopbarItemProps): JSX.Element {
       data-testid="topbar-item"
       data-item={props.name}
       data-collapsed={collapsed() ? '' : undefined}
-      data-unmeasured={bar !== null && !bar.measured() && props.priority !== PINNED ? '' : undefined}
+      data-may-collapse={bar !== null && props.priority !== PINNED ? '' : undefined}
       hidden={!visible()}
     >
       {props.children}

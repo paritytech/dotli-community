@@ -3,7 +3,7 @@
 
 /* The host's top bar: a three-column grid (the home link, the URL bar, the
    action group) fixed at the top. Its script sets its state: slid out by
-   the auto-hide (data-hidden), gone on the landing page (data-landing), and
+   the auto-hide (data-hidden), gone on the landing page (body[data-landing]), and
    with a status line under it while offline (data-offline). */
 
 .topbar {
@@ -33,7 +33,7 @@
 .topbar[data-hidden] {
   transform: translateY(-100%);
 }
-.topbar[data-landing] {
+:global(body[data-landing]) .topbar {
   display: none;
 }
 @media (prefers-reduced-motion: reduce) {

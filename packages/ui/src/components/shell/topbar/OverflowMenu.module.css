@@ -8,7 +8,7 @@
 .more {
   display: none;
 }
-.more[data-measuring] {
+:global(#topbar-actions[data-collapsible]) .more {
   display: inline-flex;
 }
 @media (max-width: 560px) {
@@ -18,7 +18,7 @@
 }
 /* Nothing collapsed into it: out of flow and invisible, but still laid out,
    so the bar can measure it. */
-.more[data-measuring][data-idle] {
+:global(#topbar-actions[data-collapsible]) .more[data-idle] {
   position: absolute;
   top: 0;
   right: 0;

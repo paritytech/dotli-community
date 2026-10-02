@@ -34,8 +34,9 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  *
  * `data-collapsible` marks the group once it is mounted and measuring. The
  * build-time render (the Astro page) goes without it, and until the group
- * hydrates, its items (TopbarItem) and the More button (OverflowMenu) lay
- * themselves out for a narrow screen as the bar would most likely fit them.
+ * hydrates, its items (TopbarItem) and the More button (OverflowMenu) read
+ * its absence and lay themselves out for a narrow screen as the bar would
+ * most likely fit them.
  */
 export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
   let group: HTMLDivElement | undefined;
@@ -89,7 +90,6 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
     },
     observe,
     moreButton: () => more,
-    measured: measuring,
   };
 
   // An item showing or hiding (the chat button, the network button) changes
@@ -122,7 +122,6 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
         {props.children}
         <OverflowMenu
           rows={rows()}
-          measuring={measuring()}
           buttonRef={el => {
             more = el;
             observe(el);

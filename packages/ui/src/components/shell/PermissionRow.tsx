@@ -4,6 +4,7 @@
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ALL_PERMISSIONS, EnforceablePermissionName, PermissionStatus } from '../../permissions.js';
+import { usePopover } from './Popover.js';
 import s from './PermissionRow.module.css';
 
 /** Trusted host SVG for each permission row's icon. */
@@ -48,8 +49,6 @@ export interface PermissionRowProps {
   status: PermissionStatus;
   /** Whether this row's dropdown is the open one. */
   open: boolean;
-  /** Whether the popover is a sheet: the dropdown opens as a list under the row. */
-  sheet: boolean;
   /** The row's select was clicked: open its dropdown, or close it. */
   toggleMenu: (name: EnforceablePermissionName) => void;
   /** An option was picked. */
@@ -69,6 +68,7 @@ export interface PermissionRowProps {
  * native button.
  */
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
+  const popover = usePopover();
   const nameId = (): string => `permissions-popover-name-${props.perm.name}`;
   const statusId = (): string => `permissions-popover-status-${props.perm.name}`;
 
@@ -92,7 +92,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
   };
 
   return (
-    <div class={s['row']} data-testid="permissions-popover-row" data-sheet={props.sheet ? '' : undefined}>
+    <div class={s['row']} data-testid="permissions-popover-row" data-sheet={popover.sheet() ? '' : undefined}>
       <span
         class={s['icon']}
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code

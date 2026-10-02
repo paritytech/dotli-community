@@ -23,7 +23,7 @@
    the items it would most likely collapse stay out, and the More button
    (OverflowMenu) shows instead. */
 @media (max-width: 560px) {
-  .item[data-unmeasured] {
+  :global(#topbar-actions:not([data-collapsible])) .item[data-may-collapse] {
     display: none;
   }
 }

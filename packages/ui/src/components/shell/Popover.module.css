@@ -128,18 +128,15 @@
   border: none;
   border-top: 1px solid var(--border-subtle);
   border-radius: 16px 16px 0 0;
-  padding-bottom: var(--safe-bottom);
+  /* A consumer whose content pads the home indicator itself sets
+     --sheet-inset: 0 on its surface class. */
+  padding-bottom: var(--sheet-inset, var(--safe-bottom));
   opacity: 1;
   transform: translateY(100%);
   transform-origin: bottom center;
   transition:
     transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
     display 0.28s allow-discrete;
-}
-/* The content pins a footer to the sheet's bottom edge and pads it for the
-   home indicator itself (sheetInset false). */
-.surface[data-sheet].flush {
-  padding-bottom: 0;
 }
 .surface[data-sheet][data-open] {
   transform: translateY(0);

@@ -283,30 +283,28 @@ describe('ActionGroup', () => {
     expect(isOpen()).toBe(false);
   });
 
-  it('As the build-time render, before the bar has measured, the items that may collapse and the More button say so', async () => {
+  it('As the build-time render, the items that may collapse are marked, and the More button is idle', async () => {
     // Given: a bar that has not measured yet, as in the host page's build-time render.
     const bar: TopbarBar = {
       register: () => () => false,
       observe: () => undefined,
       moreButton: () => undefined,
-      measured: () => false,
     };
 
     // When
     renderComponent(() => (
       <TopbarContext value={bar}>
         <Items />
-        <OverflowMenu rows={[]} measuring={false} buttonRef={() => undefined} />
+        <OverflowMenu rows={[]} buttonRef={() => undefined} />
       </TopbarContext>
     ));
     await settle();
 
-    // Then: a narrow viewport keeps these out, and shows the More button, until the bar measures.
-    const unmeasured = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
-      .filter(item => item.hasAttribute('data-unmeasured'))
+    // Then: until the bar measures, a narrow viewport keeps these out and shows the More button.
+    const mayCollapse = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
+      .filter(item => item.hasAttribute('data-may-collapse'))
       .map(item => item.dataset['item']);
-    expect(unmeasured).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
-    expect(byId('more-button').hasAttribute('data-measuring')).toBe(false);
+    expect(mayCollapse).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
     expect(byId('more-button').hasAttribute('data-idle')).toBe(true);
   });
 
