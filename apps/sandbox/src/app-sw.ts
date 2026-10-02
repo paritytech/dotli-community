@@ -5,9 +5,9 @@
 //
 // Archive serving only, no smoldot and no chain sync.
 // Runs on <label>.app.dot.li and serves the multi-file SPA archive the page
-// hands it, from memory. It keeps nothing across reloads: the iframe is
-// credentialless, so this origin's storage lasts only as long as the host
-// page. The host keeps the content blocks instead (`@dotli/storage/block-cache`).
+// hands it. It keeps nothing across reloads: the iframe is credentialless, so
+// this origin's storage lasts only as long as the host page. The host keeps
+// the content blocks instead (`@dotli/storage/block-cache`).
 
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
@@ -29,9 +29,108 @@ function hasExtension(path: string): boolean {
 }
 
 // Archive storage.
+//
+// The browser stops an idle worker after about 30 s and starts a new instance
+// for the next fetch, so module state does not outlive the worker. The current
+// archive is therefore also written to this origin's IndexedDB and read back
+// on the first fetch after a restart. The iframe is credentialless, so the
+// copy lasts as long as the page: it outlives the worker, never a reload.
+
+type ArchiveIndex = { p: string; o: number; l: number }[];
+
+interface PersistedArchive {
+  packed: ArrayBuffer;
+  index: ArchiveIndex;
+}
+
+const ARCHIVE_DB_NAME = 'dotli-app-sw';
+const ARCHIVE_STORE = 'archive';
+const CURRENT_ARCHIVE_KEY = 'current';
 
 /** Files of the archive the fetch handler serves, keyed by path. */
 let servedFiles: Record<string, ArrayBuffer> | null = null;
+
+/** The read-back of the persisted archive, started by the first fetch that finds no archive in memory. */
+let restoring: Promise<void> | null = null;
+
+/** Set once the read-back found nothing: the page has not sent an archive yet. */
+let nothingPersisted = false;
+
+function unpackArchive(packed: ArrayBuffer, index: ArchiveIndex): Record<string, ArrayBuffer> {
+  const files: Record<string, ArrayBuffer> = {};
+  for (const entry of index) {
+    files[entry.p] = packed.slice(entry.o, entry.o + entry.l);
+  }
+  return files;
+}
+
+function openArchiveDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(ARCHIVE_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(ARCHIVE_STORE);
+    };
+    request.onsuccess = () => {
+      resolve(request.result);
+    };
+    request.onerror = () => {
+      reject(request.error ?? new Error('Failed to open the archive database'));
+    };
+  });
+}
+
+async function persistArchive(archive: PersistedArchive): Promise<void> {
+  const db = await openArchiveDb();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction(ARCHIVE_STORE, 'readwrite');
+      tx.objectStore(ARCHIVE_STORE).put(archive, CURRENT_ARCHIVE_KEY);
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error('Failed to persist the archive'));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+async function loadPersistedArchive(): Promise<PersistedArchive | null> {
+  const db = await openArchiveDb();
+  try {
+    return await new Promise((resolve, reject) => {
+      const request = db.transaction(ARCHIVE_STORE, 'readonly').objectStore(ARCHIVE_STORE).get(CURRENT_ARCHIVE_KEY);
+      request.onsuccess = () => {
+        resolve((request.result as PersistedArchive | undefined) ?? null);
+      };
+      request.onerror = () => {
+        reject(request.error ?? new Error('Failed to read the archive'));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+function restoreArchive(): Promise<void> {
+  restoring ??= loadPersistedArchive().then(
+    archive => {
+      if (archive === null) {
+        nothingPersisted = true;
+        return;
+      }
+      // A SET_ARCHIVE that landed while the read was in flight is newer.
+      servedFiles ??= unpackArchive(archive.packed, archive.index);
+    },
+    (err: unknown) => {
+      console.error('Failed to restore the archive after a worker restart:', err);
+      nothingPersisted = true;
+    },
+  );
+  return restoring;
+}
 
 function hasArchive(): boolean {
   return servedFiles !== null;
@@ -83,7 +182,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
     const packed = data['packed'] as ArrayBuffer | undefined;
-    const idx = data['index'] as { p: string; o: number; l: number }[] | undefined;
+    const idx = data['index'] as ArchiveIndex | undefined;
 
     if (packed === undefined || idx === undefined) {
       if (event.source) {
@@ -95,11 +194,15 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
       return;
     }
 
-    const files: Record<string, ArrayBuffer> = {};
-    for (const entry of idx) {
-      files[entry.p] = packed.slice(entry.o, entry.o + entry.l);
-    }
-    servedFiles = files;
+    servedFiles = unpackArchive(packed, idx);
+    // Serving starts now, from memory. The write only matters to the next
+    // instance, so it does not hold up the ACK, and `waitUntil` keeps this
+    // instance alive until it lands.
+    event.waitUntil(
+      persistArchive({ packed, index: idx }).catch((err: unknown) => {
+        console.error('Failed to persist the archive; a restarted worker will not serve it:', err);
+      }),
+    );
     if (event.source) {
       (event.source as Client).postMessage({ type: 'ARCHIVE_READY' });
     }
@@ -131,32 +234,55 @@ self.addEventListener('fetch', (event: FetchEvent) => {
     return;
   }
 
-  // If the SW is active but the archive hasn't been set yet, sub-resource
-  // requests for app paths must NOT fall through to nginx (which returns the
-  // sandbox shell HTML and produces broken MIME types). Respond with a
-  // deterministic 503 so the page sees a real failure instead of a nonsense
-  // response.
-  if (!hasArchive()) {
-    if (url.pathname.startsWith(DOTLI_APP_PREFIX)) {
-      event.respondWith(
-        new Response(null, {
-          status: 503,
-          statusText: 'App archive not yet loaded',
-        }),
-      );
-    }
-    return;
-  }
-
   if (event.request.mode === 'navigate' && !url.pathname.startsWith(DOTLI_APP_PREFIX)) {
     return;
   }
 
-  const result = lookupArchive(url.pathname, event.request.mode);
-  if (result !== null) {
-    event.respondWith(result);
+  if (hasArchive()) {
+    const result = lookupArchive(url.pathname, event.request.mode);
+    if (result !== null) {
+      event.respondWith(result);
+    }
+    return;
   }
+
+  if (nothingPersisted) {
+    const result = noArchiveResponse(url.pathname);
+    if (result !== null) {
+      event.respondWith(result);
+    }
+    return;
+  }
+
+  // A restarted worker: read the archive back before answering. Letting the
+  // request go now would send an app file to nginx, which answers every path
+  // with the sandbox shell as `text/html`.
+  const { request } = event;
+  event.respondWith(
+    restoreArchive().then(
+      () =>
+        (hasArchive() ? lookupArchive(url.pathname, request.mode) : noArchiveResponse(url.pathname)) ?? fetch(request),
+    ),
+  );
 });
+
+/**
+ * Answer for a request that arrives before the page has sent an archive.
+ *
+ * App paths must NOT fall through to nginx (which returns the sandbox shell
+ * HTML and produces broken MIME types), so they get a deterministic 503 and
+ * the page sees a real failure instead of a nonsense response. `null` lets
+ * the sandbox's own assets reach the network.
+ */
+function noArchiveResponse(pathname: string): Response | null {
+  if (!pathname.startsWith(DOTLI_APP_PREFIX)) {
+    return null;
+  }
+  return new Response(null, {
+    status: 503,
+    statusText: 'App archive not yet loaded',
+  });
+}
 
 /**
  * Look up `pathname` in the loaded archive.
