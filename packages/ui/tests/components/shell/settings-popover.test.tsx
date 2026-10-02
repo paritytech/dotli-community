@@ -4,7 +4,16 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { cleanup as unmountAll } from '@solidjs/testing-library';
-import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
+import {
+  BACKEND_LABELS,
+  setBackend,
+  setCacheSettings,
+  setNetwork,
+  NETWORK_NAME_TO_SERVICES_CONFIG,
+  type Backend,
+  type CacheSettings,
+  type Network,
+} from '@dotli/config';
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
@@ -17,12 +26,15 @@ import {
   tabTo,
   waitForContent,
 } from '../../helpers/solid.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
+import {
+  buildBaseDiagnosticsRows,
+  buildLightClientVersionLabel,
+  packageVersions,
+} from '../../../src/settings-actions.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
-import { byId, query } from '../../support.js';
+import { byId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
@@ -208,20 +220,186 @@ function expectBackdrop(open: boolean): void {
   expect(backdrop.classList.contains('open')).toBe(open);
 }
 
+/** What the popover reads from @dotli/config when it opens. */
+interface Settings {
+  chain: Backend;
+  network: Network;
+  cache: CacheSettings;
+  enabledNetworks: Network[];
+  sharedWorkerSupported: boolean;
+  debugOn: boolean;
+}
+
+const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
+
+/** A section header: a div holding only its text. */
+function expectHeader(el: Element | undefined, text: string): void {
+  expect(el?.tagName).toBe('DIV');
+  expect(el?.childElementCount).toBe(0);
+  expect(el?.textContent).toBe(text);
+}
+
+/** A radio row: label, radio input (name, value, checked, disabled), the text and its description. */
+function expectRadioRow(
+  row: Element | undefined,
+  name: string,
+  opts: { value: string; label: string; description: string; selected: boolean; disabled?: boolean },
+): void {
+  expect(row?.tagName).toBe('LABEL');
+  const input = query(must(row, 'a radio row'), 'input', HTMLInputElement);
+  expect(input.type).toBe('radio');
+  expect(input.name).toBe(name);
+  expect(input.value).toBe(opts.value);
+  expect(input.checked).toBe(opts.selected);
+  expect(input.disabled).toBe(opts.disabled === true);
+  const texts = Array.from(row?.querySelectorAll('span > span') ?? []).map(span => span.textContent);
+  expect(texts).toEqual([opts.label, opts.description]);
+}
+
+/** A cache row: its label and a switch of the same name. */
+function expectCacheRow(row: Element | undefined, label: string, checked: boolean): void {
+  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'BUTTON']);
+  expect(row?.children[0]?.textContent).toBe(label);
+  const toggle = nth(must(row, 'a cache row').children, 1);
+  expect(toggle.getAttribute('role')).toBe('switch');
+  expect(toggle.getAttribute('aria-label')).toBe(label);
+  expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
+}
+
+/** A diagnostics row: label and value, and the copy hint on the copyable ones. */
+function expectInfoRow(row: Element | undefined, label: string, value: string, copyable = false): void {
+  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'CODE']);
+  expect(row?.children[0]?.textContent).toBe(label);
+  expect(row?.children[1]?.textContent).toBe(value);
+  expect(row?.getAttribute('title')).toBe(copyable ? `Click to copy ${label}` : null);
+}
+
+/** The left column: network, transport and cache settings. */
+function expectSettingsColumn(left: Element, settings: Settings): void {
+  const items = Array.from(left.children);
+  let at = 0;
+  if (settings.enabledNetworks.length > 1) {
+    expectHeader(items[at++], 'Network');
+    const group = nth(items, at++);
+    expect(group.getAttribute('role')).toBe('radiogroup');
+    expect(group.getAttribute('aria-label')).toBe('Network');
+    expect(group.childElementCount).toBe(settings.enabledNetworks.length);
+    settings.enabledNetworks.forEach((n, i) => {
+      const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
+      expectRadioRow(group.children[i], 'dotli-network', {
+        value: n,
+        label: cfg.label,
+        description: cfg.description,
+        selected: n === settings.network,
+      });
+    });
+  }
+
+  expectHeader(items[at++], 'Network Transport');
+  const chainGroup = nth(items, at++);
+  expect(chainGroup.getAttribute('role')).toBe('radiogroup');
+  expect(chainGroup.getAttribute('aria-label')).toBe('Network Transport');
+  const choices: [Backend, string][] = [
+    ['smoldot-direct', 'Verified in your browser, separate per tab (recommended)'],
+    ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
+    ['rpc-gateway', 'Fetched from trusted servers, fastest but less private'],
+  ];
+  expect(chainGroup.childElementCount).toBe(choices.length);
+  choices.forEach(([value, description], i) => {
+    const disabled = value === 'smoldot-shared-worker' && !settings.sharedWorkerSupported;
+    expectRadioRow(chainGroup.children[i], 'dotli-backend', {
+      value,
+      label: BACKEND_LABELS[value],
+      description: disabled ? 'Unavailable in this browser or private window' : description,
+      selected: value === settings.chain,
+      disabled,
+    });
+  });
+
+  expectHeader(items[at++], 'Cache');
+  expectCacheRow(items[at++], 'dotNS cache', !settings.cache.skipCidCache);
+  expectCacheRow(items[at++], 'Archive cache', !settings.cache.skipArchiveCache);
+  expectCacheRow(items[at++], 'Worker cache', !settings.cache.skipWorkerCache);
+  const clearRow = nth(items, at++);
+  expect(tags(clearRow)).toEqual(['BUTTON']);
+  expect(clearRow.children[0]?.textContent).toBe('Clear all caches');
+  expect(clearRow.children[0]?.getAttribute('title')).toBe(
+    'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
+  );
+  expect(items).toHaveLength(at);
+}
+
+/** The right column: diagnostics, versions and the share and debug buttons. */
+function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
+  const items = Array.from(right.children);
+  let at = 0;
+  expectHeader(items[at++], 'Diagnostics');
+  const copyable = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
+  for (const [label, value] of buildBaseDiagnosticsRows()) {
+    expectInfoRow(items[at++], label, value, copyable.has(label));
+  }
+  expectHeader(items[at++], 'Light client');
+  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel());
+  const { polkadotApi, parityTruapi } = packageVersions();
+  if (polkadotApi.length > 0) {
+    expectHeader(items[at++], '@polkadot-api');
+    for (const pkg of polkadotApi) {
+      expectInfoRow(items[at++], pkg.name, pkg.version);
+    }
+  }
+  if (parityTruapi.length > 0) {
+    expectHeader(items[at++], '@parity/truapi');
+    for (const pkg of parityTruapi) {
+      expectInfoRow(items[at++], pkg.name, pkg.version);
+    }
+  }
+  const actions = nth(items, at++);
+  expect(tags(actions)).toEqual(['BUTTON', 'BUTTON']);
+  const [share, debug] = Array.from(actions.children) as [HTMLButtonElement, HTMLButtonElement];
+  expect(share.type).toBe('button');
+  expect(share.textContent).toBe('Share diagnostic');
+  expect(share.title).toBe('Open a new issue on paritytech/dotli pre-filled with these diagnostics');
+  expect(debug.type).toBe('button');
+  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Open in debug mode');
+  expect(debug.title).toBe(
+    debugOn
+      ? 'Reload this tab with the TrUAPI debug panel disabled'
+      : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)',
+  );
+  expect(items).toHaveLength(at);
+}
+
 /**
  * The open popover: the shared Popover's surface, whose body holds the
  * settings topbar.ts rendered. Their sheet header is the Popover's now, and
  * only a sheet's.
  */
-function expectPopoverMatches(settings: OldSettings): void {
+function expectPopoverMatches(settings: Settings): void {
   const popover = byId('mode-popover');
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Settings');
-  const expected = oldModePopover({ open: true, ...settings });
-  expected.querySelector('.mode-popover-sheet-header')?.remove();
-  expect(sameChildren(normalized(query(popover, ':scope > .popover-body')), normalized(expected))).toBe(true);
-  // isEqualNode leaves out the `checked` property, which the old code set.
-  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('.mode-radio-input'))
+  expect(popover.getAttribute('tabindex')).toBe('-1');
+  const body = query(popover, ':scope > .popover-body');
+  expect(tags(body)).toEqual(['DIV']);
+  const content = nth(body.children, 0);
+  expect(content.id).toBe('mode-popover-content');
+  expect(tags(content)).toEqual(['DIV', 'DIV']);
+  const [columns, footer] = Array.from(content.children) as [Element, Element];
+  expect(tags(columns)).toEqual(['DIV', 'DIV']);
+  expectSettingsColumn(nth(columns.children, 0), settings);
+  expectDiagnosticsColumn(nth(columns.children, 1), settings.debugOn);
+
+  // The footer: a divider, the untouched draft's disabled Save & Apply, and the reload warning.
+  expect(tags(footer)).toEqual(['DIV', 'DIV', 'P']);
+  expect(footer.children[0]?.childElementCount).toBe(0);
+  const apply = footer.children[1]?.children[0] as HTMLButtonElement;
+  expect(footer.children[1]?.childElementCount).toBe(1);
+  expect(apply.tagName).toBe('BUTTON');
+  expect(apply.disabled).toBe(true);
+  expect(apply.textContent).toBe('Save & Apply');
+  expect(footer.children[2]?.textContent).toBe('Applying reloads the app. Caches you turn off are cleared.');
+
+  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
     .filter(input => input.checked)
     .map(input => `${input.name}=${input.value}`);
   expect(checked).toEqual([
@@ -230,15 +408,24 @@ function expectPopoverMatches(settings: OldSettings): void {
   ]);
 }
 
+/** The button: its label, icon and the ARIA of a popover trigger. */
+function expectModeButton(open: boolean): void {
+  const button = byId('mode-button');
+  expect(button.getAttribute('title')).toBe('Settings');
+  expect(button.getAttribute('aria-label')).toBe('Settings');
+  expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  expect(button.getAttribute('aria-expanded')).toBe(String(open));
+  expect(button.getAttribute('aria-controls')).toBe('mode-popover');
+  expect(tags(button)).toEqual(['svg']);
+}
+
 describe('The settings popover island', () => {
   it('As a dotli user, the closed button, backdrop and popover match what the topbar rendered', async () => {
     // When
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: true }))),
-    ).toBe(true);
+    expectModeButton(false);
     expectBackdrop(false);
     // The surface is the shared Popover's, and holds nothing until opened.
     expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
@@ -253,9 +440,8 @@ describe('The settings popover island', () => {
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: false }))),
-    ).toBe(true);
+    expectModeButton(false);
+    expect(byId('mode-button').classList.contains('gateway-mode')).toBe(true);
   });
 
   it('As the host booting, an island mounted before the settings store is seeded reads no setting itself and follows the store once seeded', async () => {

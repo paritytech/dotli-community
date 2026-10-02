@@ -6,7 +6,7 @@
 // module would load a second Solid), and window event recorders that go away
 // after each test.
 
-import { afterAll, afterEach, beforeAll, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { closeAuthModal, initAuthController } from '../../../src/auth-controller.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../../../src/blocking-modal-queue.js';
@@ -83,3 +83,14 @@ export function press(
 }
 
 export { byId };
+
+/**
+ * The pairing modal's QR container holds the spinner view: one child div, no
+ * canvas. Structural on purpose, so it does not depend on the spinner's class.
+ */
+export function expectQrSpinnerView(): void {
+  const qrBox = byId('auth-modal-qr');
+  expect(Array.from(qrBox.children).map(child => child.tagName)).toEqual(['DIV']);
+  expect(qrBox.querySelector('canvas')).toBeNull();
+  expect(qrBox.children[0]?.childElementCount).toBe(0);
+}

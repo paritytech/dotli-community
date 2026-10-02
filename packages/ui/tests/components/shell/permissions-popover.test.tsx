@@ -5,13 +5,16 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { PermissionsPopover } from '../../../src/components/shell/PermissionsPopover.js';
-import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
+import { PERM_ICONS } from '../../../src/components/shell/PermissionRow.js';
+import {
+  ALL_PERMISSIONS,
+  registerPermissionAuthorizationProvider,
+  type PermissionStatus,
+} from '../../../src/permissions.js';
 import { setProductError, setProductLoaded } from '../../../src/state/product.js';
 import { recordPermissionChange } from '../../../src/state/permissions.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { pointerPressUnfocusable, renderComponent, resetStores, tabTo, waitForContent } from '../../helpers/solid.js';
-import { oldPermissionsButton, oldPermissionsPopover, type OldPermissionsList } from './old-permissions-markup.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { focusables } from '../../../src/components/focus.js';
 import { byId, must, query } from '../../support.js';
@@ -142,21 +145,120 @@ function option(label: string): HTMLButtonElement {
   );
 }
 
+const STATUS_LABELS: Record<PermissionStatus, string> = {
+  ask: 'Ask (Default)',
+  granted: 'Allowed',
+  denied: 'Denied',
+};
+
+const STATUS_ORDER: readonly PermissionStatus[] = ['ask', 'granted', 'denied'];
+
+type PermissionsList =
+  | { kind: 'empty' }
+  | { kind: 'hint'; text: string }
+  | {
+      kind: 'rows';
+      /** Per permission name; a missing one is "ask". */
+      statuses: Partial<Record<string, PermissionStatus>>;
+      /** The permission whose dropdown is open. */
+      menuOpen?: string;
+    };
+
+const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
+
+/** One permission row: icon, name, and the status select with its menu when open. */
+function expectRow(
+  row: Element,
+  perm: (typeof ALL_PERMISSIONS)[number],
+  status: PermissionStatus,
+  menuOpen: boolean,
+): void {
+  expect(tags(row)).toEqual(['SPAN', 'SPAN', 'DIV']);
+  const [icon, name, wrap] = Array.from(row.children) as [Element, Element, Element];
+  expect(icon.querySelector('svg') !== null).toBe((PERM_ICONS[perm.name] ?? '') !== '');
+  expect(name.id).toBe(`permissions-popover-name-${perm.name}`);
+  expect(name.textContent).toBe(perm.label);
+
+  expect(tags(wrap)).toEqual(menuOpen ? ['BUTTON', 'DIV'] : ['BUTTON']);
+  const trigger = wrap.children[0] as HTMLButtonElement;
+  expect(trigger.id).toBe(`permissions-popover-select-${perm.name}`);
+  expect(trigger.type).toBe('button');
+  expect(trigger.getAttribute('aria-haspopup')).toBe('listbox');
+  expect(trigger.getAttribute('aria-expanded')).toBe(String(menuOpen));
+  expect(trigger.getAttribute('aria-labelledby')).toBe(
+    `permissions-popover-name-${perm.name} permissions-popover-status-${perm.name}`,
+  );
+  expect(tags(trigger)).toEqual(['SPAN', 'SPAN']);
+  expect(trigger.children[0]?.id).toBe(`permissions-popover-status-${perm.name}`);
+  expect(trigger.children[0]?.textContent).toBe(STATUS_LABELS[status]);
+  expect(trigger.children[1]?.querySelector('svg')).not.toBeNull();
+
+  if (menuOpen) {
+    const listbox = nth(wrap.children, 1);
+    expect(listbox.getAttribute('role')).toBe('listbox');
+    expect(listbox.getAttribute('aria-label')).toBe(`${perm.label} permission`);
+    expect(tags(listbox)).toEqual(['BUTTON', 'BUTTON', 'BUTTON']);
+    STATUS_ORDER.forEach((itemStatus, i) => {
+      const item = listbox.children[i] as HTMLButtonElement;
+      const selected = itemStatus === status;
+      expect(item.type).toBe('button');
+      expect(item.getAttribute('role')).toBe('option');
+      expect(item.getAttribute('aria-selected')).toBe(String(selected));
+      expect(item.children[0]?.textContent).toBe(STATUS_LABELS[itemStatus]);
+      expect(item.childElementCount).toBe(selected ? 2 : 1);
+      if (selected) {
+        expect(item.children[1]?.querySelector('svg')).not.toBeNull();
+      }
+    });
+  }
+}
+
 /**
  * The popover: the shared Popover's surface, holding what topbar.ts rendered
  * while open, and nothing while closed.
  */
-function expectPopover(opts: { open: boolean; list: OldPermissionsList }): void {
+function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
   const popover = byId('permissions-popover');
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Permissions');
+  expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.classList.contains('open')).toBe(opts.open);
   const body = query(popover, ':scope > .popover-body');
-  if (opts.open) {
-    expect(sameChildren(normalized(body), normalized(oldPermissionsPopover(opts)))).toBe(true);
-  } else {
+  if (!opts.open) {
     expect(body.childElementCount).toBe(0);
+    return;
   }
+  expect(tags(body)).toEqual(['DIV', 'DIV']);
+  expect(body.children[0]?.textContent).toBe('Permissions');
+  const list = nth(body.children, 1);
+  expect(list.id).toBe('permissions-popover-list');
+  const { list: content } = opts;
+  if (content.kind === 'empty') {
+    expect(list.childElementCount).toBe(0);
+  } else if (content.kind === 'hint') {
+    expect(tags(list)).toEqual(['DIV']);
+    expect(list.children[0]?.textContent).toBe(content.text);
+  } else {
+    expect(list.childElementCount).toBe(ALL_PERMISSIONS.length + 1);
+    ALL_PERMISSIONS.forEach((perm, i) => {
+      expectRow(nth(list.children, i), perm, content.statuses[perm.name] ?? 'ask', content.menuOpen === perm.name);
+    });
+    expect(list.lastElementChild?.textContent).toBe('Changing permissions will reload the app.');
+  }
+}
+
+/**
+ * The button: its label, its icon and the ARIA of a popover trigger. Whether
+ * it `has-grants` is a class, which the grants tests read.
+ */
+function expectPermissionsButton(open: boolean): void {
+  const button = byId('permissions-button');
+  expect(button.getAttribute('title')).toBe('Permissions');
+  expect(button.getAttribute('aria-label')).toBe('Permissions');
+  expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  expect(button.getAttribute('aria-expanded')).toBe(String(open));
+  expect(button.getAttribute('aria-controls')).toBe('permissions-popover');
+  expect(tags(button)).toEqual(['svg']);
 }
 
 /** The backdrop: the shared Popover's, open with the popover. */
@@ -172,11 +274,7 @@ describe('PermissionsPopover', () => {
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('permissions-button')).isEqualNode(
-        normalized(oldPermissionsButton({ open: false, hasGrants: false })),
-      ),
-    ).toBe(true);
+    expectPermissionsButton(false);
     expectBackdrop(false);
     expectPopover({ open: false, list: { kind: 'empty' } });
   });
@@ -202,11 +300,8 @@ describe('PermissionsPopover', () => {
         statuses: { Camera: 'granted', ChainSubmit: 'denied' },
       },
     });
-    expect(
-      normalized(byId('permissions-button')).isEqualNode(
-        normalized(oldPermissionsButton({ open: true, hasGrants: true })),
-      ),
-    ).toBe(true);
+    expectPermissionsButton(true);
+    expect(byId('permissions-button').classList.contains('has-grants')).toBe(true);
     expectBackdrop(true);
     expect(document.activeElement).toBe(byId('permissions-popover'));
 

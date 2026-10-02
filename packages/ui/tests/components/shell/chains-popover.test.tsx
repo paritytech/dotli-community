@@ -19,11 +19,10 @@ import {
   tabTo,
   waitForContent,
 } from '../../helpers/solid.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
-import { oldChainsButton, oldChainsPopover } from './old-chains-markup.js';
 import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
 import { focusables } from '../../../src/components/focus.js';
 import { byId, query } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -182,23 +181,108 @@ function body(): HTMLElement {
   return query(byId('chains-popover'), ':scope > .popover-body');
 }
 
+/** What the open popover's body shows for one chain. */
+interface ExpectedChain {
+  label: string;
+  peers?: { text: string; aria: string };
+  cell:
+    | { kind: 'unavailable' }
+    | { kind: 'waiting'; text: string; ghostHeight?: string }
+    | { kind: 'bars'; titles: string[]; firstBlock: number };
+}
+
+/** What the open popover's body shows, apart from styling. */
+interface ExpectedBody {
+  verdict: string;
+  chains: ExpectedChain[];
+  speed?: [string, string];
+  size?: [string, string];
+}
+
+const texts = (el: Element): (string | null)[] => Array.from(el.children).map(child => child.textContent);
+
+/**
+ * The button: its ARIA as a popover trigger, its label and its icon. Whether
+ * it is `visible` is a class, which the visibility test reads.
+ */
+function expectChainsButton(open: boolean): void {
+  const button = byId('chains-button');
+  expect(button.getAttribute('title')).toBe('Network');
+  expect(button.getAttribute('aria-label')).toBe('Network');
+  expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  expect(button.getAttribute('aria-expanded')).toBe(String(open));
+  expect(button.getAttribute('aria-controls')).toBe('chains-popover');
+  expect(Array.from(button.children).map(child => child.tagName)).toEqual(['svg']);
+}
+
+/** The popover body: heading, verdict, a group per chain, the transfer rows and the tips, in order. */
+function expectBody(expected: ExpectedBody): void {
+  const sections = Array.from(body().children);
+  expect(sections).toHaveLength(2 + expected.chains.length + 2);
+  expect(sections[0]?.textContent).toBe('Network');
+  expect(sections[1]?.childElementCount).toBe(2);
+  expect(sections[1]?.children[1]?.textContent).toBe(expected.verdict);
+
+  expected.chains.forEach((chainExpected, i) => {
+    const group = nth(sections, 2 + i);
+    const [name, cell] = Array.from(group.children) as [Element, Element];
+    expect(group.childElementCount).toBe(2);
+    expect(name.children[0]?.textContent).toBe(chainExpected.label);
+    const peers = nth(name.children, 1);
+    expect(peers.textContent).toBe(chainExpected.peers?.text ?? '');
+    expect(peers.getAttribute('aria-label')).toBe(chainExpected.peers?.aria ?? null);
+    if (chainExpected.cell.kind === 'unavailable') {
+      expect(cell.textContent).toBe('no endpoint on this network');
+      expect(cell.childElementCount).toBe(0);
+    } else if (chainExpected.cell.kind === 'waiting') {
+      expect(cell.childElementCount).toBe(1);
+      const strip = nth(cell.children, 0);
+      expect(strip.childElementCount).toBe(2);
+      const ghost = strip.children[0] as HTMLElement;
+      expect(ghost.textContent).toBe('');
+      expect(ghost.style.height).toBe(chainExpected.cell.ghostHeight ?? '');
+      expect(strip.children[1]?.textContent).toBe(chainExpected.cell.text);
+    } else {
+      expect(cell.childElementCount).toBe(1);
+      const marks = Array.from(nth(cell.children, 0).children) as HTMLElement[];
+      const { titles, firstBlock } = chainExpected.cell;
+      expect(marks.map(mark => mark.dataset['block'])).toEqual(titles.map((_, n) => String(firstBlock + n)));
+      expect(marks.map(mark => mark.title)).toEqual(titles);
+      expect(marks.map(mark => mark.getAttribute('aria-label'))).toEqual(
+        titles.map((title, n) => `Block ${String(firstBlock + n)}, ${title}`),
+      );
+    }
+  });
+
+  const footer = nth(sections, 2 + expected.chains.length);
+  expect(footer.childElementCount).toBe(2);
+  expect(footer.children[0]?.tagName).toBe('P');
+  expect(footer.children[1]?.tagName).toBe('P');
+  const [speedRow, sizeRow] = Array.from(footer.children) as [Element, Element];
+  expect(texts(speedRow)).toEqual(expected.speed ?? []);
+  expect(texts(sizeRow)).toEqual(expected.size ?? []);
+
+  const tips = nth(sections, 3 + expected.chains.length);
+  expect(tips.children[0]?.textContent).toBe('Tips for better performance');
+  expect(texts(nth(tips.children, 1))).toEqual(['Close apps and tabs you are not using', 'Move closer to your router']);
+}
+
 function waitingText(): string | null | undefined {
   return document.querySelector('.chains-bars-waiting')?.textContent;
 }
 
 describe('The network popover island', () => {
-  it('As a dotli user, the closed button and popover match what the topbar rendered', async () => {
+  it('As a dotli user, the closed button and popover carry their labels and ARIA', async () => {
     // When
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: false }))),
-    ).toBe(true);
+    expectChainsButton(false);
     // The surface is the shared Popover's, and holds nothing until opened.
     const popover = byId('chains-popover');
     expect(popover.getAttribute('role')).toBe('dialog');
     expect(popover.getAttribute('aria-label')).toBe('Network');
+    expect(popover.getAttribute('tabindex')).toBe('-1');
     expect(body().childElementCount).toBe(0);
   });
 
@@ -207,18 +291,48 @@ describe('The network popover island', () => {
     chains: ChainStatus[];
     transfer?: TransferState;
     productLoaded?: boolean;
+    expected: ExpectedBody;
   }[] = [
     {
       name: 'starting, with no chain reachable',
+      expected: {
+        verdict: 'Starting',
+        chains: [
+          { label: 'Relay chain', cell: { kind: 'unavailable' } },
+          { label: 'Asset Hub', cell: { kind: 'unavailable' } },
+        ],
+      },
       chains: [chain({ reachable: false }), chain({ role: 'assethub', label: 'Asset Hub', reachable: false })],
     },
     {
       name: 'connecting, before any block or phase',
+      expected: {
+        verdict: 'Connecting',
+        chains: [
+          { label: 'Relay chain', cell: { kind: 'waiting', text: 'connecting' } },
+          { label: 'Asset Hub', cell: { kind: 'waiting', text: 'connecting' } },
+        ],
+        speed: ['Speed', '512 B/s'],
+        size: ['Downloading', '2 kB / 4.0 MB'],
+      },
       chains: [chain(), chain({ role: 'assethub', label: 'Asset Hub' })],
       transfer: { bytesPerSecond: 512, fetched: 2048, total: 4_194_304 },
     },
     {
       name: 'connecting, a chain syncing and one without an endpoint',
+      expected: {
+        verdict: 'Connecting',
+        chains: [
+          {
+            label: 'Relay chain',
+            peers: { text: '1 peer', aria: 'Relay chain: 1 peer connected' },
+            cell: { kind: 'waiting', text: 'syncing' },
+          },
+          { label: 'People', cell: { kind: 'unavailable' } },
+        ],
+        speed: ['Speed', '2.4 MB/s'],
+        size: ['Size', '2.9 MB'],
+      },
       chains: [
         chain({ phase: 'syncing', peers: 1 }),
         chain({ role: 'people', label: 'People', reachable: false, peers: 3 }),
@@ -231,6 +345,23 @@ describe('The network popover island', () => {
     },
     {
       name: 'one of two ready, the other counting down to its next block',
+      expected: {
+        verdict: 'Connecting, 2 of 3 ready',
+        chains: [
+          {
+            label: 'Relay chain',
+            peers: { text: '4 peers', aria: 'Relay chain: 4 peers connected' },
+            cell: { kind: 'waiting', text: 'next block in about 5s', ghostHeight: '40%' },
+          },
+          {
+            label: 'Asset Hub',
+            peers: { text: '8 peers', aria: 'Asset Hub: 8 peers connected' },
+            cell: { kind: 'bars', firstBlock: 18, titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'] },
+          },
+          { label: 'People', cell: { kind: 'waiting', text: 'connecting' } },
+        ],
+        speed: ['Speed', '39 kB/s'],
+      },
       chains: [
         chain({ latest: 10, sinceLast: 1500, peers: 4 }),
         chain({
@@ -247,6 +378,20 @@ describe('The network popover island', () => {
     },
     {
       name: 'waiting on overdue chains, one of them due any moment',
+      expected: {
+        verdict: 'Waiting on Relay chain and Asset Hub',
+        chains: [
+          { label: 'Relay chain', cell: { kind: 'waiting', text: 'due any moment', ghostHeight: '100%' } },
+          {
+            label: 'Asset Hub',
+            cell: {
+              kind: 'bars',
+              firstBlock: 18,
+              titles: ['6.0s, on time', '6.0s, on time', '12s, 6.0s late', '30s, 24s late'],
+            },
+          },
+        ],
+      },
       chains: [
         chain({ latest: 10, sinceLast: 19_000 }),
         chain({
@@ -260,6 +405,21 @@ describe('The network popover island', () => {
     },
     {
       name: 'a good connection, after the product loaded',
+      expected: {
+        verdict: 'Your connection is good',
+        chains: [
+          {
+            label: 'Relay chain',
+            peers: { text: '12 peers', aria: 'Relay chain: 12 peers connected' },
+            cell: { kind: 'bars', firstBlock: 8, titles: ['6.0s, on time', '6.0s, on time', '6.0s, on time'] },
+          },
+          {
+            label: 'Asset Hub',
+            peers: { text: '1 peer', aria: 'Asset Hub: 1 peer connected' },
+            cell: { kind: 'bars', firstBlock: 18, titles: ['4.0s, on time', '4.0s, on time', '4.0s, on time'] },
+          },
+        ],
+      },
       chains: [
         chain({ latest: 10, bars: bars(8, 3), sinceLast: 500, peers: 12 }),
         chain({
@@ -277,7 +437,7 @@ describe('The network popover island', () => {
   ];
 
   for (const status of statuses) {
-    it(`As a dotli user opening it (${status.name}), it matches what the topbar rendered`, async () => {
+    it(`As a dotli user opening it (${status.name}), it shows the verdict, chains, transfer and tips`, async () => {
       // Given
       monitor.status = status.chains;
       monitor.transfer = status.transfer ?? NO_TRANSFER;
@@ -291,22 +451,8 @@ describe('The network popover island', () => {
       await openPopover();
 
       // Then
-      expect(
-        normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: true, visible: false }))),
-      ).toBe(true);
-      expect(
-        sameChildren(
-          normalized(body()),
-          normalized(
-            oldChainsPopover({
-              open: true,
-              chains: status.chains,
-              transfer: status.transfer ?? NO_TRANSFER,
-              productLoaded: status.productLoaded === true,
-            }),
-          ),
-        ),
-      ).toBe(true);
+      expectChainsButton(true);
+      expectBody(status.expected);
     });
   }
 
@@ -576,9 +722,7 @@ describe('The network popover island', () => {
     await renderPopover();
 
     // Then
-    expect(
-      normalized(byId('chains-button')).isEqualNode(normalized(oldChainsButton({ open: false, visible: true }))),
-    ).toBe(true);
+    expectChainsButton(false);
 
     // When
     recordChainsButtonVisible(false);

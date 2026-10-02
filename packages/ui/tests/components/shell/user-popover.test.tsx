@@ -10,7 +10,6 @@ import type { TruapiSessionUiState } from '../../../src/host-callbacks/SessionSt
 import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo, waitForContent } from '../../helpers/solid.js';
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
 import { query } from '../../support.js';
-import { normalized, oldUserPopover, sameChildren } from './old-auth-markup.js';
 
 useAuthController();
 
@@ -43,14 +42,28 @@ function isOpen(): boolean {
  * by its "Welcome back" heading, with the tabindex that lets it take focus)
  * whose body is the markup topbar.ts left in it.
  */
-function expectMarkup(popover: Element, opts: Parameters<typeof oldUserPopover>[0]): void {
+function expectMarkup(popover: Element, opts: { username: string; hint: boolean; open: boolean }): void {
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Welcome back');
   expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.classList.contains('user-popover')).toBe(true);
   expect(popover.classList.contains('open')).toBe(opts.open);
   const body = query(popover, ':scope > .popover-body');
-  expect(sameChildren(normalized(body), normalized(oldUserPopover(opts)))).toBe(true);
+  expect(Array.from(body.children).map(child => child.tagName)).toEqual(['DIV', 'DIV', 'BUTTON']);
+  const [nameBlock, divider, disconnect] = Array.from(body.children) as [HTMLElement, HTMLElement, HTMLElement];
+  const nameParts = Array.from(nameBlock.children);
+  expect(nameParts.map(child => child.tagName)).toEqual(opts.hint ? ['DIV', 'DIV', 'DIV'] : ['DIV', 'DIV']);
+  expect(nameParts[0]?.textContent).toBe('Welcome back');
+  expect(nameParts[1]?.id).toBe('user-popover-username');
+  expect(nameParts[1]?.textContent).toBe(opts.username);
+  if (opts.hint) {
+    expect(nameParts[2]?.id).toBe('user-popover-hint');
+    expect(nameParts[2]?.textContent).toBe('No username found for this account on this network.');
+  }
+  expect(divider.childNodes).toHaveLength(0);
+  expect(disconnect.id).toBe('user-popover-disconnect');
+  expect(disconnect.querySelector('svg')).not.toBeNull();
+  expect(disconnect.textContent).toBe('Log out');
 }
 
 /** Open the popover, and wait for its body (its own chunk). */
