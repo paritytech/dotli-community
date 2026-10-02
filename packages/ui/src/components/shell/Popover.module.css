@@ -1,51 +1,61 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The shell's popovers (components/shell/Popover.tsx): the surface, its
-   backdrop and its loading state. Each surface's own class sets its width
-   and inner layout; everything they share is here. */
+/* The shell's popover (Popover.tsx): its backdrop, the surface anchored
+   under the topbar or its trigger, the bottom sheet it becomes on phones,
+   and the loading state. The surface carries its state as data-open,
+   data-sheet, data-peek, data-anchor and data-dragging.
 
-.popover-backdrop {
+   The surface's base rule is wrapped in :where(), so a consumer's own class
+   (its place, width and look) wins over it whatever order the stylesheets
+   load in. The state rules keep their specificity, so a sheet still takes
+   the full width over a consumer's width. */
+
+.backdrop {
   display: none;
   position: fixed;
   top: var(--topbar-height);
-  left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.4);
+  left: 0;
   z-index: 1400;
+  background: var(--backdrop);
   opacity: 0;
   transition:
     opacity 0.18s ease-out,
     display 0.18s allow-discrete;
 }
-.popover-backdrop.open {
+.backdrop[data-open] {
   display: block;
   opacity: 1;
 }
 @starting-style {
-  .popover-backdrop.open {
+  .backdrop[data-open] {
     opacity: 0;
   }
 }
+.backdrop[data-sheet] {
+  top: 0;
+}
 
-.popover {
+:where(.surface) {
   display: none;
   position: fixed;
   /* Overlaps the bottom of the topbar so the surface attaches to its
      button instead of floating with a gap. */
   top: var(--topbar-height);
   right: calc(12px + var(--safe-right));
+  box-sizing: border-box;
   max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
   /* `--content-height` is dvh-based: it tracks the visible area as mobile
      browser chrome shows and hides, without the home indicator. */
   max-height: calc(var(--content-height) - 4px);
   overflow-y: auto;
-  background: rgb(34, 34, 34);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 8px 32px var(--shadow);
   z-index: 1500;
   opacity: 0;
   transform: scale(0.92);
@@ -56,43 +66,48 @@
     display 0.22s allow-discrete;
 }
 @supports (backdrop-filter: blur(1px)) {
-  .popover {
+  :where(.surface) {
     backdrop-filter: blur(24px) saturate(180%);
   }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .popover {
-    background: rgba(20, 20, 20, 0.97);
+  :where(.surface) {
+    background: var(--surface);
   }
 }
-.popover.open {
+/* The surface takes focus itself (tabindex -1) for a pointer opening, and
+   shows no ring for it. */
+.surface:focus-visible {
+  outline: none;
+}
+.surface[data-open] {
   display: block;
   opacity: 1;
   transform: scale(1);
 }
 @starting-style {
-  .popover.open {
+  .surface[data-open] {
     opacity: 0;
     transform: scale(0.92);
   }
 }
 
 /* The content's chunk is on its way. */
-.popover-loading {
+.loading {
   display: grid;
   place-items: center;
   min-height: 96px;
 }
-.popover-loading::after {
+.loading::after {
   content: '';
   width: 18px;
   height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.18);
-  border-top-color: rgba(255, 255, 255, 0.7);
+  border: 2px solid var(--border);
+  border-top-color: var(--knob);
   border-radius: 50%;
-  animation: popover-spin 0.8s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
-@keyframes popover-spin {
+@keyframes spin {
   to {
     transform: rotate(360deg);
   }
@@ -101,20 +116,17 @@
 /* On phones (SHEET_QUERY, max-width 560px, read as each opening starts) a
    popover is a modal bottom sheet: at the bottom edge, full width, at most
    85% of the visible height, sliding up. */
-.popover-backdrop.sheet {
-  top: 0;
-}
-.popover.sheet {
+.surface[data-sheet] {
   top: auto;
-  left: 0;
   right: 0;
   bottom: 0;
+  left: 0;
   width: 100%;
   max-width: 100%;
   max-height: calc(var(--content-height) * 0.85);
   overflow-y: auto;
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--border-subtle);
   border-radius: 16px 16px 0 0;
   padding-bottom: var(--safe-bottom);
   opacity: 1;
@@ -124,20 +136,25 @@
     transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
     display 0.28s allow-discrete;
 }
-.popover.sheet.open {
+/* The content pins a footer to the sheet's bottom edge and pads it for the
+   home indicator itself (sheetInset false). */
+.surface[data-sheet].flush {
+  padding-bottom: 0;
+}
+.surface[data-sheet][data-open] {
   transform: translateY(0);
 }
 @starting-style {
-  .popover.sheet.open {
+  .surface[data-sheet][data-open] {
     opacity: 1;
     transform: translateY(100%);
   }
 }
 /* The sheet follows the pointer while dragged. */
-.popover.sheet.dragging {
+.surface[data-dragging] {
   transition: none;
 }
-.popover-sheet-header {
+.sheet-header {
   position: sticky;
   top: 0;
   z-index: 2;
@@ -145,14 +162,14 @@
   grid-template-columns: 1fr auto;
   align-items: center;
   padding: 18px 14px 12px;
-  background: rgba(20, 20, 20, 0.92);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-glass);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   touch-action: none;
   cursor: grab;
 }
-.popover-sheet-grabber {
+.grabber {
   position: absolute;
   top: 7px;
   left: 50%;
@@ -160,53 +177,54 @@
   height: 4px;
   margin-left: -18px;
   border-radius: 2px;
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--border-strong);
 }
-.popover-sheet-title {
+.sheet-title {
   font-size: 15px;
   font-weight: 600;
-  color: #fff;
+  color: var(--text-strong);
 }
-.popover-sheet-close {
+.sheet-close {
   appearance: none;
-  background: transparent;
+  margin: 0;
+  padding: 6px 10px;
   border: none;
-  color: rgba(255, 255, 255, 0.7);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
   font-size: 20px;
   line-height: 1;
-  padding: 6px 10px;
-  border-radius: 8px;
   cursor: pointer;
 }
-.popover-sheet-close:hover {
-  background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+.sheet-close:hover {
+  background: var(--fill);
+  color: var(--text-strong);
 }
 
 /* Under its trigger (anchor="trigger"): the place is set inline. */
-.popover.anchor-trigger {
+.surface[data-anchor='trigger'] {
   right: auto;
   transform-origin: top left;
 }
 /* Shown while a mouse rests on the trigger (openOnHover). */
-.popover.peek {
+.surface[data-peek] {
   display: block;
   opacity: 1;
   transform: scale(1);
 }
 @starting-style {
-  .popover.peek {
+  .surface[data-peek] {
     opacity: 0;
     transform: scale(0.92);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .popover,
-  .popover-backdrop {
+  .surface,
+  .backdrop {
     transition: none !important;
   }
-  .popover-loading::after {
+  .loading::after {
     animation: none;
   }
 }

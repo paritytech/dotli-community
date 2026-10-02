@@ -116,7 +116,7 @@ async function renderPopover(): Promise<void> {
 }
 
 function isOpen(): boolean {
-  return byId('permissions-popover').classList.contains('open');
+  return byId('permissions-popover').hasAttribute('data-open');
 }
 
 /** Open the popover, and wait for its body (its own chunk). */
@@ -222,8 +222,8 @@ function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Permissions');
   expect(popover.getAttribute('tabindex')).toBe('-1');
-  expect(popover.classList.contains('open')).toBe(opts.open);
-  const body = query(popover, ':scope > .popover-body');
+  expect(popover.hasAttribute('data-open')).toBe(opts.open);
+  const body = query(popover, ':scope > [data-testid="popover-body"]');
   if (!opts.open) {
     expect(body.childElementCount).toBe(0);
     return;
@@ -264,8 +264,8 @@ function expectPermissionsButton(open: boolean): void {
 /** The backdrop: the shared Popover's, open with the popover. */
 function expectBackdrop(open: boolean): void {
   const backdrop = byId('permissions-popover-backdrop');
-  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
-  expect(backdrop.classList.contains('open')).toBe(open);
+  expect(backdrop.getAttribute('data-testid')).toBe('popover-backdrop');
+  expect(backdrop.hasAttribute('data-open')).toBe(open);
 }
 
 describe('PermissionsPopover', () => {
@@ -651,7 +651,7 @@ describe('PermissionsPopover', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(byId('permissions-popover-backdrop').classList.contains('open')).toBe(false);
+    expect(byId('permissions-popover-backdrop').hasAttribute('data-open')).toBe(false);
   });
 
   it('As a user, the button toggles the popover, and a blocking modal coming up closes it', async () => {

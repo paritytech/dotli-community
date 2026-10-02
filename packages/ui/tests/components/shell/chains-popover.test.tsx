@@ -139,7 +139,7 @@ async function settle(): Promise<void> {
 }
 
 function isOpen(): boolean {
-  return byId('chains-popover').classList.contains('open');
+  return byId('chains-popover').hasAttribute('data-open');
 }
 
 function press(key: string): void {
@@ -178,7 +178,7 @@ async function closePopover(): Promise<void> {
 }
 
 function body(): HTMLElement {
-  return query(byId('chains-popover'), ':scope > .popover-body');
+  return query(byId('chains-popover'), ':scope > [data-testid="popover-body"]');
 }
 
 /** What the open popover's body shows for one chain. */

@@ -82,7 +82,7 @@ function renderPopover(
 
 const surface = (): HTMLElement => byId('test-popover');
 const trigger = (): HTMLElement => byId('test-trigger');
-const isOpen = (): boolean => surface().classList.contains('open');
+const isOpen = (): boolean => surface().hasAttribute('data-open');
 
 beforeEach(() => {
   stubViewport(false);
@@ -119,7 +119,7 @@ describe('Popover', () => {
     // Then: open, loading until the chunk arrives, then the content.
     expect(isOpen()).toBe(true);
     expect(trigger().getAttribute('aria-expanded')).toBe('true');
-    expect(surface().querySelector('.popover-body > .popover-loading')).not.toBeNull();
+    expect(surface().querySelector('[data-testid="popover-body"] > [data-testid="popover-loading"]')).not.toBeNull();
     release();
     const body = await waitForContent('test-popover');
     expect(body.querySelector('#body')).not.toBeNull();
@@ -215,14 +215,14 @@ describe('Popover', () => {
     renderPopover(Content, { backdrop: true });
     await settle();
     const backdrop = byId('test-popover-backdrop');
-    expect(backdrop.classList.contains('open')).toBe(false);
+    expect(backdrop.hasAttribute('data-open')).toBe(false);
 
     // When
     mouseClick(trigger());
     await settle();
 
     // Then
-    expect(backdrop.classList.contains('open')).toBe(true);
+    expect(backdrop.hasAttribute('data-open')).toBe(true);
 
     // When
     pointerPress(backdrop);
@@ -382,8 +382,8 @@ describe('Popover', () => {
     await waitForContent('second');
 
     // Then
-    expect(byId('first').classList.contains('open')).toBe(false);
-    expect(byId('second').classList.contains('open')).toBe(true);
+    expect(byId('first').hasAttribute('data-open')).toBe(false);
+    expect(byId('second').hasAttribute('data-open')).toBe(true);
   });
 
   it('As the shell, a popover that was never opened keeps no timer running', async () => {
@@ -512,15 +512,18 @@ describe('Popover', () => {
     await waitForContent('test-popover');
 
     // Then
-    expect(surface().classList.contains('sheet')).toBe(true);
+    expect(surface().hasAttribute('data-sheet')).toBe(true);
     expect(surface().getAttribute('aria-modal')).toBe('true');
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
-    expect(byId('test-popover-backdrop').classList.contains('open')).toBe(true);
-    const header = must(surface().querySelector<HTMLElement>(':scope > .popover-sheet-header'), 'sheet header');
-    expect(header.querySelector('.popover-sheet-title')?.textContent).toBe('Test');
+    expect(byId('test-popover-backdrop').hasAttribute('data-open')).toBe(true);
+    const header = must(
+      surface().querySelector<HTMLElement>(':scope > [data-testid="popover-sheet-header"]'),
+      'sheet header',
+    );
+    expect(header.querySelector('[data-testid="popover-sheet-title"]')?.textContent).toBe('Test');
 
     // When
-    mouseClick(must(header.querySelector<HTMLElement>('.popover-sheet-close'), 'close'));
+    mouseClick(must(header.querySelector<HTMLElement>('[data-testid="popover-sheet-close"]'), 'close'));
     await settle();
 
     // Then
@@ -540,7 +543,7 @@ describe('Popover', () => {
     await waitForContent('test-popover');
 
     // When
-    mouseClick(must(surface().querySelector<HTMLElement>('.popover-sheet-close'), 'close'));
+    mouseClick(must(surface().querySelector<HTMLElement>('[data-testid="popover-sheet-close"]'), 'close'));
     await settle();
     vi.advanceTimersByTime(EXIT_MS);
     await settle();
@@ -568,17 +571,17 @@ describe('Popover', () => {
     await settle();
 
     // Then
-    expect(surface().classList.contains('sheet')).toBe(true);
+    expect(surface().hasAttribute('data-sheet')).toBe(true);
 
     // When
-    mouseClick(surface().querySelector<HTMLElement>('.popover-sheet-close') ?? surface());
+    mouseClick(surface().querySelector<HTMLElement>('[data-testid="popover-sheet-close"]') ?? surface());
     await settle();
     mouseClick(trigger());
     await settle();
 
     // Then
-    expect(surface().classList.contains('sheet')).toBe(false);
-    expect(surface().querySelector('.popover-sheet-header')).toBeNull();
+    expect(surface().hasAttribute('data-sheet')).toBe(false);
+    expect(surface().querySelector('[data-testid="popover-sheet-header"]')).toBeNull();
   });
 
   describe('swipe', () => {
@@ -602,7 +605,7 @@ describe('Popover', () => {
       mouseClick(trigger());
       await waitForContent('test-popover');
       vi.spyOn(surface(), 'offsetHeight', 'get').mockReturnValue(400);
-      return must(surface().querySelector<HTMLElement>('.popover-sheet-header'), 'header');
+      return must(surface().querySelector<HTMLElement>('[data-testid="popover-sheet-header"]'), 'header');
     }
 
     it('As a phone user, a slow swipe down past 30% of the sheet closes it', async () => {
@@ -632,7 +635,7 @@ describe('Popover', () => {
       await settle();
       expect(isOpen()).toBe(true);
       expect(surface().style.transform).toBe('');
-      expect(surface().classList.contains('dragging')).toBe(false);
+      expect(surface().hasAttribute('data-dragging')).toBe(false);
     });
 
     it('As a phone user scrolling the sheet, a drag on its content neither moves nor closes it', async () => {
@@ -697,7 +700,7 @@ describe('Popover', () => {
     await settle();
 
     // Then
-    expect(surface().classList.contains('anchor-trigger')).toBe(true);
+    expect(surface().getAttribute('data-anchor')).toBe('trigger');
     expect(surface().style.top).toBe('36px');
     expect(surface().style.left).toBe('40px');
   });
@@ -751,7 +754,7 @@ describe('Popover', () => {
     await waitForContent('test-popover');
 
     // Then
-    expect(surface().classList.contains('peek')).toBe(true);
+    expect(surface().hasAttribute('data-peek')).toBe(true);
     expect(trigger().getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(byId('outside'));
 
@@ -761,6 +764,6 @@ describe('Popover', () => {
     await settle();
 
     // Then
-    expect(surface().classList.contains('peek')).toBe(false);
+    expect(surface().hasAttribute('data-peek')).toBe(false);
   });
 });

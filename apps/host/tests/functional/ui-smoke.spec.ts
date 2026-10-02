@@ -105,7 +105,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
-    await expect(page.locator('#mode-popover')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
   });
 
   test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -122,24 +122,24 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#more-popover .more-row[data-item="settings"]').click();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Settings');
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
     // At the bottom edge, once it has slid up.
     await expect.poll(() => sheetBottom(sheet)).toBe(740);
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await page.locator('#more-button').click();
     await page.locator('#more-popover .more-row[data-item="settings"]').click();
-    await expect(sheet).toHaveClass(/\bopen\b/);
+    await expect(sheet).toHaveAttribute('data-open');
     await expect.poll(() => sheetBottom(sheet)).toBe(740);
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -148,7 +148,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a phone user, Permissions opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -162,7 +162,7 @@ test.describe('Shell UI smoke', () => {
     const open = async (): Promise<void> => {
       await page.locator('#more-button').click();
       await page.locator('#more-popover .more-row[data-item="permissions"]').click();
-      await expect(sheet).toHaveClass(/\bopen\b/);
+      await expect(sheet).toHaveAttribute('data-open');
       await expect.poll(() => sheetBottom(sheet)).toBe(740);
     };
 
@@ -170,19 +170,19 @@ test.describe('Shell UI smoke', () => {
     await open();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await open();
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -191,7 +191,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
@@ -205,8 +205,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     const popover = page.locator('#permissions-popover');
-    await expect(popover).toHaveClass(/\bopen\b/);
-    await expect(popover).not.toHaveClass(/\bsheet\b/);
+    await expect(popover).toHaveAttribute('data-open');
+    await expect(popover).not.toHaveAttribute('data-sheet');
     const box = await popover.boundingBox();
     expect(box?.y ?? 0).toBeLessThan(100);
   });

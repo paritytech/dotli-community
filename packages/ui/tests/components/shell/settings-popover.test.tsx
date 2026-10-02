@@ -34,7 +34,7 @@ import {
 } from '../../../src/settings-actions.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
-import { byId, must, query } from '../../support.js';
+import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
@@ -117,7 +117,7 @@ async function drain(): Promise<void> {
 }
 
 function isOpen(): boolean {
-  return byId('mode-popover').classList.contains('open');
+  return byId('mode-popover').hasAttribute('data-open');
 }
 
 function press(key: string, init: KeyboardEventInit = {}): KeyboardEvent {
@@ -216,8 +216,8 @@ async function openPopover(): Promise<void> {
 /** The backdrop: the shared Popover's, open with the popover. */
 function expectBackdrop(open: boolean): void {
   const backdrop = byId('mode-popover-backdrop');
-  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
-  expect(backdrop.classList.contains('open')).toBe(open);
+  expect(backdrop.getAttribute('data-testid')).toBe('popover-backdrop');
+  expect(backdrop.hasAttribute('data-open')).toBe(open);
 }
 
 /** What the popover reads from @dotli/config when it opens. */
@@ -379,7 +379,7 @@ function expectPopoverMatches(settings: Settings): void {
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Settings');
   expect(popover.getAttribute('tabindex')).toBe('-1');
-  const body = query(popover, ':scope > .popover-body');
+  const body = query(popover, ':scope > [data-testid="popover-body"]');
   expect(tags(body)).toEqual(['DIV']);
   const content = nth(body.children, 0);
   expect(content.id).toBe('mode-popover-content');
@@ -430,7 +430,7 @@ describe('The settings popover island', () => {
     expectBackdrop(false);
     // The surface is the shared Popover's, and holds nothing until opened.
     expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
-    expect(query(byId('mode-popover'), ':scope > .popover-body').childElementCount).toBe(0);
+    expect(query(byId('mode-popover'), ':scope > [data-testid="popover-body"]').childElementCount).toBe(0);
   });
 
   it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
@@ -479,7 +479,7 @@ describe('The settings popover island', () => {
     // Then: no settings yet, but the sheet header and its close button are
     // there.
     expect(document.querySelector('.mode-popover-columns')).toBeNull();
-    expect(document.querySelector('.popover-sheet-close')).not.toBeNull();
+    expect(document.querySelector('[data-testid="popover-sheet-close"]')).not.toBeNull();
 
     // When
     press('Escape');
@@ -498,7 +498,7 @@ describe('The settings popover island', () => {
 
     // When
     await openPopover();
-    query(document, '.popover-sheet-close').click();
+    byTestId('popover-sheet-close').click();
     await settle();
 
     // Then
@@ -855,7 +855,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').classList.contains('open')).toBe(false);
+    expect(byId('mode-popover-backdrop').hasAttribute('data-open')).toBe(false);
     expect(byId('mode-button').getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(byId('mode-button'));
   });
@@ -929,7 +929,7 @@ describe('The settings popover island', () => {
     expect(isOpen()).toBe(true);
 
     // When
-    query(document, '.popover-sheet-close').click();
+    byTestId('popover-sheet-close').click();
     await settle();
 
     // Then
@@ -976,7 +976,7 @@ describe('The settings popover island', () => {
 
     // Then
     expect(isOpen()).toBe(false);
-    expect(byId('mode-popover-backdrop').classList.contains('open')).toBe(false);
+    expect(byId('mode-popover-backdrop').hasAttribute('data-open')).toBe(false);
   });
 
   it('As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal', async () => {
@@ -1013,7 +1013,7 @@ describe('The settings popover island', () => {
     expect(isOpen()).toBe(true);
 
     // When
-    query(document, '.popover-sheet-close').click();
+    byTestId('popover-sheet-close').click();
     await settle();
 
     // Then

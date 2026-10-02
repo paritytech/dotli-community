@@ -34,7 +34,7 @@ async function renderAccount(session?: TruapiSessionUiState): Promise<HTMLElemen
 }
 
 function isOpen(): boolean {
-  return byId('user-popover').classList.contains('open');
+  return byId('user-popover').hasAttribute('data-open');
 }
 
 /**
@@ -47,8 +47,8 @@ function expectMarkup(popover: Element, opts: { username: string; hint: boolean;
   expect(popover.getAttribute('aria-label')).toBe('Welcome back');
   expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.classList.contains('user-popover')).toBe(true);
-  expect(popover.classList.contains('open')).toBe(opts.open);
-  const body = query(popover, ':scope > .popover-body');
+  expect(popover.hasAttribute('data-open')).toBe(opts.open);
+  const body = query(popover, ':scope > [data-testid="popover-body"]');
   expect(Array.from(body.children).map(child => child.tagName)).toEqual(['DIV', 'DIV', 'BUTTON']);
   const [nameBlock, divider, disconnect] = Array.from(body.children) as [HTMLElement, HTMLElement, HTMLElement];
   const nameParts = Array.from(nameBlock.children);

@@ -78,8 +78,8 @@ describe('Topbar actions island', () => {
 
       // Then
       expect(byId('more-popover').classList.contains('open')).toBe(false);
-      expect(byId('permissions-popover').classList.contains('open')).toBe(true);
-      expect(byId('permissions-popover-backdrop').classList.contains('open')).toBe(true);
+      expect(byId('permissions-popover').hasAttribute('data-open')).toBe(true);
+      expect(byId('permissions-popover-backdrop').hasAttribute('data-open')).toBe(true);
       expect(document.activeElement).toBe(byId('permissions-popover'));
       // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
@@ -118,7 +118,7 @@ describe('Topbar actions island', () => {
     // Then
     expect(byId('theme-popover').classList.contains('open')).toBe(false);
     expect(byId('more-popover').classList.contains('open')).toBe(false);
-    expect(byId('mode-popover').classList.contains('open')).toBe(true);
+    expect(byId('mode-popover').hasAttribute('data-open')).toBe(true);
   });
 
   it("As a mobile user, once a product is on screen the More menu's Network row opens the network panel", async () => {
@@ -140,7 +140,7 @@ describe('Topbar actions island', () => {
     // Then
     expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(byId('more-button').getAttribute('aria-expanded')).toBe('false');
-    expect(byId('chains-popover').classList.contains('open')).toBe(true);
+    expect(byId('chains-popover').hasAttribute('data-open')).toBe(true);
     expect(byId('chains-button').getAttribute('aria-expanded')).toBe('true');
   });
 

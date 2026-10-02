@@ -9,8 +9,8 @@ import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
 
 /**
- * The viewport where a popover opens as a bottom sheet (Popover.tsx), the
- * breakpoint of `.popover.sheet` in styles/popover.css.
+ * The viewport where a popover opens as a bottom sheet (Popover.tsx), which
+ * marks its surface `data-sheet` for that opening.
  */
 export const SHEET_QUERY = '(max-width: 560px)';
 
@@ -162,8 +162,8 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * Open state, focus and dismissal of a shell surface, shared by the shell's
  * islands, behaving like the Radix UI v1 primitive its `mode` names (see
  * PopoverMode for the markup each mode expects). The component renders the
- * open state (`.open`, `aria-expanded`) and wires the trigger's click to
- * `toggle`.
+ * open state (`data-open` on the surface, `aria-expanded` on the trigger)
+ * and wires the trigger's click to `toggle`.
  *
  * In every mode, opening focuses the first tabbable element in the surface,
  * or the surface itself when it has a tabindex; Escape closes and hands

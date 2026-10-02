@@ -26,17 +26,17 @@ function panel(): HTMLElement {
   return byId(VERIFICATION_TOOLTIP_ID);
 }
 
-// topbar-autohide.ts finds open surfaces by this id and the `.open` class.
+// Open: the surface carries data-open and the button says it is expanded.
 function isOpen(): boolean {
   return (
     panel().id === 'verification-tooltip' &&
-    panel().classList.contains('open') &&
+    panel().hasAttribute('data-open') &&
     button().getAttribute('aria-expanded') === 'true'
   );
 }
 
 function isClosed(): boolean {
-  return !panel().classList.contains('open') && button().getAttribute('aria-expanded') === 'false';
+  return !panel().hasAttribute('data-open') && button().getAttribute('aria-expanded') === 'false';
 }
 
 function rowFor(state: string): HTMLElement {

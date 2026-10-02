@@ -439,10 +439,7 @@
   #topbar {
     background: rgb(30, 30, 30);
   }
-  .more-popover,
-  .user-popover,
-  .mode-popover,
-  .permissions-popover {
+  .more-popover {
     background: rgba(20, 20, 20, 0.97);
   }
 }
@@ -516,36 +513,36 @@
   text-align: left;
   z-index: 1600;
 }
-.popover.sheet.verification-tooltip {
+.verification-tooltip[data-sheet] {
   width: 100%;
   padding: 0;
   border-radius: 16px 16px 0 0;
 }
-.popover.sheet.verification-tooltip > .popover-body {
+.verification-tooltip[data-sheet] > :last-child {
   padding: 12px 14px;
 }
 /* In a sheet, which scrolls, a row's dropdown opens as a list under its row
    instead of floating past the sheet's bottom edge. */
-.popover.sheet .permissions-popover-row {
+[data-sheet] .permissions-popover-row {
   flex-wrap: wrap;
 }
-.popover.sheet .permissions-popover-select-wrap {
+[data-sheet] .permissions-popover-select-wrap {
   display: contents;
 }
-.popover.sheet .permissions-popover-menu {
+[data-sheet] .permissions-popover-menu {
   position: static;
   flex-basis: 100%;
   margin-top: 4px;
 }
 /* The sheet's header names it: the content's own heading would repeat it. */
-.popover.sheet .verification-tooltip-title,
-.popover.sheet .permissions-popover-header,
-.popover.sheet.chains-popover .popover-body > .mode-popover-section:first-child {
+[data-sheet] .verification-tooltip-title,
+[data-sheet] .permissions-popover-header,
+.chains-popover[data-sheet] .mode-popover-section:first-child {
   display: none;
 }
 /* The network sheet: no More-menu padding or gap above the sheet's header,
    and its own bottom breathing room back. */
-.popover.sheet.chains-popover {
+.more-popover.chains-popover[data-sheet] {
   gap: 0;
   padding: 0 0 calc(8px + var(--safe-bottom));
 }
@@ -637,7 +634,6 @@
 .user-popover {
   top: calc(var(--topbar-height) + 4px);
   width: 220px;
-  background: rgba(18, 18, 18, 0.92);
   overflow: hidden;
 }
 .user-popover-name {
@@ -722,20 +718,15 @@
   display: flex;
   flex-direction: column;
 }
-/* In a sheet (popover.css): one column, and Save & Apply pinned to the
-   sheet's bottom. */
-.popover.sheet.mode-popover {
-  padding-bottom: 0;
-}
-.popover.sheet .mode-popover-columns {
+[data-sheet] .mode-popover-columns {
   grid-template-columns: 1fr;
 }
-.popover.sheet .mode-popover-content {
+[data-sheet] .mode-popover-content {
   display: flex;
   flex-direction: column;
   min-height: 100%;
 }
-.popover.sheet .mode-apply-footer {
+[data-sheet] .mode-apply-footer {
   position: sticky;
   bottom: 0;
   z-index: 1;
@@ -745,10 +736,10 @@
   -webkit-backdrop-filter: blur(24px) saturate(180%);
   backdrop-filter: blur(24px) saturate(180%);
 }
-.popover.sheet .mode-apply-footer .mode-apply-row {
+[data-sheet] .mode-apply-footer .mode-apply-row {
   padding-top: 0;
 }
-.popover.sheet .mode-apply-footer .mode-popover-divider {
+[data-sheet] .mode-apply-footer .mode-popover-divider {
   display: none;
 }
 .mode-popover-header {
@@ -879,11 +870,6 @@
   outline: 2px solid #737373;
   outline-offset: -2px;
   border-radius: 6px;
-}
-.mode-popover:focus-visible,
-.permissions-popover:focus-visible,
-.user-popover:focus-visible {
-  outline: none;
 }
 .mode-radio-row.disabled {
   cursor: not-allowed;
@@ -1086,7 +1072,6 @@
    width. */
 .permissions-popover {
   width: 340px;
-  background: rgba(20, 20, 20, 0.82);
   /* `overflow: visible` lets the dropdown menus escape the popover's
      bounds; rows handle their own clipping via hover background. */
   overflow: visible;

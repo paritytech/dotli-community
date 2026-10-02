@@ -77,6 +77,7 @@ export function SettingsPopover(): JSX.Element {
       title="Settings"
       class="mode-popover"
       backdrop
+      sheetInset={false}
       content={Settings}
       open={open()}
       onOpenChange={setSettingsOpen}
