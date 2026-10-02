@@ -216,6 +216,12 @@ export function astroLazyCss(): AstroIntegration {
       if (this.environment.name !== 'client') {
         return;
       }
+      // The page loads its overlays, chat and debug panel on demand, so
+      // finding no lazy sheet means Astro stripped them before this ran,
+      // and the checks below would pass without checking anything.
+      if (lazy.size === 0) {
+        throw new Error('astroLazyCss: found no lazy sheet: check astroLazyCss against this Astro version');
+      }
       for (const file of lazy) {
         if (!(file in bundle)) {
           throw new Error(
