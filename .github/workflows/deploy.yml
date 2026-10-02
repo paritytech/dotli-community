@@ -191,7 +191,7 @@ jobs:
         run: npm run test:smoke:products -- --output=test-results/products
         env:
           DOTLI_SMOKE_ROOT: ${{ matrix.environment }}
-          DOTLI_WEBGPU: "1"
+          DOTLI_WEBGPU: '1'
 
       # Capability coverage against the deployed host: the paired E2E suite
       # only ever talks to a local build, so without this a deployment could

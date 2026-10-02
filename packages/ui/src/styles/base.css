@@ -102,8 +102,8 @@ body:has(#topbar[data-landing]) #app-loading {
   text-align: center;
 }
 /* A mounted product owns the viewport; landing and settings still scroll. */
-html:has(#app iframe:not([aria-hidden="true"])),
-body:has(#app iframe:not([aria-hidden="true"])) {
+html:has(#app iframe:not([aria-hidden='true'])),
+body:has(#app iframe:not([aria-hidden='true'])) {
   height: 100dvh;
   overflow: hidden;
   overscroll-behavior: none;

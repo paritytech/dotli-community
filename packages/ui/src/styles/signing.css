@@ -11,8 +11,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right))
-    calc(16px + var(--safe-bottom)) calc(16px + var(--safe-left));
+  padding: calc(16px + var(--safe-top)) calc(16px + var(--safe-right)) calc(16px + var(--safe-bottom))
+    calc(16px + var(--safe-left));
   overflow-y: auto;
 }
 .signing-modal {
