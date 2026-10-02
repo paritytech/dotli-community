@@ -4,6 +4,7 @@
 // Raw chainHead-backed contract storage, without runtime calls or metadata.
 // A logical read owns one best block across AccountInfoOf and every child slot.
 // Only current fork references and outstanding reads retain finalized history.
+// Resolve the child trie afresh for each logical read so redeploys are visible.
 
 import type { FollowResponse, SubstrateClient } from '@polkadot-api/substrate-client';
 import { StopError } from '@polkadot-api/substrate-client';

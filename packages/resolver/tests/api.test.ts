@@ -6,7 +6,7 @@ import { createClient, type SubstrateClient } from '@polkadot-api/substrate-clie
 import type { JsonRpcMessage, JsonRpcProvider, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { toHex } from '@polkadot-api/utils';
 import { createRawApi, ApiStoppedError, type Api, type ContractStorage } from '../src/api.js';
-import { readMappingBytes, readNestedMappingString } from '../src/access-raw-storage.js';
+import { readMappingAddress, readMappingBytes, readNestedMappingString } from '../src/access-raw-storage.js';
 import { PartialStorageReadError } from '../src/errors.js';
 import { createChainPool } from '@dotli/protocol';
 
@@ -306,6 +306,63 @@ describe('raw API block ownership', () => {
     expect(await second).toBe('C'.repeat(32) + 'D'.repeat(8));
     expect(new Set(chain.reads.map(op => op.hash))).toEqual(new Set(['fork']));
     expect([...chain.pinned]).toEqual(['winner']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
+
+  it('holds the snapshot between storage operations until its callback settles', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const entered = deferred<undefined>();
+    const resume = deferred<undefined>();
+    const read = api.withContract(ADDRESS, async storage => {
+      entered.resolve(undefined);
+      await resume.promise;
+      return storage.readSlot(KEY);
+    });
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await entered.promise;
+    h.advance(chain, 'next', 'root');
+    await Promise.resolve();
+    expect(chain.operations.size).toBe(0);
+    expect([...chain.pinned]).toEqual(['root', 'next']);
+    resume.resolve(undefined);
+    await h.waitReads(chain, 2);
+    h.complete(chain, 1, '0x42');
+    expect(await read).toEqual(new Uint8Array([0x42]));
+    expect(required(chain.reads[1]).hash).toBe('root');
+    expect([...chain.pinned]).toEqual(['next']);
+    expect(h.violations).toEqual([]);
+    api.destroy();
+    h.client.destroy();
+  });
+
+  it('pins owner lookups while a redeploy gives later reads a fresh contract trie', async () => {
+    const h = server();
+    const { api, chain } = await h.open();
+    const first = readMappingAddress(api, ADDRESS, KEY, 0);
+    await h.waitReads(chain, 1);
+    h.complete(chain, 0, ACCOUNT);
+    await h.waitReads(chain, 2);
+    h.advance(chain, 'redeployed', 'root');
+    const second = readMappingAddress(api, ADDRESS, KEY, 0);
+    await h.waitReads(chain, 3);
+    h.complete(chain, 2, '0x0004bb');
+    await h.waitReads(chain, 4);
+    expect([...chain.pinned]).toEqual(['root', 'redeployed']);
+    expect(chain.reads.map(({ hash, child }) => ({ hash, child }))).toEqual([
+      { hash: 'root', child: null },
+      { hash: 'root', child: '0xaa' },
+      { hash: 'redeployed', child: null },
+      { hash: 'redeployed', child: '0xbb' },
+    ]);
+    h.complete(chain, 1, `0x${'00'.repeat(12)}${'11'.repeat(20)}`);
+    expect(await first).toBe(`0x${'11'.repeat(20)}`);
+    expect([...chain.pinned]).toEqual(['redeployed']);
+    h.complete(chain, 3, `0x${'00'.repeat(12)}${'22'.repeat(20)}`);
+    expect(await second).toBe(`0x${'22'.repeat(20)}`);
     expect(h.violations).toEqual([]);
     api.destroy();
     h.client.destroy();
