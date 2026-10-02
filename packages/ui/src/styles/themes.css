@@ -195,52 +195,6 @@
      own secondary line. */
   color: #6b6b6b;
 }
-[data-theme='light'] .spinner {
-  border-color: #ddd;
-  border-top-color: #333;
-}
-[data-theme='light'] .error-page-title {
-  color: #202124;
-}
-[data-theme='light'] .error-page-detail,
-[data-theme='light'] .error-page-tips {
-  color: #666;
-}
-[data-theme='light'] .error-page-retry {
-  color: #1a1a1a;
-  background: transparent;
-  border-color: rgba(0, 0, 0, 0.24);
-}
-[data-theme='light'] .error-page-retry:hover {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.4);
-}
-[data-theme='light'] .error-page-retry--primary {
-  color: #fafafa;
-  background: #1a1a1a;
-  border-color: #1a1a1a;
-}
-[data-theme='light'] .error-page-retry--primary:hover {
-  background: #000;
-  border-color: #000;
-}
-[data-theme='light'] .error-page-glyph {
-  color: rgba(0, 0, 0, 0.22);
-}
-[data-theme='light'] .error-page-glyph--warning {
-  color: #d93025;
-}
-[data-theme='light'] .error-page-inner--unreached .error-page-detail {
-  color: #555;
-}
-[data-theme='light'] .error-page-domain {
-  color: #111;
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.1);
-}
-[data-theme='light'] .error-page-domain-tld {
-  color: rgba(0, 0, 0, 0.45);
-}
 
 [data-theme='light'] .permissions-popover-header {
   color: rgba(0, 0, 0, 0.5);

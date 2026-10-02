@@ -67,7 +67,7 @@ export async function getProductFrame(page: Page, timeoutMs: number): Promise<Fr
   // Never settles when no error page shows up, so its own timeout cannot win
   // the race with a misleading locator error.
   const failed = frame
-    .locator('.error-page-title')
+    .getByTestId('error-page-title')
     .first()
     .waitFor({ timeout: remaining })
     .then(async () => ({
@@ -123,7 +123,7 @@ export function assertNoContractKeys(search: string): void {
 async function readErrorText(scope: Page | Frame): Promise<string> {
   const title =
     (await scope
-      .locator('.error-page-title')
+      .getByTestId('error-page-title')
       .first()
       .textContent()
       .catch(() => '')) ?? '';
@@ -132,7 +132,7 @@ async function readErrorText(scope: Page | Frame): Promise<string> {
   }
   const detail =
     (await scope
-      .locator('.error-page-detail')
+      .getByTestId('error-page-detail')
       .first()
       .textContent()
       .catch(() => '')) ?? '';
@@ -142,7 +142,7 @@ async function readErrorText(scope: Page | Frame): Promise<string> {
 /** Wait for the host's error page; returns "title: detail" or "" on timeout. */
 export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<string> {
   try {
-    await page.locator('.error-page-title').first().waitFor({ timeout: timeoutMs });
+    await page.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
   } catch {
     return '';
   }
@@ -152,7 +152,7 @@ export async function waitForErrorPage(page: Page, timeoutMs: number): Promise<s
 /**
  * Wait for an error page rendered INSIDE the sandbox iframe (e.g. validator
  * failures from `validateSandboxParams`). The sandbox calls `showError(...)`
- * which writes `.error-page-title` / `.error-page-detail` into the sandbox
+ * which writes the `error-page-title` / `error-page-detail` test ids into the sandbox
  * Frame's DOM. This never reaches the host page, and `dotli:app:end` never
  * fires on validation failure, so the regular helpers don't apply.
  *
@@ -164,7 +164,7 @@ export async function waitForSandboxErrorPage(page: Page, timeoutMs: number): Pr
     return '';
   }
   try {
-    await frame.locator('.error-page-title').first().waitFor({ timeout: timeoutMs });
+    await frame.getByTestId('error-page-title').first().waitFor({ timeout: timeoutMs });
   } catch {
     return '';
   }

@@ -17,7 +17,7 @@ import {
   setResolutionId,
   spans as S,
 } from '@dotli/metrics';
-import { showNotification, prefetchOverlays, showError, showPasswordPrompt } from '@dotli/ui';
+import { showNotification, prefetchOverlays, showError, showPasswordPrompt, showRetryScreen } from '@dotli/ui';
 
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
@@ -771,14 +771,7 @@ function run(): void {
           : `${raw} (via ${dependency})`;
       failLoading('Failed to load content', message, () => {
         // Restore the loading UI and re-run main
-        const app = document.getElementById('app') ?? document.body;
-        app.innerHTML = `
-        <div class="loading">
-          <h1>dot.li</h1>
-          <div class="spinner"></div>
-          <p id="status">Retrying...</p>
-        </div>
-      `;
+        showRetryScreen();
         run();
       });
     })

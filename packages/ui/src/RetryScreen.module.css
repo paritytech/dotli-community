@@ -1,0 +1,26 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The sandbox's retry screen (ui.ts showRetryScreen): a title, the spinner
+   and a status line, in plain flow on the transparent sandbox body. */
+
+.title {
+  margin: 0;
+  padding: 0;
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  /* Two lines reserved, so a status that wraps does not shift the spinner. */
+  min-height: 2.6em;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--text);
+}

@@ -78,7 +78,7 @@ async function settle(): Promise<void> {
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
   await vi.waitFor(() => {
-    expect(document.querySelector('[data-testid="landing"], .error-page')).not.toBeNull();
+    expect(document.querySelector('[data-testid="landing"], [data-testid="error-page"]')).not.toBeNull();
   });
   await settle();
 }
@@ -197,7 +197,7 @@ describe('landing page island', () => {
       expect(document.querySelector('[data-testid="landing"]')).toBeNull();
       expect(topbar.getTopbarState().landing).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
-      expect(document.querySelector('.error-page-title')?.textContent).toBe('Failed');
+      expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe('Failed');
     } finally {
       vi.useRealTimers();
     }
@@ -220,8 +220,10 @@ describe('landing page island', () => {
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'page' });
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-    expect(document.querySelector('.error-page-title')?.textContent).toBe('Something went wrong on our side');
-    expect(document.querySelector('.error-page-detail')?.textContent).toBe(
+    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe(
+      'Something went wrong on our side',
+    );
+    expect(document.querySelector('[data-testid="error-page-detail"]')?.textContent).toBe(
       "This page didn't load properly. Reloading usually fixes it.",
     );
     const button = byId('error-retry-btn') as HTMLButtonElement;
@@ -253,7 +255,7 @@ describe('landing page island', () => {
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, { root: 'page' });
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
-    expect(document.querySelectorAll('.error-page')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 
     // When
     (byId('error-retry-btn') as HTMLButtonElement).click();

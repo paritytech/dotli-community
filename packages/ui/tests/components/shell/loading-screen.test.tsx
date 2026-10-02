@@ -274,7 +274,7 @@ describe('Loading screen island', () => {
     expect(getLoadingState().phase).toBe('gone');
     expect(getLoadingState().progress).toBe(frozen);
     expect(frames.size).toBe(0);
-    expect(document.querySelector('.error-page-title')?.textContent).toBe('Failed');
+    expect(document.querySelector('[data-testid="error-page-title"]')?.textContent).toBe('Failed');
   });
 
   it('As a visitor, the landing page disposes a loading screen mounted before it', async () => {
