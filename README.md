@@ -109,6 +109,9 @@ gateway backend reads the same storage over a public RPC node instead.)
 Both resolution backends retry a stopped chain generation once at the resolver boundary, using a fresh client and the
 remaining original sync budget. A second stop is returned to the caller; protocol callers do not add another retry.
 
+The browser regression injects a stop into a real RPC storage read; replacing the whole resolver would bypass this
+recovery boundary.
+
 The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
 and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
 subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
