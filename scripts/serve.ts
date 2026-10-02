@@ -42,7 +42,7 @@
 import { createServer, type ServerResponse } from 'node:http';
 import { createReadStream, existsSync, statSync } from 'node:fs';
 import { extname, join, normalize, resolve } from 'node:path';
-import { runtimeNetworkConfigScriptBody } from '@config/vite';
+import { runtimeNetworkConfigScriptBody } from '@config/vite/runtime-network-config';
 
 const PORT = Number(process.env['PORT'] ?? '5173');
 const HOST = process.env['HOST'] ?? '127.0.0.1';

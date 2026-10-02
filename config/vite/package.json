@@ -6,7 +6,11 @@
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/vite.ts",
+    "./astro-pwa": "./src/astro-pwa.ts",
+    "./build-info": "./src/build-info-plugin.ts",
+    "./build-options": "./src/build-options.ts",
+    "./runtime-network-config": "./src/runtime-network-config-plugin.ts",
+    "./social-meta": "./src/social-meta-plugin.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
