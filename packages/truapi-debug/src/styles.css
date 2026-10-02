@@ -141,10 +141,7 @@
    viewport height. Events list on top, inspector on the bottom. The
    resize handle moves from the top edge to a 5px column on the left. */
 #truapi-debug-panel.docked-right {
-  top: max(
-    var(--safe-top, 0px),
-    var(--debug-content-top, var(--topbar-height, 0px))
-  );
+  top: max(var(--safe-top, 0px), var(--debug-content-top, var(--topbar-height, 0px)));
   right: 0;
   bottom: 0;
   left: auto;
@@ -460,20 +457,20 @@
 .td-wallet-username strong {
   font-weight: 600;
 }
-.td-wallet-username[data-state="pending"],
-.td-wallet-username[data-state="checking"] {
+.td-wallet-username[data-state='pending'],
+.td-wallet-username[data-state='checking'] {
   border-left-color: #38bdf8;
 }
-.td-wallet-username[data-stage="retrying"] {
+.td-wallet-username[data-stage='retrying'] {
   border-left-color: #fbbf24;
 }
-.td-wallet-username[data-state="claimed"] {
+.td-wallet-username[data-state='claimed'] {
   border-left-color: #4ade80;
 }
-.td-wallet-username[data-state="unclaimed"] {
+.td-wallet-username[data-state='unclaimed'] {
   border-left-color: #a3a3a3;
 }
-.td-wallet-username[data-state="failed"] {
+.td-wallet-username[data-state='failed'] {
   border-left-color: #f87171;
 }
 .td-wallet-view .td-wallet-username-input {

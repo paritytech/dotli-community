@@ -143,7 +143,7 @@ jobs:
       # network bump can't silently leave the CLI on the wrong chain.
       SIGNING_HOST_NETWORK: paseo-next-v2
       # The product must query the same Asset Hub as the host and signing CLI.
-      NEXT_PUBLIC_NETWORK_GENESIS_HASH: "0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a"
+      NEXT_PUBLIC_NETWORK_GENESIS_HASH: '0x4349b00e54897e21196fd331015fc5be0f14e118beb0375ed2bb1793737bb57a'
       # The CLI self-updates by default; keep CI runs deterministic.
       TRUAPI_HOST_NO_UPDATE: '1'
       E2E_PRODUCT_REPO: ${{ github.workspace }}/.build/e2e-host-playground
@@ -182,7 +182,6 @@ jobs:
             read -r toolchain < .signing-host-src/nightly-toolchain
           fi
           echo "toolchain=$toolchain" >> "$GITHUB_OUTPUT"
-
 
       - name: Setup nightly Rust for codegen
         uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
@@ -238,7 +237,7 @@ jobs:
           # this from repo vars; the test build needs its own value.
           VITE_NETWORKS: paseo-next-v2,previewnet
           # The fixture is served through dotli's existing loopback-only proxy.
-          VITE_APP_DEBUG: "true"
+          VITE_APP_DEBUG: 'true'
         run: npx turbo run build
 
       # Exit code 99 from playwright = pairing/signing infrastructure down

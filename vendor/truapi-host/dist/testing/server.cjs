@@ -59,6 +59,9 @@ function hostPageUrl(base, config) {
     url.searchParams.set("topology", config.topology);
   if (config.allowances)
     url.searchParams.set("allowances", config.allowances);
+  if (config.withheldResources?.length) {
+    url.searchParams.set("withheld", config.withheldResources.join(","));
+  }
   if (config.logLevel)
     url.searchParams.set("logLevel", config.logLevel);
   return url.toString();

@@ -120,12 +120,7 @@
 /* No WebGL: a still ring from the same three colours. */
 .profile-mood-ring-static {
   border-radius: 50%;
-  background: conic-gradient(
-    var(--ring-a),
-    var(--ring-b),
-    var(--ring-c),
-    var(--ring-a)
-  );
+  background: conic-gradient(var(--ring-a), var(--ring-b), var(--ring-c), var(--ring-a));
   -webkit-mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
   mask: radial-gradient(circle, transparent 54%, #000 55%, #000 60%, transparent 61%);
 }
