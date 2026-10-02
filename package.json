@@ -27,7 +27,8 @@
     "set-version": "node scripts/set-version.ts",
     "link:truapi": "node scripts/link-truapi-local.ts",
     "unlink:truapi": "node scripts/unlink-truapi-local.ts",
-    "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
+    "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +",
+    "prepare": "husky"
   },
   "devDependencies": {
     "@config/eslint": "*",
@@ -36,6 +37,8 @@
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
     "happy-dom": "^20.14.5",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
     "prettier": "3.9.9",
     "prettier-plugin-astro": "1.1.0",
     "terser": "^5.51.2",
