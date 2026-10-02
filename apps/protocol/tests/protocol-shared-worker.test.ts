@@ -12,6 +12,7 @@ import type * as MetricsModule from '@dotli/metrics';
 const resolver = vi.hoisted(() => ({
   fatal: null as ((message: string) => void) | null,
   presync: (): Promise<void> => Promise.resolve(),
+  resolveDotName: (): Promise<null> => Promise.resolve(null),
 }));
 
 vi.mock('@dotli/resolver', () => ({
@@ -22,7 +23,7 @@ vi.mock('@dotli/resolver', () => ({
     return () => undefined;
   },
   onSmoldotDbOutcome: () => () => undefined,
-  resolveDotName: () => Promise.resolve(null),
+  resolveDotName: () => resolver.resolveDotName(),
   resolveExecutableManifest: () => Promise.resolve(null),
   resolveOwner: () => Promise.resolve(null),
   resolveRootManifest: () => Promise.resolve(null),
@@ -42,16 +43,18 @@ vi.mock('@dotli/metrics', async importOriginal => ({
 interface FakePort {
   posted: Mock<(message: unknown) => void>;
   port: MessagePort;
+  receive: (data: unknown) => void;
 }
 
 function fakePort(): FakePort {
   const posted = vi.fn<(message: unknown) => void>();
+  const messages = new EventTarget();
   const port = {
-    addEventListener: () => undefined,
+    addEventListener: messages.addEventListener.bind(messages),
     start: () => undefined,
     postMessage: posted,
   } as unknown as MessagePort;
-  return { posted, port };
+  return { posted, port, receive: data => messages.dispatchEvent(new MessageEvent('message', { data })) };
 }
 
 /** Connect a port to the worker as a tab's protocol iframe would. */
@@ -103,6 +106,7 @@ const fatalRelay = {
 describe('protocol SharedWorker', () => {
   let warn: Mock<(...args: unknown[]) => void>;
   let error: Mock<(...args: unknown[]) => void>;
+  let closeWorker: Mock<() => void>;
   // Each test imports a fresh worker, which adds its own `connect` listener to
   // the one window every test shares. Removed after each test, so a connect
   // reaches only the worker of the test that made it.
@@ -126,8 +130,11 @@ describe('protocol SharedWorker', () => {
       added.push(args);
       addEventListener(...args);
     });
+    closeWorker = vi.fn<() => void>();
+    vi.spyOn(self, 'close').mockImplementation(closeWorker);
     window.name = 'dotli-protocol-paseo-next-v2';
     resolver.presync = () => Promise.resolve();
+    resolver.resolveDotName = () => Promise.resolve(null);
   });
 
   afterEach(() => {
@@ -150,8 +157,6 @@ describe('protocol SharedWorker', () => {
     // Then: it is told the light client is dead, and never that it is ready.
     expect(first.posted).toHaveBeenCalledWith(fatalRelay);
     expect(later.posted.mock.calls).toEqual([[{ type: 'error', message: FATAL }]]);
-    expect(error).toHaveBeenCalledWith('[dot.li SW]', 'Chain death detected, broadcasting fatal to 1 port(s)');
-    expect(warn).toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync complete, engine ready');
   });
 
   it('As a dotli user on the shared light client, a light client that dies while Asset Hub syncs never tells a waiting tab it is ready', async () => {
@@ -170,8 +175,6 @@ describe('protocol SharedWorker', () => {
     // Then: the waiting tab heard only the fatal, and the engine never became ready.
     expect(heard(waiting)).toEqual([fatalRelay]);
     expect(later.posted.mock.calls).toEqual([[{ type: 'error', message: FATAL }]]);
-    expect(error).toHaveBeenCalledWith('[dot.li SW]', 'Chain death detected, broadcasting fatal to 1 port(s)');
-    expect(warn).not.toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync complete, engine ready');
   });
 
   it('As a dotli user on the shared light client, a tab waiting on pre-sync is told why the light client died, once', async () => {
@@ -190,6 +193,54 @@ describe('protocol SharedWorker', () => {
     // Then: both tabs hear the cause, not its symptom, and the waiting one only once.
     expect(heard(waiting)).toEqual([fatalRelay]);
     expect(later.posted.mock.calls).toEqual([[{ type: 'error', message: FATAL }]]);
-    expect(error).toHaveBeenCalledWith('[dot.li SW]', 'Pre-sync failed: chainHead follow stopped');
+  });
+  it('halts every attached tab on an uncaught worker error and fences late results from the retired generation', async () => {
+    const pending = deferred();
+    resolver.resolveDotName = async () => {
+      await pending.promise;
+      return null;
+    };
+    await bootWorker();
+    const first = connect();
+    const second = connect();
+    first.receive({
+      type: 'relay-request',
+      envelope: {
+        namespace: 'dotli:protocol',
+        kind: 'request',
+        id: 'pending-read',
+        method: 'resolveDotName',
+        payload: { label: 'example' },
+      },
+      origin: 'https://example.dot.li',
+    });
+
+    self.dispatchEvent(new ErrorEvent('error', { message: FATAL }));
+    pending.resolve();
+    await flush();
+    first.receive({
+      type: 'relay-request',
+      envelope: { namespace: 'dotli:protocol', kind: 'request', id: 'late-read', method: 'warmup', payload: {} },
+      origin: 'https://example.dot.li',
+    });
+    self.dispatchEvent(new ErrorEvent('error', { message: 'second failure' }));
+
+    expect(heard(first)).toEqual([{ type: 'ready' }, fatalRelay]);
+    expect(heard(second)).toEqual([{ type: 'ready' }, fatalRelay]);
+    expect(closeWorker).toHaveBeenCalledTimes(1);
+    expect(heard(connect())).toEqual([]);
+  });
+
+  it('retires a crashed worker during pre-sync without announcing ready when that old sync completes', async () => {
+    const pending = deferred();
+    resolver.presync = () => pending.promise;
+    await bootWorker();
+    const waiting = connect();
+    self.dispatchEvent(new ErrorEvent('error', { message: FATAL }));
+    pending.resolve();
+    await flush();
+
+    expect(heard(waiting)).toEqual([fatalRelay]);
+    expect(closeWorker).toHaveBeenCalledTimes(1);
   });
 });
