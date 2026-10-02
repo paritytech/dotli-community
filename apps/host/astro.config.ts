@@ -17,14 +17,10 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
 import astroSolid from '@config/astro-solid';
-import {
-  appBuildOptions,
-  astroPwa,
-  rolldownOptions,
-  buildInfo,
-  readPackageVersion,
-  runtimeNetworkConfigScript,
-} from '@config/vite';
+import { astroPwa } from '@config/vite/astro-pwa';
+import { buildInfo, readPackageVersion } from '@config/vite/build-info';
+import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
