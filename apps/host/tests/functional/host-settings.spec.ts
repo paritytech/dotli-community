@@ -317,6 +317,21 @@ test.describe('Settings works', () => {
               reject(open.error ?? new Error('DB open failed'));
             };
           });
+          const rootManifest = await new Promise<string | null>((resolve, reject) => {
+            const read = db.transaction('installed_executables', 'readonly');
+            const request = read.objectStore('installed_executables').get(['paseo-next-v2', 'app', label]);
+            request.onsuccess = () => {
+              const existing = request.result as { rootManifest?: string | null } | undefined;
+              if (existing?.rootManifest === undefined) {
+                reject(new Error('Expected a complete installed record before seeding the stale contenthash'));
+                return;
+              }
+              resolve(existing.rootManifest);
+            };
+            request.onerror = () => {
+              reject(request.error ?? new Error('cache read failed'));
+            };
+          });
           const tx = db.transaction('installed_executables', 'readwrite');
           const completed = new Promise<void>((resolve, reject) => {
             tx.oncomplete = () => {
@@ -332,6 +347,7 @@ test.describe('Settings works', () => {
             label,
             contenthash: 'bafy-stale',
             executableManifest,
+            rootManifest,
             timestamp: Date.now(),
           });
           await completed;
