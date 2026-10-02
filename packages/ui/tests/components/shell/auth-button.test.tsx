@@ -23,7 +23,7 @@ async function renderButton(): Promise<HTMLButtonElement> {
 /**
  * What the button carries apart from styling: its id, label, no busy or
  * disabled state, the ARIA of a Radix-style trigger for what a click opens
- * (logged in, the user popover; logged out, the auth modal), and its content:
+ * (logged in, the user popover, and logged out, the auth modal), and its content:
  * the user icon logged out, one badge div logged in (initials, or the icon
  * when the account has no username).
  */

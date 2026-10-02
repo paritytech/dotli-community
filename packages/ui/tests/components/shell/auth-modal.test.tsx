@@ -155,7 +155,7 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       break;
     }
     case 'mobile-qr': {
-      // Shown, the QR leads and the link follows; hidden, the link leads and the toggle follows.
+      // Shown, the QR leads and the link follows. Hidden, the link leads and the toggle follows.
       const expectedTags = body.qrShown ? ['BUTTON', 'A', 'A'] : ['A', 'BUTTON', 'A'];
       expect(tags(qrBox)).toEqual(expectedTags);
       const openApp = query(qrBox, 'a:not(:has(canvas))', HTMLAnchorElement);
@@ -192,7 +192,7 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
         expectedTags.push('BUTTON');
       }
       expect(tags(view)).toEqual(expectedTags);
-      expect(view.children[0]?.querySelector('svg')).not.toBeNull();
+      expect(view.children[0]?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
       expect(view.children[1]?.textContent).toBe(body.title);
       expect(view.children[2]?.textContent).toBe(body.subtitle);
       if (body.detail !== undefined && body.detail.length > 0) {

@@ -158,7 +158,7 @@ type PermissionsList =
   | { kind: 'hint'; text: string }
   | {
       kind: 'rows';
-      /** Per permission name; a missing one is "ask". */
+      /** Per permission name. A missing one is "ask". */
       statuses: Partial<Record<string, PermissionStatus>>;
       /** The permission whose dropdown is open. */
       menuOpen?: string;
@@ -191,7 +191,7 @@ function expectRow(
   expect(tags(trigger)).toEqual(['SPAN', 'SPAN']);
   expect(trigger.children[0]?.id).toBe(`permissions-popover-status-${perm.name}`);
   expect(trigger.children[0]?.textContent).toBe(STATUS_LABELS[status]);
-  expect(trigger.children[1]?.querySelector('svg')).not.toBeNull();
+  expect(trigger.children[1]?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
 
   if (menuOpen) {
     const listbox = nth(wrap.children, 1);
@@ -207,7 +207,7 @@ function expectRow(
       expect(item.children[0]?.textContent).toBe(STATUS_LABELS[itemStatus]);
       expect(item.childElementCount).toBe(selected ? 2 : 1);
       if (selected) {
-        expect(item.children[1]?.querySelector('svg')).not.toBeNull();
+        expect(item.children[1]?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
       }
     });
   }

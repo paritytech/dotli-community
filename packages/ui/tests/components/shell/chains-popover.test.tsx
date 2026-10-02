@@ -723,6 +723,7 @@ describe('The network popover island', () => {
 
     // Then
     expectChainsButton(false);
+    expect(byId('chains-button').classList.contains('visible')).toBe(true);
 
     // When
     recordChainsButtonVisible(false);
@@ -730,6 +731,13 @@ describe('The network popover island', () => {
 
     // Then
     expect(byId('chains-button').classList.contains('visible')).toBe(false);
+
+    // When: revealed after the mount.
+    recordChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    expect(byId('chains-button').classList.contains('visible')).toBe(true);
   });
 });
 
