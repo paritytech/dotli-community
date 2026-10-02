@@ -463,3 +463,38 @@ export declare const PROFILE_PRESENT_OWN: {
     readonly method: 6;
     readonly kind: "request";
 };
+export declare const JAM_PEER_TRANSPORT_DIAL: {
+    readonly trait: 111;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_OPEN: {
+    readonly trait: 111;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_SEND: {
+    readonly trait: 111;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_RECV: {
+    readonly trait: 111;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_RESET: {
+    readonly trait: 111;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_CLOSE: {
+    readonly trait: 111;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const JAM_PEER_TRANSPORT_EVENTS: {
+    readonly trait: 111;
+    readonly method: 6;
+    readonly kind: "request";
+};

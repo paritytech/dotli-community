@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "53d14bc59149b8ba";
+export const TRUAPI_WIRE_SCHEMA_HASH = "a08d82b4593af81a";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -782,6 +782,112 @@ export class EntropyClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostDeriveEntropyResponse, S.CallError(T.VersionedHostDeriveEntropyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
+ *
+ * The host owns TLS, certificate verification and length framing; the guest
+ * verifies every byte it consumes. Access is a runtime permission, not a
+ * manifest declaration: `dial` requires
+ * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
+ * its `genesis`, checking the product's stored decision, prompting when it is
+ * undetermined and persisting the answer per product and genesis. The other
+ * methods act only on connections a granted `dial` opened. A grant is
+ * separate from account, signing and storage authority.
+ */
+export class JamPeerTransportClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Dial one peer. The host builds the ALPN from `genesis` and requires the
+     * peer certificate to carry `ed25519` (QUIC) or to hash to the
+     * certificate derived from `p256` (WebTransport).
+     */
+    dial(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_DIAL,
+            payload: T.VersionedHostJamPeerTransportDialRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportDialResponse, S.CallError(T.VersionedHostJamPeerTransportDialError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Open a bidirectional stream on a connection and send its kind byte. */
+    open(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_OPEN,
+            payload: T.VersionedHostJamPeerTransportOpenRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportOpenResponse, S.CallError(T.VersionedHostJamPeerTransportOpenError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Queue one message; the host prepends the `u32` little-endian length. */
+    send(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_SEND,
+            payload: T.VersionedHostJamPeerTransportSendRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportSendResponse, S.CallError(T.VersionedHostJamPeerTransportSendError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Poll one complete message without blocking; the host strips the length. */
+    recv(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_RECV,
+            payload: T.VersionedHostJamPeerTransportRecvRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportRecvResponse, S.CallError(T.VersionedHostJamPeerTransportRecvError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Abort a stream in both directions. */
+    reset(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_RESET,
+            payload: T.VersionedHostJamPeerTransportResetRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportResetResponse, S.CallError(T.VersionedHostJamPeerTransportResetError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Close a connection and every stream on it. */
+    close(request, options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_CLOSE,
+            payload: T.VersionedHostJamPeerTransportCloseRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportCloseResponse, S.CallError(T.VersionedHostJamPeerTransportCloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Drain connection, stream-finish and inbound-stream events. */
+    events(options) {
+        return this.#transport.request({
+            ids: W.JAM_PEER_TRANSPORT_EVENTS,
+            payload: T.VersionedHostJamPeerTransportEventsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostJamPeerTransportEventsResponse, S.CallError(T.VersionedHostJamPeerTransportEventsError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1655,6 +1761,7 @@ export function createClient(transport) {
         coinPayment: new CoinPaymentClient(transport),
         contacts: new ContactsClient(transport),
         entropy: new EntropyClient(transport),
+        jamPeerTransport: new JamPeerTransportClient(transport),
         localStorage: new LocalStorageClient(transport),
         locale: new LocaleClient(transport),
         notifications: new NotificationsClient(transport),

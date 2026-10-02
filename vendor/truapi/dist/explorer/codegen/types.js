@@ -2614,6 +2614,329 @@ export const types = [
         ],
     },
     {
+        id: "host-jam-peer-transport-close-error",
+        name: "HostJamPeerTransportCloseError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportCloseError = "Closed";',
+        description: "Failure to close a connection.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-close-request",
+        name: "HostJamPeerTransportCloseRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportCloseRequest {\n  conn: number;\n}",
+        description: "Close a connection and every stream on it.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection to close.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-error",
+        name: "HostJamPeerTransportDialError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportDialError = "NotGranted" | "Refused" | "Limit" | "Unreachable";',
+        description: "Failure to dial a JAM peer.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "The product holds no `RemotePermission::JamPeers` grant for the\nrequested genesis, or this host offers no peer transport.",
+            },
+            {
+                name: "Refused",
+                type: '{ tag: "Refused"; value?: undefined }',
+                description: "The peer refused the connection or presented a certificate that does\nnot match the requested identity.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The connection cap for this execution is exhausted.",
+            },
+            {
+                name: "Unreachable",
+                type: '{ tag: "Unreachable"; value?: undefined }',
+                description: "The endpoint could not be reached.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-request",
+        name: "HostJamPeerTransportDialRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportDialRequest {\n  genesis: HexString;\n  ip: HexString;\n  port: number;\n  ed25519: HexString;\n  p256?: HexString;\n}",
+        description: "Dial one JAM peer over JAMNP-S (QUIC) or WebTransport.",
+        fields: [
+            {
+                name: "genesis",
+                type: "HexString",
+                description: "Genesis header hash; the host derives the ALPN from it and requires a\n`RemotePermission::JamPeers` grant for it.",
+            },
+            {
+                name: "ip",
+                type: "HexString",
+                description: "Peer IP address, IPv6 or v4-mapped IPv6.",
+            },
+            {
+                name: "port",
+                type: "number",
+                description: "Peer UDP port.",
+            },
+            {
+                name: "ed25519",
+                type: "HexString",
+                description: "Ed25519 key the peer's TLS certificate must carry.",
+            },
+            {
+                name: "p256",
+                type: "HexString | undefined",
+                description: "Compressed P-256 peer key for WebTransport certificate hashes.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-dial-response",
+        name: "HostJamPeerTransportDialResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportDialResponse {\n  conn: number;\n}",
+        description: "An open connection handle.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Execution-local connection id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-events-error",
+        name: "HostJamPeerTransportEventsError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportEventsError = "NotGranted";',
+        description: "Failure to drain events.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-events-response",
+        name: "HostJamPeerTransportEventsResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportEventsResponse {\n  events: Array<JamPeerTransportEvent>;\n}",
+        description: "Events in arrival order.",
+        fields: [
+            {
+                name: "events",
+                type: "Array<JamPeerTransportEvent>",
+                description: "Pending events; empty when nothing happened.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-error",
+        name: "HostJamPeerTransportOpenError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportOpenError = "NotGranted" | "Closed" | "Limit";',
+        description: "Failure to open a stream.",
+        variants: [
+            {
+                name: "NotGranted",
+                type: '{ tag: "NotGranted"; value?: undefined }',
+                description: "This execution has no peer-transport grant.",
+            },
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The connection is closed or unknown.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The stream cap for this connection is exhausted.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-request",
+        name: "HostJamPeerTransportOpenRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportOpenRequest {\n  conn: number;\n  kind: number;\n}",
+        description: "Open a bidirectional stream and send its kind byte.",
+        fields: [
+            {
+                name: "conn",
+                type: "number",
+                description: "Connection returned by `dial`.",
+            },
+            {
+                name: "kind",
+                type: "number",
+                description: "JAMNP-S stream kind (UP 0, CE 128, ...).",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-open-response",
+        name: "HostJamPeerTransportOpenResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportOpenResponse {\n  stream: number;\n}",
+        description: "An open stream handle.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Execution-local stream id.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-error",
+        name: "HostJamPeerTransportRecvError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportRecvError = "Closed";',
+        description: "Failure to receive from a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already fully consumed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-request",
+        name: "HostJamPeerTransportRecvRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvRequest {\n  stream: number;\n  max: number;\n}",
+        description: "Poll one complete framed message without blocking.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to read from.",
+            },
+            {
+                name: "max",
+                type: "number",
+                description: "Largest message the caller accepts.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-recv-response",
+        name: "HostJamPeerTransportRecvResponse",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportRecvResponse {\n  message?: HexString;\n  fin: boolean;\n  reset: boolean;\n}",
+        description: "One unframed message, or none available yet.",
+        fields: [
+            {
+                name: "message",
+                type: "HexString | undefined",
+                description: "Complete message bytes without length prefix, or `None` when nothing\nhas arrived yet.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "The peer finished its send side; no further messages will arrive.",
+            },
+            {
+                name: "reset",
+                type: "boolean",
+                description: "The peer reset the stream; buffered data may be incomplete.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-reset-error",
+        name: "HostJamPeerTransportResetError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportResetError = "Closed";',
+        description: "Failure to reset a stream.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is unknown or already closed.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-reset-request",
+        name: "HostJamPeerTransportResetRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportResetRequest {\n  stream: number;\n}",
+        description: "Abort both directions of a stream.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream to reset.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-error",
+        name: "HostJamPeerTransportSendError",
+        category: "jam_peer_transport",
+        definition: 'export type HostJamPeerTransportSendError = "Closed" | "TooLarge" | "Limit";',
+        description: "Failure to send a message.",
+        variants: [
+            {
+                name: "Closed",
+                type: '{ tag: "Closed"; value?: undefined }',
+                description: "The stream is closed, finished or unknown.",
+            },
+            {
+                name: "TooLarge",
+                type: '{ tag: "TooLarge"; value?: undefined }',
+                description: "The message exceeds the host's message limit.",
+            },
+            {
+                name: "Limit",
+                type: '{ tag: "Limit"; value?: undefined }',
+                description: "The per-connection buffer is full.",
+            },
+        ],
+    },
+    {
+        id: "host-jam-peer-transport-send-request",
+        name: "HostJamPeerTransportSendRequest",
+        category: "jam_peer_transport",
+        definition: "export interface HostJamPeerTransportSendRequest {\n  stream: number;\n  message: HexString;\n  fin: boolean;\n}",
+        description: "Send one framed message; the host adds the `u32` little-endian length.",
+        fields: [
+            {
+                name: "stream",
+                type: "number",
+                description: "Stream returned by `open` or reported by an `Accepted` event.",
+            },
+            {
+                name: "message",
+                type: "HexString",
+                description: "Message bytes without length prefix.",
+            },
+            {
+                name: "fin",
+                type: "boolean",
+                description: "Finish the send side after this message.",
+            },
+        ],
+    },
+    {
         id: "host-local-storage-change-item",
         name: "HostLocalStorageChangeItem",
         category: "local_storage",
@@ -4791,6 +5114,30 @@ export const types = [
         ],
     },
     {
+        id: "jam-peer-transport-event",
+        name: "JamPeerTransportEvent",
+        category: "jam_peer_transport",
+        definition: 'export type JamPeerTransportEvent =\n  | { tag: "ConnClosed"; value: { conn: number } }\n  | { tag: "StreamFin"; value: { stream: number } }\n  | { tag: "Accepted"; value: { conn: number; stream: number; kind: number } }\n;',
+        description: "Asynchronous transport notification.",
+        variants: [
+            {
+                name: "ConnClosed",
+                type: '{ tag: "ConnClosed"; value: { conn: number } }',
+                description: "The connection was closed by the peer or the host.",
+            },
+            {
+                name: "StreamFin",
+                type: '{ tag: "StreamFin"; value: { stream: number } }',
+                description: "The peer finished its send side of a stream.",
+            },
+            {
+                name: "Accepted",
+                type: '{ tag: "Accepted"; value: { conn: number; stream: number; kind: number } }',
+                description: "The peer opened a stream to us on a dialed connection.",
+            },
+        ],
+    },
+    {
         id: "legacy-account",
         name: "LegacyAccount",
         category: "account",
@@ -5737,8 +6084,8 @@ export const types = [
         id: "remote-permission",
         name: "RemotePermission",
         category: "permissions",
-        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n;',
-        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, and `StatementSubmit` are also triggered\nimplicitly by the corresponding business calls when not yet granted.",
+        definition: 'export type RemotePermission =\n  | { tag: "Remote"; value: { domains: Array<string> } }\n  | { tag: "WebRtc"; value?: undefined }\n  | { tag: "ChainSubmit"; value?: undefined }\n  | { tag: "PreimageSubmit"; value?: undefined }\n  | { tag: "StatementSubmit"; value?: undefined }\n  | { tag: "JamPeers"; value: { genesis: HexString } }\n;',
+        description: "One remote-operation permission requested by the product (RFC 0002).\n\n`ChainSubmit`, `PreimageSubmit`, `StatementSubmit` and `JamPeers` are also\ntriggered implicitly by the corresponding business calls when not yet\ngranted (`JamPeerTransport::dial` for `JamPeers`).",
         variants: [
             {
                 name: "Remote",
@@ -5764,6 +6111,11 @@ export const types = [
                 name: "StatementSubmit",
                 type: '{ tag: "StatementSubmit"; value?: undefined }',
                 description: "Submitting statements on behalf of the user via `remote_statement_store_submit`.",
+            },
+            {
+                name: "JamPeers",
+                type: '{ tag: "JamPeers"; value: { genesis: HexString } }',
+                description: "Read-only peer access over JAMNP-S QUIC/WebTransport to the validators\nof one JAM chain, through the `JamPeerTransport` service.\n\nThe app names the endpoints it dials; the grant covers only peers of\n`genesis`. Every byte received is untrusted, and the grant carries no\naccount, signing or submission authority.",
             },
         ],
     },
