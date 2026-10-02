@@ -272,16 +272,18 @@ describe('chat panel', () => {
     });
 
     clickChat();
-    await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
+    await settle(() => document.querySelectorAll('[data-testid="chat-room-item"]').length === 2);
 
     expect(byId('chat-panel-rooms').hidden).toBe(false);
     expect(byId('chat-panel-composer', HTMLFormElement).hidden).toBe(true);
-    const items = document.querySelectorAll<HTMLButtonElement>('.chat-room-item');
+    const items = document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]');
     expect(items).toHaveLength(2);
     expect(items[1]?.textContent).toContain('Support');
-    expect(items[1]?.querySelector<HTMLImageElement>('img.chat-room-icon')?.src).toBe('data:image/png;base64,AAAA');
+    expect(items[1]?.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
+      'data:image/png;base64,AAAA',
+    );
     // A room without an icon falls back to its initial.
-    expect(items[0]?.querySelector('.chat-room-icon-fallback')?.textContent).toBe('G');
+    expect(items[0]?.querySelector('[data-testid="chat-room-icon"][data-fallback]')?.textContent).toBe('G');
 
     nth(items, 1).click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
@@ -303,11 +305,11 @@ describe('chat panel', () => {
 
     stores.topbar.setTopbarVisible(false);
     flushUi();
-    expect(panelEl.classList.contains('topbar-hidden')).toBe(true);
+    expect(panelEl.hasAttribute('data-topbar-hidden')).toBe(true);
 
     stores.topbar.setTopbarVisible(true);
     flushUi();
-    expect(panelEl.classList.contains('topbar-hidden')).toBe(false);
+    expect(panelEl.hasAttribute('data-topbar-hidden')).toBe(false);
   });
 
   it('As a user, product messages render and replies reach the product', async () => {
@@ -336,9 +338,9 @@ describe('chat panel', () => {
     });
 
     clickChat();
-    await settle(() => document.querySelector('.chat-room-item') !== null);
+    await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
     // The panel opens on the room list; enter the room to see messages.
-    const roomItem = document.querySelector<HTMLButtonElement>('.chat-room-item');
+    const roomItem = document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]');
     expect(roomItem?.textContent).toContain('Main');
     roomItem?.click();
     await settle(() => byId('chat-panel-messages').textContent.includes('hello from the app'));
@@ -410,12 +412,12 @@ describe('chat panel', () => {
     });
 
     clickChat();
-    await settle(() => document.querySelectorAll('.chat-room-item').length === 4);
+    await settle(() => document.querySelectorAll('[data-testid="chat-room-item"]').length === 4);
 
     // One recency order across rooms and bots: last message time, falling
     // back to creation/registration time for message-less contacts.
-    const items = [...document.querySelectorAll<HTMLElement>('.chat-room-item')];
-    expect(items.map(row => row.querySelector('.chat-room-name')?.textContent)).toEqual([
+    const items = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')];
+    expect(items.map(row => row.querySelector('[data-testid="chat-room-name"]')?.textContent)).toEqual([
       'First',
       'Second',
       'Echo Bot',
@@ -424,7 +426,9 @@ describe('chat panel', () => {
 
     // The bot lists with its registered icon and opens like a room.
     const botRow = nth(items, 2);
-    expect(botRow.querySelector<HTMLImageElement>('img.chat-room-icon')?.src).toBe('data:image/png;base64,AAAA');
+    expect(botRow.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
+      'data:image/png;base64,AAAA',
+    );
     botRow.click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
     expect(byId('chat-panel-title').textContent).toBe('Echo Bot');
@@ -444,8 +448,8 @@ describe('chat panel', () => {
     // With the newest message, the bot now leads the list.
     byId('chat-panel-back').click();
     await settle(() => byId('chat-panel-rooms').hidden === false);
-    const reordered = [...document.querySelectorAll<HTMLElement>('.chat-room-item')].map(
-      row => row.querySelector('.chat-room-name')?.textContent,
+    const reordered = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')].map(
+      row => row.querySelector('[data-testid="chat-room-name"]')?.textContent,
     );
     expect(reordered).toEqual(['Echo Bot', 'First', 'Second', 'Idle']);
   });
@@ -493,8 +497,8 @@ describe('chat panel', () => {
       });
 
       clickChat();
-      await settle(() => document.querySelector('.chat-room-item') !== null);
-      document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
+      await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
       await settle(() => renders.length === 1);
 
       // The cell subscribed with the stored message identity and payload.
@@ -617,14 +621,14 @@ describe('chat panel', () => {
     await settle(() => badge.textContent === '2');
 
     clickChat();
-    await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
-    const roomBadges = document.querySelectorAll('.chat-room-unread');
+    await settle(() => document.querySelectorAll('[data-testid="chat-room-item"]').length === 2);
+    const roomBadges = document.querySelectorAll('[data-testid="chat-room-unread"]');
     expect(roomBadges).toHaveLength(1);
     expect(roomBadges[0]?.textContent).toBe('2');
-    const busyRow = [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')].find(row =>
+    const busyRow = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')].find(row =>
       row.textContent.includes('Busy'),
     );
-    expect(busyRow?.querySelector('.chat-room-unread')).not.toBeNull();
+    expect(busyRow?.querySelector('[data-testid="chat-room-unread"]')).not.toBeNull();
 
     // A message for another room while viewing this one stays unread.
     busyRow?.click();
@@ -635,9 +639,9 @@ describe('chat panel', () => {
     });
 
     byId('chat-panel-back').click();
-    await settle(() => document.querySelectorAll('.chat-room-unread').length === 1);
-    const backBadges = [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')].map(
-      row => row.querySelector('.chat-room-unread')?.textContent ?? '',
+    await settle(() => document.querySelectorAll('[data-testid="chat-room-unread"]').length === 1);
+    const backBadges = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')].map(
+      row => row.querySelector('[data-testid="chat-room-unread"]')?.textContent ?? '',
     );
     // Quiet holds the newest message so it lists first, carrying the one
     // unread it accumulated while Busy was on screen.
@@ -743,8 +747,8 @@ describe('chat panel', () => {
       });
 
       clickChat();
-      await settle(() => document.querySelectorAll('.chat-room-item').length === 2);
-      [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')]
+      await settle(() => document.querySelectorAll('[data-testid="chat-room-item"]').length === 2);
+      [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')]
         .find(row => row.textContent.includes('Main'))
         ?.click();
       await settle(() => render.mock.calls.length === 1);
@@ -779,7 +783,7 @@ describe('chat panel', () => {
 
     clickChat();
     await settle(() => byId('chat-panel-rooms').textContent.includes('First room'));
-    document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
 
     loadProduct('second-app');
@@ -806,8 +810,8 @@ describe('chat panel', () => {
     });
 
     clickChat();
-    await settle(() => document.querySelector('.chat-room-item') !== null);
-    document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
+    await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
+    document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
     await settle(() => byId('chat-panel-rooms').hidden === true);
 
     const input = byId('chat-panel-input', HTMLInputElement);
@@ -845,8 +849,8 @@ describe('chat panel', () => {
     });
 
     clickChat();
-    await settle(() => document.querySelector('.chat-room-item') !== null);
-    document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
+    await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
+    document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
     await settle(() => document.activeElement === byId('chat-panel-input'));
     expect(document.activeElement).toBe(byId('chat-panel-input'));
   });
@@ -881,8 +885,8 @@ describe('chat panel', () => {
     });
     try {
       clickChat();
-      await settle(() => document.querySelector('.chat-room-item') !== null);
-      document.querySelector<HTMLButtonElement>('.chat-room-item')?.click();
+      await settle(() => document.querySelector('[data-testid="chat-room-item"]') !== null);
+      document.querySelector<HTMLButtonElement>('[data-testid="chat-room-item"]')?.click();
       await settle(() => byId('chat-panel-rooms').hidden === true);
 
       byId('chat-panel-close').click();

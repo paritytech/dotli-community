@@ -35,6 +35,7 @@ import { ContactIcon } from './ContactIcon.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
 import { MessageBubble } from './MessageBubble.js';
 import { ResizeHandle } from './ResizeHandle.js';
+import s from './ChatPanel.module.css';
 
 // Relative bubble timestamps go stale while the panel sits open.
 const TIME_REFRESH_MS = 60_000;
@@ -62,17 +63,21 @@ function ContactRow(props: {
     <button
       ref={props.ref}
       type="button"
-      class="chat-room-item"
+      class={s['roomItem']}
+      data-testid="chat-room-item"
       role="listitem"
       onClick={() => {
         openChatRoom(props.contact.id);
       }}
     >
-      <ContactIcon name={props.contact.name} icon={props.contact.icon} iconClass="chat-room-icon" />
-      <span class="chat-room-name">{props.contact.name}</span>
+      <ContactIcon name={props.contact.name} icon={props.contact.icon} />
+      <span class={s['roomName']} data-testid="chat-room-name">
+        {props.contact.name}
+      </span>
       <Show when={props.unread > 0}>
         <span
-          class="chat-room-unread"
+          class={s['roomUnread']}
+          data-testid="chat-room-unread"
           aria-label={`${String(props.unread)} unread message${props.unread === 1 ? '' : 's'}`}
         >
           {chatUnreadLabel(props.unread)}
@@ -94,13 +99,13 @@ function PanelBody(): JSX.Element {
   // Slices, not the whole store: a width drag, a topbar toggle or the
   // composer-focus flag must not re-run the rows and derivations below.
   const productId = useStore(chatPanelStore, currentChatProductId);
-  const loggedIn = useStore(chatPanelStore, s => s.loggedIn);
-  const label = useStore(chatPanelStore, s => s.label);
-  const activeRoomId = useStore(chatPanelStore, s => s.activeRoomId);
-  const unreadByRoom = useStore(chatPanelStore, s => s.unreadByRoom);
-  const roomSeq = useStore(chatPanelStore, s => s.roomSeq);
-  const contactsVersion = useStore(chatPanelStore, s => s.contactsVersion);
-  const composerError = useStore(chatPanelStore, s => s.composerError);
+  const loggedIn = useStore(chatPanelStore, state => state.loggedIn);
+  const label = useStore(chatPanelStore, state => state.label);
+  const activeRoomId = useStore(chatPanelStore, state => state.activeRoomId);
+  const unreadByRoom = useStore(chatPanelStore, state => state.unreadByRoom);
+  const roomSeq = useStore(chatPanelStore, state => state.roomSeq);
+  const contactsVersion = useStore(chatPanelStore, state => state.contactsVersion);
+  const composerError = useStore(chatPanelStore, state => state.composerError);
   const [contacts, setContacts] = createSignal<ContactEntry[] | null>(null);
   const [messages, setMessages] = createSignal<ChatMessageRecord[]>([]);
   // Kept apart so each clears when its own read works, and a failed
@@ -345,10 +350,10 @@ function PanelBody(): JSX.Element {
 
   return (
     <>
-      <div class="chat-panel-header">
+      <div class={s['header']}>
         <button
           type="button"
-          class="chat-panel-back"
+          class={s['headerButton']}
           id="chat-panel-back"
           title="Back to rooms"
           aria-label="Back to rooms"
@@ -359,12 +364,12 @@ function PanelBody(): JSX.Element {
             backToChatRooms();
           }}
         />
-        <span class="chat-panel-title" id="chat-panel-title">
+        <span class={s['title']} id="chat-panel-title">
           {title()}
         </span>
         <button
           type="button"
-          class="chat-panel-close"
+          class={s['headerButton']}
           id="chat-panel-close"
           title="Close chat"
           aria-label="Close chat"
@@ -375,13 +380,7 @@ function PanelBody(): JSX.Element {
           }}
         />
       </div>
-      <div
-        class="chat-panel-rooms"
-        id="chat-panel-rooms"
-        role="list"
-        aria-label="Chat rooms"
-        hidden={view() !== 'list'}
-      >
+      <div class={s['rooms']} id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden={view() !== 'list'}>
         <Show when={view() === 'list'}>
           <For each={contacts() ?? []} keyed={c => c.id}>
             {contact => {
@@ -404,7 +403,7 @@ function PanelBody(): JSX.Element {
         </Show>
       </div>
       <div
-        class="chat-panel-messages"
+        class={s['messages']}
         id="chat-panel-messages"
         aria-live="polite"
         hidden={view() !== 'conversation'}
@@ -417,7 +416,8 @@ function PanelBody(): JSX.Element {
         }}
       >
         <div
-          class="chat-panel-thread"
+          class={s['thread']}
+          data-testid="chat-panel-thread"
           ref={el => {
             threadEl = el;
           }}
@@ -437,11 +437,11 @@ function PanelBody(): JSX.Element {
           </Show>
         </div>
       </div>
-      <p class="chat-panel-hint" id="chat-panel-hint" hidden={hint() === null}>
+      <p class={s['hint']} id="chat-panel-hint" hidden={hint() === null}>
         {hint() ?? ''}
       </p>
       <form
-        class="chat-panel-composer"
+        class={s['composer']}
         id="chat-panel-composer"
         hidden={view() !== 'conversation'}
         onSubmit={event => {
@@ -450,7 +450,7 @@ function PanelBody(): JSX.Element {
       >
         <input
           id="chat-panel-input"
-          class="chat-panel-input"
+          class={s['input']}
           type="text"
           placeholder="Message"
           autocomplete="off"
@@ -462,7 +462,7 @@ function PanelBody(): JSX.Element {
         />
         <button
           type="submit"
-          class="chat-panel-send"
+          class={s['send']}
           id="chat-panel-send"
           title="Send"
           aria-label="Send"
@@ -475,7 +475,7 @@ function PanelBody(): JSX.Element {
 }
 
 export function ChatPanel(): JSX.Element {
-  const open = useStore(chatPanelStore, s => s.open);
+  const open = useStore(chatPanelStore, state => state.open);
   return (
     <>
       <ResizeHandle />

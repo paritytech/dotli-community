@@ -1,0 +1,26 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A contact's round icon: the product's image, or the name's first letter
+   on a tinted disc. A fixed-size avatar, so it never shrinks in a row. */
+
+.icon {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--fill);
+  object-fit: cover;
+}
+
+.icon[data-fallback] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 600;
+}

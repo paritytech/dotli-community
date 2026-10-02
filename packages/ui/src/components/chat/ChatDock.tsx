@@ -8,6 +8,7 @@ import { setChatWidth } from '../../product-frame-layout.js';
 import { chatButtonVisible, chatPanelStore, setChatPanelElement, setChatPanelOpen } from '../../state/chat-panel.js';
 import { preloadWhenIdle } from '../idle.js';
 import { useStore } from '../use-store.js';
+import s from './ChatDock.module.css';
 
 /** The panel's contents, their own chunk. */
 const ChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
@@ -17,7 +18,7 @@ const ChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
  * page (see src/islands/). It docks to the right edge while
  * the chat-panel store says it is open, shrinking the product frame by its
  * width (product-frame-layout), and stretches into the topbar's strip while
- * the topbar is auto-hidden. Escape inside it closes it; the chat button
+ * the topbar is auto-hidden (`data-topbar-hidden`). Escape inside it closes it; the chat button
  * takes the focus back.
  *
  * Its contents (ChatPanel) are their own chunk, preloaded when the browser
@@ -64,7 +65,8 @@ export function ChatDock(): JSX.Element {
           setChatPanelOpen(false);
         }
       }}
-      class={['chat-panel', { 'topbar-hidden': !topbarVisible() }]}
+      class={s['panel']}
+      data-topbar-hidden={topbarVisible() ? undefined : ''}
       id="chat-panel"
       role="complementary"
       aria-label="Product chat"

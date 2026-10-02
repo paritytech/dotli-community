@@ -148,7 +148,7 @@ function custom(seq: number, roomId = 'r0'): ChatMessageRecord {
 }
 
 function rows(): HTMLButtonElement[] {
-  return [...document.querySelectorAll<HTMLButtonElement>('.chat-room-item')];
+  return [...document.querySelectorAll<HTMLButtonElement>('[data-testid="chat-room-item"]')];
 }
 
 let removeRules: (() => void) | undefined;
@@ -274,7 +274,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(rows().map(row => row.querySelector('.chat-room-name')?.textContent)).toEqual(['Room 0']);
+    expect(rows().map(row => row.querySelector('[data-testid="chat-room-name"]')?.textContent)).toEqual(['Room 0']);
   });
 
   it('As a user, going back to a list that missed nothing does not re-read it', async () => {
@@ -438,7 +438,7 @@ describe('chat panel, message reads', () => {
 
     // Then
     expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(0);
-    expect(rows()[1]?.querySelector('.chat-room-unread')?.textContent).toBe('1');
+    expect(rows()[1]?.querySelector('[data-testid="chat-room-unread"]')?.textContent).toBe('1');
   });
 });
 
@@ -497,9 +497,9 @@ describe('chat panel, scrolling', () => {
 
   /** The wrapper around the bubbles, whose height is the conversation's. */
   function thread(): HTMLElement {
-    const node = byId('chat-panel-messages').querySelector<HTMLElement>('.chat-panel-thread');
+    const node = byId('chat-panel-messages').querySelector<HTMLElement>('[data-testid="chat-panel-thread"]');
     if (node === null) {
-      throw new Error('missing .chat-panel-thread');
+      throw new Error('missing [data-testid="chat-panel-thread"]');
     }
     return node;
   }

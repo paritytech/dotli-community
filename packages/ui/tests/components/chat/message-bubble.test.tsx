@@ -188,17 +188,17 @@ describe('message bubble', () => {
     // When
     const view = renderComponent(() => (
       <>
-        <ContactIcon name="general" icon="" iconClass="chat-room-icon" />
-        <ContactIcon name="Support" icon="https://example.invalid/x.png" iconClass="chat-room-icon" />
+        <ContactIcon name="general" icon="" />
+        <ContactIcon name="Support" icon="https://example.invalid/x.png" />
       </>
     ));
     await settle();
 
     // Then
-    const fallback = query(view.container, '.chat-room-icon-fallback', Element);
+    const fallback = query(view.container, '[data-testid="chat-room-icon"][data-fallback]', Element);
     expect(fallback.textContent).toBe('G');
     expect(fallback.getAttribute('aria-hidden')).toBe('true');
-    const img = query(view.container, 'img.chat-room-icon', HTMLImageElement);
+    const img = query(view.container, 'img[data-testid="chat-room-icon"]', HTMLImageElement);
     expect(img.alt).toBe('');
 
     // When: the image fails to load
@@ -206,15 +206,15 @@ describe('message bubble', () => {
     await settle();
 
     // Then
-    expect(view.container.querySelectorAll('.chat-room-icon-fallback')).toHaveLength(2);
+    expect(view.container.querySelectorAll('[data-testid="chat-room-icon"][data-fallback]')).toHaveLength(2);
   });
 
   it('As a user, a contact whose broken icon the product replaces shows the new icon', async () => {
     // Given: the first icon failed to load.
     const [icon, setIcon] = createSignal('https://example.invalid/old.png');
-    const view = renderComponent(() => <ContactIcon name="Support" icon={icon()} iconClass="chat-room-icon" />);
+    const view = renderComponent(() => <ContactIcon name="Support" icon={icon()} />);
     await settle();
-    fireEvent.error(query(view.container, 'img.chat-room-icon', Element));
+    fireEvent.error(query(view.container, 'img[data-testid="chat-room-icon"]', Element));
     await settle();
     expect(view.container.querySelector('img')).toBeNull();
 
@@ -223,10 +223,10 @@ describe('message bubble', () => {
     await settle();
 
     // Then
-    expect(view.container.querySelector<HTMLImageElement>('img.chat-room-icon')?.src).toBe(
+    expect(view.container.querySelector<HTMLImageElement>('img[data-testid="chat-room-icon"]')?.src).toBe(
       'https://example.invalid/new.png',
     );
-    expect(view.container.querySelector('.chat-room-icon-fallback')).toBeNull();
+    expect(view.container.querySelector('[data-testid="chat-room-icon"][data-fallback]')).toBeNull();
   });
 
   it('As a user, contacts are ordered by last message, falling back to creation time', () => {

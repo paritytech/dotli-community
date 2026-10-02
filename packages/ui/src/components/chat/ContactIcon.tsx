@@ -3,11 +3,17 @@
 
 import { createSignal, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import s from './ContactIcon.module.css';
 
-/** Circular contact icon; falls back to the name's initial when there is no
- *  usable image. The icon string is product-supplied, so it only ever
- *  becomes an `img.src`, never markup. */
-export function ContactIcon(props: { name: string; icon: string; iconClass: string }): JSX.Element {
+/**
+ * A contact's round icon, or the first letter of its name when there is no
+ * usable image. The icon string is product-supplied, so it only ever
+ * becomes an `img.src`, never markup.
+ *
+ * Both forms carry `data-testid="chat-room-icon"`, and the letter also
+ * carries `data-fallback`.
+ */
+export function ContactIcon(props: { name: string; icon: string }): JSX.Element {
   // The icon that failed to load, so a new icon from the product gets its
   // own chance instead of inheriting the old one's failure.
   const [failedIcon, setFailedIcon] = createSignal<string | null>(null);
@@ -16,12 +22,18 @@ export function ContactIcon(props: { name: string; icon: string; iconClass: stri
     <Show
       when={props.icon !== '' && failedIcon() !== props.icon}
       fallback={
-        <span class={`${props.iconClass} ${props.iconClass}-fallback`} aria-hidden="true">
+        <span class={s['icon']} data-testid="chat-room-icon" data-fallback="" aria-hidden="true">
           {initial()}
         </span>
       }
     >
-      <img class={props.iconClass} alt="" src={props.icon} onError={() => setFailedIcon(props.icon)} />
+      <img
+        class={s['icon']}
+        data-testid="chat-room-icon"
+        alt=""
+        src={props.icon}
+        onError={() => setFailedIcon(props.icon)}
+      />
     </Show>
   );
 }

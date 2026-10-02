@@ -1,0 +1,191 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The chat panel's contents: the header, the room list, the conversation,
+   the status line and the composer. ChatDock.module.css styles the panel
+   around them. */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  color: var(--text-strong);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Back and Close. */
+.header-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--neutral-solid);
+  cursor: pointer;
+}
+.header-button:hover {
+  background: var(--fill);
+  color: var(--text-strong);
+}
+.header-button[hidden] {
+  display: none;
+}
+
+.rooms {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+}
+.rooms[hidden] {
+  display: none;
+}
+
+.room-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.room-item:hover {
+  background: var(--fill);
+}
+
+.room-name {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.room-unread {
+  flex-shrink: 0;
+  box-sizing: border-box;
+  min-width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 16px;
+  text-align: center;
+}
+
+.messages {
+  flex: 1;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 12px 14px;
+  overflow-y: auto;
+}
+
+.thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.hint {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+}
+
+.composer {
+  display: flex;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 10px 14px;
+  border-top: 1px solid var(--border-subtle);
+}
+.composer[hidden] {
+  display: none;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--fill-subtle);
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 0.8rem;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--text-faint);
+}
+.input:disabled {
+  opacity: 0.5;
+}
+
+.send {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 8px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  cursor: pointer;
+}
+.send:hover {
+  background: var(--inverse-bg-hover);
+}
