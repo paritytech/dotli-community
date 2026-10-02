@@ -5,9 +5,9 @@
 //
 // A product asks the host to show a profile it holds a reference to; the host
 // fetches and decrypts it and renders it here, so the image never enters the
-// product. The drawer opens immediately with a loading state, then shows the
-// avatar or a failure message. It is not a blocking modal: it asks nothing,
-// and presenting another profile replaces the one on screen.
+// product. Without a received reference it shows an empty state immediately;
+// otherwise it loads the avatar and mood. It asks nothing, and presenting
+// another profile replaces the one on screen.
 
 import { createComponent } from 'solid-js';
 import { mountRoot } from '../mount/root.js';
@@ -24,13 +24,12 @@ export interface ProfileDrawerOptions {
   /** Product that asked for the presentation, shown as attribution. */
   readonly productId: string;
   /**
-   * How to name the Chat contact who shared the reference, for a profile the
-   * host received from that contact: the username the core resolved, or a
-   * generic phrase. Never an address, never product-supplied.
+   * The contact's host-verified username, or a generic phrase when unknown.
+   * Never an address or a product-supplied name.
    */
-  readonly sharedBy?: string;
-  /** Fetch and decrypt the profile. Aborted when the drawer closes. */
-  readonly loadProfile: (signal: AbortSignal) => Promise<LoadedProfile>;
+  readonly contactName?: string;
+  /** Fetch and decrypt a received profile; absent when no reference was shared. */
+  readonly loadProfile?: (signal: AbortSignal) => Promise<LoadedProfile>;
   /** The product connection owns this presentation's lifetime. */
   readonly signal?: AbortSignal;
 }

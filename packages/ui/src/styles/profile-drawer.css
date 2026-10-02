@@ -51,6 +51,12 @@
   font-size: 1rem;
   color: #fff;
 }
+.profile-drawer-contact {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  color: #ddd;
+  font-size: 0.95rem;
+}
 .profile-drawer-close {
   width: 32px;
   height: 32px;

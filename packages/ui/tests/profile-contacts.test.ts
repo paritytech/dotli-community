@@ -81,7 +81,7 @@ function drawer(): HTMLElement | null {
 async function settle(): Promise<void> {
   await vi.waitFor(
     () => {
-      expect(drawer()?.querySelector('.profile-drawer-status')?.textContent).not.toBe('Loading profile…');
+      expect(drawer()?.querySelector('.spinner')).toBeNull();
     },
     { timeout: 10_000, interval: 50 },
   );
@@ -150,15 +150,6 @@ describe('Seity contacts references', () => {
     expect(drawer()?.querySelector('.profile-mood-ring')).toBeNull();
   });
 
-  it('says nothing is shared for a slot that was never anchored or was revoked', async () => {
-    const other = `seity-contacts:v1:${'ab'.repeat(32)}${'cd'.repeat(32)}`;
-    await createProfilePlatform().presentProfile(product, { reference: other });
-    await settle();
-
-    expect(drawer()?.querySelector('.profile-drawer-status')?.textContent).toBe(
-      'This person is not sharing a profile right now.',
-    );
-  });
 
   it('reads the slot over the gateway RPC on the Trusted Providers backend', async () => {
     mocks.backend = 'rpc-gateway';

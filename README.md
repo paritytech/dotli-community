@@ -655,6 +655,11 @@ Closing or retiring the connection aborts pending loads, removes its drawer and 
 URLs. Profile content is self-described; verified Chat attribution confirms who shared a reference, not who an image
 depicts.
 
+Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
+contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not
+claim the contact has never shared: information may not have reached this host yet. Availability stays private from
+the requesting product, whose completion reply is the same for shared and empty profiles.
+
 ## Sandbox API Checker
 
 dApps rendered in dotli's sandboxed iframe should communicate exclusively through the container bridge (postMessage),
