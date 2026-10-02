@@ -7,7 +7,7 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import type { RequiredHostCallbacks } from '@parity/truapi-host';
+import { localizeTimestamps, type RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
 import { createPromptPermission } from './PromptPermission.js';
@@ -70,7 +70,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     },
     userConfirmation: createUserConfirmationAdapters(label, blockingModalScope),
     theme: { subscribeTheme: createThemeSubscribe() },
-    locale: { subscribeLocale: createLocaleSubscribe() },
+    locale: { subscribeLocale: createLocaleSubscribe(), localizeTimestamps },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
     // Always served; the core itself denies chat calls on non-Chat
