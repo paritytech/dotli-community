@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Bounded waits and one-shot recovery for chain synchronization.
+ * Bounded waits and recovery for chain synchronization.
  *
  * `api.whenReady()` never settles when the peer set is unreachable, so every
  * caller has to race a timer. The rejection carries `NetworkSyncTimeoutError`
@@ -76,27 +76,32 @@ function isChainHalt(err: unknown): boolean {
 }
 
 /**
- * Run a read, and once more if its chain halted under it. Once only: a light
- * client that keeps dying fails its next connect instead, which the protocol
- * context reports as fatal. The retry gets what is left of the caller's sync
- * budget, not a second one.
+ * A resumed light client can reset its follow twice while catching up.
+ * Bound recovery so a chain that keeps halting cannot spin indefinitely.
+ */
+const MAX_HALT_ATTEMPTS = 4;
+
+/**
+ * Run a read again on a rebuilt chain when its chain halts under it.
+ * Every attempt shares the caller's original sync budget.
  */
 export async function withHaltRetry<T>(opts: ResolveOptions, read: (opts: ResolveOptions) => Promise<T>): Promise<T> {
   const started = performance.now();
-  try {
-    return await read(opts);
-  } catch (err) {
-    if (!isChainHalt(err)) {
-      throw err;
-    }
-    log.warn(
-      `[dot.li resolve] Chain halted mid-resolution, retrying once on a rebuilt chain: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    const budget = opts.syncTimeoutMs;
-    const retryOpts =
-      budget === undefined
+  const budget = opts.syncTimeoutMs;
+  for (let attempt = 1; ; attempt++) {
+    const attemptOpts =
+      attempt === 1 || budget === undefined
         ? opts
         : { ...opts, syncTimeoutMs: Math.max(1, Math.floor(budget - (performance.now() - started))) };
-    return read(retryOpts);
+    try {
+      return await read(attemptOpts);
+    } catch (err) {
+      if (!isChainHalt(err) || attempt === MAX_HALT_ATTEMPTS) {
+        throw err;
+      }
+      log.warn(
+        `[dot.li resolve] Chain halted mid-resolution, retrying on a rebuilt chain (attempt ${String(attempt + 1)}/${String(MAX_HALT_ATTEMPTS)}): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 }
