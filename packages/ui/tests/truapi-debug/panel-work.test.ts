@@ -17,7 +17,7 @@ import type * as KeyedSignalsModule from '../../src/components/truapi-debug/keye
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
 import type * as MountModule from '../../src/components/truapi-debug/mount.js';
 import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.js';
-import { query } from '../support.js';
+import { byTestId, query } from '../support.js';
 import { nth } from '../helpers/nth.js';
 
 // Each test renders up to 2000 rows: a few hundred milliseconds here, but
@@ -352,7 +352,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     click(q('[data-testid="td-tab"][data-view="list"]'));
 
     // Then the badges catch up once
-    expect(rows()[1999]?.querySelector('[data-testid="td-pending"]')?.textContent).toMatch(/^⟳ \d+ms pending$/);
+    expect(byTestId('td-pending', nth(rows(), 1999)).textContent).toMatch(/^⟳ \d+ms pending$/);
     expect(panel().querySelectorAll('[data-testid="td-pending"]')).toHaveLength(2000);
   });
 
@@ -377,7 +377,7 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     // Below capacity: at capacity every new event evicts a visible one.
     mount();
     fillWithAnsweredPairs(500);
-    type(query(panel(), '[data-testid="td-exclude-input"]', HTMLInputElement), 'noise');
+    type(byTestId('td-exclude-input', panel(), HTMLInputElement), 'noise');
     click(q('[data-testid="td-tab"][data-view="timeline"]'));
     resetCalls();
 
@@ -415,15 +415,15 @@ describe('truapi debug panel work: traffic at capacity', () => {
     // Given
     mount();
     fillWithPendingRequests();
-    const badge = nth(rows(), 0).querySelector('[data-testid="td-pending"]');
+    const badge = byTestId('td-pending', nth(rows(), 0));
     warn.mockClear();
 
     // When
     vi.advanceTimersByTime(1000);
 
     // Then
-    expect(badge?.textContent).toBe('⟳ 1.0s pending');
-    expect(rows()[1999]?.querySelector('[data-testid="td-pending"]')?.textContent).toBe('⟳ 1.0s pending');
+    expect(badge.textContent).toBe('⟳ 1.0s pending');
+    expect(byTestId('td-pending', nth(rows(), 1999)).textContent).toBe('⟳ 1.0s pending');
     expect(fanOutWarnings()).toEqual([]);
   });
 
@@ -505,7 +505,7 @@ describe('truapi debug panel work: filters and detail', () => {
     explanation.open = true;
 
     // When
-    const input = query(panel(), '[data-testid="td-tag-input"]', HTMLInputElement);
+    const input = byTestId('td-tag-input', panel(), HTMLInputElement);
     type(input, 'b');
     type(input, 'bo');
     type(input, 'boo');
@@ -527,13 +527,13 @@ describe('truapi debug panel work: rows', () => {
     frame();
     const latency = (): string | null | undefined =>
       rows()
-        .find(r => r.querySelector('[data-testid="td-tag"]')?.textContent === 'host_sign_response')
+        .find(r => byTestId('td-tag', r).textContent === 'host_sign_response')
         ?.querySelector('[data-testid="td-latency"]')?.textContent;
     expect(latency()).toBe('+50ms');
 
     // When the reply row is filtered out, the request is evicted, and the
     // reply row is created again
-    const exclude = query(panel(), '[data-testid="td-exclude-input"]', HTMLInputElement);
+    const exclude = byTestId('td-exclude-input', panel(), HTMLInputElement);
     type(exclude, 'response');
     truapi('noise_receive', 'n1');
     truapi('noise_receive', 'n2');

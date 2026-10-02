@@ -280,7 +280,7 @@ function expectBody(expected: ExpectedBody): void {
 }
 
 function waitingText(): string | null | undefined {
-  return document.querySelector('[data-testid="chains-bars-waiting"]')?.textContent;
+  return byTestId('chains-bars-waiting').textContent;
 }
 
 describe('The network popover island', () => {
@@ -549,8 +549,8 @@ describe('The network popover island', () => {
       '11',
       '12',
     ]);
-    expect(document.querySelector('[data-testid="chains-group-peers"]')?.textContent).toBe('2 peers');
-    expect(document.querySelector('[data-testid="chains-status"]')?.textContent).toBe('Your connection is good');
+    expect(byTestId('chains-group-peers').textContent).toBe('2 peers');
+    expect(byTestId('chains-status').textContent).toBe('Your connection is good');
   });
 
   it('As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and stops when it closes', async () => {
@@ -633,7 +633,7 @@ describe('The network popover island', () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(document.querySelector('[data-testid="chains-group-label"]')?.textContent).toBe('Relay chain');
+    expect(byTestId('chains-group-label').textContent).toBe('Relay chain');
     expect(vi.getTimerCount()).toBe(1);
   });
 
@@ -942,7 +942,7 @@ describe('The network popover island, on network updates', () => {
 
     // Then
     expect(format.describeLiveNetwork).toHaveBeenCalledTimes(1);
-    expect(document.querySelector('[data-testid="chains-status"]')?.textContent).toBe('Your connection is good');
+    expect(byTestId('chains-status').textContent).toBe('Your connection is good');
   });
 
   it('As a dotli user, the countdown ticker stops once no chain is waiting for its first block', async () => {

@@ -7,6 +7,7 @@ import { ArchiveView } from '../../src/components/truapi-debug/ArchiveView.js';
 import type { ArchiveLoader } from '../../src/components/truapi-debug/archive-source.js';
 import { setProductLoaded } from '../../src/state/product.js';
 import { renderComponent, resetStores, settle } from '../helpers/solid.js';
+import { byTestId } from '../support.js';
 
 const enc = (s: string): Uint8Array => new TextEncoder().encode(s);
 // "DOTLI_ENC\x01", the encrypted-SPA magic, then room for a salt, a nonce and a tag.
@@ -79,7 +80,7 @@ describe('ArchiveView', () => {
       el => el.dataset['path'],
     );
     expect(paths).toEqual(['assets/app.js', 'index.html']);
-    expect(view(container).querySelector('[data-testid="td-archive-summary"]')?.textContent).toContain('2 files');
+    expect(byTestId('td-archive-summary', view(container)).textContent).toContain('2 files');
     expect(fileButton(container, 'index.html').textContent).toContain('11 B');
   });
 

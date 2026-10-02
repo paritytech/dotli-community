@@ -16,7 +16,7 @@ import {
   tabTo,
   waitForContent,
 } from './helpers/solid.js';
-import { byId, query } from './support.js';
+import { byId, byTestId, query } from './support.js';
 
 function button(): HTMLButtonElement {
   return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);
@@ -194,9 +194,7 @@ describe('verification shield', () => {
     await openShield();
 
     // When: a tap lands on the panel copy
-    panel()
-      .querySelector('[data-testid="verification-tooltip-title"]')
-      ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    byTestId('verification-tooltip-title', panel()).dispatchEvent(new MouseEvent('click', { bubbles: true }));
     await settle();
 
     // Then

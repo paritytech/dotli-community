@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
-import { query } from '../support.js';
+import { byTestId, query } from '../support.js';
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
@@ -73,7 +73,7 @@ function rows(): HTMLElement[] {
 }
 
 function rowTags(): string[] {
-  return rows().map(r => r.querySelector('[data-testid="td-tag"]')?.textContent ?? '');
+  return rows().map(r => byTestId('td-tag', r).textContent);
 }
 
 function counts(): string {

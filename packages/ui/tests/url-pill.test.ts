@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { bindUrlPill } from '../src/url-pill.js';
 import { resetUrlPill, showLocalhostPill, showProductPill } from '../src/state/url-pill.js';
-import { byId } from './support.js';
+import { byId, byTestId } from './support.js';
 
 let unbind: (() => void) | undefined;
 
@@ -26,7 +26,7 @@ function bind(): HTMLElement {
 }
 
 function text(): string {
-  return byId('topbar-url').querySelector('[data-testid="url-pill-text"]')?.textContent ?? '';
+  return byTestId('url-pill-text', byId('topbar-url')).textContent;
 }
 
 afterEach(() => {

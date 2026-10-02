@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { getActiveTldSuffix } from '@dotli/config';
 import { mountLandingPage } from '../../helpers/landing.js';
-import { byId, query } from '../../support.js';
+import { byId, byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
@@ -336,7 +336,7 @@ describe('landing page', () => {
     // Then
     expect(document.querySelector('img')).toBeNull();
     expect(items()[0]?.dataset['label']).toBe(hostile);
-    expect(items()[0]?.querySelector('[data-testid="landing-recent-label"]')?.firstChild?.textContent).toBe(hostile);
+    expect(byTestId('landing-recent-label', nth(items(), 0)).firstChild?.textContent).toBe(hostile);
   });
 
   it('As a returning visitor, the remove button forgets a name, and the row goes once none is left', async () => {
@@ -346,7 +346,7 @@ describe('landing page', () => {
     await settle();
 
     // When
-    const event = click(query(nth(items(), 0), '[data-testid="landing-recent-remove"]', Element));
+    const event = click(byTestId('landing-recent-remove', nth(items(), 0), Element));
     await settle();
 
     // Then
@@ -373,7 +373,7 @@ describe('landing page', () => {
     await settle();
     const alpha = nth(items(), 0);
     const beta = nth(items(), 1);
-    const alphaPill = query(alpha, '[data-testid="landing-recent-pill"]', Element);
+    const alphaPill = byTestId('landing-recent-pill', alpha, Element);
 
     // When: a press that moves is a scroll, not a long press.
     touch(alphaPill, 'touchstart');
@@ -408,7 +408,7 @@ describe('landing page', () => {
     expect(tap.defaultPrevented).toBe(true);
 
     // When: a long press on another pill moves the reveal there.
-    const betaPill = query(beta, '[data-testid="landing-recent-pill"]', Element);
+    const betaPill = byTestId('landing-recent-pill', beta, Element);
     touch(betaPill, 'touchstart');
     vi.advanceTimersByTime(450);
     await settle();

@@ -18,7 +18,7 @@ import { loadPanel, type PanelModule } from './panel-entry.js';
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
 import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.js';
 import type * as TopbarStateModule from '../../src/state/topbar.js';
-import { query, must } from '../support.js';
+import { byTestId, query, must } from '../support.js';
 import { nth } from '../helpers/nth.js';
 
 type Bus = typeof DotliDebugBusModule;
@@ -93,11 +93,11 @@ function rows(): HTMLElement[] {
 }
 
 function rowTags(): string[] {
-  return rows().map(r => r.querySelector('[data-testid="td-tag"]')?.textContent ?? '');
+  return rows().map(r => byTestId('td-tag', r).textContent);
 }
 
 function rowByTag(tag: string): HTMLElement {
-  const row = rows().find(r => r.querySelector('[data-testid="td-tag"]')?.textContent === tag);
+  const row = rows().find(r => byTestId('td-tag', r).textContent === tag);
   if (row === undefined) {
     throw new Error(`no row tagged ${tag}`);
   }
@@ -315,8 +315,8 @@ describe('truapi debug panel: mount and dispose', () => {
     const chips = [...root.querySelectorAll<HTMLElement>('[data-testid="td-product-chip"]')];
     expect(chips.map(c => c.textContent)).toEqual(['all']);
     expect(chips[0]?.hasAttribute('data-active')).toBe(true);
-    expect(query(panel(), '[data-testid="td-tag-input"]', HTMLInputElement).placeholder).toBe('filter by method…');
-    expect(query(panel(), '[data-testid="td-exclude-input"]', HTMLInputElement).placeholder).toBe('hide by method…');
+    expect(byTestId('td-tag-input', panel(), HTMLInputElement).placeholder).toBe('filter by method…');
+    expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
     const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
     expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive']);
@@ -402,30 +402,30 @@ describe('truapi debug panel: event rows', () => {
     const request = rowByTag('system_handshake_request');
     expect(request.hasAttribute('data-system')).toBe(false);
     expect(request.getAttribute('role')).toBe('listitem');
-    expect(request.querySelector('[data-testid="td-time"]')?.textContent).toBe('12:34:56.789');
-    expect(request.querySelector('[data-testid="td-arrow-out"]')?.textContent).toBe('▶');
+    expect(byTestId('td-time', request).textContent).toBe('12:34:56.789');
+    expect(byTestId('td-arrow-out', request).textContent).toBe('▶');
     expect(request.querySelector('[data-testid="td-arrow-in"]')).toBeNull();
-    expect(request.querySelector('[data-testid="td-product"]')?.textContent).toBe('app.dot');
-    expect(request.querySelector('[data-testid="td-product"]')?.hasAttribute('data-anon')).toBe(false);
-    expect(request.querySelector('[data-testid="td-rid"]')?.textContent).toBe('req-aa');
-    const reqTag = request.querySelector('[data-testid="td-tag"]');
-    expect(reqTag?.getAttribute('data-kind')).toBe('request');
-    expect(request.querySelector('[data-testid="td-summary"]')?.textContent).toBe('version=1');
+    expect(byTestId('td-product', request).textContent).toBe('app.dot');
+    expect(byTestId('td-product', request).hasAttribute('data-anon')).toBe(false);
+    expect(byTestId('td-rid', request).textContent).toBe('req-aa');
+    const reqTag = byTestId('td-tag', request);
+    expect(reqTag.getAttribute('data-kind')).toBe('request');
+    expect(byTestId('td-summary', request).textContent).toBe('version=1');
     expect(request.querySelector('[data-testid="td-latency"]')).toBeNull();
 
     const response = rowByTag('system_handshake_response');
-    expect(response.querySelector('[data-testid="td-arrow-in"]')?.textContent).toBe('◀');
-    expect(response.querySelector('[data-testid="td-tag"]')?.getAttribute('data-kind')).toBe('response');
-    expect(response.querySelector('[data-testid="td-latency"]')?.textContent).toBe('+50ms');
-    expect(response.querySelector('[data-testid="td-summary"]')?.textContent).toBe('ok=true');
+    expect(byTestId('td-arrow-in', response).textContent).toBe('◀');
+    expect(byTestId('td-tag', response).getAttribute('data-kind')).toBe('response');
+    expect(byTestId('td-latency', response).textContent).toBe('+50ms');
+    expect(byTestId('td-summary', response).textContent).toBe('ok=true');
 
     const anon = rowByTag('chat_subscribe');
-    expect(anon.querySelector('[data-testid="td-product"]')?.textContent).toBe('(no id)');
-    expect(anon.querySelector('[data-testid="td-product"]')?.hasAttribute('data-anon')).toBe(true);
-    expect(anon.querySelector('[data-testid="td-tag"]')?.getAttribute('data-kind')).toBe('subscription');
-    expect(anon.querySelector('[data-testid="td-summary"]')?.textContent).toBe('hello');
+    expect(byTestId('td-product', anon).textContent).toBe('(no id)');
+    expect(byTestId('td-product', anon).hasAttribute('data-anon')).toBe(true);
+    expect(byTestId('td-tag', anon).getAttribute('data-kind')).toBe('subscription');
+    expect(byTestId('td-summary', anon).textContent).toBe('hello');
 
-    expect(rowByTag('plain_tag').querySelector('[data-testid="td-tag"]')?.getAttribute('data-kind')).toBe('plain');
+    expect(byTestId('td-tag', rowByTag('plain_tag')).getAttribute('data-kind')).toBe('plain');
     // An empty payload has no summary span.
     expect(rowByTag('plain_tag').querySelector('[data-testid="td-summary"]')).toBeNull();
   });
@@ -440,11 +440,11 @@ describe('truapi debug panel: event rows', () => {
     // Then
     const row = rowByTag('boot.started');
     expect(row.hasAttribute('data-system')).toBe(true);
-    expect(row.querySelector('[data-testid="td-layer-badge"]')?.getAttribute('data-layer')).toBe('boot');
-    expect(row.querySelector('[data-testid="td-layer-badge"]')?.textContent).toBe('boot');
-    expect(row.querySelector('[data-testid="td-rid"]')?.textContent).toBe('flow-b');
-    expect(row.querySelector('[data-testid="td-tag"]')?.getAttribute('data-kind')).toBe('system');
-    expect(row.querySelector('[data-testid="td-summary"]')?.textContent).toBe(
+    expect(byTestId('td-layer-badge', row).getAttribute('data-layer')).toBe('boot');
+    expect(byTestId('td-layer-badge', row).textContent).toBe('boot');
+    expect(byTestId('td-rid', row).textContent).toBe('flow-b');
+    expect(byTestId('td-tag', row).getAttribute('data-kind')).toBe('system');
+    expect(byTestId('td-summary', row).textContent).toBe(
       'Host boot started (mode: direct, chain: smoldot, content: helia).',
     );
     expect(row.querySelector('[data-testid="td-arrow-out"], [data-testid="td-arrow-in"]')).toBeNull();
@@ -463,9 +463,9 @@ describe('truapi debug panel: event rows', () => {
     frame();
 
     // Then
-    const tag = nth(rows(), 0).querySelector('[data-testid="td-tag"]');
-    expect(tag?.textContent).toBe('chainHead.follow');
-    expect(tag?.getAttribute('data-kind')).toBe('request');
+    const tag = byTestId('td-tag', nth(rows(), 0));
+    expect(tag.textContent).toBe('chainHead.follow');
+    expect(tag.getAttribute('data-kind')).toBe('request');
   });
 
   it('As a dotli developer, a selected chain response shows its summary and its decoded annotations', () => {
@@ -586,7 +586,7 @@ describe('truapi debug panel: header actions', () => {
     // Given
     mount();
     seedMixedTraffic();
-    type(query(panel(), '[data-testid="td-exclude-input"]', HTMLInputElement), 'response');
+    type(byTestId('td-exclude-input', panel(), HTMLInputElement), 'response');
     const blobs: Blob[] = [];
     vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
       blobs.push(blob as Blob);
@@ -638,7 +638,7 @@ describe('truapi debug panel: header actions', () => {
     toggle(query(panel(), '[data-testid="td-kind"][data-kind="system"]', HTMLInputElement));
     const writeText = vi.fn((_text: string) => Promise.resolve());
     stubClipboard(writeText);
-    const copy = query(panel(), '[data-testid="td-copy"]', HTMLButtonElement);
+    const copy = byTestId('td-copy', panel(), HTMLButtonElement);
 
     try {
       // When
@@ -677,7 +677,7 @@ describe('truapi debug panel: header actions', () => {
     // Given
     mount();
     seedMixedTraffic();
-    const copy = query(panel(), '[data-testid="td-copy"]', HTMLButtonElement);
+    const copy = byTestId('td-copy', panel(), HTMLButtonElement);
 
     try {
       // When the write is rejected
@@ -882,8 +882,8 @@ describe('truapi debug panel: filters', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const include = query(panel(), '[data-testid="td-tag-input"]', HTMLInputElement);
-    const exclude = query(panel(), '[data-testid="td-exclude-input"]', HTMLInputElement);
+    const include = byTestId('td-tag-input', panel(), HTMLInputElement);
+    const exclude = byTestId('td-exclude-input', panel(), HTMLInputElement);
 
     // When
     type(include, 'ALPHA');
@@ -1001,8 +1001,7 @@ describe('truapi debug panel: selection and detail', () => {
     mount();
     seedMixedTraffic();
     const list = q('[data-testid="td-list"]');
-    const selectedTag = (): string[] =>
-      selectedRows().map(r => r.querySelector('[data-testid="td-tag"]')?.textContent ?? '');
+    const selectedTag = (): string[] => selectedRows().map(r => byTestId('td-tag', r).textContent);
 
     // When nothing is selected, ArrowDown picks the first row
     key(list, 'ArrowDown');
@@ -1064,7 +1063,7 @@ describe('truapi debug panel: selection and detail', () => {
 
     // Then
     expect(panel().querySelector('b')).toBeNull();
-    expect(rows()[0]?.querySelector('[data-testid="td-summary"]')?.textContent).toContain('<b>bold</b>');
+    expect(byTestId('td-summary', nth(rows(), 0)).textContent).toContain('<b>bold</b>');
     expect(q('[data-testid="td-detail-pre"]').textContent).toContain('"note": "<b>bold</b>"');
   });
 
@@ -1094,7 +1093,7 @@ describe('truapi debug panel: selection and detail', () => {
     click(rowByTag('system_handshake_request'));
 
     // When
-    type(query(panel(), '[data-testid="td-tag-input"]', HTMLInputElement), 'handshake');
+    type(byTestId('td-tag-input', panel(), HTMLInputElement), 'handshake');
 
     // Then
     expect(rowByTag('system_handshake_request').getAttribute('data-selection')).toBe('selected');
@@ -1191,7 +1190,7 @@ describe('truapi debug panel: views', () => {
     // Then
     expect(box.hasAttribute('data-selected')).toBe(true);
     const members = [...panel().querySelectorAll('[data-testid="td-detail-member"]')].map(
-      m => m.querySelector('[data-testid="td-tag"]')?.textContent,
+      m => byTestId('td-tag', m).textContent,
     );
     expect(members).toEqual(['system_handshake_request', 'system_handshake_response']);
     expect(

@@ -97,7 +97,7 @@ import { setLoggedIn } from '../../../src/state/auth.js';
 import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import type * as ServiceModule from '../../../src/chat/service.js';
 import type * as ChatPanelModule from '../../../src/state/chat-panel.js';
-import { byId } from '../../support.js';
+import { byId, byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const PRODUCT = 'chatty.dot';
@@ -274,7 +274,7 @@ describe('chat panel, contact reads', () => {
     await idle();
 
     // Then
-    expect(rows().map(row => row.querySelector('[data-testid="chat-room-name"]')?.textContent)).toEqual(['Room 0']);
+    expect(rows().map(row => byTestId('chat-room-name', row).textContent)).toEqual(['Room 0']);
   });
 
   it('As a user, going back to a list that missed nothing does not re-read it', async () => {
@@ -438,7 +438,7 @@ describe('chat panel, message reads', () => {
 
     // Then
     expect(document.querySelectorAll('[data-testid="chat-msg"]')).toHaveLength(0);
-    expect(rows()[1]?.querySelector('[data-testid="chat-room-unread"]')?.textContent).toBe('1');
+    expect(byTestId('chat-room-unread', nth(rows(), 1)).textContent).toBe('1');
   });
 });
 

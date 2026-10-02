@@ -417,7 +417,7 @@ describe('chat panel', () => {
     // One recency order across rooms and bots: last message time, falling
     // back to creation/registration time for message-less contacts.
     const items = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')];
-    expect(items.map(row => row.querySelector('[data-testid="chat-room-name"]')?.textContent)).toEqual([
+    expect(items.map(row => byTestId('chat-room-name', row).textContent)).toEqual([
       'First',
       'Second',
       'Echo Bot',
@@ -449,7 +449,7 @@ describe('chat panel', () => {
     byId('chat-panel-back').click();
     await settle(() => byId('chat-panel-rooms').hidden === false);
     const reordered = [...document.querySelectorAll<HTMLElement>('[data-testid="chat-room-item"]')].map(
-      row => row.querySelector('[data-testid="chat-room-name"]')?.textContent,
+      row => byTestId('chat-room-name', row).textContent,
     );
     expect(reordered).toEqual(['Echo Bot', 'First', 'Second', 'Idle']);
   });

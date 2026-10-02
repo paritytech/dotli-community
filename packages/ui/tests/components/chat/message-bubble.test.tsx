@@ -86,29 +86,29 @@ describe('message bubble', () => {
     });
 
     // Then
-    expect(rich.querySelector('[data-testid="chat-msg-bubble"]')?.textContent).toContain('pics');
-    expect(rich.querySelector('[data-testid="chat-msg-meta"]')?.textContent).toBe(' [2 attachments]');
+    expect(byTestId('chat-msg-bubble', rich).textContent).toContain('pics');
+    expect(byTestId('chat-msg-meta', rich).textContent).toBe(' [2 attachments]');
     document.body.replaceChildren();
 
     const reaction = await show({ tag: 'Reaction', value: { emoji: '👍' } });
-    expect(reaction.querySelector('[data-testid="chat-msg-bubble"]')?.hasAttribute('data-event')).toBe(true);
-    expect(reaction.querySelector('[data-testid="chat-msg-bubble"]')?.textContent).toContain('reacted 👍');
+    expect(byTestId('chat-msg-bubble', reaction).hasAttribute('data-event')).toBe(true);
+    expect(byTestId('chat-msg-bubble', reaction).textContent).toContain('reacted 👍');
     document.body.replaceChildren();
 
     const removed = await show({
       tag: 'ReactionRemoved',
       value: { emoji: '👍' },
     });
-    expect(removed.querySelector('[data-testid="chat-msg-bubble"]')?.textContent).toContain('removed reaction 👍');
+    expect(byTestId('chat-msg-bubble', removed).textContent).toContain('removed reaction 👍');
     document.body.replaceChildren();
 
     const file = await show({ tag: 'File', value: { fileName: 'a.pdf' } });
-    expect(file.querySelector('[data-testid="chat-msg-bubble"]')?.textContent).toContain('[file] a.pdf');
+    expect(byTestId('chat-msg-bubble', file).textContent).toContain('[file] a.pdf');
     document.body.replaceChildren();
 
     const unknown = await show({ tag: 'Hologram', value: {} });
-    expect(unknown.querySelector('[data-testid="chat-msg-bubble"]')?.hasAttribute('data-event')).toBe(true);
-    expect(unknown.querySelector('[data-testid="chat-msg-bubble"]')?.textContent).toContain('[unsupported message]');
+    expect(byTestId('chat-msg-bubble', unknown).hasAttribute('data-event')).toBe(true);
+    expect(byTestId('chat-msg-bubble', unknown).textContent).toContain('[unsupported message]');
   });
 
   it('As a user, action buttons reach the app, and a failure is reported', async () => {

@@ -196,7 +196,7 @@ describe('showErrorPage focus', () => {
   // replaces one error screen with another in place, which is the worst case.
   it('As a screen-reader user, the new screen is announced when it replaces the old one', () => {
     showErrorPage({ title: "Your connection won't be verified" });
-    const title = document.querySelector('[data-testid="error-page-title"]');
+    const title = byTestId('error-page-title');
     expect(document.activeElement).toBe(title);
   });
 

@@ -9,7 +9,7 @@ import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT_MS, Popover, SHEET_EXIT_MS, usePopover } from '../../../src/components/shell/Popover.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle, waitForContent } from '../../helpers/solid.js';
-import { byId, must } from '../../support.js';
+import { byId, byTestId, must } from '../../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -521,7 +521,7 @@ describe('Popover', () => {
       surface().querySelector<HTMLElement>(':scope > [data-testid="popover-sheet-header"]'),
       'sheet header',
     );
-    expect(header.querySelector('[data-testid="popover-sheet-title"]')?.textContent).toBe('Test');
+    expect(byTestId('popover-sheet-title', header).textContent).toBe('Test');
 
     // When
     mouseClick(must(header.querySelector<HTMLElement>('[data-testid="popover-sheet-close"]'), 'close'));

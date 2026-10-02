@@ -8,6 +8,7 @@ import { attachProductFrame, resetProductFrameLayout, setChatWidth } from '../..
 import { resetStores, settle } from '../../helpers/solid.js';
 import { setTopbarPresent } from '../../../src/state/topbar.js';
 import { byId, byTestId } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
 const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
 
@@ -78,9 +79,9 @@ describe('sandbox checker violation panel', () => {
     expect(byTestId('sc-badge', panel()).textContent).toBe('2');
     const entries = [...panel().querySelectorAll('[data-testid="sc-entry"]')];
     expect(entries).toHaveLength(2);
-    expect(entries[0]?.querySelector('[data-testid="sc-api"]')?.textContent).toBe('localStorage.getItem');
-    expect(entries[0]?.querySelector('[data-testid="sc-details"]')?.textContent).toBe('key=x n=1');
-    expect(entries[0]?.querySelector('[data-testid="sc-time"]')?.textContent).toBe(new Date(0).toLocaleTimeString());
+    expect(byTestId('sc-api', nth(entries, 0)).textContent).toBe('localStorage.getItem');
+    expect(byTestId('sc-details', nth(entries, 0)).textContent).toBe('key=x n=1');
+    expect(byTestId('sc-time', nth(entries, 0)).textContent).toBe(new Date(0).toLocaleTimeString());
     expect(entries[1]?.querySelector('[data-testid="sc-details"]')).toBeNull();
   });
 
@@ -98,8 +99,8 @@ describe('sandbox checker violation panel', () => {
     const entry = byTestId('sc-entry', panel(), Element);
     expect(entry.querySelector('img')).toBeNull();
     expect(entry.querySelector('b')).toBeNull();
-    expect(entry.querySelector('[data-testid="sc-api"]')?.textContent).toBe('<img src=x onerror=alert(1)>');
-    expect(entry.querySelector('[data-testid="sc-details"]')?.textContent).toBe('a=<b>bold</b>');
+    expect(byTestId('sc-api', entry).textContent).toBe('<img src=x onerror=alert(1)>');
+    expect(byTestId('sc-details', entry).textContent).toBe('a=<b>bold</b>');
   });
 
   it('As a dotli developer, messages from other windows or of other types are ignored', async () => {
@@ -293,8 +294,8 @@ describe('sandbox checker violation panel', () => {
     // Then
     const entries = [...panel().querySelectorAll('[data-testid="sc-entry"]')];
     expect(entries).toHaveLength(500);
-    expect(entries[0]?.querySelector('[data-testid="sc-api"]')?.textContent).toBe('api100');
-    expect(entries[499]?.querySelector('[data-testid="sc-api"]')?.textContent).toBe('api599');
+    expect(byTestId('sc-api', nth(entries, 0)).textContent).toBe('api100');
+    expect(byTestId('sc-api', nth(entries, 499)).textContent).toBe('api599');
     expect(byTestId('sc-badge', panel()).textContent).toBe('600');
   });
 

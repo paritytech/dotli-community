@@ -7,6 +7,7 @@ import { getAuthModalState } from '../../../src/state/auth-modal.js';
 import { authStore, setAuthState } from '../../../src/state/auth.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { renderComponent } from '../../helpers/solid.js';
+import { byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { byId, recordEvents, settleAll, useAuthController } from './auth-harness.js';
 
@@ -128,9 +129,9 @@ describe('AuthButton', () => {
     await settleAll();
 
     // Then
-    const badge = button.querySelector('[data-testid="user-badge"]');
-    expect(badge?.hasAttribute('data-anon')).toBe(true);
-    expect(badge?.querySelector('svg')).not.toBeNull();
+    const badge = byTestId('user-badge', button);
+    expect(badge.hasAttribute('data-anon')).toBe(true);
+    expect(badge.querySelector('svg')).not.toBeNull();
     expectMarkup(button, { initials: undefined });
   });
 
@@ -147,7 +148,7 @@ describe('AuthButton', () => {
 
     // Then
     expect(button.querySelector('b')).toBeNull();
-    expect(button.querySelector('[data-testid="user-badge"]')?.textContent).toBe('<B');
+    expect(byTestId('user-badge', button).textContent).toBe('<B');
     expectMarkup(button, { initials: '<B' });
   });
 
