@@ -69,8 +69,7 @@
 .notif-stack:not(.expanded) .notif-card {
   grid-area: 1 / 1;
   align-self: end;
-  transform: translateY(calc(var(--i, 0) * -8px))
-    scale(calc(1 - var(--i, 0) * 0.04));
+  transform: translateY(calc(var(--i, 0) * -8px)) scale(calc(1 - var(--i, 0) * 0.04));
   filter: brightness(calc(1 - var(--i, 0) * 0.05));
   transition:
     transform 0.3s ease,

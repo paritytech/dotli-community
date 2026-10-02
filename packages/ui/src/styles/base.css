@@ -37,19 +37,19 @@
    on Android. */
 @media (pointer: coarse) {
   input:not(
-    [type="button"],
-    [type="checkbox"],
-    [type="color"],
-    [type="file"],
-    [type="image"],
-    [type="radio"],
-    [type="range"],
-    [type="reset"],
-    [type="submit"]
+    [type='button'],
+    [type='checkbox'],
+    [type='color'],
+    [type='file'],
+    [type='image'],
+    [type='radio'],
+    [type='range'],
+    [type='reset'],
+    [type='submit']
   ),
   select,
   textarea,
-  [contenteditable]:not([contenteditable="false"]) {
+  [contenteditable]:not([contenteditable='false']) {
     font-size: 16px !important;
   }
 }
