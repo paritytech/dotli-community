@@ -7,7 +7,7 @@ import { ModalOutlet } from '../../../src/components/overlays/ModalOutlet.js';
 import { openModal, resetModalsForTests, type ModalView } from '../../../src/state/modals.js';
 import { attachProductFrame, resetProductFrameLayout } from '../../../src/product-frame-layout.js';
 import { renderComponent, settle } from '../../helpers/solid.js';
-import { query } from '../../support.js';
+import { byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -65,7 +65,7 @@ afterEach(() => {
 });
 
 describe('signing dialog', () => {
-  it("As a dotli user, a dialog shows today's markup, labels and dialog semantics", async () => {
+  it('As a dotli user, a dialog shows its icon, fields, notice and buttons with dialog semantics', async () => {
     // Given
     void openModal(permissionLike());
 
@@ -73,25 +73,28 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // Then
-    const modal = document.querySelector<HTMLElement>('.signing-modal-backdrop > .signing-modal');
+    const modal = document.querySelector<HTMLElement>(
+      '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]',
+    );
     expect(modal).not.toBeNull();
     expect(modal?.getAttribute('role')).toBe('dialog');
     expect(modal?.getAttribute('aria-modal')).toBe('true');
     const title = modal?.querySelector('h2');
     expect(title?.textContent).toBe('Permission Request');
     expect(modal?.getAttribute('aria-labelledby')).toBe(title?.id);
-    expect(modal?.querySelector('.permission-modal-icon svg')).not.toBeNull();
-    expect([...document.querySelectorAll('.signing-fields > .signing-field')].map(f => f.className)).toEqual([
-      'signing-field',
-      'signing-field',
-      'signing-field signing-field-warning',
-    ]);
-    expect(document.querySelector('.signing-field-value.mono')?.textContent).toBe('0x1234');
-    expect(document.querySelector('.permission-modal-notice')?.textContent).toBe(
+    expect(modal?.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
+    expect(
+      [...document.querySelectorAll('[data-testid="signing-field"]')].map(f => f.hasAttribute('data-warning')),
+    ).toEqual([false, false, true]);
+    expect(document.querySelector('[data-testid="signing-field-value"][data-mono]')?.textContent).toBe('0x1234');
+    expect(document.querySelector('[data-testid="permission-modal-notice"]')?.textContent).toBe(
       'Granting this permission will reload the application.',
     );
     expect(
-      [...document.querySelectorAll('.signing-modal-footer button')].map(b => [b.textContent, b.className]),
+      [...document.querySelectorAll('[data-testid="signing-modal-footer"] button')].map(b => [
+        b.textContent,
+        b.getAttribute('data-testid'),
+      ]),
     ).toEqual([
       ['Deny', 'signing-btn-cancel'],
       ['Always allow', 'signing-btn-secondary'],
@@ -105,12 +108,12 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-secondary', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-secondary', document, HTMLButtonElement));
     await settle();
 
     // Then
     await expect(outcome).resolves.toEqual({ result: 'allow' });
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a dotli user, the backdrop and Escape dismiss a dialog that allows it, and a click inside does not', async () => {
@@ -120,14 +123,14 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(query(document, '.signing-modal'));
+    fireEvent.click(byTestId('signing-modal', document));
     await settle();
 
     // Then
     expect(document.querySelector('h2')?.textContent).toBe('Permission Request');
 
     // When
-    fireEvent.click(query(document, '.signing-modal-backdrop'));
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
     await settle();
 
     // Then
@@ -146,7 +149,7 @@ describe('signing dialog', () => {
     // Given
     void openModal(permissionLike());
     await mountOutlet();
-    const modal = query(document, '.signing-modal');
+    const modal = byTestId('signing-modal', document);
     const bubbleListener = vi.fn();
     document.addEventListener('keydown', bubbleListener);
 
@@ -156,7 +159,7 @@ describe('signing dialog', () => {
 
     // Then
     expect(bubbleListener).not.toHaveBeenCalled();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     document.removeEventListener('keydown', bubbleListener);
   });
 
@@ -169,13 +172,13 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(query(document, '.signing-modal-backdrop'));
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
     fireEvent.keyDown(document, { key: 'Escape' });
     await settle();
 
     // Then
     expect(settled).toBe(false);
-    expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
   });
 
   it('As a dotli user, focus starts on the dialog, not on the approve button, and Tab stays inside', async () => {
@@ -189,9 +192,9 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // Then
-    const modal = query(document, '.signing-modal');
+    const modal = byTestId('signing-modal', document);
     expect(document.activeElement).toBe(modal);
-    const buttons = [...document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button')];
+    const buttons = [...document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button')];
 
     // When
     nth(buttons, 2).focus();
@@ -216,7 +219,7 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then
@@ -227,8 +230,8 @@ describe('signing dialog', () => {
     // Given
     const outcome = openModal(passwordView('Wrong password'));
     await mountOutlet();
-    const input = query(document, 'input.password-prompt-input', HTMLInputElement);
-    const unlock = query(document, '.signing-btn-sign', HTMLButtonElement);
+    const input = byTestId('password-prompt-input', document, HTMLInputElement);
+    const unlock = byTestId('signing-btn-sign', document, HTMLButtonElement);
 
     // Then
     expect(document.activeElement).toBe(input);
@@ -236,7 +239,7 @@ describe('signing dialog', () => {
     expect(input.placeholder).toBe('Password');
     expect(input.getAttribute('autocomplete')).toBe('off');
     expect(input.getAttribute('spellcheck')).toBe('false');
-    expect(document.querySelector('.password-prompt-error')?.textContent).toBe('Wrong password');
+    expect(document.querySelector('[data-testid="password-prompt-error"]')?.textContent).toBe('Wrong password');
     expect(unlock.disabled).toBe(true);
 
     // When
@@ -244,7 +247,7 @@ describe('signing dialog', () => {
     await settle();
 
     // Then
-    expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
 
     // When
     fireEvent.input(input, { target: { value: 'hunter2' } });
@@ -268,13 +271,13 @@ describe('signing dialog', () => {
     // Given
     const outcome = openModal(passwordView());
     await mountOutlet();
-    fireEvent.input(query(document, 'input.password-prompt-input', HTMLInputElement), {
+    fireEvent.input(byTestId('password-prompt-input', document, HTMLInputElement), {
       target: { value: 'typed' },
     });
     await settle();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then
@@ -288,12 +291,12 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then
     expect(document.querySelector('h2')?.textContent).toBe('Second');
-    expect(document.activeElement).toBe(document.querySelector('.signing-modal'));
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="signing-modal"]'));
   });
 
   it('As a keyboard user, focus goes back to where it was after two queued dialogs close', async () => {
@@ -306,13 +309,13 @@ describe('signing dialog', () => {
     await mountOutlet();
 
     // When: both are answered.
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then
-    expect(document.querySelector('.signing-modal')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     expect(document.activeElement).toBe(opener);
   });
 
@@ -331,7 +334,7 @@ describe('signing dialog', () => {
     opener.remove();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then
@@ -355,7 +358,7 @@ describe('signing dialog', () => {
     opener.remove();
 
     // When
-    fireEvent.click(query(document, '.signing-btn-cancel', HTMLButtonElement));
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
     await settle();
 
     // Then

@@ -32,7 +32,7 @@ export interface ModalPasswordInput {
 
 export interface ModalView<R extends string> {
   title: string;
-  /** SVG markup, rendered in `.permission-modal-icon`. */
+  /** SVG markup, rendered in the dialog's icon tile. */
   icon?: string;
   fields: ModalField[];
   notice?: string;

@@ -231,48 +231,6 @@
   border-color: #ddd;
   border-top-color: #333;
 }
-[data-theme='light'] .signing-modal {
-  background: #fff;
-  border-color: #ddd;
-}
-[data-theme='light'] .signing-modal h2 {
-  color: #111;
-}
-[data-theme='light'] .signing-field-value {
-  color: #333;
-}
-[data-theme='light'] .signing-field-value.mono {
-  background: #f5f5f5;
-  border-color: #ddd;
-  color: #555;
-}
-[data-theme='light'] .signing-field-warning .signing-field-label {
-  color: #9a6700;
-}
-[data-theme='light'] .signing-field-warning .signing-field-value {
-  color: #7a5200;
-}
-[data-theme='light'] .signing-btn-cancel {
-  border-color: #ddd;
-  color: #666;
-}
-[data-theme='light'] .signing-btn-cancel:hover {
-  background: #f5f5f5;
-}
-[data-theme='light'] .signing-btn-sign {
-  background: #1a1a1a;
-  color: #fff;
-}
-[data-theme='light'] .signing-btn-sign:hover {
-  background: #000;
-}
-[data-theme='light'] .signing-btn-secondary {
-  border-color: #bbb;
-  color: #1a1a1a;
-}
-[data-theme='light'] .signing-btn-secondary:hover {
-  background: #f5f5f5;
-}
 [data-theme='light'] .error-page-title {
   color: #202124;
 }
@@ -579,14 +537,6 @@
 [data-theme='light'] .permissions-popover-footer {
   color: rgba(0, 0, 0, 0.45);
   border-top-color: rgba(0, 0, 0, 0.06);
-}
-[data-theme='light'] .permission-modal-icon {
-  background: rgba(0, 0, 0, 0.05);
-  border-color: rgba(0, 0, 0, 0.1);
-  color: rgba(0, 0, 0, 0.85);
-}
-[data-theme='light'] .permission-modal-notice {
-  color: rgba(0, 0, 0, 0.5);
 }
 
 /* Green, amber and red all need darkening on the cream panel to clear 3:1 as

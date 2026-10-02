@@ -18,12 +18,12 @@ describe('preimage submit modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Submit Preimage');
-    expect(document.querySelector('.signing-field-label')?.textContent).toBe('Data size');
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('2 KB');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Submit Preimage');
+    expect(document.querySelector('[data-testid="signing-field-label"]')?.textContent).toBe('Data size');
+    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('2 KB');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(decision).resolves.toBeUndefined();
@@ -33,16 +33,16 @@ describe('preimage submit modal', () => {
     // Given
     const decision = showPreimageSubmitModal(512);
     await overlaysReady();
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('512 B');
+    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('512 B');
 
     // When
-    document.querySelector<HTMLElement>('.signing-modal-backdrop')?.click();
+    document.querySelector<HTMLElement>('[data-testid="signing-modal-backdrop"]')?.click();
 
     // Then
-    expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
 
     // Then
     await expect(decision).rejects.toThrow(ERRORS.PREIMAGE_SUBMIT_DENIED);

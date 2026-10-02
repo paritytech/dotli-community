@@ -1,0 +1,188 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The content of a queued ModalView: the icon, title, fields, notice, the
+   password input and the button row. Dialog.module.css styles the panel
+   and the backdrop around it. */
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 48px;
+  height: 48px;
+  margin: 0 0 12px;
+  padding: 0;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+}
+
+.title {
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 1rem;
+  color: var(--text-strong);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-sizing: border-box;
+  max-height: 50dvh;
+  margin: 0 0 20px;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.field {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.field-label {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.field-value {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.field-value[data-mono] {
+  max-height: 120px;
+  padding: 8px;
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-page);
+  color: var(--text-secondary);
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
+  font-size: 0.75rem;
+}
+
+/* Wins over the mono color, as the legacy rule did by coming later. */
+.field[data-warning] .field-label,
+.field[data-warning] .field-value {
+  color: var(--caution);
+}
+
+.notice {
+  margin: 4px 0 0;
+  padding: 0;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--text-muted);
+}
+
+.password-error {
+  margin: -4px 0 0;
+  padding: 0;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.password-input {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 0.9rem;
+  transition: border-color 0.15s;
+}
+.password-input:focus {
+  border-color: var(--border-focus);
+}
+.password-input::placeholder {
+  color: var(--text-faint);
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.cancel {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--neutral-solid);
+  font-family: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cancel:hover {
+  background: var(--fill);
+}
+
+/* Between Cancel and the primary action: a lasting grant next to the
+   highlighted one-time grant. */
+.secondary {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.secondary:hover {
+  background: var(--fill);
+}
+
+.primary {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 20px;
+  border: none;
+  border-radius: 8px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.primary:hover {
+  background: var(--inverse-bg-hover);
+}
+.primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

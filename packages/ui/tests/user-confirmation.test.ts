@@ -12,9 +12,9 @@ afterEach(() => {
 
 function modalFields(): Record<string, string> {
   return Object.fromEntries(
-    Array.from(document.querySelectorAll('.signing-field')).map(field => {
-      const label = field.querySelector('.signing-field-label')?.textContent;
-      const value = field.querySelector('.signing-field-value')?.textContent;
+    Array.from(document.querySelectorAll('[data-testid="signing-field"]')).map(field => {
+      const label = field.querySelector('[data-testid="signing-field-label"]')?.textContent;
+      const value = field.querySelector('[data-testid="signing-field-value"]')?.textContent;
       return [label ?? '', value ?? ''];
     }),
   );
@@ -40,27 +40,27 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Account Access');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
     await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Identity Disclosure');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Identity Disclosure');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(identityDisclosure).resolves.toBe(true);
     await overlaysReady();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a dotli integrator, the host renders legacy payload signing as structured transaction fields', async () => {
@@ -94,7 +94,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign Transaction');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Sign Transaction');
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
@@ -105,7 +105,7 @@ describe('user confirmation modal', () => {
     expect(document.body.textContent).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -156,7 +156,7 @@ describe('user confirmation modal', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -187,17 +187,17 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign Message');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Sign Message');
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
       Message: '0x48656c6c6f2c20776f726c6421',
     });
     expect(document.body.textContent).not.toContain('Request');
-    expect(document.querySelector('.signing-field-warning')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-field"][data-warning]')).toBeNull();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -234,10 +234,13 @@ describe('user confirmation modal', () => {
       Message: '0x0304',
       Warning: 'Unprotected signature: may authorize transactions',
     });
-    expect(document.querySelector('.signing-field-warning .signing-field-label')?.textContent).toBe('Warning');
+    expect(
+      document.querySelector('[data-testid="signing-field"][data-warning] [data-testid="signing-field-label"]')
+        ?.textContent,
+    ).toBe('Warning');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -277,7 +280,7 @@ describe('user confirmation modal', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(false);
@@ -309,7 +312,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign VRF Transcript');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Sign VRF Transcript');
     expect(modalFields()).toEqual({
       'Requesting product': 'truapi-playground.dot',
       Signer: 'other-product.dot / 4',
@@ -318,7 +321,7 @@ describe('user confirmation modal', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -352,7 +355,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Sign Transaction');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Sign Transaction');
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: 'truapi-playground.dot / 3',
@@ -362,7 +365,7 @@ describe('user confirmation modal', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -384,7 +387,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Resource Allocation');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Resource Allocation');
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'localhost:3000',
@@ -394,7 +397,7 @@ describe('user confirmation modal', () => {
     expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -423,7 +426,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Alias Permission');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Alias Permission');
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'truapi-playground.dot',
@@ -432,12 +435,12 @@ describe('user confirmation modal', () => {
       Chain: '0x0000000000000000000000000000000000000000000000000000000000000000',
       'Ring path': 'PalletInstance(42)',
     });
-    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.textContent).toBe('Deny');
     expect(Object.keys(fields)).not.toContain('Application');
     expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -467,7 +470,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Proof Permission');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Proof Permission');
     expect(modalFields()).toEqual({
       'Requesting product': 'truapi-playground.dot',
       'Context product': 'truapix-playground.dot',
@@ -478,7 +481,7 @@ describe('user confirmation modal', () => {
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -500,18 +503,18 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Account Access');
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'truapi-playground.dot',
       'Requested account': 'other-product.dot',
     });
-    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.textContent).toBe('Deny');
     expect(Object.keys(fields)).not.toContain('Application');
     expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -532,17 +535,17 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Identity Disclosure');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Identity Disclosure');
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'truapi-playground.dot',
     });
-    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.textContent).toBe('Deny');
     expect(Object.keys(fields)).not.toContain('Application');
     expect(Object.keys(fields)).not.toContain('Request');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -563,17 +566,17 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Product Account');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Product Account');
     expect(modalFields()).toEqual({
       'Requesting product': 'truapi-playground.dot',
     });
     // The answer is fixed for the pairing and cached, so the wording has to
     // read as granting access rather than as signing something.
-    expect(document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.textContent).toBe('Allow');
-    expect(document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.textContent).toBe('Deny');
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.textContent).toBe('Allow');
+    expect(document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.textContent).toBe('Deny');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(false);
@@ -594,7 +597,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    document.querySelector<HTMLDivElement>('[data-testid="signing-modal-backdrop"]')?.click();
 
     // Then
     await expect(confirmation).rejects.toThrow('User dismissed identity disclosure dialog');
@@ -611,11 +614,11 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Submit Preimage');
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Submit Preimage');
     expect(modalFields()).toEqual({ 'Data size': '2 KB' });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(true);
@@ -632,7 +635,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
 
     // Then
     await expect(confirmation).resolves.toBe(false);
@@ -651,9 +654,9 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(footerButtons()).toEqual([
-      { text: 'Deny', className: 'signing-btn-cancel' },
-      { text: 'Always allow', className: 'signing-btn-secondary' },
-      { text: 'Allow once', className: 'signing-btn-sign' },
+      { text: 'Deny', testId: 'signing-btn-cancel' },
+      { text: 'Always allow', testId: 'signing-btn-secondary' },
+      { text: 'Allow once', testId: 'signing-btn-sign' },
     ]);
   });
 
@@ -669,7 +672,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(decision).resolves.toBe('AllowOnce');
@@ -687,7 +690,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-secondary"]')?.click();
 
     // Then
     await expect(decision).resolves.toBe('AllowAlways');
@@ -705,7 +708,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-cancel"]')?.click();
 
     // Then
     await expect(decision).resolves.toBe('Deny');
@@ -720,7 +723,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(decision).resolves.toBe('AllowOnce');
@@ -735,7 +738,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    document.querySelector<HTMLDivElement>('[data-testid="signing-modal-backdrop"]')?.click();
 
     // Then
     await expect(decision).rejects.toThrow('User dismissed identity disclosure dialog');
@@ -766,7 +769,7 @@ describe('user confirmation modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal')?.getAttribute('role')).toBe('dialog');
+    expect(document.querySelector('[data-testid="signing-modal"]')?.getAttribute('role')).toBe('dialog');
 
     // When
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
@@ -776,9 +779,12 @@ describe('user confirmation modal', () => {
   });
 });
 
-function footerButtons(): { text: string; className: string }[] {
-  return Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'), button => ({
-    text: button.textContent,
-    className: button.className,
-  }));
+function footerButtons(): { text: string; testId: string | null }[] {
+  return Array.from(
+    document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),
+    button => ({
+      text: button.textContent,
+      testId: button.getAttribute('data-testid'),
+    }),
+  );
 }

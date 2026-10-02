@@ -8,6 +8,7 @@ import { onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab } from '../focus.js';
+import s from './Dialog.module.css';
 
 export interface DialogProps {
   titleId: string;
@@ -15,6 +16,8 @@ export interface DialogProps {
   initialFocus?: () => HTMLElement | undefined;
   /** Backdrop click and Escape. */
   onDismiss: () => void;
+  /** Rendered as `data-testid` on the dialog panel, and with `-backdrop` appended on the backdrop. */
+  testId?: string;
   children: JSX.Element;
 }
 
@@ -25,14 +28,15 @@ const restoreTargets = new WeakMap<Element, HTMLElement | null>();
  * Where a dialog opening now returns focus. Queued dialogs open one after
  * another, and the next one opens while the last one still holds focus:
  * it inherits that dialog's target, so the queue as a whole returns focus
- * to where it was before the first dialog.
+ * to where it was before the first dialog. Each panel carries
+ * `data-dialog`, which is how the focused one is found.
  */
 function restoreTargetNow(): HTMLElement | null {
   const active = document.activeElement;
   if (!(active instanceof HTMLElement)) {
     return null;
   }
-  const outer = active.closest('.signing-modal');
+  const outer = active.closest('[data-dialog]');
   if (outer !== null && restoreTargets.has(outer)) {
     return restoreTargets.get(outer) ?? null;
   }
@@ -84,7 +88,8 @@ export function Dialog(props: DialogProps): JSX.Element {
 
   return (
     <div
-      class="signing-modal-backdrop"
+      class={s['backdrop']}
+      data-testid={props.testId === undefined ? undefined : `${props.testId}-backdrop`}
       ref={el => {
         backdrop = el;
       }}
@@ -95,7 +100,9 @@ export function Dialog(props: DialogProps): JSX.Element {
       }}
     >
       <div
-        class="signing-modal"
+        class={s['dialog']}
+        data-dialog=""
+        data-testid={props.testId}
         ref={el => {
           dialog = el;
           restoreTargets.set(el, previouslyFocused);

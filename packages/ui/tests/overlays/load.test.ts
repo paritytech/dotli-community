@@ -55,7 +55,7 @@ describe('overlays loader', () => {
     await overlaysReady();
 
     // When
-    document.querySelector<HTMLButtonElement>('#overlay-root .signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('#overlay-root [data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(outcome).resolves.toEqual({ result: 'yes' });
@@ -89,7 +89,7 @@ describe('overlays loader', () => {
 
     // Then
     await expect(outcome).rejects.toMatchObject({ name: 'AbortError' });
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a dotli user, prefetching mounts the overlays when the browser is idle', async () => {
@@ -155,7 +155,7 @@ describe('overlays loader', () => {
       // from its own button, instead of hanging forever.
       const recovered = presentModal(VIEW);
       await overlaysReady();
-      document.querySelector<HTMLButtonElement>('#overlay-root .signing-btn-sign')?.click();
+      document.querySelector<HTMLButtonElement>('#overlay-root [data-testid="signing-btn-sign"]')?.click();
 
       // Then
       await expect(recovered).resolves.toEqual({ result: 'yes' });

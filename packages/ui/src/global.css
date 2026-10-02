@@ -28,6 +28,7 @@
   --border-strong: rgba(255, 255, 255, 0.28);
   --border-focus: rgba(255, 255, 255, 0.5);
   --inverse-bg: #fafafa;
+  --inverse-bg-hover: #ffffff;
   --inverse-fg: #0a0a0a;
   --backdrop: rgba(0, 0, 0, 0.6);
   --shadow: rgba(0, 0, 0, 0.4);
@@ -75,6 +76,7 @@
   --border-strong: rgba(0, 0, 0, 0.28);
   --border-focus: rgba(0, 0, 0, 0.45);
   --inverse-bg: #0a0a0a;
+  --inverse-bg-hover: #000000;
   --inverse-fg: #fafafa;
   --backdrop: rgba(0, 0, 0, 0.3);
   --shadow: rgba(0, 0, 0, 0.14);

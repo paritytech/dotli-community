@@ -103,7 +103,7 @@ async function waitForHostPlaygroundFrame(page: Page, timeoutMs: number): Promis
  * The auto-allow poller answers permission and account prompts meanwhile.
  */
 async function waitForHostModalsSettled(page: Page): Promise<void> {
-  const backdrop = page.locator('.signing-modal-backdrop');
+  const backdrop = page.getByTestId('signing-modal-backdrop');
   const deadline = Date.now() + HOST_MODAL_SETTLE_TIMEOUT_MS;
   let quietSince = Date.now();
   while (Date.now() < deadline) {

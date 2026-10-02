@@ -38,27 +38,27 @@ describe('blocking modal queue', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Account Access');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Account Access');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(accountAccess).resolves.toBe(true);
     await overlaysReady();
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Permission Request');
+      expect(document.querySelector('[data-testid="signing-modal"] h2')?.textContent).toBe('Permission Request');
     });
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(camera).resolves.toEqual('AllowAlways');
     await overlaysReady();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     scope.dispose();
   });
 
@@ -84,17 +84,17 @@ describe('blocking modal queue', () => {
     const second = permissions.devicePermission(PRODUCT, 'Notifications');
     await overlaysReady();
     await vi.waitFor(() => {
-      expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
+      expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
     });
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-secondary"]')?.click();
 
     // Then: the duplicate reads the saved grant instead of prompting, and
     // answers without upgrading what it found.
     await expect(Promise.all([first, second])).resolves.toEqual(['AllowAlways', 'AllowOnce']);
     await overlaysReady();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     expect(status).toBe('Authorized');
     scope.dispose();
     unregister();
@@ -116,7 +116,7 @@ describe('blocking modal queue', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('first.dot');
+    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('first.dot');
 
     // When
     firstScope.dispose();
@@ -124,11 +124,11 @@ describe('blocking modal queue', () => {
     // Then
     await expect(first).rejects.toMatchObject({ name: 'AbortError' });
     await overlaysReady();
-    expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('second.dot');
+    expect(document.querySelectorAll('[data-testid="signing-modal-backdrop"]')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('second.dot');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
 
     // Then
     await expect(second).resolves.toBe(true);
