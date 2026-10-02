@@ -75,11 +75,15 @@
   overflow: hidden;
   text-align: left;
 }
-.unavailable,
+.cell[data-unavailable],
 .waiting {
   color: var(--neutral-solid);
   font-size: 10px;
   white-space: nowrap;
+}
+.waiting {
+  align-self: center;
+  margin-left: 2px;
 }
 .bars {
   /* Read back by the panel (stripCapacity) to work out how many marks fit,
@@ -176,11 +180,6 @@
     opacity: 0.35;
   }
 }
-.waiting {
-  align-self: center;
-  margin-left: 2px;
-}
-
 /* The transfer readouts, under the strips: the label recessive, the value
    carrying. No rule of its own: the last strip draws one already. */
 .transfer {

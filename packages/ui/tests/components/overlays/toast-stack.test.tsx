@@ -18,6 +18,11 @@ import { nth } from '../../helpers/nth.js';
 
 /** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
 const cardLayoutReads = vi.hoisted(() => ({ count: 0 }));
+/** The last `expanded` and `single` values any card read from the stack. */
+const cardStackProps = vi.hoisted(() => ({
+  expanded: undefined as boolean | undefined,
+  single: undefined as boolean | undefined,
+}));
 vi.mock('../../../src/components/overlays/ToastCard.js', async importOriginal => {
   const actual = await importOriginal<typeof ToastCardModule>();
   return {
@@ -36,9 +41,11 @@ vi.mock('../../../src/components/overlays/ToastCard.js', async importOriginal =>
           return props.depth;
         },
         get expanded() {
+          cardStackProps.expanded = props.expanded;
           return props.expanded;
         },
         get single() {
+          cardStackProps.single = props.single;
           return props.single;
         },
       }),
@@ -96,14 +103,15 @@ describe('toast stack', () => {
     expect(card.dataset['id']).toBe('0');
     expect(byTestId('notif-icon', card).style.background).not.toBe('');
     expect(byTestId('notif-title', card).textContent).toBe('Update available');
-    const body = card.querySelector<HTMLAnchorElement>('a[data-testid="notif-body"]');
-    expect(body?.href).toBe('https://dot.li/');
-    expect(body?.target).toBe('_blank');
-    expect(body?.rel).toBe('noopener');
+    const body = query(card, 'a[data-testid="notif-body"]', HTMLAnchorElement);
+    expect(body.href).toBe('https://dot.li/');
+    expect(body.target).toBe('_blank');
+    expect(body.rel).toBe('noopener');
     expect(byTestId('notif-card-close', card).getAttribute('aria-label')).toBe('Dismiss');
     expect(byTestId('notif-cards').getAttribute('aria-live')).toBe('polite');
     expect(byTestId('notif-cards').getAttribute('role')).toBe('status');
     expect(byTestId('notif-stack').hasAttribute('data-single')).toBe(true);
+    expect(cardStackProps.single).toBe(true);
     expect(byTestId('notif-close-all').style.display).toBe('none');
 
     // When
@@ -188,6 +196,7 @@ describe('toast stack', () => {
     // Then
     expect(toastsStore.get().expanded).toBe(true);
     expect(byTestId('notif-stack').hasAttribute('data-expanded')).toBe(true);
+    expect(cardStackProps.expanded).toBe(true);
     expect(visibleTitles()).toEqual(['A', 'B', 'C', 'D']);
 
     // When

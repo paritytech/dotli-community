@@ -162,10 +162,10 @@
   font-size: 0.7rem;
   cursor: default;
 }
-.copyable {
+.info[data-copyable] {
   cursor: pointer;
 }
-.copyable:hover {
+.info[data-copyable]:hover {
   background: var(--fill-subtle);
 }
 .info-label {
@@ -181,7 +181,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.copyable[data-copied] .info-value {
+.info[data-copyable][data-copied] .info-value {
   color: var(--text-strong);
 }
 

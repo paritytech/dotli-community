@@ -195,7 +195,8 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
           }, COPIED_MS);
         });
       }}
-      class={[s['info'], copyable && s['copyable']]}
+      class={s['info']}
+      data-copyable={copyable ? '' : undefined}
       data-testid="mode-info-row"
       data-copied={copied() ? '' : undefined}
       title={copyable ? `Click to copy ${props.label}` : undefined}

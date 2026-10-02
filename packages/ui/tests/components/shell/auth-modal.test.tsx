@@ -1090,7 +1090,7 @@ describe('AuthModal error copy', () => {
   it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', async () => {
     const modalText = await failWith('Host failure');
     expect(modalText).toContain('Login did not complete');
-    expect(document.querySelector('#auth-modal-qr [data-testid="auth-modal-error"]')?.textContent).toBe('Host failure');
+    expect(query(document, '#auth-modal-qr [data-testid="auth-modal-error"]').textContent).toBe('Host failure');
     expect(modalText).toContain('Retry');
   });
 });

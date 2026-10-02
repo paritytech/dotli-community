@@ -233,7 +233,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
           {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
         </span>
       </p>
-      <div class={[s['cell'], !props.chain.reachable && s['unavailable']]}>
+      <div class={s['cell']} data-unavailable={props.chain.reachable ? undefined : ''}>
         <Show when={props.chain.reachable} fallback="no endpoint on this network">
           <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
         </Show>

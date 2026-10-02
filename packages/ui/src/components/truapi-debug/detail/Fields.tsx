@@ -28,7 +28,7 @@ export function Field(props: { name: string; children: JSX.Element }): JSX.Eleme
 export function IdValue(props: { id: string }): JSX.Element {
   return (
     <>
-      <span class={s['rid']} data-testid="td-rid" style={{ color: ridColor(props.id) }}>
+      <span class={s['rid']} data-testid="td-id-badge" style={{ color: ridColor(props.id) }}>
         {props.id.slice(0, 6)}
       </span>{' '}
       <code>{props.id}</code>

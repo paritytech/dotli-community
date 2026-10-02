@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { showError, showErrorPage, showNoContentError, showRetryScreen } from '../src/ui.js';
-import { byTestId, query } from './support.js';
+import { byId, byTestId, query } from './support.js';
 
 const XSS = '<img src=x onerror="alert(1)">';
 
@@ -29,8 +29,8 @@ describe('showErrorPage escaping', () => {
   it('As a visitor, markup in the bolded parts of a message is shown to me as text', () => {
     showErrorPage({ title: 't', detail: [{ strong: XSS }] });
     expect(document.querySelector('img')).toBeNull();
-    const strong = document.querySelector('[data-testid="error-page-detail"] strong');
-    expect(strong?.textContent).toBe(XSS);
+    const strong = query(byTestId('error-page-detail'), 'strong');
+    expect(strong.textContent).toBe(XSS);
   });
 
   it('As a visitor, markup in the domain of a no-content error is shown to me as text', () => {
@@ -176,7 +176,7 @@ describe('showErrorPage optional blocks', () => {
         },
       ],
     });
-    document.querySelector<HTMLButtonElement>('#error-retry-btn')?.click();
+    query(document, '#error-retry-btn').click();
     expect(got).not.toBeNull();
     expect(typeof (got as MouseEvent).stopPropagation).toBe('function');
   });
@@ -218,9 +218,9 @@ describe('showError shim', () => {
     showError('t', 'd', () => {
       clicked = true;
     });
-    const btn = document.querySelector<HTMLButtonElement>('#error-retry-btn');
-    expect(btn?.textContent).toContain('Retry');
-    btn?.click();
+    const btn = query(document, '#error-retry-btn');
+    expect(btn.textContent).toContain('Retry');
+    btn.click();
     expect(clicked).toBe(true);
   });
 });
@@ -236,6 +236,6 @@ describe('showRetryScreen', () => {
     // Then
     expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
     expect(query(byTestId('retry-screen'), 'h1').textContent).toBe('dot.li');
-    expect(document.getElementById('status')?.textContent).toBe('Retrying...');
+    expect(byId('status').textContent).toBe('Retrying...');
   });
 });

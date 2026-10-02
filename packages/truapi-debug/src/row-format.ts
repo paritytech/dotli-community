@@ -6,9 +6,7 @@
 // Solid-free: consumed by the Solid truapi-debug components in
 // `packages/ui/src/components/truapi-debug/`, so it must not import
 // `@dotli/ui` or `solid-js`. These functions return plain data, never
-// markup — callers that render to `innerHTML` are responsible for
-// `escapeHtml`-guarding every field before it reaches the DOM; callers
-// that render via JSX get automatic text escaping instead.
+// markup. The callers render every field as JSX text, which escapes it.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import type { StoredSystemEvent, StoredTruapiEvent } from './event-store.js';
@@ -90,8 +88,8 @@ export interface TruapiRowData {
 
 /**
  * Pure fields derived from a stored TrUAPI event for its list row: the
- * decoded chain label/summary plus the badge inputs. Markup assembly
- * (with `escapeHtml`) is the caller's job.
+ * decoded chain label/summary plus the badge inputs. The caller renders
+ * them as JSX text.
  */
 export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
   const chain = decodeChainAnnotations(ev.tag, ev.payload);

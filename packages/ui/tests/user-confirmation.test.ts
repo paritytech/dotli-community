@@ -236,8 +236,7 @@ describe('user confirmation modal', () => {
       Warning: 'Unprotected signature: may authorize transactions',
     });
     expect(
-      document.querySelector('[data-testid="signing-field"][data-warning] [data-testid="signing-field-label"]')
-        ?.textContent,
+      query(document, '[data-testid="signing-field"][data-warning] [data-testid="signing-field-label"]').textContent,
     ).toBe('Warning');
 
     // When

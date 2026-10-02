@@ -240,6 +240,7 @@ function expectBody(expected: ExpectedBody): void {
     const peers = nth(name.children, 1);
     expect(peers.textContent).toBe(chainExpected.peers?.text ?? '');
     expect(peers.getAttribute('aria-label')).toBe(chainExpected.peers?.aria ?? null);
+    expect(cell.hasAttribute('data-unavailable')).toBe(chainExpected.cell.kind === 'unavailable');
     if (chainExpected.cell.kind === 'unavailable') {
       expect(cell.textContent).toBe('no endpoint on this network');
       expect(cell.childElementCount).toBe(0);

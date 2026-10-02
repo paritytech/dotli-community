@@ -44,8 +44,8 @@ function LockIcon(props: { size: number }): JSX.Element {
  * The popover's body, PermissionsContent, is its own chunk: the loaded
  * product's permissions, each with a dropdown to allow, deny or reset it.
  * The button carries its badge (`data-badge`) while the product has any
- * permission granted, read again on a product loading or failing and on a permission
- * change.
+ * permission granted, read again on a product loading or failing and on a
+ * permission change.
  *
  * A press outside (the backdrop included), focus leaving it, Escape and a
  * blocking modal close the popover, a non-modal one. An open row dropdown

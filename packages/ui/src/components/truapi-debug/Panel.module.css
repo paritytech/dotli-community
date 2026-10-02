@@ -34,7 +34,6 @@
   --td-selected: #1e3a5f;
   --td-paired: #1a2a1a;
   --td-danger: #dc2626;
-  --td-system-edge: rgba(45, 212, 191, 0.3);
   --td-rid-bg: rgba(255, 255, 255, 0.04);
   --td-rid-line: rgba(255, 255, 255, 0.06);
   --td-shadow: rgba(0, 0, 0, 0.4);
@@ -52,7 +51,8 @@
   --td-sky: #bae6fd;
   --td-pink: #f9a8d4;
   --td-pink-line: #9d174d;
-  /* The "What is this?" block of a system event. */
+  /* Teal: the system accent. */
+  --td-system-edge: rgba(45, 212, 191, 0.3);
   --td-teal: #2dd4bf;
   --td-teal-soft: #5eead4;
   --td-teal-pale: #99f6e4;

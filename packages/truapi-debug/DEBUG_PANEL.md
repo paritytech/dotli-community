@@ -255,6 +255,9 @@ Its selection is reactive: the box holding the selected seq carries `data-select
 The Resolution view does the same with Solid: its facts are keyed by name, its rows by chain role and its blocks by
 position, and a redraw whose model did not change stops before touching anything.
 
+View geometry and labels live next to the view that draws them: pure detail formatting in `detail-format.ts`, the
+Timeline geometry in `timeline.ts`, and the Resolution formatting in the UI package's `resolution/format.ts`.
+
 This keeps hover state stable and means clicks don't get dropped between pointerdown and click when events are streaming
 in — the earlier bug class where `<details>` expansion and timeline-box selection were flaky under heavy traffic.
 

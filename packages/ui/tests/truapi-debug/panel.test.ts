@@ -1118,7 +1118,7 @@ describe('truapi debug panel: views', () => {
     expect(q('[data-testid="td-list"]').hidden).toBe(true);
     expect(q('[data-testid="td-timeline"]').hidden).toBe(false);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
-    expect(panel().getAttribute('data-view')).not.toBe('resolution');
+    expect(panel().getAttribute('data-view')).toBe('timeline');
     const headers = [
       ...panel().querySelectorAll(
         '[data-testid="td-timeline"] [data-testid="td-sw-col"] [data-testid="td-sw-header-label"]',
@@ -1147,7 +1147,7 @@ describe('truapi debug panel: views', () => {
     expect(q('[data-testid="td-list"]').hidden).toBe(false);
     expect(q('[data-testid="td-res"]').hidden).toBe(true);
     expect(q('[data-testid="td-detail"]').hidden).toBe(false);
-    expect(panel().getAttribute('data-view')).not.toBe('resolution');
+    expect(panel().getAttribute('data-view')).toBe('list');
     expect(rows()).toHaveLength(3);
   });
 
@@ -1170,7 +1170,7 @@ describe('truapi debug panel: views', () => {
 
     // Then
     expect(q('[data-testid="td-archive"]').hidden).toBe(true);
-    expect(panel().getAttribute('data-view')).not.toBe('archive');
+    expect(panel().getAttribute('data-view')).toBe('list');
   });
 
   it('As a dotli developer, clicking a timeline box shows its whole group in the detail pane', () => {
@@ -1394,6 +1394,9 @@ describe('truapi debug panel: views', () => {
     const block = query(res, '[data-role="relay"] [data-testid="td-res-block"]');
     const info = query(res, '[data-fact="elapsed"] [data-testid="td-res-info"]');
     const width = block.style.width;
+    expect(info.getAttribute('data-tooltip')).toBeTruthy();
+    expect(info.hasAttribute('data-tooltip-prose')).toBe(true);
+    expect(block.title).not.toBe('');
 
     // When a tick passes
     vi.advanceTimersByTime(500);

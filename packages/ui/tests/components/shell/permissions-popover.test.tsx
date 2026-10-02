@@ -768,7 +768,7 @@ describe('PermissionsPopover', () => {
     const all = (status: PermissionAuthorizationStatus) => ALL_PERMISSIONS.map(() => status);
 
     // When: opening reads (after the mount's grants read), then a
-    // permission change reads again, for the class and for the list.
+    // permission change reads again, for the badge and for the list.
     await openPopover();
     const beforeChange = reads.length;
     window.dispatchEvent(

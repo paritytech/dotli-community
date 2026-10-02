@@ -108,7 +108,6 @@ function Lane(props: { lane: TimelineLane; selectedSeq: EventSeq | null; onSelec
                   data-testid="td-tl-segment"
                   data-kind="segment"
                   data-seq={box().seq}
-                  data-seqs={box().memberSeqs.join(',')}
                   data-tooltip={box().tooltip}
                   data-pending={box().pending ? '' : undefined}
                   data-selected={selectedKey() === box().key ? '' : undefined}

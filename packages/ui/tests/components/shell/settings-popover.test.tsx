@@ -273,6 +273,7 @@ function expectInfoRow(row: Element | undefined, label: string, value: string, c
   expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'CODE']);
   expect(row?.children[0]?.textContent).toBe(label);
   expect(row?.children[1]?.textContent).toBe(value);
+  expect(row?.hasAttribute('data-copyable')).toBe(copyable);
   expect(row?.getAttribute('title')).toBe(copyable ? `Click to copy ${label}` : null);
 }
 

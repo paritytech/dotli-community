@@ -38,12 +38,12 @@ function ChatIcon(props: { size: number }): JSX.Element {
 
 /**
  * The topbar's chat button (`#chat-button`), which opens and closes the
- * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded product has
- * chat and a session is active (chatButtonVisible), shows pressed
+ * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded
+ * product has chat and a session is active (chatButtonVisible), shows pressed
  * (`data-active`) while the panel is open, and carries the unread count while
- * the panel is closed (the room rows carry their own while it is open). When the panel closes with focus inside it (Escape, its own close
- * button), focus comes back here, or to the More button while the bar has
- * collapsed this one.
+ * the panel is closed (the room rows carry their own while it is open). When
+ * the panel closes with focus inside it (Escape, its own close button), focus
+ * comes back here, or to the More button while the bar has collapsed this one.
  */
 export function ChatButton(): JSX.Element {
   let button: HTMLButtonElement | undefined;
