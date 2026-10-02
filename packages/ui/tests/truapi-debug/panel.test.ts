@@ -69,6 +69,8 @@ afterEach(() => {
     dispose();
   }
   disposers = [];
+  // happy-dom's default; a test that narrows the viewport must not leak it.
+  setViewportWidth(1024);
   vi.restoreAllMocks();
   vi.useRealTimers();
   document.head.replaceChildren();
@@ -169,6 +171,13 @@ function type(input: HTMLInputElement, value: string): void {
 function toggle(checkbox: HTMLInputElement): void {
   checkbox.checked = !checkbox.checked;
   checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** Resize the viewport as a phone or a rotation does; media queries follow. */
+function setViewportWidth(width: number): void {
+  (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
+    width,
+  });
 }
 
 function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
@@ -1249,7 +1258,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     expect(dock.title).toBe('Dock to bottom');
     expect(dock.getAttribute('aria-label')).toBe('Dock to bottom');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
-    expect(panel().style.top).toBe('40px');
+    expect(panel().style.top).toBe('var(--topbar-height)');
 
     // When
     click(dock);
@@ -1272,6 +1281,53 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Then
     expect(panel().classList.contains('docked-right')).toBe(true);
     expect(q('.td-dock').title).toBe('Dock to bottom');
+    expect(panel().style.top).toBe('0px');
+  });
+
+  it('As a dotli developer, on a phone the panel docks at the bottom and stacks the list above the detail, whatever dock was stored', () => {
+    // Given
+    setViewportWidth(390);
+    localStorage.setItem('truapi-debug:dock', 'right');
+    mount();
+    vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
+    const splitter = q('.td-body-splitter');
+    vi.spyOn(must(splitter.parentElement, "the splitter's parent"), 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 390, 600),
+    );
+
+    // When
+    pointer(splitter, 'pointerdown');
+    pointer(splitter, 'pointermove', 0, 250);
+    pointer(splitter, 'pointerup');
+
+    // Then
+    expect(panel().classList.contains('docked-right')).toBe(false);
+    expect(panel().classList.contains('stacked')).toBe(true);
+    expect(panel().style.top).toBe('');
+    expect(splitter.getAttribute('aria-orientation')).toBe('horizontal');
+    expect(panel().style.getPropertyValue('--td-top-height')).toBe('250px');
+    expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
+  });
+
+  it('As a dotli developer, rotating between a narrow and a wide viewport moves the panel between the bottom and the stored dock', () => {
+    // Given
+    localStorage.setItem('truapi-debug:dock', 'right');
+    mount();
+    expect(panel().classList.contains('docked-right')).toBe(true);
+
+    // When
+    setViewportWidth(390);
+
+    // Then
+    expect(panel().classList.contains('docked-right')).toBe(false);
+    expect(panel().classList.contains('stacked')).toBe(true);
+    expect(panel().style.top).toBe('');
+
+    // When
+    setViewportWidth(1024);
+
+    // Then
+    expect(panel().classList.contains('docked-right')).toBe(true);
     expect(panel().style.top).toBe('0px');
   });
 

@@ -57,6 +57,13 @@ import { TimelineView } from './TimelineView.js';
 export const PANEL_ID = 'truapi-debug-panel';
 
 /**
+ * The viewport where the panel docks at the bottom with its panes stacked,
+ * whatever dock was picked: side by side or docked right, each pane is too
+ * narrow to read. The breakpoint of the matching rules in styles.css.
+ */
+const NARROW_QUERY = '(max-width: 560px)';
+
+/**
  * The first row still in view at `scrollTop`, found by bisection over the
  * rows' offsets (relative to the first row, so the list's own offset drops
  * out). Null for an empty list.
@@ -191,6 +198,12 @@ export function Panel(props: {
   const [selection, setSelection] = createSignal<Selection | null>(null);
   const [collapsed, setCollapsed] = createSignal(untrack(() => props.startCollapsed));
   const [dock, setDock] = createSignal<DockPosition>(readStoredDock());
+  const narrowViewport = window.matchMedia(NARROW_QUERY);
+  const [narrow, setNarrow] = createSignal(narrowViewport.matches);
+  /** Where the panel sits: the picked dock, except at the bottom on a narrow viewport. */
+  const placement = createMemo<DockPosition>(() => (narrow() ? 'bottom' : dock()));
+  /** List above detail rather than beside it. */
+  const stacked = createMemo(() => placement() === 'right' || narrow());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
 
@@ -311,7 +324,7 @@ export function Panel(props: {
     setDockInset(
       panelDockInset({
         collapsed: collapsed(),
-        dock: dock(),
+        dock: placement(),
         width: size ?? panelEl?.offsetWidth ?? 0,
         height: size ?? panelEl?.offsetHeight ?? 0,
       }),
@@ -338,11 +351,10 @@ export function Panel(props: {
     expandedHeight = '';
     el.style.removeProperty('--td-left-width');
     el.style.removeProperty('--td-top-height');
-    // Right-dock sits below the host topbar (40px) so the dock toggle and
-    // session controls remain reachable. Bottom-dock pins to the viewport
-    // bottom edge.
-    if (dock() === 'right') {
-      el.style.top = getTopbarState().present ? '40px' : '0';
+    // Right-dock sits below the host topbar so the dock toggle and session
+    // controls remain reachable. Bottom-dock pins to the viewport bottom edge.
+    if (placement() === 'right') {
+      el.style.top = getTopbarState().present ? 'var(--topbar-height)' : '0';
     } else {
       el.style.top = '';
     }
@@ -353,6 +365,14 @@ export function Panel(props: {
   };
   onSettled(() => {
     applyDockLayout(false);
+  });
+  const onViewportChange = (e: MediaQueryListEvent): void => {
+    flush(() => setNarrow(e.matches));
+    applyDockLayout(false);
+  };
+  narrowViewport.addEventListener('change', onViewportChange);
+  onCleanup(() => {
+    narrowViewport.removeEventListener('change', onViewportChange);
   });
 
   const select = (seq: EventSeq): void => {
@@ -419,7 +439,8 @@ export function Panel(props: {
       id={PANEL_ID}
       class={{
         collapsed: collapsed(),
-        'docked-right': dock() === 'right',
+        'docked-right': placement() === 'right',
+        stacked: stacked(),
         'res-view': view() === 'resolution',
         'archive-view': view() === 'archive',
       }}
@@ -427,7 +448,7 @@ export function Panel(props: {
         panelEl = el;
       }}
     >
-      <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={dock()} onResize={refit} />
+      <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
         counts={counts()}
         paused={paused()}
@@ -515,7 +536,7 @@ export function Panel(props: {
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
         </div>
-        <BodySplitter panel={() => panelEl} dock={dock()} />
+        <BodySplitter panel={() => panelEl} stacked={stacked()} />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
