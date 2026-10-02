@@ -73,7 +73,7 @@ describe('locale host callbacks', () => {
   it.each(['focus', 'visibilitychange', 'timer'])(
     'updates the actual time zone on %s without repeating unchanged context',
     async signal => {
-      vi.useFakeTimers();
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
       vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('visible');
       let timeZone = 'America/New_York';
       const resolved = Intl.DateTimeFormat().resolvedOptions();
