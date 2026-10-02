@@ -808,7 +808,7 @@ export class NotificationsClient {
      * persists the notification across restarts and fires it through the
      * platform-native scheduler. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     sendPushNotification(request, options) {
         return this.#transport.request({
@@ -827,7 +827,7 @@ export class NotificationsClient {
      * Cancellation is idempotent: returns `Ok(())` whether the notification is
      * still pending, already fired, or was never issued. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request, options) {
         return this.#transport.request({
@@ -1178,7 +1178,7 @@ export class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
      */
     signRawUnwatermarkedDeprecated(request, options) {
         return this.#transport.request({
@@ -1200,7 +1200,7 @@ export class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
      */
     signRawUnwatermarkedDeprecatedWithLegacyAccount(request, options) {
         return this.#transport.request({
