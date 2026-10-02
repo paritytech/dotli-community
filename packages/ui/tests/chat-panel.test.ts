@@ -198,7 +198,7 @@ describe('chat panel', () => {
     flushUi = solid.flush;
     flushUi();
     panel.initChatPanel();
-    expect(document.querySelector('#more-popover .more-row[data-item="chat"]')).toBeNull();
+    expect(document.querySelector('#more-popover [role="menuitem"][data-item="chat"]')).toBeNull();
 
     // When: a product with chat loads, with a session.
     loadProduct('chatty-more');
@@ -215,7 +215,7 @@ describe('chat panel', () => {
     // Then
     expect(byId('chat-panel').hidden).toBe(false);
     expect(byId('chat-button').getAttribute('aria-expanded')).toBe('true');
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
   });
 
   it('As a user, the chat button is hidden until I log in and hides again on logout', async () => {

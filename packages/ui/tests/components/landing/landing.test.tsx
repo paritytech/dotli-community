@@ -483,18 +483,16 @@ describe('landing page', () => {
     await settle();
 
     // Then
-    expect(byId('landing-theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('landing-theme-popover').hasAttribute('data-open')).toBe(true);
     expect(byId('landing-theme-toggle').getAttribute('aria-expanded')).toBe('true');
 
     // When
-    click(query(document, '.theme-popover-option[data-theme-option="dark"]'));
+    click(query(document, '[data-theme-option="dark"]'));
     await settle();
 
     // Then
-    expect(byId('landing-theme-popover').classList.contains('open')).toBe(false);
-    expect(query(document, '.theme-popover-option[data-theme-option="dark"]').getAttribute('aria-checked')).toBe(
-      'true',
-    );
+    expect(byId('landing-theme-popover').hasAttribute('data-open')).toBe(false);
+    expect(query(document, '[data-theme-option="dark"]').getAttribute('aria-checked')).toBe('true');
     expect(byId('landing-theme-toggle').title).toBe('Theme: Dark');
   });
 

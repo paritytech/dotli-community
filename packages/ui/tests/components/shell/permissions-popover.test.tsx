@@ -859,7 +859,7 @@ describe('PermissionsPopover', () => {
     await settleAll();
 
     // Then
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
   });

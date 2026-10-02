@@ -30,7 +30,7 @@ function Item(props: { name: string; priority: number; visible?: boolean }): JSX
     <TopbarItem
       name={props.name}
       label={props.name.toUpperCase()}
-      icon={() => <svg class={`icon-${props.name}`} />}
+      icon={() => <svg data-testid={`icon-${props.name}`} />}
       priority={props.priority}
       visible={props.visible ?? true}
       activate={ev => {
@@ -67,7 +67,9 @@ function inline(name: string): boolean {
 }
 
 function rowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>('#more-popover .more-row')].map(el => el.dataset['item'] ?? '');
+  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
+    el => el.dataset['item'] ?? '',
+  );
 }
 
 function moreShows(): boolean {
@@ -75,7 +77,7 @@ function moreShows(): boolean {
 }
 
 function isOpen(): boolean {
-  return byId('more-popover').classList.contains('open');
+  return byId('more-popover').hasAttribute('data-open');
 }
 
 async function pressKey(key: string): Promise<void> {
@@ -251,7 +253,7 @@ describe('ActionGroup', () => {
     expect(row.getAttribute('role')).toBe('menuitem');
     expect(row.getAttribute('tabindex')).toBe('-1');
     expect(row.textContent).toBe('THEME');
-    expect(row.querySelector('svg.icon-theme')).not.toBeNull();
+    expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
   });
 
   it('As a mobile user, a tap outside the menu or a blocking modal closes it', async () => {

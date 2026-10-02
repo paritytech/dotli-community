@@ -41,11 +41,11 @@ function themePopover(prefix = ''): HTMLElement {
 }
 
 function themeOption(pref: string): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(`.theme-popover-option[data-theme-option="${pref}"]`);
+  return document.querySelector<HTMLButtonElement>(`[data-theme-option="${pref}"]`);
 }
 
 function isOpen(prefix = ''): boolean {
-  return themePopover(prefix).classList.contains('open');
+  return themePopover(prefix).hasAttribute('data-open');
 }
 
 /** The toggle, plus a button outside it, with a known stored theme and OS. */
@@ -126,19 +126,19 @@ describe('ThemeToggle', () => {
     expect(btn.getAttribute('aria-haspopup')).toBe('menu');
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(btn.getAttribute('aria-controls')).toBe('theme-popover');
-    expect(['sun', 'moon', 'system'].map(icon => document.querySelector(`.theme-icon-${icon}`)?.parentElement)).toEqual(
-      [btn, btn, btn],
-    );
+    expect(
+      ['sun', 'moon', 'system'].map(
+        icon => document.querySelector(`[data-testid="theme-icon-${icon}"]`)?.parentElement,
+      ),
+    ).toEqual([btn, btn, btn]);
     const popover = themePopover();
-    expect(popover.className).toBe('more-popover theme-popover');
     expect(popover.getAttribute('role')).toBe('menu');
     expect(popover.getAttribute('aria-label')).toBe('Theme');
     expect(popover.getAttribute('tabindex')).toBe('-1');
-    const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('.theme-popover-option'));
+    const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('[data-theme-option]'));
     expect(options.map(o => o.dataset['themeOption'])).toEqual(['light', 'dark', 'system']);
     expect(options.map(o => o.textContent)).toEqual(['Light', 'Dark', 'System']);
     for (const option of options) {
-      expect(option.className).toBe('more-row theme-popover-option');
       expect(option.getAttribute('role')).toBe('menuitemradio');
       expect(option.getAttribute('tabindex')).toBe('-1');
     }
@@ -156,7 +156,7 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(popover.id).toBe('theme-popover');
-    expect(popover.classList.contains('open')).toBe(true);
+    expect(popover.hasAttribute('data-open')).toBe(true);
     expect(btn.getAttribute('aria-expanded')).toBe('true');
     expect(themeOption('light')?.getAttribute('aria-checked')).toBe('true');
     expect(themeOption('dark')?.getAttribute('aria-checked')).toBe('false');
@@ -195,7 +195,7 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(themeOption('dark')?.getAttribute('aria-checked')).toBe('true');
     expect(themeOption('light')?.getAttribute('aria-checked')).toBe('false');
-    expect(popover.classList.contains('open')).toBe(false);
+    expect(popover.hasAttribute('data-open')).toBe(false);
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(btn);
     expect(btn.title).toBe('Theme: Dark');
@@ -416,7 +416,7 @@ describe('ThemeToggle', () => {
     await tapMoreRow('theme');
 
     // Then
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(themePopover());
   });

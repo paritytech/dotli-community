@@ -5,10 +5,12 @@ import { Portal, type JSX } from '@solidjs/web';
 import { themeStore, type ThemePref } from '../../state/theme.js';
 import { selectThemePref } from '../../theme-controller.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { Menu, MenuRow } from '../primitives/Menu.js';
 import { useStore } from '../use-store.js';
 import { createPopover } from './create-popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './ThemeToggle.module.css';
 
 const THEME_LABEL: Record<ThemePref, string> = {
   light: 'Light',
@@ -18,16 +20,16 @@ const THEME_LABEL: Record<ThemePref, string> = {
 
 /**
  * The sun, moon and monitor, of which CSS shows the one for
- * `<html data-theme-pref>`: on the button or a More menu row.
+ * `<html data-theme-pref>`: on the button (12px) or a More menu row (14px).
  */
-function ThemeIcons(props: { row?: boolean }): JSX.Element {
-  const size = (): number => (props.row === true ? 14 : 12);
+function ThemeIcons(props: { size: number }): JSX.Element {
   return (
     <>
       <svg
-        class={props.row === true ? 'more-row-icon-sun' : 'theme-icon-sun'}
-        width={size()}
-        height={size()}
+        class={s['sun']}
+        data-testid="theme-icon-sun"
+        width={props.size}
+        height={props.size}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -46,9 +48,10 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
       </svg>
       <svg
-        class={props.row === true ? 'more-row-icon-moon' : 'theme-icon-moon'}
-        width={size()}
-        height={size()}
+        class={s['moon']}
+        data-testid="theme-icon-moon"
+        width={props.size}
+        height={props.size}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -59,9 +62,10 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
       </svg>
       <svg
-        class={props.row === true ? 'more-row-icon-system' : 'theme-icon-system'}
-        width={size()}
-        height={size()}
+        class={s['system']}
+        data-testid="theme-icon-system"
+        width={props.size}
+        height={props.size}
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
@@ -94,7 +98,9 @@ function ThemeIcons(props: { row?: boolean }): JSX.Element {
  * topbar has collapsed the theme button).
  *
  * The button's icon comes from CSS on `<html data-theme-pref>`, which the
- * inline bootstrap script and theme-controller.ts own, never this component.
+ * inline bootstrap script and theme-controller.ts own, never this component:
+ * the script sets it before the island hydrates, so the build-time button
+ * already shows the stored choice.
  * The More menu's Theme row opens this menu with the row click: a keyboard
  * choice (`detail` 0) opens it as a keyboard opening, on the first option.
  *
@@ -116,7 +122,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
   });
 
   const onClick = (e: MouseEvent): void => {
-    const option = (e.target as HTMLElement).closest<HTMLElement>('.theme-popover-option');
+    const option = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-option]');
     const next = option?.dataset['themeOption'];
     if (next === 'light' || next === 'dark' || next === 'system') {
       selectThemePref(next);
@@ -129,7 +135,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
       <TopbarItem
         name="theme"
         label="Theme"
-        icon={() => <ThemeIcons row />}
+        icon={() => <ThemeIcons size={14} />}
         priority={TOPBAR_PRIORITY.theme}
         activate={menu.toggle}
       >
@@ -145,28 +151,21 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           aria-expanded={menu.open() ? 'true' : 'false'}
           aria-controls={id('theme-popover')}
         >
-          <ThemeIcons />
+          <ThemeIcons size={12} />
         </IconButton>
       </TopbarItem>
       <Portal>
-        <div
+        <Menu
           ref={el => {
             popover = el;
           }}
           onClick={onClick}
-          class={['more-popover theme-popover', { open: menu.open() }]}
+          class={s['menu']}
           id={id('theme-popover')}
-          role="menu"
-          aria-label="Theme"
-          tabindex="-1"
+          open={menu.open()}
+          label="Theme"
         >
-          <button
-            class="more-row theme-popover-option"
-            role="menuitemradio"
-            aria-checked={pref() === 'light' ? 'true' : 'false'}
-            data-theme-option="light"
-            tabindex="-1"
-          >
+          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'light'} data-theme-option="light">
             <svg
               width="14"
               height="14"
@@ -190,7 +189,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             </svg>
             <span>Light</span>
             <svg
-              class="theme-popover-check"
+              class={s['check']}
               width="14"
               height="14"
               viewBox="0 0 24 24"
@@ -203,14 +202,8 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             >
               <polyline points="20 6 9 17 4 12" />
             </svg>
-          </button>
-          <button
-            class="more-row theme-popover-option"
-            role="menuitemradio"
-            aria-checked={pref() === 'dark' ? 'true' : 'false'}
-            data-theme-option="dark"
-            tabindex="-1"
-          >
+          </MenuRow>
+          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'dark'} data-theme-option="dark">
             <svg
               width="14"
               height="14"
@@ -226,7 +219,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             </svg>
             <span>Dark</span>
             <svg
-              class="theme-popover-check"
+              class={s['check']}
               width="14"
               height="14"
               viewBox="0 0 24 24"
@@ -239,14 +232,8 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             >
               <polyline points="20 6 9 17 4 12" />
             </svg>
-          </button>
-          <button
-            class="more-row theme-popover-option"
-            role="menuitemradio"
-            aria-checked={pref() === 'system' ? 'true' : 'false'}
-            data-theme-option="system"
-            tabindex="-1"
-          >
+          </MenuRow>
+          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'system'} data-theme-option="system">
             <svg
               width="14"
               height="14"
@@ -264,7 +251,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             </svg>
             <span>System</span>
             <svg
-              class="theme-popover-check"
+              class={s['check']}
               width="14"
               height="14"
               viewBox="0 0 24 24"
@@ -277,8 +264,8 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             >
               <polyline points="20 6 9 17 4 12" />
             </svg>
-          </button>
-        </div>
+          </MenuRow>
+        </Menu>
       </Portal>
     </>
   );

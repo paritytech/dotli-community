@@ -94,7 +94,7 @@ export async function renderTopbar(items: () => JSX.Element, room: number): Prom
 
 /** The More menu's row for the item named `name`. */
 export function moreRow(name: string): HTMLElement {
-  return query(document, `#more-popover .more-row[data-item="${name}"]`);
+  return query(document, `#more-popover [role="menuitem"][data-item="${name}"]`);
 }
 
 /** Open the More menu and tap the row of the item named `name`. */

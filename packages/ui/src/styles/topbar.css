@@ -3,18 +3,6 @@
 
 /* dot.li top bar, URL pill, popovers, auth UI */
 
-/* Shared open/close transition for topbar popover menus. Each popover keeps
-   its existing `display` toggle between none and block or flex on `.open`. The
-   transition
-   uses `allow-discrete` so display animates too, and `@starting-style` rules
-   defined alongside each popover give the enter direction its initial frame.
-   The transform timing function overshoots slightly for a subtle bounce. */
-@media (prefers-reduced-motion: reduce) {
-  .more-popover {
-    transition: none !important;
-  }
-}
-
 .topbar-reveal {
   position: fixed;
   top: -100px;
@@ -121,103 +109,6 @@
   line-height: 1;
   align-self: center;
 }
-.more-popover {
-  display: none;
-  /* Layout properties live on the base rule (not just `.open`) so they stay
-     applied during the close transition while `display: flex` is held by
-     `transition-behavior: allow-discrete`. Otherwise rows briefly stack
-     horizontally on the way out. */
-  flex-direction: column;
-  gap: 2px;
-  position: fixed;
-  top: var(--topbar-height);
-  right: calc(12px + var(--safe-right));
-  min-width: 180px;
-  background: rgb(34, 34, 34);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-  padding: 6px;
-  z-index: 1500;
-  opacity: 0;
-  transform: scale(0.92);
-  transform-origin: top right;
-  transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
-}
-.more-popover.open {
-  display: flex;
-  opacity: 1;
-  transform: scale(1);
-}
-.theme-icon-sun,
-.more-row-icon-sun,
-.theme-icon-system,
-.more-row-icon-system {
-  display: none;
-}
-[data-theme-pref='light'] .theme-icon-sun,
-[data-theme-pref='light'] .more-row-icon-sun {
-  display: block;
-}
-[data-theme-pref='light'] .theme-icon-moon,
-[data-theme-pref='light'] .more-row-icon-moon,
-[data-theme-pref='system'] .theme-icon-moon,
-[data-theme-pref='system'] .more-row-icon-moon {
-  display: none;
-}
-[data-theme-pref='system'] .theme-icon-system,
-[data-theme-pref='system'] .more-row-icon-system {
-  display: block;
-}
-.theme-popover {
-  min-width: 150px;
-}
-.theme-popover-option .theme-popover-check {
-  margin-left: auto;
-  visibility: hidden;
-}
-.theme-popover-option[aria-checked='true'] {
-  color: #fff;
-}
-.theme-popover-option[aria-checked='true'] .theme-popover-check {
-  visibility: visible;
-}
-.theme-popover-option:focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.4);
-  outline-offset: -2px;
-}
-@starting-style {
-  .more-popover.open {
-    opacity: 0;
-    transform: scale(0.92);
-  }
-}
-.more-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 44px;
-  padding: 8px 10px;
-  background: transparent;
-  border: none;
-  color: rgba(255, 255, 255, 0.78);
-  font: inherit;
-  font-size: 0.8rem;
-  text-align: left;
-  cursor: pointer;
-  border-radius: 8px;
-  transition:
-    background 0.12s ease,
-    color 0.12s ease;
-}
-.more-row:hover {
-  background: rgba(255, 255, 255, 0.06);
-  color: #fff;
-}
 /* Narrow viewports: drop the brand wordmark so the URL pill and right-side
    action buttons stay on-screen. Logo + Beta badge are small enough to keep.
    Until the action group hydrates and measures, it also hides the buttons it
@@ -298,16 +189,12 @@
   #topbar {
     background: rgb(30, 30, 30);
   }
-  .more-popover {
-    background: rgba(20, 20, 20, 0.97);
-  }
 }
 
 @supports (backdrop-filter: blur(1px)) {
   #topbar {
     backdrop-filter: blur(20px) saturate(180%);
   }
-  .more-popover,
   .permissions-popover-menu {
     backdrop-filter: blur(24px) saturate(180%);
   }

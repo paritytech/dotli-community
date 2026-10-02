@@ -4,6 +4,7 @@
 import { createEffect, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { IconButton } from '../../primitives/IconButton.js';
+import { Menu, MenuRow } from '../../primitives/Menu.js';
 import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
 import s from './OverflowMenu.module.css';
@@ -81,33 +82,28 @@ export function OverflowMenu(props: {
           <span class={s['bar']} />
         </span>
       </IconButton>
-      <div
+      <Menu
         ref={el => {
           popover = el;
         }}
-        class={['more-popover', { open: menu.open() }]}
         id="more-popover"
-        role="menu"
-        aria-labelledby="more-button"
-        tabindex="-1"
+        open={menu.open()}
+        labelledBy="more-button"
       >
         <For each={props.rows}>
           {entry => (
-            <button
+            <MenuRow
               onClick={ev => {
                 choose(entry, ev);
               }}
-              class="more-row"
-              role="menuitem"
-              tabindex="-1"
               data-item={entry.name}
             >
               {entry.icon()}
               <span>{entry.label}</span>
-            </button>
+            </MenuRow>
           )}
         </For>
-      </div>
+      </Menu>
     </>
   );
 }

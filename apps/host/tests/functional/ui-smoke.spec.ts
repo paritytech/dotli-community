@@ -101,10 +101,10 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
+    await expect(page.locator('#more-popover')).not.toHaveAttribute('data-open');
     await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
   });
 
@@ -119,7 +119,7 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
     await expect(sheet).toHaveAttribute('data-sheet');
@@ -136,7 +136,7 @@ test.describe('Shell UI smoke', () => {
 
     // When: open it again and swipe the header down.
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
     await expect(sheet).toHaveAttribute('data-open');
     await expect.poll(() => sheetBottom(sheet)).toBe(740);
     const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
@@ -161,7 +161,7 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#permissions-popover');
     const open = async (): Promise<void> => {
       await page.locator('#more-button').click();
-      await page.locator('#more-popover .more-row[data-item="permissions"]').click();
+      await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
       await expect(sheet).toHaveAttribute('data-open');
       await expect.poll(() => sheetBottom(sheet)).toBe(740);
     };

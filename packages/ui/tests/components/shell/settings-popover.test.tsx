@@ -1102,7 +1102,7 @@ describe('The settings popover island', () => {
     await settle();
 
     // Then
-    expect(byId('more-popover').classList.contains('open')).toBe(false);
+    expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('mode-popover').contains(document.activeElement)).toBe(true);
 

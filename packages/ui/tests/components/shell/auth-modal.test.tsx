@@ -666,7 +666,7 @@ describe('AuthModal login flow', () => {
     await renderModal();
     mouseClick(byId('theme-toggle'));
     await settleQr();
-    expect(byId('theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
 
     // When: the controller takes the lease, which marks a blocking modal up.
     await authState(pairing());
@@ -674,7 +674,7 @@ describe('AuthModal login flow', () => {
     await settleQr();
 
     // Then
-    expect(byId('theme-popover').classList.contains('open')).toBe(false);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
     byId('auth-modal-close').focus();
