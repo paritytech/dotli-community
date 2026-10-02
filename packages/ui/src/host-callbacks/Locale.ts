@@ -26,10 +26,7 @@ export function createLocaleSubscribe(): Required<LocaleHost>['subscribeLocale']
       const onContextChanged = (): void => {
         try {
           const current = currentLocale();
-          if (
-            current.languageTag !== previous.languageTag ||
-            current.timeZone !== previous.timeZone
-          ) {
+          if (current.languageTag !== previous.languageTag || current.timeZone !== previous.timeZone) {
             previous = current;
             push(current);
           }
