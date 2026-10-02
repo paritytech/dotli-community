@@ -3,7 +3,7 @@
 
 // The host is a static Astro site: one page (src/pages/index.astro), whose
 // shell is plain markup with the reactive pieces as Solid islands
-// (@dotli/astro-solid), server-rendered at build time and hydrated. Astro
+// (@config/astro-solid), server-rendered at build time and hydrated. Astro
 // drives Vite; the build's Vite setup is under `vite` below.
 
 import { sentryVitePlugin } from '@sentry/vite-plugin';
@@ -16,7 +16,7 @@ import { execSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import wasmPlugin from 'vite-plugin-wasm';
-import astroSolid from '@dotli/astro-solid';
+import astroSolid from '@config/astro-solid';
 import {
   appBuildOptions,
   astroPwa,
@@ -24,7 +24,7 @@ import {
   buildInfo,
   readPackageVersion,
   runtimeNetworkConfigScript,
-} from '@dotli/config/vite';
+} from '@config/vite';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
@@ -285,7 +285,7 @@ export default defineConfig({
   build: { assets: 'assets' },
   integrations: [
     // Compiles Solid for the islands: server-rendered at build time and
-    // hydrated in the browser (see packages/astro-solid).
+    // hydrated in the browser (see config/astro-solid).
     astroSolid(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),

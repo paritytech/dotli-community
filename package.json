@@ -30,8 +30,8 @@
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +"
   },
   "devDependencies": {
-    "@dotli/config": "*",
-    "@dotli/eslint-config": "*",
+    "@config/eslint": "*",
+    "@config/vite": "*",
     "@types/node": "^26.6.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
@@ -47,6 +47,7 @@
   "packageManager": "npm@12.1.0",
   "workspaces": [
     "apps/*",
+    "config/*",
     "packages/*"
   ],
   "dependencies": {

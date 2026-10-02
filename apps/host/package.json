@@ -25,8 +25,9 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.10",
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*",
+    "@config/eslint": "*",
+    "@config/typescript": "*",
+    "@config/vite": "*",
     "@playwright/test": "^1.63.0",
     "@solidjs/testing-library": "1.0.0-beta.3",
     "@solidjs/vite-plugin": "3.0.0-next.47",
@@ -38,7 +39,7 @@
     "workbox-window": "^7.4.1"
   },
   "dependencies": {
-    "@dotli/astro-solid": "*",
+    "@config/astro-solid": "*",
     "@dotli/config": "*",
     "@dotli/content": "*",
     "@dotli/metrics": "*",

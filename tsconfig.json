@@ -1,4 +1,4 @@
 {
-  "extends": "./packages/typescript-config/node.json",
+  "extends": "./config/typescript/node.json",
   "include": ["scripts", "eslint.config.js"]
 }

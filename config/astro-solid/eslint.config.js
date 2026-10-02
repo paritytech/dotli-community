@@ -15,4 +15,12 @@ export default defineConfig([
       },
     },
   },
+  {
+    // The integration entry is imported by astro.config.ts, which Node
+    // loads directly, like a vite.config.ts: its imports name `.ts` files.
+    files: ['src/index.ts'],
+    rules: {
+      'no-restricted-imports': 'off',
+    },
+  },
 ]);

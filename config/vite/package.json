@@ -1,12 +1,12 @@
 {
-  "name": "@dotli/storage",
+  "name": "@config/vite",
   "private": true,
   "license": "AGPL-3.0-only",
   "version": "0.6.0",
   "type": "module",
   "sideEffects": false,
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./src/vite.ts",
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -17,11 +17,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/typescript": "*",
-    "fake-indexeddb": "^6.2.5"
-  },
-  "dependencies": {
-    "@dotli/config": "*",
-    "@dotli/metrics": "*",
-    "@dotli/shared": "*"
+    "astro": "^7.3.5",
+    "vite-plugin-pwa": "^1.3.0"
   }
 }

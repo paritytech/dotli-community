@@ -11,7 +11,7 @@
 // HTML is byte-identical to one from before runtime config existed. The reader
 // side is gated separately in network.ts, so neither half alone enables it.
 //
-// Imported by the three vite configs through `@dotli/config/vite`.
+// Imported by the three vite configs through `@config/vite`.
 
 import type { Plugin } from 'vite';
 
