@@ -100,7 +100,17 @@ jobs:
           cp -R apps/sandbox/dist  "$OUT/dist/app"
           cp -R apps/protocol/dist "$OUT/dist/protocol"
           # Bundle so the tarball needs neither TypeScript support nor packages/.
-          npx esbuild scripts/serve.ts --bundle --platform=node --target=node22 --format=esm --outfile="$OUT/serve.mjs"
+          # `@config/vite`'s entry also re-exports the host's PWA plugin, which the
+          # server never calls. esbuild resolves a module's imports before it
+          # drops what is unused, and vite-plugin-pwa's own imports (optional
+          # asset generators, fsevents) do not resolve, so it stays external;
+          # tree shaking then leaves no import of it in serve.mjs.
+          npx esbuild scripts/serve.ts --bundle --platform=node --target=node22 --format=esm \
+            --external:vite-plugin-pwa --outfile="$OUT/serve.mjs"
+          if grep -q 'vite-plugin-pwa' "$OUT/serve.mjs"; then
+            echo "::error::serve.mjs imports vite-plugin-pwa, which the tarball does not ship"
+            exit 1
+          fi
           cp scripts/tarball-readme.md "$OUT/README.md"
           sed -i "s/VERSION/$VERSION/g" "$OUT/README.md"
 
