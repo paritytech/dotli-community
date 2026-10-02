@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { settle } from './helpers/solid.js';
 import { must } from './support.js';
 import { createContactLabelOverlay, type ContactLabelOverlay } from '../src/contacts/label-overlay.js';
 
@@ -355,10 +356,11 @@ describe('native Chat contacts', () => {
     expect(second.checked).toBe(false);
     const search = must(document.querySelector<HTMLInputElement>('input[type="search"]'), 'Contact search');
     search.value = bob;
-    search.dispatchEvent(new Event('input'));
+    search.dispatchEvent(new Event('input', { bubbles: true }));
     await expect.poll(() => firstRow.hidden).toBe(true);
     expect(secondRow.hidden).toBe(false);
     second.click();
+    await settle();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
     await expect(picked).resolves.toEqual({
       tag: 'Picked',
@@ -376,6 +378,7 @@ describe('native Chat contacts', () => {
       must(rows[0], 'First contact choice').querySelector<HTMLInputElement>('input[type="checkbox"]'),
       'First contact checkbox',
     ).click();
+    await settle();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
     await expect(cleared).resolves.toEqual({
       tag: 'Picked',
@@ -396,6 +399,7 @@ describe('native Chat contacts', () => {
       must(reopened[1], 'Second reopened contact').querySelector<HTMLInputElement>('input[type="checkbox"]'),
       'Second reopened checkbox',
     ).click();
+    await settle();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel selection').click();
     await expect(canceled).resolves.toEqual({ tag: 'Dismissed' });
   });

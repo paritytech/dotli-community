@@ -380,6 +380,14 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostContactsPickRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload),
     },
+    [W.CONTACTS_PICK_MANY.trait * 256 + W.CONTACTS_PICK_MANY.method]: {
+        0: (payload) => T.VersionedHostContactsPickManyRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostContactsPickManyResponse, S.CallError(T.VersionedHostContactsPickManyError)).dec(payload),
+    },
+    [W.CONTACTS_PLACE_LABELS.trait * 256 + W.CONTACTS_PLACE_LABELS.method]: {
+        0: (payload) => T.VersionedHostContactsPlaceLabelsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostContactsPlaceLabelsResponse, S.CallError(T.VersionedHostContactsPlaceLabelsError)).dec(payload),
+    },
     [W.PROFILE_PRESENT.trait * 256 + W.PROFILE_PRESENT.method]: {
         0: (payload) => T.VersionedHostProfilePresentRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostProfilePresentResponse, S.CallError(T.VersionedHostProfilePresentError)).dec(payload),

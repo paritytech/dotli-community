@@ -1,6 +1,8 @@
 import { type GenericError, type Result } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "./runtime.js";
-import type { ChainProvider, CoinageWalletHost, HopProvider, NativeChatFilesHost, ProfilePlatform } from "./generated/host-callbacks.js";
+import type { ChainProvider, CoinageWalletHost, ContactsPlatform, HopProvider, NativeChatFilesHost, ProfilePlatform } from "./generated/host-callbacks.js";
+/** Optional Contacts UI stays unsupported rather than confirming an empty selection. */
+export declare function contactsHostAdapter(host: ContactsPlatform | undefined): Required<ContactsPlatform> | undefined;
 type WireResult<T, E> = {
     success: true;
     value: T;

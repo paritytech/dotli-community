@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "0bd782cc4aca62dc";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "53d14bc59149b8ba";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -186,8 +186,8 @@ export declare class CoinPaymentClient {
  *
  * A product never reads the contact list. It opens the host's picker; the host
  * renders an overlay from the chat lists its chat extensions hold, and
- * returns only the person the user selected. Names, accounts, and every other
- * contact the user did not pick stay host-side.
+ * returns only handles for the people the user selected. Names, accounts, and
+ * every other contact the user did not pick stay host-side.
  *
  * That is also why there is no permission to request: the user choosing a
  * contact in host UI is the consent, and a product that is never handed the
@@ -210,6 +210,22 @@ export declare class ContactsClient {
      * draw avatars for, without returning accounts or profile contents.
      */
     pick(request: T.HostContactsPickRequest, options?: CallOptions): ResultAsync<T.HostContactsPickResponse, S.CallErrorValue<T.VersionedHostContactsPickError>>;
+    /**
+     * Edit a complete selection in the host's multi-select contact picker.
+     *
+     * `selected` preselects existing handles. Confirming none returns `Picked`
+     * with an empty `handles` list; dismissing never changes the selection.
+     * Unresolvable initial handles reject the entire request.
+     */
+    pickMany(request: T.HostContactsPickManyRequest, options?: CallOptions): ResultAsync<T.HostContactsPickManyResponse, S.CallErrorValue<T.VersionedHostContactsPickManyError>>;
+    /**
+     * Draw contact names in host-owned rectangles over the product surface.
+     *
+     * Labels do not require a shared Profile photo or disclosure. The response
+     * reveals no name, identity or per-slot availability. Each call replaces
+     * the previous placement; empty `slots` clears it.
+     */
+    placeLabels(request: T.HostContactsPlaceLabelsRequest, options?: CallOptions): ResultAsync<T.HostContactsPlaceLabelsResponse, S.CallErrorValue<T.VersionedHostContactsPlaceLabelsError>>;
 }
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {

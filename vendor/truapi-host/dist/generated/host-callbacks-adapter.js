@@ -6,8 +6,8 @@
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
 import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PresentedContactProfile, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
-import { chainConnectAdapter, coinageWalletHostAdapter, driveResultStream, hopConnectAdapter, profileHostAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
+import { AuthState, ContactSelection, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, PlacedAvatars, PlacedContactLabels, PresentedContactProfile, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { chainConnectAdapter, coinageWalletHostAdapter, contactsHostAdapter, driveResultStream, hopConnectAdapter, profileHostAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
 const pickChatFilesResultCodec = S.Vector(NativeChatPickedFile);
@@ -16,7 +16,7 @@ const pickChatFilesResultCodec = S.Vector(NativeChatPickedFile);
 export function createWasmRawCallbacks(callbacks) {
     const chat = callbacks.chat;
     const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
-    const contacts = callbacks.contacts;
+    const contacts = contactsHostAdapter(callbacks.contacts);
     const identityBackend = callbacks.identityBackend;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
@@ -43,6 +43,8 @@ export function createWasmRawCallbacks(callbacks) {
             ? {
                 contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
                 pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product))),
+                pickContacts: async (product, selection) => HostContactsPick.enc(await contacts.pickContacts(ProductContext.dec(product), ContactSelection.dec(selection))),
+                placeContactLabels: async (product, placed) => await contacts.placeContactLabels(ProductContext.dec(product), PlacedContactLabels.dec(placed)),
             }
             : {}),
         readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),

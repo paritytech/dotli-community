@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -54,6 +54,7 @@ var init_host_callbacks = __esm({
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
+    ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(import_truapi.Bytes32) }));
     CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi.ProductProofContext, ringLocation: import_truapi.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi.ProductAccountTxPayload }), LegacyAccount: import_truapi.LegacyAccountTxPayload }));
@@ -63,6 +64,7 @@ var init_host_callbacks = __esm({
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi.Bytes32, handles: S.Vector(import_truapi.Bytes32) }));
     HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.Option(import_truapi.Bytes32)) }));
     HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+    HostContactsPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ accounts: S.Vector(import_truapi.Bytes32) }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
@@ -82,6 +84,8 @@ var init_host_callbacks = __esm({
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
+    PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi.Bytes32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect }));
+    PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
     PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64, username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
@@ -116,6 +120,16 @@ var init_error = __esm({
 });
 
 // dist/adapter-support.js
+function contactsHostAdapter(host) {
+  if (host === void 0)
+    return void 0;
+  return {
+    contacts: (lookup) => host.contacts(lookup),
+    pickContact: (product) => host.pickContact?.(product) ?? Promise.resolve({ tag: "Unsupported" }),
+    pickContacts: (product, selection) => host.pickContacts?.(product, selection) ?? Promise.resolve({ tag: "Unsupported" }),
+    placeContactLabels: (product, placed) => host.placeContactLabels?.(product, placed) ?? Promise.resolve(false)
+  };
+}
 function unwrapStreamResult(item) {
   if ("success" in item) {
     if (item.success === false) {
@@ -314,7 +328,7 @@ __export(host_callbacks_adapter_exports, {
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
-  const contacts = callbacks.contacts;
+  const contacts = contactsHostAdapter(callbacks.contacts);
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
@@ -335,7 +349,9 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     ...contacts ? {
       contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
-      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product)))
+      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product))),
+      pickContacts: async (product, selection) => HostContactsPick.enc(await contacts.pickContacts(ProductContext.dec(product), ContactSelection.dec(selection))),
+      placeContactLabels: async (product, placed) => await contacts.placeContactLabels(ProductContext.dec(product), PlacedContactLabels.dec(placed))
     } : {},
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),

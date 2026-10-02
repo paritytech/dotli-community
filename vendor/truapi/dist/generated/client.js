@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "0bd782cc4aca62dc";
+export const TRUAPI_WIRE_SCHEMA_HASH = "53d14bc59149b8ba";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -695,8 +695,8 @@ export class CoinPaymentClient {
  *
  * A product never reads the contact list. It opens the host's picker; the host
  * renders an overlay from the chat lists its chat extensions hold, and
- * returns only the person the user selected. Names, accounts, and every other
- * contact the user did not pick stay host-side.
+ * returns only handles for the people the user selected. Names, accounts, and
+ * every other contact the user did not pick stay host-side.
  *
  * That is also why there is no permission to request: the user choosing a
  * contact in host UI is the consent, and a product that is never handed the
@@ -727,6 +727,42 @@ export class ContactsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Edit a complete selection in the host's multi-select contact picker.
+     *
+     * `selected` preselects existing handles. Confirming none returns `Picked`
+     * with an empty `handles` list; dismissing never changes the selection.
+     * Unresolvable initial handles reject the entire request.
+     */
+    pickMany(request, options) {
+        return this.#transport.request({
+            ids: W.CONTACTS_PICK_MANY,
+            payload: T.VersionedHostContactsPickManyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostContactsPickManyResponse, S.CallError(T.VersionedHostContactsPickManyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Draw contact names in host-owned rectangles over the product surface.
+     *
+     * Labels do not require a shared Profile photo or disclosure. The response
+     * reveals no name, identity or per-slot availability. Each call replaces
+     * the previous placement; empty `slots` clears it.
+     */
+    placeLabels(request, options) {
+        return this.#transport.request({
+            ids: W.CONTACTS_PLACE_LABELS,
+            payload: T.VersionedHostContactsPlaceLabelsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostContactsPlaceLabelsResponse, S.CallError(T.VersionedHostContactsPlaceLabelsError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
