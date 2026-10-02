@@ -19,6 +19,7 @@
   margin: 0;
   padding: 0;
   border-left: 1px solid var(--border-subtle);
+  /* Painted with the chat palette's surface so it matches product boxes painted BgSurfaceMain exactly. */
   background: var(--chat-bg-surface-main);
   transition: top 0.3s ease;
 }
