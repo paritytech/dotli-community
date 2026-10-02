@@ -674,7 +674,7 @@ async function runBackgroundRevalidate(
       return;
     }
     if (decision.kind === 'update') {
-      await setCachedCid(label, decision.cid, decision.manifests);
+      await setCachedCid(label, getNetwork(), decision.cid, decision.manifests);
       m.count(S.CACHE_REVALIDATE_UPDATE);
       log.warn(`[dot.li cid-cache] revalidate: ${label} updated ${servedCid} -> ${decision.cid}`);
       showNotification({
@@ -1754,7 +1754,7 @@ async function main(): Promise<void> {
   };
 
   try {
-    const cached = cacheSettings.skipCidCache ? null : await getCachedCid(label);
+    const cached = cacheSettings.skipCidCache ? null : await getCachedCid(label, getNetwork());
     const cachedCid = cached?.cid ?? null;
     emitDotliDebugEvent({
       layer: 'boot',
@@ -1951,7 +1951,7 @@ async function main(): Promise<void> {
 
     if (!cacheSettings.skipCidCache) {
       requestIdleCallback(() => {
-        void setCachedCid(label, cid, toCache(manifests));
+        void setCachedCid(label, getNetwork(), cid, toCache(manifests));
       });
     }
 

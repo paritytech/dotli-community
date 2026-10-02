@@ -8,13 +8,16 @@
 //
 // The product's root and app manifest records are kept as raw text next to
 // the CID, so a cache hit can be validated before rendering, by whatever
-// validator the host ships today, without a chain read.
+// validator the host ships today, without a chain read. An entry belongs to
+// the network it was resolved on: the same name can point elsewhere, or
+// nowhere, on another network.
 //
 // The canonical surface is the discriminated `getCachedCidResult` so
 // callers can distinguish "miss" (run full resolution) from "error"
 // (storage broken, surface to user). The legacy `getCachedCid` remains
 // for incremental migration but collapses both into `null`.
 
+import type { Network } from '@dotli/config';
 import { getDb } from './db.js';
 import { m, captureException, spans as S } from '@dotli/metrics';
 import { isValidDotLabel, log } from '@dotli/shared';
@@ -29,6 +32,8 @@ export interface CachedManifests {
 
 interface CidEntry {
   label: string;
+  /** Absent on entries cached before networks were kept: those read as a miss. */
+  network?: Network;
   cid: string;
   /** Absent on entries cached before manifests were kept: those read as a miss. */
   manifests?: CachedManifests;
@@ -42,7 +47,7 @@ export interface CachedCid {
 
 export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | { kind: 'error'; cause: unknown };
 
-export async function getCachedCidResult(label: string): Promise<CidCacheResult> {
+export async function getCachedCidResult(label: string, network: Network): Promise<CidCacheResult> {
   const stop = m.timer(S.CACHE_READ_LATENCY);
   try {
     const db = await getDb();
@@ -53,7 +58,7 @@ export async function getCachedCidResult(label: string): Promise<CidCacheResult>
         const entry = req.result as CidEntry | undefined;
         stop();
         resolve(
-          entry?.manifests === undefined
+          entry?.manifests === undefined || entry.network !== network
             ? { kind: 'miss' }
             : { kind: 'hit', cid: entry.cid, manifests: entry.manifests },
         );
@@ -78,8 +83,8 @@ export async function getCachedCidResult(label: string): Promise<CidCacheResult>
  * New callers should use `getCachedCidResult` so storage failures can be
  * surfaced rather than silently treated as "no cache".
  */
-export async function getCachedCid(label: string): Promise<CachedCid | null> {
-  const result = await getCachedCidResult(label);
+export async function getCachedCid(label: string, network: Network): Promise<CachedCid | null> {
+  const result = await getCachedCidResult(label, network);
   if (result.kind === 'error') {
     log.error('[dot.li cid-cache] read error:', result.cause);
     captureException(result.cause, { kind: 'cid_cache_read_error' });
@@ -161,13 +166,19 @@ export function writeRecentLabels(labels: string[]): void {
   }
 }
 
-export async function setCachedCid(label: string, cid: string, manifests: CachedManifests): Promise<void> {
+export async function setCachedCid(
+  label: string,
+  network: Network,
+  cid: string,
+  manifests: CachedManifests,
+): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
     const db = await getDb();
     const tx = db.transaction(STORE, 'readwrite');
     const entry: CidEntry = {
       label,
+      network,
       cid,
       manifests,
       timestamp: Date.now(),
