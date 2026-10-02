@@ -114,7 +114,7 @@ function pairing(extra: Partial<DotliAuthState> = {}): DotliAuthState {
 }
 
 function isOpen(): boolean {
-  return byId('auth-modal-backdrop').classList.contains('open');
+  return byId('auth-modal-backdrop').hasAttribute('data-open');
 }
 
 function qrText(): string {
@@ -219,7 +219,7 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('aria-modal')).toBe('true');
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
-  expect(backdrop.classList.contains('open')).toBe(opts.open);
+  expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
   expect(tags(backdrop)).toEqual(['DIV']);
   const dialog = nth(backdrop.children, 0);
   expect(Array.from(dialog.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
@@ -382,7 +382,7 @@ describe('AuthModal markup', () => {
     });
 
     // When
-    query(document, '.auth-modal-retry').click();
+    byTestId('auth-modal-retry', document).click();
     await settleQr();
 
     // Then
@@ -548,9 +548,10 @@ describe('AuthModal login flow', () => {
   });
 
   it('As a keyboard user, Tab and Shift+Tab stay inside the open modal', async () => {
-    // Given: Cancel is the modal's last control.
+    // Given: Retry is the first control and Cancel the last. The get-app link
+    // is hidden on desktop, so it takes no part.
     await renderModal();
-    await authState(pairing());
+    await authState({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });
     byId('auth-modal-close').focus();
 
     // When
@@ -558,8 +559,7 @@ describe('AuthModal login flow', () => {
 
     // Then: it wraps to the modal's first control.
     expect(tab.defaultPrevented).toBe(true);
-    expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).not.toBe(byId('auth-modal-close'));
+    expect(document.activeElement).toBe(byTestId('auth-modal-retry', document));
 
     // When: focus somehow left the modal.
     byId('outside').focus();
@@ -646,16 +646,16 @@ describe('AuthModal login flow', () => {
       kind: 'Other',
       reason: 'Host failure',
     });
-    const retry = document.querySelector<HTMLElement>('.auth-modal-retry');
-    retry?.focus();
+    const retry = byTestId('auth-modal-retry', document);
+    retry.focus();
     expect(document.activeElement).toBe(retry);
 
     // When
-    retry?.click();
+    retry.click();
     await settleQr();
 
     // Then: the button is gone, and focus is on the modal, not the body.
-    expect(retry?.isConnected).toBe(false);
+    expect(retry.isConnected).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
   });
@@ -943,7 +943,7 @@ describe('AuthModal on a phone', () => {
     });
 
     // When
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
 
     // Then
@@ -987,16 +987,16 @@ describe('AuthModal on a phone, on unrelated store writes', () => {
     device.mobile = true;
     await renderModal();
     await authState(pairing());
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
 
     // When
     updateAuthModal({ reason: 'first' });
     await settleQr();
 
     // Then
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
     expect(byId('auth-modal-hint').textContent).toBe(DESKTOP_HINT);
   });
 });
@@ -1090,7 +1090,7 @@ describe('AuthModal error copy', () => {
   it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', async () => {
     const modalText = await failWith('Host failure');
     expect(modalText).toContain('Login did not complete');
-    expect(document.querySelector('#auth-modal-qr .auth-modal-error')?.textContent).toBe('Host failure');
+    expect(document.querySelector('#auth-modal-qr [data-testid="auth-modal-error"]')?.textContent).toBe('Host failure');
     expect(modalText).toContain('Retry');
   });
 });

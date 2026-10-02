@@ -284,16 +284,6 @@ body:has(#topbar[data-landing]) #app-loading {
   font-weight: 600;
 }
 
-/* Attesting (login spinner) */
-.attesting {
-  text-align: center;
-}
-.attesting p {
-  color: #888;
-  font-size: 0.8rem;
-  margin-top: 8px;
-}
-
 /* Error Page
    Laid out like the browser's own network-error page: a left-aligned block of
    fixed width rather than a centred card, so the failure reads as the page

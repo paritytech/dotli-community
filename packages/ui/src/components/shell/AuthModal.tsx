@@ -10,6 +10,7 @@ import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalV
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
 import { Spinner } from '../primitives/Spinner.js';
+import s from './AuthModal.module.css';
 import { createPopover } from './create-popover.js';
 
 // Lists the current Polkadot Mobile store listings for phones without the app.
@@ -27,10 +28,11 @@ interface DrawnQr {
 
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
   return (
-    <div class="auth-modal-error-view">
-      <div class="auth-modal-pending-icon">
+    <div class={s['errorView']}>
+      <div class={s['pendingIcon']}>
         {/* Clock glyph for the "account still being set up" state. */}
         <svg
+          class={s['pendingGlyph']}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -43,17 +45,20 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
           <path d="M12 7v5l3 2" />
         </svg>
       </div>
-      <div class="auth-modal-pending-title">{props.view.title}</div>
-      <div class="auth-modal-pending-subtitle">{props.view.subtitle}</div>
+      <div class={s['pendingTitle']}>{props.view.title}</div>
+      <div class={s['pendingSubtitle']}>{props.view.subtitle}</div>
       <Show when={(props.view.detail ?? '').length > 0}>
-        <p class="auth-modal-error">{props.view.detail}</p>
+        <p class={s['error']} data-testid="auth-modal-error">
+          {props.view.detail}
+        </p>
       </Show>
       <Show when={props.view.retry}>
         <button
           onClick={() => {
             props.retry();
           }}
-          class="auth-modal-retry"
+          class={s['retry']}
+          data-testid="auth-modal-retry"
         >
           Retry
         </button>
@@ -133,6 +138,7 @@ export function AuthModal(): JSX.Element {
     const onPhone = mobile();
     const canvas = document.createElement('canvas');
     canvas.dataset['qrPayload'] = payload;
+    canvas.className = s['qrCanvas'] ?? '';
     void import('qrcode')
       .then(QRCode =>
         QRCode.default.toCanvas(canvas, payload, {
@@ -217,33 +223,36 @@ export function AuthModal(): JSX.Element {
         backdrop = el;
       }}
       onClick={onBackdropClick}
-      class={['auth-modal-backdrop', { open: open() }]}
+      class={s['backdrop']}
+      data-open={open() ? '' : undefined}
       id="auth-modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
       tabindex="-1"
     >
-      <div class="auth-modal">
-        <h2 id="auth-modal-title">
+      <div class={s['modal']}>
+        <h2 class={s['title']} id="auth-modal-title">
           <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
             {label => (
               <>
-                {label()} is asking you <span class="auth-modal-title-nowrap">to sign in</span>
+                {label()} is asking you <span class={s['titleNowrap']}>to sign in</span>
               </>
             )}
           </Show>
         </h2>
-        <p class="auth-modal-reason" id="auth-modal-reason" hidden={state().reason === null}>
+        <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
           {state().reason ?? ''}
         </p>
-        <p id="auth-modal-hint">{hint()}</p>
-        <div class={['auth-modal-qr', { 'auth-modal-qr-mobile': mobileLayout() }]} id="auth-modal-qr">
+        <p class={s['hint']} id="auth-modal-hint">
+          {hint()}
+        </p>
+        <div class={[s['qr'], mobileLayout() && s['qrMobile']]} id="auth-modal-qr">
           <Switch>
             <Match when={view()?.kind === 'authenticating'}>
-              <div class="attesting">
+              <div class={s['progress']}>
                 <Spinner testId="auth-modal-spinner" />
-                <p>Logging in...</p>
+                <p class={s['progressText']}>Logging in...</p>
               </div>
             </Match>
             <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
@@ -267,7 +276,7 @@ export function AuthModal(): JSX.Element {
           </Switch>
         </div>
         <a
-          class="auth-modal-get-app"
+          class={s['getApp']}
           id="auth-modal-get-app"
           href={POLKADOT_MOBILE_DOWNLOAD_URL}
           target="_blank"
@@ -280,7 +289,7 @@ export function AuthModal(): JSX.Element {
           onClick={() => {
             closeAuthModal();
           }}
-          class="auth-modal-close"
+          class={s['close']}
           id="auth-modal-close"
         >
           Cancel
@@ -298,12 +307,12 @@ export function AuthModal(): JSX.Element {
  */
 function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): JSX.Element {
   const qrLink = (
-    <a href={props.qr.payload} class="auth-modal-qr-link" hidden={!props.shown}>
+    <a href={props.qr.payload} class={s['qrLink']} data-testid="auth-modal-qr-link" hidden={!props.shown}>
       {props.qr.canvas}
     </a>
   );
   const openApp = (
-    <a href={props.qr.payload} class={['auth-modal-open-app', { 'auth-modal-open-app-link': props.shown }]}>
+    <a href={props.qr.payload} class={[s['openApp'], props.shown && s['openAppLink']]}>
       Login With Polkadot App
     </a>
   );
@@ -313,7 +322,8 @@ function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): J
         props.reveal();
       }}
       type="button"
-      class="auth-modal-qr-toggle"
+      class={s['qrToggle']}
+      data-testid="auth-modal-qr-toggle"
       hidden={props.shown}
     >
       Show QR instead

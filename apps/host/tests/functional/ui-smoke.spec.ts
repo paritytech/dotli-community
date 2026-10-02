@@ -79,7 +79,7 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#auth-modal-backdrop')).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
   });
 
@@ -234,14 +234,14 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(backdrop).toHaveClass(/\bopen\b/);
+    await expect(backdrop).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
 
     // When
     await page.locator('#auth-modal-close').click();
 
     // Then
-    await expect(backdrop).not.toHaveClass(/\bopen\b/);
+    await expect(backdrop).not.toHaveAttribute('data-open');
   });
 
   test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {

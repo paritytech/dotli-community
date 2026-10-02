@@ -1,0 +1,313 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The QR pairing modal. Closed, the backdrop is display:none. While the
+   store has it open, data-open shows it, and the backdrop and the card
+   fade and scale in from @starting-style. */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background: var(--backdrop);
+  opacity: 0;
+  transition:
+    opacity 0.3s ease-out,
+    display 0.3s allow-discrete;
+}
+.backdrop[data-open] {
+  display: flex;
+  opacity: 1;
+}
+.backdrop:focus-visible {
+  outline: none;
+}
+@starting-style {
+  .backdrop[data-open] {
+    opacity: 0;
+  }
+}
+
+.modal {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 340px;
+  margin: 0;
+  padding: 24px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(28px) saturate(180%);
+  box-shadow: 0 24px 64px var(--shadow);
+  text-align: center;
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity 0.28s ease-out,
+    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
+}
+.backdrop[data-open] .modal {
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .backdrop[data-open] .modal {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .modal {
+    transition: none !important;
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .modal {
+    background: var(--surface);
+  }
+}
+@supports (backdrop-filter: blur(1px)) {
+  .modal {
+    backdrop-filter: blur(28px) saturate(180%);
+  }
+}
+
+.title {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 1rem;
+  color: var(--text-strong);
+}
+
+.title-nowrap {
+  white-space: nowrap;
+}
+
+/* The paragraphs below carry what the legacy `.auth-modal p` rule gave
+   every paragraph in the card, plus their own changes. */
+.reason {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 0.8rem;
+  font-style: italic;
+  line-height: 1.4;
+  color: var(--neutral-solid);
+}
+
+.hint {
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--neutral-solid);
+}
+
+.qr {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-height: 200px;
+  margin: 0;
+  padding: 0;
+}
+
+.qr-mobile {
+  flex-direction: column;
+  gap: 14px;
+}
+
+.qr-canvas {
+  border-radius: 8px;
+}
+
+.qr-link {
+  display: inline-flex;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border-radius: 8px;
+  line-height: 0;
+}
+.qr-link[hidden] {
+  display: none;
+}
+
+.open-app {
+  display: inline-block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 8px 20px;
+  border-radius: 6px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+.open-app:hover {
+  background: var(--inverse-bg-hover);
+}
+
+/* Once the QR is shown, the deeplink below it is a plain link. */
+.open-app-link {
+  padding: 0;
+  background: none;
+  color: var(--neutral-solid);
+  font-weight: 500;
+  text-decoration: underline;
+}
+.open-app-link:hover {
+  background: none;
+  color: var(--text-strong);
+}
+
+.qr-toggle {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--neutral-solid);
+  font-family: inherit;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.qr-toggle:hover {
+  color: var(--text-strong);
+}
+
+.progress {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.progress-text {
+  margin: 8px 0 16px;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--neutral-solid);
+}
+
+.error-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+
+.pending-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: 0 0 14px;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--fill);
+  color: var(--text);
+}
+
+.pending-glyph {
+  width: 22px;
+  height: 22px;
+}
+
+.pending-title {
+  margin: 0 0 4px;
+  padding: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.pending-subtitle {
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 0.8rem;
+  color: var(--neutral-solid);
+}
+
+/* The raw failure reason. The legacy red and 12px margin never applied,
+   because `.auth-modal p` outranked `.auth-modal-error`. This keeps what
+   was on screen. */
+.error {
+  margin: 0 0 16px;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--neutral-solid);
+}
+
+.retry {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 16px;
+  border: none;
+  border-radius: 6px;
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+  font-family: inherit;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.retry:hover {
+  background: var(--inverse-bg-hover);
+}
+
+.get-app {
+  display: block;
+  margin: 14px 0 0;
+  padding: 0;
+  color: var(--neutral-solid);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  transition: color 0.15s ease;
+}
+.get-app:hover {
+  color: var(--text-strong);
+}
+.get-app[hidden] {
+  display: none;
+}
+
+.close {
+  box-sizing: border-box;
+  margin: 16px 0 0;
+  padding: 6px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+.close:hover {
+  border-color: var(--border-strong);
+  background: var(--fill);
+  color: var(--text-strong);
+}
