@@ -12,8 +12,10 @@
 // slid out when the auto-hide (topbar-autohide.ts in @dotli/ui) hides it
 // (`data-hidden`), offline (`data-offline`, which shows the banner while the
 // bar is visible), and the landing page's mode, where the bar hides
-// (`data-landing`). It also advertises the reveal shortcut while the bar
-// auto-hides, and reveals it on hover.
+// (`data-landing`). The script sets that mode on `<body>` too, where `#app`
+// (pages/index.module.css) and the loading screen read it. It also
+// advertises the reveal shortcut while the bar auto-hides, and reveals it on
+// hover.
 import { TopbarActions } from '@dotli/ui/islands/TopbarActions';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
@@ -54,6 +56,7 @@ import UrlPill from './UrlPill.astro';
         bar.removeAttribute('aria-keyshortcuts');
       }
       bar.toggleAttribute('data-landing', landing);
+      document.body.toggleAttribute('data-landing', landing);
     };
     window.addEventListener('online', render);
     window.addEventListener('offline', render);

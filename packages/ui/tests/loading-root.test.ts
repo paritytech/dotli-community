@@ -46,13 +46,13 @@ const PARKED_PHASES: LoadingPhase[] = [
 function installLoadingDom(): void {
   // As the host page paints it: the loading screen beside `#app`.
   document.body.innerHTML = `
-    <div class="loading" id="app-loading">
-      <div class="loading-progress" id="loading-progress">
-        <div class="loading-progress-fill" id="loading-progress-fill"></div>
-        <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
+    <div id="app-loading">
+      <div id="loading-progress">
+        <div id="loading-progress-fill"></div>
+        <span id="loading-progress-pct">0%</span>
       </div>
       <p id="status"></p>
-      <p class="sr-only" id="status-sr"></p>
+      <p id="status-sr"></p>
     </div>
     <div id="app"></div>`;
 }

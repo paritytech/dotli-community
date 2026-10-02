@@ -88,8 +88,7 @@ beforeEach(() => {
   sentry.captureException.mockReset();
   // Shaped like the host page (apps/host/src/pages/index.astro): the
   // loading screen and the island beside `#app`.
-  document.body.innerHTML =
-    '<div class="loading" id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
+  document.body.innerHTML = '<div id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
 });
 
 afterEach(() => {
