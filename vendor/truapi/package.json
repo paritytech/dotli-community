@@ -6,12 +6,12 @@
   "author": "Parity Technologies <admin@parity.io>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/paritytech/host-rust-core.git",
+    "url": "git+https://github.com/paritytech/trinity-user-agents.git",
     "directory": "js/packages/truapi"
   },
-  "homepage": "https://github.com/paritytech/host-rust-core#readme",
+  "homepage": "https://github.com/paritytech/trinity-user-agents#readme",
   "bugs": {
-    "url": "https://github.com/paritytech/host-rust-core/issues"
+    "url": "https://github.com/paritytech/trinity-user-agents/issues"
   },
   "files": [
     "dist",
@@ -34,10 +34,6 @@
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
-    },
-    "./jam-peer-transport": {
-      "types": "./dist/jam-peer-transport.d.ts",
-      "import": "./dist/jam-peer-transport.js"
     },
     "./scale": {
       "types": "./dist/scale.d.ts",

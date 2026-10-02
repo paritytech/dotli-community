@@ -312,6 +312,38 @@ The index crosses as a SCALE-encoded `DerivationIndex`, the same value a review 
 code behind it stays core-owned and a host never reconstructs it. `productAccountAddress` applies the prefix host-spec
 C.6 fixes, rather than leaving each host to choose one.
 
+### The same name in a test suite
+
+`@parity/truapi-host/testing/playwright` exports a second `productAccountAddress`.
+It is asynchronous, it takes the account and product to derive rather than a
+public key, and it loads the testing WASM bundle itself:
+
+```ts
+import { productAccountAddress } from "@parity/truapi-host/testing/playwright";
+
+const address = await productAccountAddress({
+  account: "bob", // a dev account name, or a `DevAccount`
+  productId: "tx-demo.dot",
+  index: 0, // optional, defaults to 0
+});
+```
+
+Which one to reach for:
+
+- `productAccountAddress(publicKey)` from `@parity/truapi-host/wasm/web` is
+  synchronous and formats a subtree-derived public key the host already holds.
+  This is the one a host ships.
+- `productAccountAddress(query)` from `@parity/truapi-host/testing/playwright`
+  is asynchronous and runs the whole derivation from a dev account's session
+  root. It needs the built testing bundle, so it is for suites only. Because
+  the address depends on nothing but the root, the product id and the index, a
+  suite can work it out in a `globalSetup` and fund it once rather than per
+  test.
+
+A running fixture answers the same address through
+`testHost.getProductAccountAddress(productId?, index?)`, which reads the session
+the host actually holds and so returns `undefined` while it is signed out.
+
 The optional `contacts` group resolves handles through `contacts({ handleKey, handles })`:
 one entry per handle, in order, the account or `undefined`. `pickContact` draws a single
 picker and returns the chosen account. `pickContacts(product, { selected })` edits a

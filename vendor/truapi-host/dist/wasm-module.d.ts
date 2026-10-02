@@ -90,6 +90,8 @@ export interface WorkerSigningHostRuntime extends WorkerHostRuntime {
     refreshLocalIdentity(activationId: string): Promise<LocalIdentity>;
     getWalletAllowanceSnapshot(activationId: string, productIds: string[]): Promise<WalletAllowanceSnapshot>;
     getNativeChatContacts(): Promise<NativeChatContactsSnapshot>;
+    /** Only on a core built with `wasm-signing-host`. */
+    setWithheldResources?(tags: string[]): void;
 }
 /** Module surface the wasm-pack glue exports. */
 export interface WasmModuleShape {

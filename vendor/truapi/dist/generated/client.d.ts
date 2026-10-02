@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "a08d82b4593af81a";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "53d14bc59149b8ba";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -234,40 +234,6 @@ export declare class EntropyClient {
     /** Derive deterministic entropy. */
     derive(request: T.HostDeriveEntropyRequest, options?: CallOptions): ResultAsync<T.HostDeriveEntropyResponse, S.CallErrorValue<T.VersionedHostDeriveEntropyError>>;
 }
-/**
- * Host-terminated QUIC/WebTransport streams to JAM peers (JAMNP-S).
- *
- * The host owns TLS, certificate verification and length framing; the guest
- * verifies every byte it consumes. Access is a runtime permission, not a
- * manifest declaration: `dial` requires
- * [`RemotePermission::JamPeers`](crate::v01::RemotePermission::JamPeers) for
- * its `genesis`, checking the product's stored decision, prompting when it is
- * undetermined and persisting the answer per product and genesis. The other
- * methods act only on connections a granted `dial` opened. A grant is
- * separate from account, signing and storage authority.
- */
-export declare class JamPeerTransportClient {
-    #private;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Dial one peer. The host builds the ALPN from `genesis` and requires the
-     * peer certificate to carry `ed25519` (QUIC) or to hash to the
-     * certificate derived from `p256` (WebTransport).
-     */
-    dial(request: T.HostJamPeerTransportDialRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportDialResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportDialError>>;
-    /** Open a bidirectional stream on a connection and send its kind byte. */
-    open(request: T.HostJamPeerTransportOpenRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportOpenResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportOpenError>>;
-    /** Queue one message; the host prepends the `u32` little-endian length. */
-    send(request: T.HostJamPeerTransportSendRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportSendError>>;
-    /** Poll one complete message without blocking; the host strips the length. */
-    recv(request: T.HostJamPeerTransportRecvRequest, options?: CallOptions): ResultAsync<T.HostJamPeerTransportRecvResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportRecvError>>;
-    /** Abort a stream in both directions. */
-    reset(request: T.HostJamPeerTransportResetRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportResetError>>;
-    /** Close a connection and every stream on it. */
-    close(request: T.HostJamPeerTransportCloseRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostJamPeerTransportCloseError>>;
-    /** Drain connection, stream-finish and inbound-stream events. */
-    events(options?: CallOptions): ResultAsync<T.HostJamPeerTransportEventsResponse, S.CallErrorValue<T.VersionedHostJamPeerTransportEventsError>>;
-}
 /** Local key/value storage scoped to the calling product. */
 export declare class LocalStorageClient {
     #private;
@@ -309,7 +275,7 @@ export declare class NotificationsClient {
      * persists the notification across restarts and fires it through the
      * platform-native scheduler. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     sendPushNotification(request: T.HostPushNotificationRequest, options?: CallOptions): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
     /**
@@ -318,7 +284,7 @@ export declare class NotificationsClient {
      * Cancellation is idempotent: returns `Ok(())` whether the notification is
      * still pending, already fired, or was never issued. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
 }
@@ -552,7 +518,7 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
      */
     signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
     /**
@@ -564,7 +530,7 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
      */
     signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
 }
@@ -662,7 +628,6 @@ export interface TrUApiClient {
     readonly coinPayment: CoinPaymentClient;
     readonly contacts: ContactsClient;
     readonly entropy: EntropyClient;
-    readonly jamPeerTransport: JamPeerTransportClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
     readonly notifications: NotificationsClient;
