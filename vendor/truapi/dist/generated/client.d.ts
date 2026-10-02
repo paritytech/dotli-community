@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "0bd782cc4aca62dc";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "53d14bc59149b8ba";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -186,8 +186,8 @@ export declare class CoinPaymentClient {
  *
  * A product never reads the contact list. It opens the host's picker; the host
  * renders an overlay from the chat lists its chat extensions hold, and
- * returns only the person the user selected. Names, accounts, and every other
- * contact the user did not pick stay host-side.
+ * returns only handles for the people the user selected. Names, accounts, and
+ * every other contact the user did not pick stay host-side.
  *
  * That is also why there is no permission to request: the user choosing a
  * contact in host UI is the consent, and a product that is never handed the
@@ -210,6 +210,22 @@ export declare class ContactsClient {
      * draw avatars for, without returning accounts or profile contents.
      */
     pick(request: T.HostContactsPickRequest, options?: CallOptions): ResultAsync<T.HostContactsPickResponse, S.CallErrorValue<T.VersionedHostContactsPickError>>;
+    /**
+     * Edit a complete selection in the host's multi-select contact picker.
+     *
+     * `selected` preselects existing handles. Confirming none returns `Picked`
+     * with an empty `handles` list; dismissing never changes the selection.
+     * Unresolvable initial handles reject the entire request.
+     */
+    pickMany(request: T.HostContactsPickManyRequest, options?: CallOptions): ResultAsync<T.HostContactsPickManyResponse, S.CallErrorValue<T.VersionedHostContactsPickManyError>>;
+    /**
+     * Draw contact names in host-owned rectangles over the product surface.
+     *
+     * Labels do not require a shared Profile photo or disclosure. The response
+     * reveals no name, identity or per-slot availability. Each call replaces
+     * the previous placement; empty `slots` clears it.
+     */
+    placeLabels(request: T.HostContactsPlaceLabelsRequest, options?: CallOptions): ResultAsync<T.HostContactsPlaceLabelsResponse, S.CallErrorValue<T.VersionedHostContactsPlaceLabelsError>>;
 }
 /** Deterministic entropy derivation. */
 export declare class EntropyClient {
@@ -259,7 +275,7 @@ export declare class NotificationsClient {
      * persists the notification across restarts and fires it through the
      * platform-native scheduler. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     sendPushNotification(request: T.HostPushNotificationRequest, options?: CallOptions): ResultAsync<T.HostPushNotificationResponse, S.CallErrorValue<T.VersionedHostPushNotificationError>>;
     /**
@@ -268,7 +284,7 @@ export declare class NotificationsClient {
      * Cancellation is idempotent: returns `Ok(())` whether the notification is
      * still pending, already fired, or was never issued. See [RFC 0019].
      *
-     * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
+     * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
 }
@@ -502,7 +518,7 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
     signRawUnwatermarkedDeprecated(request: T.HostSignRawRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawError>>;
     /**
@@ -514,7 +530,7 @@ export declare class SigningClient {
      * This permits transaction-shaped data and requires signing authorization
      * and explicit user confirmation.
      *
-     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/trinity-user-agents/issues/612>
+     * @deprecated Temporary unwatermarked signing; migrate to watermarked signing when the runtime supports it. This API will be removed. See <https://github.com/paritytech/host-rust-core/issues/612>
      */
     signRawUnwatermarkedDeprecatedWithLegacyAccount(request: T.HostSignRawWithLegacyAccountRequest, options?: CallOptions): ResultAsync<T.HostSignPayloadResponse, S.CallErrorValue<T.VersionedHostSignRawWithLegacyAccountError>>;
 }

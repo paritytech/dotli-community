@@ -8,10 +8,6 @@
 // suite written against either reads the same. Where a name is absent it is
 // because TrUAPI has no seam for it -- see `notModeled` in
 // `create-mock-host.ts`; those throw rather than silently pass.
-import { coreProductStorageKey, } from "../web/create-mock-host.js";
-// The address a product account will be given, derivable without a host: a
-// suite funding that account does it once, in setup, not per test.
-export { productAccountAddress } from "./product-account.js";
 import { PRODUCT_FRAME_ID } from "./host-page.js";
 import { createTestHostServer } from "./server.js";
 import { hostPageUrl } from "./host-page-url.js";
@@ -66,19 +62,6 @@ function splitChainId(id) {
     return { network: id, identifier: "Relay" };
 }
 /**
- * The product-storage entry `key` names, or `undefined` when nothing holds it.
- *
- * Reads the product's own key out of each stored one with the parse
- * `getProductStorageValue` uses, so the byte reader and the string reader
- * cannot disagree about which entry a key names. Falls back to the whole key
- * for a value written straight through the host seam, which never passed
- * through the core's namespacing.
- */
-export function productStorageEntry(stored, key) {
-    const match = Object.entries(stored).find(([entry]) => (coreProductStorageKey(entry) ?? entry) === key);
-    return match?.[1];
-}
-/**
  * Expand `networks` into the three settings that have to agree.
  *
  * A single proxy carries no genesis hash: an unhashed proxy takes every
@@ -105,36 +88,16 @@ export function fromNetworks(networks, loopbackStatements = false) {
             runtimeConfig[split.configKey] = { genesisHash: entry.genesisHash };
         }
     }
-    // Only the People chain carries the statement store, so serving it locally on
-    // the hub as well would claim a store where none exists. A suite that declares
-    // no People chain has no such proxy to carry it, and a single unhashed proxy
-    // takes every request -- so that one serves the store instead. With several
-    // chains and no People among them there is no request this could attach to,
-    // and attaching it to a hub would answer statement reads a real hub refuses.
-    const peopleChains = networks.filter((entry) => splitChainId(entry.id).identifier === "People");
-    const carried = peopleChains.length > 0 || networks.length === 1;
-    // Loud only for the suite that named the store: it asked for something these
-    // networks cannot give. The default is on for every granted-allocation suite,
-    // including the many that never submit a statement, so there it serves no
-    // store rather than refusing to build a fixture over an unrelated option.
-    if (loopbackStatements === true && !carried) {
-        throw new Error("testHost `loopbackStatements` needs a People chain in `networks`, or a " +
-            "single chain whose proxy takes every request. Several chains are " +
-            "declared and none is a People chain, so there is no proxy the " +
-            "statement store belongs on: the store would answer reads that the " +
-            "declared chains refuse. Add the People chain, or drop to one chain.");
-    }
-    const servesStatements = (entry) => loopbackStatements !== false &&
-        carried &&
-        (peopleChains.length > 0
-            ? splitChainId(entry.id).identifier === "People"
-            : true);
     return {
         mock: {
             chainProxies: networks.map((entry) => ({
                 ...(networks.length > 1 ? { genesisHash: entry.genesisHash } : {}),
                 rpcUrl: entry.rpcUrl,
-                ...(servesStatements(entry) ? { loopbackStatements: true } : {}),
+                // Only the People chain carries the statement store, so serving it
+                // locally on the hub as well would claim a store where none exists.
+                ...(loopbackStatements && splitChainId(entry.id).identifier === "People"
+                    ? { loopbackStatements: true }
+                    : {}),
             })),
             supportedChains: { network, chains },
         },
@@ -197,16 +160,7 @@ export function createTestHostFixture(defaults) {
     const chains = defaults.networks ?? (defaults.chain ? [defaults.chain] : undefined);
     // Defaults to on when allocation is granted unchecked, so a product handed
     // an unregistered allowance key has somewhere its statements are accepted.
-    // Carried as "default" rather than `true` so the networks the suite declared
-    // decide the rest: a derived store steps aside where none can be served, a
-    // named one says so.
-    const loopbackStatements = defaults.loopbackStatements ??
-        ((defaults.allowances ?? "granted") === "granted" ? "default" : false);
-    // Only the refused entries travel: `true` is what every unlisted resource
-    // already is, so carrying it would say something the host does not act on.
-    const withheldResources = Object.entries(defaults.behaviors?.resourceAllocation ?? {})
-        .filter(([, allowed]) => !allowed)
-        .map(([resource]) => resource);
+    const loopbackStatements = defaults.loopbackStatements ?? (defaults.allowances ?? "granted") === "granted";
     const expanded = chains
         ? fromNetworks(chains, loopbackStatements)
         : undefined;
@@ -226,7 +180,6 @@ export function createTestHostFixture(defaults) {
                 loginBehavior: defaults.loginBehavior,
                 topology: defaults.topology,
                 allowances: defaults.allowances,
-                withheldResources,
                 logLevel: defaults.logLevel,
             });
             await page.goto(url);
@@ -285,14 +238,11 @@ export function createTestHostFixture(defaults) {
                         Uint8Array.from(value),
                     ]));
                 },
-                getProductAccountAddress: (productId, index) => call("getProductAccountAddress", productId, index),
-                findProductStorage: async (key) => productStorageEntry(await testHost.getProductStorage(), key),
-                getProductStorageValue: async (key) => page.evaluate((storageKey) => {
-                    const host = window.__TRUAPI_TEST_HOST__;
-                    if (!host)
-                        throw new Error("test host is not running on this page");
-                    return host.getProductStorageValue(storageKey);
-                }, key),
+                async findProductStorage(key) {
+                    const stored = await testHost.getProductStorage();
+                    const match = Object.entries(stored).find(([stored]) => stored.endsWith(`:${key}`));
+                    return match?.[1];
+                },
                 getPreimages: async () => {
                     const raw = await page.evaluate(() => {
                         const host = window.__TRUAPI_TEST_HOST__;
@@ -345,17 +295,10 @@ export function createTestHostFixture(defaults) {
                     if (!host)
                         throw new Error("test host is not running on this page");
                     return host.injectStatement(value);
-                }, 
-                // A `Uint8Array` is reduced to hex here because `page.evaluate`
-                // serialises it as a plain index object, which would inject a
-                // statement of nothing. The decoded shape survives as it is.
-                statement instanceof Uint8Array
-                    ? `0x${Array.from(statement, (byte) => byte.toString(16).padStart(2, "0")).join("")}`
-                    : statement),
+                }, typeof statement === "string" ? statement : `0x${Array.from(statement, (b) => b.toString(16).padStart(2, "0")).join("")}`),
                 getInjectedStatements: () => call("getInjectedStatements"),
                 clearStatements: () => call("clearStatements"),
                 getSubmittedStatements: () => call("getSubmittedStatements"),
-                getStatements: () => call("getStatements"),
                 // Playwright closes the page after the fixture yields, so there is
                 // genuinely nothing to do -- not a silent stub standing in for work.
                 dispose: () => Promise.resolve(),

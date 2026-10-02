@@ -16,6 +16,8 @@ export interface RawCallbacks {
     nativeCoinage?(request: Uint8Array): Promise<Uint8Array>;
     contacts?(lookup: Uint8Array): Promise<Uint8Array>;
     pickContact?(product: Uint8Array): Promise<Uint8Array>;
+    pickContacts?(product: Uint8Array, selection: Uint8Array): Promise<Uint8Array>;
+    placeContactLabels?(product: Uint8Array, placed: Uint8Array): Promise<boolean>;
     readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
     writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
     clearCoreStorage(key: Uint8Array): Promise<void>;

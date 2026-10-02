@@ -160,14 +160,48 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 40dvh;
+  overflow-y: auto;
   margin-bottom: 20px;
 }
 .contacts-picker-choice {
   display: flex;
-  flex-direction: column;
   gap: 6px;
   text-align: left;
   overflow-wrap: anywhere;
+  flex-shrink: 0;
+}
+.contacts-picker-choice[hidden] {
+  display: none;
+}
+.contacts-picker-choice input[type="checkbox"] {
+  flex-shrink: 0;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  accent-color: #e6007a;
+}
+.contacts-picker-text {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+.contacts-picker-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid #555;
+  border-radius: 8px;
+  background: #0d0d0d;
+  color: #e0e0e0;
+  font: inherit;
+}
+.contacts-modal input:focus-visible,
+.contacts-modal button:focus-visible {
+  outline: 2px solid #f6a7d0;
+  outline-offset: 2px;
 }
 .contacts-picker-identity {
   font-family: monospace;

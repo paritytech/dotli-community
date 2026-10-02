@@ -429,6 +429,16 @@ export const CONTACTS_PICK = {
     method: 0,
     kind: "request",
 };
+export const CONTACTS_PICK_MANY = {
+    trait: 20,
+    method: 1,
+    kind: "request",
+};
+export const CONTACTS_PLACE_LABELS = {
+    trait: 20,
+    method: 2,
+    kind: "request",
+};
 export const PROFILE_PRESENT = {
     trait: 69,
     method: 0,

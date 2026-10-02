@@ -1286,13 +1286,6 @@ function buildRuntime(state) {
                 granted,
             }), false);
         },
-        setWithheldResources(tags) {
-            return sendSessionActivationRequest(state, (requestId) => ({
-                kind: "setWithheldResources",
-                requestId,
-                tags,
-            }));
-        },
         resetSessionState() {
             return sendSessionActivationRequest(state, (requestId) => ({
                 kind: "resetSessionState",

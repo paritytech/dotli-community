@@ -50,6 +50,7 @@ import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
 import type { AvatarSurfaceFit } from './profile/avatar-overlay.js';
+import { createContactLabelOverlay } from './contacts/label-overlay.js';
 import { LoginRequestError } from './login-request-error.js';
 import { attachProductFrame } from './product-frame-layout.js';
 import { labelToProductId } from './runtime-config.js';
@@ -1477,6 +1478,7 @@ async function createHost(args: {
 }): Promise<ActiveHost> {
   const lease = await acquireCore();
   const contactAvatars = createContactAvatars();
+  const contactLabels = createContactLabelOverlay();
   let connection: CoreConnection;
   let chatCapable: boolean;
   try {
@@ -1485,9 +1487,10 @@ async function createHost(args: {
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     chatCapable = await chatCapabilityFor(args.label);
-    connection = await lease.connect(chatCapable ? 'Worker' : 'App', { contactAvatars });
+    connection = await lease.connect(chatCapable ? 'Worker' : 'App', { contactAvatars, contactLabels });
   } catch (error) {
     contactAvatars.dispose();
+    contactLabels.dispose();
     lease.release();
     throw error;
   }
@@ -1513,6 +1516,7 @@ async function createHost(args: {
     cleanupProductSide();
     // A new port is a restarted product: what it placed before is stale.
     contactAvatars.clear();
+    contactLabels.clear();
     productProvider = createMessagePortProvider(port);
     disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
   };
@@ -1522,6 +1526,7 @@ async function createHost(args: {
     cleanupProductSide();
     coreProvider.dispose();
     contactAvatars.dispose();
+    contactLabels.dispose();
     lease.release();
   };
   try {
@@ -1537,6 +1542,7 @@ async function createHost(args: {
       onPort: connectProductPort,
     });
     contactAvatars.attach(host.iframe, args.avatarSurface ?? 'viewport');
+    contactLabels.attach(host.iframe, args.avatarSurface ?? 'viewport');
     if (args.viewInsetsRelay === true) {
       disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
     }

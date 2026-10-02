@@ -383,6 +383,38 @@ export interface ContactHandle {
     bytes: Bytes32;
 }
 export declare const ContactHandle: S.Codec<ContactHandle>;
+/** Geometry for a host-owned contact name, independent of profile sharing. */
+export interface ContactLabelSlot {
+    /** Product-chosen id, unique within this placement. */
+    slot: number;
+    /** Opaque handle for the contact whose name the host draws. */
+    handle: ContactHandle;
+    /** Name bounds in surface units, with sides from 1 to 16384. */
+    rect: AvatarRect;
+    /** Visible region in surface units; a zero side hides the label. */
+    clip: AvatarRect;
+}
+export declare const ContactLabelSlot: S.Codec<ContactLabelSlot>;
+/** Selection confirmed in the host's multi-contact picker. */
+export type ContactPickManyOutcome = 
+/** The user confirmed this complete selection, including an empty one. */
+{
+    tag: "Picked";
+    value: {
+        handles: Array<ContactHandle>;
+    };
+}
+/** The user closed the picker without confirming a change. */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/** There are no contacts to show. */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+};
+export declare const ContactPickManyOutcome: S.Codec<ContactPickManyOutcome>;
 /**
  * How a contact pick ended.
  *
@@ -1016,6 +1048,30 @@ export type VersionedHostContactsPickError =
     value: HostContactsPickError;
 };
 export declare const VersionedHostContactsPickError: S.Codec<VersionedHostContactsPickError>;
+/** Versioned envelope for [`HostContactsPickManyError`]. */
+export type VersionedHostContactsPickManyError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyError;
+};
+export declare const VersionedHostContactsPickManyError: S.Codec<VersionedHostContactsPickManyError>;
+/** Versioned envelope for [`HostContactsPickManyRequest`]. */
+export type VersionedHostContactsPickManyRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyRequest;
+};
+export declare const VersionedHostContactsPickManyRequest: S.Codec<VersionedHostContactsPickManyRequest>;
+/** Versioned envelope for [`HostContactsPickManyResponse`]. */
+export type VersionedHostContactsPickManyResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPickManyResponse;
+};
+export declare const VersionedHostContactsPickManyResponse: S.Codec<VersionedHostContactsPickManyResponse>;
 /** Versioned envelope for [`HostContactsPickRequest`]. */
 export type VersionedHostContactsPickRequest = 
 /** Version 1 payload. */
@@ -1032,6 +1088,30 @@ export type VersionedHostContactsPickResponse =
     value: HostContactsPickResponse;
 };
 export declare const VersionedHostContactsPickResponse: S.Codec<VersionedHostContactsPickResponse>;
+/** Versioned envelope for [`HostContactsPlaceLabelsError`]. */
+export type VersionedHostContactsPlaceLabelsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsError;
+};
+export declare const VersionedHostContactsPlaceLabelsError: S.Codec<VersionedHostContactsPlaceLabelsError>;
+/** Versioned envelope for [`HostContactsPlaceLabelsRequest`]. */
+export type VersionedHostContactsPlaceLabelsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsRequest;
+};
+export declare const VersionedHostContactsPlaceLabelsRequest: S.Codec<VersionedHostContactsPlaceLabelsRequest>;
+/** Versioned envelope for [`HostContactsPlaceLabelsResponse`]. */
+export type VersionedHostContactsPlaceLabelsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostContactsPlaceLabelsResponse;
+};
+export declare const VersionedHostContactsPlaceLabelsResponse: S.Codec<VersionedHostContactsPlaceLabelsResponse>;
 /** Versioned envelope for [`HostCreateTransactionError`]. */
 export type VersionedHostCreateTransactionError = 
 /** Version 1 payload. */
@@ -4270,6 +4350,41 @@ export type HostContactsPickError =
     };
 };
 export declare const HostContactsPickError: S.Codec<HostContactsPickError>;
+/** Failure before a complete selection can be confirmed. */
+export type HostContactsPickManyError = 
+/** No active session, or the session changed while choosing. */
+{
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The selection exceeds the bound or contains an unresolved handle. */
+ | {
+    tag: "InvalidSelection";
+    value?: undefined;
+}
+/** The host could not complete the picker. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostContactsPickManyError: S.Codec<HostContactsPickManyError>;
+/** Open the host's picker with the product's current selection. */
+export interface HostContactsPickManyRequest {
+    /**
+     * At most 256 handles. Duplicates are ignored; an unresolved handle
+     * rejects the entire request rather than changing the selected audience.
+     */
+    selected: Array<ContactHandle>;
+}
+export declare const HostContactsPickManyRequest: S.Codec<HostContactsPickManyRequest>;
+/** The user's confirmed selection or reason no selection was made. */
+export interface HostContactsPickManyResponse {
+    /** How the picker ended. */
+    outcome: ContactPickManyOutcome;
+}
+export declare const HostContactsPickManyResponse: S.Codec<HostContactsPickManyResponse>;
 /**
  * Request to open the host's contact picker.
  *
@@ -4285,6 +4400,45 @@ export interface HostContactsPickResponse {
     outcome: ContactPickOutcome;
 }
 export declare const HostContactsPickResponse: S.Codec<HostContactsPickResponse>;
+/** Placement failure, never the availability of any individual contact. */
+export type HostContactsPlaceLabelsError = 
+/** The host cannot draw labels over the product surface. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** No active session, or it changed while placing labels. */
+ | {
+    tag: "NotConnected";
+    value?: undefined;
+}
+/** The surface, slot count, slot ids or rectangles are invalid. */
+ | {
+    tag: "InvalidPlacement";
+    value?: undefined;
+}
+/** The host could not place the labels. */
+ | {
+    tag: "Unknown";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostContactsPlaceLabelsError: S.Codec<HostContactsPlaceLabelsError>;
+/** Replace the contact names drawn over a product's surface. */
+export interface HostContactsPlaceLabelsRequest {
+    /** Surface width in framebuffer pixels or web viewport CSS pixels, 1 to 16384. */
+    surfaceWidth: number;
+    /** Surface height in the same units, 1 to 16384. */
+    surfaceHeight: number;
+    /** At most 256 slots. Empty clears the previous placement. */
+    slots: Array<ContactLabelSlot>;
+}
+export declare const HostContactsPlaceLabelsRequest: S.Codec<HostContactsPlaceLabelsRequest>;
+/** Acknowledges placement without revealing any contact's name or availability. */
+export interface HostContactsPlaceLabelsResponse {
+}
+export declare const HostContactsPlaceLabelsResponse: S.Codec<HostContactsPlaceLabelsResponse>;
 /** Transaction creation error. */
 export type HostCreateTransactionError = 
 /** Payload could not be deserialized. */
@@ -5020,7 +5174,7 @@ export declare const HostPushNotificationError: S.Codec<HostPushNotificationErro
  * wall-clock instant (Unix milliseconds UTC). `None` fires immediately,
  * preserving prior behaviour. See [RFC 0019].
  *
- * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
+ * [RFC 0019]: https://github.com/paritytech/host-rust-core/blob/main/docs/rfcs/0019-scheduled-notifications.md
  */
 export interface HostPushNotificationRequest {
     /** Notification text. */

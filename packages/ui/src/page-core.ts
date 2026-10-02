@@ -50,9 +50,11 @@ import {
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { showNotification } from './notification.js';
 import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
+import type { ContactLabelOverlay } from './contacts/label-overlay.js';
 
 export interface CoreConnectionOptions {
   contactAvatars?: ContactAvatarOverlay;
+  contactLabels?: ContactLabelOverlay;
 }
 
 export interface PageProduct {
@@ -533,7 +535,10 @@ function createCore(product: PageProduct): Core {
       }
       const scope = coordinator.createScope();
       const connectionLifetime = new AbortController();
-      const contacts = contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, scope);
+      const contacts =
+        contactsDirectory === undefined
+          ? undefined
+          : createContactsPlatform(contactsDirectory, scope, options.contactLabels);
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
@@ -564,6 +569,7 @@ function createCore(product: PageProduct): Core {
         closed = true;
         connectionLifetime.abort();
         options.contactAvatars?.dispose();
+        options.contactLabels?.dispose();
         connectionDisposers.delete(dispose);
         contacts?.dispose();
         scope.dispose();

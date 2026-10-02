@@ -1,31 +1,8 @@
 import type { ChatMessageContent, ChatRoom, HostChatRegisterBotRequest, ThemeVariant } from "@parity/truapi";
-import type { AuthState, HostChainSet, PermissionDecision, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
+import type { AuthState, HostChainSet, RequiredHostCallbacks, UserConfirmationReview } from "../generated/host-callbacks.js";
 import type { ProductRuntimeConfig } from "../runtime.js";
 /** How the mock answers a permission prompt for one capability. */
 export type PermissionPolicy = "allow-all" | "deny-all";
-/**
- * The denying policy under the name `@parity/host-api-test-sdk` gives it.
- *
- * Recognised rather than merely unequal to `"allow-all"`: a policy name the
- * mock does not know is refused, so a typo says so instead of denying every
- * permission with nothing to explain the refusals.
- */
-export type PermissionPolicyAlias = "reject-all";
-/**
- * The product's own key inside a core-namespaced one, or `undefined`.
- *
- * Reading the tail rather than any `:key` suffix is what keeps a prefixed store
- * distinct from an unprefixed one: a product writing `demo:mykey` and `mykey`
- * produces two keys that both end in `:mykey`, so a suffix search for `mykey`
- * answers with whichever comes first and a test asserting they do not collide
- * can never fail.
- *
- * The product id is length-prefixed by the core precisely because it may hold
- * colons -- `localhost:3000` is an ordinary one -- so the length is what says
- * where the id ends, not the next separator.
- */
-export declare function coreProductStorageKey(stored: string): string | undefined;
-import type { StatementInput } from "./loopback-statements.js";
 export interface ChainProxy {
     /**
      * Genesis hash to route on. Omit to take every request no hashed entry
@@ -110,27 +87,6 @@ export interface OpenOperation {
  * Field names are `@parity/host-api-test-sdk`'s `PermissionLogEntry`, so an
  * assertion written against that shape reads this one.
  */
-/**
- * One statement the store holds, in the shape a suite reads it.
- *
- * Field names are `@parity/host-api-test-sdk`'s `StatementEntry`, so an
- * assertion written against that shape reads this one.
- */
-export interface StatementEntry {
-    /** Topics the statement carries, `0x`-hex, in the order encoded. */
-    topics: string[];
-    /** The statement's payload, or `undefined` when it carries none. */
-    data: string | undefined;
-    /** The signature proof, when the statement carries a signing one. */
-    proof: {
-        signature: string;
-        signer: string;
-    } | undefined;
-    /** True when the product submitted it, false when a test injected it. */
-    fromProduct: boolean;
-    /** When the store took it, as epoch milliseconds. */
-    timestamp: number;
-}
 export interface PermissionLogEntry {
     /** The request's tag, the same key `grantPermission` takes. */
     tag: string;
@@ -140,17 +96,6 @@ export interface PermissionLogEntry {
     approved: boolean;
     /** Which prompt surface asked. */
     kind: PermissionKind;
-    /**
-     * The answer's lifetime, as the core records it.
-     *
-     * A mock policy is two-valued, so this is `AllowAlways` or `Deny`; a host
-     * that offered `AllowOnce` would record that instead. Carried because an
-     * assertion on a refusal reads the lifetime, not just the boolean: a suite
-     * checking that a denial was durable has nothing else to look at.
-     */
-    decision: PermissionDecision;
-    /** When the mock answered, as epoch milliseconds. */
-    timestamp: number;
 }
 /**
  * One signing request the core put to the host.
@@ -242,33 +187,27 @@ export interface MockHost {
     /** Notifications the core asked the host to show, in order. */
     getNotificationLog(): NotificationLogEntry[];
     /**
-     * Deliver a statement to the product as a chain notification, answering the
-     * entry the store retained.
+     * Deliver a SCALE-encoded signed statement to the product as a chain
+     * notification, returning how many live subscriptions it reached. Zero means
+     * the product is not subscribed yet: subscribe first, then inject.
      *
-     * Takes the topics and payload as a structure, or the SCALE wire bytes the
-     * chain would have sent. Retained either way, so a suite that injects before
-     * its product subscribes has the statement replayed to it on subscribe
-     * rather than losing it.
+     * The bytes are the wire form, not a structured statement. The core decodes
+     * what the chain would have sent it, so anything else is dropped during
+     * decode with no error a suite can see.
      */
-    injectStatement(statement: StatementInput | Uint8Array | string): StatementEntry;
+    injectStatement(statement: Uint8Array | string): number;
     /** Statements injected so far, in order, as `0x` hex. */
     getInjectedStatements(): string[];
     /**
-     * Every statement the store holds, submitted or injected, in order.
-     *
-     * Decoded, because the wire form is the core's business: a suite asserting on
-     * a topic or a payload should not have to know the codec to read one back.
-     */
-    getStatements(): StatementEntry[];
-    /**
-     * Statements the product submitted, decoded, read off the chain transport.
+     * Statements the product submitted, as `0x` hex, read off the chain
+     * transport.
      *
      * The core sends `statement_submit` without consulting an allowance, so a
      * product that signs its own statements is observable here. One that asks the
      * host to sign first (`createProofAuthorized`) needs a statement allowance to
      * get that far, and this stays empty until it has one.
      */
-    getSubmittedStatements(): StatementEntry[];
+    getSubmittedStatements(): string[];
     /** Forget the injected statements. Delivered ones cannot be recalled. */
     clearStatements(): void;
     /** Raw JSON-RPC the core sent over the chain connection, in order. */
@@ -310,7 +249,7 @@ export interface MockHost {
      */
     getConnectionStatus(): ChainStatus;
     /** Switch the answer both permission prompts fall back to. */
-    setPermissionBehavior(behavior: PermissionPolicy | PermissionPolicyAlias): void;
+    setPermissionBehavior(behavior: PermissionPolicy): void;
     /**
      * Release the mock's state and drop every live subscription.
      *
@@ -362,19 +301,6 @@ export interface MockHost {
      * impossible to replace.
      */
     getProductStorage(): Record<string, Uint8Array>;
-    /**
-     * The value the product stored under `key`, decoded as UTF-8.
-     *
-     * Synchronous, because `@parity/host-api-test-sdk` publishes it that way and
-     * a suite compares the result inside a `page.waitForFunction` predicate.
-     * The core namespaces the key before the host sees it, so this reads the
-     * product's own key out of that shape rather than matching the whole string.
-     *
-     * `undefined` for a value that is not UTF-8, the same answer a key nothing
-     * wrote gets: read those through {@link MockHost.getProductStorage}, which
-     * hands back bytes.
-     */
-    getProductStorageValue(key: string): string | undefined;
     /** Seeded preimage values. */
     getPreimages(): Uint8Array[];
     /** Drop the recorded navigations. */

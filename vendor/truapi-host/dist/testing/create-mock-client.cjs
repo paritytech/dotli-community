@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -557,6 +557,7 @@ var init_host_callbacks = __esm({
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
     ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
+    ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(import_truapi3.Bytes32) }));
     CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi3.ProductAccountTxPayload }), LegacyAccount: import_truapi3.LegacyAccountTxPayload }));
@@ -566,6 +567,7 @@ var init_host_callbacks = __esm({
     HostContactLookup = S.lazy(() => S.Struct({ handleKey: import_truapi3.Bytes32, handles: S.Vector(import_truapi3.Bytes32) }));
     HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.Option(import_truapi3.Bytes32)) }));
     HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi3.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+    HostContactsPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ accounts: S.Vector(import_truapi3.Bytes32) }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
     MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
@@ -585,6 +587,8 @@ var init_host_callbacks = __esm({
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect, reference: S.str, sharedAt: S.u64 }));
     PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
+    PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi3.Bytes32, rect: import_truapi3.AvatarRect, clip: import_truapi3.AvatarRect }));
+    PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
     PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64, username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
@@ -616,6 +620,16 @@ var init_error = __esm({
 });
 
 // dist/adapter-support.js
+function contactsHostAdapter(host) {
+  if (host === void 0)
+    return void 0;
+  return {
+    contacts: (lookup) => host.contacts(lookup),
+    pickContact: (product) => host.pickContact?.(product) ?? Promise.resolve({ tag: "Unsupported" }),
+    pickContacts: (product, selection) => host.pickContacts?.(product, selection) ?? Promise.resolve({ tag: "Unsupported" }),
+    placeContactLabels: (product, placed) => host.placeContactLabels?.(product, placed) ?? Promise.resolve(false)
+  };
+}
 function unwrapStreamResult(item) {
   if ("success" in item) {
     if (item.success === false) {
@@ -814,7 +828,7 @@ __export(host_callbacks_adapter_exports, {
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
   const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
-  const contacts = callbacks.contacts;
+  const contacts = contactsHostAdapter(callbacks.contacts);
   const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
@@ -835,7 +849,9 @@ function createWasmRawCallbacks(callbacks) {
     } : {},
     ...contacts ? {
       contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
-      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product)))
+      pickContact: async (product) => HostContactPick.enc(await contacts.pickContact(ProductContext.dec(product))),
+      pickContacts: async (product, selection) => HostContactsPick.enc(await contacts.pickContacts(ProductContext.dec(product), ContactSelection.dec(selection))),
+      placeContactLabels: async (product, placed) => await contacts.placeContactLabels(ProductContext.dec(product), PlacedContactLabels.dec(placed))
     } : {},
     readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
     writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
@@ -1576,57 +1592,12 @@ function bytes(value) {
   const body = value.startsWith("0x") ? value.slice(2) : value;
   return Uint8Array.from((body.match(/../g) ?? []).map((b) => parseInt(b, 16)));
 }
-var StatementField = import_truapi.scale.TaggedUnion({
-  Proof: import_truapi.StatementProof,
-  DecryptionKey: import_truapi.scale.Hex(32),
-  Expiry: import_truapi.scale.u64,
-  Channel: import_truapi.scale.Hex(32),
-  Topic1: import_truapi.scale.Hex(32),
-  Topic2: import_truapi.scale.Hex(32),
-  Topic3: import_truapi.scale.Hex(32),
-  Topic4: import_truapi.scale.Hex(32),
-  Data: import_truapi.scale.Hex()
-});
-var StatementFields = import_truapi.scale.Vector(StatementField);
-var TOPIC_FIELD_TAGS = [
-  "Topic1",
-  "Topic2",
-  "Topic3",
-  "Topic4"
-];
-var TOPIC_TAGS = ["Topic1", "Topic2", "Topic3", "Topic4"];
-function decodeStatement(encoded) {
+function topicsOf(encoded) {
   try {
-    return StatementFields.dec(bytes(encoded));
+    return import_truapi.SignedStatement.dec(bytes(encoded)).topics.map((topic) => typeof topic === "string" ? topic.toLowerCase() : hex(topic));
   } catch {
     return void 0;
   }
-}
-function topicsOf(encoded) {
-  const fields = decodeStatement(encoded);
-  if (!fields)
-    return void 0;
-  return fields.filter((field) => TOPIC_TAGS.includes(field.tag)).map((field) => String(field.value).toLowerCase());
-}
-var UNVERIFIED_PROOF = {
-  tag: "Sr25519",
-  value: {
-    signature: `0x${"00".repeat(64)}`,
-    signer: `0x${"00".repeat(32)}`
-  }
-};
-function encodeStatement(input) {
-  if (input.topics.length > TOPIC_TAGS.length) {
-    throw new Error(`testHost injectStatement: a statement carries at most ${TOPIC_TAGS.length} topics, and this one has ${input.topics.length}.`);
-  }
-  return hex(StatementFields.enc([
-    { tag: "Proof", value: UNVERIFIED_PROOF },
-    ...input.topics.map((topic, index) => ({
-      tag: TOPIC_TAGS[index],
-      value: topic
-    })),
-    ...input.data === void 0 ? [] : [{ tag: "Data", value: input.data }]
-  ]));
 }
 function parseFilter(raw) {
   const toTopics = (values) => values.map((topic) => String(topic).toLowerCase());
@@ -1654,28 +1625,25 @@ function matches(subscription, topics) {
 }
 function createLoopbackStatements() {
   const subscriptions = /* @__PURE__ */ new Set();
-  const retained = [];
+  const submissions = [];
   let nextId = 1;
-  const notify = (subscription, encoded) => {
-    subscription.notify(JSON.stringify({
-      jsonrpc: "2.0",
-      method: SUBSCRIBE,
-      params: {
-        subscription: subscription.id,
-        result: {
-          event: "newStatements",
-          data: { statements: [encoded], remaining: 0 }
-        }
-      }
-    }));
-  };
   const deliver = (encoded) => {
     const topics = topicsOf(encoded);
     let delivered = 0;
     for (const subscription of subscriptions) {
       if (!matches(subscription, topics))
         continue;
-      notify(subscription, encoded);
+      subscription.notify(JSON.stringify({
+        jsonrpc: "2.0",
+        method: SUBSCRIBE,
+        params: {
+          subscription: subscription.id,
+          result: {
+            event: "newStatements",
+            data: { statements: [encoded], remaining: 0 }
+          }
+        }
+      }));
       delivered += 1;
     }
     return delivered;
@@ -1692,27 +1660,19 @@ function createLoopbackStatements() {
       switch (frame.method) {
         case SUBMIT: {
           const encoded = String((frame.params ?? [])[0] ?? "");
-          retained.push({ encoded, fromProduct: true, timestamp: Date.now() });
+          submissions.push(encoded);
           reply({ status: "new" });
           deliver(encoded);
           return true;
         }
         case SUBSCRIBE: {
           const id = `loopback-sub-${nextId++}`;
-          const subscription = {
+          subscriptions.add({
             id,
             ...parseFilter((frame.params ?? [])[0]),
             notify: respond
-          };
-          subscriptions.add(subscription);
+          });
           reply(id);
-          for (const statement of retained) {
-            if (statement.fromProduct)
-              continue;
-            if (matches(subscription, topicsOf(statement.encoded))) {
-              notify(subscription, statement.encoded);
-            }
-          }
           return true;
         }
         case UNSUBSCRIBE: {
@@ -1734,46 +1694,18 @@ function createLoopbackStatements() {
           subscriptions.delete(subscription);
       }
     },
-    statements: () => [...retained],
-    // Narrowed by provenance rather than kept in a second list: `submitted()`
-    // answers "did the product publish this", which an injection must not.
-    submitted: () => retained.filter((statement) => statement.fromProduct),
+    submitted: () => [...submissions],
     inject: (statement) => {
-      const encoded = typeof statement === "string" ? statement.startsWith("0x") ? statement : `0x${statement}` : encodeStatement(statement);
-      const entry = { encoded, fromProduct: false, timestamp: Date.now() };
-      retained.push(entry);
-      deliver(encoded);
-      return entry;
+      const encoded = statement.startsWith("0x") ? statement : `0x${statement}`;
+      return deliver(encoded);
     },
     clear: () => {
-      retained.length = 0;
+      submissions.length = 0;
     }
   };
 }
 
 // dist/web/create-mock-host.js
-function normalizePermissionPolicy(behavior) {
-  if (behavior === "allow-all" || behavior === "deny-all")
-    return behavior;
-  if (behavior === "reject-all")
-    return "deny-all";
-  throw new Error(`testHost \`setPermissionBehavior\` does not know the policy "${String(behavior)}". Use "allow-all", or "deny-all" (which \`@parity/host-api-test-sdk\` spells "reject-all").`);
-}
-var CORE_PRODUCT_STORAGE_PREFIX = /^truapi:product-storage:v\d+:/;
-function coreProductStorageKey(stored) {
-  const prefix = CORE_PRODUCT_STORAGE_PREFIX.exec(stored);
-  if (!prefix)
-    return void 0;
-  const rest = stored.slice(prefix[0].length);
-  const separator = rest.indexOf(":");
-  if (separator < 0)
-    return void 0;
-  const length = Number(rest.slice(0, separator));
-  if (!Number.isInteger(length) || length < 0)
-    return void 0;
-  const afterId = rest.slice(separator + 1 + length);
-  return afterId.startsWith(":") ? afterId.slice(1) : void 0;
-}
 async function* failedSubscription(reason) {
   yield (0, import_neverthrow.err)({ reason });
 }
@@ -1844,19 +1776,7 @@ function normalizeHash(hash) {
   }
   return hash.replace(/^0x/i, "").toLowerCase();
 }
-function recordChainSubmission(request, into) {
-  try {
-    const frame = JSON.parse(request);
-    if (frame.method !== "statement_submit")
-      return;
-    const [statement] = frame.params ?? [];
-    if (typeof statement !== "string")
-      return;
-    into.push({ encoded: statement, fromProduct: true, timestamp: Date.now() });
-  } catch {
-  }
-}
-function connectToChain(proxy, sentRpc, statementSubscriptions, loopback, injectors, disconnectors, submissions) {
+function connectToChain(proxy, sentRpc, statementSubscriptions, loopback, injectors, disconnectors) {
   const socket = new WebSocket(proxy.rpcUrl);
   const queued = [];
   const waiting = [];
@@ -1913,8 +1833,6 @@ function connectToChain(proxy, sentRpc, statementSubscriptions, loopback, inject
   return {
     send(request) {
       sentRpc.push(request);
-      if (submissions)
-        recordChainSubmission(request, submissions);
       if (loopback?.handle(request, deliver))
         return;
       if (statementSubscriptions) {
@@ -1977,7 +1895,6 @@ function createMockHost(config = {}) {
   const chainInjectors = /* @__PURE__ */ new Set();
   const chainDisconnectors = /* @__PURE__ */ new Set();
   const injectedStatements = [];
-  const chainStatements = [];
   const loopbackStatements = createLoopbackStatements();
   const usingLoopback = (chainProxies ?? []).some((proxy) => proxy.loopbackStatements);
   const sentRpc = [];
@@ -2010,14 +1927,7 @@ function createMockHost(config = {}) {
   const decidePermission = (kind, tag, value, policy) => {
     const explicit = permissionDecisions.get(tag);
     const approved = explicit !== void 0 ? explicit : enforcePermissions ? false : granted(policy);
-    permissionLog.push({
-      tag,
-      value,
-      approved,
-      kind,
-      decision: decision(approved),
-      timestamp: Date.now()
-    });
+    permissionLog.push({ tag, value, approved, kind });
     return approved;
   };
   const productKey = (key) => `product:${key}`;
@@ -2026,25 +1936,6 @@ function createMockHost(config = {}) {
     // order still addresses the slot it addressed before.
     `core:${key.tag}:${JSON.stringify(key.value, (_, inner) => inner !== null && typeof inner === "object" && !Array.isArray(inner) ? Object.fromEntries(Object.entries(inner).sort(([left], [right]) => left.localeCompare(right))) : inner)}`
   );
-  const forgetStoredAuthorization = (permission) => {
-    const prefix = "core:PermissionAuthorization:";
-    const needle = JSON.stringify(permission);
-    for (const key of [...storage.keys()]) {
-      if (key.startsWith(prefix) && key.includes(needle))
-        storage.delete(key);
-    }
-  };
-  const asEntry = (statement) => {
-    const fields = decodeStatement(statement.encoded) ?? [];
-    const proof = fields.find((field) => field.tag === "Proof")?.value;
-    return {
-      topics: fields.filter((field) => TOPIC_FIELD_TAGS.includes(field.tag)).map((field) => String(field.value).toLowerCase()),
-      data: fields.find((field) => field.tag === "Data")?.value,
-      proof: proof && proof.tag !== "OnChain" ? { signature: proof.value.signature, signer: proof.value.signer } : void 0,
-      fromProduct: statement.fromProduct,
-      timestamp: statement.timestamp
-    };
-  };
   const granted = (policy) => policy === "allow-all";
   const decision = (approved) => approved ? "AllowAlways" : "Deny";
   const storageSubscribers = /* @__PURE__ */ new Map();
@@ -2187,7 +2078,7 @@ function createMockHost(config = {}) {
         }
         const proxy = chainProxies.find((candidate) => candidate.genesisHash !== void 0 && normalizeHash(candidate.genesisHash) === normalizeHash(genesisHash)) ?? chainProxies.find((candidate) => candidate.genesisHash === void 0);
         if (proxy) {
-          const connection = connectToChain(proxy, sentRpc, statementSubscriptions, proxy.loopbackStatements ? loopbackStatements : void 0, chainInjectors, chainDisconnectors, chainStatements);
+          const connection = connectToChain(proxy, sentRpc, statementSubscriptions, proxy.loopbackStatements ? loopbackStatements : void 0, chainInjectors, chainDisconnectors);
           chainStatus = "Connected";
           return connection;
         }
@@ -2201,7 +2092,6 @@ function createMockHost(config = {}) {
         return {
           send(request) {
             sentRpc.push(request);
-            recordChainSubmission(request, chainStatements);
           },
           async *responses() {
             try {
@@ -2323,12 +2213,14 @@ function createMockHost(config = {}) {
     getNavigationLog: () => [...navigations],
     getNotificationLog: () => pushedNotifications.map((n) => ({ ...n })),
     injectStatement: (statement) => {
-      const encoded = typeof statement === "string" ? statement.startsWith("0x") ? statement : `0x${statement}` : statement instanceof Uint8Array ? `0x${hex2(statement)}` : encodeStatement(statement);
+      if (usingLoopback) {
+        const encoded2 = typeof statement === "string" ? statement.startsWith("0x") ? statement : `0x${statement}` : `0x${hex2(statement)}`;
+        injectedStatements.push(encoded2);
+        return loopbackStatements.inject(encoded2);
+      }
+      const encoded = typeof statement === "string" ? statement.startsWith("0x") ? statement : `0x${statement}` : `0x${hex2(statement)}`;
       injectedStatements.push(encoded);
-      if (usingLoopback)
-        return asEntry(loopbackStatements.inject(encoded));
-      const entry = { encoded, fromProduct: false, timestamp: Date.now() };
-      chainStatements.push(entry);
+      let delivered = 0;
       for (const subscription of statementSubscriptions) {
         const frame = JSON.stringify({
           jsonrpc: "2.0",
@@ -2343,16 +2235,25 @@ function createMockHost(config = {}) {
         });
         for (const injector of chainInjectors)
           injector(frame);
+        delivered += 1;
       }
-      return asEntry(entry);
+      return delivered;
     },
     getInjectedStatements: () => [...injectedStatements],
-    getStatements: () => (usingLoopback ? loopbackStatements.statements() : chainStatements).map(asEntry),
-    getSubmittedStatements: () => (usingLoopback ? loopbackStatements.submitted() : chainStatements).filter((entry) => entry.fromProduct).map(asEntry),
+    getSubmittedStatements: () => usingLoopback ? loopbackStatements.submitted() : sentRpc.flatMap((request) => {
+      try {
+        const frame = JSON.parse(request);
+        if (frame.method !== "statement_submit")
+          return [];
+        const [statement] = frame.params ?? [];
+        return typeof statement === "string" ? [statement] : [];
+      } catch {
+        return [];
+      }
+    }),
     clearStatements: () => {
       injectedStatements.length = 0;
       loopbackStatements.clear();
-      chainStatements.length = 0;
     },
     sentRpc: () => [...sentRpc],
     authStates: () => [...authStates],
@@ -2366,9 +2267,8 @@ function createMockHost(config = {}) {
     getIsAuthenticated: () => authStates.at(-1)?.tag === "Connected",
     getConnectionStatus: () => chainStatus,
     setPermissionBehavior: (behavior) => {
-      const policy = normalizePermissionPolicy(behavior);
-      devicePermissions = policy;
-      remotePermissions = policy;
+      devicePermissions = behavior;
+      remotePermissions = behavior;
     },
     dispose() {
       this.reset();
@@ -2382,15 +2282,12 @@ function createMockHost(config = {}) {
     getGrantedPermissions: () => [...permissionDecisions.entries()].filter(([, isGranted]) => isGranted).map(([permission]) => permission).sort(),
     grantPermission: (permission) => {
       permissionDecisions.set(permission, true);
-      forgetStoredAuthorization(permission);
     },
     revokePermission: (permission) => {
       permissionDecisions.set(permission, false);
-      forgetStoredAuthorization(permission);
     },
     resetPermission: (permission) => {
       permissionDecisions.delete(permission);
-      forgetStoredAuthorization(permission);
     },
     setEnforcePermissions: (enforce) => {
       enforcePermissions = enforce;
@@ -2431,23 +2328,6 @@ function createMockHost(config = {}) {
           entries[key.slice(prefix.length)] = value;
       }
       return entries;
-    },
-    getProductStorageValue: (key) => {
-      const prefix = productKey("");
-      for (const [stored, value] of storage) {
-        if (!stored.startsWith(prefix))
-          continue;
-        const local = stored.slice(prefix.length);
-        const namespaced = coreProductStorageKey(local);
-        if ((namespaced ?? local) !== key)
-          continue;
-        try {
-          return new TextDecoder("utf-8", { fatal: true }).decode(value);
-        } catch {
-          return void 0;
-        }
-      }
-      return void 0;
     },
     getPreimages: () => [...preimages.values()],
     clearNavigationLog: () => {

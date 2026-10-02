@@ -21,45 +21,6 @@
 import { blake2b } from "@noble/hashes/blake2.js";
 import { err, ok } from "neverthrow";
 import { scale } from "@parity/truapi";
-/** Resolve a policy name, rejecting one that means nothing here. */
-function normalizePermissionPolicy(behavior) {
-    if (behavior === "allow-all" || behavior === "deny-all")
-        return behavior;
-    if (behavior === "reject-all")
-        return "deny-all";
-    throw new Error(`testHost \`setPermissionBehavior\` does not know the policy ` +
-        `"${String(behavior)}". Use "allow-all", or "deny-all" (which ` +
-        `\`@parity/host-api-test-sdk\` spells "reject-all").`);
-}
-/** The core's product-storage key prefix, up to and including its version. */
-const CORE_PRODUCT_STORAGE_PREFIX = /^truapi:product-storage:v\d+:/;
-/**
- * The product's own key inside a core-namespaced one, or `undefined`.
- *
- * Reading the tail rather than any `:key` suffix is what keeps a prefixed store
- * distinct from an unprefixed one: a product writing `demo:mykey` and `mykey`
- * produces two keys that both end in `:mykey`, so a suffix search for `mykey`
- * answers with whichever comes first and a test asserting they do not collide
- * can never fail.
- *
- * The product id is length-prefixed by the core precisely because it may hold
- * colons -- `localhost:3000` is an ordinary one -- so the length is what says
- * where the id ends, not the next separator.
- */
-export function coreProductStorageKey(stored) {
-    const prefix = CORE_PRODUCT_STORAGE_PREFIX.exec(stored);
-    if (!prefix)
-        return undefined;
-    const rest = stored.slice(prefix[0].length);
-    const separator = rest.indexOf(":");
-    if (separator < 0)
-        return undefined;
-    const length = Number(rest.slice(0, separator));
-    if (!Number.isInteger(length) || length < 0)
-        return undefined;
-    const afterId = rest.slice(separator + 1 + length);
-    return afterId.startsWith(":") ? afterId.slice(1) : undefined;
-}
 /**
  * A chain the host will proxy to, rather than answer from memory.
  *
@@ -67,7 +28,7 @@ export function coreProductStorageKey(stored) {
  * must be the *real* one of the endpoint, not a {@link MOCK_GENESIS}
  * placeholder, and the runtime config must carry the same value.
  */
-import { createLoopbackStatements, decodeStatement, encodeStatement, TOPIC_FIELD_TAGS, } from "./loopback-statements.js";
+import { createLoopbackStatements } from "./loopback-statements.js";
 /** A subscription that reports an injected fault instead of opening. */
 async function* failedSubscription(reason) {
     yield err({ reason });
@@ -190,25 +151,10 @@ function normalizeHash(hash) {
  * would cross-talk, and releasing one would leave its listeners on a socket the
  * other still holds. A single-chain suite is not safe from it.
  */
-/** Record a `statement_submit` the core sent to a real chain. */
-function recordChainSubmission(request, into) {
-    try {
-        const frame = JSON.parse(request);
-        if (frame.method !== "statement_submit")
-            return;
-        const [statement] = frame.params ?? [];
-        if (typeof statement !== "string")
-            return;
-        into.push({ encoded: statement, fromProduct: true, timestamp: Date.now() });
-    }
-    catch {
-        // A frame that is not JSON is not a submission.
-    }
-}
 function connectToChain(proxy, sentRpc, statementSubscriptions, loopback, 
 // Injectors are held beside the connection rather than on it: the connection
 // type is generated from the protocol and must not grow test-only members.
-injectors, disconnectors, submissions) {
+injectors, disconnectors) {
     const socket = new WebSocket(proxy.rpcUrl);
     const queued = [];
     const waiting = [];
@@ -277,8 +223,6 @@ injectors, disconnectors, submissions) {
     return {
         send(request) {
             sentRpc.push(request);
-            if (submissions)
-                recordChainSubmission(request, submissions);
             // Served here rather than forwarded, so the statement flows work with no
             // chain behind them. Everything else still goes out.
             if (loopback?.handle(request, deliver))
@@ -364,9 +308,6 @@ export function createMockHost(config = {}) {
     const chainInjectors = new Set();
     const chainDisconnectors = new Set();
     const injectedStatements = [];
-    // Submissions and injections seen on a real chain transport, so the readers
-    // answer the same shape whether or not the store is served in-page.
-    const chainStatements = [];
     const loopbackStatements = createLoopbackStatements();
     const usingLoopback = (chainProxies ?? []).some((proxy) => proxy.loopbackStatements);
     const sentRpc = [];
@@ -431,14 +372,7 @@ export function createMockHost(config = {}) {
             : enforcePermissions
                 ? false
                 : granted(policy);
-        permissionLog.push({
-            tag,
-            value,
-            approved,
-            kind,
-            decision: decision(approved),
-            timestamp: Date.now(),
-        });
+        permissionLog.push({ tag, value, approved, kind });
         return approved;
     };
     // Product keys are namespaced from core slots so neither can shadow the other.
@@ -456,49 +390,6 @@ export function createMockHost(config = {}) {
             `core:${key.tag}:${JSON.stringify(key.value, (_, inner) => inner !== null && typeof inner === "object" && !Array.isArray(inner)
                 ? Object.fromEntries(Object.entries(inner).sort(([left], [right]) => left.localeCompare(right)))
                 : inner)}`;
-    /**
-     * Drop the core's stored answer for `permission`, so the next request asks
-     * again.
-     *
-     * The core answers a settled permission from its own storage without calling
-     * the host, which is the real behaviour. It also means that changing the
-     * mock's answer after the first request changes nothing a product can see:
-     * the decision it is now going to get was recorded before. A suite setting an
-     * answer is saying what the host should reply, so the recorded one has to go
-     * with it.
-     *
-     * Matched on the serialised key because the mock holds keys as strings: every
-     * permission is named in its own key, a device one as `"Camera"` and a remote
-     * one as `"ChainSubmit"`, so the quoted name selects that permission's slots
-     * and no others.
-     */
-    const forgetStoredAuthorization = (permission) => {
-        const prefix = "core:PermissionAuthorization:";
-        const needle = JSON.stringify(permission);
-        for (const key of [...storage.keys()]) {
-            if (key.startsWith(prefix) && key.includes(needle))
-                storage.delete(key);
-        }
-    };
-    /** Decode a retained statement into the shape a suite reads. */
-    const asEntry = (statement) => {
-        // An undecodable statement is still reported, with nothing claimed about
-        // its contents: a suite chasing one it injected by hand has something to
-        // see, where dropping it looks like the injection never happened.
-        const fields = decodeStatement(statement.encoded) ?? [];
-        const proof = fields.find((field) => field.tag === "Proof")?.value;
-        return {
-            topics: fields
-                .filter((field) => TOPIC_FIELD_TAGS.includes(field.tag))
-                .map((field) => String(field.value).toLowerCase()),
-            data: fields.find((field) => field.tag === "Data")?.value,
-            proof: proof && proof.tag !== "OnChain"
-                ? { signature: proof.value.signature, signer: proof.value.signer }
-                : undefined,
-            fromProduct: statement.fromProduct,
-            timestamp: statement.timestamp,
-        };
-    };
     const granted = (policy) => policy === "allow-all";
     // A mock policy is two-valued, so a grant is durable and a refusal is
     // durable. `AllowOnce` is a host answer the mock has no knob to ask for.
@@ -667,7 +558,7 @@ export function createMockHost(config = {}) {
                 if (proxy) {
                     // After the dial, not before: a proxy that fails to open must leave
                     // the status alone rather than report a connection that is not there.
-                    const connection = connectToChain(proxy, sentRpc, statementSubscriptions, proxy.loopbackStatements ? loopbackStatements : undefined, chainInjectors, chainDisconnectors, chainStatements);
+                    const connection = connectToChain(proxy, sentRpc, statementSubscriptions, proxy.loopbackStatements ? loopbackStatements : undefined, chainInjectors, chainDisconnectors);
                     chainStatus = "Connected";
                     return connection;
                 }
@@ -685,7 +576,6 @@ export function createMockHost(config = {}) {
                 return {
                     send(request) {
                         sentRpc.push(request);
-                        recordChainSubmission(request, chainStatements);
                     },
                     async *responses() {
                         try {
@@ -817,18 +707,22 @@ export function createMockHost(config = {}) {
         getNavigationLog: () => [...navigations],
         getNotificationLog: () => pushedNotifications.map((n) => ({ ...n })),
         injectStatement: (statement) => {
+            if (usingLoopback) {
+                const encoded = typeof statement === "string"
+                    ? statement.startsWith("0x")
+                        ? statement
+                        : `0x${statement}`
+                    : `0x${hex(statement)}`;
+                injectedStatements.push(encoded);
+                return loopbackStatements.inject(encoded);
+            }
             const encoded = typeof statement === "string"
                 ? statement.startsWith("0x")
                     ? statement
                     : `0x${statement}`
-                : statement instanceof Uint8Array
-                    ? `0x${hex(statement)}`
-                    : encodeStatement(statement);
+                : `0x${hex(statement)}`;
             injectedStatements.push(encoded);
-            if (usingLoopback)
-                return asEntry(loopbackStatements.inject(encoded));
-            const entry = { encoded, fromProduct: false, timestamp: Date.now() };
-            chainStatements.push(entry);
+            let delivered = 0;
             for (const subscription of statementSubscriptions) {
                 // The envelope the chain sends, not the bare statement: the core reads
                 // `result.data.statements`, so a bare value decodes to nothing.
@@ -845,21 +739,29 @@ export function createMockHost(config = {}) {
                 });
                 for (const injector of chainInjectors)
                     injector(frame);
+                delivered += 1;
             }
-            return asEntry(entry);
+            return delivered;
         },
         getInjectedStatements: () => [...injectedStatements],
-        getStatements: () => (usingLoopback ? loopbackStatements.statements() : chainStatements).map(asEntry),
-        getSubmittedStatements: () => (usingLoopback ? loopbackStatements.submitted() : chainStatements)
-            .filter((entry) => entry.fromProduct)
-            .map(asEntry),
+        getSubmittedStatements: () => usingLoopback
+            ? loopbackStatements.submitted()
+            : sentRpc.flatMap((request) => {
+                try {
+                    const frame = JSON.parse(request);
+                    if (frame.method !== "statement_submit")
+                        return [];
+                    const [statement] = frame.params ?? [];
+                    return typeof statement === "string" ? [statement] : [];
+                }
+                catch {
+                    // A frame that is not JSON is not a submission.
+                    return [];
+                }
+            }),
         clearStatements: () => {
             injectedStatements.length = 0;
             loopbackStatements.clear();
-            // The chain path retains its own list, which `getStatements` and
-            // `getSubmittedStatements` read when the loopback store is off. Leaving it
-            // would carry one case's statements into the next.
-            chainStatements.length = 0;
         },
         sentRpc: () => [...sentRpc],
         authStates: () => [...authStates],
@@ -881,9 +783,8 @@ export function createMockHost(config = {}) {
         getIsAuthenticated: () => authStates.at(-1)?.tag === "Connected",
         getConnectionStatus: () => chainStatus,
         setPermissionBehavior: (behavior) => {
-            const policy = normalizePermissionPolicy(behavior);
-            devicePermissions = policy;
-            remotePermissions = policy;
+            devicePermissions = behavior;
+            remotePermissions = behavior;
         },
         dispose() {
             this.reset();
@@ -903,15 +804,12 @@ export function createMockHost(config = {}) {
             .sort(),
         grantPermission: (permission) => {
             permissionDecisions.set(permission, true);
-            forgetStoredAuthorization(permission);
         },
         revokePermission: (permission) => {
             permissionDecisions.set(permission, false);
-            forgetStoredAuthorization(permission);
         },
         resetPermission: (permission) => {
             permissionDecisions.delete(permission);
-            forgetStoredAuthorization(permission);
         },
         setEnforcePermissions: (enforce) => {
             enforcePermissions = enforce;
@@ -955,29 +853,6 @@ export function createMockHost(config = {}) {
                     entries[key.slice(prefix.length)] = value;
             }
             return entries;
-        },
-        getProductStorageValue: (key) => {
-            const prefix = productKey("");
-            for (const [stored, value] of storage) {
-                if (!stored.startsWith(prefix))
-                    continue;
-                const local = stored.slice(prefix.length);
-                const namespaced = coreProductStorageKey(local);
-                // Falls back to the whole key for a value written straight through the
-                // host seam, which never passed through the core's namespacing.
-                if ((namespaced ?? local) !== key)
-                    continue;
-                try {
-                    return new TextDecoder("utf-8", { fatal: true }).decode(value);
-                }
-                catch {
-                    // A lenient decode answers replacement characters, which read as a
-                    // value the product wrote. An absence instead sends a suite to
-                    // `getProductStorage`, which hands back the bytes themselves.
-                    return undefined;
-                }
-            }
-            return undefined;
         },
         getPreimages: () => [...preimages.values()],
         clearNavigationLog: () => {

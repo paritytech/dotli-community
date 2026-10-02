@@ -91,6 +91,15 @@ export interface ChatAuthorityReview {
     productId: string;
 }
 /**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export interface ContactSelection {
+    /**
+     * Resolved accounts to preselect, deduplicated and bounded to 256.
+     */
+    selected: Array<Bytes32>;
+}
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -465,6 +474,40 @@ export type HostContactPick =
  * This host resolves contacts but cannot present a picker. The core
  * answers the product `Unsupported`, so it can tell "try again later"
  * apart from "this host will never pick".
+ */
+ | {
+    tag: "Unsupported";
+    value?: undefined;
+};
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export type HostContactsPick = 
+/**
+ * Confirmed accounts, including an empty selection. Never sent to products.
+ */
+{
+    tag: "Picked";
+    value: {
+        accounts: Array<Bytes32>;
+    };
+}
+/**
+ * The user cancelled without changing the selection.
+ */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/**
+ * There are no contacts to show.
+ */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+}
+/**
+ * This host cannot present a multi-contact picker.
  */
  | {
     tag: "Unsupported";
@@ -961,6 +1004,44 @@ export interface PlacedAvatars {
     avatars: Array<PlacedAvatar>;
 }
 /**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export interface PlacedContactLabel {
+    /**
+     * Stable, product-chosen placement id.
+     */
+    slot: number;
+    /**
+     * Resolved contact account, never sent to the product.
+     */
+    account: Bytes32;
+    /**
+     * Name bounds in surface units.
+     */
+    rect: AvatarRect;
+    /**
+     * Visible region in surface units.
+     */
+    clip: AvatarRect;
+}
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export interface PlacedContactLabels {
+    /**
+     * Width of the product surface.
+     */
+    surfaceWidth: number;
+    /**
+     * Height of the product surface.
+     */
+    surfaceHeight: number;
+    /**
+     * Host-resolved names to draw. Empty clears the placement.
+     */
+    labels: Array<PlacedContactLabel>;
+}
+/**
  * Review shown before a preimage is submitted.
  */
 export interface PreimageSubmitReview {
@@ -1322,6 +1403,10 @@ export declare const AuthState: S.Codec<AuthState>;
  */
 export declare const ChatAuthorityReview: S.Codec<ChatAuthorityReview>;
 /**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export declare const ContactSelection: S.Codec<ContactSelection>;
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
@@ -1375,6 +1460,10 @@ export declare const HostContactMatches: S.Codec<HostContactMatches>;
  * How a host's contact picker ended.
  */
 export declare const HostContactPick: S.Codec<HostContactPick>;
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export declare const HostContactsPick: S.Codec<HostContactsPick>;
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -1462,6 +1551,14 @@ export declare const PlacedAvatar: S.Codec<PlacedAvatar>;
  * contact disclosed.
  */
 export declare const PlacedAvatars: S.Codec<PlacedAvatars>;
+/**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export declare const PlacedContactLabel: S.Codec<PlacedContactLabel>;
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export declare const PlacedContactLabels: S.Codec<PlacedContactLabels>;
 /**
  * Review shown before a preimage is submitted.
  */
@@ -1654,11 +1751,7 @@ export interface ContactsPlatform {
      * implements `Self::contacts` alone still compiles and its products get
      * a truthful answer rather than a dismissal they would retry forever.
      *
-     * A JS host reaches the same answer by another route: the generated
-     * surface types this method optional, but a capability group counts as
-     * served only when every callback in it is present, so omitting this one
-     * makes the whole group absent and `contacts.pick` answers `Unsupported`
-     * before any of it is reached.
+     * JS adapters apply the same unsupported default when the host omits UI.
      *
      * The core cannot draw UI, so a selection has to come from the host; the
      * whole point is that the host renders the names rather than shipping
@@ -1667,6 +1760,22 @@ export interface ContactsPlatform {
      * `HostContactPick::NoContacts` instead of drawing an empty overlay.
      */
     pickContact?(product: ProductContext): Promise<HostContactPick>;
+    /**
+     * Edit the complete selection in host-owned UI. Cancellation is not an
+     * empty confirmed selection. Accounts and names stay host-side.
+     */
+    pickContacts?(product: ProductContext, selection: ContactSelection): Promise<HostContactsPick>;
+    /**
+     * Draw names from the host's contact directory, with an account fallback
+     * when no username exists. Profile sharing must not affect labels.
+     *
+     * Replace the connection's previous placement, and clear it on navigation
+     * or disconnect. On directory invalidation, clear stale names and refresh
+     * the live placement from current contacts. No per-contact result is returned.
+     * Returns whether this host supports label placement, never whether any
+     * individual contact resolved. JS adapters return false for omitted UI.
+     */
+    placeContactLabels?(product: ProductContext, placed: PlacedContactLabels): Promise<boolean>;
 }
 /**
  * Core-owned administration API exposed to host UI.
@@ -2199,7 +2308,7 @@ export interface RequiredHostCallbacks {
     productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
     coinageWallet?: Required<CoinageWalletHost>;
-    contacts?: Required<ContactsPlatform>;
+    contacts?: ContactsPlatform;
     identityBackend?: Required<IdentityBackendHost>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;

@@ -21,6 +21,10 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   const { id, view } = props.entry;
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
+  const [query, setQuery] = createSignal('');
+  const [selected, setSelected] = createSignal(new Set(view.selection?.selected));
+  const matches = (choice: { label: string; detail: string }): boolean =>
+    `${choice.label} ${choice.detail}`.toLowerCase().includes(query().trim().toLowerCase());
   let input: HTMLInputElement | undefined;
   let firstChoice: HTMLButtonElement | undefined;
 
@@ -35,7 +39,12 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
       settleModal(id, button.result, password());
       return;
     }
-    settleModal(id, button.result);
+    settleModal(
+      id,
+      button.result,
+      undefined,
+      view.selection !== undefined && button.variant === 'primary' ? [...selected()] : undefined,
+    );
   };
 
   const dismiss = (): void => {
@@ -52,7 +61,12 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   };
 
   return (
-    <Dialog titleId={titleId} initialFocus={() => input ?? firstChoice} onDismiss={dismiss}>
+    <Dialog
+      titleId={titleId}
+      initialFocus={() => input ?? firstChoice}
+      onDismiss={dismiss}
+      dialogClass={view.choices === undefined ? 'signing-modal' : 'signing-modal contacts-modal'}
+    >
       <Show when={view.icon}>
         {icon => (
           // eslint-disable-next-line solid/no-innerhtml -- trusted SVG markup from ModalView.icon, not user input
@@ -73,26 +87,80 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </For>
         <Show when={view.notice}>{notice => <div class="permission-modal-notice">{notice()}</div>}</Show>
+        <Show when={view.selection}>
+          {selection => (
+            <>
+              <input
+                ref={element => {
+                  input = element;
+                }}
+                type="search"
+                class="contacts-picker-search"
+                placeholder="Search contacts"
+                aria-label="Search contacts"
+                onInput={event => setQuery(event.currentTarget.value)}
+              />
+              <p class="contacts-picker-status" role="status">
+                {selected().size === 0
+                  ? 'No contacts selected. Use selection to remove everyone.'
+                  : `${String(selected().size)} selected${selected().size === selection().limit ? ' (selection limit)' : ''}`}
+              </p>
+            </>
+          )}
+        </Show>
         <Show when={view.choices}>
           {choices => (
             <div class="contacts-picker-list">
               <For each={choices()}>
                 {choice => (
-                  <button
-                    ref={element => {
-                      firstChoice ??= element;
-                    }}
-                    type="button"
-                    class="signing-btn-secondary contacts-picker-choice"
-                    onClick={() => {
-                      settleModal(id, choice.result);
-                    }}
+                  <Show
+                    when={view.selection}
+                    fallback={
+                      <button
+                        ref={element => {
+                          firstChoice ??= element;
+                        }}
+                        type="button"
+                        class="signing-btn-secondary contacts-picker-choice"
+                        onClick={() => {
+                          settleModal(id, choice.result);
+                        }}
+                      >
+                        <span class="contacts-picker-text">
+                          <span>{choice.label}</span>
+                          <span class="contacts-picker-identity">{choice.detail}</span>
+                        </span>
+                      </button>
+                    }
                   >
-                    <span>{choice.label}</span>
-                    <span class="contacts-picker-identity">{choice.detail}</span>
-                  </button>
+                    {selection => (
+                      <label class="signing-btn-secondary contacts-picker-choice" hidden={!matches(choice)}>
+                        <input
+                          type="checkbox"
+                          checked={selected().has(choice.result)}
+                          disabled={!selected().has(choice.result) && selected().size >= selection().limit}
+                          onChange={event => {
+                            const next = new Set(selected());
+                            if (event.currentTarget.checked) {
+                              next.add(choice.result);
+                            } else {
+                              next.delete(choice.result);
+                            }
+                            setSelected(next);
+                          }}
+                        />
+                        <span class="contacts-picker-text">
+                          <span>{choice.label}</span>
+                          <span class="contacts-picker-identity">{choice.detail}</span>
+                        </span>
+                      </label>
+                    )}
+                  </Show>
                 )}
               </For>
+              <Show when={view.selection !== undefined && !choices().some(matches)}>
+                <p role="status">No matching contacts</p>
+              </Show>
             </div>
           )}
         </Show>
