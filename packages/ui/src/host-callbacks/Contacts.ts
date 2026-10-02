@@ -173,26 +173,19 @@ export function createContactsPlatform(
   labels?: ContactLabelOverlay,
 ): { callbacks: Required<ContactsPlatform>; dispose(): void } {
   const lifetime = new AbortController();
-  const operationSignal = (): AbortSignal =>
-    AbortSignal.any([lifetime.signal, directory.signal]);
+  const operationSignal = (): AbortSignal => AbortSignal.any([lifetime.signal, directory.signal]);
   let labelSnapshot: Promise<ReadonlyMap<Bytes32, string>> | undefined;
   let labelDirectorySignal: AbortSignal | undefined;
-  let latestLabels:
-    { placed: PlacedContactLabels; signal: AbortSignal } | undefined;
+  let latestLabels: { placed: PlacedContactLabels; signal: AbortSignal } | undefined;
 
   const invalidateLabels = (): void => {
     labelSnapshot = undefined;
     labelDirectorySignal = undefined;
     const previous = latestLabels;
     const refresh =
-      labels !== undefined &&
-      previous !== undefined &&
-      !previous.signal.aborted &&
-      !lifetime.signal.aborted;
+      labels !== undefined && previous !== undefined && !previous.signal.aborted && !lifetime.signal.aborted;
     labels?.clear();
-    latestLabels = refresh
-      ? { placed: previous.placed, signal: labels.signal }
-      : undefined;
+    latestLabels = refresh ? { placed: previous.placed, signal: labels.signal } : undefined;
     const request = latestLabels;
     if (request !== undefined) {
       // invalidate() installs the replacement directory generation after aborting
@@ -207,23 +200,15 @@ export function createContactsPlatform(
     }
   };
 
-  const paintLabels = async (request: {
-    placed: PlacedContactLabels;
-    signal: AbortSignal;
-  }): Promise<void> => {
-    if (
-      labels === undefined ||
-      latestLabels !== request ||
-      request.signal.aborted ||
-      lifetime.signal.aborted
-    ) {
+  const paintLabels = async (request: { placed: PlacedContactLabels; signal: AbortSignal }): Promise<void> => {
+    if (labels === undefined || latestLabels !== request || request.signal.aborted || lifetime.signal.aborted) {
       return;
     }
     const directorySignal = directory.signal;
     if (labelDirectorySignal !== directorySignal) {
-      labelDirectorySignal?.removeEventListener("abort", invalidateLabels);
+      labelDirectorySignal?.removeEventListener('abort', invalidateLabels);
       labelDirectorySignal = directorySignal;
-      labelDirectorySignal.addEventListener("abort", invalidateLabels, {
+      labelDirectorySignal.addEventListener('abort', invalidateLabels, {
         once: true,
       });
       labelSnapshot = undefined;
@@ -233,9 +218,9 @@ export function createContactsPlatform(
       const pending = directory
         .snapshot(signal)
         .then(
-          (snapshot) =>
+          snapshot =>
             new Map(
-              snapshot.contacts.map((contact) => [
+              snapshot.contacts.map(contact => [
                 contact.peerIdentity,
                 contact.username?.trim() || contact.peerIdentity,
               ]),
@@ -258,10 +243,10 @@ export function createContactsPlatform(
   };
   return {
     dispose() {
-      labelDirectorySignal?.removeEventListener("abort", invalidateLabels);
+      labelDirectorySignal?.removeEventListener('abort', invalidateLabels);
       latestLabels = undefined;
       labelSnapshot = undefined;
-      lifetime.abort(blockingModalAbortError("Contact picker host closed"));
+      lifetime.abort(blockingModalAbortError('Contact picker host closed'));
       labels?.clear();
     },
     callbacks: {
@@ -297,11 +282,7 @@ export function createContactsPlatform(
             if (snapshot.contacts.length === 0) {
               return { tag: 'NoContacts' as const };
             }
-            const choices = await showContactPicker(
-              product,
-              snapshot.contacts,
-              activeSignal,
-            );
+            const choices = await showContactPicker(product, snapshot.contacts, activeSignal);
             const selected = choices?.[0];
             throwIfAborted(activeSignal);
             if (selected === undefined) {
@@ -319,42 +300,33 @@ export function createContactsPlatform(
       async pickContacts(product, selection) {
         const initial = selection.selected;
         if (initial.length > MAX_CONTACTS) {
-          throw new Error("Too many selected Chat contacts");
+          throw new Error('Too many selected Chat contacts');
         }
         initial.forEach(assertHex32);
         const selected = [...new Set(initial)];
         const signal = operationSignal();
         return abortable(
-          modalScope.enqueue(async (queueSignal) => {
+          modalScope.enqueue(async queueSignal => {
             const activeSignal = AbortSignal.any([signal, queueSignal]);
             const snapshot = await directory.snapshot(activeSignal);
-            const available = new Set(
-              snapshot.contacts.map((contact) => contact.peerIdentity),
-            );
-            if (selected.some((account) => !available.has(account))) {
-              throw new Error("A selected Chat contact is no longer available");
+            const available = new Set(snapshot.contacts.map(contact => contact.peerIdentity));
+            if (selected.some(account => !available.has(account))) {
+              throw new Error('A selected Chat contact is no longer available');
             }
             if (snapshot.contacts.length === 0) {
-              return { tag: "NoContacts" as const };
+              return { tag: 'NoContacts' as const };
             }
-            const accounts = await showContactPicker(
-              product,
-              snapshot.contacts,
-              activeSignal,
-              selected,
-            );
+            const accounts = await showContactPicker(product, snapshot.contacts, activeSignal, selected);
             throwIfAborted(activeSignal);
             if (accounts === undefined) {
-              return { tag: "Dismissed" as const };
+              return { tag: 'Dismissed' as const };
             }
             const current = await directory.snapshot(activeSignal);
-            const currentAccounts = new Set(
-              current.contacts.map((contact) => contact.peerIdentity),
-            );
-            if (accounts.some((account) => !currentAccounts.has(account))) {
-              throw new Error("A selected Chat contact is no longer available");
+            const currentAccounts = new Set(current.contacts.map(contact => contact.peerIdentity));
+            if (accounts.some(account => !currentAccounts.has(account))) {
+              throw new Error('A selected Chat contact is no longer available');
             }
-            return { tag: "Picked" as const, value: { accounts } };
+            return { tag: 'Picked' as const, value: { accounts } };
           }),
           signal,
         );

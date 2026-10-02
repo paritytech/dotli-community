@@ -1,12 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { Bytes32 } from "@parity/truapi";
-import type { PlacedContactLabels } from "@parity/truapi-host";
-import {
-  surfaceMapping,
-  type AvatarSurfaceFit,
-} from "../profile/avatar-overlay.js";
+import type { Bytes32 } from '@parity/truapi';
+import type { PlacedContactLabels } from '@parity/truapi-host';
+import { surfaceMapping, type AvatarSurfaceFit } from '../profile/avatar-overlay.js';
 
 /** Host-owned names are painted outside the product document, without profiles. */
 export interface ContactLabelOverlay {
@@ -24,11 +21,11 @@ interface LabelView {
 }
 
 export function createContactLabelOverlay(): ContactLabelOverlay {
-  const layer = document.createElement("div");
-  layer.className = "contact-label-overlay";
+  const layer = document.createElement('div');
+  layer.className = 'contact-label-overlay';
   const views = new Map<number, LabelView>();
   let frame: HTMLIFrameElement | null = null;
-  let fit: AvatarSurfaceFit = "viewport";
+  let fit: AvatarSurfaceFit = 'viewport';
   let placed: PlacedContactLabels | null = null;
   let names: ReadonlyMap<Bytes32, string> = new Map();
   let generation = new AbortController();
@@ -48,13 +45,13 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
     settleTimer = window.setTimeout(() => {
       settleTimer = null;
       for (const view of views.values()) {
-        view.root.classList.remove("contact-label-moving");
+        view.root.classList.remove('contact-label-moving');
       }
     }, 150);
   };
   const hideMoving = (): void => {
     for (const view of views.values()) {
-      view.root.classList.add("contact-label-moving");
+      view.root.classList.add('contact-label-moving');
     }
     if (views.size !== 0) {
       settle();
@@ -81,13 +78,7 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
     if (disposed || frame === null || placed === null) {
       return;
     }
-    const map = surfaceMapping(
-      fit,
-      placed.surfaceWidth,
-      placed.surfaceHeight,
-      frame.clientWidth,
-      frame.clientHeight,
-    );
+    const map = surfaceMapping(fit, placed.surfaceWidth, placed.surfaceHeight, frame.clientWidth, frame.clientHeight);
     const drawn = new Set<number>();
     let moved = false;
     for (const label of placed.labels) {
@@ -98,27 +89,19 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
       const { rect, clip } = label;
       const x0 = Math.max(clip.x, rect.x, 0);
       const y0 = Math.max(clip.y, rect.y, 0);
-      const x1 = Math.min(
-        clip.x + clip.width,
-        rect.x + rect.width,
-        placed.surfaceWidth,
-      );
-      const y1 = Math.min(
-        clip.y + clip.height,
-        rect.y + rect.height,
-        placed.surfaceHeight,
-      );
+      const x1 = Math.min(clip.x + clip.width, rect.x + rect.width, placed.surfaceWidth);
+      const y1 = Math.min(clip.y + clip.height, rect.y + rect.height, placed.surfaceHeight);
       if (x1 <= x0 || y1 <= y0) {
         continue;
       }
       let view = views.get(label.slot);
       if (view === undefined) {
-        const root = document.createElement("div");
-        root.className = "contact-label-slot";
-        const text = document.createElement("div");
-        text.className = "contact-label";
+        const root = document.createElement('div');
+        root.className = 'contact-label-slot';
+        const text = document.createElement('div');
+        text.className = 'contact-label';
         root.append(text);
-        view = { root, text, geometry: "" };
+        view = { root, text, geometry: '' };
         views.set(label.slot, view);
         layer.append(root);
       }
@@ -142,17 +125,14 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
         view.text.style.height = `${String(textHeight)}px`;
         view.text.style.lineHeight = `${String(textHeight)}px`;
         view.text.style.fontSize = `${String(Math.min(13 * map.scaleY, textHeight))}px`;
-        view.root.classList.add("contact-label-moving");
+        view.root.classList.add('contact-label-moving');
         moved = true;
       }
-      const displayName =
-        name === label.account
-          ? `${label.account.slice(0, 8)}…${label.account.slice(-6)}`
-          : name;
+      const displayName = name === label.account ? `${label.account.slice(0, 8)}…${label.account.slice(-6)}` : name;
       if (view.text.textContent !== displayName) {
         view.text.textContent = displayName;
       }
-      view.text.setAttribute("aria-label", name);
+      view.text.setAttribute('aria-label', name);
     }
     for (const [slot, view] of views) {
       if (!drawn.has(slot)) {
@@ -193,8 +173,8 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
       fit = surfaceFit;
       const mirror = (): void => {
         layer.style.cssText = target.style.cssText;
-        layer.style.pointerEvents = "none";
-        layer.style.overflow = "hidden";
+        layer.style.pointerEvents = 'none';
+        layer.style.overflow = 'hidden';
         hideMoving();
         schedule();
       };
@@ -205,21 +185,18 @@ export function createContactLabelOverlay(): ContactLabelOverlay {
       const styleObserver = new MutationObserver(mirror);
       styleObserver.observe(target, {
         attributes: true,
-        attributeFilter: ["style"],
+        attributeFilter: ['style'],
       });
-      const resizeObserver =
-        typeof ResizeObserver === "undefined"
-          ? undefined
-          : new ResizeObserver(resize);
+      const resizeObserver = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(resize);
       resizeObserver?.observe(target);
-      window.addEventListener("resize", resize);
+      window.addEventListener('resize', resize);
       // Navigation cannot leave names from the previous document painted over it.
-      target.addEventListener("load", clear);
+      target.addEventListener('load', clear);
       untrack = () => {
         styleObserver.disconnect();
         resizeObserver?.disconnect();
-        window.removeEventListener("resize", resize);
-        target.removeEventListener("load", clear);
+        window.removeEventListener('resize', resize);
+        target.removeEventListener('load', clear);
       };
       mirror();
     },

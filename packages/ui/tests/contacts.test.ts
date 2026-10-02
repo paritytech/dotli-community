@@ -1,4 +1,10 @@
-import type { ContactsPlatform, CoreStorage, NativeChatContactsSnapshot, PlacedContactLabels, ProductContext } from '@parity/truapi-host';
+import type {
+  ContactsPlatform,
+  CoreStorage,
+  NativeChatContactsSnapshot,
+  PlacedContactLabels,
+  ProductContext,
+} from '@parity/truapi-host';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
@@ -94,19 +100,19 @@ async function labelFixture(): Promise<{
   frame: HTMLIFrameElement;
   placed: PlacedContactLabels;
 }> {
-  const frame = document.createElement("iframe");
+  const frame = document.createElement('iframe');
   Object.defineProperties(frame, {
     clientWidth: { value: 200 },
     clientHeight: { value: 120 },
   });
-  const loaded = new Promise<void>((resolve) => {
-    frame.addEventListener("load", () => resolve(), { once: true });
+  const loaded = new Promise<void>(resolve => {
+    frame.addEventListener('load', () => resolve(), { once: true });
   });
   document.body.append(frame);
   // Place into the loaded document, not the initial about:blank navigation.
   await loaded;
   const labels = createContactLabelOverlay();
-  labels.attach(frame, "contain");
+  labels.attach(frame, 'contain');
   cleanups.push(() => labels.dispose());
   const state = fixture(labels);
   const placed: PlacedContactLabels = {
@@ -131,14 +137,14 @@ async function labelFixture(): Promise<{
 }
 
 async function redraw(): Promise<void> {
-  await new Promise<void>((resolve) => {
+  await new Promise<void>(resolve => {
     requestAnimationFrame(() => {
       requestAnimationFrame(() => resolve());
     });
   });
 }
 
-describe("native Chat contacts", () => {
+describe('native Chat contacts', () => {
   it("matches keyed handles in request order without accepting another session's key", async () => {
     const { adapter } = fixture();
     const unknown = `0x${'66'.repeat(32)}` as const;
@@ -335,7 +341,7 @@ describe("native Chat contacts", () => {
     await expect(picked).resolves.toEqual({ tag: 'Dismissed' });
   });
 
-  it("keeps preselected contacts when search hides them and confirms multiple people", async () => {
+  it('keeps preselected contacts when search hides them and confirms multiple people', async () => {
     const { adapter } = fixture();
     const picked = adapter.callbacks.pickContacts(product, {
       selected: [alice],
@@ -349,18 +355,18 @@ describe("native Chat contacts", () => {
     expect(second.checked).toBe(false);
     const search = must(document.querySelector<HTMLInputElement>('input[type="search"]'), 'Contact search');
     search.value = bob;
-    search.dispatchEvent(new Event("input"));
+    search.dispatchEvent(new Event('input'));
     await expect.poll(() => firstRow.hidden).toBe(true);
     expect(secondRow.hidden).toBe(false);
     second.click();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
     await expect(picked).resolves.toEqual({
-      tag: "Picked",
+      tag: 'Picked',
       value: { accounts: [alice, bob] },
     });
   });
 
-  it("distinguishes confirmed empty selection from canceled checkbox edits", async () => {
+  it('distinguishes confirmed empty selection from canceled checkbox edits', async () => {
     const { adapter } = fixture();
     const cleared = adapter.callbacks.pickContacts(product, {
       selected: [alice],
@@ -372,7 +378,7 @@ describe("native Chat contacts", () => {
     ).click();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
     await expect(cleared).resolves.toEqual({
-      tag: "Picked",
+      tag: 'Picked',
       value: { accounts: [] },
     });
 
@@ -391,55 +397,43 @@ describe("native Chat contacts", () => {
       'Second reopened checkbox',
     ).click();
     must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel selection').click();
-    await expect(canceled).resolves.toEqual({ tag: "Dismissed" });
+    await expect(canceled).resolves.toEqual({ tag: 'Dismissed' });
   });
 
-  it("does not memoize a failed label-directory read", async () => {
+  it('does not memoize a failed label-directory read', async () => {
     const { state, adapter, placed } = await labelFixture();
     state.setRead(async () => {
-      throw new Error("Directory temporarily unavailable");
+      throw new Error('Directory temporarily unavailable');
     });
-    await expect(
-      adapter.callbacks.placeContactLabels(product, placed),
-    ).rejects.toThrow("Directory temporarily unavailable");
+    await expect(adapter.callbacks.placeContactLabels(product, placed)).rejects.toThrow(
+      'Directory temporarily unavailable',
+    );
     state.setRead(() => Promise.resolve(state.snapshot));
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect
-      .poll(() => document.querySelector(".contact-label")?.textContent)
-      .toBe("alice.paseo");
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
   });
 
-  it("refreshes the latest labels after a same-wallet directory change without another placement", async () => {
+  it('refreshes the latest labels after a same-wallet directory change without another placement', async () => {
     const { state, adapter, placed } = await labelFixture();
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect
-      .poll(() => document.querySelector(".contact-label")?.textContent)
-      .toBe("alice.paseo");
-    expect(
-      document
-        .querySelectorAll(".contact-label")[1]
-        ?.getAttribute("aria-label"),
-    ).toBe(bob);
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+    expect(document.querySelectorAll('.contact-label')[1]?.getAttribute('aria-label')).toBe(bob);
     state.snapshot = {
       ...state.snapshot,
-      contacts: [{ peerIdentity: alice, username: "renamed.paseo" }],
+      contacts: [{ peerIdentity: alice, username: 'renamed.paseo' }],
     };
     state.directory.invalidate();
-    expect(document.querySelector(".contact-label")).toBeNull();
-    await expect
-      .poll(() => document.querySelector(".contact-label")?.textContent)
-      .toBe("renamed.paseo");
+    expect(document.querySelector('.contact-label')).toBeNull();
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('renamed.paseo');
     expect(document.querySelector(`[aria-label="${bob}"]`)).toBeNull();
   });
 
-  it.each(["navigation", "empty placement", "provider close", "wallet switch"])(
-    "does not replay an in-flight directory refresh after %s",
-    async (ending) => {
+  it.each(['navigation', 'empty placement', 'provider close', 'wallet switch'])(
+    'does not replay an in-flight directory refresh after %s',
+    async ending => {
       const { state, adapter, placed, frame } = await labelFixture();
       await adapter.callbacks.placeContactLabels(product, placed);
-      await expect
-        .poll(() => document.querySelector(".contact-label")?.textContent)
-        .toBe("alice.paseo");
+      await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
       const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
       const started = Promise.withResolvers<undefined>();
       state.setRead(() => {
@@ -448,34 +442,32 @@ describe("native Chat contacts", () => {
       });
       state.directory.invalidate();
       await started.promise;
-      if (ending === "navigation") {
-        frame.dispatchEvent(new Event("load"));
-      } else if (ending === "empty placement") {
+      if (ending === 'navigation') {
+        frame.dispatchEvent(new Event('load'));
+      } else if (ending === 'empty placement') {
         await adapter.callbacks.placeContactLabels(product, {
           ...placed,
           labels: [],
         });
-      } else if (ending === "provider close") {
+      } else if (ending === 'provider close') {
         adapter.dispose();
       } else {
         state.switchSession();
       }
-      expect(document.querySelector(".contact-label")).toBeNull();
+      expect(document.querySelector('.contact-label')).toBeNull();
       pending.resolve(state.snapshot);
       await redraw();
-      expect(document.querySelector(".contact-label")).toBeNull();
+      expect(document.querySelector('.contact-label')).toBeNull();
     },
   );
 
-  it("does not replay a queued directory refresh after navigation", async () => {
+  it('does not replay a queued directory refresh after navigation', async () => {
     const { state, adapter, placed, frame } = await labelFixture();
     await adapter.callbacks.placeContactLabels(product, placed);
-    await expect
-      .poll(() => document.querySelector(".contact-label")?.textContent)
-      .toBe("alice.paseo");
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
     state.directory.invalidate();
-    frame.dispatchEvent(new Event("load"));
+    frame.dispatchEvent(new Event('load'));
     await redraw();
-    expect(document.querySelector(".contact-label")).toBeNull();
+    expect(document.querySelector('.contact-label')).toBeNull();
   });
 });

@@ -553,9 +553,9 @@ Solid host picker cancels when its connection closes or the session, roster, wal
 a selection before returning a contact handle. Product prompts have connection-owned modal scopes; authentication,
 private storage and attachment custody stay with the one page core.
 
-The multi-select picker opens with the current audience checked, preserves selections while searching, and applies
-them only with **Use selection**. Confirming no checked contacts removes everyone; **Cancel**, Escape, and the backdrop
-leave the audience unchanged. The original single-contact picker remains available.
+The multi-select picker opens with the current audience checked, preserves selections while searching, and applies them
+only with **Use selection**. Confirming no checked contacts removes everyone; **Cancel**, Escape, and the backdrop leave
+the audience unchanged. The original single-contact picker remains available.
 
 Contact names and account identities remain host-private. Products receive opaque contact handles and can reserve
 clipped label boxes on their surface; the host draws verified contact usernames, or account identifiers when no username

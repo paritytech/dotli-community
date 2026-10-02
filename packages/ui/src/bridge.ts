@@ -70,7 +70,6 @@ import type { InspectorProduct } from '@dotli/truapi-debug';
 import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
 import { ALL_PERMISSIONS, authorizationRequest, fromAuthorizationStatus } from './permissions.js';
 import {
-
   createLocalWalletSecret,
   deleteLocalWalletSecret,
   exportLocalWalletMnemonic,
