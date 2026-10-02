@@ -1372,27 +1372,63 @@ export type VersionedHostLocalStorageWriteResponse =
     value?: undefined;
 };
 export declare const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalStorageWriteResponse>;
-/** Versioned envelope for [`HostLocaleSubscribeError`]. */
-export type VersionedHostLocaleSubscribeError = 
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsError`]. */
+export type VersionedHostLocaleLocalizeTimestampsError = 
 /** Version 1 payload. */
 {
     tag: "V1";
     value: GenericError;
 };
-export declare const VersionedHostLocaleSubscribeError: S.Codec<VersionedHostLocaleSubscribeError>;
-/** Versioned envelope for [`HostLocaleSubscribeItem`]. */
-export type VersionedHostLocaleSubscribeItem = 
+export declare const VersionedHostLocaleLocalizeTimestampsError: S.Codec<VersionedHostLocaleLocalizeTimestampsError>;
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsRequest`]. */
+export type VersionedHostLocaleLocalizeTimestampsRequest = 
 /** Version 1 payload. */
 {
     tag: "V1";
+    value: HostLocaleLocalizeTimestampsRequest;
+};
+export declare const VersionedHostLocaleLocalizeTimestampsRequest: S.Codec<VersionedHostLocaleLocalizeTimestampsRequest>;
+/** Versioned envelope for [`HostLocaleLocalizeTimestampsResponse`]. */
+export type VersionedHostLocaleLocalizeTimestampsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostLocaleLocalizeTimestampsResponse;
+};
+export declare const VersionedHostLocaleLocalizeTimestampsResponse: S.Codec<VersionedHostLocaleLocalizeTimestampsResponse>;
+/** One timestamp's calendar identity and presentation in the requested context. */
+export interface HostLocaleLocalizedTimestamp {
+    /** Gregorian YYYY-MM-DD local date, independent of display language/calendar. */
+    localDate: string;
+    /** Localized short time, including the host language's hour-cycle convention. */
+    time: string;
+    /** Localized date label. */
+    date: string;
+    /** Localized date and time with a time-zone indication for detail views. */
+    dateTime: string;
+}
+export declare const HostLocaleLocalizedTimestamp: S.Codec<HostLocaleLocalizedTimestamp>;
+/** Versioned envelope for [`HostLocaleSubscribeError`]. */
+export type VersionedHostLocaleSubscribeError = 
+/** Version 2 payload. */
+{
+    tag: "V2";
+    value: GenericError;
+};
+export declare const VersionedHostLocaleSubscribeError: S.Codec<VersionedHostLocaleSubscribeError>;
+/** Versioned envelope for [`HostLocaleSubscribeItem`]. */
+export type VersionedHostLocaleSubscribeItem = 
+/** Version 2 payload. */
+{
+    tag: "V2";
     value: HostLocaleSubscribeItem;
 };
 export declare const VersionedHostLocaleSubscribeItem: S.Codec<VersionedHostLocaleSubscribeItem>;
 /** Versioned envelope for [`HostLocaleSubscribeRequest`]. */
 export type VersionedHostLocaleSubscribeRequest = 
-/** Version 1 (no payload). */
+/** Version 2 (no payload). */
 {
-    tag: "V1";
+    tag: "V2";
     value?: undefined;
 };
 export declare const VersionedHostLocaleSubscribeRequest: S.Codec<VersionedHostLocaleSubscribeRequest>;
@@ -3923,14 +3959,14 @@ export interface HostLocalStorageWriteRequest {
 }
 export declare const HostLocalStorageWriteRequest: S.Codec<HostLocalStorageWriteRequest>;
 /** Locale the host currently presents its interface in, pushed to subscribers. */
-export interface HostLocaleSubscribeItem {
+export interface V01HostLocaleSubscribeItem {
     /**
      * BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is
      * open: a product that does not ship the tag chooses its own fallback.
      */
     languageTag: string;
 }
-export declare const HostLocaleSubscribeItem: S.Codec<HostLocaleSubscribeItem>;
+export declare const V01HostLocaleSubscribeItem: S.Codec<V01HostLocaleSubscribeItem>;
 /** Error from [`crate::api::System::navigate_to`]. */
 export type HostNavigateToError = 
 /**
@@ -4791,6 +4827,30 @@ export interface HostLocalStorageReadRequest {
     key: string;
 }
 export declare const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest>;
+/** Convert UTC instants using a snapshot of the host's locale subscription. */
+export interface HostLocaleLocalizeTimestampsRequest {
+    /** At most 128 Unix millisecond instants, no later than year 9999. */
+    timestampsMs: Array<bigint>;
+    /** Language tag from the locale subscription, not a guessed language. */
+    languageTag: string;
+    /** Time zone from the locale subscription; evaluated separately at each instant. */
+    timeZone: string;
+}
+export declare const HostLocaleLocalizeTimestampsRequest: S.Codec<HostLocaleLocalizeTimestampsRequest>;
+/** Local timestamps in exactly the request's order. */
+export interface HostLocaleLocalizeTimestampsResponse {
+    /** One result per requested timestamp; partial success is not returned. */
+    timestamps: Array<HostLocaleLocalizedTimestamp>;
+}
+export declare const HostLocaleLocalizeTimestampsResponse: S.Codec<HostLocaleLocalizeTimestampsResponse>;
+/** Host language and local time zone, replaced together when either changes. */
+export interface HostLocaleSubscribeItem {
+    /** BCP 47 language tag selected by the host. */
+    languageTag: string;
+    /** IANA time zone, or absent when the host cannot supply local time. */
+    timeZone?: string;
+}
+export declare const HostLocaleSubscribeItem: S.Codec<HostLocaleSubscribeItem>;
 /** Cross-axis alignment of `Row` children. */
 export type VerticalAlignment = "Top" | "Center" | "Bottom";
 export declare const VerticalAlignment: S.Codec<VerticalAlignment>;

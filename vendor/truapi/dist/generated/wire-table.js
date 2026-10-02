@@ -389,6 +389,11 @@ export const LOCALE_SUBSCRIBE = {
     method: 0,
     kind: "subscription",
 };
+export const LOCALE_LOCALIZE_TIMESTAMPS = {
+    trait: 16,
+    method: 1,
+    kind: "request",
+};
 export const RENDERER_RENDER = {
     trait: 17,
     method: 0,

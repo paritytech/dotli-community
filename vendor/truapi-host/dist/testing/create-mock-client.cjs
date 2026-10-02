@@ -702,6 +702,7 @@ function createWasmRawCallbacks(callbacks) {
     featureSupported: async (request) => import_truapi4.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi4.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi4.HostLocaleSubscribeItem.enc(item)), sendError),
+    localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request))),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi4.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi4.HostPushNotificationRequest.dec(notification))),
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
@@ -1402,6 +1403,57 @@ var blake2b = /* @__PURE__ */ createHasher((opts) => new _BLAKE2b(opts));
 var import_neverthrow = __toESM(require_index_cjs(), 1);
 var import_truapi2 = require("@parity/truapi");
 
+// dist/locale.js
+var localizeTimestamps = async (request) => {
+  if (!request.languageTag.trim() || !request.timeZone.trim()) {
+    throw new RangeError("A language tag and time zone are required");
+  }
+  if (request.timestampsMs.length > 128 || request.timestampsMs.some((timestamp) => timestamp < 0n || timestamp > 253402300799999n)) {
+    throw new RangeError("Timestamp batch or instant is out of range");
+  }
+  const { languageTag, timeZone } = request;
+  const localDate = new Intl.DateTimeFormat("en-US", {
+    calendar: "gregory",
+    numberingSystem: "latn",
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const time = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  const date = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    dateStyle: "long"
+  });
+  const dateTime = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    dateStyle: "full",
+    timeStyle: "long"
+  });
+  return {
+    timestamps: request.timestampsMs.map((timestamp) => {
+      const instant = Number(timestamp);
+      const parts = localDate.formatToParts(instant);
+      const year = parts.find((part) => part.type === "year").value;
+      const month = parts.find((part) => part.type === "month").value;
+      const day = parts.find((part) => part.type === "day").value;
+      if (year.length > 4) {
+        throw new RangeError("Local date is outside the four-digit year range");
+      }
+      return {
+        localDate: `${year.padStart(4, "0")}-${month}-${day}`,
+        time: time.format(instant),
+        date: date.format(instant),
+        dateTime: dateTime.format(instant)
+      };
+    })
+  };
+};
+
 // dist/web/loopback-statements.js
 var import_truapi = require("@parity/truapi");
 var SUBMIT = "statement_submit";
@@ -1799,7 +1851,7 @@ function hex2(bytes2) {
   return Array.from(bytes2, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 function createMockHost(config = {}) {
-  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", faults = {}, supportedChains = {
+  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, supportedChains = {
     network: "mock",
     chains: [
       { identifier: "People", genesisHash: MOCK_GENESIS.people },
@@ -2139,11 +2191,11 @@ function createMockHost(config = {}) {
       }
     },
     locale: {
-      async *subscribeLocale() {
-        yield (0, import_neverthrow.ok)({ languageTag });
-        await new Promise(() => {
+      subscribeLocale() {
+        return liveSubscription({ languageTag, timeZone }, subscriptionClosers, () => () => {
         });
-      }
+      },
+      localizeTimestamps
     },
     preimage: {
       async *lookupPreimage(key) {

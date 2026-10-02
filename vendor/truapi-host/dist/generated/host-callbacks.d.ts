@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, Bytes32, ChainIdentifier, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -1146,6 +1146,10 @@ export interface LocaleHost {
      * Emits the currently selected locale immediately, then future changes.
      */
     subscribeLocale(): AsyncIterable<Result<HostLocaleSubscribeItem, GenericError>>;
+    /**
+     * Convert a bounded UTC batch using the supplied host locale snapshot.
+     */
+    localizeTimestamps?(request: HostLocaleLocalizeTimestampsRequest): Promise<HostLocaleLocalizeTimestampsResponse>;
 }
 /**
  * Open URLs in the system browser. Input is already trimmed, categorized,
