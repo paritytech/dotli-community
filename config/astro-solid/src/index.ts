@@ -24,7 +24,7 @@ export interface ManifestSource {
   base: string;
 }
 
-const PACKAGE = '@dotli/astro-solid';
+const PACKAGE = '@config/astro-solid';
 
 function getViteConfiguration(
   { include, exclude, compiler }: Options,

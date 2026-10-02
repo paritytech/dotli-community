@@ -223,15 +223,10 @@ body:has(#topbar[data-landing]) #app-loading {
    sheen keeps visible motion so the bar never reads as frozen. */
 @media (prefers-reduced-motion: no-preference) {
   .loading-progress-fill::after {
-    content: "";
+    content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      rgba(255, 255, 255, 0.9) 50%,
-      transparent 100%
-    );
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
     transform: translateX(-100%);
     animation: loading-progress-sheen 1.4s ease-in-out infinite;
   }
@@ -252,7 +247,7 @@ body:has(#topbar[data-landing]) #app-loading {
    are solid colours measured against #0a0a0a (dark) and #f5f5f5 (light,
    see themes.css). */
 .loading-progress-pct {
-  font-family: "SF Mono", "Menlo", "Monaco", "Consolas", monospace;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
   font-size: 11px;
   /* 6.12:1 */
   color: #8f8f8f;

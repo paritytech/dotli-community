@@ -16,7 +16,7 @@
   font-size: 11px;
   cursor: pointer;
 }
-.td-kind-check input[type="checkbox"] {
+.td-kind-check input[type='checkbox'] {
   margin: 0;
   accent-color: #e6007a;
 }
@@ -81,7 +81,7 @@
 }
 
 /* System swimlane header accent (via --sw-accent already wired) */
-.td-sw-col[data-sw-key="system"] .td-sw-header {
+.td-sw-col[data-sw-key='system'] .td-sw-header {
   --sw-accent: #2dd4bf;
 }
 
@@ -94,8 +94,7 @@
   border: 1px solid #3a3a3a;
   border-radius: 3px;
   padding: 4px 8px;
-  font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
   font-size: 11px;
   white-space: nowrap;
   opacity: 0;
@@ -122,8 +121,7 @@
   color: #d4d4d4;
   border-top: 1px solid #1f1f1f;
   z-index: 950;
-  font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas, monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
   font-size: 12px;
   display: grid;
   grid-template-rows: 5px 32px auto 1fr;
@@ -159,9 +157,9 @@
   grid-template-columns: 5px 1fr;
   grid-template-rows: 32px auto 1fr;
   grid-template-areas:
-    "handle header"
-    "handle filters"
-    "handle body";
+    'handle header'
+    'handle filters'
+    'handle body';
   box-shadow: -4px 0 12px rgba(0, 0, 0, 0.4);
 }
 #truapi-debug-panel.docked-right .td-resize-handle {
@@ -671,7 +669,7 @@
 .td-body-splitter::after {
   /* Wider invisible hit area so the cursor grabs reliably even when
      the visible line is narrow. */
-  content: "";
+  content: '';
   position: absolute;
   inset: 0 -4px;
 }
@@ -918,7 +916,7 @@
   display: none;
 }
 .td-detail-explanation > summary::before {
-  content: "▸";
+  content: '▸';
   color: #2dd4bf;
   font-size: 9px;
   transition: transform 0.12s;
@@ -965,7 +963,7 @@
   margin: 3px 0;
 }
 .td-detail-explanation-list li::before {
-  content: "•";
+  content: '•';
   position: absolute;
   left: -10px;
   color: #2dd4bf;

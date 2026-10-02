@@ -418,6 +418,24 @@ describe('topbar auto-hide motion and layout', () => {
     expect(appFrame().style.transform).toBe('');
   });
 
+  it('As a dApp user, hovering the bar while it is up leaves the app where it sits', async () => {
+    // Given: revealed and settled below the bar
+    const { armTopbarAutoHide, revealTopbar } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    focusElement(byId('topbar-home'));
+    advance(300);
+
+    // When: the pointer enters the bar again
+    revealTopbar();
+
+    // Then: no second slide, the frame stays below the bar
+    expect(appFrame().style.top).toBe('56px');
+    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
+    expect(appFrame().style.transform).toBe('');
+  });
+
   it('As a dApp user, the bar hiding again slides the app back up from where it sits', async () => {
     // Given: revealed and settled below the bar
     const { armTopbarAutoHide } = await loadAutoHide();

@@ -47,9 +47,7 @@
   line-height: 1.5;
 }
 .signing-field-value.mono {
-  font-family:
-    ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, Consolas,
-    "DejaVu Sans Mono", monospace;
+  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
   font-size: 0.75rem;
   color: #aaa;
   background: #0d0d0d;

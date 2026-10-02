@@ -14,7 +14,7 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "@dotli/eslint-config": "*",
-    "@dotli/typescript-config": "*"
+    "@config/eslint": "*",
+    "@config/typescript": "*"
   }
 }
