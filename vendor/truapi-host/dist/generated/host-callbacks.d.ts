@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -1051,25 +1051,19 @@ export interface PreimageSubmitReview {
     size: bigint;
 }
 /**
- * A profile a Chat contact shared with the user, with the contact who sent
- * it.
+ * Host-only presentation of a contact's shared profile or its absence.
  */
 export interface PresentedContactProfile {
     /**
-     * The profile reference the contact disclosed. A bearer capability, as
-     * in `ProfilePlatform::present_profile`.
+     * The profile currently shared with the user. ``undefined`` means no received,
+     * unretracted profile, never a storage or loading failure.
      */
-    reference: string;
+    shared?: SharedContactProfile;
     /**
-     * The contact whose authenticated Chat device delivered the reference:
-     * who shared it, not necessarily whose profile it is.
+     * The contact being presented. When shared, their authenticated Chat
+     * device delivered the reference, not necessarily their own profile.
      */
     peerIdentity: Uint8Array;
-    /**
-     * The share's freshness timestamp, as in `PlacedAvatar::shared_at`.
-     * Personal grants advance it monotonically across relay actors.
-     */
-    sharedAt: bigint;
     /**
      * The contact's username, when the core knows one: the name its Chat
      * roster holds for `peer_identity`, verified when the contact was bound
@@ -1191,6 +1185,21 @@ export interface SessionUiInfo {
      * Fully qualified username from the dotNS identity record on Asset Hub.
      */
     fullUsername?: string;
+}
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export interface SharedContactProfile {
+    /**
+     * The profile reference the contact disclosed. A bearer capability, as
+     * in `ProfilePlatform::present_profile`.
+     */
+    reference: string;
+    /**
+     * The share's freshness timestamp, as in `PlacedAvatar::shared_at`.
+     * Personal grants advance it monotonically across relay actors.
+     */
+    sharedAt: bigint;
 }
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
@@ -1564,8 +1573,7 @@ export declare const PlacedContactLabels: S.Codec<PlacedContactLabels>;
  */
 export declare const PreimageSubmitReview: S.Codec<PreimageSubmitReview>;
 /**
- * A profile a Chat contact shared with the user, with the contact who sent
- * it.
+ * Host-only presentation of a contact's shared profile or its absence.
  */
 export declare const PresentedContactProfile: S.Codec<PresentedContactProfile>;
 /**
@@ -1608,6 +1616,10 @@ export declare const ResourceAllocationReview: S.Codec<ResourceAllocationReview>
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export declare const SessionUiInfo: S.Codec<SessionUiInfo>;
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export declare const SharedContactProfile: S.Codec<SharedContactProfile>;
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
@@ -1972,6 +1984,10 @@ export interface LocaleHost {
      * Emits the currently selected locale immediately, then future changes.
      */
     subscribeLocale(): AsyncIterable<Result<HostLocaleSubscribeItem, GenericError>>;
+    /**
+     * Convert a bounded UTC batch using the supplied host locale snapshot.
+     */
+    localizeTimestamps?(request: HostLocaleLocalizeTimestampsRequest): Promise<HostLocaleLocalizeTimestampsResponse>;
 }
 /**
  * Host-private native Chat selection, immutable custody and safe export.
@@ -2205,18 +2221,18 @@ export interface ProfilePlatform {
      */
     presentProfile(product: ProductContext, request: HostProfilePresentRequest): Promise<void>;
     /**
-     * Show a profile a Chat contact shared with the user, for the product
-     * that asked with `profile.presentContact`. Same contract as
-     * `ProfilePlatform::present_profile`: return once it is shown, and
-     * report an unparseable reference as `InvalidReference`.
+     * Show a Chat contact's shared profile, or host-owned feedback when no
+     * profile is shared. Return once it is shown, without waiting for dismissal.
+     * Report an unparseable shared reference as `InvalidReference`.
      *
      * The core holds this reference because it arrived over the
      * authenticated Chat channel from `peer_identity`'s own device, so the
      * host can name that contact as who shared it, rather than the product
      * that asked. It cannot vouch for more: the record behind the reference
      * is not signed by its owner, so a contact can forward someone else's
-     * reference. The default presents it as
-     * `ProfilePlatform::present_profile` would, without the contact.
+     * reference. The default presents a shared profile as
+     * `ProfilePlatform::present_profile` would, without the contact, and
+     * reports an error when empty-profile feedback is unsupported.
      */
     presentContactProfile?(product: ProductContext, presented: PresentedContactProfile): Promise<void>;
     /**

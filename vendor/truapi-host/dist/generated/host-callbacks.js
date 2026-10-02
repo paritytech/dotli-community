@@ -185,10 +185,9 @@ export const PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, 
  */
 export const PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
 /**
- * A profile a Chat contact shared with the user, with the contact who sent
- * it.
+ * Host-only presentation of a contact's shared profile or its absence.
  */
-export const PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64, username: S.Option(S.str) }));
+export const PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
 /**
  * Product identity attached to one product-facing TrUAPI connection.
  *
@@ -229,6 +228,10 @@ export const ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), deviceStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export const SharedContactProfile = S.lazy(() => S.Struct({ reference: S.str, sharedAt: S.u64 }));
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */

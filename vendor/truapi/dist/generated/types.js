@@ -187,9 +187,13 @@ export const VersionedHostLocalStorageSubscribeRequest = S.lazy(() => S.indexedT
 export const VersionedHostLocalStorageWriteError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageReadError] }));
 export const VersionedHostLocalStorageWriteRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocalStorageWriteRequest] }));
 export const VersionedHostLocalStorageWriteResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
-export const VersionedHostLocaleSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
-export const VersionedHostLocaleSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleSubscribeItem] }));
-export const VersionedHostLocaleSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const VersionedHostLocaleLocalizeTimestampsError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
+export const VersionedHostLocaleLocalizeTimestampsRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleLocalizeTimestampsRequest] }));
+export const VersionedHostLocaleLocalizeTimestampsResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleLocalizeTimestampsResponse] }));
+export const HostLocaleLocalizedTimestamp = S.lazy(() => S.Struct({ localDate: S.str, time: S.str, date: S.str, dateTime: S.str }));
+export const VersionedHostLocaleSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V2: [1, GenericError] }));
+export const VersionedHostLocaleSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V2: [1, HostLocaleSubscribeItem] }));
+export const VersionedHostLocaleSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V2: [1, S._void] }));
 export const HostNativeChatAcknowledgment = S.lazy(() => S.Struct({ peerIdentity: S.Hex(32), requestId: S.str, responseCode: S.u8 }));
 export const HostNativeChatAttachment = S.lazy(() => S.Struct({ attachmentId: S.Hex(32), metadata: HostNativeChatAttachmentMetadata, state: HostNativeChatAttachmentState }));
 export const HostNativeChatAttachmentKind = S.lazy(() => S.TaggedUnion({ File: S._void, Image: S.Struct({ width: S.u32, height: S.u32, thumbnail: S.Option(S.Hex()) }), Video: S.Struct({ durationSeconds: S.u32, thumbnail: S.Option(S.Hex()) }) }));
@@ -500,7 +504,7 @@ export const V01HostLocalStorageReadRequest = S.lazy(() => S.Struct({ key: S.str
 export const HostLocalStorageReadResponse = S.lazy(() => S.Struct({ value: S.Option(S.Hex()) }));
 export const HostLocalStorageSubscribeRequest = S.lazy(() => S.Struct({ key: S.str }));
 export const HostLocalStorageWriteRequest = S.lazy(() => S.Struct({ key: S.str, value: S.Hex() }));
-export const HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str }));
+export const V01HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str }));
 export const HostNavigateToError = S.lazy(() => S.TaggedUnion({ PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostNavigateToRequest = S.lazy(() => S.Struct({ url: S.str }));
 export const HostPaymentBalanceSubscribeError = S.lazy(() => S.TaggedUnion({ PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
@@ -586,6 +590,9 @@ export const RemoteStatementStoreSubscribeItem = S.lazy(() => S.Struct({ stateme
 export const RemoteStatementStoreSubscribeRequest = S.lazy(() => S.TaggedUnion({ MatchAll: S.Vector(S.Hex(32)), MatchAny: S.Vector(S.Hex(32)) }));
 export const HostLocalStorageReadError = S.lazy(() => S.TaggedUnion({ Full: S._void, AccessNotGranted: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostLocalStorageReadRequest = S.lazy(() => S.Struct({ product: S.Option(S.str), key: S.str }));
+export const HostLocaleLocalizeTimestampsRequest = S.lazy(() => S.Struct({ timestampsMs: S.Vector(S.u64), languageTag: S.str, timeZone: S.str }));
+export const HostLocaleLocalizeTimestampsResponse = S.lazy(() => S.Struct({ timestamps: S.Vector(HostLocaleLocalizedTimestamp) }));
+export const HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str, timeZone: S.Option(S.str) }));
 export const HostProductDeviceChatError = S.lazy(() => S.Status("NotConnected", "AccessNotGranted", "UserRejected", "AllowanceRequired", "PeerNotReady", "OperationConflict", "InvalidRequest", "InvalidStatement", "RecipientNotFound", "InsufficientBalance", "StorageUnavailable", "NetworkUnavailable", "OperationNotFound", "AttachmentsUnavailable"));
 export const V02HostProductDeviceChatRequest = S.lazy(() => S.TaggedUnion({ Initialize: S._void, Invite: S.Struct({ username: S.str, text: S.str }), Receive: S.Struct({ statement: SignedStatement }), AcceptInvitation: S.Struct({ invitationId: S.Hex(32) }), RejectInvitation: S.Struct({ invitationId: S.Hex(32) }), Send: S.Struct({ peerIdentity: S.Hex(32), requestId: S.str, messages: S.Vector(S.Hex()) }), SendPayment: S.Struct({ peerIdentity: S.Hex(32), requestId: S.str, amountCents: S.u64 }), PaymentStatus: S.Struct({ operationId: S.Hex(32) }), Reconcile: S._void, SendAttachments: S.Struct({ peerIdentity: S.Hex(32), requestId: S.str, text: S.Option(S.str) }), OpenAttachment: S.Struct({ attachmentId: S.Hex(32) }) }));
 export const V02HostProductDeviceChatResponse = S.lazy(() => S.Struct({ device: HostNativeChatDevice, peers: S.Vector(HostNativeChatPeer), invitations: S.Vector(HostNativeChatInvitation), messages: S.Vector(HostNativeChatMessages), acknowledgments: S.Vector(HostNativeChatAcknowledgment), payments: S.Vector(HostNativeChatPayment), richMessages: S.Vector(HostNativeChatRichMessage) }));

@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "a08d82b4593af81a";
+export const TRUAPI_WIRE_SCHEMA_HASH = "4dda7fbab9d6f435";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -963,9 +963,21 @@ export class LocaleClient {
         return createObservable({
             transport: this.#transport,
             ids: W.LOCALE_SUBSCRIBE,
-            payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V1", value: undefined }),
+            payload: T.VersionedHostLocaleSubscribeRequest.enc({ tag: "V2", value: undefined }),
             decodeItem: (payload) => T.VersionedHostLocaleSubscribeItem.dec(payload).value,
             decodeInterrupt: interruptDecoder(S.CallError(T.VersionedHostLocaleSubscribeError)),
+        });
+    }
+    /** Localize a bounded batch of UTC instants in a host locale snapshot. */
+    localizeTimestamps(request, options) {
+        return this.#transport.request({
+            ids: W.LOCALE_LOCALIZE_TIMESTAMPS,
+            payload: T.VersionedHostLocaleLocalizeTimestampsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostLocaleLocalizeTimestampsResponse, S.CallError(T.VersionedHostLocaleLocalizeTimestampsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
         });
     }
 }
