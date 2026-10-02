@@ -4,7 +4,7 @@
 import type { Network } from '@dotli/config';
 
 /**
- * One worker identity per network across every tab on the shared host origin.
+ * One worker identity per network in the shared host-origin storage partition.
  * Passing the retired identity advances it only if it is still current: a
  * second tab's fatal, or a late callback, must not replace the new worker.
  */
