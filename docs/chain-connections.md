@@ -259,10 +259,10 @@ sequenceDiagram
   Ctx-->>Host: CID
 ```
 
-- `withHaltRetry` in `packages/resolver/src/resolve.ts` wraps
-  `resolveDotName`, `resolveExecutableManifest`, `resolveOwner` and
-  `resolveRootManifest`. Both smoldot backends (`smoldot-direct`,
-  `smoldot-shared-worker`) run them.
+- `withHaltRetry` in `packages/resolver/src/sync-deadline.ts` wraps the
+  light-client and RPC-gateway readers for `resolveDotName`,
+  `resolveExecutableManifest`, `resolveOwner` and `resolveRootManifest`.
+  All three backends use the same bounded policy.
 - A halt reaches a read in one of three shapes, and each one is retried:
   - the pool's answer to a request in flight, `Chain transport halted` with
     `data: 'dotli:chain-halted'`;
@@ -279,8 +279,10 @@ sequenceDiagram
   that is a fatal. Nor does a single chain that halts again each time it is
   rebuilt: products rebuild it only through its chain gate, and the block bars
   back off.
-- `rpc-gateway` resolution needs no retry. Its RPC socket never halts: it
-  reconnects and replays.
+- RPC socket reconnection does not prevent a node from stopping its
+  `chainHead` follow. Gateway resolution drops that stopped client and opens
+  a fresh follow through the same one-shot policy and remaining sync budget.
+  Protocol callers do not add another retry around the resolver.
 
 ### …the light client cannot work (a fatal)
 
@@ -299,14 +301,15 @@ sequenceDiagram
   Cli->>Use: onProtocolReady → block bars reconnect
 ```
 
-- A fatal is only raised when the light client **cannot connect a chain**. A
-  crashed light client shows up that way: every chain halts, consumers
-  reconnect, and the first reconnect fails.
-- In the SharedWorker a fatal is **permanent** while any document holds the
-  worker: tabs that connect later, and reloads, get the error at once instead
-  of retrying a dead light client. It ends when the browser drops the worker,
-  so closing every dot.li tab gets a new one. The error page says so:
-  "Closing other dot.li tabs, then reloading."
+- A fatal is raised when the light client **cannot connect a chain** or its
+  SharedWorker crashes. Pending requests receive terminal answers, existing
+  follows stop, and retired-generation requests and replies are fenced.
+- Before a SharedWorker iframe reports fatal, it advances the per-network
+  worker URL generation under a shared-origin Web Lock. The localStorage
+  generation is shared within the browser's storage partition; concurrent
+  tabs retire it once, and stale callbacks cannot replace a newer generation.
+  The next frame joins that replacement instead of a closed worker identity
+  retained by the browser. Other dot.li tabs do not need to close.
 - After `'frame'` the codebase never retries on its own: bitswap fails the
   fetch in progress, and block bars wait for a frame that something else
   started (`onProtocolReady`). A product's requests are demand, but its papi
