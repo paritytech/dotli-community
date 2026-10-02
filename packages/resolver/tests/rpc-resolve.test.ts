@@ -30,7 +30,7 @@ function must<T>(value: T | undefined, what: string): T {
   return value;
 }
 
-function fakeApi(): Api {
+function fakeApi(readSlot = (): Promise<Uint8Array | null> => Promise.resolve(null)): Api {
   return {
     whenReady: () => Promise.resolve(),
     destroy: vi.fn<() => void>(),
@@ -40,8 +40,17 @@ function fakeApi(): Api {
         mocks.stops = mocks.stops.filter(stop => stop !== cb);
       };
     },
-    withContract: (_address, read) => read({ readSlot: () => Promise.resolve(null) }),
+    withContract: (_address, read) => read({ readSlot }),
   };
+}
+
+function stoppedRead(): Promise<never> {
+  for (const stop of mocks.stops) {
+    stop();
+  }
+  const error = new Error('chainHead follow stopped');
+  error.name = 'ApiStoppedError';
+  return Promise.reject(error);
 }
 
 describe('rpc-resolve', () => {
@@ -57,7 +66,7 @@ describe('rpc-resolve', () => {
     factory = vi.fn<() => JsonRpcProvider>(
       () => () => ({ send: vi.fn<JsonRpcConnection['send']>(), disconnect }) satisfies JsonRpcConnection,
     );
-    mocks.createRawApi.mockImplementation(fakeApi);
+    mocks.createRawApi.mockReset().mockImplementation(() => fakeApi());
   });
 
   afterEach(() => {
@@ -90,6 +99,25 @@ describe('rpc-resolve', () => {
     // Then
     expect(factory).toHaveBeenCalledTimes(2);
     expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('finishes an in-flight owner lookup on a fresh lease after its follow stops', async () => {
+    setRpcAssetHubProvider(factory);
+    mocks.createRawApi
+      .mockImplementationOnce(() => fakeApi(stoppedRead))
+      .mockImplementationOnce(() => fakeApi(() => Promise.resolve(new Uint8Array(32).fill(0x77))));
+
+    await expect(resolveOwnerViaRpc('alice')).resolves.toBe(`0x${'77'.repeat(20)}`);
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(disconnect).toHaveBeenCalledTimes(1);
+  });
+
+  it('surfaces a second stopped follow instead of retrying indefinitely', async () => {
+    setRpcAssetHubProvider(factory);
+    mocks.createRawApi.mockImplementation(() => fakeApi(stoppedRead));
+
+    await expect(resolveOwnerViaRpc('alice')).rejects.toMatchObject({ name: 'ApiStoppedError' });
+    expect(factory).toHaveBeenCalledTimes(2);
   });
 
   it('As a dotli user, destroying the RPC client releases the provider and the next resolve takes a new one', async () => {

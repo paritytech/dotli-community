@@ -675,11 +675,27 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     name: `dotli-protocol-${network}`,
   });
   const port = worker.port;
+  let halted = false;
+  let rejectReady: ((error: Error) => void) | null = null;
+  const halt = (message: string): void => {
+    if (halted) {
+      return;
+    }
+    halted = true;
+    port.close();
+    rejectReady?.(new Error(message));
+    rejectReady = null;
+    if (window.parent !== window) {
+      window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message }, '*');
+    }
+  };
 
-  // Listen for SharedWorker errors (e.g. if the script fails to load)
+  // Script-load and runtime worker failures must reach the host's typed
+  // frame halt path; logging alone leaves its native consumer on a dead lease.
   worker.addEventListener('error', event => {
     log.error('[dot.li protocol] SharedWorker error event:', event);
     m.count(S.BOOTNODE_ERROR, { source: 'shared-worker' });
+    halt(event.message || 'Protocol SharedWorker failed');
   });
 
   // Relay SharedWorker responses up to the parent from the first moment the
@@ -687,7 +703,18 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   // before `ready`, and MessagePort events are not replayed: registering this
   // after the ready wait would silently drop everything sent in between.
   port.addEventListener('message', (event: MessageEvent) => {
+    if (halted) {
+      return;
+    }
     const data = event.data as SWOutbound | null;
+    if (data?.type === 'relay-response' && (data.envelope.kind === 'fatal' || data.envelope.kind === 'init-failed')) {
+      halt(data.envelope.message);
+      return;
+    }
+    if (data?.type === 'error') {
+      halt(data.message);
+      return;
+    }
     if (data?.type === 'relay-response' && window.parent !== window) {
       window.parent.postMessage(data.envelope, '*');
     }
@@ -695,6 +722,10 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 
   // Wait for SharedWorker to signal ready (or error)
   await new Promise<void>((resolve, reject) => {
+    if (halted) {
+      reject(new Error('Protocol SharedWorker failed before ready'));
+      return;
+    }
     const timer = setTimeout(() => {
       const waitMs = performance.now() - swStartTime;
       m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
@@ -702,26 +733,27 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       });
       reject(new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
     }, TIMEOUTS.SHARED_WORKER_READY);
+    rejectReady = error => {
+      clearTimeout(timer);
+      port.removeEventListener('message', onMessage);
+      reject(error);
+    };
 
     function onMessage(event: MessageEvent): void {
+      if (halted) {
+        return;
+      }
       const data = event.data as SWOutbound | null;
       if (data?.type === 'ready') {
         clearTimeout(timer);
         port.removeEventListener('message', onMessage);
+        rejectReady = null;
         const readyMs = performance.now() - swStartTime;
         m.measure(S.PROTOCOL_SW_READY, readyMs);
         m.distribution(S.PROTOCOL_SW_READY, readyMs, 'millisecond', {
           outcome: 'ok',
         });
         resolve();
-      } else if (data?.type === 'error') {
-        clearTimeout(timer);
-        port.removeEventListener('message', onMessage);
-        const failMs = performance.now() - swStartTime;
-        m.distribution(S.PROTOCOL_SW_READY, failMs, 'millisecond', {
-          outcome: 'error',
-        });
-        reject(new Error(`SharedWorker error: ${data.message}`));
       }
     }
 
@@ -734,6 +766,9 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 
   // Relay parent postMessage requests into the SharedWorker.
   window.addEventListener('message', (event: MessageEvent) => {
+    if (halted) {
+      return;
+    }
     const data: unknown = event.data;
     if (!isProtocolEnvelope(data) || data.kind !== 'request') {
       return;
@@ -762,6 +797,10 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   signalReady();
 
   window.addEventListener('beforeunload', () => {
+    if (halted) {
+      return;
+    }
+    halted = true;
     log.warn('[dot.li protocol] Iframe unloading, sending disconnect to SharedWorker');
     try {
       port.postMessage({ type: 'disconnect' });

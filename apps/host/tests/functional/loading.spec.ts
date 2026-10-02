@@ -19,9 +19,10 @@ import { seedBackend, type Backend } from './fixtures/settings.js';
 // read `self.location` and `import.meta.env` at load), so these constants come
 // from their side-effect-free source files.
 import { TIMEOUTS } from '../../../../packages/config/src/timeouts.js';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '../../../../packages/config/src/network.js';
 import { METHOD_TIMEOUTS } from '../../../../packages/protocol/src/method-timeouts.js';
 
-import { PORT, TLD_SUFFIX } from '../env.js';
+import { NETWORK, PORT, TLD_SUFFIX } from '../env.js';
 
 const DOMAIN = process.env['COMBO_DOMAIN'] ?? 'host-playground';
 const HOST_URL = `http://${DOMAIN}.localhost:${PORT}/`;
@@ -331,6 +332,49 @@ test('As a user, when the app executable manifest is invalid, I see its validati
     'Invalid app executable manifest: runtime.entrypoint must be a non-empty string',
   );
   await expect(page.locator('#app iframe')).toHaveCount(0);
+});
+
+test('As a user, a stopped chainHead follow reconnects once without showing a domain error', async ({ page }) => {
+  await setBackend(page, 'rpc-gateway');
+  const endpoints = new Set(NETWORK_NAME_TO_SERVICES_CONFIG[NETWORK].assethub.rpcs.map(url => new URL(url).href));
+  let stopped = false;
+  let follows = 0;
+  await page.routeWebSocket(
+    url => endpoints.has(url.href),
+    socket => {
+      const upstream = socket.connectToServer();
+      socket.onMessage(message => {
+        const request = JSON.parse(String(message)) as { method?: string; params?: unknown[] };
+        if (request.method === 'chainHead_v1_follow') {
+          follows += 1;
+        }
+        if (!stopped && request.method === 'chainHead_v1_storage') {
+          const subscription = request.params?.[0];
+          if (typeof subscription !== 'string') {
+            throw new Error('A storage read must belong to an active follow');
+          }
+          stopped = true;
+          // Interrupt a real read below the resolver's recovery boundary.
+          // Every other response still comes from the actual configured node.
+          socket.send(
+            JSON.stringify({
+              jsonrpc: '2.0',
+              method: 'chainHead_v1_followEvent',
+              params: { subscription, result: { event: 'stop' } },
+            }),
+          );
+          return;
+        }
+        upstream.send(message);
+      });
+    },
+  );
+
+  await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
+  expect(await findAppFrame(page, 10_000)).not.toBeNull();
+  expect(stopped).toBe(true);
+  expect(follows).toBe(2);
+  await expect(page.locator('.error-page-title')).toHaveCount(0);
 });
 
 test("As a user using smoldot in shared worker, when the browser can't create a worker, I see the appropriate error and can switch backend", async ({
