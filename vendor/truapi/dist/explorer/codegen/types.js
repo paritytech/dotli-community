@@ -2732,16 +2732,88 @@ export const types = [
         ],
     },
     {
+        id: "host-locale-localize-timestamps-request",
+        name: "HostLocaleLocalizeTimestampsRequest",
+        category: "locale",
+        definition: "export interface HostLocaleLocalizeTimestampsRequest {\n  timestampsMs: Array<bigint>;\n  languageTag: string;\n  timeZone: string;\n}",
+        description: "Convert UTC instants using a snapshot of the host's locale subscription.",
+        fields: [
+            {
+                name: "timestamps_ms",
+                type: "Array<bigint>",
+                description: "At most 128 Unix millisecond instants, no later than year 9999.",
+            },
+            {
+                name: "language_tag",
+                type: "string",
+                description: "Language tag from the locale subscription, not a guessed language.",
+            },
+            {
+                name: "time_zone",
+                type: "string",
+                description: "Time zone from the locale subscription; evaluated separately at each instant.",
+            },
+        ],
+    },
+    {
+        id: "host-locale-localize-timestamps-response",
+        name: "HostLocaleLocalizeTimestampsResponse",
+        category: "locale",
+        definition: "export interface HostLocaleLocalizeTimestampsResponse {\n  timestamps: Array<HostLocaleLocalizedTimestamp>;\n}",
+        description: "Local timestamps in exactly the request's order.",
+        fields: [
+            {
+                name: "timestamps",
+                type: "Array<HostLocaleLocalizedTimestamp>",
+                description: "One result per requested timestamp; partial success is not returned.",
+            },
+        ],
+    },
+    {
+        id: "host-locale-localized-timestamp",
+        name: "HostLocaleLocalizedTimestamp",
+        category: "locale",
+        definition: "export interface HostLocaleLocalizedTimestamp {\n  localDate: string;\n  time: string;\n  date: string;\n  dateTime: string;\n}",
+        description: "One timestamp's calendar identity and presentation in the requested context.",
+        fields: [
+            {
+                name: "local_date",
+                type: "string",
+                description: "Gregorian YYYY-MM-DD local date, independent of display language/calendar.",
+            },
+            {
+                name: "time",
+                type: "string",
+                description: "Localized short time, including the host language's hour-cycle convention.",
+            },
+            {
+                name: "date",
+                type: "string",
+                description: "Localized date label.",
+            },
+            {
+                name: "date_time",
+                type: "string",
+                description: "Localized date and time with a time-zone indication for detail views.",
+            },
+        ],
+    },
+    {
         id: "host-locale-subscribe-item",
         name: "HostLocaleSubscribeItem",
         category: "locale",
-        definition: "export interface HostLocaleSubscribeItem {\n  languageTag: string;\n}",
-        description: "Locale the host currently presents its interface in, pushed to subscribers.",
+        definition: "export interface HostLocaleSubscribeItem {\n  languageTag: string;\n  timeZone?: string;\n}",
+        description: "Host language and local time zone, replaced together when either changes.",
         fields: [
             {
                 name: "language_tag",
                 type: "string",
-                description: "BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is\nopen: a product that does not ship the tag chooses its own fallback.",
+                description: "BCP 47 language tag selected by the host.",
+            },
+            {
+                name: "time_zone",
+                type: "string | undefined",
+                description: "IANA time zone, or absent when the host cannot supply local time.",
             },
         ],
     },
@@ -6572,6 +6644,20 @@ export const types = [
                 name: "key",
                 type: "string",
                 description: "Storage key to read.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-locale-subscribe-item",
+        name: "V01HostLocaleSubscribeItem",
+        category: "locale",
+        definition: "export interface V01HostLocaleSubscribeItem {\n  languageTag: string;\n}",
+        description: "Locale the host currently presents its interface in, pushed to subscribers.",
+        fields: [
+            {
+                name: "language_tag",
+                type: "string",
+                description: "BCP 47 language tag, such as `en`, `pt-BR` or `zh-Hans`. The set is\nopen: a product that does not ship the tag chooses its own fallback.",
             },
         ],
     },

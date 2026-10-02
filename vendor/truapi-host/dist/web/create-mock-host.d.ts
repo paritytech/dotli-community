@@ -188,6 +188,8 @@ export interface MockHostConfig {
     theme?: ThemeVariant;
     /** BCP 47 tag emitted by `subscribeLocale`. Default `"en"`. */
     languageTag?: string;
+    /** IANA time zone emitted by `subscribeLocale`. Default is the host zone. */
+    timeZone?: string;
     /** Whether `confirmUserAction` confirms reviewed actions. Default `true`. */
     confirmUserActions?: boolean;
     /**

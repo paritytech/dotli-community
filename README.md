@@ -325,6 +325,16 @@ Local development uses wildcard subdomains:
 
 - `host-playground.localhost:5173` — resolves `host-playground.dot` via the host
 
+### Product locale and local time
+
+The host reports the browser's language and IANA time zone through Locale, including changes detected on focus,
+visibility, language changes, and a visible-tab minute timer. Locale's timestamp batch API formats each instant using
+that zone's historical offset and daylight-saving rules; its canonical Gregorian local date is independent of the
+display language. Products should use that date for day grouping rather than slicing a UTC timestamp.
+
+The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
+bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+
 ### Running the functional browser suite locally
 
 Use the same instrumentation as CI. Metrics enable the light-client ownership checks, and the loopback Sentry DSN lets

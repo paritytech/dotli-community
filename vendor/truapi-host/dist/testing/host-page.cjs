@@ -44,7 +44,7 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // dist/generated/host-callbacks.js
-var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, ContactSelection, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, HostContactsPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PlacedAvatar, PlacedAvatars, PlacedContactLabel, PlacedContactLabels, PreimageSubmitReview, PresentedContactProfile, ProductContext, ProductExecutionKind, ProductSubtreeReview, ProfileDisclosureReview, ResourceAllocationReview, SessionUiInfo, SharedContactProfile, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -87,13 +87,14 @@ var init_host_callbacks = __esm({
     PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: import_truapi.Bytes32, rect: import_truapi.AvatarRect, clip: import_truapi.AvatarRect }));
     PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
-    PresentedContactProfile = S.lazy(() => S.Struct({ reference: S.str, peerIdentity: S.Bytes(32), sharedAt: S.u64, username: S.Option(S.str) }));
+    PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
     ProductContext = S.lazy(() => S.Struct({ productId: S.str, executionKind: ProductExecutionKind }));
     ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Worker"));
     ProductSubtreeReview = S.lazy(() => S.Struct({ productId: S.str }));
     ProfileDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId: S.str, resources: S.Vector(import_truapi.AllocatableResource) }));
     SessionUiInfo = S.lazy(() => S.Struct({ publicKey: import_truapi.Bytes32, identityAccountId: S.Option(import_truapi.Bytes32), chatPublicKey: S.Option(import_truapi.Bytes32), deviceEncPublicKey: S.Option(import_truapi.Bytes32), peerStatementAccountId: S.Option(import_truapi.Bytes32), deviceStatementAccountId: S.Option(import_truapi.Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
+    SharedContactProfile = S.lazy(() => S.Struct({ reference: S.str, sharedAt: S.u64 }));
     SignPayloadReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi.HostSignPayloadRequest }), LegacyAccount: import_truapi.HostSignPayloadWithLegacyAccountRequest }));
     SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi.HostAccountSignVrfRequest }));
@@ -219,7 +220,13 @@ function profileHostAdapter(host) {
     return host;
   return {
     presentProfile: (product, request) => host.presentProfile(product, request),
-    presentContactProfile: (product, presented) => host.presentProfile(product, { reference: presented.reference }),
+    presentContactProfile: (product, presented) => {
+      if (presented.shared === void 0)
+        return Promise.reject(new Error("Contact profile feedback is unavailable"));
+      return host.presentProfile(product, {
+        reference: presented.shared.reference
+      });
+    },
     placeContactAvatars: (product, placed) => host.placeContactAvatars(product, placed)
   };
 }
@@ -364,6 +371,7 @@ function createWasmRawCallbacks(callbacks) {
       identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash))
     } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi2.HostLocaleSubscribeItem.enc(item)), sendError),
+    localizeTimestamps: async (request) => import_truapi2.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi2.HostLocaleLocalizeTimestampsRequest.dec(request))),
     pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
     readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
     releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
@@ -3941,6 +3949,57 @@ var blake2b = /* @__PURE__ */ createHasher((opts) => new _BLAKE2b(opts));
 var import_neverthrow = __toESM(require_index_cjs(), 1);
 var import_truapi5 = require("@parity/truapi");
 
+// dist/locale.js
+var localizeTimestamps = async (request) => {
+  if (!request.languageTag.trim() || !request.timeZone.trim()) {
+    throw new RangeError("A language tag and time zone are required");
+  }
+  if (request.timestampsMs.length > 128 || request.timestampsMs.some((timestamp) => timestamp < 0n || timestamp > 253402300799999n)) {
+    throw new RangeError("Timestamp batch or instant is out of range");
+  }
+  const { languageTag, timeZone } = request;
+  const localDate = new Intl.DateTimeFormat("en-US", {
+    calendar: "gregory",
+    numberingSystem: "latn",
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  });
+  const time = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit"
+  });
+  const date = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    dateStyle: "long"
+  });
+  const dateTime = new Intl.DateTimeFormat(languageTag, {
+    timeZone,
+    dateStyle: "full",
+    timeStyle: "long"
+  });
+  return {
+    timestamps: request.timestampsMs.map((timestamp) => {
+      const instant = Number(timestamp);
+      const parts = localDate.formatToParts(instant);
+      const year = parts.find((part) => part.type === "year").value;
+      const month = parts.find((part) => part.type === "month").value;
+      const day = parts.find((part) => part.type === "day").value;
+      if (year.length > 4) {
+        throw new RangeError("Local date is outside the four-digit year range");
+      }
+      return {
+        localDate: `${year.padStart(4, "0")}-${month}-${day}`,
+        time: time.format(instant),
+        date: date.format(instant),
+        dateTime: dateTime.format(instant)
+      };
+    })
+  };
+};
+
 // dist/web/loopback-statements.js
 var import_truapi4 = require("@parity/truapi");
 var SUBMIT = "statement_submit";
@@ -4338,7 +4397,7 @@ function hex2(bytes2) {
   return Array.from(bytes2, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 function createMockHost(config = {}) {
-  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", faults = {}, supportedChains = {
+  const { devicePermissions: devicePermissionsInitial = "allow-all", remotePermissions: remotePermissionsInitial = "allow-all", featureSupported = true, theme = "Dark", confirmUserActions = true, chainResponses = [], chainClosed = false, chainProxies = [], languageTag = "en", timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone, faults = {}, supportedChains = {
     network: "mock",
     chains: [
       { identifier: "People", genesisHash: MOCK_GENESIS.people },
@@ -4678,11 +4737,11 @@ function createMockHost(config = {}) {
       }
     },
     locale: {
-      async *subscribeLocale() {
-        yield (0, import_neverthrow.ok)({ languageTag });
-        await new Promise(() => {
+      subscribeLocale() {
+        return liveSubscription({ languageTag, timeZone }, subscriptionClosers, () => () => {
         });
-      }
+      },
+      localizeTimestamps
     },
     preimage: {
       async *lookupPreimage(key) {

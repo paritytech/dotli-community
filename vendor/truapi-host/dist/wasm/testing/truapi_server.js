@@ -819,6 +819,18 @@ export class WasmSigningHostRuntime {
         }
     }
     /**
+     * Answer resource allocation as granted without performing it.
+     *
+     * A test host serves suites that exercise allowance-dependent product
+     * paths without an on-chain personhood identity. Nothing is allocated, so
+     * a green run says the product handles a grant, not that a host would
+     * have given one.
+     * @param {boolean} granted
+     */
+    setGrantAllowancesUnchecked(granted) {
+        wasm.wasmsigninghostruntime_setGrantAllowancesUnchecked(this.__wbg_ptr, granted);
+    }
+    /**
      * Update one stored permission authorization status for a product.
      * @param {string} product_id
      * @param {Uint8Array} payload
@@ -834,6 +846,20 @@ export class WasmSigningHostRuntime {
         const len2 = WASM_VECTOR_LEN;
         const ret = wasm.wasmsigninghostruntime_setPermissionAuthorizationStatus(this.__wbg_ptr, ptr0, len0, ptr1, len1, ptr2, len2);
         return takeObject(ret);
+    }
+    /**
+     * Answer these resource tags as refused, replacing any earlier set.
+     *
+     * A suite proving its product survives a refused resource needs that one
+     * withheld while the rest stay granted. The tag is the
+     * `AllocatableResource` variant name, so `SmartContractAllowance`
+     * withholds every derivation index.
+     * @param {string[]} tags
+     */
+    setWithheldResources(tags) {
+        const ptr0 = passArrayJsValueToWasm0(tags, wasm.__wbindgen_export);
+        const len0 = WASM_VECTOR_LEN;
+        wasm.wasmsigninghostruntime_setWithheldResources(this.__wbg_ptr, ptr0, len0);
     }
 }
 if (Symbol.dispose) WasmSigningHostRuntime.prototype[Symbol.dispose] = WasmSigningHostRuntime.prototype.free;
@@ -978,6 +1004,22 @@ export function productAccountAddress(public_key) {
         wasm.__wbindgen_add_to_stack_pointer(16);
         wasm.__wbindgen_export4(deferred3_0, deferred3_1, 1);
     }
+}
+
+/**
+ * The ring-VRF member for `entropy`, derived through the module this core
+ * loads on demand.
+ *
+ * For test hosts: it shows the core finds `truapi_verifiable` beside it and accepts
+ * the build it pins, which no product call reaches without a chain.
+ * @param {Uint8Array} entropy
+ * @returns {Promise<Uint8Array>}
+ */
+export function ringVrfMember(entropy) {
+    const ptr0 = passArray8ToWasm0(entropy, wasm.__wbindgen_export);
+    const len0 = WASM_VECTOR_LEN;
+    const ret = wasm.ringVrfMember(ptr0, len0);
+    return takeObject(ret);
 }
 
 /**
@@ -1218,7 +1260,7 @@ function __wbg_get_imports() {
                     const a = state0.a;
                     state0.a = 0;
                     try {
-                        return __wasm_bindgen_func_elem_9929(a, state0.b, arg0, arg1);
+                        return __wasm_bindgen_func_elem_9953(a, state0.b, arg0, arg1);
                     } finally {
                         state0.a = a;
                     }
@@ -1355,28 +1397,28 @@ function __wbg_get_imports() {
             console.warn(getObject(arg0));
         },
         __wbindgen_cast_0000000000000001: function(arg0, arg1) {
-            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 378, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_9871);
+            // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 379, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: true }) -> Externref`.
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_9895);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000002: function(arg0, arg1) {
             // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [Externref], shim_idx: 98, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4527);
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_4599);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000003: function(arg0, arg1) {
             // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 165, ret: Unit, inner_ret: Some(Unit) }, mutable: true }) -> Externref`.
-            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_9752);
+            const ret = makeMutClosure(arg0, arg1, __wasm_bindgen_func_elem_9776);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000004: function(arg0, arg1) {
             // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 94, ret: Result(Unit), inner_ret: Some(Result(Unit)) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4520);
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4592);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000005: function(arg0, arg1) {
             // Cast intrinsic for `Closure(Closure { owned: true, function: Function { arguments: [], shim_idx: 96, ret: Unit, inner_ret: Some(Unit) }, mutable: false }) -> Externref`.
-            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4524);
+            const ret = makeClosure(arg0, arg1, __wasm_bindgen_func_elem_4596);
             return addHeapObject(ret);
         },
         __wbindgen_cast_0000000000000006: function(arg0) {
@@ -1420,22 +1462,22 @@ function __wbg_get_imports() {
     };
 }
 
-function __wasm_bindgen_func_elem_9752(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_9752(arg0, arg1);
+function __wasm_bindgen_func_elem_9776(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_9776(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4524(arg0, arg1) {
-    wasm.__wasm_bindgen_func_elem_4524(arg0, arg1);
+function __wasm_bindgen_func_elem_4596(arg0, arg1) {
+    wasm.__wasm_bindgen_func_elem_4596(arg0, arg1);
 }
 
-function __wasm_bindgen_func_elem_4527(arg0, arg1, arg2) {
-    wasm.__wasm_bindgen_func_elem_4527(arg0, arg1, addHeapObject(arg2));
+function __wasm_bindgen_func_elem_4599(arg0, arg1, arg2) {
+    wasm.__wasm_bindgen_func_elem_4599(arg0, arg1, addHeapObject(arg2));
 }
 
-function __wasm_bindgen_func_elem_4520(arg0, arg1) {
+function __wasm_bindgen_func_elem_4592(arg0, arg1) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_4520(retptr, arg0, arg1);
+        wasm.__wasm_bindgen_func_elem_4592(retptr, arg0, arg1);
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1446,10 +1488,10 @@ function __wasm_bindgen_func_elem_4520(arg0, arg1) {
     }
 }
 
-function __wasm_bindgen_func_elem_9871(arg0, arg1, arg2) {
+function __wasm_bindgen_func_elem_9895(arg0, arg1, arg2) {
     try {
         const retptr = wasm.__wbindgen_add_to_stack_pointer(-16);
-        wasm.__wasm_bindgen_func_elem_9871(retptr, arg0, arg1, addHeapObject(arg2));
+        wasm.__wasm_bindgen_func_elem_9895(retptr, arg0, arg1, addHeapObject(arg2));
         var r0 = getDataViewMemory0().getInt32(retptr + 4 * 0, true);
         var r1 = getDataViewMemory0().getInt32(retptr + 4 * 1, true);
         if (r1) {
@@ -1460,8 +1502,8 @@ function __wasm_bindgen_func_elem_9871(arg0, arg1, arg2) {
     }
 }
 
-function __wasm_bindgen_func_elem_9929(arg0, arg1, arg2, arg3) {
-    wasm.__wasm_bindgen_func_elem_9929(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
+function __wasm_bindgen_func_elem_9953(arg0, arg1, arg2, arg3) {
+    wasm.__wasm_bindgen_func_elem_9953(arg0, arg1, addHeapObject(arg2), addHeapObject(arg3));
 }
 
 const WasmPairingHostRuntimeFinalization = (typeof FinalizationRegistry === 'undefined')
