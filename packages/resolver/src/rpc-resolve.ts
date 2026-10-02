@@ -24,7 +24,7 @@ import { log, dur } from '@dotli/shared';
 
 import { namehash, toHex, decodeIpfsContenthashResult } from './abi.js';
 import { ContenthashDecodeError, UnsupportedContenthashCodecError } from './errors.js';
-import { raceSyncTimeout } from './sync-deadline.js';
+import { raceSyncTimeout, withHaltRetry, withSyncBudget } from './sync-deadline.js';
 import { readMappingBytes, readMappingAddress } from './access-raw-storage.js';
 import type { StatusCallback } from './access-raw-storage.js';
 import { createRawApi, type Api } from './api.js';
@@ -33,6 +33,21 @@ import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
+
+const RPC_SYNC_OPTIONS = { syncTimeoutMs: TIMEOUTS.HUB_FINALIZED_SYNC };
+
+/** Share the light-client recovery policy without importing its runtime. */
+function withRpcClient<T>(read: (api: Api) => Promise<T>, onStatus?: StatusCallback): Promise<T> {
+  return withHaltRetry(RPC_SYNC_OPTIONS, async attempt => {
+    const api = await withSyncBudget(
+      ensureClient(onStatus),
+      'Asset Hub RPC',
+      attempt.syncTimeoutMs,
+      TIMEOUTS.HUB_FINALIZED_SYNC,
+    );
+    return read(api);
+  });
+}
 
 let assetHubProviderFactory: (() => JsonRpcProvider) | null = null;
 
@@ -125,49 +140,50 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
  * This is the "trusted gateway" path: a normal client-server request to
  * a known Polkadot RPC node instead of running a light client in-browser.
  */
-export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
-  log.warn(
-    `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
-  );
-  const api = await ensureClient(onStatus);
+export function resolveDotNameViaRpc(label: string, onStatus?: StatusCallback): Promise<string | null> {
+  return withRpcClient(async api => {
+    log.warn(
+      `[dot.li rpc-resolve] resolving ${label}.${getActiveServicesConfig().dotns.TLD} via JSON-RPC (trusted node, smoldot bypassed)`,
+    );
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-  const node = namehash(domain);
+    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+    const node = namehash(domain);
 
-  onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
-  const t0 = performance.now();
+    onStatus?.(`Resolving "${domain}" via Trusted Provider...`);
+    const t0 = performance.now();
 
-  const dotns = getActiveServicesConfig().dotns;
-  const contenthashBytes = await readMappingBytes(
-    api,
-    dotns.DOTNS_CONTENT_RESOLVER,
-    node,
-    dotns.STORAGE_SLOTS.CONTENTHASH,
-  );
+    const dotns = getActiveServicesConfig().dotns;
+    const contenthashBytes = await readMappingBytes(
+      api,
+      dotns.DOTNS_CONTENT_RESOLVER,
+      node,
+      dotns.STORAGE_SLOTS.CONTENTHASH,
+    );
 
-  log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
+    log.warn(`[dot.li rpc-resolve] chainHead storage contenthash for ${domain}: ${dur(t0)}`);
 
-  if (contenthashBytes === null) {
-    onStatus?.(`Domain "${domain}" not found or no content set`);
-    return null;
-  }
-
-  // Mirror the smoldot-side resolver in distinguishing "not registered" /
-  // "non-IPFS contenthash" / "decode error".
-  const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
-  switch (decoded.kind) {
-    case 'ok':
-      log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
-      onStatus?.(`Resolved "${domain}" via Trusted Provider`);
-      return decoded.cid;
-    case 'empty':
+    if (contenthashBytes === null) {
       onStatus?.(`Domain "${domain}" not found or no content set`);
       return null;
-    case 'unsupported-codec':
-      throw new UnsupportedContenthashCodecError(domain, decoded.codec);
-    case 'decode-error':
-      throw new ContenthashDecodeError(domain, decoded.cause);
-  }
+    }
+
+    // Mirror the smoldot-side resolver in distinguishing "not registered" /
+    // "non-IPFS contenthash" / "decode error".
+    const decoded = decodeIpfsContenthashResult(toHex(contenthashBytes));
+    switch (decoded.kind) {
+      case 'ok':
+        log.warn(`[dot.li rpc-resolve] resolved ${domain} -> ${decoded.cid} (${dur(t0)})`);
+        onStatus?.(`Resolved "${domain}" via Trusted Provider`);
+        return decoded.cid;
+      case 'empty':
+        onStatus?.(`Domain "${domain}" not found or no content set`);
+        return null;
+      case 'unsupported-codec':
+        throw new UnsupportedContenthashCodecError(domain, decoded.codec);
+      case 'decode-error':
+        throw new ContenthashDecodeError(domain, decoded.cause);
+    }
+  }, onStatus);
 }
 
 /**
@@ -177,34 +193,36 @@ export async function resolveDotNameViaRpc(label: string, onStatus?: StatusCallb
  * The return shape matches the smoldot path so the host shell can branch
  * on a single discriminated union regardless of backend.
  */
-export async function resolveExecutableManifestViaRpc(
+export function resolveExecutableManifestViaRpc(
   label: string,
   kind: ExecutableKind,
 ): Promise<ManifestResult<ExecutableManifest>> {
-  const api = await ensureClient();
-  const dotns = getActiveServicesConfig().dotns;
-  return readExecutableManifest(api, dotns, label, kind);
+  return withRpcClient(api => {
+    const dotns = getActiveServicesConfig().dotns;
+    return readExecutableManifest(api, dotns, label, kind);
+  });
 }
 
 /** Gateway-backed reader for the root manifest at `<label>.<tld>`. */
-export async function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
-  const api = await ensureClient();
-  const dotns = getActiveServicesConfig().dotns;
-  return readRootManifest(api, dotns, label);
+export function resolveRootManifestViaRpc(label: string): Promise<ManifestResult<RootManifest>> {
+  return withRpcClient(api => {
+    const dotns = getActiveServicesConfig().dotns;
+    return readRootManifest(api, dotns, label);
+  });
 }
 
 /**
  * Resolve the owner address of a `.dot` label by reading the dotNS registry
  * contract storage over JSON-RPC.
  */
-export async function resolveOwnerViaRpc(label: string): Promise<string | null> {
-  const api = await ensureClient();
+export function resolveOwnerViaRpc(label: string): Promise<string | null> {
+  return withRpcClient(api => {
+    const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
+    const node = namehash(domain);
 
-  const domain = `${label}.${getActiveServicesConfig().dotns.TLD}`;
-  const node = namehash(domain);
-
-  const dotns = getActiveServicesConfig().dotns;
-  return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
+    const dotns = getActiveServicesConfig().dotns;
+    return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
+  });
 }
 
 /**

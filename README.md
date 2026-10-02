@@ -106,6 +106,9 @@ through a Service Worker that acts as a virtual file system.
 All chain access is read-only storage reads through the smoldot light client — no RPC server needed. (An optional
 gateway backend reads the same storage over a public RPC node instead.)
 
+Both resolution backends retry a stopped chain generation once at the resolver boundary, using a fresh client and the
+remaining original sync budget. A second stop is returned to the caller; protocol callers do not add another retry.
+
 The host shares one replaying transport per chain through the chain pool and broker; request ids, subscription tokens,
 and follow pins stay isolated between core consumers. RPC sockets reconnect and replay confirmed statement
 subscriptions. Acknowledged modern and legacy transaction watches terminate when a socket disconnects rather than
