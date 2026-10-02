@@ -304,15 +304,15 @@ test.describe('Shell UI smoke', () => {
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
-    const card = page.locator('.notif-card', {
-      has: page.locator('.notif-title', { hasText: 'Get Polkadot Desktop' }),
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Get Polkadot Desktop' }),
     });
 
     // Then
     await expect(card).toBeVisible();
 
     // When
-    await card.locator('.notif-card-close').click();
+    await card.getByTestId('notif-card-close').click();
 
     // Then
     await expect(card).toHaveCount(0);

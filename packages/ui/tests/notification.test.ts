@@ -51,7 +51,9 @@ describe('notification host callbacks', () => {
     const { ensureOverlays } = await import('../src/overlays/load.js');
     await ensureOverlays();
     await new Promise(resolve => setTimeout(resolve, 0));
-    expect([...document.querySelectorAll('.notif-body')].map(node => node.textContent.trim())).toEqual(['hello']);
+    expect([...document.querySelectorAll('[data-testid="notif-body"]')].map(node => node.textContent.trim())).toEqual([
+      'hello',
+    ]);
   });
 
   it('As a dotli user who allowed one notification, delivering it does not prompt again', async () => {

@@ -13,7 +13,7 @@ import {
 } from '../../../src/state/toasts.js';
 import { renderComponent, settle } from '../../helpers/solid.js';
 import type * as ToastCardModule from '../../../src/components/overlays/ToastCard.js';
-import { query } from '../../support.js';
+import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 /** Reads of each card's layout props (`depth`, `hidden`), across all cards. */
@@ -35,6 +35,12 @@ vi.mock('../../../src/components/overlays/ToastCard.js', async importOriginal =>
           cardLayoutReads.count += 1;
           return props.depth;
         },
+        get expanded() {
+          return props.expanded;
+        },
+        get single() {
+          return props.single;
+        },
       }),
   };
 });
@@ -50,13 +56,13 @@ function input(label: string, overrides: Partial<ToastInput> = {}): ToastInput {
 }
 
 function cards(): HTMLElement[] {
-  return [...document.querySelectorAll<HTMLElement>('.notif-card')];
+  return [...document.querySelectorAll<HTMLElement>('[data-testid="notif-card"]')];
 }
 
 function visibleTitles(): string[] {
   return cards()
-    .filter(c => !c.classList.contains('notif-hidden-card'))
-    .map(c => c.querySelector('.notif-title')?.textContent ?? '');
+    .filter(c => !c.hasAttribute('data-hidden'))
+    .map(c => c.querySelector('[data-testid="notif-title"]')?.textContent ?? '');
 }
 
 async function mountStack(): Promise<void> {
@@ -70,7 +76,7 @@ afterEach(() => {
 });
 
 describe('toast stack', () => {
-  it("As a dotli user, a toast renders today's card markup", async () => {
+  it('As a dotli user, a toast renders its icon, text, link, action and close button', async () => {
     // Given
     const onClick = vi.fn();
     pushToast(
@@ -86,29 +92,28 @@ describe('toast stack', () => {
 
     // Then
     const card = nth(cards(), 0);
-    expect(card.classList.contains('notif-card')).toBe(true);
-    expect(card.classList.contains('notif-enter')).toBe(true);
+    expect(card.hasAttribute('data-entering')).toBe(true);
     expect(card.dataset['id']).toBe('0');
-    expect(card.querySelector<HTMLElement>('.notif-icon')?.style.background).not.toBe('');
-    expect(card.querySelector('.notif-title')?.textContent).toBe('Update available');
-    const body = card.querySelector<HTMLAnchorElement>('a.notif-body');
+    expect(card.querySelector<HTMLElement>('[data-testid="notif-icon"]')?.style.background).not.toBe('');
+    expect(card.querySelector('[data-testid="notif-title"]')?.textContent).toBe('Update available');
+    const body = card.querySelector<HTMLAnchorElement>('a[data-testid="notif-body"]');
     expect(body?.href).toBe('https://dot.li/');
     expect(body?.target).toBe('_blank');
     expect(body?.rel).toBe('noopener');
-    expect(card.querySelector('.notif-card-close')?.getAttribute('aria-label')).toBe('Dismiss');
-    expect(document.querySelector('.notif-cards')?.getAttribute('aria-live')).toBe('polite');
-    expect(document.querySelector('.notif-cards')?.getAttribute('role')).toBe('status');
-    expect(document.querySelector('.notif-stack')?.classList.contains('single')).toBe(true);
-    expect(document.querySelector<HTMLElement>('.notif-close-all')?.style.display).toBe('none');
+    expect(card.querySelector('[data-testid="notif-card-close"]')?.getAttribute('aria-label')).toBe('Dismiss');
+    expect(document.querySelector('[data-testid="notif-cards"]')?.getAttribute('aria-live')).toBe('polite');
+    expect(document.querySelector('[data-testid="notif-cards"]')?.getAttribute('role')).toBe('status');
+    expect(document.querySelector('[data-testid="notif-stack"]')?.hasAttribute('data-single')).toBe(true);
+    expect(document.querySelector<HTMLElement>('[data-testid="notif-close-all"]')?.style.display).toBe('none');
 
     // When
-    fireEvent.click(query(card, '.notif-action', HTMLButtonElement));
+    fireEvent.click(byTestId('notif-action', card, HTMLButtonElement));
     fireEvent.animationEnd(card);
     await settle();
 
     // Then
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(card.classList.contains('notif-enter')).toBe(false);
+    expect(card.hasAttribute('data-entering')).toBe(false);
   });
 
   it('As a dotli user, only the newest three toasts are visible, with close-all shown', async () => {
@@ -122,14 +127,14 @@ describe('toast stack', () => {
 
     // Then
     expect(visibleTitles()).toEqual(['B', 'C', 'D']);
-    expect(cards()[0]?.classList.contains('notif-hidden-card')).toBe(true);
+    expect(cards()[0]?.hasAttribute('data-hidden')).toBe(true);
     expect(
       cards()
         .slice(1)
         .map(c => c.style.getPropertyValue('--i')),
     ).toEqual(['2', '1', '0']);
-    expect(document.querySelector<HTMLElement>('.notif-close-all')?.style.display).toBe('');
-    expect(document.querySelector('.notif-stack')?.classList.contains('single')).toBe(false);
+    expect(document.querySelector<HTMLElement>('[data-testid="notif-close-all"]')?.style.display).toBe('');
+    expect(document.querySelector('[data-testid="notif-stack"]')?.hasAttribute('data-single')).toBe(false);
   });
 
   it('As a dotli user, closing a toast plays its exit and removes it when the animation ends', async () => {
@@ -139,19 +144,19 @@ describe('toast stack', () => {
     const card = nth(cards(), 0);
 
     // When
-    fireEvent.click(query(card, '.notif-card-close', HTMLButtonElement));
+    fireEvent.click(byTestId('notif-card-close', card, HTMLButtonElement));
     await settle();
 
     // Then
-    expect(card.classList.contains('notif-leave')).toBe(true);
-    expect(document.querySelector('.notif-stack')).not.toBeNull();
+    expect(card.hasAttribute('data-leaving')).toBe(true);
+    expect(document.querySelector('[data-testid="notif-stack"]')).not.toBeNull();
 
     // When
     fireEvent.animationEnd(card);
     await settle();
 
     // Then
-    expect(document.querySelector('.notif-stack')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-stack"]')).toBeNull();
     expect(toastsStore.get().items).toEqual([]);
   });
 
@@ -177,12 +182,12 @@ describe('toast stack', () => {
     await mountStack();
 
     // When
-    fireEvent.click(query(document, '.notif-cards .notif-text'));
+    fireEvent.click(query(document, '[data-testid="notif-cards"] [data-testid="notif-text"]'));
     await settle();
 
     // Then
     expect(toastsStore.get().expanded).toBe(true);
-    expect(document.querySelector('.notif-stack')?.classList.contains('expanded')).toBe(true);
+    expect(document.querySelector('[data-testid="notif-stack"]')?.hasAttribute('data-expanded')).toBe(true);
     expect(visibleTitles()).toEqual(['A', 'B', 'C', 'D']);
 
     // When
@@ -199,7 +204,7 @@ describe('toast stack', () => {
     pushToast(input('A', { deeplink: 'https://dot.li/' }));
     pushToast(input('B', { deeplink: 'https://dot.li/' }));
     await mountStack();
-    const link = query(document, 'a.notif-body', HTMLAnchorElement);
+    const link = query(document, 'a[data-testid="notif-body"]', HTMLAnchorElement);
     link.addEventListener('click', event => {
       event.preventDefault();
     });
@@ -219,11 +224,11 @@ describe('toast stack', () => {
     await mountStack();
 
     // When
-    fireEvent.click(query(document, '.notif-close-all', HTMLButtonElement));
+    fireEvent.click(byTestId('notif-close-all', document, HTMLButtonElement));
     await settle();
 
     // Then
-    expect(cards().every(c => c.classList.contains('notif-leave'))).toBe(true);
+    expect(cards().every(c => c.hasAttribute('data-leaving'))).toBe(true);
     expect(toastsStore.get().expanded).toBe(false);
 
     // When
@@ -233,17 +238,17 @@ describe('toast stack', () => {
     await settle();
 
     // Then
-    expect(document.querySelector('.notif-stack')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-stack"]')).toBeNull();
   });
 
   it('As a dotli user, a new toast while the stack is expanded scrolls into view, and nothing else re-scrolls it or re-adds its listeners', async () => {
     // Given: an expanded stack.
     const ids = ['A', 'B', 'C', 'D'].map(label => pushToast(input(label)));
     await mountStack();
-    fireEvent.click(query(document, '.notif-cards .notif-text'));
+    fireEvent.click(query(document, '[data-testid="notif-cards"] [data-testid="notif-text"]'));
     await settle();
     expect(toastsStore.get().expanded).toBe(true);
-    const list = query(document, '.notif-cards');
+    const list = byTestId('notif-cards', document);
     let height = 400;
     Object.defineProperty(list, 'scrollHeight', {
       configurable: true,
@@ -289,7 +294,7 @@ describe('toast stack', () => {
     pushToast(input('A'));
     pushToast(input('B'));
     await mountStack();
-    const list = query(document, '.notif-cards');
+    const list = byTestId('notif-cards', document);
     let scrolls = 0;
     Object.defineProperty(list, 'scrollTop', {
       configurable: true,
@@ -336,10 +341,12 @@ describe('toast stack', () => {
     await mountStack();
     dismissToast(first);
     await settle();
-    expect(document.querySelector('.notif-stack')?.classList.contains('single')).toBe(true);
+    expect(document.querySelector('[data-testid="notif-stack"]')?.hasAttribute('data-single')).toBe(true);
 
     // When
-    fireEvent.click(nth(document.querySelectorAll<HTMLElement>('.notif-cards .notif-text'), 1));
+    fireEvent.click(
+      nth(document.querySelectorAll<HTMLElement>('[data-testid="notif-cards"] [data-testid="notif-text"]'), 1),
+    );
     await settle();
 
     // Then

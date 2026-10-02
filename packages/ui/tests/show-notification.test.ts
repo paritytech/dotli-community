@@ -30,9 +30,9 @@ describe('showNotification', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Hello');
-    expect(document.querySelector('#overlay-root .notif-body')?.textContent).toBe('World');
-    expect(document.querySelector('#overlay-root .notif-icon svg')).not.toBeNull();
+    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Hello');
+    expect(document.querySelector('#overlay-root [data-testid="notif-body"]')?.textContent).toBe('World');
+    expect(document.querySelector('#overlay-root [data-testid="notif-icon"] svg')).not.toBeNull();
   });
 
   it('As a dotli integrator, empty text shows nothing, long text is cut to 200 characters, and non-http links are dropped', () => {

@@ -40,13 +40,13 @@ describe('overlays loader', () => {
       icon: '<svg></svg>',
       dismissMs: 0,
     });
-    expect(document.querySelector('.notif-card')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-card"]')).toBeNull();
 
     // When
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Hello');
+    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Hello');
   });
 
   it('As a dotli user, a dialog renders into the overlay root and settles from its buttons', async () => {
@@ -123,7 +123,7 @@ describe('overlays loader', () => {
 
     // Then
     expect(toastsStore.get().items.map(t => t.label)).toEqual(['A']);
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('A');
+    expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('A');
   });
 
   it('As a dotli user, a render error settles the open dialog and lets the overlays recover for what comes next', async () => {
@@ -170,7 +170,7 @@ describe('overlays loader', () => {
       await overlaysReady();
 
       // Then
-      expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Recovered');
+      expect(document.querySelector('#overlay-root [data-testid="notif-title"]')?.textContent).toBe('Recovered');
     } finally {
       getSpy.mockRestore();
     }
