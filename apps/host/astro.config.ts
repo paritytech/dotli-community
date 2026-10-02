@@ -20,6 +20,7 @@ import astroSolid from '@config/astro-solid';
 import { astroPwa } from '@config/vite/astro-pwa';
 import { buildInfo, readPackageVersion } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { stripAnalytics } from '@dotli/metrics/vite';
 
@@ -333,6 +334,7 @@ export default defineConfig({
     }),
   ],
   vite: {
+    css: { modules: cssModules() },
     envDir: resolve(import.meta.dirname, '../..'),
     // The host's settings are VITE_*, as under plain Vite (Astro's own
     // default is PUBLIC_*).

@@ -9,6 +9,7 @@
     "./astro-pwa": "./src/astro-pwa.ts",
     "./build-info": "./src/build-info-plugin.ts",
     "./build-options": "./src/build-options.ts",
+    "./css-modules": "./src/css-modules.ts",
     "./runtime-network-config": "./src/runtime-network-config-plugin.ts",
     "./social-meta": "./src/social-meta-plugin.ts",
     "./package.json": "./package.json"
