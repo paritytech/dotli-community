@@ -22,10 +22,11 @@
 // The core runs on the page's main thread rather than in a Worker: a test host
 // has no UI to keep responsive, and one less moving part is one less thing to
 // debug when a suite fails.
+import { DerivationIndex } from "@parity/truapi";
 import { createIframeHost } from "../web/create-iframe-host.js";
 import { createWebWorkerSigningHostRuntime } from "../web/create-worker-host-runtime.js";
 import { createMockHost, mockRuntimeConfig, } from "../web/create-mock-host.js";
-import { resolveAccount, } from "./dev-accounts.js";
+import { checkDerivationIndex, resolveAccount, } from "./dev-accounts.js";
 /**
  * Id the test host gives the product iframe.
  *
@@ -55,7 +56,7 @@ export function publishTestHostGlobals(control) {
  */
 export async function startTestHost(options) {
     const host = createMockHost(options.mock);
-    const { productId, ...hostConfig } = mockRuntimeConfig(options.runtimeConfig ?? {});
+    const { productId: hostProduct, ...hostConfig } = mockRuntimeConfig(options.runtimeConfig ?? {});
     // A signing host, not a pairing host: a test host owns its keys. Note the
     // behavioural consequence -- a signing host answers `request_login` with
     // AlreadyConnected instead of starting a pairing flow, so a suite asserting
@@ -65,6 +66,19 @@ export async function startTestHost(options) {
     let workerRuntime;
     let directRuntime;
     let runtime;
+    // The two derivation helpers are pure -- they need `default()` and no
+    // session -- so the worker topology, which keeps the core off this thread,
+    // loads the glue here just to call them.
+    const wasmUrl = options.wasmUrl ?? "./wasm/testing/truapi_server.js";
+    let derivation;
+    const deriveHelpers = () => {
+        derivation ??= (async () => {
+            const glue = (await import(/* @vite-ignore */ wasmUrl));
+            await glue.default();
+            return glue;
+        })();
+        return derivation;
+    };
     if ((options.topology ?? "worker") === "worker") {
         // Production topology: the core runs in a Web Worker, reached over the
         // same protocol a real web host uses.
@@ -77,10 +91,12 @@ export async function startTestHost(options) {
         if ((options.allowances ?? "granted") === "granted") {
             await workerRuntime.setGrantAllowancesUnchecked?.(true);
         }
+        if (options.withheldResources?.length) {
+            await workerRuntime.setWithheldResources?.(options.withheldResources);
+        }
         runtime = workerRuntime;
     }
     else {
-        const wasmUrl = options.wasmUrl ?? "./wasm/testing/truapi_server.js";
         const glue = (await import(/* @vite-ignore */ wasmUrl));
         await glue.default();
         if (options.logLevel)
@@ -98,6 +114,9 @@ export async function startTestHost(options) {
         // branching there, so both topologies activate identically.
         if ((options.allowances ?? "granted") === "granted") {
             directRuntime.setGrantAllowancesUnchecked?.(true);
+        }
+        if (options.withheldResources?.length) {
+            directRuntime.setWithheldResources?.(options.withheldResources);
         }
         const direct = directRuntime;
         runtime = {
@@ -144,7 +163,7 @@ export async function startTestHost(options) {
         onPort(port) {
             void (async () => {
                 if (workerRuntime) {
-                    const provider = await workerRuntime.createProvider({ productId });
+                    const provider = await workerRuntime.createProvider({ productId: hostProduct });
                     const unsubscribe = provider.subscribe((frame) => {
                         port.postMessage(frame);
                     });
@@ -163,7 +182,7 @@ export async function startTestHost(options) {
                     };
                 }
                 else {
-                    const core = directRuntime.productRuntime({ productId }, {
+                    const core = directRuntime.productRuntime({ productId: hostProduct }, {
                         emitFrame(frame) {
                             port.postMessage(frame);
                         },
@@ -193,6 +212,23 @@ export async function startTestHost(options) {
     const control = Object.assign(host, {
         getAccounts: () => roster.map((account) => account.name),
         getActiveAccount: () => active?.name,
+        async getProductAccountAddress(productId, index = 0) {
+            const target = productId ?? hostProduct;
+            const subtree = await (directRuntime
+                ? directRuntime.productSubtreePublicKey(target)
+                : workerRuntime?.getProductSubtreePublicKey(target));
+            // No session: there is no root to derive from, and answering an address
+            // would name an account the host cannot sign for.
+            if (!subtree)
+                return undefined;
+            const helpers = await deriveHelpers();
+            // The index crosses SCALE-encoded, so the chain code stays core-owned.
+            const encoded = DerivationIndex.enc({
+                tag: "Index",
+                value: checkDerivationIndex(index),
+            });
+            return helpers.productAccountAddress(helpers.deriveProductAccountPublicKey(subtree, encoded));
+        },
         injectChatAction: async (action) => {
             if (!publishChatAction) {
                 throw new Error("no product is connected, so there is no Chat action stream to " +
