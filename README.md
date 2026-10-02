@@ -209,10 +209,10 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with
-one frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance
-sample. Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation
-cache checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
+The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
+frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
+Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
+checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
 
 ## Caching and verification
 
