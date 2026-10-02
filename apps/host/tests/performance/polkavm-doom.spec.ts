@@ -138,7 +138,23 @@ test('doom.paseo is playable through the real-time PolkaVM to Wasm translator', 
 
   const cold = await readMetrics(canvas);
   expect(cold.backend).toBe('compiler');
-  expect(cold.fps).toBeGreaterThanOrEqual(35);
+  // The guest targets 35 tics/sec. A >=500ms FPS display sample fluctuates
+  // around that cap; qualify sustained presentation, not a favorable sample.
+  const cadence = await canvas.evaluate(async element => {
+    const framesBefore = Number(element.getAttribute('data-polkavm-frames'));
+    const startedAt = performance.now();
+    await new Promise<void>(resolve => setTimeout(resolve, 30_000));
+    return {
+      frames: Number(element.getAttribute('data-polkavm-frames')) - framesBefore,
+      elapsedMs: performance.now() - startedAt,
+    };
+  });
+  await testInfo.attach('doom-polkavm-cadence.json', {
+    body: Buffer.from(JSON.stringify(cadence, null, 2)),
+    contentType: 'application/json',
+  });
+  // One frame of sampling-boundary tolerance; do not round the FPS metric.
+  expect(cadence.frames + 1).toBeGreaterThanOrEqual((cadence.elapsedMs * 35) / 1000);
   expect(cold.updateP95Ms).toBeLessThan(28.6);
   expect(cold.firstFrameMs).toBeLessThan(3_000);
   expect(cold.audioChunks).toBeGreaterThan(0);
