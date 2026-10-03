@@ -19,6 +19,7 @@ export function ProfileDrawer(props: {
   const [loading, setLoading] = createSignal(initiallyLoading);
   const [photo, setPhoto] = createSignal<string | null>(null);
   const [mood, setMood] = createSignal<Mood | undefined>(undefined);
+  const [contactName, setContactName] = createSignal(untrack(() => props.options.contactName));
   const emptyMessage = 'No information shared with you yet.';
   const [status, setStatus] = createSignal(initiallyLoading ? 'Loading profile…' : emptyMessage);
   const [failed, setFailed] = createSignal(false);
@@ -40,7 +41,21 @@ export function ProfileDrawer(props: {
   // retain that presentation's signal through every asynchronous continuation.
   onSettled(() => {
     const { options, signal } = untrack(() => ({ options: props.options, signal: props.signal }));
-    if (signal.aborted || options.loadProfile === undefined) {
+    if (signal.aborted) {
+      return;
+    }
+    if (options.loadContactName !== undefined) {
+      void options.loadContactName(signal).then(
+        name => {
+          if (!disposed && !signal.aborted && name !== undefined) {
+            setContactName(name);
+          }
+        },
+        // A missing/unavailable name keeps the generic attribution, not a profile error.
+        () => undefined,
+      );
+    }
+    if (options.loadProfile === undefined) {
       return;
     }
     void options.loadProfile(signal).then(
@@ -110,7 +125,7 @@ export function ProfileDrawer(props: {
           ×
         </button>
       </header>
-      <Show when={props.options.contactName}>{name => <p class="profile-drawer-contact">{name()}</p>}</Show>
+      <Show when={contactName()}>{name => <p class="profile-drawer-contact">{name()}</p>}</Show>
       <div class="profile-drawer-portrait">
         <Show when={mood()}>{value => <MoodRing mood={value()} size={160} animated />}</Show>
         <div class={['profile-drawer-avatar', { 'profile-drawer-avatar-empty': !loading() && photo() === null }]}>
@@ -142,11 +157,16 @@ export function ProfileDrawer(props: {
         {status()}
       </p>
       <p class="profile-drawer-attribution">
-        {props.options.loadProfile === undefined
-          ? `Shown in ${props.options.productId}. Shared information will appear here after it reaches this host.`
-          : props.options.contactName === undefined
-            ? `Shown by ${props.options.productId}. Seity profile content is self-described; dot.li does not verify it.`
-            : `Shared with you over Chat by ${props.options.contactName} · shown in ${props.options.productId}. Profile content is self-described; the host confirms who sent it, not who it depicts.`}
+        {props.options.loadProfile === undefined ? (
+          `Shown in ${props.options.productId}. Shared information will appear here after it reaches this host.`
+        ) : contactName() === undefined ? (
+          `Shown by ${props.options.productId}. Seity profile content is self-described; dot.li does not verify it.`
+        ) : (
+          <>
+            Shared with you over Chat by {contactName()} · shown in {props.options.productId}. Profile content is
+            self-described; the host confirms who sent it, not who it depicts.
+          </>
+        )}
       </p>
     </Dialog>
   );

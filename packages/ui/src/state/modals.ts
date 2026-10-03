@@ -25,7 +25,6 @@ export interface ModalButton<R extends string> {
 
 export interface ModalChoice<R extends string> {
   label: string;
-  detail: string;
   result: R;
 }
 

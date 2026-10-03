@@ -27,6 +27,7 @@ import { createLocaleSubscribe } from './Locale.js';
 import { createAuthStateChanged } from './AuthState.js';
 import { createChatPlatform } from './Chat.js';
 import { createProfilePlatform } from './Profile.js';
+import type { NativeChatContactsDirectory } from './Contacts.js';
 import type { ContactAvatarOverlay } from '../profile/avatar-overlay.js';
 import { createSessionStoreAdapters } from './SessionStore.js';
 import { createUserConfirmationAdapters } from './UserConfirmation.js';
@@ -44,6 +45,7 @@ export interface CreateHostCallbacksOptions {
   /** Retires Profile presentations and loads with the native connection. */
   profileSignal?: AbortSignal;
   contacts?: Required<ContactsPlatform>;
+  contactsDirectory?: NativeChatContactsDirectory;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -57,6 +59,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     contactAvatars,
     profileSignal,
     contacts,
+    contactsDirectory,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -92,7 +95,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     // Any product may ask the host to show a profile it references; the
     // drawer attributes it to the product and returns nothing to it. Placed
     // contact avatars are drawn on the frame's own host layer.
-    profile: createProfilePlatform(contactAvatars, profileSignal),
+    profile: createProfilePlatform(contactAvatars, profileSignal, contactsDirectory),
     ...(contacts === undefined ? {} : { contacts }),
   };
 }

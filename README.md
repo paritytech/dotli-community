@@ -570,6 +570,8 @@ Solid host picker cancels when its connection closes or the session, roster, wal
 a selection before returning a contact handle. Product prompts have connection-owned modal scopes; authentication,
 private storage and attachment custody stay with the one page core.
 
+Picker rows show verified contact names, with a generic label for unnamed contacts; raw account IDs are not displayed.
+
 The multi-select picker opens with the current audience checked, preserves selections while searching, and applies them
 only with **Use selection**. Confirming no checked contacts removes everyone; **Cancel**, Escape, and the backdrop leave
 the audience unchanged. The original single-contact picker remains available.
@@ -641,7 +643,10 @@ depicts.
 Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
 contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not
 claim the contact has never shared: information may not have reached this host yet. Availability stays private from the
-requesting product, whose completion reply is the same for shared and empty profiles.
+requesting product, whose completion reply is the same for shared and empty profiles. When a product-specific Chat name
+is unavailable, the drawer resolves it from the same wallet- and People-network-bound verified directory used by contact
+labels. This lookup never delays opening the drawer or returns the name to the requesting product. Missing or
+unavailable directory names retain generic attribution.
 
 ## Sandbox API Checker
 

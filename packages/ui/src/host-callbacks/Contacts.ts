@@ -365,7 +365,6 @@ async function showContactPicker(
         const name = contact.username?.trim();
         return {
           label: name === undefined || name === '' ? 'Chat contact' : name,
-          detail: contact.peerIdentity,
           result: contact.peerIdentity,
         };
       }),

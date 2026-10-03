@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PlacedAvatar, ProductContext } from '@parity/truapi-host';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
+import type { NativeChatContactsSnapshot, PlacedAvatar, ProductContext } from '@parity/truapi-host';
 import { fromHex } from '@dotli/shared';
 import { createContactAvatars, createProfilePlatform } from '../src/host-callbacks/Profile.js';
+import { NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import {
   InvalidProfileReferenceError,
   openSeityBlob,
@@ -54,6 +55,26 @@ async function settle(): Promise<void> {
   await vi.waitFor(() => {
     expect(drawer()?.querySelector('.spinner')).toBeNull();
   });
+}
+
+const walletPublicKey = `0x${'11'.repeat(32)}` as const;
+const genesisHash = `0x${'55'.repeat(32)}` as const;
+const contactIdentity = new Uint8Array(32).fill(0xab);
+const contactSnapshot: NativeChatContactsSnapshot = {
+  walletPublicKey,
+  genesisHash,
+  contacts: [{ peerIdentity: `0x${'ab'.repeat(32)}`, username: 'alice.paseo' }],
+};
+
+function contactDirectory(
+  read: () => Promise<NativeChatContactsSnapshot> = () => Promise.resolve(contactSnapshot),
+): NativeChatContactsDirectory {
+  const directory = new NativeChatContactsDirectory(() => true);
+  directory.bind({ getNativeChatContacts: read, notifyContactsChanged: () => undefined }, walletPublicKey, genesisHash);
+  onTestFinished(() => {
+    directory.dispose();
+  });
+  return directory;
 }
 
 describe('Seity blob references', () => {
@@ -171,6 +192,73 @@ describe('profile drawer', () => {
 
     expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
   });
+  it.each([false, true])('resolves the wallet-wide name outside Chat, shared profile: %s', async shared => {
+    mocks.bitswapGet.mockResolvedValue(fromHex(VECTOR.ciphertext));
+    await createProfilePlatform(null, undefined, contactDirectory()).presentContactProfile(
+      { ...product, productId: 'testing-seity-contacts.paseo' },
+      {
+        peerIdentity: contactIdentity,
+        ...(shared ? { shared: { reference: VECTOR.reference, sharedAt: 1_700_000n } } : {}),
+      },
+    );
+    await settle();
+    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('alice.paseo');
+    expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
+    if (shared) {
+      expect(drawer()?.querySelector('.profile-drawer-attribution')?.textContent).toContain('alice.paseo');
+      expect(drawer()?.querySelector('img')).not.toBeNull();
+    } else {
+      expect(drawer()?.querySelector('img')).toBeNull();
+    }
+  });
+
+  it('opens without waiting for the directory and discards its name after another presentation', async () => {
+    const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
+    const platform = createProfilePlatform(
+      null,
+      undefined,
+      contactDirectory(() => pending.promise),
+    );
+    await platform.presentContactProfile(product, { peerIdentity: contactIdentity });
+    expect(drawer()).not.toBeNull();
+    await platform.presentContactProfile(product, { peerIdentity: new Uint8Array(32), username: 'bob.paseo' });
+    pending.resolve(contactSnapshot);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(drawer()?.querySelector('.profile-drawer-contact')?.textContent).toBe('bob.paseo');
+    expect(drawer()?.textContent).not.toContain('alice.paseo');
+  });
+
+  it('never displays a name from an invalidated directory lookup', async () => {
+    const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
+    const directory = contactDirectory(() => pending.promise);
+    await createProfilePlatform(null, undefined, directory).presentContactProfile(product, {
+      peerIdentity: contactIdentity,
+    });
+    directory.invalidate();
+    pending.resolve(contactSnapshot);
+    await vi.advanceTimersByTimeAsync(50);
+    expect(drawer()).not.toBeNull();
+    expect(drawer()?.textContent).not.toContain('alice.paseo');
+    expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
+  });
+
+  it.each(['walletPublicKey', 'genesisHash'] as const)(
+    'keeps the profile available without attributing another %s snapshot',
+    async field => {
+      mocks.bitswapGet.mockResolvedValue(fromHex(VECTOR.ciphertext));
+      const directory = contactDirectory(() =>
+        Promise.resolve({ ...contactSnapshot, [field]: `0x${'77'.repeat(32)}` }),
+      );
+      await createProfilePlatform(null, undefined, directory).presentContactProfile(product, {
+        peerIdentity: contactIdentity,
+        shared: { reference: VECTOR.reference, sharedAt: 1_700_000n },
+      });
+      await settle();
+      expect(drawer()?.querySelector('img')).not.toBeNull();
+      expect(drawer()?.textContent).not.toContain('alice.paseo');
+      expect(drawer()?.textContent).not.toMatch(ADDRESS_LIKE);
+    },
+  );
 
   it('rejects an unparseable contact reference without opening UI', async () => {
     await expect(

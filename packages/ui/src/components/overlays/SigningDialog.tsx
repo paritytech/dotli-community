@@ -23,8 +23,8 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   const [password, setPassword] = createSignal('');
   const [query, setQuery] = createSignal('');
   const [selected, setSelected] = createSignal(new Set(view.selection?.selected));
-  const matches = (choice: { label: string; detail: string }): boolean =>
-    `${choice.label} ${choice.detail}`.toLowerCase().includes(query().trim().toLowerCase());
+  const matches = (choice: { label: string }): boolean =>
+    choice.label.toLowerCase().includes(query().trim().toLowerCase());
   let input: HTMLInputElement | undefined;
   let firstChoice: HTMLButtonElement | undefined;
 
@@ -126,10 +126,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                           settleModal(id, choice.result);
                         }}
                       >
-                        <span class="contacts-picker-text">
-                          <span>{choice.label}</span>
-                          <span class="contacts-picker-identity">{choice.detail}</span>
-                        </span>
+                        <span class="contacts-picker-text">{choice.label}</span>
                       </button>
                     }
                   >
@@ -149,10 +146,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                             setSelected(next);
                           }}
                         />
-                        <span class="contacts-picker-text">
-                          <span>{choice.label}</span>
-                          <span class="contacts-picker-identity">{choice.detail}</span>
-                        </span>
+                        <span class="contacts-picker-text">{choice.label}</span>
                       </label>
                     )}
                   </Show>
