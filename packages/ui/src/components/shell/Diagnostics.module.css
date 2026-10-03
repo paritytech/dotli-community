@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The diagnostics' links, side by side at the bottom of the column, level
-   with Clear all caches in the column opposite. */
-
 .links {
   gap: 8px;
   margin-top: auto;

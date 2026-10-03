@@ -16,7 +16,6 @@ import type { CSSModulesOptions } from 'vite';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 
-/** The scoped name of class `local` in the module at `file`. */
 function scopedClassName(local: string, file: string, production: boolean): string {
   const path = file.replace(/\?.*$/, '');
   const hash = createHash('sha256')
@@ -28,7 +27,7 @@ function scopedClassName(local: string, file: string, production: boolean): stri
   return `${basename(path).replace(/\.module\.css$/, '')}_${local}_${hash.slice(0, 4)}`;
 }
 
-/** `css.modules` for a Vite or Astro config. Production naming follows NODE_ENV at transform time. */
+/** Production naming follows NODE_ENV at transform time. */
 export function cssModules(): CSSModulesOptions {
   return {
     localsConvention: 'camelCaseOnly',

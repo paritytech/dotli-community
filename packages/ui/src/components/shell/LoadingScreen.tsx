@@ -14,7 +14,6 @@ import s from './LoadingScreen.module.css';
  * once it has. It fades while the screen is dismissed and renders nothing
  * once it is gone (the `"loading"` app root disposed): the island stays on
  * the page, outside `#app`.
- * The petals cycle in CSS (LoadingScreen.module.css).
  */
 export function LoadingScreen(): JSX.Element {
   // One selector per field, so a line is only written when it changes:

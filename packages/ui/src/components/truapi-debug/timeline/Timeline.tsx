@@ -1,17 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The Timeline: one column per swimlane, each a sticky header over an SVG of
-// rails, lifecycle ticks and request/response boxes, drawn from the geometry
-// `buildTimeline` makes.
-//
 // Lanes are keyed by lane key, and rails, ticks and boxes by their seq. So as
 // events stream in, a redraw moves, resizes and recolours the nodes already
 // there: the box under the cursor stays the same node, its hover and tooltip
 // stay up, and a click that started on it still lands on it.
-//
-// The selection is reactive: the box that holds the selected seq carries
-// `data-selected`. A click on a rail, tick or box hands its seq to `onSelect`.
 
 import { createMemo, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';

@@ -6,12 +6,8 @@ import type { JSX } from '@solidjs/web';
 import s from './ContactIcon.module.css';
 
 /**
- * A contact's round icon, or the first letter of its name when there is no
- * usable image. The icon string is product-supplied, so it only ever
- * becomes an `img.src`, never markup.
- *
- * Both forms carry `data-testid="chat-room-icon"`, and the letter also
- * carries `data-fallback`.
+ * The icon string is product-supplied, so it only ever becomes an `img.src`,
+ * never markup.
  */
 export function ContactIcon(props: { name: string; icon: string }): JSX.Element {
   // The icon that failed to load, so a new icon from the product gets its

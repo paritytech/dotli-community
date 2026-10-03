@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel list view. A row carries its state as
-   data-selection (selected or paired) and data-system, a tag its kind as data-kind,
-   a layer badge its layer as data-layer and a pending badge data-slow. */
+/* dot.li — TrUAPI debug panel list view */
 
 .list {
   min-height: 0;
@@ -40,7 +38,6 @@
   background: var(--td-paired);
 }
 
-/* The cells of a row. */
 .time,
 .arrowIn,
 .arrowOut,
@@ -114,7 +111,6 @@
   font-size: 10.5px;
 }
 
-/* The layer badge of a system row. */
 .layer {
   display: inline-flex;
   align-items: center;

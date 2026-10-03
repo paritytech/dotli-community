@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel "What is this?" block explaining a system
-   event. Native <details>/<summary> keep keyboard and AT support, so the
-   open state is the native `open` attribute. */
+/* dot.li — TrUAPI debug panel "What is this?" block. Native <details> keeps
+   keyboard and AT support, so the open state is the native `open` attribute. */
 
 .explanation {
   margin: 6px 0 10px;

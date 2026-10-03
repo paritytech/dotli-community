@@ -196,8 +196,6 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
  * from the saved settings, once the store is seeded. Each opening mounts it
  * afresh (the Popover remounts its content per opening), so its draft starts
  * from what is saved; later writes to the store do not remount it mid-edit.
- * In a sheet (`data-sheet`) the columns stack and the footer pins to the
- * sheet's bottom edge.
  */
 export function SettingsContent(): JSX.Element {
   const popover = usePopover();

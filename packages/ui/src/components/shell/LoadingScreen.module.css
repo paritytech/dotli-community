@@ -1,15 +1,12 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The loading screen (`#app-loading`). It sits outside `#app`, so whatever
-   replaces `#app`'s content never takes it along, and is laid over the
-   content area, where `#app` is.
+/* It sits outside `#app`, so whatever replaces `#app`'s content never takes it
+   along.
 
-   Positioned the way a browser positions its own status pages: a bounded
-   column starting in the upper part of the viewport rather than floating in
-   the dead centre. Chrome's uses `margin: 14vh auto 0` with a 600px cap, and
-   sitting above the midline means the text does not move when a second line
-   wraps in. */
+   Positioned like a browser's own status pages: a bounded column in the upper
+   part of the viewport (Chrome uses `margin: 14vh auto 0` with a 600px cap), so
+   the text does not move when a second line wraps in. */
 .screen {
   position: absolute;
   top: var(--topbar-height);
@@ -28,13 +25,11 @@
   text-align: center;
 }
 
-/* The landing page hides the topbar and takes the page from the top, and the
-   loading screen before it does too. */
 :global(body[data-landing]) .screen {
   top: 0;
 }
 
-/* Fading out once the app has loaded (loading-controller.ts dismisses it). */
+/* loading-controller.ts dismisses the screen. */
 .screen[data-dismissing] {
   opacity: 0;
   pointer-events: none;
@@ -43,7 +38,6 @@
 
 .logo {
   box-sizing: border-box;
-  /* The desktop `gap-10` between the logo and the copy below it. */
   margin: 0 0 40px;
   padding: 0;
   transition: opacity 0.8s ease;
@@ -162,10 +156,8 @@
   }
 }
 
-/* The loading text ranks by size, weight, and family, never by contrast:
-   every string here has to clear 4.5:1 against the page. Dimming with
-   `opacity` is what used to sink the whole block to 1.8-3.2:1, so these are
-   solid colors. */
+/* Every string here has to clear 4.5:1 against the page, so these are solid
+   colors rather than `opacity` dimming. */
 .pct {
   min-width: 3ch;
   font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
@@ -175,7 +167,6 @@
   color: var(--neutral-solid);
 }
 
-/* Text block: the phase label and the terminal log. */
 .text {
   display: flex;
   flex-direction: column;
@@ -256,7 +247,6 @@
   visibility: visible;
 }
 
-/* Wraps before it reaches the window edges on a narrow viewport. */
 .warning-text {
   max-width: 46ch;
   text-align: left;

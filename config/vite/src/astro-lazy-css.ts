@@ -1,28 +1,21 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Lazy chunks' CSS under Astro. Astro gives a page every stylesheet it finds
-// by walking up from each CSS module to the page, through dynamic imports as
-// well as static ones, so a chunk the page imports on demand has its CSS
-// linked (or inlined) at boot. Astro has no option for this, and a dynamic
-// import is the only way to reach such a module. Under plain Vite a
-// dynamically imported chunk loads its own CSS before it runs, and this
-// brings that back.
+// Lazy chunks' CSS under Astro. Astro links or inlines at boot every stylesheet
+// it finds walking up from each CSS module to the page, through dynamic imports
+// too, so a chunk imported on demand has its CSS loaded up front. Astro has no
+// option for this. Under plain Vite such a chunk loads its own CSS with it, and
+// this brings that back.
 //
-// It leans on three Astro internals, and the build fails if any of them
-// stops holding:
+// It leans on three Astro internals, and the build fails if one stops holding:
 // - The plugin `astro:rollup-plugin-build-css` exists, with a plain
 //   `generateBundle` (checked when the config resolves).
-// - That plugin reads the module graph through `this.getModuleInfo`, so the
-//   static-imports-only view applies. If it stops, the lazy sheets are
-//   linked or inlined at boot again, and the build fails on a page that
-//   links one or inlines its content (an inlined sheet also leaves the
-//   output, which fails first).
+// - That plugin reads the module graph through `this.getModuleInfo`. If it
+//   stops, the lazy sheets are linked or inlined at boot again.
 // - Its orphan rule keeps a sheet a chunk lists in `importedAssets`. If it
-//   stops, the lazy sheets are dropped, and the build fails on a sheet
-//   missing from the output.
-// The build also fails when a class the prerendered pages use is defined
-// only in a lazy sheet, which would paint unstyled until that chunk loads.
+//   stops, the lazy sheets are dropped.
+// The build also fails when a class the prerendered pages use is defined only
+// in a lazy sheet, which would paint unstyled until that chunk loads.
 
 import { readdir, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -32,7 +25,6 @@ import type { Plugin, Rolldown } from 'vite';
 
 type OutputChunk = Rolldown.OutputChunk;
 
-/** The Astro plugin that hands each page its stylesheets. */
 const ASTRO_CSS_PLUGIN = 'astro:rollup-plugin-build-css';
 
 type GenerateBundle = (this: unknown, ...args: unknown[]) => unknown;
@@ -45,7 +37,6 @@ interface ContextLike {
   getModuleInfo(id: string): ModuleInfoLike | null;
 }
 
-/** The class names a stylesheet's selectors name. */
 function classesOf(css: string): Set<string> {
   return new Set([...css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map(match => match[1] ?? ''));
 }
@@ -55,7 +46,6 @@ function withoutComments(css: string): string {
   return css.replaceAll(/\/\*[\s\S]*?\*\//g, '').trim();
 }
 
-/** The HTML files under `dir`, at any depth. */
 async function htmlFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { recursive: true, withFileTypes: true });
   return entries
@@ -126,7 +116,6 @@ function withoutDynamicImporters(info: ModuleInfoLike): ModuleInfoLike {
   });
 }
 
-/** The plugin context Astro's stylesheet walk runs with. */
 function staticImportsOnly(context: ContextLike): ContextLike {
   return new Proxy(context, {
     get: (target, key) => {
@@ -152,9 +141,7 @@ function staticImportsOnly(context: ContextLike): ContextLike {
  *   handling: the page's stylesheets hold its CSS, and its own copy goes.
  */
 export function astroLazyCss(): AstroIntegration {
-  /** The CSS file names of the client chunks the page loads on demand. */
   const lazy = new Set<string>();
-  /** Every client stylesheet's content, by file name. */
   const sheets = new Map<string, string>();
   /** Records the bundle's stylesheets, as Astro is yet to inline or drop any, and as written. */
   const recordSheets = (bundle: Rolldown.OutputBundle): void => {

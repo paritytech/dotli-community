@@ -1,9 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel drag handles: the panel edge (data-dock,
-   data-collapsed) and the splitter between the views and the detail pane
-   (data-layout, data-dragging). */
+/* dot.li — TrUAPI debug panel drag handles */
 
 .handle {
   cursor: ns-resize;
@@ -43,7 +41,6 @@
   position: absolute;
   inset: 0 -4px;
 }
-/* List above detail: the splitter is a row between them. */
 .splitter[data-layout='stacked'] {
   cursor: row-resize;
   border-left: none;

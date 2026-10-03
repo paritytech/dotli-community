@@ -1,19 +1,16 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A topbar dropdown menu (Menu) and its rows (MenuRow). The menu shows
-   with data-open, fading in and scaling up with a slight overshoot, and
-   back out: `display` animates too (allow-discrete), and @starting-style
-   gives the way in its first frame.
-
-   The base rules are wrapped in :where(), so a consumer's class (the theme
-   menu's width) wins over them whatever order the stylesheets load in. */
+/* The base rules are wrapped in :where(), so a consumer's class (the theme
+   menu's width) wins over them whatever order the stylesheets load in.
+   `display` animates too (allow-discrete), and @starting-style gives the way in
+   its first frame. */
 
 :where(.menu) {
   display: none;
-  /* Layout lives on the base rule, not on [data-open], so it holds through
-     the close transition while allow-discrete keeps `display: flex`.
-     Otherwise the rows briefly stack sideways on the way out. */
+  /* Layout lives on the base rule, not on [data-open], so it holds through the
+     close transition while allow-discrete keeps `display: flex`. Otherwise the
+     rows briefly stack sideways on the way out. */
   flex-direction: column;
   gap: 2px;
   position: fixed;

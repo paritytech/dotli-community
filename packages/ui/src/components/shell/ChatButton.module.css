@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The chat button's unread count, in its top right corner. */
-
 .unread {
   position: absolute;
   top: 6px;

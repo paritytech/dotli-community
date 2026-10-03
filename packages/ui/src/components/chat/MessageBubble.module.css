@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One message row: a bubble, at the end of the row for the user's own
-   messages, with its time under the content. */
-
 .row {
   display: flex;
   box-sizing: border-box;
@@ -31,7 +28,6 @@
   background: var(--fill-strong);
 }
 
-/* Reactions and messages this host can't draw read as a quiet line. */
 .bubble[data-event] {
   background: transparent;
   color: var(--text-muted);
@@ -39,7 +35,6 @@
   font-style: italic;
 }
 
-/* A custom message gets a fixed width for its tree to lay out in. */
 .bubble[data-custom] {
   width: 85%;
   max-width: 85%;

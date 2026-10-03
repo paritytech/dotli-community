@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel detail sections: a section title, the one-line
-   summary of an event and its raw payload. */
+/* dot.li — TrUAPI debug panel detail sections */
 
 .title {
   color: var(--td-fg-dim);

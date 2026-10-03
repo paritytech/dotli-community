@@ -5,9 +5,9 @@
 //
 // Rebuilt only when `revision` changes, which the panel bumps on user actions
 // (selection, a filter change that hides or shows the selected event, tab
-// swap, clear, mount). Incoming events never
-// touch it: rebuilding under traffic tore down an open "What is this?" block
-// and dropped clicks inside the pane between pointerdown and click.
+// swap, clear, mount). Incoming events never touch it: rebuilding under
+// traffic tore down an open "What is this?" block and dropped clicks inside
+// the pane between pointerdown and click.
 //
 // So the pane renders from a snapshot (the event, its group, the view) taken
 // untracked when the revision changes. The components below it get plain
@@ -21,7 +21,6 @@ import { SingleDetail } from './detail/SingleDetail.js';
 import type { PanelView } from './Tabs.js';
 import s from './DetailPane.module.css';
 
-/** What the pane shows. */
 type Content =
   | { kind: 'empty'; message: string }
   | {
@@ -31,7 +30,6 @@ type Content =
       first: StoredEvent | undefined;
     };
 
-/** The content, and the revision it was taken at. */
 type Snapshot = Content & { revision: number };
 
 function contentOf(store: EventStore, selectedSeq: EventSeq | null, view: PanelView): Content {
@@ -52,14 +50,12 @@ function contentOf(store: EventStore, selectedSeq: EventSeq | null, view: PanelV
 }
 
 export function DetailPane(props: {
-  /** Bumped by the panel whenever the pane must be rebuilt. */
   revision: number;
   selectedSeq: EventSeq | null;
   view: PanelView;
   store: EventStore;
   /** A full-width view (Resolution, Archive) is showing. */
   hidden: boolean;
-  /** A sibling pill was clicked. */
   onSelectPair: (seq: EventSeq) => void;
 }): JSX.Element {
   // The revision is the memo's one tracked read, so it alone decides when the

@@ -26,7 +26,6 @@ function panel(): HTMLElement {
   return byId(VERIFICATION_TOOLTIP_ID);
 }
 
-// Open: the surface carries data-open and the button says it is expanded.
 function isOpen(): boolean {
   return (
     panel().id === 'verification-tooltip' &&

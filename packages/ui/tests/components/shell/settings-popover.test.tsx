@@ -392,7 +392,6 @@ function expectPopoverMatches(settings: Settings): void {
   expectSettingsColumn(nth(columns.children, 0), settings);
   expectDiagnosticsColumn(nth(columns.children, 1), settings.debugOn);
 
-  // The footer: a divider, the untouched draft's disabled Save & Apply, and the reload warning.
   expect(tags(footer)).toEqual(['DIV', 'DIV', 'P']);
   expect(footer.children[0]?.childElementCount).toBe(0);
   const apply = footer.children[1]?.children[0] as HTMLButtonElement;

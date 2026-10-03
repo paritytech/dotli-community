@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The URL pill's shield, coloured by how the site was loaded (data-state),
-   and the surface of its explainer, a Popover under it. */
-
 /* Pulled into the pill's padding, so the 44px target does not widen it. */
 .wrap {
   position: relative;
@@ -38,7 +35,6 @@
 .shield[data-state='verified'] {
   color: var(--success);
 }
-/* One glyph shows: the verified one, unless the site is trusted. */
 .glyph {
   display: none;
   width: 14px;

@@ -1,10 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A button inside a chat message. data-variant picks the fill: primary is
-   the inverse surface, secondary and text are drawn in the chat palette
-   that product content uses. A product's layout modifiers arrive as inline
-   styles and win over the padding and margin here. */
+/* A product's layout modifiers arrive as inline styles and win over the padding
+   and margin here. */
 
 .button {
   box-sizing: border-box;

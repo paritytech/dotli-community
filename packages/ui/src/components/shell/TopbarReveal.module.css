@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The skip link back to the auto-hidden topbar: above the viewport until
-   it has focus, then centred under where the bar sits. */
-
 .reveal {
   position: fixed;
   top: -100px;

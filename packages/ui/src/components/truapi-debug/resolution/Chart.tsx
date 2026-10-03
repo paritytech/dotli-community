@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The Resolution chart: one row per chain role, each a run of phase blocks on
-// a time axis shared by every row.
-//
 // Rows are keyed by role, and blocks and ticks by position (a row only ever
 // gains blocks at its end, and the axis always has the same ticks). So while
 // a load is in flight a redraw moves and relabels the nodes already there,

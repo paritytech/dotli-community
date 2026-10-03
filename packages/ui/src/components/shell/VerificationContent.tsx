@@ -12,8 +12,7 @@ import s from './VerificationContent.module.css';
 /**
  * The verification explainer's body (VerificationShield), its own chunk: how
  * each way of loading a site reads, the pill's current one marked
- * (`data-current`). Its heading is left out of a sheet, whose header names
- * it.
+ * (`data-current`).
  */
 export function VerificationContent(): JSX.Element {
   const popover = usePopover();

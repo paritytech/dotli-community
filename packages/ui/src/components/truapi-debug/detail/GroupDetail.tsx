@@ -1,11 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Timeline-view detail: every member of the clicked box's requestId or
-// flowId group, stacked chronologically, each with its decoded chain
-// annotations (if any) and its payload. All the members show together, so
-// there are no pills: clicking a box means "show me the whole handshake",
-// not "pick one message".
+// Clicking a box means "show me the whole handshake", so every member of the
+// group shows together and there are no pills.
 
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -29,7 +26,6 @@ import s from './GroupDetail.module.css';
 
 export function GroupDetail(props: {
   event: StoredEvent;
-  /** The event's group, in arrival order. */
   group: StoredEvent[];
   first: StoredEvent | undefined;
 }): JSX.Element {

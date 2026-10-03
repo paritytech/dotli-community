@@ -6,30 +6,19 @@ import type { JSX } from '@solidjs/web';
 import s from './Menu.module.css';
 
 export interface MenuProps {
-  /** The surface's id, which its trigger's `aria-controls` names. */
   id: string;
-  /** Whether it shows, as `data-open`. */
   open: boolean;
   /** Receives the surface, for createPopover's `menu` mode. */
   ref: (el: HTMLDivElement) => void;
-  /** The menu's accessible name. */
   label?: string;
-  /** The id of the element that names it, in place of `label`. */
   labelledBy?: string;
   onClick?: (ev: MouseEvent) => void;
-  /** A class of the consumer's own, for its width. */
   class?: string | undefined;
-  /** Rendered as `data-testid`. */
   testId?: string;
   children: JSX.Element;
 }
 
-/**
- * A topbar dropdown menu (`role="menu"`): under the topbar at its right
- * edge, fading and scaling in while `open`. Its rows are MenuRows. Keys,
- * focus and dismissal are createPopover's `menu` mode, which the consumer
- * wires to the surface it receives through `ref`.
- */
+/** Keys, focus and dismissal are createPopover's `menu` mode, which the consumer wires to the surface it receives through `ref`. */
 export function Menu(props: MenuProps): JSX.Element {
   return (
     <div
@@ -54,19 +43,11 @@ export function Menu(props: MenuProps): JSX.Element {
 export interface MenuRowProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'class' | 'role'> {
   /** `menuitemradio` for one of a set of choices, with `checked`. */
   role?: 'menuitem' | 'menuitemradio';
-  /** A choice's `aria-checked`. */
   checked?: boolean;
-  /** A class of the consumer's own. */
   class?: string | undefined;
-  /** Rendered as `data-testid`. */
   testId?: string;
 }
 
-/**
- * A row of a Menu: an icon and a label, taking roving focus as the menu
- * moves it (`tabindex="-1"`). Every other prop (handlers, `data-*`) goes to
- * the `<button>`.
- */
 export function MenuRow(props: MenuRowProps): JSX.Element {
   const row = omit(props, 'role', 'checked', 'class', 'testId', 'children');
   return (

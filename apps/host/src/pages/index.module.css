@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* `#app`, where the host's pages go (a product frame, an error page): the
-   content area below the topbar, centring what it holds. */
 .app {
   display: flex;
   align-items: center;
@@ -16,7 +14,6 @@
   text-align: center;
 }
 
-/* The landing page (the LandingPage island, beside `#app`) takes the page. */
 :global(body[data-landing]) .app {
   display: none;
 }

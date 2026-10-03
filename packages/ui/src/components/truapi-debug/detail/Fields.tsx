@@ -1,8 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Key/value lists of the TrUAPI debug panel detail pane.
-
 import type { JSX } from '@solidjs/web';
 import { ridColor } from '@dotli/truapi-debug';
 import s from './Fields.module.css';
@@ -24,7 +22,6 @@ export function Field(props: { name: string; children: JSX.Element }): JSX.Eleme
   );
 }
 
-/** A requestId or flowId: its short coloured badge, then the whole id. */
 export function IdValue(props: { id: string }): JSX.Element {
   return (
     <>
@@ -36,7 +33,6 @@ export function IdValue(props: { id: string }): JSX.Element {
   );
 }
 
-/** An id or hash among the chain annotations. */
 export function ChainCode(props: { children: string }): JSX.Element {
   return <code class={s['code']}>{props.children}</code>;
 }

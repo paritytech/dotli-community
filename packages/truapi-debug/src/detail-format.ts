@@ -1,14 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Pure text helpers for the detail pane of the TrUAPI debug panel: times,
-// latencies, the sibling pills of the single-event detail, the "What is
-// this?" explanation and the chain annotation fields.
-//
-// Solid-free: consumed by the Solid truapi-debug components in
-// `packages/ui/src/components/truapi-debug/`, so it must not import
-// `@dotli/ui` or `solid-js`. These functions return plain data, never
-// markup. The components render it as JSX text.
+// Solid-free: it must not import `@dotli/ui` or `solid-js`. Returns plain
+// data, never markup. The components render it as JSX text.
 
 import { decodeChainAnnotations, formatChainLabel, type ChainAnnotations } from './chain-decode.js';
 import { summariseChainMessage } from './chain-summary.js';
@@ -34,17 +28,13 @@ export function formatLatency(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`;
 }
 
-/** "1 event", "3 events". */
 export function eventCountLabel(count: number): string {
   return `${String(count)} event${count === 1 ? '' : 's'}`;
 }
 
-/** A link from the single-event detail to another event of its group. */
 interface SiblingPill {
   seq: EventSeq;
-  /** The sibling's tag (or layer.event) and its offset from the shown event. */
   label: string;
-  /** Its seq and its offset from the start of the group. */
   title: string;
 }
 
@@ -79,7 +69,6 @@ export function groupDuration(first: StoredEvent | undefined, group: readonly St
   return formatLatency(last.receivedAt - first.receivedAt);
 }
 
-/** A run of text, either prose or a backticked identifier. */
 export interface InlineSegment {
   code: boolean;
   text: string;
@@ -137,25 +126,18 @@ function explanationBlock(paragraph: string): ExplanationBlock {
   return { kind: 'paragraph', segments: formatInlineCode(paragraph) };
 }
 
-/** One row of the chain annotation list. */
 interface ChainField {
   name: string;
   value: string;
-  /** An id or hash, shown as code. */
   code: boolean;
 }
 
 export interface ChainDetail {
-  /** What the message does, in one line, when it can be said. */
   summary: string | null;
   fields: ChainField[];
 }
 
-/**
- * The JSON-RPC correlation keys of a `remote_chain_*` message (genesisHash,
- * followSubscriptionId, operationId, blockHash, event tag, outcome) that are
- * buried inside the payload. Null for any other message.
- */
+/** The correlation keys buried in a `remote_chain_*` payload. Null for any other message. */
 export function chainDetail(tag: string, payload: unknown): ChainDetail | null {
   const ann = decodeChainAnnotations(tag, payload);
   if (ann === null) {

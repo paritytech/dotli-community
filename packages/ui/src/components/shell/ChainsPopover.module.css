@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The network popover's surface. */
-
 .popover {
   /* Fixed, not min-width: the bar strips grow as blocks arrive, and a
      shrink-to-fit surface widened with them while the visitor read it. */

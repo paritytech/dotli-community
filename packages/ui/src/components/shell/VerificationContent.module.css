@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The verification explainer's copy: its heading (left out of a sheet,
-   whose header names it) and a row per way of loading a site, the
-   current one marked "This site" (data-current). */
-
 .content {
   padding: 12px 14px;
 }

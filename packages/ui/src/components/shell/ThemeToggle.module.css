@@ -1,12 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The theme button's icon and its menu's options.
-
-   The icon follows <html data-theme-pref>, which the inline bootstrap
-   script sets before the island hydrates, so the build-time button already
-   shows the stored choice: the moon for dark, the sun for light, the
-   monitor for system. */
+/* The icon follows <html data-theme-pref>, which the inline bootstrap script sets
+   before the island hydrates, so the build-time button already shows the stored
+   choice. */
 
 .sun,
 .system {

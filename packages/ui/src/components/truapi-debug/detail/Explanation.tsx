@@ -42,7 +42,6 @@ export function Explanation(props: { event: StoredSystemEvent }): JSX.Element {
   );
 }
 
-/** Prose with its backticked identifiers as code. */
 function Inline(props: { segments: InlineSegment[] }): JSX.Element {
   return (
     <For each={props.segments}>

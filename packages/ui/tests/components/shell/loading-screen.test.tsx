@@ -185,7 +185,7 @@ describe('Loading screen island', () => {
     ctl.dismissLoading();
     await settle();
 
-    // Then: it is marked as fading.
+    // Then
     expect(screen.hasAttribute('data-dismissing')).toBe(true);
     expect(byId('loading-progress-pct').textContent).toBe('100%');
     expect(screen.isConnected).toBe(true);

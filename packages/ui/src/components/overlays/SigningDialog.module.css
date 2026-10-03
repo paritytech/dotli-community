@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The content of a queued ModalView: the icon, title, fields, notice, the
-   password input and the button row. Dialog.module.css styles the panel
-   and the backdrop around it. */
-
 .icon {
   display: flex;
   align-items: center;
@@ -75,7 +71,7 @@
   font-size: 0.75rem;
 }
 
-/* Wins over the mono color, as the legacy rule did by coming later. */
+/* Comes later, so it wins over the mono color. */
 .field[data-warning] .field-label,
 .field[data-warning] .field-value {
   color: var(--caution);
@@ -145,8 +141,6 @@
   background: var(--fill);
 }
 
-/* Between Cancel and the primary action: a lasting grant next to the
-   highlighted one-time grant. */
 .secondary {
   box-sizing: border-box;
   margin: 0;

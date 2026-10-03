@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel filter bar. The bar carries the panel's
-   placement as data-dock and hides itself on data-collapsed. */
+/* dot.li — TrUAPI debug panel filter bar */
 
 .filters {
   display: flex;
@@ -33,7 +32,6 @@
   margin-right: 2px;
 }
 
-/* Kind checkboxes: TrUAPI vs System. */
 .check {
   display: inline-flex;
   align-items: center;

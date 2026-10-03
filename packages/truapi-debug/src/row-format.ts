@@ -58,7 +58,6 @@ export function ridColor(rid: string): string {
   return `hsl(${String(hue)}, 65%, 65%)`;
 }
 
-/** What a TrUAPI tag does, from its suffix: the list and the detail pane colour the tag by it. */
 export type TagKind = 'request' | 'response' | 'subscription' | 'plain';
 
 export function tagKind(tag: string): TagKind {
@@ -88,8 +87,7 @@ export interface TruapiRowData {
 
 /**
  * Pure fields derived from a stored TrUAPI event for its list row: the
- * decoded chain label/summary plus the badge inputs. The caller renders
- * them as JSX text.
+ * decoded chain label/summary plus the badge inputs.
  */
 export function truapiRowData(ev: StoredTruapiEvent, pendingKey: string | null): TruapiRowData {
   const chain = decodeChainAnnotations(ev.tag, ev.payload);
@@ -131,7 +129,6 @@ export function systemRowData(ev: StoredSystemEvent): SystemRowData {
   };
 }
 
-/** How a list row relates to the selected event, if at all. */
 export type RowSelection = 'selected' | 'paired';
 
 /**

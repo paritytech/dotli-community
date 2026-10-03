@@ -1,10 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The host's top bar: a three-column grid (the home link, the URL bar, the
-   action group) fixed at the top. Its script sets its state: slid out by
-   the auto-hide (data-hidden), gone on the landing page (body[data-landing]), and
-   with a status line under it while offline (data-offline). */
+/* Its script sets data-hidden (the auto-hide slide), data-offline (a status line
+   under the bar) and body[data-landing] (hides it). */
 
 .topbar {
   position: fixed;

@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The topbar's URL bar, in the middle cell of the bar's grid: a pill with
-   the verification shield (an island) or, for a local product
-   (data-localhost, set by bindUrlPill), a terminal icon, then the name. */
+/* The shield is an island. A local product (data-localhost, set by bindUrlPill)
+   gets a terminal icon instead. */
 
 .url {
   grid-column: 2;

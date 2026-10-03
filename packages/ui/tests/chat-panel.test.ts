@@ -441,7 +441,6 @@ describe('chat panel', () => {
       value: { text: 'hi, I am the bot' },
     });
     await settle(() => byId('chat-panel-messages').textContent.includes('hi, I am the bot'));
-    // Messages carry no sender label above them: the row holds the bubble only.
     const botMessage = byTestId('chat-msg', byId('chat-panel-messages'));
     expect([...botMessage.children].map(child => child.getAttribute('data-testid'))).toEqual(['chat-msg-bubble']);
 

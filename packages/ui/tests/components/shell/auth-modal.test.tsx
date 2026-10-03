@@ -155,7 +155,6 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       break;
     }
     case 'mobile-qr': {
-      // Shown, the QR leads and the link follows. Hidden, the link leads and the toggle follows.
       const expectedTags = body.qrShown ? ['BUTTON', 'A', 'A'] : ['A', 'BUTTON', 'A'];
       expect(tags(qrBox)).toEqual(expectedTags);
       const openApp = query(qrBox, 'a:not(:has(canvas))', HTMLAnchorElement);

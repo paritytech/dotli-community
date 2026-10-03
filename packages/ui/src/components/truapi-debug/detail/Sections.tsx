@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Sections of the TrUAPI debug panel detail pane: titles, the one-line
-// summary, the chain annotations and the raw payload.
-
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { formatPayloadDetail, type ChainDetail } from '@dotli/truapi-debug';
@@ -26,7 +23,6 @@ export function Summary(props: { text: string }): JSX.Element {
   );
 }
 
-/** What a chain message does, titled, when it can be said in one line. */
 export function ChainSummary(props: { chain: ChainDetail | null }): JSX.Element {
   return (
     <Show when={props.chain?.summary}>
@@ -40,7 +36,6 @@ export function ChainSummary(props: { chain: ChainDetail | null }): JSX.Element 
   );
 }
 
-/** The correlation keys buried in a chain message's payload. */
 export function ChainFields(props: { chain: ChainDetail | null }): JSX.Element {
   return (
     <Show when={props.chain}>

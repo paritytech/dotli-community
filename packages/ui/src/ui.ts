@@ -3,13 +3,9 @@
 
 // dot.li Pure DOM UI helpers
 //
-// Error states, and the sandbox's retry screen. The loading screen lives in
-// loading-controller.ts and the landing page in components/landing/ (the
-// LandingPage island). No heavy dependencies and no Solid (the sandbox
-// imports this), kept in the eager bundle. The screens are built with
-// `createElement` and styled by ErrorPage.module.css and
-// RetryScreen.module.css. Text goes in as text nodes, so nothing a visitor
-// typed is ever parsed as markup.
+// No heavy dependencies and no Solid (the sandbox imports this), kept in the
+// eager bundle. Text goes in as text nodes, so nothing a visitor typed is ever
+// parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
 import s from './ErrorPage.module.css';
@@ -33,7 +29,6 @@ function clearPage(): void {
   setLandingPage(false);
 }
 
-/** A new `tag` element carrying the module classes in `classes`. */
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
   ...classes: (string | undefined)[]
@@ -88,7 +83,6 @@ function errorText(text: ErrorText): (string | Node)[] {
   });
 }
 
-/** The leading glyph: constant SVG markup in an `aria-hidden` box. */
 function glyphElement(svg: string, warning: boolean): HTMLElement {
   const glyph = el('div', s['glyph']);
   glyph.dataset['testid'] = 'error-page-glyph';
@@ -100,11 +94,7 @@ function glyphElement(svg: string, warning: boolean): HTMLElement {
   return glyph;
 }
 
-/**
- * Replace whatever the page shows with an error page holding `inner`. The
- * page carries `data-error-page`, which bridge.ts looks for when it clears a
- * stray one.
- */
+/** The page carries `data-error-page`, which bridge.ts looks for when it clears a stray one. */
 function mountErrorPage(inner: HTMLElement): void {
   const app = appElement();
   const page = el('div', s['page'], app === document.body ? s['standalone'] : undefined);
@@ -129,7 +119,6 @@ export interface ErrorPage {
   glyph?: 'warning';
 }
 
-/** One action button, `#id`, filled when it is the `primary` one. */
 function actionButton(action: ErrorAction, id: string, primary: boolean): HTMLButtonElement {
   const button = el('button', s['retry']);
   button.id = id;
@@ -152,7 +141,6 @@ function actionButton(action: ErrorAction, id: string, primary: boolean): HTMLBu
 
 /** Render a full-page error state, replacing whatever `#app` holds. */
 export function showErrorPage(page: ErrorPage): void {
-  // The page below replaces the loading screen and any page.
   clearPage();
   const { title, detail, glyph } = page;
   const tips = page.tips ?? [];
@@ -275,10 +263,6 @@ export function showNoContentError(label: string): void {
   setProductError();
 }
 
-/**
- * The sandbox's retry screen, shown in place of its error page while a failed
- * load runs again: the name, a spinner and a status line.
- */
 export function showRetryScreen(): void {
   const app = appElement();
   const screen = el('div', app === document.body ? retry['standalone'] : undefined);

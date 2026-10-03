@@ -1,14 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One toast. ToastStack passes its layout: stacked (piled on one grid
-   cell, newest in front, older cards nudged up and dimmed by --i, their
-   depth) or expanded (an item in a list). A single live toast keeps its
-   close button while stacked.
-
-   Toasts sit on the inverse surface: light on the dark theme, as they were
-   before themes reached them, and dark on the light theme. Muted text on
-   that surface is --inverse-fg mixed with transparency. */
+/* Toasts sit on the inverse surface: light on the dark theme and dark on the
+   light theme. Muted text on it is --inverse-fg mixed with transparency. */
 
 .card {
   display: flex;
@@ -39,14 +33,12 @@
   transition: opacity 0.2s ease;
 }
 
-/* Beyond the visible pile. */
 .card[data-hidden] {
   display: none;
 }
 
-/* The tile stays near-black in both themes: every toast icon strokes in
-   white, and callers may set their own tile color inline. It is part of
-   the icon, not of the theme. */
+/* The tile stays near-black in both themes: every toast icon strokes in white,
+   and callers may set their own tile color inline. */
 .icon {
   display: flex;
   flex-shrink: 0;
@@ -137,8 +129,7 @@ a.body:hover {
   color: var(--inverse-fg);
 }
 
-/* Stacked, only a single live toast shows its own close button. The stack's
-   close-all badge covers the rest. */
+/* The stack's close-all badge covers the other toasts. */
 .stacked:not(.single) .close {
   display: none;
 }

@@ -25,9 +25,7 @@ export function Filters(props: {
   filters: FilterState;
   /** Distinct product ids, sorted, `undefined` last. */
   products: readonly (string | undefined)[];
-  /** Where the panel sits. */
   placement: DockPosition;
-  /** A collapsed panel shows only its header. */
   collapsed: boolean;
   onChange: (next: FilterState) => void;
 }): JSX.Element {

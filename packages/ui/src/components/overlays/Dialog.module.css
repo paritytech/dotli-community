@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The dialog shell: a full-window backdrop that dims the page and centres
-   the panel. The panel's content is styled by the consumer. */
-
 .backdrop {
   position: fixed;
   inset: 0;

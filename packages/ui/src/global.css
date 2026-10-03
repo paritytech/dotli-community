@@ -1,14 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li global styles: design tokens and the page base.
-
-   Component styles live in CSS modules next to their components, and each
-   one resets its own elements. Nothing here resets elements. Colors are
-   semantic tokens: dark on :root, light under data-theme='light' on <html>
-   (set by the boot script in apps/host/src/pages/index.astro and by
-   theme-controller.ts). See docs/superpowers/specs/2026-10-02-css-palette.md
-   for how existing colors map onto them. */
+/* Design tokens and the page base. Nothing here resets elements, each module
+   resets its own. Dark is on :root, light under data-theme='light' on <html>,
+   set by the boot script in apps/host/src/pages/index.astro and by theme-
+   controller.ts. */
 
 :root {
   --text-strong: rgba(255, 255, 255, 0.95);
@@ -43,9 +39,9 @@
   --neutral-solid: #8f8f8f;
   --knob: rgba(255, 255, 255, 0.7);
 
-  /* The chat palette. A product's custom chat message names these colors
-     (FgPrimary, BgSurfaceNested, ...) and chat/custom-styles.ts writes them
-     into inline styles, which is why they are global. */
+  /* A product's custom chat message names these colors (FgPrimary,
+     BgSurfaceNested, ...) and chat/custom-styles.ts writes them into inline
+     styles, which is why they are global. */
   --chat-fg-primary: rgba(255, 255, 255, 0.92);
   --chat-fg-secondary: rgba(255, 255, 255, 0.6);
   --chat-fg-tertiary: rgba(255, 255, 255, 0.4);
@@ -56,13 +52,10 @@
   --chat-fg-error: #f87171;
   --chat-fg-warning: #fbbf24;
 
-  /* Layout tokens shared by every stylesheet and by the inline styles in JS.
-
-     The host sets `viewport-fit=cover`, so the viewport spans the whole display
-     and every edge needs its own inset. `env()` carries the 0px fallback here, so
-     rules in the stylesheets use the tokens bare. Inline styles set from JS repeat
-     a px fallback instead, because they do not ship with this file. They live in
-     global.css so every module can read them. */
+  /* The host sets `viewport-fit=cover`, so every edge needs its own inset.
+     `env()` carries the 0px fallback here, so stylesheets use the tokens bare.
+     Inline styles set from JS repeat a px fallback instead, because they do not
+     ship with this file. */
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -122,9 +115,9 @@ body {
   font-family: system-ui, sans-serif;
 }
 
-/* A modal shell dialog is open (components/focus.ts lockScroll):
-   the page does not scroll. An attribute, not the inline style, so the page's
-   own inline overflow (bridge.ts sets one) survives the dialog. */
+/* A modal shell dialog is open (components/focus.ts lockScroll). An attribute,
+   not an inline style, so the page's own inline overflow (bridge.ts sets one)
+   survives the dialog. */
 body[data-scroll-locked] {
   overflow: hidden !important;
 }

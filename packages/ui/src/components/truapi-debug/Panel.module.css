@@ -1,23 +1,18 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel: the docked box, its body grid and the hover
-   tooltip. The panel is dark whatever the page theme, so it carries its own
-   palette as --td-* properties on its root. The other modules of the panel
-   read them, and so does anything rendered inside the root. The root shows
-   its state as data-dock, data-layout, data-view and data-collapsed. */
+/* dot.li — TrUAPI debug panel. The panel is dark whatever the page theme, so
+   it carries its own palette as --td-* properties on its root, which the other
+   modules of the panel read. */
 
 .panel {
-  /* Surfaces, darkest first. */
   --td-bg: #0b0b0b;
   --td-bg-bar: #0f0f0f;
   --td-bg-raised: #141414;
   --td-bg-chip: #1a1a1a;
-  /* Lines, also the button and tooltip fill. */
   --td-line: #1f1f1f;
   --td-line-strong: #2a2a2a;
   --td-line-hover: #3a3a3a;
-  /* Text. */
   --td-fg-bright: #fff;
   --td-fg-strong: #e0e0e0;
   --td-fg: #d4d4d4;
@@ -27,7 +22,6 @@
   --td-slate: #94a3b8;
   --td-slate-bg: #1f2937;
   --td-slate-line: #334155;
-  /* State. */
   --td-accent: #e6007a;
   --td-accent-bg: #2a0f1d;
   --td-focus: #3b82f6;
@@ -37,10 +31,8 @@
   --td-rid-bg: rgba(255, 255, 255, 0.04);
   --td-rid-line: rgba(255, 255, 255, 0.06);
   --td-shadow: rgba(0, 0, 0, 0.4);
-  /* The one-line summary in the detail pane. */
   --td-info-bg: #0d1b2a;
   --td-info-fg: #dbeafe;
-  /* Hues of tags, arrows and badges. */
   --td-green: #4ade80;
   --td-amber: #fbbf24;
   --td-purple: #c084fc;
@@ -51,7 +43,6 @@
   --td-sky: #bae6fd;
   --td-pink: #f9a8d4;
   --td-pink-line: #9d174d;
-  /* Teal: the system accent. */
   --td-system-edge: rgba(45, 212, 191, 0.3);
   --td-teal: #2dd4bf;
   --td-teal-soft: #5eead4;
@@ -64,7 +55,6 @@
   --td-health-warn: #eab308;
   --td-health-bad: #f87171;
   --td-health-idle: #8f8f8f;
-  /* Layer badge fill and edge, one pair per layer. */
   --td-boot-bg: #0f172a;
   --td-boot-line: #1e40af;
   --td-resolve-bg: #0f1714;
@@ -141,7 +131,6 @@
 .panel[data-dock='right'] .body {
   grid-area: body;
 }
-/* List above detail: the right dock, and any dock on a narrow viewport. */
 .panel[data-layout='stacked'] .body {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--td-top-height, 50%) 6px 1fr;

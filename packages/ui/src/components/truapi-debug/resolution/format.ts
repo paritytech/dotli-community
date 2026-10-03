@@ -1,9 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// What the Resolution view shows, as plain values: the summary facts, the
-// axis ticks, each block's place and title, each row's meta line. The
-// components only bind these, so a redraw writes the values that changed.
+// Plain values, so a redraw writes only the ones that changed.
 
 import type {
   CacheResult,
@@ -13,13 +11,11 @@ import type {
   ResolutionSummary,
 } from '@dotli/truapi-debug';
 
-/** How a fact value is coloured. `undefined` is the normal value colour. */
 type FactTone = 'ok' | 'warn' | 'bad' | 'running' | 'dim';
 
 interface FactValue {
   text: string;
   tone?: FactTone;
-  /** Shown on hover, as prose. */
   tooltip?: string;
 }
 
@@ -154,16 +150,13 @@ function cacheValue(result: CacheResult): FactValue {
   return { text: 'miss', tone: 'dim' };
 }
 
-/** How many labels the time axis carries. */
 const AXIS_TICKS = 5;
 
 interface AxisTick {
-  /** CSS `left`, a percentage of the track. */
   left: string;
   label: string;
 }
 
-/** The axis labels for a load spanning `span` ms, first to last. */
 export function axisTicks(span: number): AxisTick[] {
   return Array.from({ length: AXIS_TICKS + 1 }, (_, i) => ({
     left: `${((i / AXIS_TICKS) * 100).toFixed(3)}%`,
@@ -178,15 +171,12 @@ interface BlockView {
   phase: string;
   /** The phase colour: the phase itself, or `unknown`. */
   tone: string;
-  /** CSS `left` and `width`, percentages of the track. */
   left: string;
   width: string;
-  /** The block a chain is still sitting in, with no end yet. */
   open: boolean;
   title: string;
 }
 
-/** Where a block sits on a `span` ms track, and its hover title. */
 export function blockView(b: ResolutionBlock, open: boolean, span: number): BlockView {
   const end = b.endMs ?? span;
   const left = (b.startMs / span) * 100;

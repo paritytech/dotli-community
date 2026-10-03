@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The figures above the Resolution chart: what the load resolved, how fast
-// the link was and which caches answered, one card per fact.
-//
 // The cards are keyed by fact name, so a redraw keeps every card's nodes and
 // only rewrites a value that changed. The info badge the cursor rests on is
 // never replaced, and its tooltip stays up across ticks.

@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The recently visited names: a wrapping row of pills, each with a round
-   remove button on its corner that shows on hover, on focus, or after a long
-   press. */
-
 .recent {
   box-sizing: border-box;
   margin: 0 0 2rem;
@@ -79,8 +75,7 @@
   transition: opacity 0.15s;
 }
 
-/* The visible disc, smaller than the 32px hit area. Opaque, because it
-   overlaps the pill's corner, and ringed in the page color to cut it out. */
+/* Opaque and ringed in the page color, because it overlaps the pill's corner. */
 .remove::before {
   content: '';
   position: absolute;

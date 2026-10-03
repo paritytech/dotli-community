@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The chat panel's contents: the header, the room list, the conversation,
-   the status line and the composer. ChatDock.module.css styles the panel
-   around them. */
-
 .header {
   display: flex;
   align-items: center;
@@ -26,7 +22,6 @@
   white-space: nowrap;
 }
 
-/* Back and Close. */
 .header-button {
   display: flex;
   align-items: center;

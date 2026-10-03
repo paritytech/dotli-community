@@ -24,7 +24,6 @@ import s from './Popover.module.css';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
-/** A sheet's: its slide down (Popover.module.css). */
 export const SHEET_EXIT_MS = 280;
 
 /** A swipe past this share of the sheet's height closes it. */

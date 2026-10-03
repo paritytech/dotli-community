@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The topbar's action group, in the right-hand cell of the bar's grid
-   (Topbar.astro). */
-
 .group {
   grid-column: 3;
   display: flex;

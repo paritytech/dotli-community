@@ -13,9 +13,6 @@
 // genesis hash. This one is state-shaped and keyed by chain role, so the
 // question it answers is "where did the time go", not "what was said".
 //
-// This module records the events and builds the model. The view itself is
-// Solid components in `@dotli/ui` (`ResolutionView`).
-//
 // The model is built from the debug events alone, and deliberately not shared
 // with `resolution-trace.ts`: that one samples a fraction of loads and keeps
 // only aggregates, where a debug panel has to show every load in full.

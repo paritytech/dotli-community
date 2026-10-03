@@ -1,8 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The topbar's More button and its hamburger icon. */
-
 /* Shown once the bar measures. On a narrow viewport it shows from the
    build-time render on, as the bar most likely collapses something there. */
 .more {
@@ -26,7 +24,6 @@
   pointer-events: none;
 }
 
-/* Three bars that cross into an X while the flyout is open. */
 .hamburger {
   display: inline-block;
   position: relative;

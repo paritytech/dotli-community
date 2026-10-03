@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The permissions popover's body: its heading (left out of a sheet, whose
-   header names it), the rows and the notes under them. */
-
 .header {
   padding: 10px 14px 6px;
   color: var(--text-muted);

@@ -1,12 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The sandbox's retry screen (ui.ts showRetryScreen): a title, the spinner
-   and a status line, in plain flow. */
-
-/* The sandbox has no `#app`, so the screen goes straight into its body, which
-   is transparent over the host. It paints the page color and fills the
-   frame. */
+/* The sandbox has no `#app`, so the screen fills its transparent body itself. */
 .standalone {
   height: 100dvh;
   background: var(--bg-page);
@@ -17,10 +12,10 @@
   padding: 0;
 }
 
-/* The Spinner primitive's ring, kept here rather than shared: a page script
-   importing Spinner.module.css alongside the AuthModal island makes the page
-   link that island's chunk sheet, a second render-blocking copy of CSS that
-   index.css already holds. */
+/* The Spinner primitive's ring, kept here rather than shared: importing
+   Spinner.module.css from a page script alongside the AuthModal island makes
+   the page link that island's chunk sheet, a second render-blocking copy of CSS
+   that index.css already holds. */
 .spinner {
   box-sizing: border-box;
   width: 24px;

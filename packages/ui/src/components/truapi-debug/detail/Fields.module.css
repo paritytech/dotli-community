@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel detail key/value lists: the header of an event
-   or group, and the chain annotations. */
+/* dot.li — TrUAPI debug panel detail key/value lists */
 
 .fields {
   display: grid;
@@ -27,7 +26,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The chain annotations: dimmer names, ids and hashes in the body font. */
 .chain .name {
   color: var(--td-fg-dim);
 }
@@ -38,7 +36,6 @@
   overflow-wrap: anywhere;
 }
 
-/* The short id badge beside a requestId or flowId, coloured per id inline. */
 .rid {
   font-size: 10.5px;
   font-weight: 600;

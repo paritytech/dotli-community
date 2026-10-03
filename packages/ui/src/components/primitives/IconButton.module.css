@@ -1,12 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A topbar button around an icon. data-active draws it pressed (what it
-   opens is open), data-badge puts a dot in its top right corner.
-
-   The base rule is wrapped in :where(), so a consumer's class (the More
-   button's visibility) wins over it whatever order the stylesheets load
-   in. */
+/* The base rule is wrapped in :where(), so a consumer's class (the More
+   button's visibility) wins over it whatever order the stylesheets load in. */
 
 :where(.button) {
   position: relative;
@@ -60,7 +56,6 @@
   background: var(--fill);
   color: var(--text-strong);
 }
-/* The ring in the page's tone keeps the dot apart from the icon. */
 .button[data-badge]::after {
   content: '';
   position: absolute;

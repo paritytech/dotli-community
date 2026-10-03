@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The cell that holds a product's live render tree, or the line that
-   stands in for it while it loads or after it failed. */
-
 .root {
   display: flex;
   flex-direction: column;

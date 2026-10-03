@@ -1,10 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The docked chat panel on the right edge of the window. It starts below
-   the topbar, or at the top while the topbar is hidden. Its width is an
-   inline style from the chat-panel store, and on a phone it takes the
-   whole width. */
+/* Its width is an inline style from the chat-panel store. */
 
 .panel {
   position: fixed;
@@ -19,7 +16,8 @@
   margin: 0;
   padding: 0;
   border-left: 1px solid var(--border-subtle);
-  /* Painted with the chat palette's surface so it matches product boxes painted BgSurfaceMain exactly. */
+  /* Painted with the chat palette's surface so it matches product boxes painted
+     BgSurfaceMain exactly. */
   background: var(--chat-bg-surface-main);
   transition: top 0.3s ease;
 }

@@ -1,10 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The settings popover's body: two columns (the settings, the diagnostics)
-   over a footer with Save & Apply. In a sheet (data-sheet) the columns stack
-   and the footer pins to the sheet's bottom edge, where it pads itself for
-   the home indicator (SettingsPopover sets --sheet-inset: 0). */
+/* In a sheet (data-sheet) the footer pins to the sheet's bottom edge, where it
+   pads itself for the home indicator (SettingsPopover sets --sheet-inset: 0). */
 
 .content[data-sheet] {
   display: flex;
@@ -15,8 +13,6 @@
   display: grid;
   grid-template-columns: 1fr 1fr;
   column-gap: 12px;
-  /* Breathing room, so the section headings do not touch the popover's
-     top border. */
   padding-top: 10px;
 }
 .content[data-sheet] .columns {
@@ -29,11 +25,9 @@
   flex-direction: column;
   min-width: 0;
 }
-/* Clear all caches keeps its distance from the last cache switch. */
 .clear-all-row {
   padding-top: 10px;
 }
-/* The gap under the footer is the same whether the warning shows or not. */
 .footer {
   padding-bottom: 10px;
 }
@@ -61,7 +55,6 @@
 .content[data-sheet] .apply-row {
   padding-top: 0;
 }
-/* Shown only while there is something to apply (data-visible). */
 .warning {
   display: none;
   margin: 6px 14px 0;

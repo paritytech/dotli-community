@@ -1,11 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The rows the settings popover (SettingsContent.tsx), its diagnostics
-// (Diagnostics.tsx) and the network popover's heading (ChainsContent.tsx)
-// are made of: section headings, rows, radio choices, cache switches,
-// diagnostics readouts and the outlined action buttons.
-
 import { createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './SettingsRows.module.css';
@@ -20,7 +15,6 @@ export function SettingsSection(props: {
   spacing?: 'spaced' | 'bottom' | undefined;
   /** A class of the consumer's own, for placement. */
   class?: string | undefined;
-  /** Rendered as `data-testid`. */
   testId?: string;
 }): JSX.Element {
   return (
@@ -42,7 +36,6 @@ export function SettingsSection(props: {
 export function SettingsRow(props: {
   /** A class of the consumer's own, for its spacing. */
   class?: string | undefined;
-  /** Rendered as `data-testid`. */
   testId?: string;
   children: JSX.Element;
 }): JSX.Element {
@@ -65,7 +58,6 @@ export function ClearButton(props: {
   primary?: boolean;
   /** A class of the consumer's own, for its size in the row. */
   class?: string | undefined;
-  /** Rendered as `data-testid`. */
   testId?: string;
   children: JSX.Element;
 }): JSX.Element {
@@ -88,9 +80,8 @@ export function ClearButton(props: {
 
 /**
  * A radio choice with a label and a description, marked `data-selected`
- * and `data-disabled`. Picking it calls `choose` and keeps the focus on it
- * (the old popover rebuilt the group and refocused the checked radio, so
- * arrow navigation survived).
+ * and `data-disabled`. Picking it calls `choose` and keeps the focus on it,
+ * so arrow navigation survives.
  */
 export function RadioRow(props: {
   name: string;

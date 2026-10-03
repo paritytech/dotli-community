@@ -1,10 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Resolution view: the scrolling container that
-   fills its slot in the views pane, and the message shown before any page
-   load is recorded. The container carries `hidden` while another view
-   shows. */
+/* dot.li — TrUAPI debug panel Resolution view */
 
 .res {
   min-height: 0;

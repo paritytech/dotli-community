@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel header: title, counts and the controls. The
-   header carries the panel's placement as data-dock. */
+/* dot.li — TrUAPI debug panel header */
 
 .header {
   display: flex;
@@ -20,7 +19,6 @@
   grid-area: header;
 }
 
-/* The text gives way before the controls do. */
 .title,
 .counts {
   flex: 0 1 auto;
@@ -70,7 +68,6 @@
 .icon {
   padding: 2px 8px;
 }
-/* The export, copy and dock buttons, which hold an svg. */
 .glyph {
   display: inline-flex;
   align-items: center;

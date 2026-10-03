@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The QR pairing modal. Closed, the backdrop is display:none. While the
-   store has it open, data-open shows it, and the backdrop and the card
-   fade and scale in from @starting-style. */
-
 .backdrop {
   position: fixed;
   inset: 0;
@@ -90,8 +86,6 @@
   white-space: nowrap;
 }
 
-/* The paragraphs below carry what the legacy `.auth-modal p` rule gave
-   every paragraph in the card, plus their own changes. */
 .reason {
   margin: 0 0 4px;
   padding: 0;
@@ -154,7 +148,6 @@
   background: var(--inverse-bg-hover);
 }
 
-/* Once the QR is shown, the deeplink below it is a plain link. */
 .open-app-link {
   padding: 0;
   background: none;
@@ -242,9 +235,6 @@
   color: var(--neutral-solid);
 }
 
-/* The raw failure reason. The legacy red and 12px margin never applied,
-   because `.auth-modal p` outranked `.auth-modal-error`. This keeps what
-   was on screen. */
 .error {
   margin: 0 0 16px;
   padding: 0;

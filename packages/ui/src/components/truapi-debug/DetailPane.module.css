@@ -1,8 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel detail pane: the scrolling inspector beside the
-   views and its empty-state message. The pane carries `hidden` while a
+/* dot.li — TrUAPI debug panel detail pane. It carries `hidden` while a
    full-width view (Resolution, Archive) shows. */
 
 .detail {

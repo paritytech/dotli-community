@@ -1,9 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Renders one queued ModalView in the layout shared by the permission,
-// preimage, confirmation and password dialogs.
-
 import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '../../state/modals.js';
@@ -16,7 +13,6 @@ const BUTTON_CLASS: Record<ModalButtonVariant, string | undefined> = {
   primary: s['primary'],
 };
 
-/** Each variant's `data-testid`, the name its button has always had. */
 const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
   cancel: 'signing-btn-cancel',
   secondary: 'signing-btn-secondary',

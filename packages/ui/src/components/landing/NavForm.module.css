@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The landing page's name form: one bar holding the input, the TLD and the
-   go button, with the inline error below it. */
-
 .form {
   display: flex;
   flex-direction: column;
@@ -34,8 +31,7 @@
   border-color: var(--border-focus);
 }
 
-/* After the focus rule, so an invalid name stays red while the input has
-   focus. */
+/* After the focus rule, so an invalid name stays red while the input has focus. */
 .bar[data-invalid],
 .bar[data-invalid]:focus-within {
   border-color: var(--danger);
@@ -84,7 +80,6 @@
     background 0.15s;
 }
 
-/* The arrow lights up once there is a name to go to. */
 .input:not(:placeholder-shown) ~ .go {
   color: var(--text);
 }

@@ -95,7 +95,6 @@ export function Header(props: {
   counts: string;
   paused: boolean;
   collapsed: boolean;
-  /** The dock the user picked, which the dock toggle flips. */
   dock: DockPosition;
   /** Where the panel sits: the picked dock, or the bottom on a phone. */
   placement: DockPosition;

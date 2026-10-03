@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The drag strip on the panel's left edge, 3px either side of its border.
-   The phone layout's full-width panel has no edge to drag. */
-
 .handle {
   position: absolute;
   top: 0;

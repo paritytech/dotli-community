@@ -1,15 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The shell's popover (Popover.tsx): its backdrop, the surface anchored
-   under the topbar or its trigger, the bottom sheet it becomes on phones,
-   and the loading state. The surface carries its state as data-open,
-   data-sheet, data-peek, data-anchor and data-dragging.
-
-   The surface's base rule is wrapped in :where(), so a consumer's own class
-   (its place, width and look) wins over it whatever order the stylesheets
-   load in. The state rules keep their specificity, so a sheet still takes
-   the full width over a consumer's width. */
+/* The surface's base rule is wrapped in :where(), so a consumer's own class (its
+   place, width and look) wins over it whatever order the stylesheets load in.
+   The state rules keep their specificity, so a sheet still takes the full width
+   over a consumer's width. */
 
 .backdrop {
   display: none;
@@ -92,7 +87,6 @@
   }
 }
 
-/* The content's chunk is on its way. */
 .loading {
   display: grid;
   place-items: center;
@@ -113,9 +107,8 @@
   }
 }
 
-/* On phones (SHEET_QUERY, max-width 560px, read as each opening starts) a
-   popover is a modal bottom sheet: at the bottom edge, full width, at most
-   85% of the visible height, sliding up. */
+/* On phones (SHEET_QUERY, read as each opening starts) a popover is a modal
+   bottom sheet. */
 .surface[data-sheet] {
   top: auto;
   right: 0;
@@ -147,7 +140,6 @@
     transform: translateY(100%);
   }
 }
-/* The sheet follows the pointer while dragged. */
 .surface[data-dragging] {
   transition: none;
 }
@@ -203,7 +195,6 @@
   right: auto;
   transform-origin: top left;
 }
-/* Shown while a mouse rests on the trigger (openOnHover). */
 .surface[data-peek] {
   display: block;
   opacity: 1;

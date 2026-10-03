@@ -67,9 +67,7 @@ function slideStrip(strip: HTMLElement, landed: number): void {
  * chain is instead of a number. After it, the next block is genuinely due
  * within the chain-declared block time. The copy never shows zero or a
  * negative: past the estimate it swaps to words, and past 3x the verdict line
- * escalates, so "due any moment" cannot linger. The bar carries its phase
- * as `data-pending`: `searching` before the first head, `counting` towards
- * the next block, then `due`.
+ * escalates, so "due any moment" cannot linger.
  */
 function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   // Read four times per render: computed once per tick.
@@ -114,8 +112,7 @@ function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JS
 }
 
 /**
- * One chain's strip of block bars, newest at the right, each marked with
- * its `data-health`. Bars keep their element while they stay on screen, so
+ * One chain's strip of block bars, newest at the right. Bars keep their element while they stay on screen, so
  * newly landed ones slide in (see slideStrip) instead of the strip being
  * rebuilt.
  */

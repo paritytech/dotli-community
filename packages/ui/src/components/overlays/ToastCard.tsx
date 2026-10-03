@@ -13,11 +13,9 @@ export const CLOSE_SVG =
 
 export interface ToastCardProps {
   entry: ToastEntry;
-  /** Beyond the visible pile: not shown. */
   hidden: boolean;
   /** Place in the collapsed pile, 0 for the newest. */
   depth: number;
-  /** The stack is expanded into a list. Otherwise the cards pile up. */
   expanded: boolean;
   /** The stack holds one live toast, which keeps its close button while piled. */
   single: boolean;

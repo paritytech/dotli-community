@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The topbar's home link, in the left-hand cell of the bar's grid: the
-   Polkadot mark, the wordmark and the Beta tag. */
-
 .home {
   grid-column: 1;
   display: flex;
@@ -43,8 +40,6 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
-/* Narrow viewports: the wordmark and the Beta tag give way, so the URL pill
-   and the action buttons stay on screen. */
 @media (max-width: 560px) {
   .brand,
   .beta {

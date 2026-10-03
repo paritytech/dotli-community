@@ -29,8 +29,7 @@ import type {
 export type CustomStyle = Record<string, string>;
 
 // Semantic tokens resolve to the chat palette in global.css (`--chat-*`),
-// so rendered trees follow the host theme, matching the desktop host's
-// token mapping.
+// matching the desktop host's token mapping.
 const COLOR_TOKEN_CSS: Record<ColorToken, string> = {
   FgPrimary: 'var(--chat-fg-primary)',
   FgSecondary: 'var(--chat-fg-secondary)',

@@ -1,11 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Resolution chart: a row per chain of phase
-   blocks on a shared time axis. The phase colours are the network panel's
-   block-health palette, so a chain that reads green there reads green here.
-   A block shows its phase as data-phase, and the block a chain is still
-   sitting in carries data-open. The axis row and track carry data-axis. */
+/* dot.li — TrUAPI debug panel Resolution chart. The phase colours are the
+   network panel's block-health palette, so a chain that reads green there
+   reads green here. */
 
 .row {
   display: flex;

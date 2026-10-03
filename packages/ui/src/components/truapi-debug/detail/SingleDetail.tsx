@@ -1,10 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// List-view detail: one event's full detail, with pills that jump to the
-// other events of its requestId or flowId group (request, response,
-// subscription receives).
-
 import { For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
@@ -80,7 +76,6 @@ function SystemDetail(props: SingleDetailProps & { event: StoredSystemEvent }): 
   );
 }
 
-/** The group's size, then a pill for every other event of it. */
 function GroupField(props: SingleDetailProps): JSX.Element {
   const pills = untrack(() =>
     siblingPills(

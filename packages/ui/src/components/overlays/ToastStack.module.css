@@ -1,10 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The toast stack, fixed at the bottom right. Collapsed, the cards share
-   one grid cell (ToastCard piles them). Expanded, they become a scrolling
-   column. The close-all badge sits on the stack's top corner. */
-
 .stack {
   position: fixed;
   right: 20px;

@@ -14,12 +14,10 @@ import s from './ChatDock.module.css';
 const ChatPanel = lazy(() => import('./ChatPanel.js'), { export: 'ChatPanel' });
 
 /**
- * The docked product-chat panel (`aside#chat-panel`), an island of the host
- * page (see src/islands/). It docks to the right edge while the chat-panel
- * store says it is open, shrinking the product frame by its width
- * (product-frame-layout), and stretches into the topbar's strip while the
- * topbar is auto-hidden (`data-topbar-hidden`). Escape inside it closes it.
- * The chat button takes the focus back.
+ * The docked product-chat panel, an island of the host page. Shrinks the
+ * product frame by its width (product-frame-layout) and stretches into the
+ * topbar's strip while the topbar is auto-hidden (`data-topbar-hidden`).
+ * Escape inside it closes it, and the chat button takes the focus back.
  *
  * Its contents (ChatPanel) are their own chunk, preloaded when the browser
  * is idle once the chat button shows, and rendered from the first open on.

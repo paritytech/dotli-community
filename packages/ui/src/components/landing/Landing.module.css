@@ -1,9 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The landing page: a full-height column with the auth and theme buttons in
-   the corner and the name form centred below the logo. */
-
 .landing {
   display: flex;
   flex-direction: column;
@@ -50,7 +47,6 @@
   text-align: center;
 }
 
-/* The logo's paths fill with `currentColor`, the page's text color. */
 .logo {
   box-sizing: border-box;
   margin: 0 0 1.2rem;

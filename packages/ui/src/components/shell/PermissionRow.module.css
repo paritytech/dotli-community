@@ -1,9 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* One permission: its icon, its name and a select-like dropdown. In a
-   sheet (data-sheet), which scrolls, the dropdown opens as a list under
-   its row instead of floating past the sheet's bottom edge. */
+/* In a sheet (data-sheet), which scrolls, the dropdown opens as a list under its
+   row instead of floating past the sheet's bottom edge. */
 
 .row {
   display: flex;

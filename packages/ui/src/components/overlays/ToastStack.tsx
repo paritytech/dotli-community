@@ -11,7 +11,6 @@ import s from './ToastStack.module.css';
 const MAX_STACK = 3;
 
 export function ToastStack(): JSX.Element {
-  // `state`, not `s`, which is the module's class map.
   const items = useStore(toastsStore, state => state.items);
   const expanded = useStore(toastsStore, state => state.expanded);
   let root: HTMLDivElement | undefined;
@@ -69,7 +68,6 @@ export function ToastStack(): JSX.Element {
     };
   });
 
-  // A click on the cards (not on a link in them) expands a collapsed pile.
   const onStackClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
     if (!expanded() && many() && cards !== undefined && cards.contains(target) && target.closest('a') === null) {

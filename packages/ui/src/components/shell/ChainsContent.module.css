@@ -1,11 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The network popover's body: the verdict, a strip of block bars per
-   chain, the transfer readouts and the tips. Every row insets itself by
-   14px, the settings popover's inset, so the body has no side padding. In
-   a sheet (data-sheet) the sheet's header sits above it, so it starts
-   flush. */
+/* Every row insets itself by 14px, the settings popover's inset, so the body has
+   no side padding. In a sheet (data-sheet) the sheet's header sits above it, so
+   it starts flush. */
 
 .content {
   padding: 6px 0 8px;
@@ -14,8 +12,6 @@
   padding-top: 0;
 }
 
-/* The verdict reads as a banner rather than a line of text, so it is
-   legible at a glance before the strips below are studied. */
 .status {
   display: flex;
   align-items: center;
@@ -45,9 +41,7 @@
   background: var(--neutral-solid);
 }
 
-/* A labelled strip per chain, bars sitting on a baseline. Generously
-   spaced, because the gaps are what make a missing block read as
-   missing. */
+/* Generously spaced, because the gaps are what make a missing block read as missing. */
 .group {
   padding: 8px 14px 2px;
 }
@@ -61,8 +55,7 @@
   font-size: 11px;
   font-weight: 500;
 }
-/* Context for the bars below, not a heading of its own. Tabular figures,
-   so a changing count cannot reflow the row it sits on. */
+/* Tabular figures, so a changing count cannot reflow the row it sits on. */
 .peers {
   color: var(--neutral-solid);
   font-size: 10px;
@@ -139,7 +132,6 @@
     animation: none;
   }
 }
-/* Health is in the height as well as the colour. */
 .bar[data-health='onTime'] {
   background: var(--success-solid);
 }
@@ -151,10 +143,9 @@
   height: 32%;
   background: var(--danger);
 }
-/* The ghost bar stands where the next block will: dim, filling with the
-   elapsed share of the chain's block time once a first head anchors the
-   estimate (an inline height), searching before that, and full and pulsing
-   once the block is due. */
+/* Its inline height is the elapsed share of the chain's block time once a first
+   head anchors the estimate. Searching before that, full and pulsing once the
+   block is due. */
 .pending {
   height: 20%;
   background: var(--neutral-solid);
@@ -180,8 +171,7 @@
     opacity: 0.35;
   }
 }
-/* The transfer readouts, under the strips: the label recessive, the value
-   carrying. No rule of its own: the last strip draws one already. */
+/* No rule of its own: the last strip draws one already. */
 .transfer {
   display: flex;
   flex-direction: column;
@@ -211,8 +201,6 @@
   white-space: nowrap;
 }
 
-/* Advice, not telemetry: boxed like the verdict, so the two bracket the
-   strips. */
 .tips {
   margin: 12px 14px 2px;
   padding: 9px 11px;

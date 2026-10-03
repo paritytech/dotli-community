@@ -38,8 +38,7 @@ function currentLabel(): string | null {
  * statuses as it mounts (the popover opening), and again on a product
  * loading or failing and on a permission change, the last read winning. An
  * open row dropdown takes Escape first: the first Escape closes the
- * dropdown, the next the popover. In a sheet, whose header names it, its
- * heading is left out.
+ * dropdown, the next the popover.
  */
 export function PermissionsContent(): JSX.Element {
   /** The open row dropdown's listbox. */

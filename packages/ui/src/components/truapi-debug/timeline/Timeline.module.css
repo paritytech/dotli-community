@@ -1,11 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* dot.li — TrUAPI debug panel Timeline: a row of swimlane columns, each a
-   sticky header over an SVG of rails, ticks and boxes. The header's accent is
-   the lane's colour, set as --lane-accent. The rails, ticks, boxes and
-   connectors take their colours from the layout as SVG attributes. A box
-   shows its state as data-pending and data-selected. */
+/* dot.li — TrUAPI debug panel Timeline */
 
 .row {
   display: flex;

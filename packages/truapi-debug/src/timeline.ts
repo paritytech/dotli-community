@@ -3,12 +3,6 @@
 
 // TrUAPI timeline geometry
 //
-// Turns the visible events into what the Timeline view draws: one swimlane
-// per followed chain plus System and Other, each with its SVG size, its
-// dividers, and the rails, ticks and boxes placed in pixels with their
-// colours and tooltip strings. Pure: no DOM, no SVG. The layout itself
-// (grouping, lane packing, the shared Y axis) is `timeline-layout.ts`.
-//
 // Every rail, tick and box carries a `key` from its stable seq, so the view
 // can key its nodes on it and update a box in place as traffic streams in.
 
@@ -26,7 +20,6 @@ import {
   type SegmentEntry,
 } from './timeline-layout.js';
 
-/** A follow-subscription rail: a vertical line in its rail column. */
 export interface TimelineRail {
   key: EventSeq;
   seq: EventSeq;
@@ -34,12 +27,10 @@ export interface TimelineRail {
   y1: number;
   y2: number;
   color: string;
-  /** Still open: drawn dashed. */
   pending: boolean;
   tooltip: string;
 }
 
-/** A zero-duration chain-lifecycle event: a dot in the left margin. */
 export interface TimelineTick {
   key: EventSeq;
   seq: EventSeq;
@@ -49,7 +40,6 @@ export interface TimelineTick {
   tooltip: string;
 }
 
-/** A request/response box, with its optional rail connector and pending edge. */
 export interface TimelineBox {
   key: EventSeq;
   seq: EventSeq;
@@ -62,23 +52,17 @@ export interface TimelineBox {
   color: string;
   pending: boolean;
   tooltip: string;
-  /** The dashed line from the linked rail to the box, if it has one. */
   connector: { x1: number; x2: number; y: number } | null;
-  /** The dashed line along the bottom of a box still waiting for its end. */
   pendingEdge: { x1: number; x2: number; y: number } | null;
 }
 
 export interface TimelineLane {
-  /** Stable key: `chain-<genesisHash>`, `system` or `other`. */
   key: string;
   header: string;
-  /** The header's accent. */
   color: string;
   width: number;
   height: number;
-  /** X of the divider after the tick margin. */
   marginX: number;
-  /** X of the divider after the rail columns, when the lane has rails. */
   railsEndX: number | null;
   rails: TimelineRail[];
   ticks: TimelineTick[];

@@ -1,12 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The error pages (ui.ts showErrorPage and showNoContentError).
-
-   Laid out like the browser's own network-error page: a left-aligned block of
-   fixed width rather than a centred card, so the failure reads as the page
-   itself failing and not as a dialog the page is showing. Centred in the area
-   the topbar leaves behind. */
+/* A left-aligned block of fixed width, like the browser's own network-error
+   page, so the failure reads as the page itself failing and not as a dialog. */
 
 .page {
   /* `#app` is a centring flex container, so claim the full row and stretch
@@ -21,14 +17,12 @@
   min-height: var(--content-height);
   margin: 0;
   /* Uneven padding lifts the block above the exact centre, so it lands where
-     the loading screen's logo and progress bar were rather than below them. */
+     the loading screen's logo and progress bar were. */
   padding: 48px 24px 152px;
   font-family: system-ui, sans-serif;
 }
 
-/* The sandbox has no `#app`, so the page goes straight into its body, which
-   is transparent over the host. It paints the page color and fills the
-   frame. */
+/* The sandbox has no `#app`, so the page fills its transparent body itself. */
 .standalone {
   height: 100dvh;
   background: var(--bg-page);
@@ -60,8 +54,6 @@
   color: var(--neutral-solid);
 }
 
-/* Same voice as the message itself, so the suggestions read as a continuation
-   of the sentence above rather than as fine print. */
 .tips {
   box-sizing: border-box;
   margin: 1.25rem 0 0;
@@ -124,8 +116,7 @@
   transform: translateY(1px);
 }
 
-/* The recommended way out, filled. After the hover rule, so it keeps its
-   fill under the pointer. */
+/* After the hover rule, so it keeps its fill under the pointer. */
 .retry[data-primary] {
   border-color: var(--inverse-bg);
   background: var(--inverse-bg);
@@ -167,8 +158,6 @@
   color: var(--danger-strong);
 }
 
-/* "Site can't be reached": a larger title, and the domain inline so the
-   visitor can scan it for a typo without parsing prose. */
 .unreached .title {
   margin-bottom: 0.875rem;
   font-size: 1.75rem;

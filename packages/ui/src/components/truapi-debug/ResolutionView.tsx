@@ -42,7 +42,6 @@ export function ResolutionView(props: {
   panel: () => HTMLElement | undefined;
 }): JSX.Element {
   const recorder = untrack(() => props.recorder);
-  // Null until the first draw, which leaves the view empty.
   const [model, setModel] = createSignal<ResolutionModel | null>(null, {
     // Written from the redraw effect below.
     ownedWrite: true,
