@@ -33,7 +33,8 @@ const products: readonly ProductSmoke[] = [
   {
     label: 'duke',
     profile: 'framebuffer',
-    keys: ['Escape', 'Enter', 'Enter', 'Space'],
+    // Duke starts in a level; Escape would open its in-game menu.
+    keys: [],
     audio: true,
     nonzeroAudio: true,
     interaction: 'gameplay-pointer-capture',
@@ -215,9 +216,27 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
   }
 
   if (product.interaction === 'gameplay-pointer-capture') {
-    await expect(canvas).toHaveAttribute('data-polkavm-pointer-capture-armed', 'true', { timeout: 60_000 });
-    await canvas.click({ position: { x: 160, y: 100 } });
+    // The first click may already have captured the pointer, which clears arming.
+    await expect
+      .poll(
+        () =>
+          canvas.evaluate(
+            element =>
+              element.ownerDocument.pointerLockElement === element ||
+              element.getAttribute('data-polkavm-pointer-capture-armed') === 'true',
+          ),
+        { timeout: 60_000 },
+      )
+      .toBe(true);
+    if (!(await canvas.evaluate(element => element.ownerDocument.pointerLockElement === element))) {
+      await canvas.click({ position: { x: 160, y: 100 } });
+    }
     await expect(canvas).toHaveAttribute('data-polkavm-pointer-captured', 'true', { timeout: 10_000 });
+    await expect
+      .poll(() => canvas.evaluate(element => element.ownerDocument.pointerLockElement === element), {
+        timeout: 10_000,
+      })
+      .toBe(true);
   } else if (product.interaction === 'pointer-motion') {
     const motionSamplesBefore = await counter(canvas, 'data-polkavm-motion-samples');
     const bounds = await canvas.boundingBox();
