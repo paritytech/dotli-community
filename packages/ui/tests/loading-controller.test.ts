@@ -259,7 +259,45 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().phase).toBe('gone');
   });
 
-  it("As a visitor, the sandbox's done message dismisses the loading screen and runs the done callbacks", () => {
+  it("As a visitor, the sandbox's done message dismisses the loading screen and runs the done callbacks with its outcome", () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('loaded');
+  });
+
+  it('As the shell, a sandbox that failed to load its content reports the failure to the done callbacks', () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'failed' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed');
+  });
+
+  it('As a visitor at a password prompt, the loading screen is dismissed while the done callbacks keep waiting for the content', () => {
     // Given
     const onDone = vi.fn();
     ctl.listenForSandboxStatus();
@@ -275,7 +313,7 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(store.getLoadingState().phase).toBe('dismissing');
-    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it('As a visitor, a done message from any other origin is ignored', () => {
@@ -287,7 +325,7 @@ describe('The loading controller drives the loading store', () => {
     // When
     window.dispatchEvent(
       new MessageEvent('message', {
-        data: { type: 'dotli:loading-status', done: true },
+        data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
         origin: 'https://attacker.example',
       }),
     );
@@ -419,7 +457,7 @@ describe('The loading controller drives the loading store', () => {
     const done = (): void => {
       window.dispatchEvent(
         new MessageEvent('message', {
-          data: { type: 'dotli:loading-status', done: true },
+          data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
           origin: SANDBOX_ORIGIN,
         }),
       );

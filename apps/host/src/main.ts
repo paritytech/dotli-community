@@ -1721,26 +1721,22 @@ async function main(): Promise<void> {
 
   // The bulletin chain is only dialed during the sandbox's content fetch,
   // which outlives the render handoff `await`. Capturing at handoff would
-  // freeze the bulletin tag at "unknown" on every cold load, so the cold
-  // success event waits for the sandbox's done signal. The timeout keeps a
-  // stalled fetch from losing the event; its tags then read as-is.
-  const captureResolveOkAfterContent = (): void => {
-    let captured = false;
-    const capture = (): void => {
-      if (!captured) {
-        captured = true;
-        captureResolveResult('ok');
-      }
-    };
-    onSandboxDone(capture);
-    setTimeout(capture, 120_000);
+  // freeze the bulletin tag at "unknown" on every cold load, and a warm load
+  // can still fail its fetch, so the result waits for the sandbox to report
+  // how its content load ended. A load that never reports was abandoned or
+  // hung, and claims no outcome.
+  const captureResolveResultAfterContent = (): void => {
+    onSandboxDone(outcome => {
+      captureResolveResult(outcome === 'loaded' ? 'ok' : 'content_error');
+    });
   };
 
   // The non-throwing half of the failure rate whose error half is the tagged
-  // exception in the catch below. `no_content` is its own outcome rather than
-  // an error: the name resolved, it just has nothing published on this
-  // network, so folding it into either half would misstate the rate.
-  const captureResolveResult = (outcome: 'ok' | 'no_content'): void => {
+  // exception in the catch below. `no_content` and `content_error` are their
+  // own outcomes rather than errors: the name resolved, and either nothing is
+  // published on this network or the sandbox could not load what is, so
+  // folding them into either half would misstate the resolution rate.
+  const captureResolveResult = (outcome: 'ok' | 'no_content' | 'content_error'): void => {
     Sentry.captureMessage('dotli.resolve_result', {
       level: 'info',
       tags: {
@@ -1816,7 +1812,7 @@ async function main(): Promise<void> {
       });
       trace.nameResolved(cached.cid);
       trace.finish('rendered');
-      captureResolveResult('ok');
+      captureResolveResultAfterContent();
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cached.cid, chainBackend, true);
@@ -1976,7 +1972,7 @@ async function main(): Promise<void> {
       chain_backend: chainBackend,
     });
     trace.finish('rendered');
-    captureResolveOkAfterContent();
+    captureResolveResultAfterContent();
     performance.mark('dotli:main:end');
     log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
     emitDotliDebugEvent({
