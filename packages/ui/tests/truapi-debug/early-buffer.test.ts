@@ -15,7 +15,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPanel, type PanelModule } from './panel-entry.js';
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
-import { query } from '../support.js';
+import { byTestId, query } from '../support.js';
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
@@ -27,19 +27,6 @@ let panelModule: PanelModule;
 let disposers: (() => void)[] = [];
 
 beforeEach(async () => {
-  // The panel links its stylesheet; happy-dom would try to fetch it.
-  const { settings } = (
-    window as unknown as {
-      happyDOM: {
-        settings: {
-          disableCSSFileLoading: boolean;
-          handleDisabledFileLoadingAsSuccess: boolean;
-        };
-      };
-    }
-  ).happyDOM;
-  settings.disableCSSFileLoading = true;
-  settings.handleDisabledFileLoadingAsSuccess = true;
   vi.useFakeTimers({ now: new Date(2026, 8, 25, 12, 34, 56, 789) });
   vi.resetModules();
   document.head.replaceChildren();
@@ -82,15 +69,15 @@ function q(selector: string): HTMLElement {
 }
 
 function rows(): HTMLElement[] {
-  return [...panel().querySelectorAll<HTMLElement>('.td-list .td-row')];
+  return [...panel().querySelectorAll<HTMLElement>('[data-testid="td-list"] [data-testid="td-row"]')];
 }
 
 function rowTags(): string[] {
-  return rows().map(r => r.querySelector('.td-tag')?.textContent ?? '');
+  return rows().map(r => byTestId('td-tag', r).textContent);
 }
 
 function counts(): string {
-  return q('.td-counts').textContent;
+  return q('[data-testid="td-counts"]').textContent;
 }
 
 function truapi(tag: string, requestId: string): void {

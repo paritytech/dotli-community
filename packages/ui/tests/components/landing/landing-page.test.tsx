@@ -11,7 +11,7 @@ import type * as AppRootsModule from '../../../src/mount/app-roots.js';
 import type * as UiModule from '../../../src/ui.js';
 import type * as LoadingModule from '../../../src/state/loading.js';
 import type * as TopbarModule from '../../../src/state/topbar.js';
-import { must } from '../../support.js';
+import { byTestId, must } from '../../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -78,7 +78,7 @@ async function settle(): Promise<void> {
 async function showLanding(): Promise<void> {
   topbar.setLandingPage(true);
   await vi.waitFor(() => {
-    expect(document.querySelector('.landing, .error-page')).not.toBeNull();
+    expect(document.querySelector('[data-testid="landing"], [data-testid="error-page"]')).not.toBeNull();
   });
   await settle();
 }
@@ -88,8 +88,7 @@ beforeEach(() => {
   sentry.captureException.mockReset();
   // Shaped like the host page (apps/host/src/pages/index.astro): the
   // loading screen and the island beside `#app`.
-  document.body.innerHTML =
-    '<div class="loading" id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
+  document.body.innerHTML = '<div id="app-loading"></div><div id="landing-slot"></div><div id="app"></div>';
 });
 
 afterEach(() => {
@@ -126,7 +125,7 @@ describe('landing page island', () => {
     // chunk downloads.
     expect(topbar.getTopbarState().landing).toBe(true);
     expect(loading.getLoadingState().phase).toBe('active');
-    expect(document.querySelector('.landing')).toBeNull();
+    expect(document.querySelector('[data-testid="landing"]')).toBeNull();
 
     // When
     release();
@@ -134,7 +133,7 @@ describe('landing page island', () => {
 
     // Then the loading screen is gone
     expect(loading.getLoadingState().phase).toBe('gone');
-    expect(must(byId('landing-slot'), 'slot').firstElementChild?.className).toBe('landing');
+    expect(must(byId('landing-slot'), 'slot').firstElementChild?.getAttribute('data-testid')).toBe('landing');
     // The page renders its own auth and theme buttons, whose menus it
     // portals into the body, so every id is there once.
     expect(
@@ -156,7 +155,7 @@ describe('landing page island', () => {
     await settle();
 
     // Then
-    expect(document.querySelectorAll('.landing')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-testid="landing"]')).toHaveLength(1);
   });
 
   it("As a visitor, the landing page renders beside the topbar's build-time buttons, with ids of its own", async () => {
@@ -172,7 +171,7 @@ describe('landing page island', () => {
     await showLanding();
 
     // Then
-    expect(document.querySelector('.landing')).not.toBeNull();
+    expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
     for (const id of ['auth-button', 'theme-toggle', 'landing-auth-button', 'landing-theme-toggle']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
@@ -194,10 +193,10 @@ describe('landing page island', () => {
       await settle();
 
       // Then
-      expect(document.querySelector('.landing')).toBeNull();
+      expect(document.querySelector('[data-testid="landing"]')).toBeNull();
       expect(topbar.getTopbarState().landing).toBe(false);
       expect(vi.getTimerCount()).toBe(0);
-      expect(document.querySelector('.error-page-title')?.textContent).toBe('Failed');
+      expect(byTestId('error-page-title').textContent).toBe('Failed');
     } finally {
       vi.useRealTimers();
     }
@@ -219,9 +218,9 @@ describe('landing page island', () => {
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'page' });
     expect(loading.getLoadingState().phase).toBe('gone');
-    expect(document.querySelector('.landing')).toBeNull();
-    expect(document.querySelector('.error-page-title')?.textContent).toBe('Something went wrong on our side');
-    expect(document.querySelector('.error-page-detail')?.textContent).toBe(
+    expect(document.querySelector('[data-testid="landing"]')).toBeNull();
+    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
+    expect(byTestId('error-page-detail').textContent).toBe(
       "This page didn't load properly. Reloading usually fixes it.",
     );
     const button = byId('error-retry-btn') as HTMLButtonElement;
@@ -252,8 +251,8 @@ describe('landing page island', () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, { root: 'page' });
-    expect(document.querySelector('.landing')).toBeNull();
-    expect(document.querySelectorAll('.error-page')).toHaveLength(1);
+    expect(document.querySelector('[data-testid="landing"]')).toBeNull();
+    expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 
     // When
     (byId('error-retry-btn') as HTMLButtonElement).click();

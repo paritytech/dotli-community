@@ -1,0 +1,116 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* In a sheet (data-sheet), which scrolls, the dropdown opens as a list under its
+   row instead of floating past the sheet's bottom edge. */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+}
+.row:hover {
+  background: var(--fill-subtle);
+}
+.row[data-sheet] {
+  flex-wrap: wrap;
+}
+.icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  color: var(--text-muted);
+}
+.name {
+  flex: 1;
+  min-width: 0;
+  color: var(--text);
+  font-size: 0.8rem;
+}
+.select-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.row[data-sheet] .select-wrap {
+  display: contents;
+}
+.select {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--fill-subtle);
+  color: var(--text);
+  font-size: 0.72rem;
+  cursor: pointer;
+  transition:
+    background 0.1s,
+    border-color 0.1s;
+}
+.select:hover {
+  border-color: var(--border);
+  background: var(--fill);
+}
+.select[aria-expanded='true'] {
+  border-color: var(--border-strong);
+  background: var(--fill-strong);
+}
+.caret {
+  display: flex;
+  color: var(--text-muted);
+}
+.menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 1600;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 6px 16px var(--shadow);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .menu {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+}
+.row[data-sheet] .menu {
+  position: static;
+  flex-basis: 100%;
+  margin-top: 4px;
+}
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text);
+  font-size: 0.75rem;
+  text-align: left;
+  cursor: pointer;
+}
+.item:hover {
+  background: var(--fill);
+}
+.item[aria-selected='true'] {
+  color: var(--text-strong);
+}
+.check {
+  display: flex;
+  color: var(--text-strong);
+}

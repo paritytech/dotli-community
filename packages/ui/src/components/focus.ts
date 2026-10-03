@@ -84,7 +84,7 @@ let scrollLocks = 0;
 
 /**
  * Lock page scroll until the returned function is called (more calls do
- * nothing), with `data-scroll-locked` on the body, which base.css turns
+ * nothing), with `data-scroll-locked` on the body, which global.css turns
  * into `overflow: hidden !important`, as Radix's react-remove-scroll does.
  * The body's inline style stays the page's own: bridge.ts hides its
  * overflow when the product frame attaches, maybe while a dialog is open,

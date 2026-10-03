@@ -12,6 +12,7 @@ import {
   TOPBAR_REVEAL_SHORTCUT,
 } from '../../topbar-autohide.js';
 import { useStore } from '../use-store.js';
+import s from './TopbarReveal.module.css';
 
 /**
  * The auto-hiding topbar's ways back (see topbar-autohide.ts), an island of
@@ -40,7 +41,7 @@ export function TopbarReveal(): JSX.Element {
         onClick={revealTopbarAndFocus}
         type="button"
         id={TOPBAR_REVEAL_BUTTON_ID}
-        class="topbar-reveal"
+        class={s['reveal']}
         aria-keyshortcuts={TOPBAR_REVEAL_SHORTCUT}
         aria-controls="topbar"
         hidden={!autoHide()}

@@ -18,6 +18,7 @@ import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
 import { usePopover } from './Popover.js';
+import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
@@ -193,9 +194,13 @@ export function PermissionsContent(): JSX.Element {
 
   return (
     <>
-      <div class="permissions-popover-header">Permissions</div>
-      <div class="permissions-popover-list" id="permissions-popover-list">
-        <Show when={hint()}>{text => <div class="permissions-popover-footer">{text()}</div>}</Show>
+      <Show when={!popover.sheet()}>
+        <div class={s['header']} data-testid="permissions-popover-header">
+          Permissions
+        </div>
+      </Show>
+      <div class={s['list']} id="permissions-popover-list">
+        <Show when={hint()}>{text => <div class={s['footer']}>{text()}</div>}</Show>
         <Show when={statuses()}>
           {list => (
             <>
@@ -216,7 +221,7 @@ export function PermissionsContent(): JSX.Element {
                   />
                 )}
               </For>
-              <div class="permissions-popover-footer">Changing permissions will reload the app.</div>
+              <div class={s['footer']}>Changing permissions will reload the app.</div>
             </>
           )}
         </Show>

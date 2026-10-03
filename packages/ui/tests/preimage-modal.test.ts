@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { showPreimageSubmitModal } from '../src/preimage-modal.js';
 import { ERRORS } from '../src/errors.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId, query } from './support.js';
 
 afterEach(() => {
   resetOverlays();
@@ -18,12 +19,12 @@ describe('preimage submit modal', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Submit Preimage');
-    expect(document.querySelector('.signing-field-label')?.textContent).toBe('Data size');
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('2 KB');
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Submit Preimage');
+    expect(byTestId('signing-field-label').textContent).toBe('Data size');
+    expect(byTestId('signing-field-value').textContent).toBe('2 KB');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(decision).resolves.toBeUndefined();
@@ -33,16 +34,16 @@ describe('preimage submit modal', () => {
     // Given
     const decision = showPreimageSubmitModal(512);
     await overlaysReady();
-    expect(document.querySelector('.signing-field-value')?.textContent).toBe('512 B');
+    expect(byTestId('signing-field-value').textContent).toBe('512 B');
 
     // When
-    document.querySelector<HTMLElement>('.signing-modal-backdrop')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
-    expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    byTestId('signing-btn-cancel').click();
 
     // Then
     await expect(decision).rejects.toThrow(ERRORS.PREIMAGE_SUBMIT_DENIED);

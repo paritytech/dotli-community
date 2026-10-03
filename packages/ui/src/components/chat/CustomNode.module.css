@@ -1,0 +1,108 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Defaults: the layout and colors a product picks arrive as inline styles
+   (chat/custom-styles.ts) and win over them. */
+
+.box {
+  display: grid;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.spacer {
+  flex: 1;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.image {
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.effect {
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* A decorative constant, the same in both themes. */
+.effect[data-effect='rainbow'] {
+  background: linear-gradient(90deg, #ff5f6d, #ffc371, #47e3a0, #4facfe, #b06ab3, #ff5f6d);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: rainbow-shift 6s linear infinite;
+}
+@keyframes rainbow-shift {
+  to {
+    background-position: 200% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .effect[data-effect='rainbow'] {
+    animation: none;
+  }
+}
+
+.text {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.field-label {
+  color: var(--chat-fg-secondary);
+  font-size: 0.7rem;
+}
+
+.field-input {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-bg-surface-nested);
+  border-radius: 8px;
+  background: var(--chat-bg-surface-container);
+  color: var(--chat-fg-primary);
+  font-family: inherit;
+  font-size: 0.78rem;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--text-faint);
+}
+.field-input:disabled {
+  opacity: 0.5;
+}

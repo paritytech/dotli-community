@@ -34,7 +34,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(page.locator('#dotli-nav-form')).toBeVisible();
-    const pills = page.locator('#dotli-recent .landing-recent-pill');
+    await expect(page.locator('body')).toHaveAttribute('data-landing', '');
+    const pills = page.locator('#dotli-recent').getByTestId('landing-recent-pill');
     await expect(pills).toHaveCount(2);
     await expect(pills.first()).toHaveAttribute('href', /browse/);
   });
@@ -79,7 +80,7 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(page.locator('#auth-modal-backdrop')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#auth-modal-backdrop')).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
   });
 
@@ -100,11 +101,11 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(page.locator('#more-popover')).not.toHaveClass(/\bopen\b/);
-    await expect(page.locator('#mode-popover')).toHaveClass(/\bopen\b/);
+    await expect(page.locator('#more-popover')).not.toHaveAttribute('data-open');
+    await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
   });
 
   test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -118,27 +119,27 @@ test.describe('Shell UI smoke', () => {
 
     // When
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Settings');
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Settings');
     // At the bottom edge, once it has slid up.
     await expect.poll(() => sheetBottom(sheet)).toBe(740);
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await page.locator('#more-button').click();
-    await page.locator('#more-popover .more-row[data-item="settings"]').click();
-    await expect(sheet).toHaveClass(/\bopen\b/);
+    await page.locator('#more-popover [role="menuitem"][data-item="settings"]').click();
+    await expect(sheet).toHaveAttribute('data-open');
     await expect.poll(() => sheetBottom(sheet)).toBe(740);
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -147,7 +148,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a phone user, Permissions opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -160,8 +161,8 @@ test.describe('Shell UI smoke', () => {
     const sheet = page.locator('#permissions-popover');
     const open = async (): Promise<void> => {
       await page.locator('#more-button').click();
-      await page.locator('#more-popover .more-row[data-item="permissions"]').click();
-      await expect(sheet).toHaveClass(/\bopen\b/);
+      await page.locator('#more-popover [role="menuitem"][data-item="permissions"]').click();
+      await expect(sheet).toHaveAttribute('data-open');
       await expect.poll(() => sheetBottom(sheet)).toBe(740);
     };
 
@@ -169,19 +170,19 @@ test.describe('Shell UI smoke', () => {
     await open();
 
     // Then
-    await expect(sheet).toHaveClass(/\bsheet\b/);
+    await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
-    await expect(sheet.locator('.popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
 
     // When
-    await sheet.locator('.popover-sheet-close').click();
+    await sheet.getByTestId('popover-sheet-close').click();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
 
     // When: open it again and swipe the header down.
     await open();
-    const header = await sheet.locator('.popover-sheet-header').boundingBox();
+    const header = await sheet.getByTestId('popover-sheet-header').boundingBox();
     const x = (header?.x ?? 0) + (header?.width ?? 0) / 2;
     const y = (header?.y ?? 0) + 10;
     await page.mouse.move(x, y);
@@ -190,7 +191,7 @@ test.describe('Shell UI smoke', () => {
     await page.mouse.up();
 
     // Then
-    await expect(sheet).not.toHaveClass(/\bopen\b/);
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a desktop user, Permissions opens anchored under the topbar', async ({ page }) => {
@@ -204,8 +205,8 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     const popover = page.locator('#permissions-popover');
-    await expect(popover).toHaveClass(/\bopen\b/);
-    await expect(popover).not.toHaveClass(/\bsheet\b/);
+    await expect(popover).toHaveAttribute('data-open');
+    await expect(popover).not.toHaveAttribute('data-sheet');
     const box = await popover.boundingBox();
     expect(box?.y ?? 0).toBeLessThan(100);
   });
@@ -217,6 +218,7 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LABEL_URL);
     await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+    await expect(page.locator('body')).not.toHaveAttribute('data-landing');
 
     // Then
     await expect(page.locator('#mode-button')).toBeVisible();
@@ -234,14 +236,14 @@ test.describe('Shell UI smoke', () => {
     await page.locator('#landing-auth-button').click();
 
     // Then
-    await expect(backdrop).toHaveClass(/\bopen\b/);
+    await expect(backdrop).toHaveAttribute('data-open');
     await expect(page.locator('#auth-modal-title')).toBeVisible();
 
     // When
     await page.locator('#auth-modal-close').click();
 
     // Then
-    await expect(backdrop).not.toHaveClass(/\bopen\b/);
+    await expect(backdrop).not.toHaveAttribute('data-open');
   });
 
   test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {
@@ -304,15 +306,15 @@ test.describe('Shell UI smoke', () => {
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
     // Given
     await page.goto(LANDING_URL);
-    const card = page.locator('.notif-card', {
-      has: page.locator('.notif-title', { hasText: 'Get Polkadot Desktop' }),
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Get Polkadot Desktop' }),
     });
 
     // Then
     await expect(card).toBeVisible();
 
     // When
-    await card.locator('.notif-card-close').click();
+    await card.getByTestId('notif-card-close').click();
 
     // Then
     await expect(card).toHaveCount(0);

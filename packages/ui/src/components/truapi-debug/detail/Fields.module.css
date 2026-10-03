@@ -1,0 +1,50 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel detail key/value lists */
+
+.fields {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 4px 10px;
+  margin: 0 0 8px;
+  padding: 0;
+  color: var(--td-slate);
+  font-size: 11px;
+}
+
+.name {
+  color: var(--td-fg-faint);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+
+.value {
+  margin: 0;
+  color: var(--td-fg);
+  overflow-wrap: anywhere;
+}
+
+.chain .name {
+  color: var(--td-fg-dim);
+}
+.code {
+  font-family: inherit;
+  font-size: 11px;
+  color: var(--td-fg-muted);
+  overflow-wrap: anywhere;
+}
+
+.rid {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: var(--td-rid-bg);
+  border: 1px solid var(--td-rid-line);
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

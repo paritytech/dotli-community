@@ -1,0 +1,51 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The sandbox has no `#app`, so the screen fills its transparent body itself. */
+.standalone {
+  height: 100dvh;
+  background: var(--bg-page);
+}
+
+.title {
+  margin: 0;
+  padding: 0;
+}
+
+/* The Spinner primitive's ring, kept here rather than shared: importing
+   Spinner.module.css from a page script alongside the AuthModal island makes
+   the page link that island's chunk sheet, a second render-blocking copy of CSS
+   that index.css already holds. */
+.spinner {
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
+  margin: 1rem auto;
+  padding: 0;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-strong);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  /* Two lines reserved, so a status that wraps does not shift the spinner. */
+  min-height: 2.6em;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--text);
+}

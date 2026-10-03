@@ -20,10 +20,10 @@ import { startDrag } from '../drag.js';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { createPopover, isSheetViewport } from './create-popover.js';
+import s from './Popover.module.css';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
-/** A sheet's: its slide down (popover.css). */
 export const SHEET_EXIT_MS = 280;
 
 /** A swipe past this share of the sheet's height closes it. */
@@ -56,8 +56,11 @@ export interface PopoverProps {
   title: string;
   content: PopoverContent;
   trigger: (t: PopoverTrigger) => JSX.Element;
-  /** The surface's own class: its width and inner layout. */
-  class?: string;
+  /**
+   * The surface's own class: its place, width and look. It may react to the
+   * surface's `data-open` and `data-sheet`.
+   */
+  class?: string | undefined;
   /** Dim the page under the anchored surface; a press on it closes. */
   backdrop?: boolean;
   /** `end`: under the topbar at its right edge. `trigger`: under the trigger. */
@@ -117,6 +120,13 @@ export function usePopover(): PopoverContextValue {
  * reported once and closes the popover; the next opening loads it again.
  * Focus and dismissal are createPopover's (`popover` mode anchored,
  * `dialog` mode as a sheet).
+ *
+ * The surface carries its state as `data-open`, `data-sheet`, `data-peek`
+ * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
+ * `data-dragging` (while a sheet is being dragged),
+ * and the backdrop `data-open` and `data-sheet`. A consumer's class on the
+ * surface may react to them. Content that lays out differently in a sheet
+ * reads `usePopover().sheet()` and marks its own elements.
  */
 export function Popover(props: PopoverProps): JSX.Element {
   let triggerEl: HTMLElement | undefined;
@@ -333,19 +343,22 @@ export function Popover(props: PopoverProps): JSX.Element {
         <Show when={props.backdrop === true || sheet()}>
           <div
             onClick={close}
-            class={['popover-backdrop', { open: popover.open(), sheet: sheet() }]}
+            class={s['backdrop']}
             id={`${props.id}-backdrop`}
+            data-testid="popover-backdrop"
+            data-open={popover.open() ? '' : undefined}
+            data-sheet={sheet() ? '' : undefined}
           />
         </Show>
         <div
           ref={el => {
             surfaceEl = el;
           }}
-          class={[
-            'popover',
-            props.class ?? '',
-            { open: popover.open(), sheet: sheet(), peek: peek(), 'anchor-trigger': anchoredToTrigger() },
-          ]}
+          class={[s['surface'], props.class]}
+          data-open={popover.open() ? '' : undefined}
+          data-sheet={sheet() ? '' : undefined}
+          data-peek={peek() ? '' : undefined}
+          data-anchor={anchoredToTrigger() ? 'trigger' : undefined}
           style={
             anchoredToTrigger() && place() !== null
               ? { top: `${String(place()?.top)}px`, left: `${String(place()?.left)}px` }
@@ -364,7 +377,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           <Show when={sheet()}>
             <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />
           </Show>
-          <div class="popover-body">
+          <div data-testid="popover-body">
             {/* Keyed on the opening, and taking it as a parameter (Show calls
                 only a child that declares one), so each opening mounts the
                 content afresh, a reopening during the fade-out included. */}
@@ -372,7 +385,7 @@ export function Popover(props: PopoverProps): JSX.Element {
               {(_opening: number) => (
                 <PopoverContext value={context}>
                   <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
-                    <Loading fallback={<div class="popover-loading" aria-hidden="true" />}>
+                    <Loading fallback={<div class={s['loading']} data-testid="popover-loading" aria-hidden="true" />}>
                       <Content />
                       <FocusWhenLoaded surface={() => surfaceEl} />
                     </Loading>
@@ -411,6 +424,7 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
  */
 function SheetHeader(props: { title: string; surface: () => HTMLElement | undefined; close: () => void }): JSX.Element {
   let header: HTMLDivElement | undefined;
+  let closeButton: HTMLButtonElement | undefined;
   let stop: (() => void) | undefined;
   onCleanup(() => stop?.());
 
@@ -420,13 +434,13 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       return;
     }
     // Not from the close button: its own click closes.
-    if ((down.target as Element).closest('.popover-sheet-close') !== null) {
+    if (closeButton?.contains(down.target as Node) === true) {
       return;
     }
     const startY = down.clientY;
     const startTime = performance.now();
     let dy = 0;
-    surface.classList.add('dragging');
+    surface.setAttribute('data-dragging', '');
     stop = startDrag(header, down, {
       move: ev => {
         dy = Math.max(0, ev.clientY - startY);
@@ -434,7 +448,7 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       },
       end: () => {
         const speed = dy / Math.max(1, performance.now() - startTime);
-        surface.classList.remove('dragging');
+        surface.removeAttribute('data-dragging');
         if (
           dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION ||
           (dy >= SWIPE_FLICK_MIN_PX && speed > SWIPE_CLOSE_SPEED)
@@ -451,14 +465,21 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       ref={el => {
         header = el;
       }}
-      class="popover-sheet-header"
+      class={s['sheetHeader']}
+      data-testid="popover-sheet-header"
       onPointerDown={onPointerDown}
     >
-      <div class="popover-sheet-grabber" aria-hidden="true" />
-      <span class="popover-sheet-title">{props.title}</span>
+      <div class={s['grabber']} aria-hidden="true" />
+      <span class={s['sheetTitle']} data-testid="popover-sheet-title">
+        {props.title}
+      </span>
       <button
+        ref={el => {
+          closeButton = el;
+        }}
         type="button"
-        class="popover-sheet-close"
+        class={s['sheetClose']}
+        data-testid="popover-sheet-close"
         aria-label={`Close ${props.title}`}
         onClick={() => {
           props.close();

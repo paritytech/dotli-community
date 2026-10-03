@@ -82,7 +82,7 @@ describe('chat custom renderer', () => {
     };
 
     const column = renderElement(tree);
-    expect(column.className).toBe('chat-custom-column');
+    expect(column.getAttribute('data-testid')).toBe('chat-custom-column');
     expect(column.style.padding).toBe('12px 8px');
     expect(column.style.backgroundColor).toBe('var(--chat-bg-surface-container)');
     expect(column.style.borderRadius).toBe('10px');
@@ -93,21 +93,21 @@ describe('chat custom renderer', () => {
     const text = nth(children, 0);
     const row = nth(children, 1);
     const box = nth(children, 2);
-    expect(text.className).toBe('chat-custom-text');
+    expect(text.getAttribute('data-testid')).toBe('chat-custom-text');
     expect(text.textContent).toBe('Poll results');
     expect(text.style.fontSize).toBe('32px');
     expect(text.style.fontWeight).toBe('700');
     expect(text.style.color).toBe('var(--chat-fg-error)');
 
-    expect(row.className).toBe('chat-custom-row');
+    expect(row.getAttribute('data-testid')).toBe('chat-custom-row');
     expect(row.style.width).toBe('100%');
     expect(row.style.alignItems).toBe('flex-end');
     expect(row.style.justifyContent).toBe('flex-end');
     // Spacer renders; Nil renders nothing.
     expect(row.children).toHaveLength(1);
-    expect(row.children[0]?.className).toBe('chat-custom-spacer');
+    expect(row.children[0]?.getAttribute('data-testid')).toBe('chat-custom-spacer');
 
-    expect(box.className).toBe('chat-custom-box');
+    expect(box.getAttribute('data-testid')).toBe('chat-custom-box');
     expect(box.style.minHeight).toBe('40px');
     expect(box.style.borderStyle).toBe('solid');
     expect(box.style.borderColor).toBe('var(--chat-fg-tertiary)');
@@ -155,7 +155,7 @@ describe('chat custom renderer', () => {
       onAction,
     ) as HTMLButtonElement;
     expect(rendered.textContent).toBe('Vote');
-    expect(rendered.className).toContain('chat-custom-btn-primary');
+    expect(rendered.dataset['variant']).toBe('primary');
     expect(rendered.disabled).toBe(false);
     rendered.click();
     expect(onAction).toHaveBeenCalledWith('vote:1');
@@ -181,7 +181,7 @@ describe('chat custom renderer', () => {
       onAction,
     ) as HTMLButtonElement;
     expect(disabled.disabled).toBe(true);
-    expect(disabled.classList.contains('chat-custom-btn-loading')).toBe(true);
+    expect(disabled.hasAttribute('data-loading')).toBe(true);
     disabled.click();
     expect(onAction).not.toHaveBeenCalled();
   });
@@ -254,14 +254,15 @@ describe('chat custom renderer', () => {
         ],
       },
     });
-    expect(effect.className).toBe('chat-custom-effect chat-custom-effect-rainbow');
+    expect(effect.getAttribute('data-testid')).toBe('chat-custom-effect');
+    expect(effect.dataset['effect']).toBe('rainbow');
     const box = effect.children[0] as HTMLElement;
     expect(box.style.opacity).toBe('0.2');
     expect(box.style.mixBlendMode).toBe('multiply');
     expect(box.style.borderRadius).toBe('0px');
     // Image bytes are not fetched yet: the node is empty space, never an URL.
     const image = box.children[0] as HTMLElement;
-    expect(image.className).toBe('chat-custom-image');
+    expect(image.getAttribute('data-testid')).toBe('chat-custom-image');
     expect(image.style.width).toBe('24px');
     expect(image.style.height).toBe('24px');
     expect(image.childNodes).toHaveLength(0);
@@ -443,7 +444,7 @@ describe('chat custom renderer, updates', () => {
 
     // Then: the Name field is empty, and nothing I typed reports as a name.
     const name = nth(container.querySelectorAll('input'), 0);
-    expect(name.closest('.chat-custom-field')?.textContent).toBe('Name');
+    expect(name.closest('[data-testid="chat-custom-field"]')?.textContent).toBe('Name');
     expect(name.value).toBe('');
     expect(document.activeElement).not.toBe(name);
     name.value = 'x';
@@ -466,7 +467,7 @@ describe('chat custom renderer, updates', () => {
     // Then: Email does not show Name's text.
     const inputs = Array.from(container.querySelectorAll('input'));
     expect(inputs).toHaveLength(1);
-    expect(inputs[0]?.closest('.chat-custom-field')?.textContent).toBe('Email');
+    expect(inputs[0]?.closest('[data-testid="chat-custom-field"]')?.textContent).toBe('Email');
     expect(inputs[0]?.value).toBe('');
   });
 
@@ -485,7 +486,7 @@ describe('chat custom renderer, updates', () => {
     const { container } = renderComponent(() => <CustomNode node={node()} onAction={onAction} />);
     const button = container.querySelector('button');
     expect(button?.disabled).toBe(true);
-    expect(button?.classList.contains('chat-custom-btn-loading')).toBe(true);
+    expect(button?.hasAttribute('data-loading')).toBe(true);
 
     // When
     setNode(buttonNode(false, 'vote:2'));
@@ -495,7 +496,7 @@ describe('chat custom renderer, updates', () => {
     // Then
     expect(container.querySelector('button')).toBe(button);
     expect(button?.disabled).toBe(false);
-    expect(button?.classList.contains('chat-custom-btn-loading')).toBe(false);
+    expect(button?.hasAttribute('data-loading')).toBe(false);
     expect(onAction).toHaveBeenCalledWith('vote:2');
   });
 

@@ -9,11 +9,13 @@
 import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { TopbarContext, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
+import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.js';
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { mouseClick, pointerPress, resetStores, settle } from '../../helpers/solid.js';
-import { byId } from '../../support.js';
+import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
+import { byId, byTestId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, renderTopbar } from './topbar-harness.js';
 
 interface Activation {
@@ -28,14 +30,14 @@ function Item(props: { name: string; priority: number; visible?: boolean }): JSX
     <TopbarItem
       name={props.name}
       label={props.name.toUpperCase()}
-      icon={() => <svg class={`icon-${props.name}`} />}
+      icon={() => <svg data-testid={`icon-${props.name}`} />}
       priority={props.priority}
       visible={props.visible ?? true}
       activate={ev => {
         activations.push({ name: props.name, detail: ev.detail });
       }}
     >
-      <button id={`${props.name}-button`} class="topbar-btn" type="button">
+      <button id={`${props.name}-button`} type="button">
         {props.name}
       </button>
     </TopbarItem>
@@ -60,20 +62,22 @@ function Items(props: { chat?: boolean }): JSX.Element {
 const room = (n: number): number => n * ITEM_WIDTH;
 
 function inline(name: string): boolean {
-  const el = document.querySelector<HTMLElement>(`.topbar-item[data-item="${name}"]`);
-  return el !== null && el.hidden === false && !el.classList.contains('topbar-item-collapsed');
+  const el = document.querySelector<HTMLElement>(`[data-testid="topbar-item"][data-item="${name}"]`);
+  return el !== null && el.hidden === false && !el.hasAttribute('data-collapsed');
 }
 
 function rowNames(): string[] {
-  return [...document.querySelectorAll<HTMLElement>('#more-popover .more-row')].map(el => el.dataset['item'] ?? '');
+  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
+    el => el.dataset['item'] ?? '',
+  );
 }
 
 function moreShows(): boolean {
-  return !byId('more-button').classList.contains('topbar-more-idle');
+  return !byId('more-button').hasAttribute('data-idle');
 }
 
 function isOpen(): boolean {
-  return byId('more-popover').classList.contains('open');
+  return byId('more-popover').hasAttribute('data-open');
 }
 
 async function pressKey(key: string): Promise<void> {
@@ -143,6 +147,7 @@ describe('ActionGroup', () => {
     mouseClick(byId('more-button'));
     await settle();
     expect(isOpen()).toBe(true);
+    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(true);
 
     // When
     layout.setRoom(room(6));
@@ -154,6 +159,7 @@ describe('ActionGroup', () => {
     expect(rowNames()).toEqual([]);
     expect(moreShows()).toBe(false);
     expect(isOpen()).toBe(false);
+    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(false);
   });
 
   it('As a user, a hidden item shows neither in the bar nor in More, and takes its share of the room once it shows', async () => {
@@ -249,7 +255,7 @@ describe('ActionGroup', () => {
     expect(row.getAttribute('role')).toBe('menuitem');
     expect(row.getAttribute('tabindex')).toBe('-1');
     expect(row.textContent).toBe('THEME');
-    expect(row.querySelector('svg.icon-theme')).not.toBeNull();
+    expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
   });
 
   it('As a mobile user, a tap outside the menu or a blocking modal closes it', async () => {
@@ -277,13 +283,38 @@ describe('ActionGroup', () => {
     expect(isOpen()).toBe(false);
   });
 
+  it('As the build-time render, the items that may collapse are marked, and the More button is idle', async () => {
+    // Given: a bar that has not measured yet, as in the host page's build-time render.
+    const bar: TopbarBar = {
+      register: () => () => false,
+      observe: () => undefined,
+      moreButton: () => undefined,
+    };
+
+    // When
+    renderComponent(() => (
+      <TopbarContext value={bar}>
+        <Items />
+        <OverflowMenu rows={[]} buttonRef={() => undefined} />
+      </TopbarContext>
+    ));
+    await settle();
+
+    // Then: until the bar measures, a narrow viewport keeps these out and shows the More button.
+    const mayCollapse = [...document.querySelectorAll<HTMLElement>('[data-testid="topbar-item"]')]
+      .filter(item => item.hasAttribute('data-may-collapse'))
+      .map(item => item.dataset['item']);
+    expect(mayCollapse).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
+    expect(byId('more-button').hasAttribute('data-idle')).toBe(true);
+  });
+
   it('As a user, a collapsed item stays in place, out of the tab order, so its surface keeps its anchor', async () => {
     // When
     await renderTopbar(() => <Items />, room(5));
 
     // Then
     const wrapper = byId('settings-button').parentElement;
-    expect(wrapper?.classList.contains('topbar-item-collapsed')).toBe(true);
+    expect(wrapper?.hasAttribute('data-collapsed')).toBe(true);
     expect(byId('settings-button').isConnected).toBe(true);
   });
 });

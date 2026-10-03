@@ -9,6 +9,7 @@ import solid from '@solidjs/vite-plugin';
 import wasmPlugin from 'vite-plugin-wasm';
 import { buildInfo } from '@config/vite/build-info';
 import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
+import { cssModules } from '@config/vite/css-modules';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { socialMetaTags } from '@config/vite/social-meta';
 import { stripAnalytics } from '@dotli/metrics/vite';
@@ -142,6 +143,7 @@ function preloadCriticalAssets(): Plugin {
 }
 
 export default defineConfig({
+  css: { modules: cssModules() },
   envDir: resolve(import.meta.dirname, '../..'),
   base: APP_URL === '' ? '/' : new URL(APP_URL).pathname,
   plugins: [

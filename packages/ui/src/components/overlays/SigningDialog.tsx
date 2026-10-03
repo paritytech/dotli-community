@@ -1,15 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Renders one queued ModalView with the signing-modal markup shared by the
-// permission, preimage, confirmation and password dialogs.
-
 import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '../../state/modals.js';
 import { Dialog } from './Dialog.js';
+import s from './SigningDialog.module.css';
 
-const BUTTON_CLASS: Record<ModalButtonVariant, string> = {
+const BUTTON_CLASS: Record<ModalButtonVariant, string | undefined> = {
+  cancel: s['cancel'],
+  secondary: s['secondary'],
+  primary: s['primary'],
+};
+
+const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
   cancel: 'signing-btn-cancel',
   secondary: 'signing-btn-secondary',
   primary: 'signing-btn-sign',
@@ -51,31 +55,53 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   };
 
   return (
-    <Dialog titleId={titleId} initialFocus={() => input} onDismiss={dismiss}>
+    <Dialog titleId={titleId} initialFocus={() => input} onDismiss={dismiss} testId="signing-modal">
       <Show when={view.icon}>
         {icon => (
           // eslint-disable-next-line solid/no-innerhtml -- trusted SVG markup from ModalView.icon, not user input
-          <div class="permission-modal-icon" innerHTML={icon()} />
+          <div class={s['icon']} data-testid="permission-modal-icon" innerHTML={icon()} />
         )}
       </Show>
-      <h2 id={titleId}>{view.title}</h2>
-      <div class="signing-fields">
+      <h2 class={s['title']} id={titleId}>
+        {view.title}
+      </h2>
+      <div class={s['fields']}>
         <For each={view.fields}>
           {field => (
-            <div class={['signing-field', { 'signing-field-warning': field.warning === true }]}>
-              <div class="signing-field-label">{field.label}</div>
-              <div class={['signing-field-value', { mono: field.mono === true }]}>{field.value}</div>
+            <div class={s['field']} data-testid="signing-field" data-warning={field.warning === true ? '' : undefined}>
+              <div class={s['fieldLabel']} data-testid="signing-field-label">
+                {field.label}
+              </div>
+              <div
+                class={s['fieldValue']}
+                data-testid="signing-field-value"
+                data-mono={field.mono === true ? '' : undefined}
+              >
+                {field.value}
+              </div>
             </div>
           )}
         </For>
-        <Show when={view.notice}>{notice => <div class="permission-modal-notice">{notice()}</div>}</Show>
+        <Show when={view.notice}>
+          {notice => (
+            <div class={s['notice']} data-testid="permission-modal-notice">
+              {notice()}
+            </div>
+          )}
+        </Show>
         <Show when={view.input}>
           {spec => (
             <>
-              <Show when={spec().hint}>{hint => <div class="signing-field-value">{hint()}</div>}</Show>
+              <Show when={spec().hint}>
+                {hint => (
+                  <div class={s['fieldValue']} data-testid="password-prompt-hint">
+                    {hint()}
+                  </div>
+                )}
+              </Show>
               <Show when={spec().error}>
                 {error => (
-                  <div class="password-prompt-error" role="alert">
+                  <div class={s['passwordError']} data-testid="password-prompt-error" role="alert">
                     {error()}
                   </div>
                 )}
@@ -85,7 +111,8 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                   input = el;
                 }}
                 type="password"
-                class="password-prompt-input"
+                class={s['passwordInput']}
+                data-testid="password-prompt-input"
                 aria-labelledby={titleId}
                 placeholder={spec().placeholder}
                 autocomplete="off"
@@ -101,12 +128,13 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </Show>
       </div>
-      <div class="signing-modal-footer">
+      <div class={s['footer']} data-testid="signing-modal-footer">
         <For each={view.buttons}>
           {button => (
             <button
               type="button"
               class={BUTTON_CLASS[button.variant]}
+              data-testid={BUTTON_TEST_ID[button.variant]}
               disabled={needsPassword(button) && password() === ''}
               onClick={() => {
                 choose(button);

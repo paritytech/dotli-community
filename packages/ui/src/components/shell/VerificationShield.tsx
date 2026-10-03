@@ -8,6 +8,7 @@ import { pillShield, urlPillStore } from '../../state/url-pill.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
+import s from './VerificationShield.module.css';
 
 /** The explainer's body, its own chunk. */
 const Explainer = lazy(() => import('./VerificationContent.js'), { export: 'VerificationContent' });
@@ -28,25 +29,26 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
  * Escape (focus back to the button when it was inside or lost to the body),
  * on window blur (a tap inside the product iframe) and when a blocking modal
  * comes up. The shield's state is the url-pill store's (pillShield), null
- * until the host knows how the product was loaded: the verified glyph shows
- * (CSS) and no row is marked as this site.
+ * until the host knows how the product was loaded: the button carries it as
+ * `data-state`, the verified glyph shows (CSS) and no row is marked as this
+ * site.
  * The explainer's body, VerificationContent, is its own chunk.
  *
  * Rendered by the URL pill's UrlPillShield island.
  */
 export function VerificationShield(): JSX.Element {
-  const state = useStore(urlPillStore, s => pillShield(s) ?? null);
+  const state = useStore(urlPillStore, pill => pillShield(pill) ?? null);
   const label = (): string => {
     const current = state();
     return current === null ? TOOLTIP_TITLE : `${BUTTON_LABEL[current]}. ${TOOLTIP_TITLE}`;
   };
 
   return (
-    <div class="verification-shield-wrap">
+    <div class={s['wrap']}>
       <Popover
         id={VERIFICATION_TOOLTIP_ID}
         title={TOOLTIP_TITLE}
-        class="verification-tooltip"
+        class={s['tooltip']}
         anchor="trigger"
         disclosure
         openOnHover
@@ -59,17 +61,13 @@ export function VerificationShield(): JSX.Element {
             {...t}
             type="button"
             id={VERIFICATION_SHIELD_ID}
-            class={[
-              'verification-shield',
-              {
-                verified: state() === 'verified',
-                trusted: state() === 'trusted',
-              },
-            ]}
+            class={s['shield']}
+            data-state={state() ?? undefined}
             aria-label={label()}
           >
             <svg
-              class="verification-shield-icon is-verified"
+              class={[s['glyph'], s['verifiedGlyph']]}
+              data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
               fill="currentColor"
               fill-rule="evenodd"
@@ -80,7 +78,8 @@ export function VerificationShield(): JSX.Element {
               <path d={GLYPH_PATHS.verified} />
             </svg>
             <svg
-              class="verification-shield-icon is-trusted"
+              class={[s['glyph'], s['trustedGlyph']]}
+              data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
               fill="currentColor"
               fill-rule="evenodd"

@@ -1,0 +1,218 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The surface's base rule is wrapped in :where(), so a consumer's own class (its
+   place, width and look) wins over it whatever order the stylesheets load in.
+   The state rules keep their specificity, so a sheet still takes the full width
+   over a consumer's width. */
+
+.backdrop {
+  display: none;
+  position: fixed;
+  top: var(--topbar-height);
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1400;
+  background: var(--backdrop);
+  opacity: 0;
+  transition:
+    opacity 0.18s ease-out,
+    display 0.18s allow-discrete;
+}
+.backdrop[data-open] {
+  display: block;
+  opacity: 1;
+}
+@starting-style {
+  .backdrop[data-open] {
+    opacity: 0;
+  }
+}
+.backdrop[data-sheet] {
+  top: 0;
+}
+
+:where(.surface) {
+  display: none;
+  position: fixed;
+  /* Overlaps the bottom of the topbar so the surface attaches to its
+     button instead of floating with a gap. */
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
+  box-sizing: border-box;
+  max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
+  /* `--content-height` is dvh-based: it tracks the visible area as mobile
+     browser chrome shows and hides, without the home indicator. */
+  max-height: calc(var(--content-height) - 4px);
+  overflow-y: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 8px 32px var(--shadow);
+  z-index: 1500;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
+}
+@supports (backdrop-filter: blur(1px)) {
+  :where(.surface) {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :where(.surface) {
+    background: var(--surface);
+  }
+}
+/* The surface takes focus itself (tabindex -1) for a pointer opening, and
+   shows no ring for it. */
+.surface:focus-visible {
+  outline: none;
+}
+.surface[data-open] {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .surface[data-open] {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+}
+.loading::after {
+  content: '';
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border);
+  border-top-color: var(--knob);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* On phones (SHEET_QUERY, read as each opening starts) a popover is a modal
+   bottom sheet. */
+.surface[data-sheet] {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-width: 100%;
+  max-height: calc(var(--content-height) * 0.85);
+  overflow-y: auto;
+  border: none;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 16px 16px 0 0;
+  /* A consumer whose content pads the home indicator itself sets
+     --sheet-inset: 0 on its surface class. */
+  padding-bottom: var(--sheet-inset, var(--safe-bottom));
+  opacity: 1;
+  transform: translateY(100%);
+  transform-origin: bottom center;
+  transition:
+    transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
+    display 0.28s allow-discrete;
+}
+.surface[data-sheet][data-open] {
+  transform: translateY(0);
+}
+@starting-style {
+  .surface[data-sheet][data-open] {
+    opacity: 1;
+    transform: translateY(100%);
+  }
+}
+.surface[data-dragging] {
+  transition: none;
+}
+.sheet-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  padding: 18px 14px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+  touch-action: none;
+  cursor: grab;
+}
+.grabber {
+  position: absolute;
+  top: 7px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  border-radius: 2px;
+  background: var(--border-strong);
+}
+.sheet-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+.sheet-close {
+  appearance: none;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.sheet-close:hover {
+  background: var(--fill);
+  color: var(--text-strong);
+}
+
+/* Under its trigger (anchor="trigger"): the place is set inline. */
+.surface[data-anchor='trigger'] {
+  right: auto;
+  transform-origin: top left;
+}
+.surface[data-peek] {
+  display: block;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .surface[data-peek] {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .surface,
+  .backdrop {
+    transition: none !important;
+  }
+  .loading::after {
+    animation: none;
+  }
+}

@@ -5,11 +5,13 @@ import { createEffect, createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
+import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
+import s from './PermissionsPopover.module.css';
 
 /** The popover's body, its own chunk. */
 const Permissions = lazy(() => import('./PermissionsContent.js'), { export: 'PermissionsContent' });
@@ -41,9 +43,9 @@ function LockIcon(props: { size: number }): JSX.Element {
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
  * product's permissions, each with a dropdown to allow, deny or reset it.
- * The button carries `.has-grants` while the product has any permission
- * granted, read again on a product loading or failing and on a permission
- * change.
+ * The button carries its badge (`data-badge`) while the product has any
+ * permission granted, read again on a product loading or failing and on a
+ * permission change.
  *
  * A press outside (the backdrop included), focus leaving it, Escape and a
  * blocking modal close the popover, a non-modal one. An open row dropdown
@@ -89,7 +91,7 @@ export function PermissionsPopover(): JSX.Element {
     <Popover
       id="permissions-popover"
       title="Permissions"
-      class="permissions-popover"
+      class={s['popover']}
       backdrop
       content={Permissions}
       trigger={t => (
@@ -100,15 +102,9 @@ export function PermissionsPopover(): JSX.Element {
           priority={TOPBAR_PRIORITY.permissions}
           activate={t.onClick}
         >
-          <button
-            {...t}
-            id="permissions-button"
-            class={['topbar-btn', { 'has-grants': hasGrants() }]}
-            title="Permissions"
-            aria-label="Permissions"
-          >
+          <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
             <LockIcon size={12} />
-          </button>
+          </IconButton>
         </TopbarItem>
       )}
     />

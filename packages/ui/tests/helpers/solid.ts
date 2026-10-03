@@ -102,9 +102,11 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
  */
 export async function waitForContent(id: string): Promise<HTMLElement> {
   const body = await vi.waitFor(() => {
-    const found = document.querySelector<HTMLElement>(`#${id} > .popover-body`);
+    const found = document.querySelector<HTMLElement>(`#${id} > [data-testid="popover-body"]`);
     const loaded =
-      found !== null && found.firstElementChild !== null && found.querySelector('.popover-loading') === null;
+      found !== null &&
+      found.firstElementChild !== null &&
+      found.querySelector('[data-testid="popover-loading"]') === null;
     if (!loaded) {
       throw new Error(`#${id} has no content yet`);
     }

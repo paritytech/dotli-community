@@ -11,7 +11,7 @@
  * position from this box.
  *
  * Every value carries a px fallback because these are set as inline styles.
- * Unlike the rules in `styles.css`, they do not ship with the file that defines
+ * Unlike the rules in `global.css`, they do not ship with the file that defines
  * the tokens, so a stylesheet that has not applied yet must not break layout.
  */
 

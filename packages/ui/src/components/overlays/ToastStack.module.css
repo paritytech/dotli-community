@@ -1,0 +1,67 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.stack {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 900;
+  box-sizing: border-box;
+  width: 380px;
+  margin: 0;
+  padding: 0;
+}
+@media (max-width: 480px) {
+  .stack {
+    right: 16px;
+    left: 16px;
+    width: auto;
+  }
+}
+
+.cards {
+  display: grid;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+.stack[data-expanded] .cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 60dvh;
+  margin: -12px;
+  padding: 12px;
+  overflow-y: auto;
+}
+.stack:not([data-expanded]) .cards {
+  cursor: pointer;
+}
+
+.close-all {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--inverse-fg) 13%, transparent);
+  border-radius: 50%;
+  background: var(--inverse-bg);
+  color: color-mix(in srgb, var(--inverse-fg) 60%, transparent);
+  box-shadow: 0 1px 4px var(--shadow);
+  cursor: pointer;
+  transition:
+    color 0.15s,
+    background 0.15s;
+}
+.close-all:hover {
+  background: color-mix(in srgb, var(--inverse-fg) 2%, var(--inverse-bg));
+  color: var(--inverse-fg);
+}

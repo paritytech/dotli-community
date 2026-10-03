@@ -1,0 +1,70 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* In a sheet (data-sheet) the footer pins to the sheet's bottom edge, where it
+   pads itself for the home indicator (SettingsPopover sets --sheet-inset: 0). */
+
+.content[data-sheet] {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+.columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 12px;
+  padding-top: 10px;
+}
+.content[data-sheet] .columns {
+  grid-template-columns: 1fr;
+}
+/* A flex column, so the last row of each (Clear all caches, the
+   diagnostics' links) sits at its bottom, level with the other's. */
+.col {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.clear-all-row {
+  padding-top: 10px;
+}
+.footer {
+  padding-bottom: 10px;
+}
+.content[data-sheet] .footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin-top: auto;
+  padding: 12px 14px calc(12px + var(--safe-bottom));
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  backdrop-filter: blur(24px) saturate(180%);
+}
+.divider {
+  height: 1px;
+  margin: 6px 14px;
+  background: var(--border-subtle);
+}
+.content[data-sheet] .divider {
+  display: none;
+}
+.apply-row {
+  padding-bottom: 0;
+}
+.content[data-sheet] .apply-row {
+  padding-top: 0;
+}
+.warning {
+  display: none;
+  margin: 6px 14px 0;
+  padding: 0;
+  color: var(--caution);
+  font-size: 0.7rem;
+  font-style: italic;
+  line-height: 1.35;
+  text-align: center;
+}
+.warning[data-visible] {
+  display: block;
+}

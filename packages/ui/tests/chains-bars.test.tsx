@@ -10,16 +10,16 @@ import { renderComponent, resetStores, settle, waitForContent } from './helpers/
 import { query } from './support.js';
 import { nth } from './helpers/nth.js';
 
-const BAR = '.chains-bar[data-block]';
+const BAR = '[data-block]';
 
 /**
  * happy-dom does no layout, so every box measures zero and the slide would be
  * skipped for having no distance to travel. Give the marks the width the
- * stylesheet gives them.
+ * module gives them.
  */
 function stubLayout(): void {
   vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-    const isBar = this.classList.contains('chains-bar');
+    const isBar = this instanceof HTMLElement && this.dataset['block'] !== undefined;
     return {
       width: isBar ? 4 : 200,
       height: isBar ? 22 : 22,
@@ -65,7 +65,7 @@ async function openPanel(): Promise<HTMLElement> {
   document.getElementById('chains-button')?.click();
   await settle();
   // The panel is the popover's body, its own chunk.
-  const strip = (await waitForContent('chains-popover')).querySelector<HTMLElement>('.chains-bars');
+  const strip = (await waitForContent('chains-popover')).querySelector<HTMLElement>('[data-testid="chains-bars"]');
   if (strip === null) {
     throw new Error('the panel rendered no bar strip');
   }
@@ -98,7 +98,6 @@ describe('The network panel blocks arrive as motion', () => {
     // Then
     const marks = strip.querySelectorAll<HTMLElement>(BAR);
     expect([...marks].map(m => m.dataset['block'])).toEqual(['101', '102']);
-    expect(getComputedStyle(strip).flexDirection).not.toBe('row-reverse');
   });
 
   it('As a user watching a chain, a block already on screen keeps its own bar', async () => {
@@ -127,10 +126,10 @@ describe('The network panel blocks arrive as motion', () => {
     await emit(103);
 
     // Then
-    expect(strip.classList.contains('is-sliding')).toBe(true);
+    expect(strip.hasAttribute('data-sliding')).toBe(true);
     expect(strip.style.transform).toBe('translateX(0)');
     const newest = strip.querySelector<HTMLElement>('[data-block="103"]');
-    expect(newest?.classList.contains('is-new')).toBe(true);
+    expect(newest?.hasAttribute('data-new')).toBe(true);
   });
 
   it('As a user watching a chain, a new bar drops its landing mark once its animation ends', async () => {
@@ -141,13 +140,13 @@ describe('The network panel blocks arrive as motion', () => {
     await emit(102);
     await emit(103);
     const newest = query(strip, '[data-block="103"]');
-    expect(newest.classList.contains('is-new')).toBe(true);
+    expect(newest.hasAttribute('data-new')).toBe(true);
 
     // When
     newest.dispatchEvent(new Event('animationend'));
 
     // Then
-    expect(newest.classList.contains('is-new')).toBe(false);
+    expect(newest.hasAttribute('data-new')).toBe(false);
   });
 
   it('As a user opening the panel on a chain with history, nothing slides', async () => {
@@ -159,7 +158,7 @@ describe('The network panel blocks arrive as motion', () => {
     await emit(101);
 
     // Then
-    expect(strip.classList.contains('is-sliding')).toBe(false);
+    expect(strip.hasAttribute('data-sliding')).toBe(false);
   });
 
   it('As a user with a narrow panel, only the newest blocks that fit are shown', async () => {

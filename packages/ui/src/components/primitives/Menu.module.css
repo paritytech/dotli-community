@@ -1,0 +1,86 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The base rules are wrapped in :where(), so a consumer's class (the theme
+   menu's width) wins over them whatever order the stylesheets load in.
+   `display` animates too (allow-discrete), and @starting-style gives the way in
+   its first frame. */
+
+:where(.menu) {
+  display: none;
+  /* Layout lives on the base rule, not on [data-open], so it holds through the
+     close transition while allow-discrete keeps `display: flex`. Otherwise the
+     rows briefly stack sideways on the way out. */
+  flex-direction: column;
+  gap: 2px;
+  position: fixed;
+  top: var(--topbar-height);
+  right: calc(12px + var(--safe-right));
+  box-sizing: border-box;
+  min-width: 180px;
+  padding: 6px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  background: var(--surface-glass);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 8px 32px var(--shadow);
+  z-index: 1500;
+  opacity: 0;
+  transform: scale(0.92);
+  transform-origin: top right;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
+    display 0.22s allow-discrete;
+}
+@supports (backdrop-filter: blur(1px)) {
+  :where(.menu) {
+    backdrop-filter: blur(24px) saturate(180%);
+  }
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :where(.menu) {
+    background: var(--surface);
+  }
+}
+.menu[data-open] {
+  display: flex;
+  opacity: 1;
+  transform: scale(1);
+}
+@starting-style {
+  .menu[data-open] {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu {
+    transition: none !important;
+  }
+}
+
+:where(.row) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 44px;
+  margin: 0;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.row:hover {
+  background: var(--fill);
+  color: var(--text-strong);
+}

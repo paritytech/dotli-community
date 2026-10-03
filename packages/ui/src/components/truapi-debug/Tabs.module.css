@@ -1,0 +1,32 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel view tabs */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 10px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-bar);
+}
+.tab {
+  margin: 0;
+  background: transparent;
+  border: none;
+  color: var(--td-fg-dim);
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transform: translateY(1px);
+}
+.tab:hover {
+  color: var(--td-fg-muted);
+}
+.tab[aria-selected='true'] {
+  color: var(--td-fg-strong);
+  border-bottom-color: var(--td-accent);
+}

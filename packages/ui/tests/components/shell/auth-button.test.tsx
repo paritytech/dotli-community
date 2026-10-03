@@ -7,8 +7,9 @@ import { getAuthModalState } from '../../../src/state/auth-modal.js';
 import { authStore, setAuthState } from '../../../src/state/auth.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { renderComponent } from '../../helpers/solid.js';
+import { byTestId } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 import { byId, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { normalized, oldAuthButton } from './old-auth-markup.js';
 
 useAuthController();
 
@@ -21,16 +22,36 @@ async function renderButton(): Promise<HTMLButtonElement> {
 }
 
 /**
- * The button as topbar.ts left it, plus the ARIA of a Radix-style trigger
- * for what a click opens: logged in, the user popover; logged out, the
- * auth modal (a Radix Dialog.Trigger).
+ * What the button carries apart from styling: its id, label, no busy or
+ * disabled state, the ARIA of a Radix-style trigger for what a click opens
+ * (logged in, the user popover, and logged out, the auth modal), and its content:
+ * the user icon logged out, one badge div logged in (initials, or the icon
+ * when the account has no username).
  */
-function expectMarkup(button: Element, expected: Element): void {
-  const account = expected.getAttribute('aria-label') === 'Account';
-  expected.setAttribute('aria-haspopup', 'dialog');
-  expected.setAttribute('aria-expanded', !account && getAuthModalState().open ? 'true' : 'false');
-  expected.setAttribute('aria-controls', account ? 'user-popover' : 'auth-modal-backdrop');
-  expect(normalized(button).isEqualNode(normalized(expected))).toBe(true);
+function expectMarkup(button: Element, state: 'logged-out' | { initials: string | undefined }): void {
+  const label = state === 'logged-out' ? 'Login with Polkadot Mobile' : 'Account';
+  const account = state !== 'logged-out';
+  expect(button.id).toBe('auth-button');
+  expect(button.getAttribute('title')).toBe(label);
+  expect(button.getAttribute('aria-label')).toBe(label);
+  expect(button.hasAttribute('disabled')).toBe(false);
+  expect(button.hasAttribute('aria-busy')).toBe(false);
+  expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  expect(button.getAttribute('aria-expanded')).toBe(!account && getAuthModalState().open ? 'true' : 'false');
+  expect(button.getAttribute('aria-controls')).toBe(account ? 'user-popover' : 'auth-modal-backdrop');
+  if (state === 'logged-out') {
+    expect(Array.from(button.children).map(child => child.tagName)).toEqual(['svg']);
+    return;
+  }
+  expect(Array.from(button.children).map(child => child.tagName)).toEqual(['DIV']);
+  const badge = nth(button.children, 0);
+  if (state.initials !== undefined) {
+    expect(badge.textContent).toBe(state.initials);
+    expect(badge.children).toHaveLength(0);
+  } else {
+    expect(badge.textContent).toBe('');
+    expect(Array.from(badge.children).map(child => child.tagName)).toEqual(['svg']);
+  }
 }
 
 describe('AuthButton', () => {
@@ -46,7 +67,7 @@ describe('AuthButton', () => {
     subscribe.mockRestore();
   });
 
-  it('As a logged-out user, I see the login button, enabled, with the markup the topbar rendered', async () => {
+  it('As a logged-out user, I see the login button, enabled, with its ids, labels and ARIA state', async () => {
     // When
     const button = await renderButton();
 
@@ -55,11 +76,11 @@ describe('AuthButton', () => {
     expect(button.getAttribute('aria-label')).toBe('Login with Polkadot Mobile');
     expect(button.hasAttribute('disabled')).toBe(false);
     expect(button.hasAttribute('aria-busy')).toBe(false);
-    expect(button.querySelector('.user-badge')).toBeNull();
-    expectMarkup(button, oldAuthButton('logged-out'));
+    expect(button.querySelector('[data-testid="user-badge"]')).toBeNull();
+    expectMarkup(button, 'logged-out');
   });
 
-  it('As a logged-in user, I see my initials in the badge, with the markup the topbar rendered', async () => {
+  it('As a logged-in user, I see my initials in the badge, with its ids, labels and ARIA state', async () => {
     // Given
     const button = await renderButton();
 
@@ -78,7 +99,7 @@ describe('AuthButton', () => {
     // Then
     expect(button.textContent).toBe('PG');
     expect(button.title).toBe('Account');
-    expectMarkup(button, oldAuthButton({ initials: 'PG' }));
+    expectMarkup(button, { initials: 'PG' });
   });
 
   it('As a logged-in user with a full name, my badge shows the initials of my first two names', async () => {
@@ -93,10 +114,10 @@ describe('AuthButton', () => {
     await settleAll();
 
     // Then
-    expectMarkup(button, oldAuthButton({ initials: 'AL' }));
+    expectMarkup(button, { initials: 'AL' });
   });
 
-  it('As a logged-in user without a username, I see the anonymous badge, with the markup the topbar rendered', async () => {
+  it('As a logged-in user without a username, I see the anonymous badge, with its ids, labels and ARIA state', async () => {
     // Given
     const button = await renderButton();
 
@@ -108,10 +129,10 @@ describe('AuthButton', () => {
     await settleAll();
 
     // Then
-    const badge = button.querySelector('.user-badge');
-    expect(badge?.classList.contains('user-badge-anon')).toBe(true);
-    expect(badge?.querySelector('svg')).not.toBeNull();
-    expectMarkup(button, oldAuthButton({ initials: undefined }));
+    const badge = byTestId('user-badge', button);
+    expect(badge.hasAttribute('data-anon')).toBe(true);
+    expect(badge.querySelector('svg')).not.toBeNull();
+    expectMarkup(button, { initials: undefined });
   });
 
   it('As a logged-in user whose name contains markup, my badge shows it as text', async () => {
@@ -127,8 +148,8 @@ describe('AuthButton', () => {
 
     // Then
     expect(button.querySelector('b')).toBeNull();
-    expect(button.querySelector('.user-badge')?.textContent).toBe('<B');
-    expectMarkup(button, oldAuthButton({ initials: '<B' }));
+    expect(byTestId('user-badge', button).textContent).toBe('<B');
+    expectMarkup(button, { initials: '<B' });
   });
 
   it('As a returning user whose session was restored before the islands loaded, the button shows my badge as it mounts', async () => {
@@ -171,7 +192,7 @@ describe('AuthButton', () => {
     await settleAll();
 
     // Then
-    expectMarkup(button, oldAuthButton('logged-out'));
+    expectMarkup(button, 'logged-out');
   });
 
   it('As a logged-out screen-reader user, the button announces the auth modal a click opens, and whether it is open', async () => {

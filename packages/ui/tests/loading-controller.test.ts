@@ -32,7 +32,7 @@ function stubMotionPreference(): void {
 function installLoadingDom(): void {
   // As the host page paints it: the LoadingScreen island's screen, beside
   // `#app`.
-  document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
+  document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
 }
 
 describe('The loading controller drives the loading store', () => {

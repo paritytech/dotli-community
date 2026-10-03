@@ -12,8 +12,9 @@ import {
   isTruapiDebugEnabled,
   packageVersions,
 } from '../../settings-actions.js';
-import { InfoRow, SectionHeader } from './SettingsRows.js';
+import { ClearButton, InfoRow, SettingsRow, SettingsSection } from './SettingsRows.js';
 import { loadRpcResolve } from '@dotli/resolver';
+import s from './Diagnostics.module.css';
 
 /** The rows a click copies. */
 const COPYABLE_ROWS = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
@@ -107,33 +108,31 @@ export function Diagnostics(props: {
       </For>
       {/* Version only. The per-chain block heights live in the network
           popover, where they can be read live. */}
-      <SectionHeader text="Light client" />
+      <SettingsSection text="Light client" />
       <InfoRow label="@parity/truapi-provider" value={buildLightClientVersionLabel()} />
       {polkadotApi.length > 0 && (
         <>
-          <SectionHeader text="@polkadot-api" />
+          <SettingsSection text="@polkadot-api" />
           <For each={polkadotApi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} />}</For>
         </>
       )}
       {parityTruapi.length > 0 && (
         <>
-          <SectionHeader text="@parity/truapi" />
+          <SettingsSection text="@parity/truapi" />
           <For each={parityTruapi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} />}</For>
         </>
       )}
-      <div class="mode-cache-row mode-diag-links-row">
-        <button
+      <SettingsRow class={s['links']}>
+        <ClearButton
           onClick={share}
-          type="button"
-          class="mode-clear-btn"
+          class={s['link']}
           title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
         >
           Share diagnostic
-        </button>
-        <button
+        </ClearButton>
+        <ClearButton
           onClick={toggleDebug}
-          type="button"
-          class="mode-clear-btn"
+          class={s['link']}
           title={
             debugOn
               ? 'Reload this tab with the TrUAPI debug panel disabled'
@@ -141,8 +140,8 @@ export function Diagnostics(props: {
           }
         >
           {debugOn ? 'Exit debug mode' : 'Open in debug mode'}
-        </button>
-      </div>
+        </ClearButton>
+      </SettingsRow>
     </>
   );
 }

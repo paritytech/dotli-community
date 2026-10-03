@@ -53,13 +53,14 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
+import s from './Panel.module.css';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
 /**
  * The viewport where the panel docks at the bottom with its panes stacked,
  * whatever dock was picked: side by side or docked right, each pane is too
- * narrow to read. The breakpoint of the matching rules in styles.css.
+ * narrow to read. The breakpoint of the matching rule in Header.module.css.
  */
 const NARROW_QUERY = '(max-width: 560px)';
 
@@ -270,7 +271,7 @@ export function Panel(props: {
     const anchor = list !== undefined && !wasAtBottom ? topRow(list, prevScrollTop) : null;
     const anchorTop = anchor?.offsetTop ?? 0;
     flush(update);
-    if (list !== undefined && view() === 'list' && list.querySelector('.td-row') !== null) {
+    if (list !== undefined && view() === 'list' && list.querySelector('[data-seq]') !== null) {
       if (wasAtBottom) {
         list.scrollTop = list.scrollHeight;
       } else if (anchor?.isConnected === true) {
@@ -408,7 +409,7 @@ export function Panel(props: {
     }
     // `display: none` on the pane under the cursor is not guaranteed to fire
     // a boundary event, which would strand the tooltip over the page.
-    tooltipEl?.classList.remove('visible');
+    tooltipEl?.removeAttribute('data-visible');
     commit(() => {
       setView(next);
       refreshSnapshot();
@@ -437,13 +438,11 @@ export function Panel(props: {
   return (
     <div
       id={PANEL_ID}
-      class={{
-        collapsed: collapsed(),
-        'docked-right': placement() === 'right',
-        stacked: stacked(),
-        'res-view': view() === 'resolution',
-        'archive-view': view() === 'archive',
-      }}
+      class={s['panel']}
+      data-dock={placement()}
+      data-layout={stacked() ? 'stacked' : undefined}
+      data-view={view()}
+      data-collapsed={collapsed() ? '' : undefined}
       ref={el => {
         panelEl = el;
       }}
@@ -454,6 +453,7 @@ export function Panel(props: {
         paused={paused()}
         collapsed={collapsed()}
         dock={dock()}
+        placement={placement()}
         exportJson={exportJson}
         onTogglePause={() => {
           const next = !store.isPaused();
@@ -501,9 +501,15 @@ export function Panel(props: {
           refit();
         }}
       />
-      <Filters filters={filters()} products={snapshot().products} onChange={changeFilters} />
-      <div class="td-body">
-        <div class="td-views">
+      <Filters
+        filters={filters()}
+        products={snapshot().products}
+        placement={placement()}
+        collapsed={collapsed()}
+        onChange={changeFilters}
+      />
+      <div class={s['body']} data-testid="td-body">
+        <div class={s['views']} data-testid="td-views">
           <Tabs view={view()} onSelect={selectView} />
           <EventList
             events={visible()}
@@ -536,22 +542,26 @@ export function Panel(props: {
           />
           <ArchiveView active={view() === 'archive'} load={props.loadArchive} />
         </div>
-        <BodySplitter panel={() => panelEl} stacked={stacked()} />
+        <BodySplitter
+          panel={() => panelEl}
+          stacked={stacked()}
+          hidden={view() === 'resolution' || view() === 'archive'}
+        />
         <DetailPane
           revision={detailRevision()}
           selectedSeq={selection()?.seq ?? null}
           view={view()}
           store={store}
+          hidden={view() === 'resolution' || view() === 'archive'}
           onSelectPair={seq => {
             select(seq);
-            listEl
-              ?.querySelector<HTMLElement>(`.td-row[data-seq="${String(seq)}"]`)
-              ?.scrollIntoView({ block: 'nearest' });
+            listEl?.querySelector<HTMLElement>(`[data-seq="${String(seq)}"]`)?.scrollIntoView({ block: 'nearest' });
           }}
         />
       </div>
       <div
-        class="td-tooltip"
+        class={s['tooltip']}
+        data-testid="td-tooltip"
         aria-hidden="true"
         ref={el => {
           tooltipEl = el;

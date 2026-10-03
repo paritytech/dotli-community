@@ -21,6 +21,7 @@ import {
 import type { PermissionAuthorizationRequest, PermissionAuthorizationStatus } from '@parity/truapi-host';
 import { createPromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { byTestId } from './support.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -279,7 +280,7 @@ describe('device permission prompts', () => {
 
   it('As a product, an auto-granted OpenUrl is answered once without a prompt', async () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a product, my iframe stays alive when notifications are granted', async () => {
@@ -446,7 +447,7 @@ describe('three-way permission prompts', () => {
     // When
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Camera');
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal-footer')).not.toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-footer"]')).not.toBeNull();
     });
 
     // Then
@@ -467,7 +468,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('AllowOnce');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a dotli user, a stored notification denial is answered without a prompt', async () => {
@@ -479,7 +480,7 @@ describe('three-way permission prompts', () => {
 
     // Then
     await expect(response).resolves.toBe('Deny');
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
     await overlaysReady();
     expect(document.body.textContent).toContain(
       'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
@@ -490,11 +491,11 @@ describe('three-way permission prompts', () => {
     // Given
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Notifications');
     await vi.waitFor(() => {
-      expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
     });
 
     // When
-    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    byTestId('signing-modal-backdrop').click();
 
     // Then
     await expect(response).rejects.toThrow('User dismissed permission dialog');
@@ -504,7 +505,7 @@ describe('three-way permission prompts', () => {
 
 function promptButtonTexts(): string[] {
   return Array.from(
-    document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'),
+    document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'),
     button => button.textContent,
   );
 }
@@ -513,7 +514,7 @@ async function clickPromptButton(text: string): Promise<void> {
   await vi.waitFor(() => {
     expect(promptButtonTexts()).toContain(text);
   });
-  Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'))
+  Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'))
     .find(button => button.textContent === text)
     ?.click();
 }

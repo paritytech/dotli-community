@@ -1,0 +1,261 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* It sits outside `#app`, so whatever replaces `#app`'s content never takes it
+   along.
+
+   Positioned like a browser's own status pages: a bounded column in the upper
+   part of the viewport (Chrome uses `margin: 14vh auto 0` with a 600px cap), so
+   the text does not move when a second line wraps in. */
+.screen {
+  position: absolute;
+  top: var(--topbar-height);
+  right: 0;
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  max-width: 600px;
+  min-height: var(--content-height);
+  margin: 0 auto;
+  padding: 14vh 16px 16px;
+  text-align: center;
+}
+
+:global(body[data-landing]) .screen {
+  top: 0;
+}
+
+/* loading-controller.ts dismisses the screen. */
+.screen[data-dismissing] {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.logo {
+  box-sizing: border-box;
+  margin: 0 0 40px;
+  padding: 0;
+  transition: opacity 0.8s ease;
+}
+
+.mark {
+  overflow: visible;
+}
+
+.petal {
+  fill: var(--text-strong);
+  transform-origin: 128px 128px;
+}
+
+/* The petals light up in turn, one 1.4 s cycle for all six: each jumps to
+   full opacity and scale 1 on its turn, then eases down to its 0.15 floor
+   (scale 0.932) over the next 24.5% of the cycle, along
+   (1 - 2.5 * elapsed)², which this cubic-bezier reproduces exactly.
+   Negative delays put each petal at its place in the cycle from the start:
+   petal i peaks i/6 of a turn after petal 0. Still under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .petal {
+    animation: petal-pulse 1.4s linear infinite;
+  }
+  .petal:nth-child(2) {
+    animation-delay: -1166.667ms;
+  }
+  .petal:nth-child(3) {
+    animation-delay: -933.333ms;
+  }
+  .petal:nth-child(4) {
+    animation-delay: -700ms;
+  }
+  .petal:nth-child(5) {
+    animation-delay: -466.667ms;
+  }
+  .petal:nth-child(6) {
+    animation-delay: -233.333ms;
+  }
+}
+
+@keyframes petal-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.3333, 0.4806, 0.6667, 0.8139);
+  }
+  24.508%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.932);
+  }
+}
+
+.progress {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 240px;
+  max-width: calc(100vw - 48px);
+  margin: 0 0 24px;
+  padding: 0;
+}
+
+.bar {
+  flex: 1;
+  box-sizing: border-box;
+  height: 2px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--fill);
+}
+
+/* The fill is the state indicator, so it needs 3:1 as a non-text component
+   in both themes. */
+.fill {
+  position: relative;
+  box-sizing: border-box;
+  width: 0%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--text-muted);
+  transition: width 0.4s ease-out;
+}
+
+/* Continuous sheen sweeping the filled portion. The simulated crawl can sit
+   near a band's top during a long sync with no real progress to report. The
+   sheen keeps visible motion so the bar never reads as frozen. A white
+   highlight in both themes, a decorative constant. */
+@media (prefers-reduced-motion: no-preference) {
+  .fill::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: sheen 1.4s ease-in-out infinite;
+  }
+}
+
+@keyframes sheen {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fill {
+    transition: none;
+  }
+}
+
+/* Every string here has to clear 4.5:1 against the page, so these are solid
+   colors rather than `opacity` dimming. */
+.pct {
+  min-width: 3ch;
+  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  font-size: 11px;
+  text-align: right;
+  /* 6.12:1 dark, 4.89:1 light, and below the status line in both. */
+  color: var(--neutral-solid);
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  gap: 6px;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  /* Wide enough that the longer explanatory lines take two rows at most. */
+  max-width: 460px;
+  margin: 0;
+  padding: 0;
+}
+
+/* Status block: held back until the load is slow enough to explain itself.
+   Nothing sits below it, so no height needs reserving against a shift. */
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.line {
+  box-sizing: border-box;
+  width: 100%;
+  /* The explanatory lines run past one line at this width, and clipping them
+     to an ellipsis would defeat the point of showing them. Two lines are
+     reserved so the bar above does not shift as a sentence wraps. */
+  min-height: 2.6em;
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  text-align: center;
+  text-wrap: balance;
+  color: var(--text);
+}
+
+/* Off-screen but still announced. `display: none` and `visibility: hidden`
+   would take it out of the accessibility tree too. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Shown only while a chain has stopped making progress, so it must read as
+   information rather than failure. Amber is AA on both themes. Always laid
+   out and shown by visibility: the slot height is reserved so the warning
+   appearing or its text rewrapping cannot shift the logo, bar and sentence
+   above it, which is exactly when the screen must look calm. */
+.warning {
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 34px;
+  margin: 18px 0 0;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--warning);
+  visibility: hidden;
+}
+
+.warning[data-visible] {
+  visibility: visible;
+}
+
+.warning-text {
+  max-width: 46ch;
+  text-align: left;
+}
+
+.warning-icon {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  /* Nudged onto the baseline of the first line rather than its box top. */
+  margin: 1px 0 0;
+}

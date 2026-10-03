@@ -3,15 +3,21 @@
 
 import { createEffect, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { IconButton } from '../../primitives/IconButton.js';
+import { Menu, MenuRow } from '../../primitives/Menu.js';
 import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
+import s from './OverflowMenu.module.css';
 
 /**
  * The topbar's More button (`#more-button`) and its flyout
  * (`#more-popover`), holding a row for each item the bar has collapsed
- * (`rows`, in bar order). The button shows only while there is a row; until
- * then it stays measurable, out of flow and invisible, so the bar knows the
- * room it takes.
+ * (`rows`, in bar order). Once the bar measures (the group's
+ * `data-collapsible`), the button
+ * shows only while there is a row; until then it stays measurable, out of
+ * flow and invisible (`data-idle`), so the bar knows the room it takes.
+ * Before the bar measures (its build-time render), it shows on a narrow
+ * viewport, where the bar most likely collapses something.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
@@ -52,53 +58,55 @@ export function OverflowMenu(props: {
 
   return (
     <>
-      <button
+      <IconButton
         ref={el => {
           button = el;
           props.buttonRef(el);
         }}
         onClick={menu.toggle}
         id="more-button"
-        class={['topbar-btn topbar-more-btn', { 'topbar-more-idle': props.rows.length === 0 }]}
+        class={s['more']}
+        data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
         aria-label="More"
         aria-haspopup="menu"
         aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="more-popover"
       >
-        <span class="hamburger" aria-hidden="true">
-          <span class="hamburger-bar" />
-          <span class="hamburger-bar" />
-          <span class="hamburger-bar" />
+        {/* Three bars that cross into an X while the flyout is open. */}
+        <span
+          class={s['hamburger']}
+          data-testid="more-hamburger"
+          data-open={menu.open() ? '' : undefined}
+          aria-hidden="true"
+        >
+          <span class={s['bar']} />
+          <span class={s['bar']} />
+          <span class={s['bar']} />
         </span>
-      </button>
-      <div
+      </IconButton>
+      <Menu
         ref={el => {
           popover = el;
         }}
-        class={['more-popover', { open: menu.open() }]}
         id="more-popover"
-        role="menu"
-        aria-labelledby="more-button"
-        tabindex="-1"
+        open={menu.open()}
+        labelledBy="more-button"
       >
         <For each={props.rows}>
           {entry => (
-            <button
+            <MenuRow
               onClick={ev => {
                 choose(entry, ev);
               }}
-              class="more-row"
-              role="menuitem"
-              tabindex="-1"
               data-item={entry.name}
             >
               {entry.icon()}
               <span>{entry.label}</span>
-            </button>
+            </MenuRow>
           )}
         </For>
-      </div>
+      </Menu>
     </>
   );
 }

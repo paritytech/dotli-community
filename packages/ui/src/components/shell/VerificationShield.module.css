@@ -1,0 +1,58 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Pulled into the pill's padding, so the 44px target does not widen it. */
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  margin: 0 -15px;
+}
+.shield {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 0.3s ease;
+}
+.shield:focus-visible {
+  outline-offset: -6px;
+}
+.shield[data-state='trusted'] {
+  color: var(--trusted);
+}
+.shield[data-state='verified'] {
+  color: var(--success);
+}
+.glyph {
+  display: none;
+  width: 14px;
+  height: 14px;
+}
+.shield:not([data-state='trusted']) .verified-glyph,
+.shield[data-state='trusted'] .trusted-glyph {
+  display: block;
+}
+
+/* The explainer's surface, over the topbar's popovers. Its copy sets its
+   own padding (VerificationContent). */
+.tooltip {
+  z-index: 1600;
+  width: 268px;
+  border-radius: 10px;
+  box-shadow: 0 12px 28px var(--shadow);
+  color: var(--text);
+  font-family: system-ui, sans-serif;
+  text-align: left;
+}

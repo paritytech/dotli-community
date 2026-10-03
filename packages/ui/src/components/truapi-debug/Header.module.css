@@ -1,0 +1,110 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel header */
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--td-line);
+  background: var(--td-bg-raised);
+  white-space: nowrap;
+  /* A phone is narrower than the toolbar: scroll it rather than clip it. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.header[data-dock='right'] {
+  grid-area: header;
+}
+
+.title,
+.counts {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.title {
+  color: var(--td-fg-muted);
+  font-family: system-ui, sans-serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+.counts {
+  color: var(--td-fg-dim);
+  font-size: 11px;
+}
+.spacer {
+  flex: none;
+  margin-left: auto;
+}
+
+.btn {
+  flex: none;
+  margin: 0;
+  background: var(--td-line);
+  border: 1px solid var(--td-line-strong);
+  color: var(--td-fg);
+  padding: 3px 10px;
+  font: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.btn:hover {
+  background: var(--td-line-strong);
+  border-color: var(--td-line-hover);
+}
+.btn[data-active] {
+  background: var(--td-accent);
+  border-color: var(--td-accent);
+  color: var(--td-fg-bright);
+}
+.btn:disabled {
+  cursor: default;
+}
+.icon {
+  padding: 2px 8px;
+}
+.glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--td-fg-muted);
+}
+.glyph:hover {
+  color: var(--td-fg);
+}
+.glyph svg {
+  display: block;
+}
+
+.close {
+  flex: none;
+  margin: 0;
+  background: none;
+  border: none;
+  color: var(--td-fg-dim);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 0 4px;
+}
+.close:hover {
+  color: var(--td-fg-bright);
+}
+
+/* Phones: the panel always docks at the bottom (`NARROW_QUERY` in
+   Panel.tsx), so the dock toggle has nothing to do, and the title gives way
+   so every control fits. */
+@media (max-width: 560px) {
+  .header {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .title,
+  .dock {
+    display: none;
+  }
+}

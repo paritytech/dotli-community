@@ -4,6 +4,8 @@
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { ALL_PERMISSIONS, EnforceablePermissionName, PermissionStatus } from '../../permissions.js';
+import { usePopover } from './Popover.js';
+import s from './PermissionRow.module.css';
 
 /** Trusted host SVG for each permission row's icon. */
 export const PERM_ICONS: Readonly<Record<string, string>> = {
@@ -66,6 +68,7 @@ export interface PermissionRowProps {
  * native button.
  */
 export function PermissionRow(props: PermissionRowProps): JSX.Element {
+  const popover = usePopover();
   const nameId = (): string => `permissions-popover-name-${props.perm.name}`;
   const statusId = (): string => `permissions-popover-status-${props.perm.name}`;
 
@@ -89,23 +92,24 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
   };
 
   return (
-    <div class="permissions-popover-row">
+    <div class={s['row']} data-testid="permissions-popover-row" data-sheet={popover.sheet() ? '' : undefined}>
       <span
-        class="permissions-popover-icon"
+        class={s['icon']}
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
         innerHTML={PERM_ICONS[props.perm.name] ?? ''}
       />
-      <span class="permissions-popover-name" id={nameId()}>
+      <span class={s['name']} id={nameId()}>
         {props.perm.label}
       </span>
-      <div class="permissions-popover-select-wrap">
+      <div class={s['selectWrap']}>
         <button
           ref={el => {
             props.selectRef(el);
           }}
           onClick={onTriggerClick}
           type="button"
-          class="permissions-popover-select"
+          class={s['select']}
+          data-testid="permissions-popover-select"
           id={`permissions-popover-select-${props.perm.name}`}
           aria-haspopup="listbox"
           aria-expanded={props.open ? 'true' : 'false'}
@@ -113,10 +117,8 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
           // permission this select changes, not just its current value.
           aria-labelledby={`${nameId()} ${statusId()}`}
         >
-          <span class="permissions-popover-select-label" id={statusId()}>
-            {STATUS_LABELS[props.status]}
-          </span>
-          <span class="permissions-popover-select-caret">
+          <span id={statusId()}>{STATUS_LABELS[props.status]}</span>
+          <span class={s['caret']}>
             <svg viewBox="0 0 10 6" width="10" height="6" aria-hidden="true">
               <path
                 d="M1 1l4 4 4-4"
@@ -135,7 +137,7 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
               props.menuRef(el);
             }}
             onKeyDown={onMenuKeyDown}
-            class="permissions-popover-menu"
+            class={s['menu']}
             role="listbox"
             aria-label={`${props.perm.label} permission`}
           >
@@ -147,13 +149,13 @@ export function PermissionRow(props: PermissionRowProps): JSX.Element {
                     props.choose(props.perm.name, status);
                   }}
                   type="button"
-                  class={['permissions-popover-menu-item', { selected: status === props.status }]}
+                  class={s['item']}
                   role="option"
                   aria-selected={status === props.status ? 'true' : 'false'}
                 >
                   <span>{STATUS_LABELS[status]}</span>
                   <Show when={status === props.status}>
-                    <span class="permissions-popover-menu-check">
+                    <span class={s['check']}>
                       <svg viewBox="0 0 12 10" width="12" height="10" aria-hidden="true">
                         <path
                           d="M1 5l3.5 3.5L11 1.5"

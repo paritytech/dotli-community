@@ -28,9 +28,9 @@ const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 function installPageDom(): void {
   document.body.innerHTML = `
     <div id="topbar">
-      <a class="topbar-left" id="topbar-home" href="/">Home</a>
-      <div class="topbar-url" id="topbar-url" hidden></div>
-      <div class="topbar-right" id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
+      <a id="topbar-home" href="/">Home</a>
+      <div id="topbar-url" hidden></div>
+      <div id="topbar-actions"><button id="auth-button">Login</button><button id="mode-button">Settings</button></div>
     </div>
     <div id="app">
       <iframe id="app-frame" style="position:fixed;top:56px;height:calc(100dvh - 56px)"></iframe>

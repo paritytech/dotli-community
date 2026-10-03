@@ -1,0 +1,41 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Its width is an inline style from the chat-panel store. */
+
+.panel {
+  position: fixed;
+  top: var(--topbar-height);
+  right: 0;
+  bottom: 0;
+  z-index: 900;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: 360px;
+  margin: 0;
+  padding: 0;
+  border-left: 1px solid var(--border-subtle);
+  /* Painted with the chat palette's surface so it matches product boxes painted
+     BgSurfaceMain exactly. */
+  background: var(--chat-bg-surface-main);
+  transition: top 0.3s ease;
+}
+.panel[data-topbar-hidden] {
+  top: 0;
+}
+.panel[hidden] {
+  display: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .panel {
+    transition: none;
+  }
+}
+@media (max-width: 560px) {
+  /* Wins over the inline drag width. */
+  .panel {
+    left: 0;
+    width: 100% !important;
+  }
+}

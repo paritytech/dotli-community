@@ -1,0 +1,39 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The icon follows <html data-theme-pref>, which the inline bootstrap script sets
+   before the island hydrates, so the build-time button already shows the stored
+   choice. */
+
+.sun,
+.system {
+  display: none;
+}
+:global([data-theme-pref='light']) .sun {
+  display: block;
+}
+:global([data-theme-pref='light']) .moon,
+:global([data-theme-pref='system']) .moon {
+  display: none;
+}
+:global([data-theme-pref='system']) .system {
+  display: block;
+}
+
+.menu {
+  min-width: 150px;
+}
+.check {
+  margin-left: auto;
+  visibility: hidden;
+}
+.option[aria-checked='true'] {
+  color: var(--text-strong);
+}
+.option[aria-checked='true'] .check {
+  visibility: visible;
+}
+.option:focus-visible {
+  outline: 2px solid var(--text-faint);
+  outline-offset: -2px;
+}

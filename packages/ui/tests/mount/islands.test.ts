@@ -10,6 +10,7 @@ import type * as IslandsModule from '../../src/mount/islands.js';
 import type * as LoadingModule from '../../src/state/loading.js';
 import type * as TopbarModule from '../../src/state/topbar.js';
 import type * as AppRootsModule from '../../src/mount/app-roots.js';
+import { byTestId } from '../support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('@dotli/metrics', async original => ({ ...(await original<Record<string, unknown>>()), ...sentry }));
@@ -92,13 +93,13 @@ describe('island failures', () => {
   it('As a visitor on the bare host, a landing page that never hydrated shows the reload error page', () => {
     // Given
     fail(island('LandingPage'));
-    expect(document.querySelector('.error-page')).toBeNull();
+    expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
 
     // When: boot says it is the landing page.
     topbar.setLandingPage(true);
 
     // Then
-    expect(document.querySelector('.error-page-title')?.textContent).toBe('Something went wrong on our side');
+    expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
     expect(topbar.getTopbarState().landing).toBe(false);
     expect(loading.getLoadingState().phase).toBe('gone');
   });
@@ -108,7 +109,7 @@ describe('island failures', () => {
     fail(island('LandingPage'));
 
     // Then
-    expect(document.querySelector('.error-page')).toBeNull();
+    expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
     expect(loading.getLoadingState().phase).toBe('active');
   });
 

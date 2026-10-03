@@ -1,0 +1,185 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* A left-aligned block of fixed width, like the browser's own network-error
+   page, so the failure reads as the page itself failing and not as a dialog. */
+
+.page {
+  /* `#app` is a centring flex container, so claim the full row and stretch
+     instead of collapsing to the width of the longest line. */
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--content-height);
+  margin: 0;
+  /* Uneven padding lifts the block above the exact centre, so it lands where
+     the loading screen's logo and progress bar were. */
+  padding: 48px 24px 152px;
+  font-family: system-ui, sans-serif;
+}
+
+/* The sandbox has no `#app`, so the page fills its transparent body itself. */
+.standalone {
+  height: 100dvh;
+  background: var(--bg-page);
+}
+
+.inner {
+  box-sizing: border-box;
+  width: 100%;
+  /* One measure for prose and buttons alike, so every right edge lines up. */
+  max-width: 520px;
+  margin: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.title {
+  margin: 0 0 0.75rem;
+  padding: 0;
+  font-size: 1.5rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.detail {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+  color: var(--neutral-solid);
+}
+
+.tips {
+  box-sizing: border-box;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--neutral-solid);
+}
+
+.tips-label {
+  margin: 0;
+  padding: 0;
+}
+
+.tips-list {
+  margin: 0.25rem 0 0;
+  padding: 0 0 0 1.4em;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  margin: 2rem 0 0;
+  padding: 0;
+}
+
+.retry {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 11px 24px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-strong);
+  font-family: system-ui, sans-serif;
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.15s ease;
+}
+
+.retry:hover {
+  border-color: var(--border-focus);
+  background: var(--fill);
+}
+
+.retry:active {
+  transform: translateY(1px);
+}
+
+/* After the hover rule, so it keeps its fill under the pointer. */
+.retry[data-primary] {
+  border-color: var(--inverse-bg);
+  background: var(--inverse-bg);
+  color: var(--inverse-fg);
+}
+
+.retry[data-primary]:hover {
+  border-color: var(--inverse-bg-hover);
+  background: var(--inverse-bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .retry {
+    transition: none;
+  }
+}
+
+.retry-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+}
+
+.retry-icon svg {
+  display: block;
+}
+
+.glyph {
+  display: flex;
+  box-sizing: border-box;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  color: var(--border-strong);
+}
+
+.glyph[data-warning] {
+  margin-bottom: 1.25rem;
+  color: var(--danger-strong);
+}
+
+.unreached .title {
+  margin-bottom: 0.875rem;
+  font-size: 1.75rem;
+}
+
+.unreached .detail {
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  color: var(--text-secondary);
+}
+
+.domain {
+  padding: 0.1em 0.45em;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--text-strong);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.95em;
+  white-space: nowrap;
+}
+
+.domain-tld {
+  color: var(--text-muted);
+}

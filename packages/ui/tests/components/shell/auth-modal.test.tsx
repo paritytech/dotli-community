@@ -10,10 +10,18 @@ import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
-import { byId, coordinator, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { normalized, oldModal, type OldModalBody } from './old-auth-markup.js';
+import {
+  byId,
+  coordinator,
+  expectQrSpinnerView,
+  press,
+  recordEvents,
+  settleAll,
+  useAuthController,
+} from './auth-harness.js';
 import type * as PopoverModule from '../../../src/components/shell/create-popover.js';
-import { query } from '../../support.js';
+import { byTestId, query } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
 const device = vi.hoisted(() => ({ mobile: false }));
 vi.mock('../../../../shared/src/device.js', () => ({
@@ -106,18 +114,136 @@ function pairing(extra: Partial<DotliAuthState> = {}): DotliAuthState {
 }
 
 function isOpen(): boolean {
-  return byId('auth-modal-backdrop').classList.contains('open');
+  return byId('auth-modal-backdrop').hasAttribute('data-open');
 }
 
 function qrText(): string {
   return byId('auth-modal-qr').textContent;
 }
 
-function expectMarkup(
-  backdrop: Element,
-  opts: Omit<Parameters<typeof oldModal>[0], 'body'> & { body: OldModalBody },
-): void {
-  expect(normalized(backdrop).isEqualNode(normalized(oldModal(opts)))).toBe(true);
+type ModalBody =
+  | { kind: 'empty' }
+  | { kind: 'spinner' }
+  | { kind: 'canvas'; payload: string }
+  | { kind: 'mobile-qr'; payload: string; qrShown: boolean }
+  | { kind: 'authenticating' }
+  | { kind: 'error'; title: string; subtitle: string; detail?: string; retry: boolean };
+
+interface ModalExpectation {
+  open: boolean;
+  productLabel?: string;
+  reason?: string;
+  hint: string;
+  getAppHidden: boolean;
+  body: ModalBody;
+}
+
+const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
+
+/** The QR container's content for each view the modal can show. */
+function expectQrBody(qrBox: Element, body: ModalBody): void {
+  switch (body.kind) {
+    case 'empty':
+      expect(qrBox.childNodes).toHaveLength(0);
+      break;
+    case 'spinner':
+      expectQrSpinnerView();
+      break;
+    case 'canvas': {
+      expect(tags(qrBox)).toEqual(['CANVAS']);
+      expect((qrBox.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      break;
+    }
+    case 'mobile-qr': {
+      const expectedTags = body.qrShown ? ['BUTTON', 'A', 'A'] : ['A', 'BUTTON', 'A'];
+      expect(tags(qrBox)).toEqual(expectedTags);
+      const openApp = query(qrBox, 'a:not(:has(canvas))', HTMLAnchorElement);
+      const toggle = query(qrBox, 'button', HTMLButtonElement);
+      const qrLink = query(qrBox, 'a:has(canvas)', HTMLAnchorElement);
+      expect(openApp.getAttribute('href')).toBe(body.payload);
+      expect(openApp.textContent).toBe('Login With Polkadot App');
+      expect(openApp.hidden).toBe(false);
+      expect(toggle.type).toBe('button');
+      expect(toggle.textContent).toBe('Show QR instead');
+      expect(toggle.hidden).toBe(body.qrShown);
+      expect(qrLink.getAttribute('href')).toBe(body.payload);
+      expect(qrLink.hidden).toBe(!body.qrShown);
+      expect(tags(qrLink)).toEqual(['CANVAS']);
+      expect((qrLink.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      break;
+    }
+    case 'authenticating': {
+      expect(tags(qrBox)).toEqual(['DIV']);
+      const progress = nth(qrBox.children, 0);
+      expect(tags(progress)).toEqual(['DIV', 'P']);
+      byTestId('auth-modal-spinner', progress);
+      expect(progress.children[1]?.textContent).toBe('Logging in...');
+      break;
+    }
+    case 'error': {
+      expect(tags(qrBox)).toEqual(['DIV']);
+      const view = nth(qrBox.children, 0);
+      const expectedTags = ['DIV', 'DIV', 'DIV'];
+      if (body.detail !== undefined && body.detail.length > 0) {
+        expectedTags.push('P');
+      }
+      if (body.retry) {
+        expectedTags.push('BUTTON');
+      }
+      expect(tags(view)).toEqual(expectedTags);
+      expect(view.children[0]?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      expect(view.children[1]?.textContent).toBe(body.title);
+      expect(view.children[2]?.textContent).toBe(body.subtitle);
+      if (body.detail !== undefined && body.detail.length > 0) {
+        expect(view.children[3]?.textContent).toBe(body.detail);
+      }
+      if (body.retry) {
+        const retry = view.lastElementChild as HTMLButtonElement;
+        expect(retry.tagName).toBe('BUTTON');
+        expect(retry.textContent).toBe('Retry');
+      }
+      break;
+    }
+  }
+}
+
+/**
+ * The modal apart from styling: the dialog ARIA, the elements in order with
+ * their ids and text, the visibility of the reason and the get-app link, and
+ * the QR container's view.
+ */
+function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
+  expect(backdrop.id).toBe('auth-modal-backdrop');
+  expect(backdrop.getAttribute('role')).toBe('dialog');
+  expect(backdrop.getAttribute('aria-modal')).toBe('true');
+  expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
+  expect(backdrop.getAttribute('tabindex')).toBe('-1');
+  expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
+  expect(tags(backdrop)).toEqual(['DIV']);
+  const dialog = nth(backdrop.children, 0);
+  expect(Array.from(dialog.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'H2#auth-modal-title',
+    'P#auth-modal-reason',
+    'P#auth-modal-hint',
+    'DIV#auth-modal-qr',
+    'A#auth-modal-get-app',
+    'BUTTON#auth-modal-close',
+  ]);
+  expect(byId('auth-modal-title').textContent).toBe(
+    opts.productLabel !== undefined ? `${opts.productLabel} is asking you to sign in` : 'Login with Polkadot Mobile',
+  );
+  const reason = byId('auth-modal-reason');
+  expect(reason.hidden).toBe(opts.reason === undefined);
+  expect(reason.textContent).toBe(opts.reason ?? '');
+  expect(byId('auth-modal-hint').textContent).toBe(opts.hint);
+  const getApp = byId('auth-modal-get-app', HTMLAnchorElement);
+  expect(getApp.hidden).toBe(opts.getAppHidden);
+  expect(getApp.getAttribute('href')).toBe('https://docs.polkadot.com/apps/');
+  expect(getApp.getAttribute('target')).toBe('_blank');
+  expect(getApp.getAttribute('rel')).toBe('noopener noreferrer');
+  expect(getApp.textContent).toBe("Don't have the app? Get Polkadot Mobile");
+  expect(byId('auth-modal-close').textContent).toBe('Cancel');
+  expectQrBody(byId('auth-modal-qr'), opts.body);
 }
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -129,7 +255,7 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe('AuthModal markup', () => {
-  it('As a dotli user, the closed modal has the dialog markup the topbar set up, empty', async () => {
+  it('As a dotli user, the closed modal has its dialog ids, labels and ARIA state, empty', async () => {
     // When
     const backdrop = await renderModal();
 
@@ -145,7 +271,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a desktop user, the login modal opens on the spinner, then shows the QR code the topbar drew', async () => {
+  it('As a desktop user, the login modal opens on the spinner, then shows the QR code', async () => {
     // Given
     const backdrop = await renderModal();
 
@@ -217,7 +343,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(qrText()).toContain('Logging in...');
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    byTestId('auth-modal-spinner', byId('auth-modal-qr'));
     expect(isOpen()).toBe(true);
     expectMarkup(backdrop, {
       open: true,
@@ -227,7 +353,7 @@ describe('AuthModal markup', () => {
     });
   });
 
-  it('As a new user, a failed login shows the error view the topbar built, and Retry starts over', async () => {
+  it('As a new user, a failed login shows the error view, and Retry starts over', async () => {
     // Given
     const loginRequests = recordEvents('dotli:truapi-login-request');
     const backdrop = await renderModal();
@@ -255,13 +381,13 @@ describe('AuthModal markup', () => {
     });
 
     // When
-    query(document, '.auth-modal-retry').click();
+    byTestId('auth-modal-retry', document).click();
     await settleQr();
 
     // Then
     expect(loginRequests.details).toEqual([{ reason: undefined }]);
     expect(isOpen()).toBe(true);
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
   });
 
   it('As a new user whose account is still being set up, the error view hides the raw reason', async () => {
@@ -421,9 +547,10 @@ describe('AuthModal login flow', () => {
   });
 
   it('As a keyboard user, Tab and Shift+Tab stay inside the open modal', async () => {
-    // Given: Cancel is the modal's last control.
+    // Given: Retry is the first control and Cancel the last. The get-app link
+    // is hidden on desktop, so it takes no part.
     await renderModal();
-    await authState(pairing());
+    await authState({ tag: 'LoginFailed', kind: 'Other', reason: 'Host failure' });
     byId('auth-modal-close').focus();
 
     // When
@@ -431,8 +558,7 @@ describe('AuthModal login flow', () => {
 
     // Then: it wraps to the modal's first control.
     expect(tab.defaultPrevented).toBe(true);
-    expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
-    expect(document.activeElement).not.toBe(byId('auth-modal-close'));
+    expect(document.activeElement).toBe(byTestId('auth-modal-retry', document));
 
     // When: focus somehow left the modal.
     byId('outside').focus();
@@ -519,16 +645,16 @@ describe('AuthModal login flow', () => {
       kind: 'Other',
       reason: 'Host failure',
     });
-    const retry = document.querySelector<HTMLElement>('.auth-modal-retry');
-    retry?.focus();
+    const retry = byTestId('auth-modal-retry', document);
+    retry.focus();
     expect(document.activeElement).toBe(retry);
 
     // When
-    retry?.click();
+    retry.click();
     await settleQr();
 
     // Then: the button is gone, and focus is on the modal, not the body.
-    expect(retry?.isConnected).toBe(false);
+    expect(retry.isConnected).toBe(false);
     expect(isOpen()).toBe(true);
     expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
   });
@@ -539,7 +665,7 @@ describe('AuthModal login flow', () => {
     await renderModal();
     mouseClick(byId('theme-toggle'));
     await settleQr();
-    expect(byId('theme-popover').classList.contains('open')).toBe(true);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(true);
 
     // When: the controller takes the lease, which marks a blocking modal up.
     await authState(pairing());
@@ -547,7 +673,7 @@ describe('AuthModal login flow', () => {
     await settleQr();
 
     // Then
-    expect(byId('theme-popover').classList.contains('open')).toBe(false);
+    expect(byId('theme-popover').hasAttribute('data-open')).toBe(false);
     expect(isOpen()).toBe(true);
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
     byId('auth-modal-close').focus();
@@ -620,7 +746,7 @@ describe('AuthModal QR', () => {
     qr.toCanvas = vi.fn<DrawQr>(() => drawing.promise);
     await renderModal();
     await authState(pairing());
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
 
     // When: the wallet approved before the drawing finished.
     await authState({ tag: 'Authenticating' });
@@ -672,7 +798,7 @@ describe('AuthModal QR', () => {
 
     // Then
     expect(document.querySelector('#auth-modal-qr canvas')).toBeNull();
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
 
     // When
     drawings.get('polkadotapp://second')?.();
@@ -798,7 +924,7 @@ describe('AuthModal on a phone', () => {
     expect(byId('auth-modal-get-app').hidden).toBe(true);
   });
 
-  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with the markup the topbar built', async () => {
+  it('As a phone user, the deeplink leads and the QR is behind Show QR instead, with its ids, labels and ARIA state', async () => {
     // Given
     device.mobile = true;
     const backdrop = await renderModal();
@@ -812,12 +938,11 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: MOBILE_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
 
     // When
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
 
     // Then
@@ -826,7 +951,6 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: DESKTOP_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: true },
     });
 
@@ -839,7 +963,6 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: DESKTOP_HINT,
       getAppHidden: true,
-      mobileClass: true,
       body: { kind: 'authenticating' },
     });
 
@@ -852,7 +975,6 @@ describe('AuthModal on a phone', () => {
       productLabel: 'localhost:3000',
       hint: MOBILE_HINT,
       getAppHidden: false,
-      mobileClass: true,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
   });
@@ -864,16 +986,16 @@ describe('AuthModal on a phone, on unrelated store writes', () => {
     device.mobile = true;
     await renderModal();
     await authState(pairing());
-    query(document, '.auth-modal-qr-toggle').click();
+    byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
 
     // When
     updateAuthModal({ reason: 'first' });
     await settleQr();
 
     // Then
-    expect(query(document, '.auth-modal-qr-link').hidden).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
     expect(byId('auth-modal-hint').textContent).toBe(DESKTOP_HINT);
   });
 });
@@ -967,7 +1089,7 @@ describe('AuthModal error copy', () => {
   it('As a new user, an unknown failure still reads as a login problem with the raw reason kept for bug reports', async () => {
     const modalText = await failWith('Host failure');
     expect(modalText).toContain('Login did not complete');
-    expect(document.querySelector('#auth-modal-qr .auth-modal-error')?.textContent).toBe('Host failure');
+    expect(query(document, '#auth-modal-qr [data-testid="auth-modal-error"]').textContent).toBe('Host failure');
     expect(modalText).toContain('Retry');
   });
 });

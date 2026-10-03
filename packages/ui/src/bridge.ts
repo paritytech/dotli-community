@@ -891,7 +891,7 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
   // The one untracked child: an error page written over a product whose frame
   // was already up (a failure after `activateHost`), which a later rebuild of
   // that product has to clear.
-  for (const stray of app.querySelectorAll(':scope > .error-page')) {
+  for (const stray of app.querySelectorAll(':scope > [data-error-page]')) {
     stray.remove();
   }
   currentHost = host;

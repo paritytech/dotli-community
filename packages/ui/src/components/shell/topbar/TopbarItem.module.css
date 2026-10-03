@@ -1,0 +1,27 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.item {
+  display: flex;
+}
+.item[hidden] {
+  display: none;
+}
+/* Collapsed into the More menu: out of flow and invisible, but still laid
+   out, so the bar can measure it and its button still anchors its
+   surface. */
+.item[data-collapsed] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+/* Narrow viewports, until the bar has measured (its build-time render):
+   the items it would most likely collapse stay out, and the More button
+   (OverflowMenu) shows instead. */
+@media (max-width: 560px) {
+  :global(#topbar-actions:not([data-collapsible])) .item[data-may-collapse] {
+    display: none;
+  }
+}

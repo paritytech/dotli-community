@@ -7,7 +7,7 @@ import { ERRORS } from '../src/errors.js';
 import { failAllModals } from '../src/state/modals.js';
 import { settle } from './helpers/solid.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
-import { query } from './support.js';
+import { byTestId, query } from './support.js';
 
 afterEach(() => {
   resetOverlays();
@@ -15,7 +15,7 @@ afterEach(() => {
 });
 
 function type(value: string): void {
-  const input = query(document, 'input.password-prompt-input', HTMLInputElement);
+  const input = byTestId('password-prompt-input', document, HTMLInputElement);
   input.value = value;
   input.dispatchEvent(new Event('input', { bubbles: true }));
 }
@@ -27,17 +27,17 @@ describe('password prompt', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Encrypted Content');
-    expect(document.querySelector('.permission-modal-icon svg')).not.toBeNull();
-    expect(document.querySelector('.signing-fields > .signing-field-value')?.textContent).toBe(
+    expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Encrypted Content');
+    expect(document.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
+    expect(byTestId('password-prompt-hint').textContent).toBe(
       'This content is password-protected. Enter the password to decrypt.',
     );
-    expect(document.querySelector('.password-prompt-error')).toBeNull();
+    expect(document.querySelector('[data-testid="password-prompt-error"]')).toBeNull();
 
     // When
     type('hunter2');
     await settle();
-    document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(password).resolves.toBe('hunter2');
@@ -49,10 +49,10 @@ describe('password prompt', () => {
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('.password-prompt-error')?.textContent).toBe('Wrong password');
+    expect(byTestId('password-prompt-error').textContent).toBe('Wrong password');
 
     // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-cancel')?.click();
+    byTestId('signing-btn-cancel').click();
 
     // Then
     await expect(password).rejects.toThrow(ERRORS.DECRYPTION_CANCELLED);

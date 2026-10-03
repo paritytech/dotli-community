@@ -8,23 +8,24 @@
 // button first, then the actions and the More menu they collapse into),
 // hydrated at load: on the landing page it renders nothing.
 //
-// Its script sets the bar's state as attributes, which topbar.css styles:
-// slid out when the auto-hide (topbar-autohide.ts in @dotli/ui) hides it
-// (`data-hidden`), offline (`data-offline`, which shows the banner while the
-// bar is visible), and the landing page's mode, where the bar hides
-// (`data-landing`). It also advertises the reveal shortcut while the bar
-// auto-hides, and reveals it on hover.
+// Its script sets the bar's state as attributes, which its module styles:
+// `data-hidden` when the auto-hide (topbar-autohide.ts in @dotli/ui) slides it
+// out, `data-offline` (shows the banner while the bar is visible). On `<body>`
+// it sets `data-landing`, which hides the bar and which `#app`
+// (pages/index.module.css) and the loading screen read. It also advertises the
+// reveal shortcut while the bar auto-hides, and reveals it on hover.
 import { TopbarActions } from '@dotli/ui/islands/TopbarActions';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
+import s from './Topbar.module.css';
 ---
 
-<header id="topbar" aria-label="dot.li browser bar">
+<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar">
   <TopbarLogo />
   <UrlPill />
   <TopbarActions client:load />
   {/* A status line, not focusable. */}
-  <div id="offline-banner" role="status" aria-live="polite">
+  <div id="offline-banner" class={s['offline']} role="status" aria-live="polite">
     You are offline
   </div>
 </header>
@@ -53,7 +54,7 @@ import UrlPill from './UrlPill.astro';
       } else {
         bar.removeAttribute('aria-keyshortcuts');
       }
-      bar.toggleAttribute('data-landing', landing);
+      document.body.toggleAttribute('data-landing', landing);
     };
     window.addEventListener('online', render);
     window.addEventListener('offline', render);

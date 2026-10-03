@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AuthModal } from '../../../src/components/shell/AuthModal.js';
 import { setAuthState } from '../../../src/state/auth.js';
 import { renderComponent } from '../../helpers/solid.js';
-import { byId, settleAll, useAuthController } from './auth-harness.js';
+import { byId, expectQrSpinnerView, settleAll, useAuthController } from './auth-harness.js';
 
 const qr = vi.hoisted(() => {
   let release = (): void => {};
@@ -42,7 +42,7 @@ describe('AuthModal late qrcode import', () => {
       label: 'localhost:3000',
     });
     await settleQr();
-    expect(document.querySelector('#auth-modal-qr .spinner')).not.toBeNull();
+    expectQrSpinnerView();
 
     // When: the wallet approved before the import resolved.
     setAuthState({ tag: 'Authenticating' });

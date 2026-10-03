@@ -1,0 +1,8 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.popover {
+  /* The content's footer pads a sheet's bottom edge for the home indicator. */
+  --sheet-inset: 0;
+  width: 620px;
+}

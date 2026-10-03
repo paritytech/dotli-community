@@ -3,6 +3,7 @@
 
 import { defineConfig } from 'vitest/config';
 import solid from '@solidjs/vite-plugin';
+import { cssModules } from '@config/vite/css-modules';
 
 // In test mode @solidjs/vite-plugin compiles components non-hydratable for
 // the DOM, which the component tests render with.
@@ -17,10 +18,14 @@ export default defineConfig({
   // this workspace, and its `?url` wasm import would be refused by Vite's
   // workspace-only file serving.
   server: { fs: { strict: false } },
+  css: { modules: cssModules() },
   test: {
     globals: false,
     environment: 'happy-dom',
     name: 'ui',
     include: ['tests/**/*.test.{ts,tsx}'],
+    // Process CSS modules with the app naming, so `s['foo']` is a real scoped
+    // class in tests rather than undefined.
+    css: { include: [/\.module\.css$/], modules: { classNameStrategy: 'scoped' } },
   },
 });

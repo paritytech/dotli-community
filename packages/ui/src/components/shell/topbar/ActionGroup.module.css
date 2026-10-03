@@ -1,0 +1,18 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+.group {
+  grid-column: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  justify-self: end;
+}
+/* Measuring, it fills its cell: its width is the room its items are fitted
+   into. */
+.group[data-collapsible] {
+  position: relative;
+  justify-self: stretch;
+  justify-content: flex-end;
+  min-width: 0;
+}

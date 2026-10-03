@@ -558,7 +558,7 @@ describe('bridge app roots', () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
-    document.body.innerHTML = `<div id="app"><div class="loading"></div></div>`;
+    document.body.innerHTML = `<div id="app"><div data-testid="loading-stand-in"></div></div>`;
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
@@ -597,9 +597,9 @@ describe('bridge app roots', () => {
   }> {
     const { registerAppRoot } = await import('../src/mount/app-roots.js');
     const app = document.getElementById('app');
-    const loading = app?.querySelector<HTMLElement>('.loading');
+    const loading = app?.querySelector<HTMLElement>('[data-testid="loading-stand-in"]');
     if (app === null || loading === null || loading === undefined) {
-      throw new Error('fixture has no #app > .loading');
+      throw new Error('fixture has no loading stand-in in #app');
     }
     const page = document.createElement('div');
     page.id = 'app-view';
@@ -676,7 +676,7 @@ describe('bridge app roots', () => {
   it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
     // Given the static screen, with no phases started, and the loading
     // controller loaded over it as the host's startup bundle loads it
-    document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
+    document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
     const [{ renderIframe }, loading] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/state/loading.js'),

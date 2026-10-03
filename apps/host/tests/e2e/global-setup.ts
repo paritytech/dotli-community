@@ -310,7 +310,8 @@ async function waitForSignedIn(
 ): Promise<void> {
   const outcome = await Promise.race([
     page
-      .locator('#landing-auth-button .user-badge')
+      .locator('#landing-auth-button')
+      .getByTestId('user-badge')
       .waitFor({ state: 'visible', timeout: badgeTimeoutMs })
       .then(() => ({ tag: 'signed-in' as const })),
     page
