@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/pvm-app-runtime",
-  "upstreamRevision": "7fd509dce130a0d96227f3b771d912de146be99c",
+  "upstreamRevision": "1385ae2b7a1ce8dc89a0487a3e777bc28dd93428",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
@@ -22,6 +22,6 @@
       ]
     }
   },
-  "wasmUpstreamRevision": "7fd509dce130a0d96227f3b771d912de146be99c",
+  "wasmUpstreamRevision": "1385ae2b7a1ce8dc89a0487a3e777bc28dd93428",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/540"
 }
