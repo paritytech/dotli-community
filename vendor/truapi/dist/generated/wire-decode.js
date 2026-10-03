@@ -72,6 +72,10 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostAccountRingVrfSignRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostAccountRingVrfSignResponse, S.CallError(T.VersionedHostAccountRingVrfSignError)).dec(payload),
     },
+    [W.ACCOUNT_PRODUCT_DEVICE_CHAT.trait * 256 + W.ACCOUNT_PRODUCT_DEVICE_CHAT.method]: {
+        0: (payload) => T.VersionedHostProductDeviceChatRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostProductDeviceChatResponse, S.CallError(T.VersionedHostProductDeviceChatError)).dec(payload),
+    },
     [W.CHAIN_FOLLOW_HEAD_SUBSCRIBE.trait * 256 + W.CHAIN_FOLLOW_HEAD_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedRemoteChainHeadFollowRequest.dec(payload),
         1: (payload) => T.VersionedRemoteChainHeadFollowItem.dec(payload),

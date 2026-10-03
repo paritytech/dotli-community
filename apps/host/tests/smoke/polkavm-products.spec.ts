@@ -11,7 +11,7 @@ interface ProductSmoke {
   clickPosition?: { readonly x: number; readonly y: number };
   audio: boolean;
   nonzeroAudio: boolean;
-  interaction?: 'gameplay-pointer-capture' | 'pointer-motion' | 'host-frame-handshake';
+  interaction?: 'gameplay-pointer-capture' | 'pointer-motion' | 'host-frame-handshake' | 'host-sign-in';
 }
 
 const products: readonly ProductSmoke[] = [
@@ -38,6 +38,17 @@ const products: readonly ProductSmoke[] = [
     audio: true,
     nonzeroAudio: true,
     interaction: 'gameplay-pointer-capture',
+  },
+  {
+    label: 'echat',
+    profile: 'tri2d',
+    keys: [],
+    scheduling: 'demand-driven',
+    // The signed-out guest's Retry button reopens the host sign-in prompt.
+    clickPosition: { x: 880, y: 132 },
+    audio: false,
+    nonzeroAudio: false,
+    interaction: 'host-sign-in',
   },
   {
     label: 'egui-app-lab',
@@ -111,6 +122,21 @@ async function waitForRuntimeReady(page: Page, body: Locator, canvas: Locator, l
   throw new Error(`${label}: runtime did not become ready within 180s\n${lastText}`);
 }
 
+async function cancelSignIn(page: Page, canvas: Locator): Promise<void> {
+  const signIn = page.locator('#auth-modal-backdrop');
+  await expect(signIn).toBeVisible({ timeout: 30_000 });
+  const responsesBefore = await counter(canvas, 'data-polkavm-host-frame-responses');
+  await signIn.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(signIn).toBeHidden();
+  await expect
+    .poll(() => counter(canvas, 'data-polkavm-host-frame-responses'), { timeout: 30_000 })
+    .toBeGreaterThan(responsesBefore);
+  const framesAfterResponse = await counter(canvas, 'data-polkavm-frames');
+  await expect
+    .poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 })
+    .toBeGreaterThan(framesAfterResponse);
+}
+
 async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<string, unknown>> {
   const productUrl = `https://${product.label}.${root}/`;
   const iframeSelector = `iframe[src*="${product.label}.app.${root}"]`;
@@ -171,6 +197,9 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
   await expect(body).not.toContainText(runtimeFailure);
   if (product.profile === 'webgpu-raster') {
     await expect(canvas).toHaveAttribute('data-polkavm-gpu', 'ready');
+  }
+  if (product.interaction === 'host-sign-in') {
+    await cancelSignIn(page, canvas);
   }
 
   const framesBefore = await counter(canvas, 'data-polkavm-frames');
@@ -249,6 +278,9 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
         timeout: 30_000,
       })
       .toBeGreaterThan(hostFrameResponsesBefore);
+  } else if (product.interaction === 'host-sign-in') {
+    // A fresh prompt proves the guest handled input after cancellation.
+    await cancelSignIn(page, canvas);
   }
 
   if (product.scheduling === 'demand-driven') {

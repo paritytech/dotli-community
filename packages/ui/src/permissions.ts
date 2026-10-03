@@ -22,7 +22,7 @@ import type {
 export type DevicePermissionName = HostDevicePermissionRequest;
 
 export type PermissionName =
-  DevicePermissionName | 'ChainSubmit' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
+  DevicePermissionName | 'ChainSubmit' | 'ChatAuthority' | 'IdentityDisclosure' | 'PreimageSubmit' | 'StatementSubmit';
 
 /** Device permissions the host can't actually gate (see AUTO_GRANT_DEVICE_PERMISSIONS). */
 export type AutoGrantDevicePermission = 'OpenUrl';
@@ -90,6 +90,7 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'NFC', label: 'NFC' },
   { name: 'Clipboard', label: 'Clipboard' },
   { name: 'Biometrics', label: 'Biometrics' },
+  { name: 'ChatAuthority', label: 'Chat Identity Authority' },
   { name: 'IdentityDisclosure', label: 'Identity Disclosure' },
   { name: 'ChainSubmit', label: 'Sign Transactions' },
   { name: 'PreimageSubmit', label: 'Submit Preimages' },
@@ -140,6 +141,9 @@ export function authorizationRequest(permission: PermissionName): PermissionAuth
       tag: 'Remote',
       value: { permission: { tag: permission } },
     };
+  }
+  if (permission === 'ChatAuthority') {
+    return { tag: 'ChatAuthority' };
   }
   if (permission === 'IdentityDisclosure') {
     return { tag: 'IdentityDisclosure' };
@@ -193,7 +197,7 @@ export async function setPermissionStatus(
 ): Promise<void> {
   const provider = providerFor(label);
   if (provider === null) {
-    return;
+    throw new Error('product connection is unavailable');
   }
   await provider.setPermissionAuthorizationStatus(authorizationRequest(permission), toAuthorizationStatus(status));
 }

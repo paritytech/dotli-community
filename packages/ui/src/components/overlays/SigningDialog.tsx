@@ -22,6 +22,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   const titleId = `overlay-modal-title-${String(id)}`;
   const [password, setPassword] = createSignal('');
   let input: HTMLInputElement | undefined;
+  let firstChoice: HTMLButtonElement | undefined;
 
   const needsPassword = (button: ModalButton<string>): boolean =>
     view.input !== undefined && button.variant === 'primary';
@@ -51,7 +52,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   };
 
   return (
-    <Dialog titleId={titleId} initialFocus={() => input} onDismiss={dismiss}>
+    <Dialog titleId={titleId} initialFocus={() => input ?? firstChoice} onDismiss={dismiss}>
       <Show when={view.icon}>
         {icon => (
           // eslint-disable-next-line solid/no-innerhtml -- trusted SVG markup from ModalView.icon, not user input
@@ -72,6 +73,28 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </For>
         <Show when={view.notice}>{notice => <div class="permission-modal-notice">{notice()}</div>}</Show>
+        <Show when={view.choices}>
+          {choices => (
+            <div class="contacts-picker-list">
+              <For each={choices()}>
+                {choice => (
+                  <button
+                    ref={element => {
+                      firstChoice ??= element;
+                    }}
+                    type="button"
+                    class="signing-btn-secondary contacts-picker-choice"
+                    onClick={() => {
+                      settleModal(id, choice.result);
+                    }}
+                  >
+                    <span>{choice.label}</span>
+                  </button>
+                )}
+              </For>
+            </div>
+          )}
+        </Show>
         <Show when={view.input}>
           {spec => (
             <>

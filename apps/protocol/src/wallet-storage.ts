@@ -247,7 +247,7 @@ export async function handleWalletOperation(
 /** Serialize verified-public-metadata writes with identity replacement/deletion. */
 export async function withSharedWalletRevision(
   revision: string | null,
-  commit: () => void,
+  commit: () => void | Promise<void>,
   deadlineMs?: number,
 ): Promise<void> {
   if (typeof navigator.locks === 'undefined') {
@@ -263,7 +263,7 @@ export async function withSharedWalletRevision(
       if (record === undefined || !record.enabled || record.encrypted === undefined || record.revision !== revision) {
         throw conflict('Wallet changed while saving its verified identity.');
       }
-      commit();
+      await commit();
     } finally {
       db.close();
     }

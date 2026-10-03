@@ -463,6 +463,7 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
     }
 
     case 'walletStorage':
+    case 'coreCustody':
     case 'walletOwner':
       throw new Error('Wallet storage is only available through the trusted protocol iframe');
 

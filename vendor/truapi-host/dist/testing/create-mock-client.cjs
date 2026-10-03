@@ -547,7 +547,7 @@ var require_index_cjs = __commonJS({
 });
 
 // dist/generated/host-callbacks.js
-var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
+var S, import_truapi3, AccountAccessReview, AccountAliasReview, AuthState, ChatAuthorityReview, CoreStorageKey, CreateProofReview, CreateTransactionReview, DevicePermissionStatus, HostChainEntry, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, IdentityDisclosureReview, LoginFailureKind, MainPurseChatPaymentReview, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageFailure, NativeCoinageMemo, NativeCoinageOperation, NativeCoinagePaymentIntent, NativeCoinageRequest, NativeCoinageResponse, NativeCoinageScope, NativeCoinageTopUpOutcome, PermissionAuthorizationRequest, PermissionAuthorizationStatus, PermissionDecision, PreimageSubmitReview, ProductContext, ProductExecutionKind, ProductSubtreeReview, ResourceAllocationReview, SessionUiInfo, SignPayloadReview, SignRawReview, SignVrfReview, StatementStoreProductSignReview, UserConfirmationReview;
 var init_host_callbacks = __esm({
   "dist/generated/host-callbacks.js"() {
     "use strict";
@@ -556,7 +556,8 @@ var init_host_callbacks = __esm({
     AccountAccessReview = S.lazy(() => S.Struct({ requestingProductId: S.str, targetProductId: S.str }));
     AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation }));
     AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
-    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }) }));
+    ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
+    CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
     CreateProofReview = S.lazy(() => S.Struct({ callingProductId: S.str, context: import_truapi3.ProductProofContext, ringLocation: import_truapi3.RingLocation, message: S.Bytes() }));
     CreateTransactionReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), payload: import_truapi3.ProductAccountTxPayload }), LegacyAccount: import_truapi3.LegacyAccountTxPayload }));
     DevicePermissionStatus = S.lazy(() => S.Status("Granted", "Denied", "NotDetermined", "NotApplicable"));
@@ -567,7 +568,19 @@ var init_host_callbacks = __esm({
     HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: import_truapi3.Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
     IdentityDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
     LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "Other"));
-    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }) }));
+    MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
+    NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: import_truapi3.HostNativeChatAttachmentMetadata }));
+    NativeChatFilePickRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), maxFiles: S.u32 }));
+    NativeChatPickedFile = S.lazy(() => S.Struct({ sourceId: S.str, metadata: import_truapi3.HostNativeChatAttachmentMetadata }));
+    NativeCoinageFailure = S.lazy(() => S.Status("Unavailable", "InvalidRequest", "InvalidSource", "OperationConflict", "OperationNotFound", "InsufficientBalance", "UserRejected"));
+    NativeCoinageMemo = S.lazy(() => S.Struct({ secretKeys: S.Vector(S.Bytes()), totalValueRaw: S.str }));
+    NativeCoinageOperation = S.lazy(() => S.TaggedUnion({ Denomination: S._void, PreparePayment: S.Struct({ intent: NativeCoinagePaymentIntent }), CommitHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Views: S.Struct({ productId: S.str }), PendingHandoffs: S.Struct({ productId: S.str, acceptedOperations: S.Vector(S.Bytes(32)) }), ReadHandoff: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), NoteDelivery: S.Struct({ productId: S.str, operationId: S.Bytes(32) }), Reconcile: S._void, TopUp: S.Struct({ productId: S.str, operationId: S.Bytes(32), minimumAmountRaw: S.str, secretKeys: S.Vector(S.Bytes()) }) }));
+    NativeCoinagePaymentIntent = S.lazy(() => S.Struct({ operationId: S.Bytes(32), productId: S.str, requestId: S.str, peerIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64 }));
+    NativeCoinageRequest = S.lazy(() => S.Struct({ scope: NativeCoinageScope, operation: NativeCoinageOperation }));
+    NativeCoinageResponse = S.lazy(() => S.TaggedUnion({ Denomination: S.Struct({ centsUnitRaw: S.str }), Prepared: S.Struct({ payment: import_truapi3.HostNativeChatPayment, memo: S.Option(NativeCoinageMemo) }), Payments: S.Struct({ payments: S.Vector(import_truapi3.HostNativeChatPayment) }), TopUp: S.Struct({ outcome: NativeCoinageTopUpOutcome }), Done: S._void, Failed: S.Struct({ reason: NativeCoinageFailure }) }));
+    NativeCoinageScope = S.lazy(() => S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32) }));
+    NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S._void, Partial: S.Struct({ creditedAmountRaw: S.str }), Pending: S._void, NotClaimed: S._void }));
+    PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: import_truapi3.HostDevicePermissionRequest, Remote: import_truapi3.RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(import_truapi3.DerivationIndex) }) }));
     PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermined", "Denied", "Authorized"));
     PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
     PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
@@ -580,7 +593,7 @@ var init_host_callbacks = __esm({
     SignRawReview = S.lazy(() => S.TaggedUnion({ Product: S.Struct({ callingProductId: S.Option(S.str), request: import_truapi3.HostSignRawRequest, watermarked: S.bool }), LegacyAccount: S.Struct({ request: import_truapi3.HostSignRawWithLegacyAccountRequest, watermarked: S.bool }) }));
     SignVrfReview = S.lazy(() => S.Struct({ callingProductId: S.str, request: import_truapi3.HostAccountSignVrfRequest }));
     StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingProductId: S.Option(S.str), account: import_truapi3.ProductAccountId, payload: S.Bytes() }));
-    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview }));
+    UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));
   }
 });
 
@@ -625,51 +638,158 @@ function toAsyncIterator(stream) {
   }
   return asyncIterator;
 }
-function pumpIterator(iterator, onItem, label, onError) {
+function pumpIterator(iterator, onItem, label, onError, onComplete) {
   let stopped = false;
   void (async () => {
     try {
       while (!stopped) {
         const next = await iterator.next();
-        if (next.done)
+        if (stopped || next.done)
           return;
         onItem(next.value);
       }
     } catch (err2) {
-      console.error(`[truapi host callbacks] ${label} failed:`, err2);
-      onError?.({ reason: errorMessage(err2) });
+      if (!stopped) {
+        console.error(`[truapi host callbacks] ${label} failed`);
+        onError?.({ reason: errorMessage(err2) });
+      }
+    } finally {
+      if (!stopped)
+        onComplete?.();
     }
   })();
   return () => {
+    if (stopped)
+      return;
     stopped = true;
-    void iterator.return?.();
+    try {
+      void Promise.resolve(iterator.return?.()).catch(() => {
+        console.error(`[truapi host callbacks] ${label} cleanup failed`);
+      });
+    } catch {
+      console.error(`[truapi host callbacks] ${label} cleanup failed`);
+    }
   };
 }
 function driveResultStream(stream, sendItem, sendError) {
   return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError);
 }
 function chainConnectAdapter(host) {
-  return async (genesisHash, onResponse) => {
-    const connection = await host.connect((0, import_scale.hexToBytes)(genesisHash));
-    const iterator = connection.responses()[Symbol.asyncIterator]();
-    const stopResponses = pumpIterator(iterator, onResponse, "chain responses");
-    return {
-      send(request) {
-        connection.send(request);
-      },
-      close() {
-        stopResponses();
-        connection.close();
+  return async (genesisHash, onResponse, onClosed) => rpcConnectionAdapter(await host.connect((0, import_scale.hexToBytes)(genesisHash)), onResponse, onClosed);
+}
+function coinageWalletHostAdapter(host) {
+  if (host === void 0)
+    return void 0;
+  let nativeCoinage;
+  try {
+    nativeCoinage = host.nativeCoinage.bind(host);
+  } catch {
+    throw new Error("Native Coinage wallet callback is unavailable");
+  }
+  return {
+    async nativeCoinage(request) {
+      try {
+        return await nativeCoinage(request);
+      } catch {
+        throw new Error("Native Coinage wallet operation failed");
       }
-    };
+    }
   };
 }
-var import_scale;
+function hopConnectAdapter(host) {
+  return async (genesisHash, endpoint, onResponse, onClosed) => {
+    const genesis = (0, import_scale.hexToBytes)(genesisHash);
+    const allowed = await host.allowedHopEndpoints(genesis);
+    if (!allowed.includes(endpoint) || !endpoint.startsWith("wss://") || /[\s\u0000-\u001f\u007f-\u009f#\\]/u.test(endpoint) || endpoint.slice(6).split(/[/?]/u, 1)[0].includes("@")) {
+      throw new Error("HOP endpoint is not an allowed secure WebSocket URL");
+    }
+    const url = new URL(endpoint);
+    if (!url.hostname || url.username || url.password || url.hash) {
+      throw new Error("HOP endpoint is not an allowed secure WebSocket URL");
+    }
+    return rpcConnectionAdapter(await host.connectHop(genesis, endpoint), onResponse, onClosed);
+  };
+}
+function rpcConnectionAdapter(connection, onResponse, onClosed) {
+  let closed = false;
+  let stopResponses;
+  const close = (notify) => {
+    if (closed)
+      return;
+    closed = true;
+    stopResponses?.();
+    try {
+      connection.close();
+    } finally {
+      if (notify)
+        onClosed?.();
+    }
+  };
+  try {
+    stopResponses = pumpIterator(connection.responses()[Symbol.asyncIterator](), onResponse, "JSON-RPC responses", void 0, () => {
+      try {
+        close(true);
+      } catch {
+        console.error("[truapi host callbacks] JSON-RPC close failed");
+      }
+    });
+    if (closed)
+      stopResponses();
+  } catch (err2) {
+    close(false);
+    throw err2;
+  }
+  return {
+    send(request) {
+      if (closed)
+        throw new Error("JSON-RPC connection is closed");
+      try {
+        connection.send(request);
+      } catch (err2) {
+        close(true);
+        throw err2;
+      }
+    },
+    close: () => close(false)
+  };
+}
+var import_scale, unavailableHopProvider, unavailableNativeChatFilesHost;
 var init_adapter_support = __esm({
   "dist/adapter-support.js"() {
     "use strict";
     import_scale = require("@parity/truapi/scale");
     init_error();
+    unavailableHopProvider = {
+      async allowedHopEndpoints() {
+        return [];
+      },
+      async connectHop() {
+        throw new Error("HOP provider is unavailable");
+      }
+    };
+    unavailableNativeChatFilesHost = {
+      async pickChatFiles() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async readChatFile() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async releaseChatFile() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async beginChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async writeChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async finishChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      },
+      async cancelChatFileExport() {
+        throw new Error("Native Chat files are unavailable");
+      }
+    };
   }
 });
 
@@ -680,9 +800,13 @@ __export(host_callbacks_adapter_exports, {
 });
 function createWasmRawCallbacks(callbacks) {
   const chat = callbacks.chat;
+  const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
   const contacts = callbacks.contacts;
+  const identityBackend = callbacks.identityBackend;
   const permissionStatus = callbacks.permissionStatus;
   const pocket = callbacks.pocket;
+  const hop = callbacks.hop ?? unavailableHopProvider;
+  const nativeChatFiles = callbacks.nativeChatFiles ?? unavailableNativeChatFilesHost;
   return {
     authStateChanged: async (state) => await callbacks.auth.authStateChanged(AuthState.dec(state)),
     chainConnect: chainConnectAdapter(callbacks.chain),
@@ -691,6 +815,9 @@ function createWasmRawCallbacks(callbacks) {
       registerChatBot: async (product, request) => import_truapi4.HostChatRegisterBotResponse.enc(await chat.registerChatBot(ProductContext.dec(product), import_truapi4.HostChatRegisterBotRequest.dec(request))),
       postChatMessage: async (product, request) => import_truapi4.HostChatPostMessageResponse.enc(await chat.postChatMessage(ProductContext.dec(product), import_truapi4.HostChatPostMessageRequest.dec(request))),
       subscribeChatRooms: (product, sendItem, sendError) => driveResultStream(chat.subscribeChatRooms(ProductContext.dec(product)), (item) => sendItem(import_truapi4.HostChatListSubscribeItem.enc(item)), sendError)
+    } : {},
+    ...coinageWallet ? {
+      nativeCoinage: async (request) => NativeCoinageResponse.enc(await coinageWallet.nativeCoinage(NativeCoinageRequest.dec(request)))
     } : {},
     ...contacts ? {
       contacts: async (lookup) => HostContactMatches.enc(await contacts.contacts(HostContactLookup.dec(lookup))),
@@ -701,8 +828,20 @@ function createWasmRawCallbacks(callbacks) {
     clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
     featureSupported: async (request) => import_truapi4.HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(import_truapi4.HostFeatureSupportedRequest.dec(request))),
     supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
+    allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
+    hopConnect: hopConnectAdapter(hop),
+    ...identityBackend ? {
+      identityUsernameCandidates: async (username, peopleChainGenesisHash) => identityUsernameCandidatesResultCodec.enc(await identityBackend.identityUsernameCandidates(username, peopleChainGenesisHash))
+    } : {},
     subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(import_truapi4.HostLocaleSubscribeItem.enc(item)), sendError),
     localizeTimestamps: async (request) => import_truapi4.HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(import_truapi4.HostLocaleLocalizeTimestampsRequest.dec(request))),
+    pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
+    readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
+    releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),
+    beginChatFileExport: async (request) => await nativeChatFiles.beginChatFileExport(NativeChatFileExportRequest.dec(request)),
+    writeChatFileExport: async (exportId, offset, data) => await nativeChatFiles.writeChatFileExport(exportId, offset, data),
+    finishChatFileExport: async (exportId) => await nativeChatFiles.finishChatFileExport(exportId),
+    cancelChatFileExport: async (exportId) => await nativeChatFiles.cancelChatFileExport(exportId),
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi4.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi4.HostPushNotificationRequest.dec(notification))),
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
@@ -727,13 +866,17 @@ function createWasmRawCallbacks(callbacks) {
     confirmUserAction: async (review) => await callbacks.userConfirmation.confirmUserAction(UserConfirmationReview.dec(review))
   };
 }
-var import_truapi4;
+var S2, import_truapi4, allowedHopEndpointsResultCodec, identityUsernameCandidatesResultCodec, pickChatFilesResultCodec;
 var init_host_callbacks_adapter = __esm({
   "dist/generated/host-callbacks-adapter.js"() {
     "use strict";
+    S2 = __toESM(require("@parity/truapi/scale"), 1);
     import_truapi4 = require("@parity/truapi");
     init_host_callbacks();
     init_adapter_support();
+    allowedHopEndpointsResultCodec = S2.Vector(S2.str);
+    identityUsernameCandidatesResultCodec = S2.Vector(S2.Bytes(32));
+    pickChatFilesResultCodec = S2.Vector(NativeChatPickedFile);
   }
 });
 

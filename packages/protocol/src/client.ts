@@ -39,6 +39,7 @@ import {
   type SharedWalletResult,
   type SharedWalletState,
 } from './wallet-storage.js';
+import type { CoreCustodyOperation } from './core-custody.js';
 import type { WalletOwnerOperation } from './wallet-owner.js';
 
 interface PendingRequest {
@@ -601,6 +602,7 @@ async function postRequest<M extends ProtocolRequestMethod>(
   needsProtocolReady = !isSharedAuthRequestMethod(method) &&
     !isSharedModeRequestMethod(method) &&
     method !== 'walletStorage' &&
+    method !== 'coreCustody' &&
     method !== 'walletOwner',
 ): Promise<unknown> {
   await (needsProtocolReady ? ensureProtocolFrame() : ensureHostFrame());
@@ -737,6 +739,25 @@ export function subscribeSharedWallet(listener: (state: SharedWalletState) => vo
   return () => {
     sharedWalletListeners.delete(listener);
   };
+}
+
+/** Private host-shell custody channel; no product API forwards this method. */
+export async function requestCoreCustody(
+  operation: CoreCustodyOperation,
+): Promise<string | Uint8Array | Blob | undefined> {
+  const result = await postRequest('coreCustody', {
+    siteId: SITE_ID,
+    operation,
+  });
+  if (
+    result !== undefined &&
+    typeof result !== 'string' &&
+    !(result instanceof Uint8Array) &&
+    !(result instanceof Blob)
+  ) {
+    throw new Error('Invalid private custody response');
+  }
+  return result;
 }
 
 /** Make this page the one tab running the test wallet; see `wallet-owner.ts`. */

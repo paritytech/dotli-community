@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createSubmitRateLimiter } from '../src/host-callbacks/rate-limit.js';
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
+import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -108,15 +109,29 @@ describe('prompt rate limiting across host callbacks', () => {
     vi.useRealTimers();
   });
 
-  it('As a dotli integrator, the host rate limits permission prompts per callback surface', async () => {
-    // Given: a single host callback surface. No authorization provider is
-    // registered, so every prompt reaches the "ask" path and the limiter.
-    const { permissions } = createHostCallbacks({ label: 'myapp' });
+  it('As a dotli integrator, the host counts permission and notification prompts against one shared budget', async () => {
+    // Reset the real grant between prompts to exercise one callback's shared budget.
+    let status: 'NotDetermined' | 'Denied' | 'Authorized' = 'NotDetermined';
+    const unregister = registerPermissionAuthorizationProvider('myapp', {
+      getPermissionAuthorizationStatuses(requests) {
+        return Promise.resolve(requests.map(() => status));
+      },
+      setPermissionAuthorizationStatus(_request, next) {
+        status = next;
+        return Promise.resolve();
+      },
+    });
+    onTestFinished(unregister);
+    const { permissions } = createHostCallbacks({
+      label: 'myapp',
+    });
 
     // When: camera prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      status = 'NotDetermined';
       await permissions.devicePermission(PRODUCT, 'Camera');
     }
+    status = 'NotDetermined';
 
     // Then: a different permission shares that budget and is rate limited
     // instead of showing a 21st modal.
@@ -128,10 +143,22 @@ describe('prompt rate limiting across host callbacks', () => {
 
   it('As a dotli user, delivering notifications never spends the prompt budget', async () => {
     // Given
+    let status: 'NotDetermined' | 'Denied' | 'Authorized' = 'NotDetermined';
+    const unregister = registerPermissionAuthorizationProvider('myapp', {
+      getPermissionAuthorizationStatuses(requests) {
+        return Promise.resolve(requests.map(() => status));
+      },
+      setPermissionAuthorizationStatus(_request, next) {
+        status = next;
+        return Promise.resolve();
+      },
+    });
+    onTestFinished(unregister);
     const { permissions, notifications } = createHostCallbacks({
       label: 'myapp',
     });
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
+      status = 'NotDetermined';
       await permissions.devicePermission(PRODUCT, 'Camera');
     }
 

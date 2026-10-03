@@ -155,3 +155,17 @@
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.contacts-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+.contacts-picker-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}

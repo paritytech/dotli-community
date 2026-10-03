@@ -7,7 +7,7 @@
 //   storage keys, and sign modal titles.
 // - product storage keys are opaque; Rust core owns product namespacing.
 //
-import { localizeTimestamps, type RequiredHostCallbacks } from '@parity/truapi-host';
+import { localizeTimestamps, type ContactsPlatform, type RequiredHostCallbacks } from '@parity/truapi-host';
 import { createNavigateTo } from './OpenUrl.js';
 import { createNotificationAdapters } from './PushNotification.js';
 import { createPromptPermission } from './PromptPermission.js';
@@ -19,7 +19,7 @@ import {
 } from './LocalStorage.js';
 import { createProductOperations } from './ProductOperations.js';
 import { createPreimageAdapters } from './Preimage.js';
-import { createChainConnect } from './Chain.js';
+import { createChainConnect, createHopProvider } from './Chain.js';
 import { createFeatureSupported } from './FeatureSupported.js';
 import { createSupportedChains } from './SupportedChains.js';
 import { createThemeSubscribe } from './Theme.js';
@@ -36,6 +36,8 @@ export interface CreateHostCallbacksOptions {
   pairingDotSuffix?: boolean | undefined;
   pairingHostGlobal?: boolean | undefined;
   blockingModalScope?: BlockingModalScope;
+  custodyLease?: string;
+  contacts?: Required<ContactsPlatform>;
 }
 
 export function createHostCallbacks(options: CreateHostCallbacksOptions): RequiredHostCallbacks {
@@ -45,6 +47,8 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     pairingDotSuffix,
     pairingHostGlobal,
     blockingModalScope = createBlockingModalScope(),
+    custodyLease,
+    contacts,
   } = options;
   return {
     navigation: { navigateTo: createNavigateTo() },
@@ -61,7 +65,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
       subscribeStorage: createLocalStorageSubscribe(),
     },
     productOperations: createProductOperations(),
-    coreStorage: createSessionStoreAdapters(),
+    coreStorage: createSessionStoreAdapters(custodyLease),
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,
@@ -73,8 +77,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     locale: { subscribeLocale: createLocaleSubscribe(), localizeTimestamps },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
+    hop: createHopProvider(),
     // Always served; the core itself denies chat calls on non-Chat
     // executions and without an active session.
     chat: createChatPlatform(),
+    ...(contacts === undefined ? {} : { contacts }),
   };
 }

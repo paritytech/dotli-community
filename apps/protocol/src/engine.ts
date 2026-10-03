@@ -106,6 +106,7 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
       isSharedAuthRequestMethod(request.method) ||
       isSharedModeRequestMethod(request.method) ||
       request.method === 'walletStorage' ||
+      request.method === 'coreCustody' ||
       request.method === 'walletOwner'
     ) {
       throw new Error(`Shared storage request reached the chain engine: ${request.method}`);

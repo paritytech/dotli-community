@@ -10,9 +10,23 @@ outbound license. The vendored `@useragent-kit/polkavm-runtime` browser artifact
 notices, per-file hashes, and source provenance ship beside the runtime. Build-time-only tooling under source-available
 FSL-1.1-MIT terms is not redistributed as part of the application.
 
+The vendored `@parity/truapi` client is MIT-licensed. The `@parity/truapi-host` distribution is `MIT AND AGPL-3.0-only`,
+not MIT-only: its Rust signing runtime/WASM includes the native Chat, HOP and Coinage implementations. Both packages
+come from
+[host-rust-core revision `437a46c5af88b3c4a962d763f8fa5732e9c48183`](https://github.com/paritytech/host-rust-core/commit/437a46c5af88b3c4a962d763f8fa5732e9c48183).
+Archive and installed artifact hashes are recorded in `vendor/truapi-host.lock.json`, including the local dependency
+override. The Host's `LICENSE`, `LICENSE-AGPL-3.0` and `NOTICE` are retained in `vendor/truapi-host/`; the notice
+identifies the adapted components and their source revisions. Corresponding Source for redistribution must include that
+exact Host source, its component provenance and build instructions, plus any local modifications; a repository URL alone
+does not supply unpublished changes.
+
 > Generated from the resolved dependency tree (841 distinct third-party packages) by `scripts/third-party-notices.ts`.
 > Platform-specific binary packages (for example `*-darwin-arm64`, `@esbuild/*`, `@rolldown/*`) reflect the build host;
 > other platforms resolve their own equivalents under the same licenses. Regenerate after dependency changes.
+
+## MIT AND AGPL-3.0-only
+
+@parity/truapi-host
 
 ## MIT
 
@@ -62,8 +76,8 @@ FSL-1.1-MIT terms is not redistributed as part of the application.
 @esbuild/darwin-arm64, @eslint-community/eslint-utils, @eslint-community/regexpp, @eslint/js, @img/colour,
 @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/resolve-uri, @jridgewell/source-map,
 @jridgewell/sourcemap-codec, @jridgewell/trace-mapping, @keyv/bigmap, @keyv/serialize, @napi-rs/wasm-runtime,
-@noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding, @oxc-project/types, @parity/truapi, @parity/truapi-host,
-@pkgr/core, @polkadot-api/cli, @polkadot-api/codegen, @polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider,
+@noble/ciphers, @noble/curves, @noble/hashes, @oslojs/encoding, @oxc-project/types, @parity/truapi, @pkgr/core,
+@polkadot-api/cli, @polkadot-api/codegen, @polkadot-api/ink-contracts, @polkadot-api/json-rpc-provider,
 @polkadot-api/json-rpc-provider-proxy, @polkadot-api/known-chains, @polkadot-api/logs-provider,
 @polkadot-api/merkleize-metadata, @polkadot-api/metadata-builders, @polkadot-api/metadata-compatibility,
 @polkadot-api/observable-client, @polkadot-api/pjs-signer, @polkadot-api/raw-client, @polkadot-api/raw-tx-creator,

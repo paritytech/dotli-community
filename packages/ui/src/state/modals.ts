@@ -23,6 +23,11 @@ export interface ModalButton<R extends string> {
   result: R;
 }
 
+export interface ModalChoice<R extends string> {
+  label: string;
+  result: R;
+}
+
 export interface ModalPasswordInput {
   kind: 'password';
   placeholder: string;
@@ -37,6 +42,8 @@ export interface ModalView<R extends string> {
   fields: ModalField[];
   notice?: string;
   input?: ModalPasswordInput;
+  /** Host-owned choices, rendered separately from the action footer. */
+  choices?: ModalChoice<R>[];
   /** Display order. */
   buttons: ModalButton<R>[];
   dismissOnBackdrop: boolean;

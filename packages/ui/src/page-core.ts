@@ -6,7 +6,12 @@
 // also retains the page core while no product is visible.
 
 import { DEBUG, getActiveServicesConfig } from '@dotli/config';
-import { requestWalletOwner, subscribeWalletOwnerRevoked, WALLET_OWNER_REVOKED_EVENT } from '@dotli/protocol';
+import {
+  requestCoreCustody,
+  requestWalletOwner,
+  subscribeWalletOwnerRevoked,
+  WALLET_OWNER_REVOKED_EVENT,
+} from '@dotli/protocol';
 import { log } from '@dotli/shared';
 import type {
   AuthState,
@@ -14,12 +19,22 @@ import type {
   RequiredHostCallbacks,
   TrUApiProductProvider,
 } from '@parity/truapi-host';
-import type { LocalIdentity, WorkerPairingHostRuntime, WorkerSigningHostRuntime } from '@parity/truapi-host/web';
-import { createWebWorkerPairingHostRuntime, createWebWorkerSigningHostRuntime } from '@parity/truapi-host/web';
+import type {
+  BrowserNativeChatFilesHost,
+  LocalIdentity,
+  WorkerPairingHostRuntime,
+  WorkerSigningHostRuntime,
+} from '@parity/truapi-host/web';
+import {
+  createBrowserNativeChatFilesHost,
+  createWebWorkerPairingHostRuntime,
+  createWebWorkerSigningHostRuntime,
+} from '@parity/truapi-host/web';
 import HostWorker from '@parity/truapi-host/worker-runtime?worker';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
+import { createContactsPlatform, NativeChatContactsDirectory } from './host-callbacks/Contacts.js';
 import {
   initializeLocalWalletState,
   isExperimentalWalletActive,
@@ -88,6 +103,7 @@ const cores = new Set<Core>();
 let generation = 0;
 let walletOwnerLease: Promise<string | undefined> | undefined;
 let ownerRevocationBound = false;
+let custodyOperations: Promise<void> = Promise.resolve();
 let localIdentityUpdateQueue: Promise<unknown> = Promise.resolve();
 const noop = (): void => undefined;
 
@@ -127,6 +143,8 @@ export function disposePageCores(): void {
     core.dispose();
   }
 }
+
+window.addEventListener('pagehide', disposePageCores);
 
 async function ensureWalletOwner(): Promise<void> {
   if (!ownerRevocationBound) {
@@ -236,6 +254,7 @@ function createCore(product: PageProduct): Core {
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
   const connectionDisposers = new Set<() => void>();
+  let runtimeCallbacks: RequiredHostCallbacks | undefined;
   const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let booted: PageRuntime | undefined;
@@ -249,55 +268,122 @@ function createCore(product: PageProduct): Core {
   let nativeSessionUiInfo: LiveLocalWallet['nativeSessionUiInfo'];
   let walletAuthReady = false;
   let pendingWalletAuthState: AuthState | undefined;
+  let custodyLease: string | undefined;
+  let nativeChatFiles: BrowserNativeChatFilesHost | undefined;
+  const contactsGenesis = getActiveServicesConfig().people.genesis;
+  const contactsDirectory =
+    context === undefined
+      ? undefined
+      : new NativeChatContactsDirectory(
+          () =>
+            !disposed && isCurrentLocalWallet(context) && contactsGenesis === getActiveServicesConfig().people.genesis,
+        );
+  const nativeContacts =
+    contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, blockingModalScope);
+  const releaseCustody = (): void => {
+    // Queue after an in-flight acquisition. A replacement core cannot acquire
+    // until this terminated signer has released even a late-arriving lease.
+    custodyOperations = custodyOperations
+      .then(async () => {
+        if (custodyLease === undefined) {
+          return;
+        }
+        const lease = custodyLease;
+        custodyLease = undefined;
+        await requestCoreCustody({ action: 'release', lease });
+      })
+      .catch(noop);
+  };
   const assertCurrent = (): void => {
     if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
       throw new Error('Wallet or network changed while the page core was starting.');
     }
   };
-  const callbacks = createHostCallbacks({
-    label: product.label,
-    pairingLabel: product.pairing?.label,
-    pairingDotSuffix: product.pairing?.dotSuffix,
-    pairingHostGlobal: product.pairing?.hostGlobal,
-    blockingModalScope,
-  });
-  const forwardAuthState = callbacks.auth.authStateChanged;
-  callbacks.auth.authStateChanged = state => {
-    if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
-      return;
-    }
-    if (context === undefined) {
-      forwardAuthState(state);
-      return;
-    }
-    if (state.tag === 'Connected') {
-      const account = state.value.identityAccountId;
-      if (account === undefined || !/^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
-        return;
-      }
-      const identityAccountId = `0x${account.replace(/^0x/, '').toLowerCase()}`;
-      if (core.wallet !== undefined && identityAccountId !== core.wallet.binding.identityAccountId) {
-        return;
-      }
-      const liteUsername = state.value.liteUsername;
-      activatedIdentity = {
-        identityAccountId,
-        ...(liteUsername !== undefined && liteUsername !== '' ? { liteUsername } : {}),
-      };
-      nativeSessionUiInfo = { publicKey: state.value.publicKey, fullUsername: state.value.fullUsername };
-      if (core.wallet !== undefined) {
-        core.wallet.identity = activatedIdentity;
-        core.wallet.nativeSessionUiInfo = nativeSessionUiInfo;
-      }
-    }
-    if (walletAuthReady) {
-      forwardAuthState(state);
-    } else {
-      pendingWalletAuthState = state;
-    }
-  };
   const runtime = Promise.resolve().then(async (): Promise<PageRuntime> => {
     assertCurrent();
+    if (context !== undefined) {
+      await ensureWalletOwner();
+      assertCurrent();
+      const acquisition = custodyOperations.then(async () => {
+        assertCurrent();
+        const acquired = await requestCoreCustody({ action: 'acquire', walletRevision: context.revision });
+        if (typeof acquired !== 'string') {
+          throw new Error('Private wallet custody was not acquired');
+        }
+        custodyLease = acquired;
+        assertCurrent();
+      });
+      custodyOperations = acquisition.catch(noop);
+      await acquisition;
+    }
+    const callbacks = createHostCallbacks({
+      label: product.label,
+      pairingLabel: product.pairing?.label,
+      pairingDotSuffix: product.pairing?.dotSuffix,
+      pairingHostGlobal: product.pairing?.hostGlobal,
+      blockingModalScope,
+      ...(custodyLease === undefined ? {} : { custodyLease }),
+      ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
+    });
+    runtimeCallbacks = callbacks;
+    if (contactsDirectory !== undefined) {
+      callbacks.coreStorage = contactsDirectory.observeStorage(callbacks.coreStorage);
+    }
+    if (custodyLease !== undefined) {
+      const lease = custodyLease;
+      nativeChatFiles = createBrowserNativeChatFilesHost({
+        async putSources(sources) {
+          await requestCoreCustody({ action: 'putSources', lease, sources: [...sources] });
+        },
+        async readSource(sourceId) {
+          const blob = await requestCoreCustody({ action: 'readSource', lease, sourceId });
+          if (blob !== undefined && !(blob instanceof Blob)) {
+            throw new Error('Invalid private Chat source');
+          }
+          return blob;
+        },
+        async releaseSource(sourceId) {
+          await requestCoreCustody({ action: 'releaseSource', lease, sourceId });
+        },
+      });
+      callbacks.nativeChatFiles = nativeChatFiles;
+    }
+    const forwardAuthState = callbacks.auth.authStateChanged;
+    callbacks.auth.authStateChanged = state => {
+      if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
+        return;
+      }
+      contactsDirectory?.invalidate();
+      if (context === undefined) {
+        forwardAuthState(state);
+        return;
+      }
+      if (state.tag === 'Connected') {
+        const account = state.value.identityAccountId;
+        if (account === undefined || !/^(?:0x)?[0-9a-fA-F]{64}$/.test(account)) {
+          return;
+        }
+        const identityAccountId = `0x${account.replace(/^0x/, '').toLowerCase()}`;
+        if (core.wallet !== undefined && identityAccountId !== core.wallet.binding.identityAccountId) {
+          return;
+        }
+        const liteUsername = state.value.liteUsername;
+        activatedIdentity = {
+          identityAccountId,
+          ...(liteUsername !== undefined && liteUsername !== '' ? { liteUsername } : {}),
+        };
+        nativeSessionUiInfo = { publicKey: state.value.publicKey, fullUsername: state.value.fullUsername };
+        if (core.wallet !== undefined) {
+          core.wallet.identity = activatedIdentity;
+          core.wallet.nativeSessionUiInfo = nativeSessionUiInfo;
+        }
+      }
+      if (walletAuthReady) {
+        forwardAuthState(state);
+      } else {
+        pendingWalletAuthState = state;
+      }
+    };
     if (context === undefined) {
       worker = new HostWorker();
       booted = await createWebWorkerPairingHostRuntime(worker, callbacks, { hostConfig });
@@ -313,17 +399,19 @@ function createCore(product: PageProduct): Core {
       });
       return pairing;
     }
-    await ensureWalletOwner();
-    assertCurrent();
     const secret = await readLocalWalletSecret();
     if (secret === undefined) {
       throw new Error('Experimental wallet is unavailable. Disconnect it in the debug bar.');
     }
     try {
       assertCurrent();
+      const { dotns, coinage } = getActiveServicesConfig();
       worker = new HostWorker();
       const signing = await createWebWorkerSigningHostRuntime(worker, callbacks, {
-        hostConfig: { ...hostConfig, networkSuffix: getActiveServicesConfig().dotns.TLD },
+        hostConfig:
+          coinage === undefined
+            ? { ...hostConfig, networkSuffix: dotns.TLD }
+            : { ...hostConfig, networkSuffix: dotns.TLD, coinageInstanceId: coinage.instanceId },
       });
       booted = signing;
       assertCurrent();
@@ -332,6 +420,10 @@ function createCore(product: PageProduct): Core {
       if (activatedIdentity === undefined) {
         throw new Error('Native activation did not report its identity.');
       }
+      if (nativeSessionUiInfo?.publicKey === undefined || contactsDirectory === undefined) {
+        throw new Error('Native Chat contacts require the activated signing wallet');
+      }
+      contactsDirectory.bind(signing, nativeSessionUiInfo.publicKey, contactsGenesis);
       const binding: LocalWalletIdentityBinding = {
         ...context,
         identityAccountId: activatedIdentity.identityAccountId,
@@ -429,35 +521,43 @@ function createCore(product: PageProduct): Core {
     persistent: context !== undefined,
     faulted: false,
     openCallbacks() {
-      if (disposed) {
+      if (disposed || runtimeCallbacks === undefined) {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const connectionCallbacks = createHostCallbacks({
+      const contacts = contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, scope);
+      const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
+        ...(custodyLease === undefined ? {} : { custodyLease }),
+        ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
       });
-      // Authentication and session storage stay core-owned; interactive
-      // product prompts cannot outlive the connection that requested them.
+      // Session state, encrypted storage and file custody belong to the core.
+      // Interactive product prompts belong only to their live connection.
       let closed = false;
-      connectionCallbacks.auth = {
+      const auth = runtimeCallbacks.auth;
+      callbacks.auth = {
         authStateChanged: state => {
           if (!closed) {
-            callbacks.auth.authStateChanged(state);
+            auth.authStateChanged(state);
           }
         },
       };
-      connectionCallbacks.coreStorage = callbacks.coreStorage;
+      callbacks.coreStorage = runtimeCallbacks.coreStorage;
+      if (nativeChatFiles !== undefined) {
+        callbacks.nativeChatFiles = nativeChatFiles;
+      }
       const dispose = (): void => {
         if (closed) {
           return;
         }
         closed = true;
         connectionDisposers.delete(dispose);
+        contacts?.dispose();
         scope.dispose();
       };
       connectionDisposers.add(dispose);
-      return { callbacks: connectionCallbacks, dispose };
+      return { callbacks, dispose };
     },
     dispose() {
       if (disposed) {
@@ -474,6 +574,8 @@ function createCore(product: PageProduct): Core {
       for (const dispose of connectionDisposers) {
         dispose();
       }
+      nativeContacts?.dispose();
+      contactsDirectory?.dispose();
       blockingModalScope.dispose();
       monitor?.dispose();
       booted?.dispose();
@@ -482,6 +584,8 @@ function createCore(product: PageProduct): Core {
       if (context !== undefined) {
         worker?.terminate();
       }
+      nativeChatFiles?.dispose();
+      releaseCustody();
     },
   };
   cores.add(core);

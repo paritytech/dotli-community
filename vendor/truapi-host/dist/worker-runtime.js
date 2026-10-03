@@ -4,6 +4,7 @@
 // state that needs DOM access (localStorage, prompts) while the core dispatcher
 // runs here off the page main thread.
 import { isLoopbackWsUrl } from "./worker-protocol.js";
+import { COINAGE_WALLET_CALLBACKS, MAX_JSON_RPC_CONNECTIONS, } from "./worker-protocol.js";
 import { TRUAPI_CODEC_VERSION } from "@parity/truapi";
 import { createWorkerRawCallbacks, } from "./generated/worker-callbacks.js";
 import { handleGetPermissionAuthorizationStatus, handleGetPermissionAuthorizationStatuses, handleSetPermissionAuthorizationStatus, } from "./worker-permission-authorization.js";
@@ -30,7 +31,11 @@ const subscriptionListeners = new Map();
 let nextConnId = 0;
 const chainConnectAcks = new Map();
 const chainResponseListeners = new Map();
+const chainCloseListeners = new Map();
+let connectionsDisposed = false;
 function callbackRequest(name, args, coreId) {
+    if (connectionsDisposed)
+        return Promise.reject(new Error("Host runtime is unavailable"));
     return new Promise((resolve, reject) => {
         const requestId = ++nextRequestId;
         pendingCallbacks.set(requestId, (r) => {
@@ -39,30 +44,48 @@ function callbackRequest(name, args, coreId) {
             else
                 reject(new Error(r.error));
         });
-        postToMain({
-            kind: "callbackRequest",
-            requestId,
-            name,
-            args,
-            ...(coreId === undefined ? {} : { coreId }),
-        });
+        try {
+            postToMain({
+                kind: "callbackRequest",
+                requestId,
+                name,
+                args,
+                ...(coreId === undefined ? {} : { coreId }),
+            });
+        }
+        catch {
+            pendingCallbacks.delete(requestId);
+            reject(new Error("Host callback transport is unavailable"));
+        }
     });
 }
 function startSubscription(name, payload, sendItem, sendError, coreId) {
+    if (connectionsDisposed) {
+        sendError({ reason: "Host runtime is unavailable" });
+        return () => { };
+    }
     const subId = ++nextSubId;
     subscriptionListeners.set(subId, {
         sendItem: sendItem,
         sendError: (error) => sendError({ reason: error }),
     });
-    postToMain({
-        kind: "subscriptionStart",
-        subId,
-        name,
-        payload,
-        ...(coreId === undefined ? {} : { coreId }),
-    });
-    return () => {
+    try {
+        postToMain({
+            kind: "subscriptionStart",
+            subId,
+            name,
+            payload,
+            ...(coreId === undefined ? {} : { coreId }),
+        });
+    }
+    catch {
         subscriptionListeners.delete(subId);
+        sendError({ reason: "Host subscription transport is unavailable" });
+        return () => { };
+    }
+    return () => {
+        if (!subscriptionListeners.delete(subId))
+            return;
         postToMain({ kind: "subscriptionStop", subId });
     };
 }
@@ -93,36 +116,87 @@ function startSubscription(name, payload, sendItem, sendError, coreId) {
  * `close` posts `chainClose`, and every `chainResponse` for this `connId` is
  * delivered to `onResponse`.
  */
-function chainConnect(genesisHash, onResponse) {
-    const connId = ++nextConnId;
-    return new Promise((resolve, reject) => {
-        chainConnectAcks.set(connId, (ack) => {
-            if (!ack.ok) {
-                chainResponseListeners.delete(connId);
-                reject(new Error(ack.error));
-                return;
-            }
-            resolve({
-                send(request) {
-                    postToMain({ kind: "chainSend", connId, request });
-                },
-                close() {
-                    chainResponseListeners.delete(connId);
-                    postToMain({ kind: "chainClose", connId });
-                },
+function chainConnect(genesisHash, onResponse, onClosed) {
+    return connectRpc({ kind: "chainConnectStart", genesisHash }, onResponse, onClosed);
+}
+function hopConnect(genesisHash, endpoint, onResponse, onClosed) {
+    return connectRpc({ kind: "hopConnectStart", genesisHash, endpoint }, onResponse, onClosed);
+}
+function closeRpcConnection(connId, notify = true) {
+    const ack = chainConnectAcks.get(connId);
+    const onClosed = chainCloseListeners.get(connId);
+    chainConnectAcks.delete(connId);
+    chainResponseListeners.delete(connId);
+    chainCloseListeners.delete(connId);
+    ack?.({ ok: false, error: "JSON-RPC connection closed before opening" });
+    if (notify) {
+        try {
+            onClosed?.();
+        }
+        catch {
+            postToMain({
+                kind: "disposeError",
+                error: "JSON-RPC close callback failed",
             });
+        }
+    }
+}
+function connectRpc(start, onResponse, onClosed) {
+    if (connectionsDisposed ||
+        chainCloseListeners.size >= MAX_JSON_RPC_CONNECTIONS) {
+        return Promise.reject(new Error("JSON-RPC connections unavailable or limit reached"));
+    }
+    const connId = ++nextConnId;
+    const { promise, resolve, reject } = Promise.withResolvers();
+    chainConnectAcks.set(connId, (ack) => {
+        if (!ack.ok) {
+            chainResponseListeners.delete(connId);
+            chainCloseListeners.delete(connId);
+            reject(new Error(ack.error));
+            return;
+        }
+        resolve({
+            send(request) {
+                if (!chainCloseListeners.has(connId)) {
+                    throw new Error("JSON-RPC connection is closed");
+                }
+                postToMain({ kind: "chainSend", connId, request });
+            },
+            close() {
+                if (!chainCloseListeners.has(connId))
+                    return;
+                closeRpcConnection(connId, false);
+                postToMain({ kind: "chainClose", connId });
+            },
         });
-        chainResponseListeners.set(connId, onResponse);
-        postToMain({ kind: "chainConnectStart", connId, genesisHash });
     });
+    chainCloseListeners.set(connId, onClosed);
+    chainResponseListeners.set(connId, (json) => {
+        try {
+            onResponse(json);
+        }
+        catch (err) {
+            closeRpcConnection(connId);
+            throw err;
+        }
+    });
+    try {
+        postToMain({ ...start, connId });
+    }
+    catch (err) {
+        closeRpcConnection(connId, false);
+        reject(err);
+    }
+    return promise;
 }
 /** Build the host-level callback object passed to the WASM runtime. */
 function buildRawCallbacks(capabilities, coreId) {
     return {
         ...createWorkerRawCallbacks({
-            callbackRequest: (name, args) => callbackRequest(name, args, coreId),
+            callbackRequest: (name, args) => callbackRequest(name, args, COINAGE_WALLET_CALLBACKS[name] ? undefined : coreId),
             startSubscription: (name, payload, sendItem, sendError) => startSubscription(name, payload, sendItem, sendError, coreId),
             chainConnect,
+            hopConnect,
         }, capabilities),
         /**
          * Demand on a product's worker crossed zero. Every transition arrives
@@ -498,6 +572,41 @@ const identityOperations = new Set();
 let allowanceNetworkSuffix = null;
 let allowanceGeneration = 0;
 const allowanceOperations = new Set();
+const nativeChatContactsOperations = new Set();
+function handleNativeChatContacts(requestId) {
+    const rt = runtime;
+    const generation = allowanceGeneration;
+    const operation = (async () => {
+        try {
+            if (!rt || !isSigningRuntime(rt)) {
+                throw new Error("native Chat contacts are unsupported on a pairing host");
+            }
+            const activation = rt.localIdentityContext().activationId;
+            const snapshot = await rt.getNativeChatContacts();
+            if (runtime !== rt ||
+                generation !== allowanceGeneration ||
+                rt.localIdentityContext().activationId !== activation) {
+                throw new Error("local identity activation changed");
+            }
+            postToMain({
+                kind: "nativeChatContactsResponse",
+                requestId,
+                ok: true,
+                snapshot,
+            });
+        }
+        catch (error) {
+            postToMain({
+                kind: "nativeChatContactsResponse",
+                requestId,
+                ok: false,
+                error: errorMessage(error),
+            });
+        }
+    })();
+    nativeChatContactsOperations.add(operation);
+    void operation.finally(() => nativeChatContactsOperations.delete(operation));
+}
 function handleWalletAllowanceSnapshot(requestId, input) {
     const rt = runtime;
     const generation = allowanceGeneration;
@@ -730,6 +839,7 @@ ctx.addEventListener("message", (ev) => {
             break;
         }
         case "activateLocalSession": {
+            identityAbort?.abort(new Error("local identity activation changed"));
             const { secret, liteUsername } = msg;
             void handleSessionActivation(msg.requestId, "activateLocalSession", (rt) => {
                 const signing = rt;
@@ -797,6 +907,9 @@ ctx.addEventListener("message", (ev) => {
         case "getWalletAllowanceSnapshot":
             handleWalletAllowanceSnapshot(msg.requestId, msg.productIds);
             break;
+        case "getNativeChatContacts":
+            handleNativeChatContacts(msg.requestId);
+            break;
         case "getPermissionAuthorizationStatus":
             void handleGetPermissionAuthorizationStatus(runtime, postToMain, msg.productId, msg.requestId, msg.request);
             break;
@@ -830,12 +943,18 @@ ctx.addEventListener("message", (ev) => {
                 chainConnectAcks.delete(msg.connId);
                 cb(msg.ok ? { ok: true } : { ok: false, error: msg.error });
             }
+            else if (msg.ok) {
+                postToMain({ kind: "chainClose", connId: msg.connId });
+            }
             break;
         }
         case "chainResponse": {
             dispatchChainResponse(msg.connId, msg.json, chainResponseListeners, postToMain);
             break;
         }
+        case "chainClosed":
+            closeRpcConnection(msg.connId);
+            break;
         case "publishChatAction":
             handlePublishAction(CHAT_ACTION_ENTRY_POINT, cores.get(msg.coreId), postToMain, msg.coreId, msg.requestId, msg.action);
             break;
@@ -859,12 +978,22 @@ ctx.addEventListener("message", (ev) => {
             runtime = null;
             allowanceGeneration++;
             identityAbort?.abort(new Error("runtime disposed"));
+            connectionsDisposed = true;
+            for (const settle of pendingCallbacks.values()) {
+                settle({ ok: false, error: "Host runtime is unavailable" });
+            }
+            pendingCallbacks.clear();
+            for (const connId of chainCloseListeners.keys()) {
+                closeRpcConnection(connId);
+                postToMain({ kind: "chainClose", connId });
+            }
             void (async () => {
                 try {
                     if (disposing && isSigningRuntime(disposing))
                         await disposing.disconnectSession();
                     await Promise.allSettled(identityOperations);
                     await Promise.allSettled(allowanceOperations);
+                    await Promise.allSettled(nativeChatContactsOperations);
                     await Promise.all([...cores.keys()].map((coreId) => disposeCore(coreId)));
                     disposing?.free();
                 }

@@ -91,8 +91,10 @@ import {
   createWalletOwner,
   isWalletOwnerOperation,
   type WalletOwner,
+  isCoreCustodyOperation,
 } from '@dotli/protocol';
 import { handleWalletOperation, WALLET_DB_NAME, withSharedWalletRevision } from './wallet-storage.js';
+import { CORE_CUSTODY_DB_NAME, handleCoreCustody } from './core-custody.js';
 
 import type { SWRelayRequest, SWOutbound } from './protocol-shared-worker.js';
 import { PROTOCOL_APP_ERRORS } from './errors.js';
@@ -340,7 +342,7 @@ function bindSharedWalletListener(): void {
     if (
       !isProtocolEnvelope(request) ||
       request.kind !== 'request' ||
-      (request.method !== 'walletStorage' && request.method !== 'walletOwner')
+      (request.method !== 'walletStorage' && request.method !== 'coreCustody' && request.method !== 'walletOwner')
     ) {
       return;
     }
@@ -366,6 +368,20 @@ function bindSharedWalletListener(): void {
           id: request.id,
           ok: true,
           result: lease,
+        });
+        return;
+      }
+      if (request.method === 'coreCustody') {
+        if (!isCoreCustodyOperation(payload.operation)) {
+          throw new Error('Invalid private custody operation');
+        }
+        const result = await handleCoreCustody(payload.operation, request.deadlineMs);
+        postToSource(event.source, event.origin, {
+          namespace: 'dotli:protocol',
+          kind: 'response',
+          id: request.id,
+          ok: true,
+          result,
         });
         return;
       }
@@ -521,7 +537,13 @@ function getRequestedNetwork(): RequestedNetwork {
 async function purgeWorkerCaches(): Promise<void> {
   // Throw on enumeration failure and await each delete: a silent log-and-
   // continue would let smoldot boot against the still-present stale DB.
-  const keep: Record<string, true> = { dotli: true, 'dotli-sw': true, [WALLET_DB_NAME]: true, 'dotli-core': true };
+  const keep: Record<string, true> = {
+    dotli: true,
+    'dotli-sw': true,
+    [WALLET_DB_NAME]: true,
+    [CORE_CUSTODY_DB_NAME]: true,
+    'dotli-core': true,
+  };
   if (typeof indexedDB === 'undefined' || typeof indexedDB.databases !== 'function') {
     throw new Error(
       'Browser does not expose indexedDB.databases() — cannot fully purge worker caches. ' +
@@ -787,6 +809,7 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
       data.method === 'walletStorage' ||
+      data.method === 'coreCustody' ||
       data.method === 'walletOwner'
     ) {
       return;
@@ -1042,6 +1065,7 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
       isSharedAuthRequestMethod(data.method) ||
       isSharedModeRequestMethod(data.method) ||
       data.method === 'walletStorage' ||
+      data.method === 'coreCustody' ||
       data.method === 'walletOwner'
     ) {
       return;
