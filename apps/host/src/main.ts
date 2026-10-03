@@ -20,7 +20,6 @@ if (typeof globalThis.requestIdleCallback !== 'function') {
 import './boot.js';
 import './pwa.js';
 import '@dotli/ui/styles.css';
-import * as Sentry from '@sentry/browser';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
@@ -1792,12 +1791,10 @@ async function main(): Promise<void> {
     };
   };
 
-  // The bulletin chain is only dialed during the sandbox's content fetch,
-  // which outlives the render handoff `await`. Capturing at handoff would
-  // freeze the bulletin tag at "unknown" on every cold load, and a warm load
-  // can still fail its fetch, so the result and the trace both wait for the
-  // sandbox to report how its content load ended. A load that never reports
-  // was abandoned or hung: the trace records that on `pagehide`.
+  // The content fetch outlives the render handoff `await`, and a warm load can
+  // still fail it, so the trace waits for the sandbox to report how its
+  // content load ended. A load that never reports was abandoned or hung: the
+  // trace records that on `pagehide`.
   //
   // Subscribed before the handoff, because a sandbox serving a cached archive
   // can report before the handoff `await` returns. A handoff that throws has
@@ -1812,39 +1809,15 @@ async function main(): Promise<void> {
         log.event('Content loaded', { flow: 'content' });
         endJourney();
         trace.finish('rendered');
-        captureResolveResult('ok');
         return;
       }
       log.event('Content failed', { flow: 'content', failed_step: failedStep ?? 'unknown' });
       trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
-      captureResolveResult('content_error', failedStep);
     });
   };
   const handedOff = (): void => {
     trace.handedOff();
     enterStep('content');
-  };
-
-  // The non-throwing half of the failure rate whose error half is the tagged
-  // exception in the catch below. `no_content` and `content_error` are their
-  // own outcomes rather than errors: the name resolved, and either nothing is
-  // published on this network or the sandbox could not load what is, so
-  // folding them into either half would misstate the resolution rate.
-  const captureResolveResult = (outcome: 'ok' | 'no_content' | 'content_error', failedStep?: string): void => {
-    Sentry.captureMessage('dotli.resolve_result', {
-      level: 'info',
-      // A message carries a stack trace, and Sentry groups those by call site,
-      // which splits one count across an issue per caller and per build.
-      fingerprint: ['dotli.resolve_result'],
-      tags: {
-        surface: 'host_main_resolve',
-        outcome,
-        cid_cache: cidCache,
-        ...smoldotDbCacheTags(),
-        chain_backend: chainBackend,
-        ...(failedStep !== undefined ? { failed_step: failedStep } : {}),
-      },
-    });
   };
 
   try {
@@ -1923,17 +1896,6 @@ async function main(): Promise<void> {
       m.count(S.CACHE_MISS);
     }
     log.event(cidCache === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
-
-    // One event per cold resolve attempt, BEFORE anything that can fail.
-    Sentry.captureMessage('dotli.resolve_attempt', {
-      level: 'info',
-      fingerprint: ['dotli.resolve_attempt'],
-      tags: {
-        surface: 'host_main_resolve',
-        outcome: 'pending',
-        chain_backend: chainBackend,
-      },
-    });
 
     // Wall-clock cold-path duration, emitted as a trace_metric distribution
     // after success. The previous m.span wrapper recorded garbage on the
@@ -2047,7 +2009,6 @@ async function main(): Promise<void> {
       showNoContentError(label);
       endJourney();
       trace.finish('no_content');
-      captureResolveResult('no_content');
       performance.mark('dotli:main:end');
       return;
     }
@@ -2117,7 +2078,6 @@ async function main(): Promise<void> {
       step,
       span: trace.span,
       tags: {
-        surface: 'host_main_resolve',
         outcome: 'error',
         error_kind: error.kind,
         dependency,
