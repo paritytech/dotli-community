@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "08b314646b0c063014956ec0bc2baea0078b4672",
+  "upstreamRevision": "f7ac212cf0e19d6860c4d60298d4d1cf442e1c55",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "packages": {
     "vendor/truapi": {
@@ -23,5 +23,5 @@
       ]
     }
   },
-  "wasmUpstreamRevision": "08b314646b0c063014956ec0bc2baea0078b4672"
+  "wasmUpstreamRevision": "f7ac212cf0e19d6860c4d60298d4d1cf442e1c55"
 }
