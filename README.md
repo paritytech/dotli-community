@@ -434,6 +434,10 @@ The deployment smoke suites load published products through the deployed host, n
 suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
 E2E.
 
+The Duke and Quake gameplay checks require actual browser Pointer Lock, not just a capture request. Duke starts directly
+in a level, so its smoke does not send menu-navigation keys. The initial canvas click may already capture the pointer
+and clear the armed flag; otherwise the check waits for arming and clicks to acquire capture.
+
 PolkaVM execution is opt-in on `dot.li` and on by default on every other shell (`paseo.fyi`, `paseo.li`, previews,
 localhost); **Settings → Experimental → PolkaVM apps** overrides the site default either way. Testnet product smoke
 scenarios exercise a fresh visit without opting in. On production `dot.li`, the smoke explicitly enables the toggle with
