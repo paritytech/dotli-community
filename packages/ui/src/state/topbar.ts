@@ -28,6 +28,7 @@ export interface TopbarState {
 }
 
 const topbar = createSyncStore<TopbarState>(
+  'topbar',
   {
     present: false,
     visible: true,

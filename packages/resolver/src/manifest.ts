@@ -96,39 +96,32 @@ async function readManifestText<T>(
   judge: (raw: string | null) => ManifestRecordResult<T>,
 ): Promise<ManifestResult<T>> {
   const t0 = performance.now();
-  log.warn(
-    `[dot.li manifest] reading text(${node.slice(0, 10)}…, "${key}") on ${dotns.DOTNS_CONTENT_RESOLVER.slice(0, 10)}… slot=${String(textRecordsSlot)} kind=${metricKind}`,
-  );
   let raw: string | null;
   try {
     raw = await readNestedMappingString(api, dotns.DOTNS_CONTENT_RESOLVER, node, key, textRecordsSlot);
   } catch (err) {
-    m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
+    const ms = performance.now() - t0;
+    m.distribution(S.RESOLVE_MANIFEST_READ, ms, 'millisecond', {
       kind: metricKind,
       outcome: 'error',
     });
-    log.warn(
-      `[dot.li resolve] manifest read failed kind=${metricKind} key=${key}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    log.warn(`[dot.li manifest] ${metricKind} manifest read failed (${String(Math.round(ms))}ms)`, err);
     throw err;
   }
-  if (raw === null || raw.length === 0) {
-    log.warn(
-      `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> empty (${(performance.now() - t0).toFixed(0)}ms)`,
-    );
-    m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
-      kind: metricKind,
-      outcome: 'empty',
-    });
-    return { kind: 'empty' };
-  }
-  log.warn(
-    `[dot.li manifest] text(${node.slice(0, 10)}…, "${key}") -> ${String(raw.length)} bytes (${(performance.now() - t0).toFixed(0)}ms): ${raw.slice(0, 200)}${raw.length > 200 ? '…' : ''}`,
-  );
   const result = judge(raw);
-  m.distribution(S.RESOLVE_MANIFEST_READ, performance.now() - t0, 'millisecond', {
+  const ms = performance.now() - t0;
+  m.distribution(S.RESOLVE_MANIFEST_READ, ms, 'millisecond', {
     kind: metricKind,
     outcome: result.kind,
+  });
+  // The record text is published by the name's owner and can be large, so the
+  // trail carries its size and verdict rather than the text itself.
+  log.event('Manifest read', {
+    flow: 'resolve',
+    kind: metricKind,
+    bytes: raw?.length ?? 0,
+    outcome: result.kind,
+    ms: Math.round(ms),
   });
   return result;
 }

@@ -8,7 +8,8 @@
 
 import { createEffect, createMemo, createSignal, For, onCleanup, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { captureException } from '@dotli/metrics';
+import { captureException, recordExpected } from '@dotli/metrics';
+import { isExpectedDbError } from '@dotli/storage';
 import { getActiveRootManifest } from '@dotli/shared';
 import {
   chatBots,
@@ -129,8 +130,16 @@ function PanelBody(): JSX.Element {
     clearInterval(timer);
   });
 
-  const failedRead = (error: unknown, setError: (on: boolean) => void): void => {
-    captureException(error, { kind: 'chat_panel_read_error' });
+  const failedRead = (
+    error: unknown,
+    step: 'chat_contacts_read' | 'chat_messages_read',
+    setError: (on: boolean) => void,
+  ): void => {
+    if (isExpectedDbError(error)) {
+      recordExpected(error, { flow: 'chat', step });
+    } else {
+      captureException(error, { flow: 'chat', step, tags: { kind: 'chat_panel_read_error' } });
+    }
     setError(true);
   };
 
@@ -182,7 +191,7 @@ function PanelBody(): JSX.Element {
       })
       .catch((error: unknown) => {
         if (live) {
-          failedRead(error, setContactsError);
+          failedRead(error, 'chat_contacts_read', setContactsError);
         }
       });
     return () => {
@@ -269,7 +278,7 @@ function PanelBody(): JSX.Element {
       })
       .catch((error: unknown) => {
         if (live) {
-          failedRead(error, setMessagesError);
+          failedRead(error, 'chat_messages_read', setMessagesError);
         }
       });
     return () => {

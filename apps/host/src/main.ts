@@ -21,7 +21,7 @@ import './boot.js';
 import './pwa.js';
 import '@dotli/ui/styles.css';
 import * as Sentry from '@sentry/browser';
-import { captureException, m, setResolutionId, spans as S } from '@dotli/metrics';
+import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
   openSettings,
@@ -68,7 +68,8 @@ import type { LoadingPhase, ShieldState, BridgeModule as RenderModule } from '@d
 import type { ChainSyncKind, ResolvePhase } from '@dotli/resolver';
 
 import type { ChainRole } from '@dotli/config';
-import { PHASE_BY_MILESTONE, startResolutionTrace } from './resolution-trace.js';
+import { PHASE_BY_MILESTONE, startResolutionTrace, type CidCacheResult } from './resolution-trace.js';
+import { beginAttempt, endJourney } from './journey.js';
 
 import {
   describeProgressStall,
@@ -111,6 +112,7 @@ import {
   primeChatCapability,
   setChatCapability,
   log,
+  markContinuation,
   serializeError,
   dotNsUrl,
   isValidDotLabel,
@@ -161,12 +163,19 @@ import {
 } from './manifest-gate.js';
 import { parsePreviewTargetUrl } from './preview-route.js';
 
+// Breadcrumbs that name their flow, so the trail of an event reads as the
+// steps of the page load rather than as one undifferentiated log.
+const bootLog = log.child({ flow: 'boot' });
+const resolveLog = log.child({ flow: 'resolve' });
+
 // Surface chunk-load failures explicitly: capture the original cause to
 // Sentry and let the user opt into a reload, instead of reloading silently.
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
   captureException(evt.payload ?? new Error('vite:preloadError'), {
-    kind: 'chunk_preload_error',
+    flow: 'boot',
+    step: 'chunk_preload',
+    tags: { kind: 'chunk_preload_error' },
   });
   showNotification({
     label: 'Asset failed to load',
@@ -175,6 +184,7 @@ window.addEventListener('vite:preloadError', event => {
     action: {
       label: 'Reload',
       onClick: () => {
+        markContinuation('app_update');
         window.location.reload();
       },
     },
@@ -423,9 +433,7 @@ async function applyProductBranding(
         // Favicon fetch is cosmetic. A failure must not affect the tab title or
         // the loaded app, and is logged so it stays observable in diagnostics.
       } catch (err: unknown) {
-        log.warn(
-          `[dot.li manifest] icon fetch failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        resolveLog.warn(`[dot.li manifest] icon fetch failed for ${withActiveTld(label)}:`, err);
       } finally {
         clearTimeout(iconDeadline);
       }
@@ -676,7 +684,7 @@ async function runBackgroundRevalidate(
     if (decision.kind === 'update') {
       await setCachedCid(label, getNetwork(), decision.cid, decision.manifests);
       m.count(S.CACHE_REVALIDATE_UPDATE);
-      log.warn(`[dot.li cid-cache] revalidate: ${label} updated ${servedCid} -> ${decision.cid}`);
+      log.event('Cached app is outdated', { flow: 'resolve', served: servedCid, latest: decision.cid });
       showNotification({
         label: 'New version available',
         text: 'This site has been updated. Reload to see the latest version.',
@@ -684,6 +692,7 @@ async function runBackgroundRevalidate(
         action: {
           label: 'Reload',
           onClick: () => {
+            markContinuation('app_update');
             window.location.reload();
           },
         },
@@ -695,15 +704,19 @@ async function runBackgroundRevalidate(
     // which shows why.
     await evictCachedCid(label);
     m.count(S.CACHE_REVALIDATE_CLEARED);
-    log.warn(`[dot.li cid-cache] revalidate: ${label} ${decision.reason} on-chain, evicted`);
+    log.event('Cached app evicted', { flow: 'resolve', served: servedCid, reason: decision.reason });
     if (onScreen) {
+      markContinuation('app_update');
       window.location.reload();
     }
   } catch (err) {
     stopTimer();
     m.count(S.CACHE_REVALIDATE_ERROR);
-    log.warn(`[dot.li cid-cache] revalidate failed for ${label}:`, err);
-    captureException(err, { kind: 'cid_cache_revalidate_error' });
+    captureException(err, {
+      flow: 'resolve',
+      step: 'cache_revalidate',
+      tags: { kind: 'cid_cache_revalidate_error', surface: 'host_cache_revalidate' },
+    });
   }
 }
 
@@ -750,10 +763,7 @@ async function applyUrlSettings(): Promise<void> {
     const { bootstrapSharedMode } = await loadSharedMode();
     await bootstrapSharedMode();
   } catch (err: unknown) {
-    log.warn(
-      '[dot.li perf] Shared mode bootstrap failed; continuing with per-origin localStorage:',
-      err instanceof Error ? err.message : err,
-    );
+    bootLog.warn('[dot.li] Shared mode bootstrap failed; continuing with per-origin localStorage:', err);
   }
 
   const prior = {
@@ -838,6 +848,8 @@ async function applyUrlSettings(): Promise<void> {
   } catch {
     /* sessionStorage unavailable */
   }
+  // After the wipe, which clears sessionStorage and would take the mark with it.
+  markContinuation('settings_change');
   window.location.reload();
 }
 
@@ -899,8 +911,16 @@ function switchBackendAndReload(nextBackend: Backend): void {
     const newUrl = `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`;
     window.history.replaceState(null, '', newUrl);
   }
+  markContinuation('switch_backend');
   window.location.reload();
 }
+
+/**
+ * The boot step `main()` is in, for the report when one of them throws. Boot
+ * runs before the resolution trace exists and outside its try, so without this
+ * a failure here reaches Sentry as a bare rejection with nothing to say where.
+ */
+let bootStep = 'start';
 
 async function main(): Promise<void> {
   const previewTargetUrl = parsePreviewTargetUrl(window.location);
@@ -912,7 +932,7 @@ async function main(): Promise<void> {
   }
 
   performance.mark('dotli:main:start');
-  log.warn(`[dot.li perf] main() started (${elapsed(T0)})`);
+  log.debug(`[dot.li perf] main() started (${elapsed(T0)})`);
 
   // Runtime-gated: the panel ships in every build but the heavy chunk
   // is only fetched when the user opts in via `?debug=true` (set by the
@@ -922,6 +942,7 @@ async function main(): Promise<void> {
   //
   // `?debug=off` and sessionStorage still let users silence the panel
   // on a per-tab basis after enabling it.
+  bootStep = 'debug_bus';
   const { emitDotliDebugEvent, enableDotliDebugBuffering } = await loadDotliDebugBus();
   const debugMode = resolveTruapiDebugMode();
   if (debugMode.enabled) {
@@ -933,7 +954,7 @@ async function main(): Promise<void> {
         // relay serves them: from the block cache, else over bitswap.
         blockSource: async cid => (await getCachedBlock(cid)) ?? bitswapGet(cid),
       });
-      log.warn(`[dot.li] TrUAPI debug panel enabled`);
+      log.event('TrUAPI debug panel enabled', { flow: 'boot' });
     });
   }
 
@@ -974,6 +995,7 @@ async function main(): Promise<void> {
   // store). The await blocks if a URL-driven change forces a wipe and
   // reload. The reload then replaces the page, so anything below it never
   // runs.
+  bootStep = 'url_settings';
   await applyUrlSettings();
   initSettingsStore();
 
@@ -990,11 +1012,20 @@ async function main(): Promise<void> {
       skipArchiveCache: cacheSettings.skipArchiveCache,
     },
   });
-  log.warn(`[dot.li perf] chain=${chainBackend}`);
+  log.event('Settings applied', {
+    flow: 'boot',
+    network: getNetwork(),
+    backend: chainBackend,
+    skip_cid_cache: cacheSettings.skipCidCache,
+    skip_archive_cache: cacheSettings.skipArchiveCache,
+    skip_worker_cache: cacheSettings.skipWorkerCache,
+  });
   m.setDefaults({
+    network: getNetwork(),
     chain_backend: chainBackend,
     skip_cid_cache: String(cacheSettings.skipCidCache),
     skip_archive_cache: String(cacheSettings.skipArchiveCache),
+    skip_worker_cache: String(cacheSettings.skipWorkerCache),
   });
 
   // Pre-warm the protocol iframe for every chain backend so sandboxed apps
@@ -1023,8 +1054,14 @@ async function main(): Promise<void> {
     setProtocolSubMode(subMode, {
       skipWorkerCache: pendingProtocolReset || cacheSettings.skipWorkerCache,
     });
-    void ensureProtocolFrame();
-    void warmupProtocol();
+    // Both are awaited again by the first request that needs the frame, and a
+    // failure there is reported with the step it broke. Here it is only a crumb.
+    ensureProtocolFrame().catch((err: unknown) => {
+      recordExpected(err, { flow: 'protocol', step: 'frame_prewarm' });
+    });
+    warmupProtocol().catch((err: unknown) => {
+      recordExpected(err, { flow: 'protocol', step: 'warmup' });
+    });
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'protocol_warmup_started',
@@ -1034,14 +1071,15 @@ async function main(): Promise<void> {
     });
   }
 
+  bootStep = 'bridge_load';
   const bridgeModulePromise = loadBridge();
   const bridgeModule = await bridgeModulePromise;
   bridgeModule.initBridgeEventListeners(blockingModalCoordinator);
 
-  // Initialize top bar UI.
+  bootStep = 'topbar';
   const t0 = performance.now();
   initTopBar(blockingModalCoordinator);
-  log.warn(`[dot.li perf] initTopBar() done (${dur(t0)})`);
+  log.debug(`[dot.li perf] initTopBar() done (${dur(t0)})`);
   emitDotliDebugEvent({
     layer: 'boot',
     event: 'topbar_ready',
@@ -1055,7 +1093,8 @@ async function main(): Promise<void> {
 
   if (label === null && previewTargetUrl !== null) {
     const host = new URL(previewTargetUrl).host;
-    log.warn(`[dot.li perf] Preview route: ${host} (${elapsed(T0)})`);
+    bootStep = 'preview_render';
+    log.event('Route: preview', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
@@ -1093,7 +1132,8 @@ async function main(): Promise<void> {
   });
   if (label === null && localhostUrl !== null) {
     const host = new URL(localhostUrl).host;
-    log.warn(`[dot.li perf] Localhost proxy: ${host} (${elapsed(T0)})`);
+    bootStep = 'localhost_render';
+    log.event('Route: localhost proxy', { flow: 'boot', host });
     bridgeModule.setPageProduct({ label: host, productId: productIdOverride });
 
     initScheduledNotifications({ label: host });
@@ -1133,7 +1173,7 @@ async function main(): Promise<void> {
   }
 
   if (label === null) {
-    log.warn(`[dot.li perf] Landing page, no subdomain (${elapsed(T0)})`);
+    log.event('Route: landing page', { flow: 'boot' });
     setLandingPage(true);
     performance.mark('dotli:main:end');
     emitDotliDebugEvent({
@@ -1148,7 +1188,21 @@ async function main(): Promise<void> {
 
   bindTopbarAutoHide();
 
-  log.warn(`[dot.li perf] Subdomain detected: "${label}" (${elapsed(T0)})`);
+  bootStep = 'resolve_setup';
+  const attempt = beginAttempt(label);
+  log.event('Route: app', {
+    flow: 'boot',
+    label,
+    attempt: attempt.attemptNumber,
+    entry: attempt.entry,
+  });
+  // On every event of this load, so an error and the resolution span can be
+  // joined into journeys without a second id to look up.
+  m.setDefaults({
+    journey_id: attempt.journeyId,
+    attempt_number: String(attempt.attemptNumber),
+    entry: attempt.entry,
+  });
   // Before resolution starts, so a login clicked while the product resolves
   // boots the product's core rather than a second one.
   bridgeModule.setPageProduct({ label });
@@ -1332,14 +1386,24 @@ async function main(): Promise<void> {
   setLoadingDomain(label);
   advancePhase(0);
 
-  // Opened before any resolution work so the trace covers the whole load, and
-  // subscribed outside the backend gate: the gateway path produces no chain
-  // events at all, and a trace showing that is the point rather than a gap.
+  // Backdated to page start so the trace covers the whole load, boot
+  // included, and subscribed outside the backend gate: the gateway path
+  // produces no chain events at all, and a trace showing that is the point
+  // rather than a gap.
   const trace = startResolutionTrace({
     domain: withActiveTld(label),
     network: getNetwork(),
     backend: chainBackend,
+    attempt,
+    startedAt: T0,
   });
+  // The step the resolution is in, for the trace's `loading_phase` and for the
+  // capture below when one of them throws.
+  let step = 'resolve_setup';
+  const enterStep = (next: string): void => {
+    step = next;
+    trace.step(next);
+  };
   onProtocolChainSync(event => {
     trace.chainSync(event);
   });
@@ -1409,12 +1473,14 @@ async function main(): Promise<void> {
           pendingTimer = null;
           if (pendingWarning !== null) {
             warningShown = true;
+            trace.warningShown();
             setLoadingWarning(pendingWarning);
           }
         }, waitLeft);
         return;
       }
       warningShown = true;
+      trace.warningShown();
       pendingWarning = null;
       setLoadingWarning(message);
     };
@@ -1505,13 +1571,21 @@ async function main(): Promise<void> {
           event.at !== undefined &&
           emittedWarpAt.get(role) !== event.at &&
           now - (lastWarpEmit.get(role) ?? 0) >= CHAIN_WARP_DEBUG_MS;
-        if (emittedPhase.get(role) !== phase || warpMoved) {
+        const phaseChanged = emittedPhase.get(role) !== phase;
+        if (phaseChanged || warpMoved) {
           emittedPhase.set(role, phase);
           if (event.at !== undefined) {
             emittedWarpAt.set(role, event.at);
             lastWarpEmit.set(role, now);
           }
           const peers = peersByRole.get(role);
+          if (phaseChanged) {
+            log.event(`${event.chain} ${phase}`, {
+              flow: 'chain',
+              ...(peers === undefined ? {} : { peers }),
+              ...(event.reason === undefined ? {} : { reason: event.reason }),
+            });
+          }
           emitDotliDebugEvent({
             layer: 'chain',
             event: 'phase',
@@ -1528,7 +1602,6 @@ async function main(): Promise<void> {
           });
         }
       }
-      log.debug(`[dot.li sync] ${event.chain} ${event.syncKind}`);
       // Health samples are excluded: they arrive every second and would keep
       // re-arming the watchdog, so a stalled chain would never warn.
       if (event.syncKind !== 'peers' && isCriticalChain(event.chain)) {
@@ -1702,7 +1775,7 @@ async function main(): Promise<void> {
   // Read in the catch below, which covers both the warm and the cold path.
   // Without it a warm-path failure would be counted against the cold attempt
   // total and the cold failure rate would read high.
-  let cidCache: 'hit' | 'miss' | 'unknown' = 'unknown';
+  let cidCache: CidCacheResult | 'unknown' = 'unknown';
 
   // On a CID cache hit the render never waits on the light client, and the
   // gateway backend runs none at all, so the dimension is inapplicable on
@@ -1722,13 +1795,34 @@ async function main(): Promise<void> {
   // The bulletin chain is only dialed during the sandbox's content fetch,
   // which outlives the render handoff `await`. Capturing at handoff would
   // freeze the bulletin tag at "unknown" on every cold load, and a warm load
-  // can still fail its fetch, so the result waits for the sandbox to report
-  // how its content load ended. A load that never reports was abandoned or
-  // hung, and claims no outcome.
-  const captureResolveResultAfterContent = (): void => {
-    onSandboxDone(outcome => {
-      captureResolveResult(outcome === 'loaded' ? 'ok' : 'content_error');
+  // can still fail its fetch, so the result and the trace both wait for the
+  // sandbox to report how its content load ended. A load that never reports
+  // was abandoned or hung: the trace records that on `pagehide`.
+  //
+  // Subscribed before the handoff, because a sandbox serving a cached archive
+  // can report before the handoff `await` returns. A handoff that throws has
+  // already been reported as the error it is, and its late `done` is dropped.
+  let resolveFailed = false;
+  const settleOnContent = (): void => {
+    onSandboxDone((outcome, failedStep) => {
+      if (resolveFailed) {
+        return;
+      }
+      if (outcome === 'loaded') {
+        log.event('Content loaded', { flow: 'content' });
+        endJourney();
+        trace.finish('rendered');
+        captureResolveResult('ok');
+        return;
+      }
+      log.event('Content failed', { flow: 'content', failed_step: failedStep ?? 'unknown' });
+      trace.finish('content_error', failedStep !== undefined ? { failedStep } : {});
+      captureResolveResult('content_error', failedStep);
     });
+  };
+  const handedOff = (): void => {
+    trace.handedOff();
+    enterStep('content');
   };
 
   // The non-throwing half of the failure rate whose error half is the tagged
@@ -1736,7 +1830,7 @@ async function main(): Promise<void> {
   // own outcomes rather than errors: the name resolved, and either nothing is
   // published on this network or the sandbox could not load what is, so
   // folding them into either half would misstate the resolution rate.
-  const captureResolveResult = (outcome: 'ok' | 'no_content' | 'content_error'): void => {
+  const captureResolveResult = (outcome: 'ok' | 'no_content' | 'content_error', failedStep?: string): void => {
     Sentry.captureMessage('dotli.resolve_result', {
       level: 'info',
       // A message carries a stack trace, and Sentry groups those by call site,
@@ -1748,11 +1842,13 @@ async function main(): Promise<void> {
         cid_cache: cidCache,
         ...smoldotDbCacheTags(),
         chain_backend: chainBackend,
+        ...(failedStep !== undefined ? { failed_step: failedStep } : {}),
       },
     });
   };
 
   try {
+    enterStep('cid_cache_read');
     const cached = cacheSettings.skipCidCache ? null : await getCachedCid(label, getNetwork());
     const cachedCid = cached?.cid ?? null;
     emitDotliDebugEvent({
@@ -1766,16 +1862,18 @@ async function main(): Promise<void> {
         ...(cachedCid !== null ? { cid: cachedCid } : {}),
       },
     });
-    trace.cidCache(cachedCid !== null ? 'hit' : 'miss');
+    cidCache = cachedCid !== null ? 'hit' : cacheSettings.skipCidCache ? 'skipped' : 'miss';
+    trace.cidCache(cidCache);
     if (cached !== null) {
-      cidCache = 'hit';
       m.count(S.CACHE_HIT);
-      log.warn(`[dot.li resolve] path=cache (${chainBackend}) (${elapsed(T0)}) -> ${cached.cid}`);
+      log.event('CID cache hit', { flow: 'resolve', cid: cached.cid });
+      trace.nameResolved(cached.cid);
       // Judged again by today's validator, before anything renders. A copy
       // that no longer passes is refused but kept: only a cleanup or a
       // redeploy drops cached manifests, and the CID check below is what
       // notices a redeploy that fixed them.
       const cachedManifests = fromCache(cached.manifests);
+      enterStep('cached_launch_gate');
       try {
         assertLaunchable(cachedManifests.root, cachedManifests.app);
       } catch (err) {
@@ -1789,19 +1887,20 @@ async function main(): Promise<void> {
       await m.span(S.E2E_FAST, async () => {
         setShieldState(shieldState);
         setChainsButtonVisible(true);
+        enterStep('render_chunk_load');
         const { renderAppSubdomain } = await renderChunkPromise;
         advancePhase(contentFetchPhase);
+        enterStep('render_handoff');
+        settleOnContent();
         await renderAppSubdomain(cached.cid, label);
       });
       forgetError();
       void recordRecentLabel(label);
       void applyProductBranding(label, cachedManifests).catch((err: unknown) => {
-        log.warn(
-          `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        resolveLog.warn(`[dot.li manifest] branding failed for ${withActiveTld(label)}:`, err);
       });
       performance.mark('dotli:main:end');
-      log.warn(`[dot.li perf] === TOTAL (fast path): ${dur(T0)} ===`);
+      log.event('Sandbox mounted', { flow: 'resolve', path: 'cache', total_ms: Math.round(performance.now() - T0) });
       emitDotliDebugEvent({
         layer: 'boot',
         event: 'ready',
@@ -1813,18 +1912,17 @@ async function main(): Promise<void> {
           path: 'fast',
         },
       });
-      trace.nameResolved(cached.cid);
-      trace.finish('rendered');
-      captureResolveResultAfterContent();
+      handedOff();
       // SWR: keep the cache honest across reloads without blocking the render.
       requestIdleCallback(() => {
         void runBackgroundRevalidate(label, cached.cid, chainBackend, true);
       });
       return;
     }
-    cidCache = 'miss';
-    m.count(S.CACHE_MISS);
-    log.warn(`[dot.li perf] CID cache MISS (${elapsed(T0)})`);
+    if (cidCache === 'miss') {
+      m.count(S.CACHE_MISS);
+    }
+    log.event(cidCache === 'skipped' ? 'CID cache skipped by settings' : 'CID cache miss', { flow: 'resolve' });
 
     // One event per cold resolve attempt, BEFORE anything that can fail.
     Sentry.captureMessage('dotli.resolve_attempt', {
@@ -1848,6 +1946,7 @@ async function main(): Promise<void> {
     manifestsRead.catch(() => {
       /* awaited below; a CID failure first must not leave this unhandled */
     });
+    enterStep('name_resolve');
     const resolveStart = performance.now();
 
     const resolveFlowId =
@@ -1877,8 +1976,8 @@ async function main(): Promise<void> {
      * subname has no contenthash.
      */
     let cid: string | null;
+    log.event('Resolving name', { flow: 'resolve', name: withActiveTld(`app.${label}`), backend: chainBackend });
     if (chainBackend !== 'rpc-gateway') {
-      log.warn(`[dot.li resolve] path=smoldot (trustless light-client) (${elapsed(T0)})`);
       const { statusToPhase } = await loadResolve();
       const onResolveProgress = (msg: string): void => {
         // Progress events arrive as opaque strings across the iframe
@@ -1898,19 +1997,18 @@ async function main(): Promise<void> {
       };
       cid = await resolveDotNameRemote(`app.${label}`, onResolveProgress);
       if (cid === null) {
+        log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
         cid = await resolveDotNameRemote(label, onResolveProgress);
-        log.warn(`[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? 'null'}`);
       }
     } else {
-      log.warn(`[dot.li resolve] path=json-rpc (gateway mode) (${elapsed(T0)})`);
       const { resolveDotNameViaRpc } = await loadRpcResolve();
       const onResolveProgress = (msg: string): void => {
         emitPhase(msg, 'progress');
       };
       cid = await resolveDotNameViaRpc(`app.${label}`, onResolveProgress);
       if (cid === null) {
+        log.event('App subname has no contenthash, trying the base name', { flow: 'resolve' });
         cid = await resolveDotNameViaRpc(label, onResolveProgress);
-        log.warn(`[dot.li resolve] fallback ${withActiveTld(label)} contenthash -> ${cid ?? 'null'}`);
       }
     }
 
@@ -1929,9 +2027,14 @@ async function main(): Promise<void> {
 
     stopStatusTick();
     performance.mark('dotli:resolve:end');
-    log.warn(
+    log.debug(
       `[dot.li resolve] RESOLVED ${withActiveTld(label)} via ${chainBackend} in ${dur(resolveStart)} (total ${elapsed(T0)}) -> ${cid ?? 'null'}`,
     );
+    log.event(cid === null ? 'Name has no contenthash' : 'Name resolved', {
+      flow: 'resolve',
+      ms: Math.round(performance.now() - resolveStart),
+      ...(cid !== null ? { cid } : {}),
+    });
 
     trace.nameResolved(cid);
 
@@ -1942,13 +2045,17 @@ async function main(): Promise<void> {
       // still resolves on another, so dropping its pill would lose good
       // entries on a network switch. The pill's remove button is the cleanup.
       showNoContentError(label);
-      trace.finish('error', 'no contenthash');
+      endJourney();
+      trace.finish('no_content');
       captureResolveResult('no_content');
       performance.mark('dotli:main:end');
       return;
     }
 
+    enterStep('manifest_read');
     const manifests = await manifestsRead;
+    log.event('Manifests read', { flow: 'resolve', root: manifests.root.kind, app: manifests.app.kind });
+    enterStep('launch_gate');
     assertLaunchable(manifests.root, manifests.app);
 
     if (!cacheSettings.skipCidCache) {
@@ -1960,25 +2067,25 @@ async function main(): Promise<void> {
     setShieldState(shieldState);
 
     setChainsButtonVisible(true);
+    enterStep('render_chunk_load');
     const { renderAppSubdomain } = await renderChunkPromise;
     advancePhase(contentFetchPhase);
+    enterStep('render_handoff');
+    settleOnContent();
     await renderAppSubdomain(cid, label);
     forgetError();
     void recordRecentLabel(label);
     void applyProductBranding(label, manifests).catch((err: unknown) => {
-      log.warn(
-        `[dot.li manifest] branding failed for ${withActiveTld(label)}: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      resolveLog.warn(`[dot.li manifest] branding failed for ${withActiveTld(label)}:`, err);
     });
 
     m.distribution(S.E2E_SLOW, performance.now() - coldStartMs, 'millisecond', {
       outcome: 'ok',
       chain_backend: chainBackend,
     });
-    trace.finish('rendered');
-    captureResolveResultAfterContent();
     performance.mark('dotli:main:end');
-    log.warn(`[dot.li perf] === TOTAL: ${dur(T0)} ===`);
+    log.event('Sandbox mounted', { flow: 'resolve', path: 'cold', total_ms: Math.round(performance.now() - T0) });
+    handedOff();
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'ready',
@@ -1991,25 +2098,40 @@ async function main(): Promise<void> {
       },
     });
   } catch (err) {
-    trace.finish('error', err instanceof Error ? err.message : String(err));
+    resolveFailed = true;
     performance.mark('dotli:main:end');
+    // Classified once, here, and the same verdict drives both the report and
+    // the error page, so a dashboard of `error_kind` counts exactly the
+    // screens visitors saw.
+    const error = describeError(err, chainBackend !== 'rpc-gateway');
     // Report before rendering so monitoring always sees the root cause, even
     // if `showError()` itself throws (e.g. a DOM node is missing). The global
     // unhandled-rejection handler doesn't catch this, because the try/catch
     // here already has. Carry the active dependency as a tag so Sentry and the
     // user-visible error both attribute the failure to the specific
-    // dependency the chosen mode dialed.
+    // dependency the chosen mode dialed. Captured while the trace is still
+    // open, so the error lands inside it.
     const dependency = chainBackend === 'rpc-gateway' ? 'asset-hub-rpc' : 'smoldot';
     captureException(err, {
-      surface: 'host_main_resolve',
-      outcome: 'error',
-      dependency,
-      cid_cache: cidCache,
-      ...smoldotDbCacheTags(),
-      chain_backend: chainBackend,
+      flow: 'resolve',
+      step,
+      span: trace.span,
+      tags: {
+        surface: 'host_main_resolve',
+        outcome: 'error',
+        error_kind: error.kind,
+        dependency,
+        cid_cache: cidCache,
+        ...smoldotDbCacheTags(),
+        chain_backend: chainBackend,
+      },
+    });
+    trace.finish('error', {
+      reason: err instanceof Error ? err.message : String(err),
+      errorKind: error.kind,
     });
     // Full cause chain to console for devs.
-    log.error(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
+    log.debug(`[dot.li] Resolution failed via ${dependency}: ${serializeError(err)}`);
     emitDotliDebugEvent({
       layer: 'boot',
       event: 'failed',
@@ -2021,7 +2143,7 @@ async function main(): Promise<void> {
         dependency,
       },
     });
-    const error = describeError(err, chainBackend !== 'rpc-gateway');
+    log.event('Error page shown', { flow: 'resolve', error_kind: error.kind, recovery: error.recovery });
     if (error.recovery === 'none') {
       showError(error.title, error.message, undefined, error.tips);
       return;
@@ -2033,6 +2155,7 @@ async function main(): Promise<void> {
         {
           label: RELOAD_BTN_LABEL,
           onClick: () => {
+            markContinuation('reload_button');
             window.location.reload();
           },
         },
@@ -2059,9 +2182,11 @@ async function main(): Promise<void> {
           /* sessionStorage unavailable: reload without the purge */
         }
       }
+      markContinuation('reload_button');
       window.location.reload();
     };
     const commitFailover = (): void => {
+      log.event('Transport switched after failure', { flow: 'resolve', from: chainBackend, to: nextBackend });
       emitDotliDebugEvent({
         layer: 'failover',
         event: 'chain_backend',
@@ -2142,4 +2267,16 @@ async function main(): Promise<void> {
   }
 }
 
-void main();
+main().catch((err: unknown) => {
+  // Everything past boot catches its own failures, so what reaches here broke
+  // the shell before a load could start, and nothing else is on screen.
+  captureException(err, { flow: 'boot', step: bootStep });
+  const error = describeError(err, getBackend() !== 'rpc-gateway');
+  showError(error.title, error.message, {
+    label: RELOAD_BTN_LABEL,
+    onClick: () => {
+      markContinuation('reload_button');
+      window.location.reload();
+    },
+  });
+});

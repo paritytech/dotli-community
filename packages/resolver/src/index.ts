@@ -6,7 +6,16 @@
 
 export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
-export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
+export {
+  enableSyncReporting,
+  onChainDetail,
+  onChainSync,
+  type ChainDetail,
+  type ChainKey,
+  type ChainPeer,
+  type ChainSyncEvent,
+  type ChainSyncKind,
+} from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
 // From the schema module, not `./manifest.js`: the host validates cached
 // manifests on its eager path, and the reader would drag the chain-storage

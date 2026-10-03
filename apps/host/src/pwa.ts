@@ -14,8 +14,9 @@
 // the app iframe (*.app.dot.li) are cross-origin and untouched.
 
 import { Workbox } from 'workbox-window';
+import { captureException, recordExpected } from '@dotli/metrics';
 import { showNotification } from '@dotli/ui';
-import { log } from '@dotli/shared';
+import { markContinuation } from '@dotli/shared';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
@@ -33,6 +34,7 @@ if ('serviceWorker' in navigator) {
           // Reload once the new SW is in control to avoid serving a mix of
           // old and new chunks during the swap.
           wb.addEventListener('controlling', () => {
+            markContinuation('app_update');
             window.location.reload();
           });
           wb.messageSkipWaiting();
@@ -47,18 +49,26 @@ if ('serviceWorker' in navigator) {
       if (!registration) {
         return;
       }
+      // An update check fails whenever the script cannot be fetched or the
+      // registration went away under it (offline, a deploy mid-fetch, storage
+      // cleared). The next check retries, so a failed one is only a crumb.
+      const checkForUpdate = (): void => {
+        registration.update().catch((err: unknown) => {
+          recordExpected(err, { flow: 'pwa', step: 'sw_update' });
+        });
+      };
       setInterval(() => {
         if (navigator.onLine) {
-          void registration.update();
+          checkForUpdate();
         }
       }, UPDATE_INTERVAL_MS);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && navigator.onLine) {
-          void registration.update();
+          checkForUpdate();
         }
       });
     })
     .catch((err: unknown) => {
-      log.warn(`[dot.li] SW registration failed: ${String(err)}`);
+      captureException(err, { flow: 'pwa', step: 'sw_register' });
     });
 }

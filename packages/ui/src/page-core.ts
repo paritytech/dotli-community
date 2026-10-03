@@ -9,6 +9,7 @@
 
 import type { ProductExecutionKind, TrUApiProductProvider } from '@parity/truapi-host';
 import type { WorkerPairingHostRuntime } from '@parity/truapi-host/web';
+import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
@@ -131,6 +132,7 @@ function createCore(product: PageProduct): Core {
   if (modalCoordinator === null) {
     throw new Error('TrUAPI page core used before initPageCore');
   }
+  log.event('wallet core create', { flow: 'wallet', landing: product === LANDING_PRODUCT });
   const blockingModalScope = modalCoordinator.createScope();
   const { productId: _productId, ...hostConfig } = createTruapiRuntimeConfig(product.label, product.productId);
   let unsubscribeStore: (() => void) | null = null;
@@ -149,6 +151,7 @@ function createCore(product: PageProduct): Core {
       ),
     )
     .then(booted => {
+      log.event('wallet core booted', { flow: 'wallet' });
       // Another tab logging in or out lands in the shared session store; the
       // core reads it again. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
@@ -173,6 +176,7 @@ function createCore(product: PageProduct): Core {
       if (current === core) {
         current = null;
       }
+      log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
       unsubscribeStore?.();
       blockingModalScope.dispose();
       runtime.then(
@@ -186,7 +190,8 @@ function createCore(product: PageProduct): Core {
     },
   };
   cores.add(core);
-  runtime.catch(() => {
+  runtime.catch((error: unknown) => {
+    log.warn('[dot.li page-core] wallet core failed to boot:', error);
     core.faulted = true;
   });
   return core;
@@ -202,6 +207,7 @@ async function connect(
   try {
     provider = await runtime.createProvider({ productId, executionKind });
   } catch (error) {
+    log.warn('[dot.li page-core] wallet core refused a connection:', error);
     core.faulted = true;
     throw error;
   }
@@ -210,6 +216,7 @@ async function connect(
   // other close is the core going down under it.
   provider.subscribeClose?.(() => {
     if (!closing) {
+      log.event('wallet core went down under a connection', { flow: 'wallet' });
       core.faulted = true;
     }
   });

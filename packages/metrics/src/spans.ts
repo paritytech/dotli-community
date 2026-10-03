@@ -161,6 +161,13 @@ export const PROTOCOL_IFRAME_READY = 'protocol.iframe_ready';
  */
 export const PROTOCOL_REQUEST = 'protocol.request';
 
+/**
+ * One request as the SharedWorker served it, tagged with the `resolution_id`
+ * of the tab that asked. Its own name, because the worker serves every tab and
+ * its duration excludes the postMessage hops the host-side round trip counts.
+ */
+export const PROTOCOL_WORKER_REQUEST = 'protocol.worker_request';
+
 /** Container chunk dynamic import time */
 export const BRIDGE_CHUNK_LOAD = 'bridge.chunk_load';
 

@@ -1,8 +1,23 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
-import { toExecutableManifestResult, toRootManifestResult } from '../src/manifest.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { DotnsContracts } from '@dotli/config';
+import { log } from '@dotli/shared';
+import type { Api } from '../src/api.js';
+import { readRootManifest, toExecutableManifestResult, toRootManifestResult } from '../src/manifest.js';
+
+const storage = vi.hoisted(() => ({
+  readNestedMappingString: vi.fn<() => Promise<string | null>>(),
+}));
+
+vi.mock('../src/access-raw-storage.js', () => storage);
+
+const DOTNS = {
+  TLD: 'dot',
+  DOTNS_CONTENT_RESOLVER: '0x1111111111111111111111111111111111111111',
+  STORAGE_SLOTS: { TEXT_RECORDS: 3 },
+} as unknown as DotnsContracts;
 
 const ROOT = JSON.stringify({ $v: 1, displayName: 'DOOM', description: 'Doom', icon: { cid: 'bafk', format: 'png' } });
 const APP = JSON.stringify({ $v: 1, kind: 'app', appVersion: [0, 1, 9] });
@@ -52,5 +67,48 @@ describe('toExecutableManifestResult', () => {
 
   it('reads an empty record as no manifest', () => {
     expect(toExecutableManifestResult(null, 'app')).toEqual({ kind: 'empty' });
+  });
+});
+
+describe('readRootManifest', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('As a dotli maintainer, a manifest read leaves one breadcrumb with its size and verdict, never the record text', async () => {
+    // Given
+    const event = vi.spyOn(log, 'event').mockImplementation(() => undefined);
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    storage.readNestedMappingString.mockResolvedValueOnce(ROOT);
+
+    // When
+    const result = await readRootManifest({} as Api, DOTNS, 'doom');
+
+    // Then
+    expect(result).toMatchObject({ kind: 'ok' });
+    expect(event.mock.calls).toEqual([
+      [
+        'Manifest read',
+        { flow: 'resolve', kind: 'root', bytes: ROOT.length, outcome: 'ok', ms: expect.any(Number) as number },
+      ],
+    ]);
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli maintainer, a manifest read that fails leaves its error in the trail', async () => {
+    // Given
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const failure = new Error('storage read failed');
+    storage.readNestedMappingString.mockRejectedValueOnce(failure);
+
+    // When
+    const result = readRootManifest({} as Api, DOTNS, 'doom');
+
+    // Then
+    await expect(result).rejects.toBe(failure);
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringMatching(/^\[dot\.li manifest\] root manifest read failed/),
+      failure,
+    );
   });
 });

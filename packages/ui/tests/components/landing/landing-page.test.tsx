@@ -216,7 +216,11 @@ describe('landing page island', () => {
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
-    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'page' });
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'page' },
+    });
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
     expect(byTestId('error-page-title').textContent).toBe('Something went wrong on our side');
@@ -250,7 +254,11 @@ describe('landing page island', () => {
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
-    expect(sentry.captureException).toHaveBeenCalledWith(failure, { root: 'page' });
+    expect(sentry.captureException).toHaveBeenCalledWith(failure, {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'page' },
+    });
     expect(document.querySelector('[data-testid="landing"]')).toBeNull();
     expect(document.querySelectorAll('[data-testid="error-page"]')).toHaveLength(1);
 

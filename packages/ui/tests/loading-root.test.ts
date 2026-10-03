@@ -274,8 +274,9 @@ describe('The loading screen is a tracked app root', () => {
     expect(document.querySelector('[data-testid="error-page-title"]')).not.toBeNull();
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-      kind: 'app_root_dispose_error',
-      root: 'page',
+      flow: 'ui',
+      step: 'root_dispose',
+      tags: { root: 'page', kind: 'app_root_dispose_error' },
     });
   });
 

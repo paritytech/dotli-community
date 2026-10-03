@@ -14,11 +14,8 @@ import { ERRORS } from '../errors.js';
 
 export function createNotificationAdapters(label: string): Required<Notifications> {
   const pushNotification: Required<Notifications>['pushNotification'] = async ({ text, deeplink, scheduledAt }) => {
-    log.warn(`[${label}] Push notification:`, {
-      text,
-      deeplink,
-      scheduledAt,
-    });
+    // Facts only: the text and deeplink are the product's content for the user.
+    log.event('push notification', { flow: 'notifications', scheduled: scheduledAt !== undefined });
 
     const result = await scheduleNotification({
       productId: label,

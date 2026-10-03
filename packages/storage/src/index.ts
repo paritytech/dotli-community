@@ -17,6 +17,7 @@ export {
   type ChatMessageRecord,
   type ChatRoomRecord,
 } from './chat.js';
+export { isExpectedDbError } from './db.js';
 export {
   RECENT_KEY,
   clearCidCache,

@@ -54,7 +54,11 @@ export function disposeAppRoot(name: string): void {
   try {
     disposers.get(name)?.();
   } catch (err) {
-    captureException(err, { kind: 'app_root_dispose_error', root: name });
+    captureException(err, {
+      flow: 'ui',
+      step: 'root_dispose',
+      tags: { root: name, kind: 'app_root_dispose_error' },
+    });
   }
 }
 

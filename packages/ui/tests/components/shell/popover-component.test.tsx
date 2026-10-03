@@ -437,7 +437,11 @@ describe('Popover', () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
-    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'popover:test-popover' });
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'popover:test-popover' },
+    });
 
     // When
     mouseClick(trigger());
@@ -467,7 +471,11 @@ describe('Popover', () => {
     // Then
     expect(isOpen()).toBe(false);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
-    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), { root: 'popover:test-popover' });
+    expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'popover:test-popover' },
+    });
   });
 
   it('As a user, something inside the content takes Escape first', async () => {

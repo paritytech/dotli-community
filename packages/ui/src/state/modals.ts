@@ -63,7 +63,7 @@ interface Pending {
   detach: () => void;
 }
 
-const modals = createSyncStore<readonly ModalEntry[]>([]);
+const modals = createSyncStore<readonly ModalEntry[]>('modals', []);
 export const modalsStore: ReadableStore<readonly ModalEntry[]> = modals;
 
 const pending = new Map<number, Pending>();

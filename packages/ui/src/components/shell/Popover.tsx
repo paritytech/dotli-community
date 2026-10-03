@@ -409,7 +409,7 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
   createEffect(
     () => props.error,
     error => {
-      captureException(error, { root: `popover:${props.id}` });
+      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: `popover:${props.id}` } });
       props.fail();
     },
   );

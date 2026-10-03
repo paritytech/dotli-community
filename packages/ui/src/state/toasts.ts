@@ -50,7 +50,7 @@ interface Timer {
 }
 
 const INITIAL: ToastsState = { items: [], expanded: false };
-const toasts = createSyncStore<ToastsState>(INITIAL, { equals: shallowEqual });
+const toasts = createSyncStore<ToastsState>('toasts', INITIAL, { equals: shallowEqual });
 export const toastsStore: ReadableStore<ToastsState> = toasts;
 
 const timers = new Map<number, Timer>();
@@ -120,7 +120,7 @@ function finishTimer(id: number): void {
   try {
     timer?.onDismiss?.();
   } catch (err) {
-    captureException(err, { kind: 'toast_on_dismiss_error' });
+    captureException(err, { flow: 'ui', step: 'toast_dismiss', tags: { kind: 'toast_on_dismiss_error' } });
   }
 }
 

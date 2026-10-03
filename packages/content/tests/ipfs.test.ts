@@ -58,8 +58,9 @@ describe('fetchFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
     // When it fetches the block
-    // Then it rejects rather than returning a bad body
-    await expect(fetchFromIpfs(CID, GATEWAY)).rejects.toThrow(/502/);
+    // Then it rejects rather than returning a bad body, naming the gateway and
+    // the CID so a report says which gateway failed on what
+    await expect(fetchFromIpfs(CID, GATEWAY)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 });
 
@@ -97,7 +98,7 @@ describe('fetchCarFromIpfs', () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 502 }));
 
     // When it fetches the archive
-    // Then it rejects rather than returning a bad body
-    await expect(fetchCarFromIpfs(CID, GATEWAY)).rejects.toThrow(/502/);
+    // Then it rejects rather than returning a bad body, naming the gateway and the CID
+    await expect(fetchCarFromIpfs(CID, GATEWAY)).rejects.toThrow(`HTTP 502 from gw.example for ${CID}`);
   });
 });

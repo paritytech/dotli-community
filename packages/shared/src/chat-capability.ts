@@ -10,6 +10,8 @@
 // resolved value is cached in localStorage per label so warm loads (cached
 // CID) do not stall provider creation on a dotNS text-record read.
 
+import { log } from './log.js';
+
 const CACHE_PREFIX = 'dotli:chat-capable:';
 
 /** Window event announcing a settled chat capability for a label. */
@@ -69,9 +71,10 @@ export function primeChatCapability(label: string, resolve: () => Promise<boolea
       announce(label, cached ?? value);
       return cached ?? value;
     },
-    () => {
+    (err: unknown) => {
       // An unreadable manifest means no chat this load; keep any cached
       // value for the next one rather than overwriting it with a failure.
+      log.child({ flow: 'chat' }).warn('[dot.li chat] worker manifest unreadable, chat is off for this load:', err);
       announce(label, cached ?? false);
       return cached ?? false;
     },

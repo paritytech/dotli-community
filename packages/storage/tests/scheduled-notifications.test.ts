@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   schedule,
   cancel,
   allocateId,
+  listAll,
   listForProduct,
   removeById,
   removeStale,
@@ -382,5 +383,46 @@ describe('removeStale', () => {
 
     // Then nothing is removed
     expect(removed).toBe(0);
+  });
+});
+
+describe('a database connection that is closing', () => {
+  beforeEach(async () => {
+    // Opened first, so the spy only meets the transactions under test.
+    await getDb();
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
+      throw new DOMException(
+        "Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.",
+        'InvalidStateError',
+      );
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const request = {
+    productId: 'acme.dot',
+    title: 'Acme',
+    text: 'x',
+    deeplink: null,
+    scheduledAt: Date.now() + 60_000,
+  };
+
+  it.each([
+    ['schedule', () => schedule(request)],
+    ['allocateId', () => allocateId('acme.dot')],
+    ['cancel', () => cancel('acme.dot', 1)],
+    ['removeById', () => removeById(1)],
+    ['listAll', () => listAll()],
+    ['listForProduct', () => listForProduct('acme.dot')],
+    ['removeStale', () => removeStale(Date.now())],
+  ] as const)('As the scheduler, %s rejects rather than hanging', async (_name, call) => {
+    // Given a connection that throws on every new transaction
+
+    // When the scheduler calls into the queue
+    // Then the call rejects with that error
+    await expect(call()).rejects.toMatchObject({ name: 'InvalidStateError' });
   });
 });

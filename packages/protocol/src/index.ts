@@ -52,7 +52,7 @@ export {
   writeSharedAuthStorage,
   writeSharedModeStorage,
 } from './client.js';
-export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
+export { ProtocolFatalError, ProtocolInitFailedError, ProtocolRequestError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,

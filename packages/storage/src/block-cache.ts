@@ -15,9 +15,9 @@
 // Bytes and bookkeeping live in separate stores, so touching a block on read
 // and walking the cache to prune it never load the bytes.
 
-import { getDb } from './db.js';
+import { getDb, isExpectedDbError } from './db.js';
 import { log } from '@dotli/shared';
-import { captureException } from '@dotli/metrics';
+import { captureException, recordExpected } from '@dotli/metrics';
 
 const BLOCKS = 'blocks';
 const META = 'block_meta';
@@ -53,6 +53,11 @@ function completion(tx: IDBTransaction): Promise<void> {
 const reportedActions = new Set<string>();
 
 function report(action: string, err: unknown): void {
+  const step = `block_cache_${action}`;
+  if (isExpectedDbError(err)) {
+    recordExpected(err, { flow: 'storage', step });
+    return;
+  }
   const name = err instanceof Error ? err.name : undefined;
   if (name === 'QuotaExceededError') {
     // Expected under storage pressure, not a bug to page on. Still logged
@@ -65,7 +70,7 @@ function report(action: string, err: unknown): void {
     return;
   }
   reportedActions.add(action);
-  captureException(err, { kind: `block_cache_${action}_error` });
+  captureException(err, { flow: 'storage', step, tags: { kind: `${step}_error` } });
 }
 
 function meta(cid: string, size: number): BlockMeta {

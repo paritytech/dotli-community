@@ -594,12 +594,22 @@ export function dismissLoading(): void {
 /** How the sandbox's content load ended. */
 export type SandboxOutcome = 'loaded' | 'failed';
 
+/**
+ * The sandbox step a failed content load stopped at (`content_fetch`,
+ * `verify`, ...), when it says. It becomes a Sentry tag, so anything that is
+ * not a short snake_case token is dropped rather than trusted: the message
+ * comes from another origin.
+ */
+export type SandboxFailedStep = string | undefined;
+
+const FAILED_STEP_RE = /^[a-z][a-z0-9_]{0,39}$/;
+
 // One-shot subscribers for the sandbox's terminal `done` signal. The host
 // uses it to time telemetry that must not be captured before the content
 // fetch has run (the bulletin chain is only dialed during that fetch).
-const sandboxDoneCallbacks: ((outcome: SandboxOutcome) => void)[] = [];
+const sandboxDoneCallbacks: ((outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void)[] = [];
 
-export function onSandboxDone(cb: (outcome: SandboxOutcome) => void): void {
+export function onSandboxDone(cb: (outcome: SandboxOutcome, failedStep: SandboxFailedStep) => void): void {
   sandboxDoneCallbacks.push(cb);
 }
 
@@ -626,8 +636,11 @@ export function listenForSandboxStatus(): void {
       dismissLoading();
       const outcome = data['outcome'];
       if (outcome === 'loaded' || outcome === 'failed') {
+        const step = data['failedStep'];
+        const failedStep =
+          outcome === 'failed' && typeof step === 'string' && FAILED_STEP_RE.test(step) ? step : undefined;
         for (const cb of sandboxDoneCallbacks.splice(0)) {
-          cb(outcome);
+          cb(outcome, failedStep);
         }
       }
     }

@@ -149,7 +149,9 @@ describe('overlays loader', () => {
       // Then
       await expect(broken).resolves.toEqual({ result: 'dismissed' });
       expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-        root: 'overlays',
+        flow: 'ui',
+        step: 'root_render',
+        tags: { root: 'overlays' },
       });
 
       // When: a dialog queued after the error still renders and settles
@@ -212,7 +214,9 @@ describe('overlays loader', () => {
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      kind: 'overlays_load_error',
+      flow: 'ui',
+      step: 'root_load',
+      tags: { root: 'overlays', kind: 'overlays_load_error' },
     });
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm).toHaveBeenCalledWith('Asset failed to load\n\nA new version may have been deployed.');

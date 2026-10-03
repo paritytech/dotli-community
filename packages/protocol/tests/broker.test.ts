@@ -865,6 +865,35 @@ describe('chain pool brokering', () => {
   });
 });
 
+describe('broker warnings', () => {
+  it('As a dotli maintainer, an anomaly repeated on every message logs its first few, then only a running count', async () => {
+    // Given: a fresh module, so no earlier suite's anomalies count against this one.
+    vi.resetModules();
+    const { log } = await import('@dotli/shared');
+    const warn = vi.spyOn(log, 'warn').mockImplementation(() => undefined);
+    const { createChainPool: freshPool } = await import('../src/chain-pool.js');
+    const harness = createProviderHarness();
+    const pool = freshPool({ createTransport: () => harness.provider, destroyDelay: Infinity });
+    pool.connectRemote('asset-hub', 'conn-a', () => undefined);
+
+    // When: the upstream answers a thousand requests nobody sent.
+    for (let id = 0; id < 1000; id++) {
+      harness.emit({ jsonrpc: '2.0', id: `stray-${String(id)}`, result: null });
+    }
+
+    // Then
+    expect(warn.mock.calls.map(([line]) => line)).toEqual([
+      '[dot.li broker] ← upstream response for unknown id=stray-0',
+      '[dot.li broker] ← upstream response for unknown id=stray-1',
+      '[dot.li broker] ← upstream response for unknown id=stray-2',
+      '[dot.li broker] response_unknown_id: 10 so far',
+      '[dot.li broker] response_unknown_id: 100 so far',
+      '[dot.li broker] response_unknown_id: 1000 so far',
+    ]);
+    warn.mockRestore();
+  });
+});
+
 describe('ChainBroker.halt', () => {
   function setup(): {
     broker: ChainBroker;

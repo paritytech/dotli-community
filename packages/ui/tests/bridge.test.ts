@@ -94,6 +94,9 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
   default: mocks.HostWorker,
 }));
 
+const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
+vi.mock('../../metrics/src/sentry.js', () => sentry);
+
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
     measure: vi.fn(),
@@ -175,7 +178,8 @@ function loginResponseFrame(
   result:
     | { success: true; value: 'Success' | 'AlreadyConnected' | 'Rejected' }
     | { success: false; reason: string }
-    | { success: false; hostFailure: string },
+    | { success: false; hostFailure: string }
+    | { success: false; cancelled: true },
 ): Uint8Array {
   // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
@@ -185,27 +189,29 @@ function loginResponseFrame(
   const value = responseCodec.enc(
     result.success
       ? { success: true, value: { tag: 'V1', value: result.value } }
-      : 'hostFailure' in result
-        ? {
-            success: false,
-            value: {
-              tag: 'HostFailure',
-              value: { reason: result.hostFailure },
-            },
-          }
-        : {
-            success: false,
-            value: {
-              tag: 'Domain',
+      : 'cancelled' in result
+        ? { success: false, value: { tag: 'Cancelled' } }
+        : 'hostFailure' in result
+          ? {
+              success: false,
               value: {
-                tag: 'V1',
+                tag: 'HostFailure',
+                value: { reason: result.hostFailure },
+              },
+            }
+          : {
+              success: false,
+              value: {
+                tag: 'Domain',
                 value: {
-                  tag: 'Unknown',
-                  value: { reason: result.reason },
+                  tag: 'V1',
+                  value: {
+                    tag: 'Unknown',
+                    value: { reason: result.reason },
+                  },
                 },
               },
             },
-          },
   );
   const frame = encodeWireMessage({
     requestId,
@@ -533,6 +539,52 @@ describe('bridge render lifecycle', () => {
       expect(mocks.coreRuntimes).toHaveLength(2);
       expect(mocks.coreRuntimes[0]?.dispose).toHaveBeenCalledTimes(1);
     });
+  }, 10_000);
+
+  it('As an operator, a login that fails before the core answers is reported under the wallet flow', async () => {
+    // Given: a topbar login whose core connection drops once the request is sent
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const failure = new Error('worker fatal error: boom');
+    const login = makeLoginProvider({
+      onPostMessage() {
+        login.closeListener?.(failure);
+      },
+    });
+
+    // When
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.captureException).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    });
+    expect(sentry.recordExpected).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it('As an operator, a login the user cancels leaves a breadcrumb, not an issue', async () => {
+    // Given: a topbar login
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const login = makeLoginProvider({
+      onPostMessage(message) {
+        login.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: false, cancelled: true }));
+      },
+    });
+
+    // When: the user cancels it
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.recordExpected).toHaveBeenCalledWith(expect.objectContaining({ name: 'LoginRequestError' }), {
+        flow: 'wallet',
+        step: 'login',
+      });
+    });
+    expect(sentry.captureException).not.toHaveBeenCalled();
   }, 10_000);
 
   it('As a dotli integrator, the host boots the page core to disconnect a stored session without a product', async () => {

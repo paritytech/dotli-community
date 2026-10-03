@@ -223,10 +223,9 @@ function emitChainSync(event: ChainSyncEvent): void {
 }
 
 // Sync reporting is opt-in per process and per chain, because it costs a
-// lifecycle watch on every connection to the chain. The protocol iframe, in
-// direct mode, enables it for the chains its loading screen and network panel
-// show. The SharedWorker never does, so its long-lived provider does no work
-// for a UI that cannot observe it.
+// lifecycle watch on every connection to the chain. Whichever context owns the
+// light client enables it for the chains the host observes: the protocol
+// iframe in direct mode, the SharedWorker in shared-worker mode.
 const reportingChains = new Set<ChainKey>();
 
 export function enableSyncReporting(chains: readonly ChainKey[]): void {
@@ -448,6 +447,7 @@ export function attachChainSync(
     // its own timings, so this is worth a warning rather than a failure.
     log.warn(
       `[dot.li chain-sync] lifecycle watch unavailable for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
+      err,
     );
     return { intercept, stop: () => undefined };
   }
@@ -462,6 +462,7 @@ export function attachChainSync(
     } catch (err: unknown) {
       log.warn(
         `[dot.li chain-sync] lifecycle watch failed for ${chain}: ${err instanceof Error ? err.message : String(err)}`,
+        err,
       );
     }
   })();

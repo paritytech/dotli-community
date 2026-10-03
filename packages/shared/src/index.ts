@@ -18,6 +18,7 @@ export {
   setChatCapability,
   type ChatAvailabilityDetail,
 } from './chat-capability.js';
+export { markContinuation, peekContinuation, takeContinuation, type Continuation } from './continuation.js';
 export { isMobileDevice } from './device.js';
 export { dotNsUrl } from './dotns-url.js';
 export { endpointHost, gatewayUnreachable } from './error-copy.js';

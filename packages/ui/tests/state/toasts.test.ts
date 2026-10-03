@@ -209,7 +209,9 @@ describe('toast store', () => {
     // Then
     expect(leaving()).toEqual([true]);
     expect(sentry.captureException).toHaveBeenCalledWith(error, {
-      kind: 'toast_on_dismiss_error',
+      flow: 'ui',
+      step: 'toast_dismiss',
+      tags: { kind: 'toast_on_dismiss_error' },
     });
   });
 

@@ -27,6 +27,7 @@ export interface LoadingState {
 // What the host page's build-time render of the loading screen shows, which
 // paints first.
 const loading = createSyncStore<LoadingState>(
+  'loading',
   {
     progress: 0,
     statusText: 'Reaching out',

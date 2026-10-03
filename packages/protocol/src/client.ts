@@ -3,7 +3,7 @@
 
 import type { JsonRpcConnection, JsonRpcMessage, JsonRpcRequest } from '@polkadot-api/json-rpc-provider';
 import { chainHaltedError, type RemoteChainHalt } from './chain-halted.js';
-import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError } from './errors.js';
+import { ProtocolFatalError, PROTOCOL_ERRORS, ProtocolInitFailedError, ProtocolRequestError } from './errors.js';
 import type { ExecutableManifest, ManifestResult, RootManifest } from '@dotli/resolver';
 import {
   BASE_DOMAIN,
@@ -35,10 +35,27 @@ import { isSharedAuthRequestMethod, isSharedModeRequestMethod } from './auth-sto
 import { DEFAULT_TIMEOUT_MS, METHOD_TIMEOUTS, UNTIMED_METHODS } from './method-timeouts.js';
 
 interface PendingRequest {
+  method: ProtocolRequestMethod;
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
   onProgress?: ((message: string) => void) | undefined;
 }
+
+/**
+ * Requests that are steps of a page load, recorded as breadcrumbs when sent
+ * and when settled. The trail of a failed load then names the request it was
+ * waiting on, which the error rebuilt at the receiving line cannot. Storage
+ * and chain traffic is left out: it is per product call, and would push the
+ * load's own steps out of the trail.
+ */
+const TRAILED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequestMethod>([
+  'warmup',
+  'chainConnect',
+  'resolveDotName',
+  'resolveOwner',
+  'resolveExecutableManifest',
+  'resolveRootManifest',
+]);
 
 export type { RemoteChainHalt } from './chain-halted.js';
 
@@ -240,11 +257,16 @@ function bindMessageListener(): void {
         if (msg.ok) {
           pending.resolve(msg.result);
         } else {
-          const err = new Error(msg.error || 'Unknown protocol error');
-          // A bare `"Error"` carries nothing, and would cost us the
-          // "crossed the protocol boundary" signal dashboards filter on.
-          err.name = msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError';
-          pending.reject(err);
+          pending.reject(
+            new ProtocolRequestError(
+              msg.error || 'Unknown protocol error',
+              // A bare `"Error"` carries nothing, and would cost us the
+              // "crossed the protocol boundary" signal dashboards filter on.
+              msg.errorName !== undefined && msg.errorName !== 'Error' ? msg.errorName : 'ProtocolResponseError',
+              pending.method,
+              typeof msg.errorStack === 'string' ? msg.errorStack : undefined,
+            ),
+          );
         }
         return;
       }
@@ -587,7 +609,28 @@ async function postRequest<M extends ProtocolRequestMethod>(
   };
   // `chainSend` is fire-and-ack, one per product JSON-RPC message: timed, it
   // would swamp the resolution and connect round trips this span measures.
-  const stopReq = method === 'chainSend' ? (): void => undefined : m.timer(S.PROTOCOL_REQUEST);
+  const stopReq = method === 'chainSend' ? (): number => 0 : m.timer(S.PROTOCOL_REQUEST);
+  const trailed = TRAILED_METHODS.has(method);
+  const sentAt = performance.now();
+  const settled = (outcome: 'ok' | 'error' | 'timeout', err?: Error): void => {
+    stopReq();
+    if (outcome !== 'ok') {
+      m.count(S.PROTOCOL_REQUEST, { outcome, method });
+    }
+    if (trailed) {
+      log.event(`${method} ${outcome === 'ok' ? 'done' : outcome === 'timeout' ? 'timed out' : 'failed'}`, {
+        flow: 'protocol',
+        ms: Math.round(performance.now() - sentAt),
+        ...(err !== undefined ? { error: `${err.name}: ${err.message}`.slice(0, 200) } : {}),
+      });
+    }
+  };
+  if (trailed) {
+    log.event(`${method} sent`, {
+      flow: 'protocol',
+      ...(timeoutMs === null ? {} : { timeout_ms: timeoutMs }),
+    });
+  }
 
   return new Promise((resolve, reject) => {
     const timer =
@@ -595,24 +638,31 @@ async function postRequest<M extends ProtocolRequestMethod>(
         ? null
         : setTimeout(() => {
             pendingRequests.delete(id);
-            m.count(S.PROTOCOL_REQUEST, { outcome: 'timeout', method });
-            stopReq();
-            reject(new Error(`Protocol request "${method}" timed out after ${String(timeoutMs)}ms`));
+            const err = new ProtocolRequestError(
+              `Protocol request "${method}" timed out after ${String(timeoutMs)}ms`,
+              'ProtocolTimeoutError',
+              method,
+            );
+            settled('timeout', err);
+            reject(err);
           }, timeoutMs);
 
     pendingRequests.set(id, {
+      method,
       resolve: value => {
         if (timer !== null) {
           clearTimeout(timer);
         }
-        stopReq();
+        settled('ok');
         resolve(value);
       },
       reject: (reason?: unknown) => {
         if (timer !== null) {
           clearTimeout(timer);
         }
-        reject(reason instanceof Error ? reason : new Error(String(reason)));
+        const err = reason instanceof Error ? reason : new Error(String(reason));
+        settled('error', err);
+        reject(err);
       },
       onProgress,
     });

@@ -27,7 +27,7 @@ function fallBack(): void {
 
 const overlays = createLazyRoot({
   load: onBroken => import('../components/overlays/mount.js').then(({ mountOverlays }) => mountOverlays(onBroken)),
-  errorKind: 'overlays_load_error',
+  root: 'overlays',
   onFailure: fallBack,
 });
 

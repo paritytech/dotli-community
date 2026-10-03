@@ -87,6 +87,38 @@ describe('sandbox bitswap bridge', () => {
     await expect(pending).rejects.toThrow(/aborted/);
   });
 
+  it('As an operator, a block the host failed to fetch keeps its error class across the bridge', async () => {
+    // Given a block request the host is fetching
+    const host = hostSide();
+    const pending = requestBitswapBlock('bafyQ');
+    const request = host.posted.find(
+      (m): m is { id: string } =>
+        typeof m === 'object' && m !== null && (m as { type?: unknown }).type === 'dotli:bitswap-get',
+    );
+
+    // When the host answers that no peer had the block
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'dotli:bitswap-result',
+          id: request?.id,
+          ok: false,
+          error: 'bitswap_v1_get(bafyQ): provider discovery exhausted',
+          errorName: 'BitswapNotFoundError',
+          code: -32810,
+        },
+      }),
+    );
+
+    // Then the sandbox sees the same failure, not a generic Error that every
+    // bitswap failure would share
+    await expect(pending).rejects.toMatchObject({
+      name: 'BitswapNotFoundError',
+      message: 'bitswap_v1_get(bafyQ): provider discovery exhausted',
+      code: -32810,
+    });
+  });
+
   it('As an operator, a teardown with nothing in flight stays silent', async () => {
     // Given no outstanding requests
     const host = hostSide();

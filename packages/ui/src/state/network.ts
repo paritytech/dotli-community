@@ -22,7 +22,7 @@ export interface NetworkState {
   readAt: number;
 }
 
-const network = createSyncStore<NetworkState>({
+const network = createSyncStore<NetworkState>('network', {
   chains: [],
   transfer: { bytesPerSecond: null, fetched: null, total: null },
   readAt: 0,

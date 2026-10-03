@@ -27,7 +27,7 @@ const h = vi.hoisted(() => ({
   holdReads: false,
   held: [] as (() => void)[],
   unreadLabels: 0,
-  captured: [] as unknown[],
+  captured: [] as string[],
 }));
 
 vi.mock('../../../src/chat/service.js', async original => {
@@ -78,9 +78,10 @@ vi.mock('../../../src/state/chat-panel.js', async original => {
 });
 
 vi.mock('../../../../metrics/src/sentry.js', () => ({
-  captureException: (error: unknown) => {
-    h.captured.push(error);
+  captureException: (_error: unknown, ctx: { step: string }) => {
+    h.captured.push(ctx.step);
   },
+  recordExpected: () => undefined,
 }));
 
 import { ChatPanel } from '../../../src/components/chat/ChatPanel.js';
@@ -302,7 +303,7 @@ describe('chat panel, contact reads', () => {
     // Then
     expect(byId('chat-panel-hint').hidden).toBe(false);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
-    expect(h.captured).toHaveLength(1);
+    expect(h.captured).toEqual(['chat_contacts_read']);
   });
 
   it('As a user, a conversation that cannot be read says so', async () => {
@@ -317,7 +318,7 @@ describe('chat panel, contact reads', () => {
     // Then
     expect(byId('chat-panel-hint').hidden).toBe(false);
     expect(byId('chat-panel-hint').textContent).toBe('Chat could not be loaded.');
-    expect(h.captured).toHaveLength(1);
+    expect(h.captured).toEqual(['chat_messages_read']);
   });
   it('As a user back on a working list, a conversation that could not be read no longer says so', async () => {
     // Given: a conversation whose messages cannot be read.

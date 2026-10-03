@@ -47,7 +47,7 @@ function sameAuthModal(a: AuthModalState, b: AuthModalState): boolean {
   );
 }
 
-const authModal = createSyncStore<AuthModalState>(INITIAL, {
+const authModal = createSyncStore<AuthModalState>('auth_modal', INITIAL, {
   equals: sameAuthModal,
 });
 
