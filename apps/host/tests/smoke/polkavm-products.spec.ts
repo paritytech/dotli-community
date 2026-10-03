@@ -165,6 +165,7 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
       settings.getByRole('button', { name: 'Save & Apply', exact: true }).click(),
     ]);
   }
+
   const iframe = page.locator(iframeSelector);
   await expect(iframe).toBeAttached({ timeout: 180_000 });
   const iframeSource = await iframe.getAttribute('src');

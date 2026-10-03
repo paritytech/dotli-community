@@ -34,8 +34,7 @@
 // don't feed malformed params to fresh sandbox deploys.
 
 import { NetworkName, isValidNetwork, type Network } from './network.js';
-
-export const SANDBOX_SCHEMA_VERSION = 5;
+import { SANDBOX_SCHEMA_VERSION } from './host-sandbox-version.js';
 
 // Cheap CID charset gate (base32 cidv1 / base58btc cidv0 are alphanumeric).
 // The sandbox does the authoritative CID.parse, then hash-verifies fetched

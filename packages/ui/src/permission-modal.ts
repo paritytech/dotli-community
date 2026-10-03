@@ -13,8 +13,9 @@ import type { ModalButton } from './state/modals.js';
 // variants (Camera, Microphone, Location, Bluetooth, NFC, Clipboard,
 // Biometrics, Notifications), Chat identity authority, identity disclosure,
 // and the internal submitted gates (ChainSubmit, PreimageSubmit,
-// StatementSubmit). `OpenUrl` is auto-granted at the container level and never
-// reaches this modal.
+// StatementSubmit), plus JAM peer access (`JamPeers`), which names the JAM
+// network it covers. `OpenUrl` is auto-granted at the container level and
+// never reaches this modal.
 // Returns an explicit decision so callers can distinguish "Deny" from
 // dismissing the dialog without storing a denial. With `allowOnce`, the prompt
 // also offers a one-time grant and highlights it over "Always allow".
@@ -108,6 +109,26 @@ const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
     '<line x1="8" y1="17" x2="14" y2="17"/></svg>',
 };
 
+const JAM_PEERS_ICON =
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>' +
+  '<line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/>' +
+  '<line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>';
+
+/** The question asked before an app may reach the validators of one JAM network. */
+export function jamPeersPermissionText(label: string, genesis: string): string {
+  return `Allow ${withActiveTld(label)} to connect to JAM network ${genesis.slice(0, 10)}… (read-only peer access, no accounts or signing)?`;
+}
+
+interface PermissionPrompt {
+  icon: string;
+  description: string;
+  /** Full network identity, displayed separately from the abbreviated question. */
+  detail?: string;
+  /** Granting reloads the application (iframe `allow`-gated permissions). */
+  reloads: boolean;
+}
+
 export type PermissionPromptDecision = 'granted' | 'granted-once' | 'denied' | 'dismissed';
 
 export interface PermissionRequestModalOptions {
@@ -123,6 +144,43 @@ export async function showPermissionRequestModal(
   permission: EnforceablePermissionName,
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
+): Promise<PermissionPromptDecision> {
+  return showPermissionPrompt(
+    label,
+    {
+      icon: PERMISSION_ICONS[permission],
+      description: PERMISSION_DESCRIPTIONS[permission],
+      reloads: isDevicePermission(permission),
+    },
+    signal,
+    options,
+  );
+}
+
+/** The shared Solid dialog asks for a grant scoped to this product and genesis. */
+export function showJamPeersPermissionModal(
+  label: string,
+  genesis: string,
+  signal?: AbortSignal,
+): Promise<PermissionPromptDecision> {
+  return showPermissionPrompt(
+    label,
+    {
+      icon: JAM_PEERS_ICON,
+      description: jamPeersPermissionText(label, genesis),
+      detail: genesis,
+      reloads: false,
+    },
+    signal,
+    { allowOnce: true },
+  );
+}
+
+async function showPermissionPrompt(
+  label: string,
+  prompt: PermissionPrompt,
+  signal: AbortSignal | undefined,
+  options: PermissionRequestModalOptions,
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
@@ -140,13 +198,14 @@ export async function showPermissionRequestModal(
   }
   const { result } = await presentModal<PermissionPromptDecision>(
     {
-      icon: PERMISSION_ICONS[permission],
+      icon: prompt.icon,
       title: 'Permission Request',
       fields: [
         { label: 'Application', value: withActiveTld(label) },
-        { label: 'Permission', value: PERMISSION_DESCRIPTIONS[permission] },
+        { label: 'Permission', value: prompt.description },
+        ...(prompt.detail === undefined ? [] : [{ label: 'JAM network genesis', value: prompt.detail, mono: true }]),
       ],
-      ...(isDevicePermission(permission) ? { notice: 'Granting this permission will reload the application.' } : {}),
+      ...(prompt.reloads ? { notice: 'Granting this permission will reload the application.' } : {}),
       buttons,
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',

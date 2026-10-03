@@ -3,12 +3,12 @@
 // user takes to dismiss it. Device grants also schedule an iframe reload so
 // the browser sees the refreshed Permissions Policy `allow` attribute.
 //
-// "Always allow" and "Deny" are durable, matching the grant the topbar
-// permissions menu shows and resets. "Allow once" is kept by the core for the
-// current execution and consumed by the next operation that needs it, so it
-// is offered only where the core is that gate: the submit permissions and
-// Notifications. A grant gated by the iframe `allow` attribute reloads the
-// product into a new execution, which would drop a one-time grant.
+// "Always allow" and "Deny" are durable. Generic permission grants appear in
+// the topbar permissions menu; JAM peer decisions are keyed by product and
+// genesis in the core. Submit and notification one-time grants are consumed
+// by the next operation. A JAM peer one-time grant authorizes the running
+// peer session. Iframe `allow`-gated permissions offer no one-time grant:
+// granting reloads the product into a new execution.
 // Auto-grants answer `AllowOnce` so the core records nothing the user never
 // saw. Each instance serves one product, so the product the core passes is
 // already known as `label`.
@@ -23,7 +23,7 @@ import {
   setPermissionStatus,
   type EnforceablePermissionName,
 } from '../permissions.js';
-import { showPermissionRequestModal } from '../permission-modal.js';
+import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
 import { showNotification } from '../notification.js';
 import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { createSubmitRateLimiter, type SubmitRateLimiter } from './rate-limit.js';
@@ -33,7 +33,10 @@ import { recordPermissionChange } from '../state/permissions.js';
 // Remote tags that don't reach a host enforcement point: WebRtc is gated
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
 // reliably intercepted from inside the sandbox. Auto-grant either.
-function gatedRemotePermissionName(tag: RemotePermission['tag']): EnforceablePermissionName | null {
+// `JamPeers` carries its genesis and has its own prompt.
+function gatedRemotePermissionName(
+  tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
+): EnforceablePermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
@@ -60,7 +63,16 @@ export function createPromptPermission(
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
-    const name = gatedRemotePermissionName(request.permission.tag);
+    const { permission } = request;
+    if (permission.tag === 'JamPeers') {
+      return modalScope.enqueue(signal =>
+        decideJamPeersPermission(label, permission.value.genesis, {
+          limiter,
+          signal,
+        }),
+      );
+    }
+    const name = gatedRemotePermissionName(permission.tag);
     if (name === null) {
       return 'AllowOnce';
     }
@@ -68,6 +80,33 @@ export function createPromptPermission(
   };
 
   return { devicePermission, remotePermission };
+}
+
+// The core asks only while the product's stored decision for this genesis is
+// undetermined, and itself persists "Always allow" and "Deny" per product and
+// genesis, so the next dial of that network in any execution is answered
+// without a prompt. A dismissal stores nothing.
+async function decideJamPeersPermission(
+  label: string,
+  genesis: string,
+  options: { limiter: { allow: () => boolean }; signal: AbortSignal },
+): Promise<PermissionDecision> {
+  const { limiter, signal } = options;
+  if (!limiter.allow()) {
+    throw new Error(ERRORS.PERMISSION_PROMPT_RATE_LIMITED);
+  }
+  const decision = await showJamPeersPermissionModal(label, genesis, signal);
+  throwIfAborted(signal);
+  switch (decision) {
+    case 'dismissed':
+      throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
+    case 'denied':
+      return 'Deny';
+    case 'granted':
+      return 'AllowAlways';
+    case 'granted-once':
+      return 'AllowOnce';
+  }
 }
 
 interface PromptOptions {

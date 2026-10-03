@@ -150,6 +150,26 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
+JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
+through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
+genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
+are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
+signing, storage, or arbitrary web access.
+
+The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
+the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
+the app can continue with its verified snapshot. Supported versions are Chrome or Edge 100+, Firefox 125+, and
+Safari/iOS 26.4+.
+
+The canonical session uses WebTransport to validators, with at most eight connections, sixteen streams per connection,
+and 1 MiB messages. Received data remains unverified until the guest checks it. The runtime menu's **Network access**
+section lists this execution's grants. Network updates continue while its display/audio menu is paused. Stop,
+replacement, and runtime failure close the session and refuse outstanding permission requests; a replacement guest
+cannot consume old replies. Ordinary host frames retain their 1 MiB bound and still use the shared page core; only peer
+frames use the larger bound needed for message framing. The session's ten-second dial deadline includes the permission
+prompt: a late decision does not resurrect an expired dial, though a retry can use the remembered decision.
+
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and bounded capability negotiation; TrUAPI,
 MotionSample v1, text, IME, focus, and wheel input use the same pinned browser runtime as native Hosts. UI output v1
 applies cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S) navigation cross an origin-checked parent
@@ -219,6 +239,17 @@ current page was loaded:
 
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
 with a **Reload** action rather than swapping content silently.
+
+The host PWA caches its shell separately from the cross-origin sandbox. On a worker update, open host pages report their
+sandbox-contract version. Matching hosts keep the normal update prompt. Legacy, incompatible, or nonresponsive hosts are
+reloaded at the same URL after the new shell finishes installing, without clearing wallet/app storage or product caches.
+This lets an already cached host recover even when it cannot understand the newer sandbox's update request; the
+sandbox's strict contract validation remains unchanged. As with any host reload, in-memory app state and credentialless
+iframe storage restart; persistent host storage is retained.
+
+Astro builds the release-specific classic upgrade worker after its static pages and before Workbox emits `host-sw.js`.
+Browser validation and Node-loaded build configuration share the version in
+`packages/config/src/host-sandbox-version.ts`; the build does not import browser network configuration.
 
 ## TrUAPI bridge
 

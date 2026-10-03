@@ -479,3 +479,38 @@ export const PROFILE_PRESENT_OWN = {
     method: 6,
     kind: "request",
 };
+export const JAM_PEER_TRANSPORT_DIAL = {
+    trait: 111,
+    method: 0,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_OPEN = {
+    trait: 111,
+    method: 1,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_SEND = {
+    trait: 111,
+    method: 2,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_RECV = {
+    trait: 111,
+    method: 3,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_RESET = {
+    trait: 111,
+    method: 4,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_CLOSE = {
+    trait: 111,
+    method: 5,
+    kind: "request",
+};
+export const JAM_PEER_TRANSPORT_EVENTS = {
+    trait: 111,
+    method: 6,
+    kind: "request",
+};

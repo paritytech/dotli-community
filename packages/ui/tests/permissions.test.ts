@@ -419,6 +419,37 @@ describe('three-way permission prompts', () => {
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
   });
 
+  it('As a dotli user, I am asked which JAM network an app may reach', async () => {
+    const genesis = `0x3539${'ab'.repeat(30)}` as const;
+    for (const [button, decision] of [
+      ['Always allow', 'AllowAlways'],
+      ['Allow once', 'AllowOnce'],
+      ['Deny', 'Deny'],
+    ] as const) {
+      // Given
+      const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
+        permission: { tag: 'JamPeers', value: { genesis } },
+      });
+      await vi.waitFor(() => {
+        expect(promptButtonTexts()).toContain(button);
+      });
+      const values = [...document.querySelectorAll<HTMLElement>('.signing-field-value')];
+      expect(values.some(field => field.textContent === genesis)).toBe(true);
+      expect(document.querySelector('.permission-modal-notice')).toBeNull();
+      // When
+      await clickPromptButton(button);
+      await expect(response).resolves.toBe(decision);
+    }
+    const dismissed = createPromptPermission('myapp').remotePermission(PRODUCT, {
+      permission: { tag: 'JamPeers', value: { genesis } },
+    });
+    await vi.waitFor(() => {
+      expect(document.querySelector('.signing-modal-backdrop')).not.toBeNull();
+    });
+    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+    await expect(dismissed).rejects.toThrow('User dismissed permission dialog');
+  });
+
   it('As a dotli user, I can allow a single notification', async () => {
     // Given
     const response = createPromptPermission('myapp').devicePermission(PRODUCT, 'Notifications');
