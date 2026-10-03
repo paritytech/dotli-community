@@ -378,6 +378,11 @@ export declare const LOCALE_SUBSCRIBE: {
     readonly method: 0;
     readonly kind: "subscription";
 };
+export declare const LOCALE_LOCALIZE_TIMESTAMPS: {
+    readonly trait: 16;
+    readonly method: 1;
+    readonly kind: "request";
+};
 export declare const RENDERER_RENDER: {
     readonly trait: 17;
     readonly method: 0;

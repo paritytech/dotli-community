@@ -600,6 +600,17 @@ export const services = [
                 exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst locale = await firstValueFrom(\n  from(truapi.locale.subscribe()),\n);\nconsole.log("locale received:", locale.languageTag);',
                 responseType: "host-locale-subscribe-item",
             },
+            {
+                name: "localize_timestamps",
+                type: "unary",
+                signature: "localizeTimestamps(request: HostLocaleLocalizeTimestampsRequest): Promise<Result<HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<VersionedHostLocaleLocalizeTimestampsError>>>",
+                docUrl: "api/locale/trait.Locale.html#method.localize_timestamps",
+                description: "Localize a bounded batch of UTC instants in a host locale snapshot.",
+                requestDescription: "HostLocaleLocalizeTimestampsRequest",
+                exampleSource: 'import { firstValueFrom, from } from "rxjs";\n\nconst locale = await firstValueFrom(from(truapi.locale.subscribe()));\nif (locale.timeZone !== undefined) {\n  const localized = await truapi.locale.localizeTimestamps({\n    timestampsMs: [BigInt(Date.now())],\n    languageTag: locale.languageTag,\n    timeZone: locale.timeZone,\n  });\n  if (localized.isOk()) console.log(localized.value.timestamps[0]?.dateTime);\n}',
+                requestType: "host-locale-localize-timestamps-request",
+                responseType: "host-locale-localize-timestamps-response",
+            },
         ],
     },
     {

@@ -21,6 +21,7 @@ export interface RawCallbacks {
     featureSupported(request: Uint8Array): Promise<Uint8Array>;
     supportedChains(): Promise<Uint8Array>;
     subscribeLocale(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    localizeTimestamps(request: Uint8Array): Promise<Uint8Array>;
     navigateTo(url: string): Promise<void>;
     pushNotification(notification: Uint8Array): Promise<Uint8Array>;
     cancelNotification(id: number): Promise<void>;

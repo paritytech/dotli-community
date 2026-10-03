@@ -294,9 +294,27 @@ export class WasmSigningHostRuntime {
      */
     sessionChatIdentityKey(): Uint8Array | undefined;
     /**
+     * Answer resource allocation as granted without performing it.
+     *
+     * A test host serves suites that exercise allowance-dependent product
+     * paths without an on-chain personhood identity. Nothing is allocated, so
+     * a green run says the product handles a grant, not that a host would
+     * have given one.
+     */
+    setGrantAllowancesUnchecked(granted: boolean): void;
+    /**
      * Update one stored permission authorization status for a product.
      */
     setPermissionAuthorizationStatus(product_id: string, payload: Uint8Array, status: string): Promise<void>;
+    /**
+     * Answer these resource tags as refused, replacing any earlier set.
+     *
+     * A suite proving its product survives a refused resource needs that one
+     * withheld while the rest stay granted. The tag is the
+     * `AllocatableResource` variant name, so `SmartContractAllowance`
+     * withholds every derivation index.
+     */
+    setWithheldResources(tags: string[]): void;
 }
 
 /**
@@ -342,6 +360,15 @@ export function hasTrustedRemotePermissions(product_id: string): boolean;
 export function productAccountAddress(public_key: Uint8Array): string;
 
 /**
+ * The ring-VRF member for `entropy`, derived through the module this core
+ * loads on demand.
+ *
+ * For test hosts: it shows the core finds `truapi_verifiable` beside it and accepts
+ * the build it pins, which no product call reaches without a chain.
+ */
+export function ringVrfMember(entropy: Uint8Array): Promise<Uint8Array>;
+
+/**
  * Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
  * Hosts may call this during boot, or again at any time to re-tune verbosity.
  * Unknown values are parsed as `off`.
@@ -374,6 +401,7 @@ export interface InitOutput {
     readonly describeCoreStorageKey: (a: number, b: number, c: number) => void;
     readonly hasTrustedRemotePermissions: (a: number, b: number) => number;
     readonly productAccountAddress: (a: number, b: number, c: number) => void;
+    readonly ringVrfMember: (a: number, b: number) => number;
     readonly setLogLevel: (a: number, b: number) => void;
     readonly wasmpairinghostruntime_acquireWorker: (a: number, b: number, c: number) => void;
     readonly wasmpairinghostruntime_activateExternalSession: (a: number, b: number, c: number) => number;
@@ -425,14 +453,16 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_refreshLocalIdentity: (a: number, b: number, c: number) => number;
     readonly wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: number) => void;
     readonly wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
+    readonly wasmsigninghostruntime_setGrantAllowancesUnchecked: (a: number, b: number) => void;
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
+    readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_6929: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_6987: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_6946: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_7004: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_2977: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_2970: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_2963: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_6809: (a: number, b: number) => void;
-    readonly __wasm_bindgen_func_elem_2967: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_6826: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_2974: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_export3: (a: number) => void;

@@ -178,9 +178,13 @@ export const VersionedHostLocalStorageSubscribeRequest = S.lazy(() => S.indexedT
 export const VersionedHostLocalStorageWriteError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageReadError] }));
 export const VersionedHostLocalStorageWriteRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocalStorageWriteRequest] }));
 export const VersionedHostLocalStorageWriteResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
-export const VersionedHostLocaleSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
-export const VersionedHostLocaleSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleSubscribeItem] }));
-export const VersionedHostLocaleSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const VersionedHostLocaleLocalizeTimestampsError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
+export const VersionedHostLocaleLocalizeTimestampsRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleLocalizeTimestampsRequest] }));
+export const VersionedHostLocaleLocalizeTimestampsResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostLocaleLocalizeTimestampsResponse] }));
+export const HostLocaleLocalizedTimestamp = S.lazy(() => S.Struct({ localDate: S.str, time: S.str, date: S.str, dateTime: S.str }));
+export const VersionedHostLocaleSubscribeError = S.lazy(() => S.indexedTaggedUnion({ V2: [1, GenericError] }));
+export const VersionedHostLocaleSubscribeItem = S.lazy(() => S.indexedTaggedUnion({ V2: [1, HostLocaleSubscribeItem] }));
+export const VersionedHostLocaleSubscribeRequest = S.lazy(() => S.indexedTaggedUnion({ V2: [1, S._void] }));
 export const VersionedHostNavigateToError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostNavigateToError] }));
 export const VersionedHostNavigateToRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, HostNavigateToRequest] }));
 export const VersionedHostNavigateToResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
@@ -434,7 +438,7 @@ export const V01HostLocalStorageReadRequest = S.lazy(() => S.Struct({ key: S.str
 export const HostLocalStorageReadResponse = S.lazy(() => S.Struct({ value: S.Option(S.Hex()) }));
 export const HostLocalStorageSubscribeRequest = S.lazy(() => S.Struct({ key: S.str }));
 export const HostLocalStorageWriteRequest = S.lazy(() => S.Struct({ key: S.str, value: S.Hex() }));
-export const HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str }));
+export const V01HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str }));
 export const HostNavigateToError = S.lazy(() => S.TaggedUnion({ PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostNavigateToRequest = S.lazy(() => S.Struct({ url: S.str }));
 export const HostPaymentBalanceSubscribeError = S.lazy(() => S.TaggedUnion({ PermissionDenied: S._void, Unknown: S.Struct({ reason: S.str }) }));
@@ -508,6 +512,9 @@ export const RemoteStatementStoreSubscribeItem = S.lazy(() => S.Struct({ stateme
 export const RemoteStatementStoreSubscribeRequest = S.lazy(() => S.TaggedUnion({ MatchAll: S.Vector(S.Hex(32)), MatchAny: S.Vector(S.Hex(32)) }));
 export const HostLocalStorageReadError = S.lazy(() => S.TaggedUnion({ Full: S._void, AccessNotGranted: S._void, Unknown: S.Struct({ reason: S.str }) }));
 export const HostLocalStorageReadRequest = S.lazy(() => S.Struct({ product: S.Option(S.str), key: S.str }));
+export const HostLocaleLocalizeTimestampsRequest = S.lazy(() => S.Struct({ timestampsMs: S.Vector(S.u64), languageTag: S.str, timeZone: S.str }));
+export const HostLocaleLocalizeTimestampsResponse = S.lazy(() => S.Struct({ timestamps: S.Vector(HostLocaleLocalizedTimestamp) }));
+export const HostLocaleSubscribeItem = S.lazy(() => S.Struct({ languageTag: S.str, timeZone: S.Option(S.str) }));
 export const VerticalAlignment = S.lazy(() => S.Status("Top", "Center", "Bottom"));
 export const VrfSignature = S.lazy(() => S.Struct({ preOutput: S.Hex(32), proof: S.Hex(64) }));
 export const VrfTranscriptItem = S.lazy(() => S.Struct({ label: S.Hex(), value: S.Hex() }));

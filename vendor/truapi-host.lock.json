@@ -2,25 +2,26 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/pvm-peer-transport",
-  "upstreamRevision": "7430877762eeb63eace14f5d66b900717c92ce17",
+  "upstreamRevision": "c923399a35494aeab8af75d4c8e2956d5c60bc4b",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "3b7108bc2bbade7c678d588f6b92f4f7f752e12a9160b8874b12f430c3cf9b8a",
-      "clientSha256": "0dcaa7a0d58e51ff30b208b31c39dfa494bbaf0e1285847f17407f113a958c03"
+      "sourceArchiveSha256": "d48ba342a1b618d2c19c787fd071978943b174b017e1423aca4d382403ccc4b5",
+      "clientSha256": "059ccfe8df2c9f42868ffb7549c4884e9105ce6be3487ac2085843bb07a19a6b"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "8b77541e7c512bd6324b7b1c2655f6ad3314d22eb9f515b1a7b868a147c1601c",
+      "sourceArchiveSha256": "66983b25656fdd8652b3af41226c5aaded8c6592c0a88704f86d0754ac211e02",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "9724a98b3b89e5ca34179e2a0cd9921eccf7f72b1c29af7b5cd1a3f21c56c624",
+      "wasmSha256": "5ec06b6ecd19bfb177cc21e0f0551b4f3ebe9e10d07a918cfe93ad02c2ab1adb",
       "wasmFeatures": [
         "wasm-signing-host"
-      ]
+      ],
+      "testingWasmSha256": "8735e69b54dbedc500c9affc861f38542ce65c81343d5d4e38212157713eac70"
     }
   },
-  "wasmUpstreamRevision": "7430877762eeb63eace14f5d66b900717c92ce17",
+  "wasmUpstreamRevision": "c923399a35494aeab8af75d4c8e2956d5c60bc4b",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1010"
 }
