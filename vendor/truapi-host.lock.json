@@ -9,7 +9,7 @@
       "name": "@parity/truapi",
       "version": "0.23.0",
       "sourceArchiveSha256": "df7b537877be29d79561bc4a3d6bf4d6edb1b1d037acbcd56a9eba336a8aa3e9",
-      "clientSha256": "9f2aa73c6ab058542acf13cbdc65a59f7fd9ae7f1ecc166f5aa6a46523daa132"
+      "clientSha256": "81022e6ad71842cec42396dac1ec3ed72e39e906e3867dc57d65f1142b402b69"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
