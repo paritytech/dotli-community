@@ -150,6 +150,21 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/pvm-peer-transport`. JAM peer
+transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission through the
+product's authenticated port to the shared page core. The host's Solid permission dialog shows the full genesis hash and
+offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions are scoped to
+product and genesis, while a one-time grant lasts only for that execution. This grants no account, signing, storage, or
+arbitrary web access.
+
+The canonical session uses WebTransport to validators, with at most eight connections, sixteen streams per connection,
+and 1 MiB messages. Received data remains unverified until the guest checks it. The runtime menu's **Network access**
+section lists this execution's grants. Network updates continue while its display/audio menu is paused. Stop,
+replacement, and runtime failure close the session and refuse outstanding permission requests; a replacement guest
+cannot consume old replies. Ordinary host frames retain their 1 MiB bound and still use the shared page core; only peer
+frames use the larger bound needed for message framing. The session's ten-second dial deadline includes the permission
+prompt: a late decision does not resurrect an expired dial, though a retry can use the remembered decision.
+
 App manifest v2 uses runtime ABI 1 with framebuffer, Tri2D, WebGPU Raster, and bounded capability negotiation; TrUAPI,
 MotionSample v1, text, IME, focus, and wheel input use the same pinned browser runtime as native Hosts. UI output v1
 applies cursor and IME-agent state in the sandbox. Clipboard text and HTTP(S) navigation cross an origin-checked parent

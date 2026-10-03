@@ -63,12 +63,12 @@ export const wasmsigninghostruntime_releaseWorker: (a: number, b: number, c: num
 export const wasmsigninghostruntime_sessionChatIdentityKey: (a: number, b: number) => void;
 export const wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
 export const wireSchemaHash: (a: number) => void;
-export const __wasm_bindgen_func_elem_6887: (a: number, b: number, c: number, d: number) => void;
-export const __wasm_bindgen_func_elem_6945: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_6929: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_6987: (a: number, b: number, c: number, d: number) => void;
+export const __wasm_bindgen_func_elem_2970: (a: number, b: number, c: number) => void;
 export const __wasm_bindgen_func_elem_2963: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_2956: (a: number, b: number, c: number) => void;
-export const __wasm_bindgen_func_elem_6767: (a: number, b: number) => void;
-export const __wasm_bindgen_func_elem_2960: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_6809: (a: number, b: number) => void;
+export const __wasm_bindgen_func_elem_2967: (a: number, b: number) => void;
 export const __wbindgen_export: (a: number, b: number) => number;
 export const __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
 export const __wbindgen_export3: (a: number) => void;
