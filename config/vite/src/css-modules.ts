@@ -18,26 +18,24 @@ import type { CSSModulesOptions } from 'vite';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 
-const FIRST = 'abcdefghijklmnopqrstuvwxyz';
-// Lowercase only: a page in quirks mode matches class names case-insensitively.
-const REST = 'abcdefghijklmnopqrstuvwxyz0123456789';
+// A class name cannot start with a digit, so the first character is a letter.
+const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
+const CHARS = 'abcdefghijklmnopqrstuvwxyz0123456789';
 
-/** The `index`th name, shortest first. */
-function shortName(index: number): string {
-  let n = index;
-  let length = 1;
-  let count = FIRST.length;
-  while (n >= count) {
-    n -= count;
-    length += 1;
-    count *= REST.length;
+/**
+ * The `index`th name, shortest first and never repeated: a letter, then the
+ * rest of the index in bijective base 36 (no digit stands for zero, so every
+ * suffix is distinct, `a`, `aa`, `ab` included).
+ */
+function shortName(index: number) {
+  let name = LETTERS.charAt(index % LETTERS.length);
+  let rest = Math.floor(index / LETTERS.length);
+  while (rest > 0) {
+    rest -= 1;
+    name += CHARS.charAt(rest % CHARS.length);
+    rest = Math.floor(rest / CHARS.length);
   }
-  let name = '';
-  for (let i = 1; i < length; i++) {
-    name = (REST[n % REST.length] ?? '') + name;
-    n = Math.floor(n / REST.length);
-  }
-  return (FIRST[n] ?? '') + name;
+  return name;
 }
 
 const names = new Map<string, string>();
