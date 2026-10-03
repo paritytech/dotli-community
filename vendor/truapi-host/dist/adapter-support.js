@@ -5,6 +5,18 @@
 // and the chain-connection handle.
 import { hexToBytes } from "@parity/truapi/scale";
 import { errorMessage } from "./error.js";
+/** Optional Contacts UI stays unsupported rather than confirming an empty selection. */
+export function contactsHostAdapter(host) {
+    if (host === undefined)
+        return undefined;
+    return {
+        contacts: (lookup) => host.contacts(lookup),
+        pickContact: (product) => host.pickContact?.(product) ?? Promise.resolve({ tag: "Unsupported" }),
+        pickContacts: (product, selection) => host.pickContacts?.(product, selection) ??
+            Promise.resolve({ tag: "Unsupported" }),
+        placeContactLabels: (product, placed) => host.placeContactLabels?.(product, placed) ?? Promise.resolve(false),
+    };
+}
 /**
  * Normalize both generated `Result<T, GenericError>` values and the plain
  * `{ success, value }` envelope used by some JS fixtures into a raw item.
@@ -127,6 +139,26 @@ export function coinageWalletHostAdapter(host) {
                 throw new Error("Native Coinage wallet operation failed");
             }
         },
+    };
+}
+/**
+ * A profile host built before `presentContactProfile` still shows a contact's
+ * profile: without it, the contact's reference is presented as
+ * `presentProfile` would. Empty-profile feedback requires the contact callback.
+ */
+export function profileHostAdapter(host) {
+    if (host === undefined || typeof host.presentContactProfile === "function")
+        return host;
+    return {
+        presentProfile: (product, request) => host.presentProfile(product, request),
+        presentContactProfile: (product, presented) => {
+            if (presented.shared === undefined)
+                return Promise.reject(new Error("Contact profile feedback is unavailable"));
+            return host.presentProfile(product, {
+                reference: presented.shared.reference,
+            });
+        },
+        placeContactAvatars: (product, placed) => host.placeContactAvatars(product, placed),
     };
 }
 /** Optional SDK embeddings must fail closed, never invent successful file handles. */

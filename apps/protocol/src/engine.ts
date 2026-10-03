@@ -11,6 +11,7 @@ import type {
   ManifestResult,
   RootManifest,
   ResolveOptions,
+  SeitySlot,
 } from '@dotli/resolver';
 import { isExecutableKind } from '@dotli/shared';
 import {
@@ -52,6 +53,7 @@ export interface EngineOptions {
    *  `@dotli/resolver` entry points so they can be wired by reference. */
   resolveDotName?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
   resolveOwner?: (label: string, opts?: ResolveOptions) => Promise<string | null>;
+  resolveSeitySlot?: (lookupKey: `0x${string}`, opts?: ResolveOptions) => Promise<SeitySlot | null>;
   /**
    * Product-manifest readers.
    *
@@ -153,6 +155,23 @@ export function createEngine(options: EngineOptions): ProtocolEngine {
           id: request.id,
           ok: true,
           result,
+        });
+        return;
+      }
+
+      case 'resolveSeitySlot': {
+        if (!options.resolveSeitySlot) {
+          throw new Error(PROTOCOL_APP_ERRORS.RESOLVE_SEITY_SLOT_UNSUPPORTED);
+        }
+        const payload = request.payload as ProtocolRequestMap['resolveSeitySlot'];
+        assertStr(payload.lookupKey, 'lookupKey');
+        const slot = await options.resolveSeitySlot(payload.lookupKey as `0x${string}`, syncOptions);
+        respond({
+          namespace: 'dotli:protocol',
+          kind: 'response',
+          id: request.id,
+          ok: true,
+          result: slot === null ? null : { ...slot, version: slot.version.toString() },
         });
         return;
       }

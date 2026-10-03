@@ -12,6 +12,8 @@ export const CALLBACK_NAMES = [
     "nativeCoinage",
     "contacts",
     "pickContact",
+    "pickContacts",
+    "placeContactLabels",
     "readCoreStorage",
     "writeCoreStorage",
     "clearCoreStorage",
@@ -39,6 +41,9 @@ export const CALLBACK_NAMES = [
     "read",
     "write",
     "clear",
+    "presentProfile",
+    "presentContactProfile",
+    "placeContactAvatars",
     "confirmPermission",
     "confirmUserAction",
 ];
@@ -106,6 +111,8 @@ function contactsRawCallbacks(bridge) {
     return {
         contacts: (lookup) => bridge.callbackRequest("contacts", [lookup]),
         pickContact: (product) => bridge.callbackRequest("pickContact", [product]),
+        pickContacts: (product, selection) => bridge.callbackRequest("pickContacts", [product, selection]),
+        placeContactLabels: (product, placed) => bridge.callbackRequest("placeContactLabels", [product, placed]),
     };
 }
 function identityBackendRawCallbacks(bridge) {
@@ -122,6 +129,13 @@ function pocketRawCallbacks(bridge) {
     return {
         subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", product, sendItem, sendError),
         removePocketCard: (product, request) => bridge.callbackRequest("removePocketCard", [product, request]),
+    };
+}
+function profileRawCallbacks(bridge) {
+    return {
+        presentProfile: (product, request) => bridge.callbackRequest("presentProfile", [product, request]),
+        presentContactProfile: (product, presented) => bridge.callbackRequest("presentContactProfile", [product, presented]),
+        placeContactAvatars: (product, placed) => bridge.callbackRequest("placeContactAvatars", [product, placed]),
     };
 }
 export function createWorkerRawCallbacks(bridge, capabilities = {}) {
@@ -143,6 +157,8 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)
         Object.assign(callbacks, pocketRawCallbacks(bridge));
+    if (capabilities.profile)
+        Object.assign(callbacks, profileRawCallbacks(bridge));
     return callbacks;
 }
 export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {

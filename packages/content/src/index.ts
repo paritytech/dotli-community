@@ -9,6 +9,6 @@ export { bitswapGet, listenForSandboxBitswap, onContentProgress } from './bitswa
 export { decryptContent, isEncrypted } from './decrypt.js';
 export { type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
-export { computePreimageKey, hashToCid } from './preimage.js';
+export { cidToPreimageKey, computePreimageKey, hashToCid } from './preimage.js';
 export { assertBlockMatchesCid } from './verify.js';
 export { loadFetch, type FetchModule } from './lazy.js';

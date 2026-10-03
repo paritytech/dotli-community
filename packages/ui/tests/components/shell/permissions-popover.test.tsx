@@ -42,6 +42,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
     case 'AccountAccess':
     case 'ChatAuthority':
     case 'StatementStoreAllowance':
+    case 'ProfileDisclosure':
       return request.tag;
   }
 }

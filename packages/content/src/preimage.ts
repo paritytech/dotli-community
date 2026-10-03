@@ -30,3 +30,21 @@ export function hashToCid(hashHex: string): CID {
   const digest = create(BLAKE2B_256_MULTIHASH_CODE, fromHex(hashHex));
   return CID.createV1(RAW_CID_CODEC, digest);
 }
+
+/**
+ * Inverse of `hashToCid`: the Blake2b-256 preimage key a Bulletin CID names.
+ * Throws for any CID that is not CIDv1 raw with a Blake2b-256 multihash, the
+ * only shape the preimage API content-addresses.
+ */
+export function cidToPreimageKey(cid: string): `0x${string}` {
+  const parsed = CID.parse(cid);
+  if (
+    parsed.version !== 1 ||
+    parsed.code !== RAW_CID_CODEC ||
+    parsed.multihash.code !== BLAKE2B_256_MULTIHASH_CODE ||
+    parsed.multihash.digest.length !== 32
+  ) {
+    throw new Error(`${cid} is not a raw Blake2b-256 CIDv1`);
+  }
+  return toHex(parsed.multihash.digest);
+}

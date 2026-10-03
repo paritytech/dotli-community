@@ -5,9 +5,9 @@ import { SubscriptionError } from '../transport.js';
 import * as T from './types.js';
 import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
-export const TRUAPI_VERSION = 2;
+export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "f7be28c22289b365";
+export const TRUAPI_WIRE_SCHEMA_HASH = "6bbdd3b23a6400bb";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -695,8 +695,8 @@ export class CoinPaymentClient {
  *
  * A product never reads the contact list. It opens the host's picker; the host
  * renders an overlay from the chat lists its chat extensions hold, and
- * returns only the person the user selected. Names, accounts, and every other
- * contact the user did not pick stay host-side.
+ * returns only handles for the people the user selected. Names, accounts, and
+ * every other contact the user did not pick stay host-side.
  *
  * That is also why there is no permission to request: the user choosing a
  * contact in host UI is the consent, and a product that is never handed the
@@ -713,11 +713,12 @@ export class ContactsClient {
      * Resolves with the chosen contact's handle, or with why nothing was
      * chosen. A host that serves no picker answers `Unsupported`.
      *
-     * The handle is not an address and cannot be turned into one. To pay the
-     * person it names, put the handle where the recipient goes in the call and
-     * list it in `contacts` on the transaction payload: the host replaces it
-     * with their account before anything is signed or shown. A handle sent
-     * anywhere else is 32 bytes that resolve to nobody.
+     * The handle is not an address and cannot be turned into one by a product.
+     * To pay the person, put the handle where the recipient goes in the call
+     * and list it in `contacts` on the transaction payload: the host replaces
+     * it with their account before anything is signed or shown. Profile also
+     * accepts handles as disclosure recipients and as contacts to present or
+     * draw avatars for, without returning accounts or profile contents.
      */
     pick(request, options) {
         return this.#transport.request({
@@ -726,6 +727,42 @@ export class ContactsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostContactsPickResponse, S.CallError(T.VersionedHostContactsPickError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Edit a complete selection in the host's multi-select contact picker.
+     *
+     * `selected` preselects existing handles. Confirming none returns `Picked`
+     * with an empty `handles` list; dismissing never changes the selection.
+     * Unresolvable initial handles reject the entire request.
+     */
+    pickMany(request, options) {
+        return this.#transport.request({
+            ids: W.CONTACTS_PICK_MANY,
+            payload: T.VersionedHostContactsPickManyRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostContactsPickManyResponse, S.CallError(T.VersionedHostContactsPickManyError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Draw contact names in host-owned rectangles over the product surface.
+     *
+     * Labels do not require a shared Profile photo or disclosure. The response
+     * reveals no name, identity or per-slot availability. Each call replaces
+     * the previous placement; empty `slots` clears it.
+     */
+    placeLabels(request, options) {
+        return this.#transport.request({
+            ids: W.CONTACTS_PLACE_LABELS,
+            payload: T.VersionedHostContactsPlaceLabelsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostContactsPlaceLabelsResponse, S.CallError(T.VersionedHostContactsPlaceLabelsError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1039,6 +1076,158 @@ export class PreimageClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedRemotePreimageSubmitResponse, S.CallError(T.VersionedRemotePreimageSubmitError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+}
+/**
+ * Profiles shown in host-owned UI.
+ *
+ * The product hands over an opaque reference; the host resolves, decrypts and
+ * renders it. Profile bytes never return to the product.
+ */
+export class ProfileClient {
+    #transport;
+    constructor(transport) {
+        this.#transport = transport;
+    }
+    /**
+     * Show the referenced profile in host-owned UI.
+     *
+     * Resolves once the host has taken the presentation, not when the user
+     * dismisses it. Loading and fetch failures are shown to the user, not
+     * returned; a reference this host cannot parse is `InvalidReference`.
+     */
+    present(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT,
+            payload: T.VersionedHostProfilePresentRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentResponse, S.CallError(T.VersionedHostProfilePresentError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Store the user's profile and replace its independent delivery audiences.
+     *
+     * `ChatApps` shares within every ready Chat App. `App` selects one Chat
+     * App's audience. `Contacts` shares personally with picked opaque handles;
+     * those received profiles may render in any App. An empty audience list
+     * retains the own profile but withdraws all grants. Unknown handles reject
+     * the whole disclosure. App executions only. The first disclosure asks
+     * the user once per product; a refusal is `PermissionDenied`.
+     * v0.1 callers retain the `ChatApps` audience.
+     */
+    disclose(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_DISCLOSE,
+            payload: T.VersionedHostProfileDiscloseRequest.enc({ tag: "V2", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileDiscloseResponse, S.CallError(T.VersionedHostProfileDiscloseError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Withdraw the reference this product disclosed. Contacts are told to
+     * drop what they hold. A product that did not disclose it is refused.
+     */
+    retract(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_RETRACT,
+            payload: T.VersionedHostProfileRetractRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileRetractResponse, S.CallError(T.VersionedHostProfileRetractError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Show a contact's available profile in host-owned UI.
+     *
+     * The selector names a Chat peer or a picked opaque handle. App-scoped
+     * profiles take precedence over personal profiles. References, names,
+     * resolved accounts and availability never return to the product. Unknown
+     * handles, absent profiles and host presentation failures return the same
+     * success. v0.1 callers retain their `NotShared` and presentation errors
+     * for App-scoped shares only; personal drawers require v0.2 so a legacy
+     * raw-peer request cannot disclose personal sharing availability.
+     */
+    presentContact(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT_CONTACT,
+            payload: T.VersionedHostProfilePresentContactRequest.enc({ tag: "V2", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentContactResponse, S.CallError(T.VersionedHostProfilePresentContactError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Tell the host where this product draws contacts' avatars, and
+     * optionally the signed-in user's own, so it can draw each shared photo
+     * and mood ring over them on its own layer.
+     *
+     * Each call replaces the product's placement; an empty `slots` and no
+     * `own` clears it. The own slot is filled only while the user has
+     * disclosed a profile, and redrawn when they disclose or retract one.
+     * The host draws only for contacts who shared a profile with the user,
+     * and keeps the placement current as they share or withdraw one, until
+     * the product replaces it or goes away. The answer is the same whoever
+     * shared: nothing about any slot, and no profile data, returns to the
+     * product. Taps still reach the product, which opens a profile with
+     * `presentContact`.
+     *
+     * App executions only. Rects are in the units of the surface size the
+     * product gives: framebuffer pixels for a PolkaVM product, CSS pixels of
+     * its viewport for a web product. A placement with more than 64 slots, a
+     * surface side outside 1 to 16384, an avatar that is not square or is
+     * outside 1 to 1024 a side, or a `slot` repeated across `own` and `slots`
+     * is `Unknown`. A host that cannot draw over the product is
+     * `Unsupported`; with no user signed in the call is `NotConnected`.
+     */
+    placeContactAvatars(request, options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PLACE_CONTACT_AVATARS,
+            payload: T.VersionedHostProfilePlaceContactAvatarsRequest.enc({ tag: "V3", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePlaceContactAvatarsResponse, S.CallError(T.VersionedHostProfilePlaceContactAvatarsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Report whether the signed-in user has configured a profile.
+     *
+     * Only the boolean status returns. The profile reference and contents
+     * remain host-owned.
+     */
+    ownStatus(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_OWN_STATUS,
+            payload: T.VersionedHostProfileOwnStatusRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfileOwnStatusResponse, S.CallError(T.VersionedHostProfileOwnStatusError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Show the signed-in user's profile in host-owned UI. */
+    presentOwn(options) {
+        return this.#transport.request({
+            ids: W.PROFILE_PRESENT_OWN,
+            payload: T.VersionedHostProfilePresentOwnRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostProfilePresentOwnResponse, S.CallError(T.VersionedHostProfilePresentOwnError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });
@@ -1485,6 +1674,7 @@ export function createClient(transport) {
         permissions: new PermissionsClient(transport),
         pocket: new PocketClient(transport),
         preimage: new PreimageClient(transport),
+        profile: new ProfileClient(transport),
         renderer: new RendererClient(transport),
         resourceAllocation: new ResourceAllocationClient(transport),
         signing: new SigningClient(transport),

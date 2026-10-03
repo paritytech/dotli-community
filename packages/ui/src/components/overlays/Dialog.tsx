@@ -16,6 +16,8 @@ export interface DialogProps {
   /** Backdrop click and Escape. */
   onDismiss: () => void;
   children: JSX.Element;
+  backdropClass?: string;
+  dialogClass?: string;
 }
 
 /** Where each open dialog returns focus when it closes. */
@@ -84,7 +86,7 @@ export function Dialog(props: DialogProps): JSX.Element {
 
   return (
     <div
-      class="signing-modal-backdrop"
+      class={props.backdropClass ?? 'signing-modal-backdrop'}
       ref={el => {
         backdrop = el;
       }}
@@ -95,7 +97,7 @@ export function Dialog(props: DialogProps): JSX.Element {
       }}
     >
       <div
-        class="signing-modal"
+        class={props.dialogClass ?? 'signing-modal'}
         ref={el => {
           dialog = el;
           restoreTargets.set(el, previouslyFocused);

@@ -793,6 +793,36 @@ describe('user confirmation modal', () => {
     await expect(decision).rejects.toThrow('User dismissed identity disclosure dialog');
   });
 
+  it('As a dotli user, always allowing profile disclosure is remembered', async () => {
+    // Given
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'ProfileDisclosure',
+      value: { productId: 'egui-chat.dot' },
+    });
+    await overlaysReady();
+
+    // When
+    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
+
+    // Then
+    await expect(decision).resolves.toBe('AllowAlways');
+  });
+
+  it('As a dotli user, dismissing profile disclosure records no decision', async () => {
+    // Given
+    const decision = createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'ProfileDisclosure',
+      value: { productId: 'egui-chat.dot' },
+    });
+    await overlaysReady();
+
+    // When
+    document.querySelector<HTMLDivElement>('.signing-modal-backdrop')?.click();
+
+    // Then
+    await expect(decision).rejects.toThrow('User dismissed permission dialog');
+  });
+
   it('As a dotli user, a per-action confirmation keeps two buttons', async () => {
     // When
     void createUserConfirmationAdapters('localhost:3000').confirmUserAction({

@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -89,6 +89,15 @@ export interface ChatAuthorityReview {
      * Product requesting the Chat identity operation.
      */
     productId: string;
+}
+/**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export interface ContactSelection {
+    /**
+     * Resolved accounts to preselect, deduplicated and bounded to 256.
+     */
+    selected: Array<Bytes32>;
 }
 /**
  * Core-owned host-private storage slots. Products never address these slots;
@@ -278,6 +287,47 @@ export type CoreStorageKey =
         rootPublicKey: Uint8Array;
         genesisHash: Uint8Array;
     };
+}
+/**
+ * The profile reference the user disclosed to their chat contacts on one
+ * Chat network, with the product that disclosed it. Wallet-owned: one per
+ * wallet and network, whichever product wrote it. The reference is a
+ * bearer capability.
+ *
+ * Known gap (docs/rfcs/profile-disclosure.md): one slot, so the last product to disclose replaces
+ * the others.
+ */
+ | {
+    tag: "ProfileDisclosure";
+    value: {
+        rootPublicKey: Uint8Array;
+        genesisHash: Uint8Array;
+    };
+}
+/**
+ * Profile references the contacts on one Chat product's roster disclosed,
+ * the newest per contact, withdrawals included. Scoped like the
+ * `NativeChatDevice` roster it shadows, and product-indexed so clearing
+ * the product clears them. The references are bearer capabilities.
+ */
+ | {
+    tag: "ProfileReferencesReceived";
+    value: {
+        rootPublicKey: Uint8Array;
+        genesisHash: Uint8Array;
+        productId: string;
+    };
+}
+/**
+ * Wallet-wide personal profile grants, including replay tombstones.
+ * These bearer capabilities are independent of the receiving product.
+ */
+ | {
+    tag: "ProfilePersonalReferencesReceived";
+    value: {
+        rootPublicKey: Uint8Array;
+        genesisHash: Uint8Array;
+    };
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -424,6 +474,40 @@ export type HostContactPick =
  * This host resolves contacts but cannot present a picker. The core
  * answers the product `Unsupported`, so it can tell "try again later"
  * apart from "this host will never pick".
+ */
+ | {
+    tag: "Unsupported";
+    value?: undefined;
+};
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export type HostContactsPick = 
+/**
+ * Confirmed accounts, including an empty selection. Never sent to products.
+ */
+{
+    tag: "Picked";
+    value: {
+        accounts: Array<Bytes32>;
+    };
+}
+/**
+ * The user cancelled without changing the selection.
+ */
+ | {
+    tag: "Dismissed";
+    value?: undefined;
+}
+/**
+ * There are no contacts to show.
+ */
+ | {
+    tag: "NoContacts";
+    value?: undefined;
+}
+/**
+ * This host cannot present a multi-contact picker.
  */
  | {
     tag: "Unsupported";
@@ -850,6 +934,14 @@ export type PermissionAuthorizationRequest =
     value: {
         derivationIndex?: DerivationIndex;
     };
+}
+/**
+ * Product-scoped permission to disclose a profile reference to the user's
+ * Chat contacts.
+ */
+ | {
+    tag: "ProfileDisclosure";
+    value?: undefined;
 };
 /**
  * Authorization status for a permission request.
@@ -863,6 +955,93 @@ export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Author
  */
 export type PermissionDecision = "AllowOnce" | "AllowAlways" | "Deny";
 /**
+ * One avatar to draw over a product.
+ */
+export interface PlacedAvatar {
+    /**
+     * The product's id for this on-screen avatar, stable across updates.
+     */
+    slot: number;
+    /**
+     * Bounding box of the avatar circle, in surface units.
+     */
+    rect: AvatarRect;
+    /**
+     * Visible region the avatar is cut to, in surface units.
+     */
+    clip: AvatarRect;
+    /**
+     * The profile reference the contact disclosed. A bearer capability, as
+     * in `ProfilePlatform::present_profile`.
+     */
+    reference: string;
+    /**
+     * Freshness token for this reference. Contact shares use Unix
+     * milliseconds, advanced monotonically for personal revisions even
+     * across relay actors with different clocks. The own avatar uses the
+     * disclosure revision. A changed token invalidates cached contents;
+     * do not interpret an own-profile token as a wall-clock date.
+     */
+    sharedAt: bigint;
+}
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export interface PlacedAvatars {
+    /**
+     * Width of the product's surface, in the units of every rect.
+     */
+    surfaceWidth: number;
+    /**
+     * Height of the product's surface, in the same units.
+     */
+    surfaceHeight: number;
+    /**
+     * Avatars to draw, in the product's slot order.
+     */
+    avatars: Array<PlacedAvatar>;
+}
+/**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export interface PlacedContactLabel {
+    /**
+     * Stable, product-chosen placement id.
+     */
+    slot: number;
+    /**
+     * Resolved contact account, never sent to the product.
+     */
+    account: Bytes32;
+    /**
+     * Name bounds in surface units.
+     */
+    rect: AvatarRect;
+    /**
+     * Visible region in surface units.
+     */
+    clip: AvatarRect;
+}
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export interface PlacedContactLabels {
+    /**
+     * Width of the product surface.
+     */
+    surfaceWidth: number;
+    /**
+     * Height of the product surface.
+     */
+    surfaceHeight: number;
+    /**
+     * Host-resolved names to draw. Empty clears the placement.
+     */
+    labels: Array<PlacedContactLabel>;
+}
+/**
  * Review shown before a preimage is submitted.
  */
 export interface PreimageSubmitReview {
@@ -870,6 +1049,29 @@ export interface PreimageSubmitReview {
      * Size of the preimage in bytes.
      */
     size: bigint;
+}
+/**
+ * Host-only presentation of a contact's shared profile or its absence.
+ */
+export interface PresentedContactProfile {
+    /**
+     * The profile currently shared with the user. ``undefined`` means no received,
+     * unretracted profile, never a storage or loading failure.
+     */
+    shared?: SharedContactProfile;
+    /**
+     * The contact being presented. When shared, their authenticated Chat
+     * device delivered the reference, not necessarily their own profile.
+     */
+    peerIdentity: Uint8Array;
+    /**
+     * The contact's username, when the core knows one: the name its Chat
+     * roster holds for `peer_identity`, verified when the contact was bound
+     * or first authenticated, else the peer's verified dotNS name. Never a
+     * name from the product. ``undefined`` when neither is known in time; show the
+     * contact without a name then, never by address.
+     */
+    username?: string;
 }
 /**
  * Product identity attached to one product-facing TrUAPI connection.
@@ -908,6 +1110,18 @@ export type ProductExecutionKind = "App" | "Widget" | "Worker";
 export interface ProductSubtreeReview {
     /**
      * Product resolving its own account.
+     */
+    productId: string;
+}
+/**
+ * Review shown before a product discloses a profile reference to an app
+ * audience or selected contacts. Personal grants permit host rendering across
+ * recipient apps. This authorizes the product, not individual audience edits.
+ * The prompt names the product, never the contacts or the reference.
+ */
+export interface ProfileDisclosureReview {
+    /**
+     * Product asking to disclose the profile.
      */
     productId: string;
 }
@@ -971,6 +1185,21 @@ export interface SessionUiInfo {
      * Fully qualified username from the dotNS identity record on Asset Hub.
      */
     fullUsername?: string;
+}
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export interface SharedContactProfile {
+    /**
+     * The profile reference the contact disclosed. A bearer capability, as
+     * in `ProfilePlatform::present_profile`.
+     */
+    reference: string;
+    /**
+     * The share's freshness timestamp, as in `PlacedAvatar::shared_at`.
+     * Personal grants advance it monotonically across relay actors.
+     */
+    sharedAt: bigint;
 }
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
@@ -1155,6 +1384,14 @@ export type UserConfirmationReview =
  | {
     tag: "MainPurseChatPayment";
     value: MainPurseChatPaymentReview;
+}
+/**
+ * Allow a product to disclose a profile reference to the user's Chat
+ * contacts.
+ */
+ | {
+    tag: "ProfileDisclosure";
+    value: ProfileDisclosureReview;
 };
 /**
  * Review shown before a product asks to access another product account.
@@ -1174,6 +1411,10 @@ export declare const AuthState: S.Codec<AuthState>;
  * Review shown before a product binds or uses wallet-held Chat identity authority.
  */
 export declare const ChatAuthorityReview: S.Codec<ChatAuthorityReview>;
+/**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export declare const ContactSelection: S.Codec<ContactSelection>;
 /**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
@@ -1228,6 +1469,10 @@ export declare const HostContactMatches: S.Codec<HostContactMatches>;
  * How a host's contact picker ended.
  */
 export declare const HostContactPick: S.Codec<HostContactPick>;
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export declare const HostContactsPick: S.Codec<HostContactsPick>;
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -1306,9 +1551,31 @@ export declare const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizat
  */
 export declare const PermissionDecision: S.Codec<PermissionDecision>;
 /**
+ * One avatar to draw over a product.
+ */
+export declare const PlacedAvatar: S.Codec<PlacedAvatar>;
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export declare const PlacedAvatars: S.Codec<PlacedAvatars>;
+/**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export declare const PlacedContactLabel: S.Codec<PlacedContactLabel>;
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export declare const PlacedContactLabels: S.Codec<PlacedContactLabels>;
+/**
  * Review shown before a preimage is submitted.
  */
 export declare const PreimageSubmitReview: S.Codec<PreimageSubmitReview>;
+/**
+ * Host-only presentation of a contact's shared profile or its absence.
+ */
+export declare const PresentedContactProfile: S.Codec<PresentedContactProfile>;
 /**
  * Product identity attached to one product-facing TrUAPI connection.
  *
@@ -1332,6 +1599,13 @@ export declare const ProductExecutionKind: S.Codec<ProductExecutionKind>;
  */
 export declare const ProductSubtreeReview: S.Codec<ProductSubtreeReview>;
 /**
+ * Review shown before a product discloses a profile reference to an app
+ * audience or selected contacts. Personal grants permit host rendering across
+ * recipient apps. This authorizes the product, not individual audience edits.
+ * The prompt names the product, never the contacts or the reference.
+ */
+export declare const ProfileDisclosureReview: S.Codec<ProfileDisclosureReview>;
+/**
  * Review shown before allocating resources for a product. Names the
  * beneficiary product so the user knows which product receives the
  * (signing-capable) allowance key they are approving.
@@ -1342,6 +1616,10 @@ export declare const ResourceAllocationReview: S.Codec<ResourceAllocationReview>
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export declare const SessionUiInfo: S.Codec<SessionUiInfo>;
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export declare const SharedContactProfile: S.Codec<SharedContactProfile>;
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
@@ -1485,11 +1763,7 @@ export interface ContactsPlatform {
      * implements `Self::contacts` alone still compiles and its products get
      * a truthful answer rather than a dismissal they would retry forever.
      *
-     * A JS host reaches the same answer by another route: the generated
-     * surface types this method optional, but a capability group counts as
-     * served only when every callback in it is present, so omitting this one
-     * makes the whole group absent and `contacts.pick` answers `Unsupported`
-     * before any of it is reached.
+     * JS adapters apply the same unsupported default when the host omits UI.
      *
      * The core cannot draw UI, so a selection has to come from the host; the
      * whole point is that the host renders the names rather than shipping
@@ -1498,6 +1772,22 @@ export interface ContactsPlatform {
      * `HostContactPick::NoContacts` instead of drawing an empty overlay.
      */
     pickContact?(product: ProductContext): Promise<HostContactPick>;
+    /**
+     * Edit the complete selection in host-owned UI. Cancellation is not an
+     * empty confirmed selection. Accounts and names stay host-side.
+     */
+    pickContacts?(product: ProductContext, selection: ContactSelection): Promise<HostContactsPick>;
+    /**
+     * Draw names from the host's contact directory, with an account fallback
+     * when no username exists. Profile sharing must not affect labels.
+     *
+     * Replace the connection's previous placement, and clear it on navigation
+     * or disconnect. On directory invalidation, clear stale names and refresh
+     * the live placement from current contacts. No per-contact result is returned.
+     * Returns whether this host supports label placement, never whether any
+     * individual contact resolved. JS adapters return false for omitted UI.
+     */
+    placeContactLabels?(product: ProductContext, placed: PlacedContactLabels): Promise<boolean>;
 }
 /**
  * Core-owned administration API exposed to host UI.
@@ -1914,6 +2204,53 @@ export interface ProductStorage {
     subscribeStorage(key: string): AsyncIterable<Result<HostLocalStorageChangeItem, GenericError>>;
 }
 /**
+ * Host-implemented adapter that shows a product-referenced profile in
+ * host-owned UI. Optional: a host that omits it leaves Profile requests
+ * answered `Unsupported`. See `OptionalPlatform`.
+ *
+ * The reference is a bearer capability. The host resolves, decrypts and
+ * renders it; profile bytes and the reference's key never return to the
+ * product. The core screens only the reference's shape, so parsing it and
+ * deciding what it may fetch are the host's.
+ */
+export interface ProfilePlatform {
+    /**
+     * Take one presentation and return once it is shown, never waiting for
+     * the user to dismiss it. Report an unparseable reference as
+     * `InvalidReference`; show load and fetch failures in the UI instead.
+     */
+    presentProfile(product: ProductContext, request: HostProfilePresentRequest): Promise<void>;
+    /**
+     * Show a Chat contact's shared profile, or host-owned feedback when no
+     * profile is shared. Return once it is shown, without waiting for dismissal.
+     * Report an unparseable shared reference as `InvalidReference`.
+     *
+     * The core holds this reference because it arrived over the
+     * authenticated Chat channel from `peer_identity`'s own device, so the
+     * host can name that contact as who shared it, rather than the product
+     * that asked. It cannot vouch for more: the record behind the reference
+     * is not signed by its owner, so a contact can forward someone else's
+     * reference. The default presents a shared profile as
+     * `ProfilePlatform::present_profile` would, without the contact, and
+     * reports an error when empty-profile feedback is unsupported.
+     */
+    presentContactProfile?(product: ProductContext, presented: PresentedContactProfile): Promise<void>;
+    /**
+     * Draw the contact avatars a product placed, on the host's own layer over
+     * the product's surface, replacing what was drawn for it before; an empty
+     * `avatars` clears it. The layer must let pointer input through to the
+     * product and must never tell the product what it drew.
+     *
+     * The core calls this again, with the product's last geometry, whenever
+     * a contact on it shares, re-shares or withdraws a profile, and with no
+     * avatars once
+     * the product's connection goes away. Answer `Unsupported` if this host
+     * cannot draw over the product; the product is told so. The default draws
+     * nothing.
+     */
+    placeContactAvatars?(product: ProductContext, placed: PlacedAvatars): Promise<void>;
+}
+/**
  * Host theme source.
  */
 export interface ThemeHost {
@@ -1967,6 +2304,7 @@ export interface HostCallbacks {
     identityBackend?: IdentityBackendHost;
     permissionStatus?: PermissionStatusHost;
     pocket?: PocketPlatform;
+    profile?: ProfilePlatform;
 }
 export interface RequiredHostCallbacks {
     navigation: Required<Navigation>;
@@ -1986,8 +2324,9 @@ export interface RequiredHostCallbacks {
     productOperations: Required<ProductOperations>;
     chat?: Required<ChatPlatform>;
     coinageWallet?: Required<CoinageWalletHost>;
-    contacts?: Required<ContactsPlatform>;
+    contacts?: ContactsPlatform;
     identityBackend?: Required<IdentityBackendHost>;
     permissionStatus?: Required<PermissionStatusHost>;
     pocket?: Required<PocketPlatform>;
+    profile?: Required<ProfilePlatform>;
 }

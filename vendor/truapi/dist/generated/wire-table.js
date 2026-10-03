@@ -434,3 +434,48 @@ export const CONTACTS_PICK = {
     method: 0,
     kind: "request",
 };
+export const CONTACTS_PICK_MANY = {
+    trait: 20,
+    method: 1,
+    kind: "request",
+};
+export const CONTACTS_PLACE_LABELS = {
+    trait: 20,
+    method: 2,
+    kind: "request",
+};
+export const PROFILE_PRESENT = {
+    trait: 69,
+    method: 0,
+    kind: "request",
+};
+export const PROFILE_DISCLOSE = {
+    trait: 69,
+    method: 1,
+    kind: "request",
+};
+export const PROFILE_RETRACT = {
+    trait: 69,
+    method: 2,
+    kind: "request",
+};
+export const PROFILE_PRESENT_CONTACT = {
+    trait: 69,
+    method: 3,
+    kind: "request",
+};
+export const PROFILE_PLACE_CONTACT_AVATARS = {
+    trait: 69,
+    method: 4,
+    kind: "request",
+};
+export const PROFILE_OWN_STATUS = {
+    trait: 69,
+    method: 5,
+    kind: "request",
+};
+export const PROFILE_PRESENT_OWN = {
+    trait: 69,
+    method: 6,
+    kind: "request",
+};

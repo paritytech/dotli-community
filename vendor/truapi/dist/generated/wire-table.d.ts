@@ -423,3 +423,48 @@ export declare const CONTACTS_PICK: {
     readonly method: 0;
     readonly kind: "request";
 };
+export declare const CONTACTS_PICK_MANY: {
+    readonly trait: 20;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const CONTACTS_PLACE_LABELS: {
+    readonly trait: 20;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const PROFILE_PRESENT: {
+    readonly trait: 69;
+    readonly method: 0;
+    readonly kind: "request";
+};
+export declare const PROFILE_DISCLOSE: {
+    readonly trait: 69;
+    readonly method: 1;
+    readonly kind: "request";
+};
+export declare const PROFILE_RETRACT: {
+    readonly trait: 69;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const PROFILE_PRESENT_CONTACT: {
+    readonly trait: 69;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const PROFILE_PLACE_CONTACT_AVATARS: {
+    readonly trait: 69;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const PROFILE_OWN_STATUS: {
+    readonly trait: 69;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const PROFILE_PRESENT_OWN: {
+    readonly trait: 69;
+    readonly method: 6;
+    readonly kind: "request";
+};

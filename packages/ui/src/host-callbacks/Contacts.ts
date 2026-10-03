@@ -6,13 +6,16 @@ import type {
   CoreStorage,
   CoreStorageKey,
   NativeChatContactsSnapshot,
+  PlacedContactLabels,
   ProductContext,
 } from '@parity/truapi-host';
 import type { WorkerSigningHostRuntime } from '@parity/truapi-host/web';
 import { blockingModalAbortError, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
+import type { ContactLabelOverlay } from '../contacts/label-overlay.js';
 
 const HEX32 = /^0x[0-9a-f]{64}$/;
+const MAX_CONTACTS = 256;
 
 type ContactsRuntime = Pick<WorkerSigningHostRuntime, 'getNativeChatContacts' | 'notifyContactsChanged'>;
 
@@ -167,12 +170,82 @@ function abortable<T>(pending: Promise<T>, signal: AbortSignal): Promise<T> {
 export function createContactsPlatform(
   directory: NativeChatContactsDirectory,
   modalScope: BlockingModalScope,
+  labels?: ContactLabelOverlay,
 ): { callbacks: Required<ContactsPlatform>; dispose(): void } {
   const lifetime = new AbortController();
   const operationSignal = (): AbortSignal => AbortSignal.any([lifetime.signal, directory.signal]);
+  let labelSnapshot: Promise<ReadonlyMap<Bytes32, string>> | undefined;
+  let labelDirectorySignal: AbortSignal | undefined;
+  let latestLabels: { placed: PlacedContactLabels; signal: AbortSignal } | undefined;
+
+  const invalidateLabels = (): void => {
+    labelSnapshot = undefined;
+    labelDirectorySignal = undefined;
+    const previous = latestLabels;
+    const refresh =
+      labels !== undefined && previous !== undefined && !previous.signal.aborted && !lifetime.signal.aborted;
+    labels?.clear();
+    latestLabels = refresh ? { placed: previous.placed, signal: labels.signal } : undefined;
+    const request = latestLabels;
+    if (request !== undefined) {
+      // invalidate() installs the replacement directory generation after aborting
+      // the old one. Navigation/empty placement/disposal may retire this request
+      // before the microtask starts, in which case nothing is replayed.
+      queueMicrotask(() => {
+        void paintLabels(request).catch(() => {
+          // Keep names hidden if the replacement session/read is unavailable.
+          // A new placement or directory invalidation may request them again.
+        });
+      });
+    }
+  };
+
+  const paintLabels = async (request: { placed: PlacedContactLabels; signal: AbortSignal }): Promise<void> => {
+    if (labels === undefined || latestLabels !== request || request.signal.aborted || lifetime.signal.aborted) {
+      return;
+    }
+    const directorySignal = directory.signal;
+    if (labelDirectorySignal !== directorySignal) {
+      labelDirectorySignal?.removeEventListener('abort', invalidateLabels);
+      labelDirectorySignal = directorySignal;
+      labelDirectorySignal.addEventListener('abort', invalidateLabels, {
+        once: true,
+      });
+      labelSnapshot = undefined;
+    }
+    const signal = AbortSignal.any([lifetime.signal, directorySignal]);
+    if (labelSnapshot === undefined) {
+      const pending = directory.snapshot(signal).then(
+        snapshot =>
+          new Map(
+            snapshot.contacts.map(contact => {
+              const name = contact.username?.trim();
+              return [contact.peerIdentity, name === undefined || name === '' ? contact.peerIdentity : name];
+            }),
+          ),
+      );
+      labelSnapshot = pending;
+      void pending.catch(() => {
+        // A failed read is not a reusable snapshot. Do not clear a newer read.
+        if (labelSnapshot === pending) {
+          labelSnapshot = undefined;
+        }
+      });
+    }
+    const activeSignal = AbortSignal.any([signal, request.signal]);
+    const names = await abortable(labelSnapshot, activeSignal);
+    throwIfAborted(activeSignal);
+    if (latestLabels === request) {
+      labels.place(request.placed, names);
+    }
+  };
   return {
     dispose() {
+      labelDirectorySignal?.removeEventListener('abort', invalidateLabels);
+      latestLabels = undefined;
+      labelSnapshot = undefined;
       lifetime.abort(blockingModalAbortError('Contact picker host closed'));
+      labels?.clear();
     },
     callbacks: {
       async contacts(lookup) {
@@ -207,7 +280,8 @@ export function createContactsPlatform(
             if (snapshot.contacts.length === 0) {
               return { tag: 'NoContacts' as const };
             }
-            const selected = await showContactPicker(product, snapshot.contacts, activeSignal);
+            const choices = await showContactPicker(product, snapshot.contacts, activeSignal);
+            const selected = choices?.[0];
             throwIfAborted(activeSignal);
             if (selected === undefined) {
               return { tag: 'Dismissed' as const };
@@ -221,6 +295,54 @@ export function createContactsPlatform(
           signal,
         );
       },
+      async pickContacts(product, selection) {
+        const initial = selection.selected;
+        if (initial.length > MAX_CONTACTS) {
+          throw new Error('Too many selected Chat contacts');
+        }
+        initial.forEach(assertHex32);
+        const selected = [...new Set(initial)];
+        const signal = operationSignal();
+        return abortable(
+          modalScope.enqueue(async queueSignal => {
+            const activeSignal = AbortSignal.any([signal, queueSignal]);
+            const snapshot = await directory.snapshot(activeSignal);
+            const available = new Set(snapshot.contacts.map(contact => contact.peerIdentity));
+            if (selected.some(account => !available.has(account))) {
+              throw new Error('A selected Chat contact is no longer available');
+            }
+            if (snapshot.contacts.length === 0) {
+              return { tag: 'NoContacts' as const };
+            }
+            const accounts = await showContactPicker(product, snapshot.contacts, activeSignal, selected);
+            throwIfAborted(activeSignal);
+            if (accounts === undefined) {
+              return { tag: 'Dismissed' as const };
+            }
+            const current = await directory.snapshot(activeSignal);
+            const currentAccounts = new Set(current.contacts.map(contact => contact.peerIdentity));
+            if (accounts.some(account => !currentAccounts.has(account))) {
+              throw new Error('A selected Chat contact is no longer available');
+            }
+            return { tag: 'Picked' as const, value: { accounts } };
+          }),
+          signal,
+        );
+      },
+      async placeContactLabels(_product, placed) {
+        if (labels === undefined) {
+          return false;
+        }
+        if (placed.labels.length === 0) {
+          latestLabels = undefined;
+          labels.clear();
+          return true;
+        }
+        const request = { placed, signal: labels.signal };
+        latestLabels = request;
+        await paintLabels(request);
+        return true;
+      },
     },
   };
 }
@@ -229,23 +351,50 @@ async function showContactPicker(
   product: ProductContext,
   contacts: ContactSnapshot['contacts'],
   signal: AbortSignal,
-): Promise<Bytes32 | undefined> {
-  const { result } = await presentModal<Bytes32 | 'dismissed'>(
+  initial?: readonly Bytes32[],
+): Promise<Bytes32[] | undefined> {
+  const multiple = initial !== undefined;
+  // A duplicate native roster entry must not become a second consent control.
+  const unique = new Map(contacts.map(contact => [contact.peerIdentity, contact]));
+  const { result, selected } = await presentModal<Bytes32 | 'confirmed' | 'dismissed'>(
     {
-      title: 'Choose a contact',
+      title: multiple ? 'Choose contacts' : 'Choose a contact',
       fields: [],
-      notice: `${product.productId} is asking you to choose a Chat contact. Names and account identities stay in this host picker.`,
-      choices: contacts.map(contact => ({
-        label: contact.username !== undefined && contact.username !== '' ? contact.username : 'Chat contact',
-        detail: contact.peerIdentity,
-        result: contact.peerIdentity,
-      })),
-      buttons: [{ label: 'Cancel', variant: 'cancel', result: 'dismissed' }],
+      notice: `${product.productId} is asking you to choose ${multiple ? 'Chat contacts' : 'a Chat contact'}. Names and account identities stay in this host picker.`,
+      choices: [...unique.values()].map(contact => {
+        const name = contact.username?.trim();
+        return {
+          label: name === undefined || name === '' ? 'Chat contact' : name,
+          detail: contact.peerIdentity,
+          result: contact.peerIdentity,
+        };
+      }),
+      ...(initial === undefined ? {} : { selection: { selected: initial, limit: MAX_CONTACTS } }),
+      buttons: multiple
+        ? [
+            { label: 'Cancel', variant: 'cancel', result: 'dismissed' },
+            { label: 'Use selection', variant: 'primary', result: 'confirmed' },
+          ]
+        : [{ label: 'Cancel', variant: 'cancel', result: 'dismissed' }],
       dismissOnBackdrop: true,
       dismissResult: 'dismissed',
       fallbackResult: 'dismissed',
     },
     signal,
   );
-  return result === 'dismissed' ? undefined : result;
+  if (result === 'dismissed') {
+    return undefined;
+  }
+  if (result !== 'confirmed') {
+    return [result];
+  }
+  if (selected === undefined) {
+    throw new Error('Contact selection was not confirmed');
+  }
+  return selected.map(account => {
+    if (account === 'confirmed' || account === 'dismissed') {
+      throw new Error('Invalid contact selection');
+    }
+    return account;
+  });
 }

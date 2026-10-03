@@ -1,9 +1,17 @@
-import type { ContactsPlatform, CoreStorage, NativeChatContactsSnapshot, ProductContext } from '@parity/truapi-host';
+import type {
+  ContactsPlatform,
+  CoreStorage,
+  NativeChatContactsSnapshot,
+  PlacedContactLabels,
+  ProductContext,
+} from '@parity/truapi-host';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { settle } from './helpers/solid.js';
 import { must } from './support.js';
+import { createContactLabelOverlay, type ContactLabelOverlay } from '../src/contacts/label-overlay.js';
 
 const walletPublicKey = `0x${'11'.repeat(32)}` as const;
 const genesisHash = `0x${'55'.repeat(32)}` as const;
@@ -27,14 +35,16 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function fixture(): {
+interface ContactsFixture {
   directory: NativeChatContactsDirectory;
   adapter: { callbacks: Required<ContactsPlatform>; dispose(): void };
   coordinator: BlockingModalCoordinator;
   snapshot: NativeChatContactsSnapshot;
   setRead(value: () => Promise<NativeChatContactsSnapshot>): void;
   switchSession(): void;
-} {
+}
+
+function fixture(labels?: ContactLabelOverlay): ContactsFixture {
   let snapshot: NativeChatContactsSnapshot = {
     walletPublicKey,
     genesisHash,
@@ -53,7 +63,7 @@ function fixture(): {
   );
   const coordinator = createBlockingModalCoordinator();
   const scope = coordinator.createScope();
-  const adapter = createContactsPlatform(directory, scope);
+  const adapter = createContactsPlatform(directory, scope, labels);
   cleanups.push(() => {
     adapter.dispose();
     directory.dispose();
@@ -79,10 +89,70 @@ function fixture(): {
   };
 }
 
-async function choices(): Promise<HTMLButtonElement[]> {
+async function choices(): Promise<HTMLElement[]> {
   await overlaysReady();
   await expect.poll(() => document.querySelector('.contacts-picker-choice')).not.toBeNull();
-  return Array.from(document.querySelectorAll<HTMLButtonElement>('.contacts-picker-choice'));
+  return Array.from(document.querySelectorAll<HTMLElement>('.contacts-picker-choice'));
+}
+
+async function labelFixture(): Promise<{
+  state: ContactsFixture;
+  adapter: ContactsFixture['adapter'];
+  frame: HTMLIFrameElement;
+  placed: PlacedContactLabels;
+}> {
+  const frame = document.createElement('iframe');
+  Object.defineProperties(frame, {
+    clientWidth: { value: 200 },
+    clientHeight: { value: 120 },
+  });
+  const loaded = new Promise<void>(resolve => {
+    frame.addEventListener(
+      'load',
+      () => {
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  document.body.append(frame);
+  // Place into the loaded document, not the initial about:blank navigation.
+  await loaded;
+  const labels = createContactLabelOverlay();
+  labels.attach(frame, 'contain');
+  cleanups.push(() => {
+    labels.dispose();
+  });
+  const state = fixture(labels);
+  const placed: PlacedContactLabels = {
+    surfaceWidth: 200,
+    surfaceHeight: 120,
+    labels: [
+      {
+        slot: 0,
+        account: alice,
+        rect: { x: 0, y: 20, width: 100, height: 32 },
+        clip: { x: 0, y: 0, width: 200, height: 120 },
+      },
+      {
+        slot: 1,
+        account: bob,
+        rect: { x: 100, y: 20, width: 100, height: 32 },
+        clip: { x: 0, y: 0, width: 200, height: 120 },
+      },
+    ],
+  };
+  return { state, adapter: state.adapter, frame, placed };
+}
+
+async function redraw(): Promise<void> {
+  await new Promise<void>(resolve => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        resolve();
+      });
+    });
+  });
 }
 
 describe('native Chat contacts', () => {
@@ -280,5 +350,136 @@ describe('native Chat contacts', () => {
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );
     await expect(picked).resolves.toEqual({ tag: 'Dismissed' });
+  });
+
+  it('keeps preselected contacts when search hides them and confirms multiple people', async () => {
+    const { adapter } = fixture();
+    const picked = adapter.callbacks.pickContacts(product, {
+      selected: [alice],
+    });
+    const rows = await choices();
+    const firstRow = must(rows[0], 'First contact choice');
+    const secondRow = must(rows[1], 'Second contact choice');
+    const first = must(firstRow.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'First contact checkbox');
+    const second = must(secondRow.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'Second contact checkbox');
+    expect(first.checked).toBe(true);
+    expect(second.checked).toBe(false);
+    const search = must(document.querySelector<HTMLInputElement>('input[type="search"]'), 'Contact search');
+    search.value = bob;
+    search.dispatchEvent(new Event('input', { bubbles: true }));
+    await expect.poll(() => firstRow.hidden).toBe(true);
+    expect(secondRow.hidden).toBe(false);
+    second.click();
+    await settle();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
+    await expect(picked).resolves.toEqual({
+      tag: 'Picked',
+      value: { accounts: [alice, bob] },
+    });
+  });
+
+  it('distinguishes confirmed empty selection from canceled checkbox edits', async () => {
+    const { adapter } = fixture();
+    const cleared = adapter.callbacks.pickContacts(product, {
+      selected: [alice],
+    });
+    const rows = await choices();
+    must(
+      must(rows[0], 'First contact choice').querySelector<HTMLInputElement>('input[type="checkbox"]'),
+      'First contact checkbox',
+    ).click();
+    await settle();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-sign'), 'Confirm selection').click();
+    await expect(cleared).resolves.toEqual({
+      tag: 'Picked',
+      value: { accounts: [] },
+    });
+
+    const canceled = adapter.callbacks.pickContacts(product, {
+      selected: [alice],
+    });
+    const reopened = await choices();
+    expect(
+      must(
+        must(reopened[0], 'First reopened contact').querySelector<HTMLInputElement>('input[type="checkbox"]'),
+        'First reopened checkbox',
+      ).checked,
+    ).toBe(true);
+    must(
+      must(reopened[1], 'Second reopened contact').querySelector<HTMLInputElement>('input[type="checkbox"]'),
+      'Second reopened checkbox',
+    ).click();
+    await settle();
+    must(document.querySelector<HTMLButtonElement>('.signing-btn-cancel'), 'Cancel selection').click();
+    await expect(canceled).resolves.toEqual({ tag: 'Dismissed' });
+  });
+
+  it('does not memoize a failed label-directory read', async () => {
+    const { state, adapter, placed } = await labelFixture();
+    state.setRead(() => Promise.reject(new Error('Directory temporarily unavailable')));
+    await expect(adapter.callbacks.placeContactLabels(product, placed)).rejects.toThrow(
+      'Directory temporarily unavailable',
+    );
+    state.setRead(() => Promise.resolve(state.snapshot));
+    await adapter.callbacks.placeContactLabels(product, placed);
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+  });
+
+  it('refreshes the latest labels after a same-wallet directory change without another placement', async () => {
+    const { state, adapter, placed } = await labelFixture();
+    await adapter.callbacks.placeContactLabels(product, placed);
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+    expect(document.querySelectorAll('.contact-label')[1]?.getAttribute('aria-label')).toBe(bob);
+    state.snapshot = {
+      ...state.snapshot,
+      contacts: [{ peerIdentity: alice, username: 'renamed.paseo' }],
+    };
+    state.directory.invalidate();
+    expect(document.querySelector('.contact-label')).toBeNull();
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('renamed.paseo');
+    expect(document.querySelector(`[aria-label="${bob}"]`)).toBeNull();
+  });
+
+  it.each(['navigation', 'empty placement', 'provider close', 'wallet switch'])(
+    'does not replay an in-flight directory refresh after %s',
+    async ending => {
+      const { state, adapter, placed, frame } = await labelFixture();
+      await adapter.callbacks.placeContactLabels(product, placed);
+      await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+      const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
+      const started = Promise.withResolvers<undefined>();
+      state.setRead(() => {
+        started.resolve(undefined);
+        return pending.promise;
+      });
+      state.directory.invalidate();
+      await started.promise;
+      if (ending === 'navigation') {
+        frame.dispatchEvent(new Event('load'));
+      } else if (ending === 'empty placement') {
+        await adapter.callbacks.placeContactLabels(product, {
+          ...placed,
+          labels: [],
+        });
+      } else if (ending === 'provider close') {
+        adapter.dispose();
+      } else {
+        state.switchSession();
+      }
+      expect(document.querySelector('.contact-label')).toBeNull();
+      pending.resolve(state.snapshot);
+      await redraw();
+      expect(document.querySelector('.contact-label')).toBeNull();
+    },
+  );
+
+  it('does not replay a queued directory refresh after navigation', async () => {
+    const { state, adapter, placed, frame } = await labelFixture();
+    await adapter.callbacks.placeContactLabels(product, placed);
+    await expect.poll(() => document.querySelector('.contact-label')?.textContent).toBe('alice.paseo');
+    state.directory.invalidate();
+    frame.dispatchEvent(new Event('load'));
+    await redraw();
+    expect(document.querySelector('.contact-label')).toBeNull();
   });
 });

@@ -656,7 +656,8 @@ async function postRequest<M extends ProtocolRequestMethod>(
     frameWindow.postMessage(envelope, getProtocolOrigin());
   });
 }
-type ResolverRequestMethod = 'resolveDotName' | 'resolveOwner' | 'resolveExecutableManifest' | 'resolveRootManifest';
+type ResolverRequestMethod =
+  'resolveDotName' | 'resolveOwner' | 'resolveSeitySlot' | 'resolveExecutableManifest' | 'resolveRootManifest';
 
 function isStoppedResolverResponse(error: unknown): error is Error {
   return (
@@ -698,6 +699,20 @@ export async function resolveDotNameRemote(
 
 export async function resolveOwnerRemote(label: string): Promise<string | null> {
   return (await postResolverRequest('resolveOwner', { label })) as string | null;
+}
+
+/** A Seity registry slot as the protocol returns it; `version` is a decimal string. */
+export interface RemoteSeitySlot {
+  readonly owner: `0x${string}`;
+  readonly cidDigest: `0x${string}`;
+  readonly version: string;
+}
+
+/** Remote proxy for the Seity registry reader (null when the registry is absent). */
+export async function resolveSeitySlotRemote(lookupKey: `0x${string}`): Promise<RemoteSeitySlot | null> {
+  return (await postResolverRequest('resolveSeitySlot', {
+    lookupKey,
+  })) as RemoteSeitySlot | null;
 }
 
 /**

@@ -16,6 +16,8 @@ export interface RawCallbacks {
     nativeCoinage?(request: Uint8Array): Promise<Uint8Array>;
     contacts?(lookup: Uint8Array): Promise<Uint8Array>;
     pickContact?(product: Uint8Array): Promise<Uint8Array>;
+    pickContacts?(product: Uint8Array, selection: Uint8Array): Promise<Uint8Array>;
+    placeContactLabels?(product: Uint8Array, placed: Uint8Array): Promise<boolean>;
     readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
     writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
     clearCoreStorage(key: Uint8Array): Promise<void>;
@@ -48,6 +50,9 @@ export interface RawCallbacks {
     write(key: string, value: Uint8Array): Promise<void>;
     clear(key: string): Promise<void>;
     subscribeStorage(key: string, sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
+    presentProfile?(product: Uint8Array, request: Uint8Array): Promise<void>;
+    presentContactProfile?(product: Uint8Array, presented: Uint8Array): Promise<void>;
+    placeContactAvatars?(product: Uint8Array, placed: Uint8Array): Promise<void>;
     subscribeTheme(sendItem: (item?: Uint8Array) => void, sendError: (error: GenericError) => void): (() => void) | void;
     confirmPermission(review: Uint8Array): Promise<Uint8Array>;
     confirmUserAction(review: Uint8Array): Promise<boolean>;

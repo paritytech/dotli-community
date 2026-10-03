@@ -31,6 +31,7 @@ import { createRawApi, type Api } from './api.js';
 import { getConnectedRpcEndpoint } from './rpc-chain.js';
 import { readExecutableManifest, readRootManifest } from './manifest.js';
 import type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest.js';
+import { readSeitySlot, type SeitySlot } from './seity-registry.js';
 
 export type { StatusCallback } from './access-raw-storage.js';
 
@@ -223,6 +224,19 @@ export function resolveOwnerViaRpc(label: string): Promise<string | null> {
     const dotns = getActiveServicesConfig().dotns;
     return readMappingAddress(api, dotns.DOTNS_REGISTRY, node, dotns.STORAGE_SLOTS.REGISTRY_RECORDS);
   });
+}
+
+/**
+ * Read one Seity registry slot over JSON-RPC: the gateway-mode counterpart of
+ * `resolveSeitySlot`. Null when the network has no Seity registry, matching
+ * the protocol-worker path.
+ */
+export async function resolveSeitySlotViaRpc(lookupKey: `0x${string}`): Promise<SeitySlot | null> {
+  const registry = getActiveServicesConfig().seity?.REGISTRY;
+  if (registry === undefined) {
+    return null;
+  }
+  return withRpcClient(api => readSeitySlot(api, registry, lookupKey));
 }
 
 /**

@@ -121,6 +121,35 @@ export const types = [
         ],
     },
     {
+        id: "avatar-rect",
+        name: "AvatarRect",
+        category: "profile",
+        definition: "export interface AvatarRect {\n  x: number;\n  y: number;\n  width: number;\n  height: number;\n}",
+        description: "A rectangle in surface units, relative to the surface's top-left corner.",
+        fields: [
+            {
+                name: "x",
+                type: "number",
+                description: "Left edge.",
+            },
+            {
+                name: "y",
+                type: "number",
+                description: "Top edge.",
+            },
+            {
+                name: "width",
+                type: "number",
+                description: "Width.",
+            },
+            {
+                name: "height",
+                type: "number",
+                description: "Height.",
+            },
+        ],
+    },
+    {
         id: "background",
         name: "Background",
         category: "renderer",
@@ -928,6 +957,35 @@ export const types = [
         ],
     },
     {
+        id: "contact-avatar-slot",
+        name: "ContactAvatarSlot",
+        category: "profile",
+        definition: "export interface ContactAvatarSlot {\n  slot: number;\n  peerIdentity: HexString;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "One avatar the product draws for a chat contact.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, stable for one on-screen avatar (a list row, a\nheader). The host uses it only to keep what it draws stable across\nupdates.",
+            },
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "The contact's authenticated root identity, as the chat API names it.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Bounding box of the avatar circle: square, 1 to 1024 units a side.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region the avatar is cut to, such as the scroll area.",
+            },
+        ],
+    },
+    {
         id: "contact-handle",
         name: "ContactHandle",
         category: "contacts",
@@ -938,6 +996,59 @@ export const types = [
                 name: "bytes",
                 type: "Bytes32",
                 description: "The handle's bytes.",
+            },
+        ],
+    },
+    {
+        id: "contact-label-slot",
+        name: "ContactLabelSlot",
+        category: "contacts",
+        definition: "export interface ContactLabelSlot {\n  slot: number;\n  handle: ContactHandle;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "Geometry for a host-owned contact name, independent of profile sharing.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, unique within this placement.",
+            },
+            {
+                name: "handle",
+                type: "ContactHandle",
+                description: "Opaque handle for the contact whose name the host draws.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Name bounds in surface units, with sides from 1 to 16384.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region in surface units; a zero side hides the label.",
+            },
+        ],
+    },
+    {
+        id: "contact-pick-many-outcome",
+        name: "ContactPickManyOutcome",
+        category: "contacts",
+        definition: 'export type ContactPickManyOutcome =\n  | { tag: "Picked"; value: { handles: Array<ContactHandle> } }\n  | { tag: "Dismissed"; value?: undefined }\n  | { tag: "NoContacts"; value?: undefined }\n;',
+        description: "Selection confirmed in the host's multi-contact picker.",
+        variants: [
+            {
+                name: "Picked",
+                type: '{ tag: "Picked"; value: { handles: Array<ContactHandle> } }',
+                description: "The user confirmed this complete selection, including an empty one.",
+            },
+            {
+                name: "Dismissed",
+                type: '{ tag: "Dismissed"; value?: undefined }',
+                description: "The user closed the picker without confirming a change.",
+            },
+            {
+                name: "NoContacts",
+                type: '{ tag: "NoContacts"; value?: undefined }',
+                description: "There are no contacts to show.",
             },
         ],
     },
@@ -2035,6 +2146,58 @@ export const types = [
         ],
     },
     {
+        id: "host-contacts-pick-many-error",
+        name: "HostContactsPickManyError",
+        category: "contacts",
+        definition: 'export type HostContactsPickManyError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidSelection"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure before a complete selection can be confirmed.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No active session, or the session changed while choosing.",
+            },
+            {
+                name: "InvalidSelection",
+                type: '{ tag: "InvalidSelection"; value?: undefined }',
+                description: "The selection exceeds the bound or contains an unresolved handle.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The host could not complete the picker.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-many-request",
+        name: "HostContactsPickManyRequest",
+        category: "contacts",
+        definition: "export interface HostContactsPickManyRequest {\n  selected: Array<ContactHandle>;\n}",
+        description: "Open the host's picker with the product's current selection.",
+        fields: [
+            {
+                name: "selected",
+                type: "Array<ContactHandle>",
+                description: "At most 256 handles. Duplicates are ignored; an unresolved handle\nrejects the entire request rather than changing the selected audience.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-pick-many-response",
+        name: "HostContactsPickManyResponse",
+        category: "contacts",
+        definition: "export interface HostContactsPickManyResponse {\n  outcome: ContactPickManyOutcome;\n}",
+        description: "The user's confirmed selection or reason no selection was made.",
+        fields: [
+            {
+                name: "outcome",
+                type: "ContactPickManyOutcome",
+                description: "How the picker ended.",
+            },
+        ],
+    },
+    {
         id: "host-contacts-pick-request",
         name: "HostContactsPickRequest",
         category: "contacts",
@@ -2055,6 +2218,67 @@ export const types = [
                 description: "How the pick ended.",
             },
         ],
+    },
+    {
+        id: "host-contacts-place-labels-error",
+        name: "HostContactsPlaceLabelsError",
+        category: "contacts",
+        definition: 'export type HostContactsPlaceLabelsError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "InvalidPlacement"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Placement failure, never the availability of any individual contact.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "The host cannot draw labels over the product surface.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No active session, or it changed while placing labels.",
+            },
+            {
+                name: "InvalidPlacement",
+                type: '{ tag: "InvalidPlacement"; value?: undefined }',
+                description: "The surface, slot count, slot ids or rectangles are invalid.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "The host could not place the labels.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-place-labels-request",
+        name: "HostContactsPlaceLabelsRequest",
+        category: "contacts",
+        definition: "export interface HostContactsPlaceLabelsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactLabelSlot>;\n}",
+        description: "Replace the contact names drawn over a product's surface.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Surface width in framebuffer pixels or web viewport CSS pixels, 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Surface height in the same units, 1 to 16384.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactLabelSlot>",
+                description: "At most 256 slots. Empty clears the previous placement.",
+            },
+        ],
+    },
+    {
+        id: "host-contacts-place-labels-response",
+        name: "HostContactsPlaceLabelsResponse",
+        category: "contacts",
+        definition: "export interface HostContactsPlaceLabelsResponse {\n}",
+        description: "Acknowledges placement without revealing any contact's name or availability.",
+        fields: [],
     },
     {
         id: "host-create-transaction-error",
@@ -3841,6 +4065,269 @@ export const types = [
         ],
     },
     {
+        id: "host-profile-disclose-error",
+        name: "HostProfileDiscloseError",
+        category: "profile",
+        definition: 'export type HostProfileDiscloseError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "PermissionDenied"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile disclosure failure.",
+        variants: [
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The reference is empty, too long, or not printable ASCII.",
+            },
+            {
+                name: "PermissionDenied",
+                type: '{ tag: "PermissionDenied"; value?: undefined }',
+                description: "The user declined to let this product disclose a profile to their\nchat contacts.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in, so there are no contacts to disclose to.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-disclose-request",
+        name: "HostProfileDiscloseRequest",
+        category: "profile",
+        definition: "export interface HostProfileDiscloseRequest {\n  reference: string;\n  audiences: Array<ProfileAudience>;\n}",
+        description: "Replace the user's disclosed reference and its complete set of audiences.\n\nAn empty audience retains the user's own profile but withdraws all delivery\ngrants. A contact handle that no longer resolves rejects the whole request.",
+        fields: [
+            {
+                name: "reference",
+                type: "string",
+                description: "Opaque bearer reference, retained and relayed only by the host.",
+            },
+            {
+                name: "audiences",
+                type: "Array<ProfileAudience>",
+                description: "Independent grants for this reference, at most 64.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-own-status-error",
+        name: "HostProfileOwnStatusError",
+        category: "profile",
+        definition: 'export type HostProfileOwnStatusError =\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure while querying the signed-in user's profile status.",
+        variants: [
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-own-status-response",
+        name: "HostProfileOwnStatusResponse",
+        category: "profile",
+        definition: "export interface HostProfileOwnStatusResponse {\n  configured: boolean;\n}",
+        description: "Whether the signed-in user currently has a profile disclosed through the\nhost. The reference itself never crosses into the product.",
+        fields: [
+            {
+                name: "configured",
+                type: "boolean",
+                description: "`true` when the host holds a current own-profile reference.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-place-contact-avatars-error",
+        name: "HostProfilePlaceContactAvatarsError",
+        category: "profile",
+        definition: 'export type HostProfilePlaceContactAvatarsError =\n  | { tag: "Unsupported"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Contact avatar placement failure. Says nothing about any one slot.",
+        variants: [
+            {
+                name: "Unsupported",
+                type: '{ tag: "Unsupported"; value?: undefined }',
+                description: "This host cannot draw over the product's surface.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all, including a malformed placement.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-place-contact-avatars-request",
+        name: "HostProfilePlaceContactAvatarsRequest",
+        category: "profile",
+        definition: "export interface HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  own?: OwnAvatarSlot;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "A host-rendered avatar placement using peer identities or opaque handles.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Width of the drawing surface, from 1 to 16384 units.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Height of the drawing surface, from 1 to 16384 units.",
+            },
+            {
+                name: "own",
+                type: "OwnAvatarSlot | undefined",
+                description: "Optional slot for the signed-in user's own disclosed profile.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactAvatarSlot>",
+                description: "Complete replacement of the contact slots, at most 64.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-contact-error",
+        name: "HostProfilePresentContactError",
+        category: "profile",
+        definition: 'export type HostProfilePresentContactError =\n  | { tag: "NotShared"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Contact profile presentation failure.",
+        variants: [
+            {
+                name: "NotShared",
+                type: '{ tag: "NotShared"; value?: undefined }',
+                description: "This contact has not shared a profile with the user.",
+            },
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The host holds a reference it cannot parse.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-contact-request",
+        name: "HostProfilePresentContactRequest",
+        category: "profile",
+        definition: "export interface HostProfilePresentContactRequest {\n  contact: ProfileContact;\n}",
+        description: "Ask the host to present a contact's available profile.\n\nUnknown handles, absent profiles and presentation failures return success,\nwithout disclosing whether the contact shares a profile.",
+        fields: [
+            {
+                name: "contact",
+                type: "ProfileContact",
+                description: "The contact whose profile the host may present.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-error",
+        name: "HostProfilePresentError",
+        category: "profile",
+        definition: 'export type HostProfilePresentError =\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile presentation failure.",
+        variants: [
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The reference is malformed or names a format this host cannot open.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-own-error",
+        name: "HostProfilePresentOwnError",
+        category: "profile",
+        definition: 'export type HostProfilePresentOwnError =\n  | { tag: "NotConfigured"; value?: undefined }\n  | { tag: "InvalidReference"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Failure while presenting the signed-in user's profile.",
+        variants: [
+            {
+                name: "NotConfigured",
+                type: '{ tag: "NotConfigured"; value?: undefined }',
+                description: "The signed-in user has not configured a profile.",
+            },
+            {
+                name: "InvalidReference",
+                type: '{ tag: "InvalidReference"; value?: undefined }',
+                description: "The host holds a reference it cannot parse.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-present-request",
+        name: "HostProfilePresentRequest",
+        category: "profile",
+        definition: "export interface HostProfilePresentRequest {\n  reference: string;\n}",
+        description: "Request to show a profile the calling product references in host-owned UI.\n\nThe reference is a bearer capability: whoever holds it can read the profile\nit names. The host resolves and renders it itself, so profile bytes, the\navatar image included, never reach the product.",
+        fields: [
+            {
+                name: "reference",
+                type: "string",
+                description: "Opaque profile reference, e.g. a Seity `<cid>#<key>` blob reference.",
+            },
+        ],
+    },
+    {
+        id: "host-profile-retract-error",
+        name: "HostProfileRetractError",
+        category: "profile",
+        definition: 'export type HostProfileRetractError =\n  | { tag: "NotDiscloser"; value?: undefined }\n  | { tag: "NotConnected"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
+        description: "Profile retraction failure.",
+        variants: [
+            {
+                name: "NotDiscloser",
+                type: '{ tag: "NotDiscloser"; value?: undefined }',
+                description: "Another product disclosed the reference the host holds.",
+            },
+            {
+                name: "NotConnected",
+                type: '{ tag: "NotConnected"; value?: undefined }',
+                description: "No user is signed in.",
+            },
+            {
+                name: "Unknown",
+                type: '{ tag: "Unknown"; value: { reason: string } }',
+                description: "Catch-all.",
+            },
+        ],
+    },
+    {
         id: "host-push-notification-cancel-request",
         name: "HostPushNotificationCancelRequest",
         category: "notifications",
@@ -4517,6 +5004,30 @@ export const types = [
         ],
     },
     {
+        id: "own-avatar-slot",
+        name: "OwnAvatarSlot",
+        category: "profile",
+        definition: "export interface OwnAvatarSlot {\n  slot: number;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "Where the product draws the signed-in user's own avatar.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, unique within this placement.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Bounding box of the avatar circle: square, 1 to 1024 units a side.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region the avatar is cut to.",
+            },
+        ],
+    },
+    {
         id: "payment-top-up-source",
         name: "PaymentTopUpSource",
         category: "payment",
@@ -4680,6 +5191,49 @@ export const types = [
                 name: "payload",
                 type: "HexString",
                 description: "Product-defined payload, opaque to the host.",
+            },
+        ],
+    },
+    {
+        id: "profile-audience",
+        name: "ProfileAudience",
+        category: "profile",
+        definition: 'export type ProfileAudience =\n  | { tag: "ChatApps"; value?: undefined }\n  | { tag: "App"; value: { productId: string } }\n  | { tag: "Contacts"; value: { handles: Array<ContactHandle> } }\n;',
+        description: "Recipients of one profile reference. Multiple audiences form a union.",
+        variants: [
+            {
+                name: "ChatApps",
+                type: '{ tag: "ChatApps"; value?: undefined }',
+                description: "Every ready Chat App, with profiles scoped to that App.",
+            },
+            {
+                name: "App",
+                type: '{ tag: "App"; value: { productId: string } }',
+                description: "Contacts of this Chat App, with profiles scoped to that App.",
+            },
+            {
+                name: "Contacts",
+                type: '{ tag: "Contacts"; value: { handles: Array<ContactHandle> } }',
+                description: "Selected contacts, with profiles available in any receiving App.",
+            },
+        ],
+    },
+    {
+        id: "profile-contact",
+        name: "ProfileContact",
+        category: "profile",
+        definition: 'export type ProfileContact =\n  | { tag: "Peer"; value: { peerIdentity: HexString } }\n  | { tag: "Handle"; value: { handle: ContactHandle } }\n;',
+        description: "A contact named without exposing a handle's account to the product.",
+        variants: [
+            {
+                name: "Peer",
+                type: '{ tag: "Peer"; value: { peerIdentity: HexString } }',
+                description: "An authenticated Chat network identity already known to the product.",
+            },
+            {
+                name: "Handle",
+                type: '{ tag: "Handle"; value: { handle: ContactHandle } }',
+                description: "An opaque host-issued contact selection.",
             },
         ],
     },
@@ -6108,6 +6662,58 @@ export const types = [
         ],
     },
     {
+        id: "v-01-host-profile-disclose-request",
+        name: "V01HostProfileDiscloseRequest",
+        category: "profile",
+        definition: "export interface V01HostProfileDiscloseRequest {\n  reference: string;\n}",
+        description: "Request to give the user's chat contacts a profile reference.\n\nThe reference is a bearer capability for everyone the host relays it to.\nThe host stores it as the user's own and never parses it.",
+        fields: [
+            {
+                name: "reference",
+                type: "string",
+                description: "Opaque profile reference, e.g. a Seity contacts reference.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-profile-place-contact-avatars-request",
+        name: "V01HostProfilePlaceContactAvatarsRequest",
+        category: "profile",
+        definition: "export interface V01HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "Where a chat product draws contact avatars, so the host can draw the\nphoto and mood ring each contact shared over them, on its own layer.\n\nThe product sends geometry only. The host decides which slots it can fill\nand never says which, so the product cannot learn who shared a profile.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Width of the product's drawing surface, in the units of every rect:\nframebuffer pixels for a PolkaVM product, CSS pixels of its viewport\nfor a web product. 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Height of the drawing surface, in the same units. 1 to 16384.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactAvatarSlot>",
+                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`.",
+            },
+        ],
+    },
+    {
+        id: "v-01-host-profile-present-contact-request",
+        name: "V01HostProfilePresentContactRequest",
+        category: "profile",
+        definition: "export interface V01HostProfilePresentContactRequest {\n  peerIdentity: HexString;\n}",
+        description: "Request to show a chat contact's profile in host-owned UI.\n\nThe product names the contact, never a reference: the host looks up the\nreference that contact's host sent, so the product cannot read, keep or\nsubstitute it.",
+        fields: [
+            {
+                name: "peer_identity",
+                type: "HexString",
+                description: "The contact's authenticated root identity, as the chat API names it.",
+            },
+        ],
+    },
+    {
         id: "v-02-host-product-device-chat-request",
         name: "V02HostProductDeviceChatRequest",
         category: "account",
@@ -6212,6 +6818,64 @@ export const types = [
                 name: "rich_messages",
                 type: "Array<HostNativeChatRichMessage>",
                 description: "Safe rich-content views and their current private-transfer progress.",
+            },
+        ],
+    },
+    {
+        id: "v-02-host-profile-place-contact-avatars-request",
+        name: "V02HostProfilePlaceContactAvatarsRequest",
+        category: "profile",
+        definition: "export interface V02HostProfilePlaceContactAvatarsRequest {\n  surfaceWidth: number;\n  surfaceHeight: number;\n  own?: OwnAvatarSlot;\n  slots: Array<ContactAvatarSlot>;\n}",
+        description: "Where a chat product draws avatars the host fills in: its contacts' and,\noptionally, the signed-in user's own.\n\nv0.2 adds `own` to the v0.1 placement. A v0.1 placement is this one with no\nown slot, which is exactly what v0.1 meant. Both kinds live in one\nplacement so a product never has two placements replacing each other's\noverlay.",
+        fields: [
+            {
+                name: "surface_width",
+                type: "number",
+                description: "Width of the product's drawing surface, in the units of every rect:\nframebuffer pixels for a PolkaVM product, CSS pixels of its viewport\nfor a web product. 1 to 16384.",
+            },
+            {
+                name: "surface_height",
+                type: "number",
+                description: "Height of the drawing surface, in the same units. 1 to 16384.",
+            },
+            {
+                name: "own",
+                type: "OwnAvatarSlot | undefined",
+                description: "Where the signed-in user's own avatar is drawn, if the product draws\none. The host fills it only when the user has disclosed a profile.",
+            },
+            {
+                name: "slots",
+                type: "Array<ContactAvatarSlot>",
+                description: "Replaces the product's previous placement entirely; empty clears it.\nAt most 64, each with its own `slot`, unique across `own` too.",
+            },
+        ],
+    },
+    {
+        id: "v-03-contact-avatar-slot",
+        name: "V03ContactAvatarSlot",
+        category: "profile",
+        definition: "export interface V03ContactAvatarSlot {\n  slot: number;\n  contact: ProfileContact;\n  rect: AvatarRect;\n  clip: AvatarRect;\n}",
+        description: "Geometry and opaque contact selection for one host-rendered avatar.",
+        fields: [
+            {
+                name: "slot",
+                type: "number",
+                description: "Product-chosen id, unique across contact and own slots.",
+            },
+            {
+                name: "contact",
+                type: "ProfileContact",
+                description: "A peer identity or host-issued handle. Unresolved handles remain blank.",
+            },
+            {
+                name: "rect",
+                type: "AvatarRect",
+                description: "Square avatar bounds, from 1 to 1024 units per side.",
+            },
+            {
+                name: "clip",
+                type: "AvatarRect",
+                description: "Visible region to which the avatar is clipped.",
             },
         ],
     },

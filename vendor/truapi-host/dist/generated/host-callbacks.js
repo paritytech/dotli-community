@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -24,13 +24,17 @@ export const AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pai
  */
 export const ChatAuthorityReview = S.lazy(() => S.Struct({ productId: S.str }));
 /**
+ * Host-private initial selection for a multi-contact picker.
+ */
+export const ContactSelection = S.lazy(() => S.Struct({ selected: S.Vector(Bytes32) }));
+/**
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  *
  * Storage is host-local; `storage.md` records the current status quo:
  * <https://github.com/paritytech/host-spec/blob/adb3989208ae1c2107dbf0159611353e6989422c/storage.md?plain=1#L1-L7>
  */
-export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
+export const CoreStorageKey = S.lazy(() => S.TaggedUnion({ AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({ productId: S.str, request: PermissionAuthorizationRequest }), AllowanceKeys: S.Struct({ sessionId: S.str }), LastProcessedPairingStatement: S._void, AutoSigningKey: S.Struct({ productId: S.str }), AutoSigningKeys: S._void, RingVrfRegistry: S.Struct({ rootPublicKey: S.Bytes(32) }), StatementRenewalTargets: S._void, DeviceEncryptionKey: S._void, ProductSubtree: S.Struct({ sessionId: S.str, productId: S.str }), SsoResponderRequestLedger: S.Struct({ rootPublicKey: S.Bytes(32), peerStatementAccountId: S.Bytes(32), peerEncryptionPublicKey: S.Bytes(32) }), ProductManifest: S.Struct({ productId: S.str }), MainPurseCoinage: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), NativeChatDevice: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), NativeChatFileChunk: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str, attachmentId: S.Bytes(32), chunkIndex: S.u32 }), NativeChatProducts: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileDisclosure: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }), ProfileReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32), productId: S.str }), ProfilePersonalReferencesReceived: S.Struct({ rootPublicKey: S.Bytes(32), genesisHash: S.Bytes(32) }) }));
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
  */
@@ -77,6 +81,10 @@ export const HostContactMatches = S.lazy(() => S.Struct({ accounts: S.Vector(S.O
  * How a host's contact picker ended.
  */
 export const HostContactPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ account: Bytes32 }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
+/**
+ * The user's complete selection in a host-owned multi-contact picker.
+ */
+export const HostContactsPick = S.lazy(() => S.TaggedUnion({ Picked: S.Struct({ accounts: S.Vector(Bytes32) }), Dismissed: S._void, NoContacts: S._void, Unsupported: S._void }));
 /**
  * Review shown before a product learns the user's primary identity.
  */
@@ -142,7 +150,7 @@ export const NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }) }));
+export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }), ProfileDisclosure: S._void }));
 /**
  * Authorization status for a permission request.
  *
@@ -155,9 +163,31 @@ export const PermissionAuthorizationStatus = S.lazy(() => S.Status("NotDetermine
  */
 export const PermissionDecision = S.lazy(() => S.Status("AllowOnce", "AllowAlways", "Deny"));
 /**
+ * One avatar to draw over a product.
+ */
+export const PlacedAvatar = S.lazy(() => S.Struct({ slot: S.u32, rect: AvatarRect, clip: AvatarRect, reference: S.str, sharedAt: S.u64 }));
+/**
+ * The avatars the core found drawable in one product's placement: the slots
+ * whose contact shared a profile with the user, each with the reference that
+ * contact disclosed.
+ */
+export const PlacedAvatars = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, avatars: S.Vector(PlacedAvatar) }));
+/**
+ * One contact name to render in host-owned UI, without any Profile grant.
+ */
+export const PlacedContactLabel = S.lazy(() => S.Struct({ slot: S.u32, account: Bytes32, rect: AvatarRect, clip: AvatarRect }));
+/**
+ * Complete replacement of names drawn over one product connection.
+ */
+export const PlacedContactLabels = S.lazy(() => S.Struct({ surfaceWidth: S.u32, surfaceHeight: S.u32, labels: S.Vector(PlacedContactLabel) }));
+/**
  * Review shown before a preimage is submitted.
  */
 export const PreimageSubmitReview = S.lazy(() => S.Struct({ size: S.u64 }));
+/**
+ * Host-only presentation of a contact's shared profile or its absence.
+ */
+export const PresentedContactProfile = S.lazy(() => S.Struct({ shared: S.Option(SharedContactProfile), peerIdentity: S.Bytes(32), username: S.Option(S.str) }));
 /**
  * Product identity attached to one product-facing TrUAPI connection.
  *
@@ -181,6 +211,13 @@ export const ProductExecutionKind = S.lazy(() => S.Status("App", "Widget", "Work
  */
 export const ProductSubtreeReview = S.lazy(() => S.Struct({ productId: S.str }));
 /**
+ * Review shown before a product discloses a profile reference to an app
+ * audience or selected contacts. Personal grants permit host rendering across
+ * recipient apps. This authorizes the product, not individual audience edits.
+ * The prompt names the product, never the contacts or the reference.
+ */
+export const ProfileDisclosureReview = S.lazy(() => S.Struct({ productId: S.str }));
+/**
  * Review shown before allocating resources for a product. Names the
  * beneficiary product so the user knows which product receives the
  * (signing-capable) allowance key they are approving.
@@ -191,6 +228,10 @@ export const ResourceAllocationReview = S.lazy(() => S.Struct({ callingProductId
  * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export const SessionUiInfo = S.lazy(() => S.Struct({ publicKey: Bytes32, identityAccountId: S.Option(Bytes32), chatPublicKey: S.Option(Bytes32), deviceEncPublicKey: S.Option(Bytes32), peerStatementAccountId: S.Option(Bytes32), deviceStatementAccountId: S.Option(Bytes32), liteUsername: S.Option(S.str), fullUsername: S.Option(S.str) }));
+/**
+ * A profile reference received from an authenticated Chat contact.
+ */
+export const SharedContactProfile = S.lazy(() => S.Struct({ reference: S.str, sharedAt: S.u64 }));
 /**
  * Review shown before a sign-payload request is sent to the paired wallet.
  */
@@ -215,4 +256,4 @@ export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingPr
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));
+export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, ProfileDisclosure: ProfileDisclosureReview }));

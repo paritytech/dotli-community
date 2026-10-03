@@ -34,6 +34,7 @@ export const METHOD_TIMEOUTS: Partial<Record<ProtocolRequestMethod, number>> = {
   chainConnect: 30_000,
   resolveDotName: 90_000,
   resolveOwner: 90_000,
+  resolveSeitySlot: 90_000,
   resolveExecutableManifest: 30_000,
   resolveRootManifest: 30_000,
 };

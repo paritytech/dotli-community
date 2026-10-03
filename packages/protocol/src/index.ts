@@ -49,6 +49,7 @@ export {
   resolveExecutableManifestRemote,
   resolveOwnerRemote,
   resolveRootManifestRemote,
+  resolveSeitySlotRemote,
   setProtocolSubMode,
   subscribeSharedAuthStorage,
   subscribeSharedWallet,
@@ -57,6 +58,7 @@ export {
   warmupProtocol,
   writeSharedAuthStorage,
   writeSharedModeStorage,
+  type RemoteSeitySlot,
 } from './client.js';
 export { CORE_CUSTODY_BUSY_ERROR, isCoreCustodyOperation, type CoreCustodyOperation } from './core-custody.js';
 export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';

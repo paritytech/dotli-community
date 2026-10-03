@@ -570,6 +570,17 @@ Solid host picker cancels when its connection closes or the session, roster, wal
 a selection before returning a contact handle. Product prompts have connection-owned modal scopes; authentication,
 private storage and attachment custody stay with the one page core.
 
+The multi-select picker opens with the current audience checked, preserves selections while searching, and applies them
+only with **Use selection**. Confirming no checked contacts removes everyone; **Cancel**, Escape, and the backdrop leave
+the audience unchanged. The original single-contact picker remains available.
+
+Contact names and account identities remain host-private. Products receive opaque contact handles and can reserve
+clipped label boxes on their surface; the host draws verified contact usernames, or account identifiers when no username
+is available, above the product frame. These labels do not require a shared profile or photo, and are independent of
+Profile avatar placement. Same-wallet contact-directory changes clear stale names and refresh the latest placement
+without waiting for the product to redraw. Product restart, navigation, wallet/session replacement, an empty placement,
+and frame teardown cancel pending refreshes and remove labels.
+
 Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
 their event viewer or capture controls.
 
@@ -611,6 +622,26 @@ keys despite encryption. Wallet secrets never enter sandbox origins or HTTP mode
 funds or import a real wallet. Debug builds can still access real networks and sign real transactions.
 
 Keep `VITE_APP_DEBUG` unset or false in production builds.
+
+### Seity profiles
+
+Profile sharing uses the native core's separate **Profile Disclosure** consent. It does not authorize identity
+disclosure, transaction signing, spending, or statement submission. Dismissing a disclosure prompt leaves it undecided;
+an explicit denial is persisted by the core.
+
+The host resolves Seity contact references through the active network's registry and decrypts Bulletin content outside
+the product frame. Profile references are bearer capabilities: their storage follows the existing encrypted native
+wallet custody and wallet/network namespaces. A network without a configured registry has no contact profile to display.
+
+Profiles and contact-avatar layers are Solid host surfaces attached to the product's connection to the shared page core.
+Closing or retiring the connection aborts pending loads, removes its drawer and avatars, and releases decrypted image
+URLs. Profile content is self-described; verified Chat attribution confirms who shared a reference, not who an image
+depicts.
+
+Opening a contact without a received, live profile reference still opens the host drawer. It shows the host-verified
+contact name and **No information shared with you yet**, without an error style or an indefinite spinner. It does not
+claim the contact has never shared: information may not have reached this host yet. Availability stays private from the
+requesting product, whose completion reply is the same for shared and empty profiles.
 
 ## Sandbox API Checker
 

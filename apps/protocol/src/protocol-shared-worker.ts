@@ -25,6 +25,7 @@ import {
   resolveExecutableManifest,
   resolveOwner,
   resolveRootManifest,
+  resolveSeitySlot,
   setResolverAssetHubProvider,
   setResolverPeopleProvider,
   waitForAssetHubFinalized,
@@ -364,6 +365,20 @@ async function handleRequest(port: MessagePort, request: ProtocolRequestEnvelope
         id: request.id,
         ok: true,
         result,
+      });
+      return;
+    }
+
+    case 'resolveSeitySlot': {
+      const payload = request.payload as ProtocolRequestMap['resolveSeitySlot'];
+      assertString(payload.lookupKey, 'lookupKey');
+      const slot = await resolveSeitySlot(payload.lookupKey as `0x${string}`, syncOptions);
+      sendToPort(port, {
+        namespace: 'dotli:protocol',
+        kind: 'response',
+        id: request.id,
+        ok: true,
+        result: slot === null ? null : { ...slot, version: slot.version.toString() },
       });
       return;
     }

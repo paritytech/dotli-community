@@ -54,6 +54,7 @@ function scheduleIdle(callback: () => void): void {
 }
 
 /**
+
  * Reveal the network button. The host calls this once a product is on
  * screen, so the icon appears with the app rather than during the load.
  * Writes the store the chains island renders.

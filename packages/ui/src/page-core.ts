@@ -49,6 +49,13 @@ import {
 } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { showNotification } from './notification.js';
+import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
+import type { ContactLabelOverlay } from './contacts/label-overlay.js';
+
+export interface CoreConnectionOptions {
+  contactAvatars?: ContactAvatarOverlay;
+  contactLabels?: ContactLabelOverlay;
+}
 
 export interface PageProduct {
   label: string;
@@ -77,7 +84,7 @@ export interface CoreConnection {
 export interface CoreLease {
   runtime: PageRuntime;
   wallet: LiveLocalWallet | undefined;
-  connect(executionKind?: ProductExecutionKind): Promise<CoreConnection>;
+  connect(executionKind?: ProductExecutionKind, options?: CoreConnectionOptions): Promise<CoreConnection>;
   release(): void;
 }
 
@@ -88,7 +95,7 @@ interface Core {
   leases: number;
   persistent: boolean;
   faulted: boolean;
-  openCallbacks(): { callbacks: RequiredHostCallbacks; dispose(): void };
+  openCallbacks(options: CoreConnectionOptions): { callbacks: RequiredHostCallbacks; dispose(): void };
   dispose(): void;
 }
 
@@ -200,7 +207,7 @@ export async function acquireCore(): Promise<CoreLease> {
     if (!cores.has(core)) {
       throw new Error('Page core retired before it became ready');
     }
-    return { runtime, wallet: core.wallet, connect: kind => connect(core, runtime, kind), release };
+    return { runtime, wallet: core.wallet, connect: (kind, options) => connect(core, runtime, kind, options), release };
   } catch (error) {
     release();
     throw error;
@@ -253,6 +260,7 @@ function createCore(product: PageProduct): Core {
   }
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
+  const profileLifetime = new AbortController();
   const connectionDisposers = new Set<() => void>();
   let runtimeCallbacks: RequiredHostCallbacks | undefined;
   const context = isExperimentalWalletActive() ? localWalletContext() : undefined;
@@ -322,6 +330,7 @@ function createCore(product: PageProduct): Core {
       pairingDotSuffix: product.pairing?.dotSuffix,
       pairingHostGlobal: product.pairing?.hostGlobal,
       blockingModalScope,
+      profileSignal: profileLifetime.signal,
       ...(custodyLease === undefined ? {} : { custodyLease }),
       ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
     });
@@ -520,15 +529,21 @@ function createCore(product: PageProduct): Core {
     leases: 0,
     persistent: context !== undefined,
     faulted: false,
-    openCallbacks() {
+    openCallbacks(options) {
       if (disposed || runtimeCallbacks === undefined) {
         throw new Error('Page core callbacks are unavailable');
       }
       const scope = coordinator.createScope();
-      const contacts = contactsDirectory === undefined ? undefined : createContactsPlatform(contactsDirectory, scope);
+      const connectionLifetime = new AbortController();
+      const contacts =
+        contactsDirectory === undefined
+          ? undefined
+          : createContactsPlatform(contactsDirectory, scope, options.contactLabels);
       const callbacks = createHostCallbacks({
         label: product.label,
         blockingModalScope: scope,
+        profileSignal: connectionLifetime.signal,
+        ...(options.contactAvatars === undefined ? {} : { contactAvatars: options.contactAvatars }),
         ...(custodyLease === undefined ? {} : { custodyLease }),
         ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
       });
@@ -552,6 +567,9 @@ function createCore(product: PageProduct): Core {
           return;
         }
         closed = true;
+        connectionLifetime.abort();
+        options.contactAvatars?.dispose();
+        options.contactLabels?.dispose();
         connectionDisposers.delete(dispose);
         contacts?.dispose();
         scope.dispose();
@@ -564,6 +582,7 @@ function createCore(product: PageProduct): Core {
         return;
       }
       disposed = true;
+      profileLifetime.abort();
       cores.delete(core);
       if (current === core) {
         current = null;
@@ -606,12 +625,13 @@ async function connect(
   core: Core,
   runtime: PageRuntime,
   executionKind: ProductExecutionKind = 'App',
+  options: CoreConnectionOptions = {},
 ): Promise<CoreConnection> {
   if (!cores.has(core)) {
     throw new Error('Page core is closed');
   }
   const productId = productIdOf(core.product);
-  const callbacks = core.openCallbacks();
+  const callbacks = core.openCallbacks(options);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
