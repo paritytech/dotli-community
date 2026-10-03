@@ -60,7 +60,7 @@ export interface ResolutionSummary {
   avgBytesPerSecond: number | null;
   peakBytesPerSecond: number | null;
   firstByteMs: number | null;
-  cidCache: CacheResult;
+  executableCache: CacheResult;
   archiveCache: CacheResult;
 }
 
@@ -397,7 +397,7 @@ function emptySummary(): ResolutionSummary {
     avgBytesPerSecond: null,
     peakBytesPerSecond: null,
     firstByteMs: null,
-    cidCache: null,
+    executableCache: null,
     archiveCache: null,
   };
 }
@@ -452,10 +452,7 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         summary.renderedMs ??= Math.max(0, ev.timestamp - startedAt);
         break;
       case 'boot:started': {
-        // The authoritative backend for the load. `resolve:started` also
-        // carries one, but a load served from the CID cache never emits a
-        // resolve event at all, and without this the gateway rows rendered as
-        // four chains that "never started" when no light client had ever run.
+        // The authoritative backend for the load, even before resolution begins.
         const backend = str(p['chainBackend']);
         if (backend === 'rpc-gateway') {
           summary.backend = 'rpc-gateway';
@@ -466,24 +463,18 @@ function buildSummary(mine: readonly DotliDebugEvent[], startedAt: number): Reso
         // here so the panel says so instead of "not reported", which reads as
         // a missing instrumentation hook.
         if (p['skipCidCache'] === true) {
-          summary.cidCache = 'skipped';
+          summary.executableCache = 'skipped';
         }
         if (p['skipArchiveCache'] === true) {
           summary.archiveCache = 'skipped';
         }
         break;
       }
-      case 'boot:cid_cache_checked':
-        summary.cidCache = p['hit'] === true ? 'hit' : 'miss';
-        // A cache hit resolves the name without a `resolve:completed` event.
-        // `??=` so a later real resolve still wins if both somehow appear.
-        if (p['hit'] === true) {
-          summary.cid ??= str(p['cid']);
-          summary.label ??= str(p['label']);
-          // The moment the CID was known, which is what "resolved in" means on
-          // this path. Without it the field read "—" beside outcome "resolved".
-          summary.resolveMs ??= Math.max(0, ev.timestamp - startedAt);
-        }
+      case 'boot:installed_executable_cache_checked':
+        summary.executableCache = p['hit'] === true ? 'hit' : 'miss';
+        summary.label ??= str(p['label']);
+        // A local hit still needs chain revalidation. Its contenthash is not
+        // a resolved CID, and the lookup time is not the resolution latency.
         break;
       case 'boot:block_cache':
         summary.archiveCache = num(p['misses']) === 0 && (num(p['hits']) ?? 0) > 0 ? 'hit' : 'miss';
@@ -637,10 +628,10 @@ function summaryFacts(model: ResolutionModel): Fact[] {
       hint: 'The best rate seen between two byte samples, taken about a second apart. That makes it a one-second average, not a true peak.',
     },
     {
-      key: 'CID cache',
+      key: 'executable cache',
       value: '',
-      valueHtml: cacheText(s.cidCache),
-      hint: 'Whether the content id for this name was already saved from an earlier visit, letting the load skip the chain lookup entirely. \u201cSkipped\u201d means the cache is turned off in settings.',
+      valueHtml: cacheText(s.executableCache),
+      hint: 'Whether the executable manifest and contenthash for this name were saved from an earlier visit. A hit still requires chain revalidation before reuse. \u201cSkipped\u201d means the cache is turned off in settings.',
     },
     {
       key: 'archive cache',

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { IDBFactory } from 'fake-indexeddb';
+import { IDBFactory, IDBObjectStore } from 'fake-indexeddb';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { packArchive } from '@dotli/content';
@@ -33,6 +33,10 @@ async function setArchive(scope: WorkerScope, files: Record<string, string>): Pr
   const { packed, index } = packArchive(
     Object.fromEntries(Object.entries(files).map(([path, text]) => [path, encoder.encode(text)])),
   );
+  return sendArchive(scope, packed, index);
+}
+
+async function sendArchive(scope: WorkerScope, packed: unknown, index: unknown): Promise<unknown[]> {
   const replies: unknown[] = [];
   const kept: Promise<unknown>[] = [];
   const event = Object.assign(new Event('message'), {
@@ -65,6 +69,32 @@ async function request(scope: WorkerScope, path: string): Promise<Response | und
   return answer === undefined ? undefined : await answer;
 }
 
+async function replacePersistedArchive(archive: unknown): Promise<void> {
+  const db = await new Promise<IDBDatabase>((resolve, reject) => {
+    const opening = indexedDB.open('dotli-app-sw', 1);
+    opening.onsuccess = () => {
+      resolve(opening.result);
+    };
+    opening.onerror = () => {
+      reject(opening.error ?? new Error('archive fixture DB open failed'));
+    };
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('archive', 'readwrite');
+      tx.objectStore('archive').put(archive, 'current');
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error('archive fixture write failed'));
+      };
+    });
+  } finally {
+    db.close();
+  }
+}
+
 describe('app service worker', () => {
   let network: ReturnType<typeof vi.fn>;
 
@@ -77,6 +107,7 @@ describe('app service worker', () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -126,5 +157,87 @@ describe('app service worker', () => {
     expect(await shellAsset?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(appPath?.status).toBe(503);
+  });
+
+  it('keeps a newly received archive when an older persisted read finishes', async () => {
+    const first = await startWorker();
+    await setArchive(first, { 'main.js': 'old' });
+    const restarted = await startWorker();
+    let replacement: Promise<unknown[]> | undefined;
+    const get = vi.spyOn(IDBObjectStore.prototype, 'get').mockImplementationOnce(function (this: IDBObjectStore, key) {
+      get.mockRestore();
+      const read = this.get(key);
+      read.addEventListener(
+        'success',
+        () => {
+          replacement = setArchive(restarted, { 'main.js': 'new' });
+        },
+        { once: true },
+      );
+      return read;
+    });
+
+    const response = await request(restarted, '/main.js');
+    await replacement;
+
+    expect(await response?.text()).toBe('new');
+    expect(await (await request(await startWorker(), '/main.js'))?.text()).toBe('new');
+    expect(network).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: 'non-buffer payload', packed: 'bad', index: [] },
+    { name: 'non-array index', packed: new ArrayBuffer(1), index: {} },
+    { name: 'non-string path', packed: new ArrayBuffer(1), index: [{ p: 1, o: 0, l: 1 }] },
+    { name: 'negative offset', packed: new ArrayBuffer(1), index: [{ p: 'main.js', o: -1, l: 1 }] },
+    { name: 'fractional length', packed: new ArrayBuffer(1), index: [{ p: 'main.js', o: 0, l: 0.5 }] },
+    { name: 'out-of-bounds range', packed: new ArrayBuffer(1), index: [{ p: 'main.js', o: 1, l: 1 }] },
+    { name: 'host-owned path', packed: new ArrayBuffer(1), index: [{ p: 'polkavm-runtime/host.js', o: 0, l: 1 }] },
+    {
+      name: 'encoded host-owned path',
+      packed: new ArrayBuffer(1),
+      index: [{ p: '/%70olkavm-runtime/host.js', o: 0, l: 1 }],
+    },
+  ])('rejects a live $name without replacing the accepted archive', async ({ packed, index }) => {
+    const scope = await startWorker();
+    await setArchive(scope, { 'main.js': 'accepted' });
+
+    expect(await sendArchive(scope, packed, index)).toEqual([expect.objectContaining({ type: 'ARCHIVE_ERROR' })]);
+    expect(await (await request(scope, '/main.js'))?.text()).toBe('accepted');
+    expect(await (await request(await startWorker(), '/main.js'))?.text()).toBe('accepted');
+  });
+
+  it.each([
+    { name: 'non-buffer payload', packed: 'bad', index: [] },
+    { name: 'out-of-bounds range', packed: new ArrayBuffer(1), index: [{ p: 'main.js', o: 0, l: 2 }] },
+    { name: 'host-owned path', packed: new ArrayBuffer(1), index: [{ p: 'polkavm-runtime/host.js', o: 0, l: 1 }] },
+    {
+      name: 'encoded host-owned path',
+      packed: new ArrayBuffer(1),
+      index: [{ p: '/%70olkavm-runtime/host.js', o: 0, l: 1 }],
+    },
+  ])('does not serve a persisted $name and accepts a fresh valid archive', async ({ packed, index }) => {
+    const first = await startWorker();
+    await setArchive(first, { 'main.js': 'original' });
+    await replacePersistedArchive({ packed, index });
+    const restarted = await startWorker();
+
+    expect((await request(restarted, '/dotli-app/main.js'))?.status).toBe(503);
+    expect(await request(restarted, '/polkavm-runtime/host.js')).toBeUndefined();
+    expect(network).not.toHaveBeenCalled();
+
+    expect(await setArchive(restarted, { 'main.js': 'fresh' })).toEqual([{ type: 'ARCHIVE_READY' }]);
+    expect(await (await request(restarted, '/dotli-app/main.js'))?.text()).toBe('fresh');
+  });
+
+  it('leaves host runtime requests on the network before and after archive restoration', async () => {
+    const first = await startWorker();
+    await setArchive(first, { 'main.js': 'app' });
+    const restarted = await startWorker();
+
+    expect(await request(restarted, '/polkavm-runtime/host.js')).toBeUndefined();
+    expect(await (await request(restarted, '/main.js'))?.text()).toBe('app');
+    expect(await request(restarted, '/polkavm-runtime/host.js')).toBeUndefined();
+    expect(network).not.toHaveBeenCalled();
   });
 });

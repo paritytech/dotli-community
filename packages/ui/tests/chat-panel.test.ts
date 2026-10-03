@@ -344,6 +344,7 @@ describe('chat panel', () => {
         return Promise.resolve();
       },
       publishRendererAction: () => Promise.resolve(),
+      loadRendererImage: () => Promise.reject(new Error('No image in this conversation')),
       render: () => () => undefined,
     });
 
@@ -497,6 +498,7 @@ describe('chat panel', () => {
           rendererActions.push(item);
           return Promise.resolve();
         },
+        loadRendererImage: () => Promise.reject(new Error('No image in this conversation')),
         render: (request, sink) => {
           renders.push({ request, sink });
           return disposeRender;
@@ -525,7 +527,7 @@ describe('chat panel', () => {
       };
       expect(renders).toHaveLength(1);
       expect(renders[0]?.request).toEqual({ context, payload: '0x0102' });
-      expect(byId('chat-panel-messages').textContent).toContain('Loading…');
+      expect(byId('chat-panel-messages').querySelector('.chat-custom-placeholder')).not.toBeNull();
 
       // The product streams a tree; the cell replaces its content.
       nth(renders, 0).sink.onUpdate({
@@ -560,8 +562,7 @@ describe('chat panel', () => {
       await settle(() => byId('chat-panel-messages').textContent.includes('Pick one'));
       expect(byId('chat-panel-messages').textContent).toContain('Pick one');
 
-      // Tapping the rendered button publishes a renderer action naming the
-      // same body; the chat action stream stays untouched.
+      // Product-rendered controls publish Renderer actions, never Chat actions.
       document.querySelector<HTMLButtonElement>('.chat-custom-btn')?.click();
       await settle(() => rendererActions.length === 1);
       expect(rendererActions).toEqual([{ context, actionId: 'pick:a', payload: '0x' }]);
@@ -571,7 +572,7 @@ describe('chat panel', () => {
       nth(renders, 0).sink.onError?.(new Error('render refused'));
       await settle(() => !byId('chat-panel-messages').textContent.includes('Pick one'));
       expect(byId('chat-panel-messages').textContent).not.toContain('Pick one');
-      expect(byId('chat-panel-messages').textContent).toContain('This message can’t be shown right now.');
+      expect(byId('chat-panel-messages').querySelector('.chat-custom-placeholder')).not.toBeNull();
 
       // Leaving the room disposes the live render.
       byId('chat-panel-back').click();
@@ -745,6 +746,7 @@ describe('chat panel', () => {
       service.registerChatConnection(productId, {
         publish: () => Promise.resolve(),
         publishRendererAction: () => Promise.resolve(),
+        loadRendererImage: () => Promise.reject(new Error('No image in this conversation')),
         render,
       });
       await service.productCreateRoom(productId, {
@@ -818,6 +820,7 @@ describe('chat panel', () => {
     service.registerChatConnection(productId, {
       publish: () => Promise.reject(denied ? new Error('request denied') : new Error('boom')),
       publishRendererAction: () => Promise.resolve(),
+      loadRendererImage: () => Promise.reject(new Error('No image in this conversation')),
       render: () => () => undefined,
     });
     await service.productCreateRoom(productId, {

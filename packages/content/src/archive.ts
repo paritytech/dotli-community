@@ -99,7 +99,14 @@ const MAX_PARALLEL_BLOCK_FETCHES = 8;
 export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Promise<ArchiveFiles> {
   const files: ArchiveFiles = {};
 
-  /** Read the raw data bytes from a chunk CID (used for multi-block files). */
+  /** Read the raw data bytes from a chunk CID (used for multi-block files).
+   *
+   * A chunk is either a raw leaf (bytes are the content) or a dag-pb node.
+   * Large files nest: the importer inserts intermediate dag-pb stem nodes
+   * whose links point at further stems or leaves, so a dag-pb chunk with
+   * links must recurse rather than read only its (usually empty) inline
+   * data — that truncated every file beyond one link level to zero bytes.
+   */
   async function getChunkData(cid: CID): Promise<Uint8Array> {
     const bytes = await blockSource(cid);
 
@@ -109,7 +116,15 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
 
     if (cid.code === DAG_PB) {
       const node = dagPb.decode(bytes);
-      return node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
+      const inline = node.Data ? (UnixFS.unmarshal(node.Data).data ?? new Uint8Array(0)) : new Uint8Array(0);
+      if (node.Links.length === 0) {
+        return inline;
+      }
+      const chunks = new Array<Uint8Array>(node.Links.length);
+      await runBounded(node.Links, async (link, i) => {
+        chunks[i] = await getChunkData(link.Hash);
+      });
+      return inline.byteLength > 0 ? concatBytes(inline, ...chunks) : concatBytes(...chunks);
     }
 
     throw new Error(`Unsupported chunk codec 0x${cid.code.toString(16)} for ${cid.toString()}`);
@@ -178,7 +193,9 @@ export async function walkUnixFsDag(rootCid: CID, blockSource: BlockSource): Pro
         await runBounded(node.Links, async (link, i) => {
           chunks[i] = await getChunkData(link.Hash);
         });
-        content = concatBytes(...chunks);
+        const inline = uf?.data;
+        content =
+          inline !== undefined && inline.byteLength > 0 ? concatBytes(inline, ...chunks) : concatBytes(...chunks);
       }
 
       // Same root-only CAR-packed exception as the RAW branch. Here the

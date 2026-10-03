@@ -12,17 +12,21 @@ dotli still has two protocol layers:
 2. dotli's internal host-smoldot protocol in `packages/protocol/`, which owns `.dot` resolution and is not replaced by
    TrUAPI.
 
-The active launch path is `packages/ui/src/bridge.ts`:
+The active launch path is `packages/ui/src/bridge.ts`, backed by `packages/ui/src/page-core.ts`:
 
-- imports `@parity/truapi-host/web` and `@parity/truapi-host/worker-runtime?worker`;
-- starts a Web Worker that owns the `truapi-server` WASM core;
-- creates the worker runtime with `createWebWorkerPairingHostRuntime(...)`;
-- supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
-- creates a product-scoped provider with `runtime.createProvider({ productId })`;
-- calls `createIframeHost(...)` with the product URL, sandbox policy, allowed origin, and the worker-backed provider.
+- the page core owns one native worker runtime shared by shell UI and product connections;
+- it selects the normal pairing runtime or the explicitly enabled debug-only Wallet signing runtime;
+- it supplies typed callbacks from `packages/ui/src/host-callbacks/handlers.ts`;
+- the bridge acquires a core lease and a product-scoped connection, not a separate native runtime;
+- `createIframeHost(...)` connects the product MessagePort using the exact product URL, sandbox policy, and allowed
+  origin;
+- replacing a product disposes its connection while other core leases remain alive;
+- native runtime failure retires all product connections rather than leaving a cached client able to execute.
 
-Product frames enter the Rust core through the iframe `MessageChannel`. Account, signing, statement-store, SSO pairing,
-restore, and logout are core-owned and do not cross the JS host callback boundary as Nova-specific routes.
+Product frames enter the page's Rust core through the iframe `MessageChannel`, using the scoped TrUAPI wire envelope.
+Legacy Nova `window.postMessage` frames are rejected with a product-update notice rather than forwarded into an
+incompatible decoder. Products must use a compatible TrUAPI MessagePort transport. Account, signing, statement-store,
+SSO pairing, restore, and logout are core-owned and do not cross the JS host callback boundary as Nova-specific routes.
 
 ## dotli callback boundary
 

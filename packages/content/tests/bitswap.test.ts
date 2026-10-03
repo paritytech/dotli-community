@@ -1,6 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
-import type * as ConfigModule from '../../config/src/config.js';
+import type * as ConfigModule from '@dotli/config';
 import type * as BitswapModule from '../src/bitswap.js';
 
 const mocks = vi.hoisted(() => ({
@@ -11,16 +11,15 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock('../../protocol/src/client.js', () => ({
+vi.mock(import('@dotli/protocol'), async importOriginal => ({
+  ...(await importOriginal()),
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));
-vi.mock('../../config/src/mode.js', () => ({ getBackend: mocks.getBackend }));
-vi.mock('../../config/src/network.js', () => ({
-  getActiveServicesConfig: mocks.getActiveServicesConfig,
-}));
-vi.mock('../../config/src/config.js', async importOriginal => ({
+vi.mock('@dotli/config', async importOriginal => ({
   ...(await importOriginal<typeof ConfigModule>()),
+  getBackend: mocks.getBackend,
+  getActiveServicesConfig: mocks.getActiveServicesConfig,
   isSandboxOrigin: mocks.isSandboxOrigin,
 }));
 
@@ -419,7 +418,7 @@ describe('bitswapGet after a halt', () => {
 
 describe('listenForSandboxBitswap', () => {
   /** A stand-in for a sandbox iframe's window, distinguishable by identity. */
-  function fakeFrame(): { postMessage: ReturnType<typeof vi.fn> } {
+  function fakeFrame(): { postMessage: Mock } {
     return { postMessage: vi.fn() };
   }
 

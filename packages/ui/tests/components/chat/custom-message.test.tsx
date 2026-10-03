@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { RendererNode } from '@parity/truapi';
+import type { ImageSource, RendererNode } from '@parity/truapi';
 import { CustomMessage } from '../../../src/components/chat/CustomMessage.js';
 import { renderComponent, settle } from '../../helpers/solid.js';
 import { nth } from '../../helpers/nth.js';
@@ -10,6 +10,7 @@ import { nth } from '../../helpers/nth.js';
 interface Sink {
   onUpdate: (node: RendererNode) => void;
   onError: (error: unknown) => void;
+  onComplete: () => void;
 }
 
 const service = vi.hoisted(() => ({
@@ -17,15 +18,24 @@ const service = vi.hoisted(() => ({
   stops: 0,
   actions: [] as unknown[],
   actionFails: false,
+  renderFails: false,
+  imageLoads: [] as { signal: AbortSignal; resolve: (blob: Blob) => void; reject: (error: Error) => void }[],
 }));
 
 vi.mock('../../../src/chat/service.js', () => ({
-  renderCustomMessage: (_productId: string, _request: unknown, sink: Sink) => {
+  render: (_productId: string, _request: unknown, sink: Sink) => {
     service.sinks.push(sink);
+    if (service.renderFails) {
+      sink.onError(new Error('unreachable'));
+    }
     return () => {
       service.stops += 1;
     };
   },
+  loadRendererImage: (_productId: string, _source: ImageSource, signal: AbortSignal) =>
+    new Promise<Blob>((resolve, reject) => {
+      service.imageLoads.push({ signal, resolve, reject });
+    }),
   userTriggerRendererAction: (_productId: string, item: unknown) => {
     service.actions.push(item);
     return service.actionFails ? Promise.reject(new Error('unreachable')) : Promise.resolve();
@@ -50,7 +60,7 @@ class FakeObserver {
   }
 }
 
-function renderMessage(): ReturnType<typeof renderComponent> {
+function renderMessage(): { container: HTMLElement; unmount: () => void } {
   return renderComponent(() => (
     <CustomMessage productId="chatty.dot" roomId="main" messageId="m1" messageType="poll" payload="0x01" />
   ));
@@ -72,6 +82,8 @@ beforeEach(() => {
   service.stops = 0;
   service.actions = [];
   service.actionFails = false;
+  service.renderFails = false;
+  service.imageLoads = [];
   FakeObserver.last = undefined;
   vi.stubGlobal('IntersectionObserver', FakeObserver);
 });
@@ -107,7 +119,7 @@ describe('chat custom message', () => {
     const { container } = renderMessage();
     await settle();
     FakeObserver.last?.scroll(true);
-    expect(container.textContent).toBe('Loading…');
+    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
 
     // When
     nth(service.sinks, 0).onUpdate(button('Vote'));
@@ -132,7 +144,7 @@ describe('chat custom message', () => {
 
     // Then
     expect(container.querySelector('button')).toBeNull();
-    expect(container.textContent).toBe('This message can’t be shown right now.');
+    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
   });
 
   it('As a user, a tap the product cannot receive says so', async () => {
@@ -160,7 +172,8 @@ describe('chat custom message', () => {
         payload: '0x',
       },
     ]);
-    expect(container.textContent).toBe('The app could not be reached.');
+    expect(container.querySelector('button')).toBeNull();
+    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
   });
 
   it('As a user typing in a live message, a streamed update keeps my focus and text', async () => {
@@ -191,7 +204,7 @@ describe('chat custom message', () => {
     expect(input.value).toBe('hel');
   });
 
-  it('As a user, a message that failed shows again when the product sends a new tree', async () => {
+  it('ignores callbacks after failure and starts a fresh render after returning onscreen', async () => {
     // Given
     const { container } = renderMessage();
     await settle();
@@ -200,7 +213,13 @@ describe('chat custom message', () => {
     await settle();
 
     // When
-    nth(service.sinks, 0).onUpdate(button('Retry'));
+    nth(service.sinks, 0).onUpdate(button('Stale'));
+    await settle();
+    expect(container.querySelector('button')).toBeNull();
+    expect(service.stops).toBe(1);
+    FakeObserver.last?.scroll(false);
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 1).onUpdate(button('Retry'));
     await settle();
 
     // Then
@@ -233,4 +252,126 @@ describe('chat custom message', () => {
     // Then
     expect(service.sinks).toHaveLength(1);
   });
+});
+
+describe('custom message resource lifetime', () => {
+  const image: RendererNode = {
+    tag: 'Image',
+    value: { modifiers: [], props: { source: { tag: 'Archive', value: 'icon.png' } } },
+  };
+
+  it('rejects stale stream callbacks after scrolling away and retains a completed tree', async () => {
+    const { container, unmount } = renderMessage();
+    await settle();
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 0).onUpdate(button('First'));
+    await settle();
+    const detached = container.querySelector('button');
+    FakeObserver.last?.scroll(false);
+    await settle();
+    detached?.click();
+    expect(service.actions).toEqual([]);
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 1).onUpdate(button('Second'));
+    nth(service.sinks, 0).onUpdate(button('Stale'));
+    nth(service.sinks, 0).onError(new Error('old stream'));
+    nth(service.sinks, 1).onComplete();
+    nth(service.sinks, 1).onUpdate(button('After completion'));
+    await settle();
+    expect(container.querySelector('button')?.textContent).toBe('Second');
+    container.querySelector('button')?.click();
+    expect(service.actions).toHaveLength(1);
+    unmount();
+    FakeObserver.last?.scroll(true);
+    expect(service.sinks).toHaveLength(2);
+    expect(service.stops).toBe(2);
+  });
+
+  it('disposes a subscription that fails synchronously and does not restart while still visible', async () => {
+    service.renderFails = true;
+    const { container } = renderMessage();
+    await settle();
+    FakeObserver.last?.scroll(true);
+    FakeObserver.last?.scroll(true);
+    await settle();
+    expect(service.stops).toBe(1);
+    expect(service.sinks).toHaveLength(1);
+    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+  });
+
+  it('releases image URLs on replacement, visibility loss and unmount, ignoring late image bytes', async () => {
+    const createObjectURL = vi.fn(() => 'blob:message-image');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static override createObjectURL = createObjectURL;
+        static override revokeObjectURL = revokeObjectURL;
+      },
+    );
+    const { container, unmount } = renderMessage();
+    await settle();
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 0).onUpdate(image);
+    await settle();
+    const first = nth(service.imageLoads, 0);
+    first.resolve(new Blob(['first']));
+    await settle();
+    expect(container.querySelector('img')?.getAttribute('src')).toBe('blob:message-image');
+    nth(service.sinks, 0).onUpdate(image);
+    await settle();
+    expect(first.signal.aborted).toBe(true);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+    const second = nth(service.imageLoads, 1);
+    FakeObserver.last?.scroll(false);
+    await settle();
+    expect(second.signal.aborted).toBe(true);
+    second.resolve(new Blob(['too late']));
+    await settle();
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    expect(container.querySelector('img')).toBeNull();
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 1).onUpdate(image);
+    await settle();
+    nth(service.imageLoads, 2).resolve(new Blob(['current']));
+    await settle();
+    unmount();
+    expect(nth(service.imageLoads, 2).signal.aborted).toBe(true);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['fetch', 'decode'])('replaces a tree on image %s failure', async failure => {
+    const { container } = renderMessage();
+    await settle();
+    FakeObserver.last?.scroll(true);
+    nth(service.sinks, 0).onUpdate(image);
+    await settle();
+    if (failure === 'fetch') {
+      nth(service.imageLoads, 0).reject(new Error('missing'));
+    } else {
+      container.querySelector('img')?.dispatchEvent(new Event('error'));
+    }
+    await settle();
+    await settle();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.querySelector('.chat-custom-placeholder')).not.toBeNull();
+    expect(nth(service.imageLoads, 0).signal.aborted).toBe(true);
+    expect(service.stops).toBe(1);
+  });
+});
+
+it('keeps the new tree when an action from its predecessor fails late', async () => {
+  service.actionFails = true;
+  const { container } = renderMessage();
+  await settle();
+  FakeObserver.last?.scroll(true);
+  nth(service.sinks, 0).onUpdate(button('Before'));
+  await settle();
+  container.querySelector('button')?.click();
+  nth(service.sinks, 0).onUpdate(button('After'));
+  await settle();
+  await settle();
+  expect(container.querySelector('button')?.textContent).toBe('After');
+  expect(container.querySelector('.chat-custom-placeholder')).toBeNull();
+  expect(service.stops).toBe(0);
 });

@@ -61,6 +61,13 @@ import {
   getActiveServicesConfig,
   setNetworkOverride,
 } from '@dotli/config';
+import {
+  isPolkaVmPackage,
+  runPolkaVmApplication,
+  polkavmWebFallbackEntrypoint,
+  polkaVmCompatibilityError,
+} from './polkavm-runtime.js';
+import { assertNoHostOwnedPaths } from './host-owned-paths.js';
 
 import { endpointHost, gatewayUnreachable, elapsed, log } from '@dotli/shared';
 
@@ -128,6 +135,19 @@ function stripContractParamsFromUrl(): void {
   }
   history.replaceState(null, '', cleaned.toString());
 }
+/**
+ * A full reset is a one-shot host signal. Consume only that flag after the
+ * purge while retaining the PolkaVM launch contract, so reloading the host-owned
+ * canvas can start again with the same verified CID and manifest.
+ */
+function consumeFullResetParam(): void {
+  const cleaned = new URL(window.location.href);
+  if (!cleaned.searchParams.has(SANDBOX_CONTRACT_PARAMS.fullReset)) {
+    return;
+  }
+  cleaned.searchParams.delete(SANDBOX_CONTRACT_PARAMS.fullReset);
+  history.replaceState(null, '', cleaned.toString());
+}
 
 /**
  * Ask the host shell to rebuild this iframe with a fresh contract URL.
@@ -146,6 +166,18 @@ function requestHostRerender(reason: string): void {
   window.parent.postMessage({ type: 'dotli:sandbox-recover' }, '*');
   window.setTimeout(() => {
     failLoading('Invalid sandbox URL', reason);
+  }, TIMEOUTS.SANDBOX_RECOVER);
+}
+/**
+ * A newer sandbox cannot safely interpret a contract emitted by an older host.
+ * Ask the parent to activate its waiting PWA build instead of re-rendering the
+ * same stale contract and looping.
+ */
+function requestHostUpdate(reason: string): void {
+  showStatus('Updating dot.li...');
+  window.parent.postMessage({ type: 'dotli:host-update-required' }, '*');
+  window.setTimeout(() => {
+    failLoading('dot.li update required', reason);
   }, TIMEOUTS.SANDBOX_RECOVER);
 }
 
@@ -320,6 +352,7 @@ async function registerAppServiceWorker({
  * otherwise CSS/JS requests fall through to nginx which returns the HTML fallback.
  */
 async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
+  assertNoHostOwnedPaths(Object.keys(files));
   const sw = navigator.serviceWorker.controller;
   if (!sw) {
     return;
@@ -340,9 +373,8 @@ async function storeArchiveInSW(files: ArchiveFiles): Promise<void> {
         navigator.serviceWorker.removeEventListener('message', handler);
         resolve();
       } else if (msg?.type === 'ARCHIVE_ERROR') {
-        // The SW rejected the payload (malformed index or IDB persist
-        // failure). Surface the real cause instead of waiting for the
-        // timeout, so the page retry flow has something to act on.
+        // The SW rejected the malformed archive payload. Surface the real cause
+        // instead of waiting for the timeout so the retry flow can act on it.
         clearTimeout(timer);
         navigator.serviceWorker.removeEventListener('message', handler);
         reject(new Error(`Service worker rejected archive: ${msg.reason ?? 'unknown'}`));
@@ -367,6 +399,36 @@ async function maybeInjectSandboxChecker(html: string): Promise<string> {
   }
   const { injectSandboxChecker } = await loadSandboxChecker();
   return injectSandboxChecker(html);
+}
+
+async function runPolkaVmIfPresent(
+  files: ArchiveFiles,
+  cid: string,
+  executableManifest: string | null,
+  polkaVmEnabled: boolean,
+): Promise<false | null | string> {
+  if (!isPolkaVmPackage(files)) {
+    return false;
+  }
+  if (!polkaVmEnabled) {
+    failLoading(
+      'Experimental PolkaVM apps are disabled',
+      'Enable PolkaVM apps in dot.li Settings, then reload this app.',
+    );
+    return null;
+  }
+  const fallback = await polkavmWebFallbackEntrypoint(files, executableManifest);
+  if (fallback !== null) {
+    showStatus('Starting compatible web fallback...');
+    return fallback;
+  }
+  showStatus('Starting PolkaVM application...');
+  // PolkaVM apps are host-owned canvases, not package HTML. Retain their launch
+  // contract so a browser or frame reload can verify and restart the same CID.
+  await runPolkaVmApplication(files, cid, executableManifest);
+  notifyLoadingDone();
+  performance.mark('dotli:app:end');
+  return null;
 }
 
 // Session-scoped decryption key cache: once a user decrypts a CID in this tab,
@@ -566,7 +628,9 @@ async function main(): Promise<void> {
   const urlParams = new URL(window.location.href).searchParams;
   const parsed = validateSandboxParams(urlParams);
   if (!parsed.ok) {
-    if (parsed.recoverable === true) {
+    if (parsed.hostUpdateRequired === true) {
+      requestHostUpdate(parsed.reason);
+    } else if (parsed.recoverable === true) {
       requestHostRerender(parsed.reason);
     } else {
       failLoading('Invalid sandbox URL', parsed.reason);
@@ -574,7 +638,7 @@ async function main(): Promise<void> {
     stopApp();
     return;
   }
-  const { cid, chainBackend, network, resolutionId } = parsed.params;
+  const { cid, chainBackend, network, polkaVmEnabled, executableManifest, resolutionId } = parsed.params;
   // Before the setDefaults below, so a failure between here and there is still
   // attributable to the page load that caused it.
   if (resolutionId !== null) {
@@ -592,6 +656,7 @@ async function main(): Promise<void> {
   if (parsed.params.fullReset) {
     log.warn('[dot.li app] fullReset=1 → purging sandbox-origin state');
     await purgeSandboxOriginState();
+    consumeFullResetParam();
   }
 
   // Propagate the chainBackend and network choices into every metric emitted
@@ -661,13 +726,21 @@ async function main(): Promise<void> {
   if (result.type === 'single') {
     html = new TextDecoder().decode(result.content);
   } else {
-    // For multi-file archives, store files in the SW so it can serve
-    // sub-resources (CSS, JS, fonts) when the browser loads them.
+    // Native PolkaVM products run entirely from the verified in-memory files.
+    // They do not need the web sandbox's service-worker virtual filesystem.
+    const polkavmRuntime = await runPolkaVmIfPresent(result.files, cid, executableManifest, polkaVmEnabled);
+    if (polkavmRuntime === null) {
+      stopApp();
+      return;
+    }
+    // HTML products and PolkaVM web fallbacks need the SW as a synchronous
+    // virtual filesystem before their document can request sub-resources.
     await storeArchiveInSW(result.files);
     log.warn(`[dot.li app] archive stored in SW (${elapsed(T0)})`);
-    const indexHtml = result.files['index.html'] as Uint8Array | undefined;
+    const htmlPath = typeof polkavmRuntime === 'string' ? polkavmRuntime : 'index.html';
+    const indexHtml = result.files[htmlPath] as Uint8Array | undefined;
     if (indexHtml === undefined) {
-      throw new Error('Archive missing index.html — cannot render a sandbox without a root document.');
+      throw new Error('Archive is neither a supported PolkaVM product nor an HTML application.');
     }
     html = new TextDecoder().decode(indexHtml);
   }
@@ -756,6 +829,11 @@ function run(): void {
         attempt: String(runAttempts),
       });
       const raw = err instanceof Error ? err.message : String(err);
+      const compatibilityError = polkaVmCompatibilityError(raw);
+      if (compatibilityError !== null) {
+        failLoading(compatibilityError.title, compatibilityError.detail);
+        return;
+      }
       // `TypeError: Failed to fetch` is all the browser says when it could not
       // open the connection, and it is the single most common way the gateway
       // path fails. Passed through verbatim it reads as a bug in the app, so

@@ -2,8 +2,10 @@
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { fireEvent } from '@solidjs/testing-library';
 import {
   type WireProvider,
+  MESSAGE_TYPE_REQUEST,
   MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
   VersionedHostRequestLoginResponse,
@@ -13,6 +15,9 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import { nth } from './helpers/nth.js';
+import { POLKAVM_APPS_KEY } from '@dotli/config';
+import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { settle as settleSolid } from './helpers/solid.js';
 
 interface Deferred<T> {
   promise: Promise<T>;
@@ -24,20 +29,20 @@ interface MockProvider {
   postMessage: Mock<WireProvider['postMessage']>;
   subscribe: Mock<WireProvider['subscribe']>;
   subscribeClose: Mock<NonNullable<WireProvider['subscribeClose']>>;
-  disconnectSession: ReturnType<typeof vi.fn>;
-  getPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
-  getPermissionAuthorizationStatuses: ReturnType<typeof vi.fn>;
-  setPermissionAuthorizationStatus: ReturnType<typeof vi.fn>;
-  disconnect: ReturnType<typeof vi.fn>;
+  disconnectSession: Mock;
+  getPermissionAuthorizationStatus: Mock;
+  getPermissionAuthorizationStatuses: Mock;
+  setPermissionAuthorizationStatus: Mock;
+  disconnect: Mock;
   dispose: Mock<WireProvider['dispose']>;
 }
 
 interface MockRuntime {
-  createProvider: ReturnType<typeof vi.fn>;
-  cancelPairing: ReturnType<typeof vi.fn>;
-  disconnectSession: ReturnType<typeof vi.fn>;
-  notifySessionStoreChanged: ReturnType<typeof vi.fn>;
-  dispose: ReturnType<typeof vi.fn>;
+  createProvider: Mock;
+  cancelPairing: Mock;
+  disconnectSession: Mock;
+  notifySessionStoreChanged: Mock;
+  dispose: Mock;
 }
 
 type ProviderListener = (message: Uint8Array) => void;
@@ -48,6 +53,8 @@ type ProviderCloseListener = (error: Error) => void;
 let bridgeListeners: Parameters<typeof window.removeEventListener>[] = [];
 
 afterEach(() => {
+  resetOverlays();
+  vi.unstubAllGlobals();
   for (const [type, listener] of bridgeListeners) {
     window.removeEventListener(type, listener);
   }
@@ -71,8 +78,9 @@ const mocks = vi.hoisted(() => ({
   iframeHosts: [] as {
     iframeUrl: string;
     allowedOrigin: string;
+    allow: string;
     iframe: HTMLIFrameElement;
-    dispose: ReturnType<typeof vi.fn>;
+    dispose: Mock;
   }[],
   createWebWorkerPairingHostRuntime: vi.fn(),
   createWebWorkerSigningHostRuntime: vi.fn(),
@@ -87,7 +95,8 @@ vi.mock('@dotli/config', async importOriginal => ({
   DEBUG: false,
 }));
 
-vi.mock('@parity/truapi-host', () => ({
+vi.mock('@parity/truapi-host', async importOriginal => ({
+  ...(await importOriginal<Record<string, unknown>>()),
   createWasmRawCallbacks: mocks.createWasmRawCallbacks,
 }));
 
@@ -256,7 +265,7 @@ describe('bridge render lifecycle', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
         args.container.appendChild(iframe);
@@ -266,6 +275,7 @@ describe('bridge render lifecycle', () => {
         const host = {
           iframeUrl: args.iframeUrl,
           allowedOrigin: args.allowedOrigin,
+          allow: args.allow,
           iframe,
           dispose,
         };
@@ -273,11 +283,11 @@ describe('bridge render lifecycle', () => {
         return { iframe, dispose };
       },
     );
+    const spy = vi.spyOn(window, 'addEventListener');
     const [{ initBridgeEventListeners }, { createBlockingModalCoordinator }] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/blocking-modal-queue.js'),
     ]);
-    const spy = vi.spyOn(window, 'addEventListener');
     initBridgeEventListeners(createBlockingModalCoordinator());
     bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
@@ -385,7 +395,6 @@ describe('bridge render lifecycle', () => {
   }, 10_000);
 
   it('As a dApp user, both render paths hand the product frame to the frame layout', async () => {
-    // Given
     const [{ renderIframe, renderAppSubdomain }, layout] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/product-frame-layout.js'),
@@ -394,24 +403,409 @@ describe('bridge render lifecycle', () => {
       () => renderIframe('https://product.example/app', 'product'),
       () => renderAppSubdomain('cid', 'product'),
     ];
-
     for (const [index, render] of renders.entries()) {
-      // When
       layout.setTopbarLayout({ offset: true, shown: true, transition: '' });
       const rendered = render();
       await waitForProviderRequests(index + 1);
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
       await rendered;
       const { iframe } = nth(mocks.iframeHosts, index);
-
-      // Then the frame is placed
       expect(iframe.style.position).toBe('fixed');
-
-      // And later layout changes reach it
       layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
       expect(iframe.style.transform).toBe('translateY(0)');
     }
   }, 10_000);
+
+  it("threads exact executable manifest text and the user's PolkaVM opt-out into the sandbox contract", async () => {
+    localStorage.setItem(POLKAVM_APPS_KEY, '0');
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,7],"runtime":{"kind":"web","entrypoint":"index.html"}}';
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+
+    const render = renderAppSubdomain('manifest-cid', 'manifest-app', executableManifest);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const iframeUrl = new URL(nth(mocks.iframeHosts, 0).iframeUrl);
+    expect(iframeUrl.searchParams.get('executableManifest')).toBe(executableManifest);
+    expect(iframeUrl.searchParams.get('polkaVmEnabled')).toBe('0');
+    expect(nth(mocks.iframeHosts, 0).allow).not.toContain('accelerometer');
+    expect(nth(mocks.iframeHosts, 0).allow).not.toContain('gyroscope');
+  });
+
+  it("threads the user's PolkaVM opt-in into the sandbox contract", async () => {
+    localStorage.setItem(POLKAVM_APPS_KEY, '1');
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+
+    const render = renderAppSubdomain('polkavm-cid', 'polkavm-app');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const iframeUrl = new URL(nth(mocks.iframeHosts, 0).iframeUrl);
+    expect(iframeUrl.searchParams.get('polkaVmEnabled')).toBe('1');
+  });
+
+  it('delegates motion sensors to PolkaVM product frames with web fallbacks', async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,12],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm","fallback":{"kind":"web","entrypoint":"fallback/index.html"}},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+
+    const render = renderAppSubdomain('motion-cid', 'motion-app', executableManifest);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const directives = nth(mocks.iframeHosts, 0).allow.split('; ');
+    expect(directives).toContain('accelerometer');
+    expect(directives).toContain('gyroscope');
+  });
+
+  it('requests motion at top level and relays physical samples to the PolkaVM frame', async () => {
+    class TestDeviceMotionEvent extends Event {
+      static requestPermission = vi.fn(() => Promise.resolve('granted' as const));
+      readonly accelerationIncludingGravity = { x: 1, y: 2, z: 9 };
+      readonly rotationRate = { alpha: 3, beta: 4, gamma: 5 };
+    }
+    vi.stubGlobal('DeviceMotionEvent', TestDeviceMotionEvent);
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,1,9],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"webgpu-raster","requiredFeatures":[],"requiredLimits":{}}}}';
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('motion-relay-cid', 'motion-relay', executableManifest);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const created = nth(mocks.iframeHosts, 0);
+    const targetWindow = created.iframe.contentWindow;
+    if (targetWindow === null) {
+      throw new Error('app frame has no content window');
+    }
+    const postMessage = vi.spyOn(targetWindow, 'postMessage').mockImplementation(() => {});
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:polkavm-motion-request' },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:polkavm-motion-request' },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    await overlaysReady();
+    expect(document.querySelectorAll('.notif-action')).toHaveLength(1);
+    const enable = document.querySelector<HTMLButtonElement>('.notif-action');
+    enable?.click();
+    enable?.click();
+    await vi.waitFor(() => {
+      expect(TestDeviceMotionEvent.requestPermission).toHaveBeenCalledOnce();
+      expect(postMessage).toHaveBeenCalledWith(
+        { type: 'dotli:polkavm-motion-status', availability: 1 },
+        created.allowedOrigin,
+      );
+    });
+    const prompt = enable?.closest('.notif-card');
+    if (prompt === null || prompt === undefined) {
+      throw new Error('motion permission prompt is missing');
+    }
+    fireEvent.animationEnd(prompt);
+    await settleSolid();
+    expect(prompt.isConnected).toBe(false);
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:polkavm-motion-request' },
+        origin: created.allowedOrigin,
+        source: targetWindow,
+      }),
+    );
+    await settleSolid();
+    expect(document.querySelector('.notif-action')).toBeNull();
+
+    window.dispatchEvent(new TestDeviceMotionEvent('devicemotion'));
+    expect(postMessage).toHaveBeenCalledWith(
+      {
+        type: 'dotli:polkavm-motion-sample',
+        timestampMs: expect.any(Number) as unknown,
+        acceleration: { x: 1, y: 2, z: 9 },
+        rotation: { alpha: 3, beta: 4, gamma: 5 },
+      },
+      created.allowedOrigin,
+    );
+  });
+
+  it('mediates one PolkaVM platform command per trusted app-frame activation', async () => {
+    const executableManifest =
+      '{"$v":2,"kind":"app","appVersion":[0,2,0],"runtime":{"kind":"polkavm","abiVersion":2,"entrypoint":"app.polkavm"},"capabilities":{"graphics":{"abiVersion":1,"profile":"tri2d","requiredFeatures":[]}}}';
+    // Import after the per-test module reset so bridge singleton state is isolated.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('ui-output-cid', 'ui-output', executableManifest);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const created = nth(mocks.iframeHosts, 0);
+    const source = created.iframe.contentWindow;
+    if (source === null) {
+      throw new Error('app frame has no content window');
+    }
+    const origin = new URL(created.iframeUrl).origin;
+    const activation = { isActive: false, hasBeenActive: false };
+    const activationDescriptor = Object.getOwnPropertyDescriptor(navigator, 'userActivation');
+    const clipboardDescriptor = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const writeText = vi.fn(async (_text: string) => {});
+    Object.defineProperty(navigator, 'userActivation', {
+      configurable: true,
+      value: activation,
+    });
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null);
+    let now = 10_000;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const dispatch = (data: unknown, messageOrigin = origin, messageSource: MessageEventSource = source): void => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data,
+          origin: messageOrigin,
+          source: messageSource,
+        }),
+      );
+    };
+
+    try {
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'automatic' },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      activation.isActive = true;
+      activation.hasBeenActive = true;
+      dispatch({ type: 'dotli:polkavm-user-activation' }, 'https://evil.example');
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'wrong-origin' },
+      });
+      await Promise.resolve();
+      expect(writeText).not.toHaveBeenCalled();
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      // Cold guest work can exceed one second while browser activation is live.
+      now += 1_500;
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'hello' },
+      });
+      await vi.waitFor(() => {
+        expect(writeText).toHaveBeenCalledExactlyOnceWith('hello');
+      });
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'second' },
+      });
+      await Promise.resolve();
+      expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      now += 5_001;
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'expired' },
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      activation.isActive = false;
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: { type: 'copy-text', text: 'browser-activation-expired' },
+      });
+      expect(writeText).toHaveBeenCalledTimes(1);
+      activation.isActive = true;
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: {
+          type: 'open-url',
+          url: 'javascript:alert(1)',
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: {
+          type: 'open-url',
+          url: 'https://example.test/ignored-control',
+          newSurface: false,
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: {
+          type: 'open-url',
+          url: 'http://example.test/insecure',
+        },
+      });
+      expect(open).not.toHaveBeenCalled();
+
+      dispatch({ type: 'dotli:polkavm-user-activation' });
+      dispatch({
+        type: 'dotli:polkavm-ui-command',
+        command: {
+          type: 'open-url',
+          url: 'https://example.test/path',
+        },
+      });
+      expect(open).toHaveBeenCalledExactlyOnceWith('https://example.test/path', '_blank', 'noopener,noreferrer');
+    } finally {
+      open.mockRestore();
+      clock.mockRestore();
+      if (activationDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, 'userActivation');
+      } else {
+        Object.defineProperty(navigator, 'userActivation', activationDescriptor);
+      }
+      if (clipboardDescriptor === undefined) {
+        Reflect.deleteProperty(navigator, 'clipboard');
+      } else {
+        Object.defineProperty(navigator, 'clipboard', clipboardDescriptor);
+      }
+    }
+  });
+
+  it('reconnects the TrUAPI MessagePort after a product iframe reload', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('reload-cid', 'reload-app');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const created = nth(mocks.iframeHosts, 0);
+    const targetWindow = created.iframe.contentWindow;
+    if (targetWindow === null) {
+      throw new Error('app frame has no content window');
+    }
+    const postMessage = vi.spyOn(targetWindow, 'postMessage').mockImplementation(() => {});
+    const ready = (): void => {
+      window.dispatchEvent(
+        new MessageEvent('message', {
+          data: { type: 'truapi-ready' },
+          origin: created.allowedOrigin,
+          source: targetWindow,
+        }),
+      );
+    };
+
+    ready();
+    expect(postMessage).not.toHaveBeenCalled();
+    ready();
+
+    expect(postMessage).toHaveBeenCalledTimes(1);
+    expect(postMessage).toHaveBeenCalledWith({ type: 'truapi-init' }, created.allowedOrigin, [
+      expect.objectContaining({ postMessage: expect.any(Function) as unknown }),
+    ]);
+  });
+
+  it('rejects legacy window frames without forwarding codec-1 bytes to the core', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const notification = await import('../src/notification.js');
+    const showNotification = vi.spyOn(notification, 'showNotification').mockImplementation(() => () => undefined);
+    const render = renderAppSubdomain('cid', 'legacy');
+    await waitForProviderRequests(1);
+    const provider = makeProvider();
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await render;
+    const created = nth(mocks.iframeHosts, 0);
+    const source = created.iframe.contentWindow;
+    if (source === null) {
+      throw new Error('app frame has no content window');
+    }
+    // Empty request id, flat handshake discriminant 0, V1 tag, codec 1.
+    const data = new Uint8Array([0, 0, 0, 0, 1]);
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source,
+        origin: 'https://attacker.example',
+        data,
+      }),
+    );
+    expect(showNotification).not.toHaveBeenCalled();
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source,
+        origin: created.allowedOrigin,
+        data,
+      }),
+    );
+    expect(provider.postMessage).not.toHaveBeenCalled();
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        source,
+        origin: created.allowedOrigin,
+        data,
+      }),
+    );
+    expect(showNotification).toHaveBeenCalledTimes(1);
+    showNotification.mockRestore();
+  });
+
+  it('forwards a sandbox schema mismatch as a host PWA update request', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('manifest-cid', 'manifest-app');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const updateRequired = vi.fn();
+    window.addEventListener('dotli:host-update-required', updateRequired, {
+      once: true,
+    });
+    const targetWindow = nth(mocks.iframeHosts, 0).iframe.contentWindow;
+    expect(targetWindow).not.toBeNull();
+    const appOrigin = new URL(nth(mocks.iframeHosts, 0).iframeUrl).origin;
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:host-update-required' },
+        origin: 'https://evil.example',
+        source: targetWindow,
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:host-update-required' },
+        origin: appOrigin,
+        source: window,
+      }),
+    );
+    expect(updateRequired).not.toHaveBeenCalled();
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:host-update-required' },
+        origin: appOrigin,
+        source: targetWindow,
+      }),
+    );
+    expect(updateRequired).toHaveBeenCalledTimes(1);
+  });
 
   it.each(['/x.dot@evil.com/pay', '/foo.dotify/pay'])(
     'As a user, the host keeps an adversarial deep path on the app sandbox origin: %s',
@@ -583,7 +977,7 @@ describe('bridge app roots', () => {
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
-      (args: { iframeUrl: string; allowedOrigin: string; container: HTMLElement }) => {
+      (args: { iframeUrl: string; allowedOrigin: string; allow?: string; container: HTMLElement }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
         args.container.appendChild(iframe);
@@ -593,6 +987,7 @@ describe('bridge app roots', () => {
         mocks.iframeHosts.push({
           iframeUrl: args.iframeUrl,
           allowedOrigin: args.allowedOrigin,
+          allow: args.allow ?? '',
           iframe,
           dispose,
         });
@@ -717,29 +1112,26 @@ describe('bridge app roots', () => {
       import('../src/bridge.js'),
       import('../src/ui.js'),
     ]);
-    await settle(renderAppSubdomain('cid', 'reloaded'), 0);
+    mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => {
+      const runtime = makeRuntime();
+      runtime.createProvider.mockImplementation(() => Promise.resolve(makeProvider()));
+      return Promise.resolve(runtime);
+    });
+    await renderAppSubdomain('cid', 'reloaded');
+    const previousFrame = document.querySelector('#app > iframe');
     showErrorPage({ title: 'Failed' });
 
-    // When its sandbox asks to be rebuilt. The label is unique to this test,
-    // so bridge instances left over from earlier tests ignore the request.
-    window.dispatchEvent(
-      new MessageEvent('message', {
-        data: { type: 'dotli:sandbox-recover' },
-        origin: nth(mocks.iframeHosts, 0).allowedOrigin,
-      }),
-    );
-    await waitForProviderRequests(2);
-    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
-    await vi.waitFor(() => {
-      expect(mocks.iframeHosts).toHaveLength(2);
-      expect(mocks.iframeHosts[1]?.iframe.isConnected).toBe(true);
-      expect(mocks.iframeHosts[0]?.dispose).toHaveBeenCalled();
-    });
+    expect(document.querySelector('#app > .error-page')).not.toBeNull();
 
-    // Then only the new frame is left
-    const app = document.getElementById('app');
-    expect(app?.children).toHaveLength(1);
-    expect(app?.firstElementChild).toBe(nth(mocks.iframeHosts, 1).iframe);
+    // An error page replaces the frame, so recovery now comes from the host,
+    // not a fabricated sandbox message with the detached frame's null source.
+    await renderAppSubdomain('cid', 'reloaded');
+
+    const frame = document.querySelector('#app > iframe');
+    expect(document.querySelector('#app > .error-page')).toBeNull();
+    expect(frame?.isConnected).toBe(true);
+    expect(frame).not.toBe(previousFrame);
+    expect(document.querySelectorAll('#app > iframe')).toHaveLength(1);
   }, 10_000);
 });
 
@@ -771,6 +1163,51 @@ describe('requestCoreLogin', () => {
     await expect(login).resolves.toBe('Success');
     expect(provider.subscribe).toHaveBeenCalledTimes(1);
     expect(provider.listener).toBeNull();
+  });
+
+  it('ignores responses for another trait, method, leg or request', async () => {
+    const { requestCoreLogin } = await import('../src/bridge.js');
+    const provider = makeLoginProvider({});
+    const promise = requestCoreLogin(provider);
+    const requestId = requestIdFromFrame(nth(provider.postMessage.mock.calls, 0)[0]);
+    const response = decodeWireMessage(
+      loginResponseFrame(requestId, {
+        success: true,
+        value: 'Success',
+      }),
+    );
+    if (response.isErr()) {
+      throw response.error;
+    }
+    for (const override of [
+      { traitId: ACCOUNT_REQUEST_LOGIN.trait + 1 },
+      { methodId: ACCOUNT_REQUEST_LOGIN.method + 1 },
+      { messageType: MESSAGE_TYPE_REQUEST },
+    ]) {
+      const frame = encodeWireMessage({
+        ...response.value,
+        payload: { ...response.value.payload, ...override },
+      });
+      if (frame.isErr()) {
+        throw frame.error;
+      }
+      provider.listener?.(frame.value);
+      expect(provider.listener).not.toBeNull();
+    }
+    provider.listener?.(
+      loginResponseFrame('another-request', {
+        success: true,
+        value: 'Rejected',
+      }),
+    );
+    expect(provider.listener).not.toBeNull();
+    provider.listener?.(
+      loginResponseFrame(requestId, {
+        success: true,
+        value: 'Success',
+      }),
+    );
+    await expect(promise).resolves.toBe('Success');
   });
 
   it('As a dotli integrator, the host rejects typed login errors as LoginRequestError', async () => {

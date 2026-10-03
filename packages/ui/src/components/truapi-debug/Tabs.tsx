@@ -4,7 +4,7 @@
 import { For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 
-export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'wallet';
+export type PanelView = 'list' | 'timeline' | 'resolution' | 'archive' | 'runtime' | 'wallet';
 
 const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'list', label: 'List' },
@@ -13,7 +13,12 @@ const TABS: readonly { view: PanelView; label: string }[] = [
   { view: 'archive', label: 'Archive' },
 ];
 
-export function Tabs(props: { view: PanelView; wallet?: boolean; onSelect: (view: PanelView) => void }): JSX.Element {
+export function Tabs(props: {
+  view: PanelView;
+  wallet?: boolean;
+  runtime?: boolean;
+  onSelect: (view: PanelView) => void;
+}): JSX.Element {
   return (
     <div class="td-tabs" role="tablist">
       <For each={TABS}>
@@ -31,6 +36,20 @@ export function Tabs(props: { view: PanelView; wallet?: boolean; onSelect: (view
           </button>
         )}
       </For>
+      <Show when={props.runtime}>
+        <button
+          class={props.view === 'runtime' ? 'td-tab active' : 'td-tab'}
+          role="tab"
+          aria-selected={props.view === 'runtime' ? 'true' : 'false'}
+          data-view="runtime"
+          type="button"
+          onClick={() => {
+            props.onSelect('runtime');
+          }}
+        >
+          Runtime
+        </button>
+      </Show>
       <Show when={props.wallet}>
         <button
           id="td-tab-wallet"

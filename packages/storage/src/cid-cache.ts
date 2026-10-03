@@ -1,66 +1,130 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// dot.li IndexedDB-backed cache mapping a label to its CID.
+// dot.li IndexedDB-backed installed-executable cache.
 //
-// Enables stale-while-revalidate: on repeat visits, render from
-// the cached CID instantly while smoldot validates in the background.
-//
-// The product's root and app manifest records are kept as raw text next to
-// the CID, so a cache hit can be validated before rendering, by whatever
-// validator the host ships today, without a chain read. An entry belongs to
-// the network it was resolved on: the same name can point elsewhere, or
-// nowhere, on another network.
-//
-// The canonical surface is the discriminated `getCachedCidResult` so
-// callers can distinguish "miss" (run full resolution) from "error"
-// (storage broken, surface to user). The legacy `getCachedCid` remains
-// for incremental migration but collapses both into `null`.
+// A cached executable is one atomic manifest/contenthash record, scoped to
+// its network and executable modality. Root and executable manifests are
+// retained as raw text so the current validator can gate every launch.
 
 import type { Network } from '@dotli/config';
-import { getDb } from './db.js';
 import { m, captureException, spans as S } from '@dotli/metrics';
 import { isValidDotLabel, log } from '@dotli/shared';
 
-const STORE = 'cids';
+const DB_NAME = 'dotli-installed-executables';
+const DB_VERSION = 1;
+const STORE = 'installed_executables';
+let installedDbPromise: Promise<IDBDatabase> | null = null;
 
-/** Raw manifest record text, as read from dotNS. `null`: the record is unset. */
+function getInstalledExecutableDb(): Promise<IDBDatabase> {
+  if (installedDbPromise !== null) {
+    return installedDbPromise;
+  }
+  installedDbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, {
+          keyPath: ['network', 'modality', 'label'],
+        });
+      }
+    };
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => {
+        db.close();
+        installedDbPromise = null;
+      };
+      db.onclose = () => {
+        installedDbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      installedDbPromise = null;
+      reject(request.error ?? new Error('installed executable DB open failed'));
+    };
+    request.onblocked = () => {
+      installedDbPromise = null;
+      reject(new Error('installed executable DB open blocked'));
+    };
+  });
+  return installedDbPromise;
+}
+
+export type ExecutableModality = 'app' | 'widget' | 'worker';
+
+/** Raw root and app manifest record text; null means the record is unset. */
 export interface CachedManifests {
   root: string | null;
   app: string | null;
 }
 
-interface CidEntry {
+export interface InstalledExecutable {
+  contenthash: string;
+  executableManifest: string;
+  rootManifest: string | null;
+}
+
+interface InstalledExecutableEntry extends Omit<InstalledExecutable, 'rootManifest'> {
+  rootManifest?: string | null;
   label: string;
-  /** Absent on entries cached before networks were kept: those read as a miss. */
-  network?: Network;
-  cid: string;
-  /** Absent on entries cached before manifests were kept: those read as a miss. */
-  manifests?: CachedManifests;
+  network: Network;
+  modality: ExecutableModality;
   timestamp: number;
 }
 
-export interface CachedCid {
-  cid: string;
-  manifests: CachedManifests;
+export type InstalledExecutableCacheResult =
+  { kind: 'hit'; executable: InstalledExecutable } | { kind: 'miss' } | { kind: 'error'; cause: unknown };
+
+function cacheKey(
+  label: string,
+  network: Network,
+  modality: ExecutableModality,
+): [Network, ExecutableModality, string] {
+  return [network, modality, label];
 }
 
-export type CidCacheResult = ({ kind: 'hit' } & CachedCid) | { kind: 'miss' } | { kind: 'error'; cause: unknown };
+function transactionCompletion(tx: IDBTransaction, action: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    tx.oncomplete = () => {
+      resolve();
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error(`IDB ${action} error`));
+    };
+    tx.onabort = () => {
+      reject(tx.error ?? new Error(`IDB ${action} aborted`));
+    };
+  });
+}
 
-export async function getCachedCidResult(label: string, network: Network): Promise<CidCacheResult> {
+export async function getCachedInstalledExecutable(
+  label: string,
+  network: Network,
+  modality: ExecutableModality,
+): Promise<InstalledExecutableCacheResult> {
   const stop = m.timer(S.CACHE_READ_LATENCY);
   try {
-    const db = await getDb();
-    return await new Promise<CidCacheResult>(resolve => {
+    const db = await getInstalledExecutableDb();
+    return await new Promise<InstalledExecutableCacheResult>(resolve => {
       const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(label);
+      const req = tx.objectStore(STORE).get(cacheKey(label, network, modality));
       req.onsuccess = () => {
-        const entry = req.result as CidEntry | undefined;
+        const entry = req.result as InstalledExecutableEntry | undefined;
         stop();
         resolve(
-          entry?.manifests === undefined || entry.network !== network
+          entry?.rootManifest === undefined
             ? { kind: 'miss' }
-            : { kind: 'hit', cid: entry.cid, manifests: entry.manifests },
+            : {
+                kind: 'hit',
+                executable: {
+                  contenthash: entry.contenthash,
+                  executableManifest: entry.executableManifest,
+                  rootManifest: entry.rootManifest,
+                },
+              },
         );
       };
       req.onerror = () => {
@@ -75,22 +139,6 @@ export async function getCachedCidResult(label: string, network: Network): Promi
     stop();
     return { kind: 'error', cause };
   }
-}
-
-/**
- * Legacy surface where `null` collapses cache miss and storage error.
- *
- * New callers should use `getCachedCidResult` so storage failures can be
- * surfaced rather than silently treated as "no cache".
- */
-export async function getCachedCid(label: string, network: Network): Promise<CachedCid | null> {
-  const result = await getCachedCidResult(label, network);
-  if (result.kind === 'error') {
-    log.error('[dot.li cid-cache] read error:', result.cause);
-    captureException(result.cause, { kind: 'cid_cache_read_error' });
-    return null;
-  }
-  return result.kind === 'hit' ? { cid: result.cid, manifests: result.manifests } : null;
 }
 
 export const RECENT_KEY = 'dotli_recent';
@@ -166,72 +214,110 @@ export function writeRecentLabels(labels: string[]): void {
   }
 }
 
-export async function setCachedCid(
+export async function setCachedInstalledExecutable(
   label: string,
   network: Network,
-  cid: string,
-  manifests: CachedManifests,
+  modality: ExecutableModality,
+  executable: InstalledExecutable,
 ): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
-    const db = await getDb();
+    const db = await getInstalledExecutableDb();
     const tx = db.transaction(STORE, 'readwrite');
-    const entry: CidEntry = {
+    const completed = transactionCompletion(tx, 'write');
+    const entry: InstalledExecutableEntry = {
       label,
       network,
-      cid,
-      manifests,
+      modality,
+      contenthash: executable.contenthash,
+      executableManifest: executable.executableManifest,
+      rootManifest: executable.rootManifest,
       timestamp: Date.now(),
     };
     tx.objectStore(STORE).put(entry);
+    await completed;
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] write error:', err);
-    captureException(err, { kind: 'cid_cache_write_error' });
+    log.error('[dot.li installed-executable-cache] write error:', err);
+    captureException(err, { kind: 'installed_executable_cache_write_error' });
   }
 }
 
 /**
- * Clear every cached label-to-CID entry.
+ * Clear every installed-executable entry.
  *
  * Used when the user turns the dotNS cache off in settings. Awaits
- * transaction completion so a reload right after won't abort the clear
- * mid-flight. Best-effort: failures are logged.
+ * transaction completion so a reload right after cannot race the clear.
+ * Best-effort: failures are logged.
  */
-export async function clearCidCache(): Promise<void> {
+export async function clearInstalledExecutableCache(): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
-    const db = await getDb();
+    const db = await getInstalledExecutableDb();
     const tx = db.transaction(STORE, 'readwrite');
+    const completed = transactionCompletion(tx, 'clear');
     tx.objectStore(STORE).clear();
-    await new Promise<void>((resolve, reject) => {
-      tx.oncomplete = () => {
-        resolve();
-      };
-      tx.onerror = () => {
-        reject(tx.error ?? new Error('IDB clear error'));
-      };
-    });
+    await completed;
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] clear error:', err);
-    captureException(err, { kind: 'cid_cache_clear_error' });
+    log.error('[dot.li installed-executable-cache] clear error:', err);
+    captureException(err, { kind: 'installed_executable_cache_clear_error' });
   }
 }
 
-/** Remove a cached entry. Best-effort: failures are logged, not thrown. */
-export async function evictCachedCid(label: string): Promise<void> {
+/** Remove one scoped installed executable. Best-effort. */
+export async function evictCachedInstalledExecutable(
+  label: string,
+  network: Network,
+  modality: ExecutableModality,
+): Promise<void> {
   const stop = m.timer(S.CACHE_WRITE_LATENCY);
   try {
-    const db = await getDb();
+    const db = await getInstalledExecutableDb();
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).delete(label);
+    const completed = transactionCompletion(tx, 'eviction');
+    tx.objectStore(STORE).delete(cacheKey(label, network, modality));
+    await completed;
     stop();
   } catch (err) {
     stop();
-    log.error('[dot.li cid-cache] evict error:', err);
-    captureException(err, { kind: 'cid_cache_evict_error' });
+    log.error('[dot.li installed-executable-cache] evict error:', err);
+    captureException(err, { kind: 'installed_executable_cache_evict_error' });
   }
+}
+
+export type RevalidateOutcome = { kind: 'match' } | { kind: 'update'; contenthash: string } | { kind: 'cleared' };
+
+/**
+ * Reconcile freshly resolved content and both manifests against their cached copy.
+ * A changed field evicts the whole record. The caller validates the replacement
+ * before publishing it, never caching an unpaired contenthash.
+ */
+export async function reconcileInstalledExecutable(
+  label: string,
+  network: Network,
+  modality: ExecutableModality,
+  installed: InstalledExecutable,
+  freshContenthash: string | null,
+  freshManifests: CachedManifests,
+): Promise<RevalidateOutcome> {
+  if (freshContenthash === null) {
+    await evictCachedInstalledExecutable(label, network, modality);
+    m.count(S.CACHE_REVALIDATE_CLEARED);
+    return { kind: 'cleared' };
+  }
+  if (
+    freshContenthash === installed.contenthash &&
+    freshManifests.app === installed.executableManifest &&
+    freshManifests.root === installed.rootManifest
+  ) {
+    await setCachedInstalledExecutable(label, network, modality, installed);
+    m.count(S.CACHE_REVALIDATE_MATCH);
+    return { kind: 'match' };
+  }
+  await evictCachedInstalledExecutable(label, network, modality);
+  m.count(S.CACHE_REVALIDATE_UPDATE);
+  return { kind: 'update', contenthash: freshContenthash };
 }

@@ -17,6 +17,7 @@
 
 import type { JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { createClient, type SubstrateClient } from '@polkadot-api/substrate-client';
+
 import { TIMEOUTS, getActiveServicesConfig } from '@dotli/config';
 
 import { log, dur } from '@dotli/shared';
@@ -71,9 +72,12 @@ function ensureClient(onStatus?: StatusCallback): Promise<Api> {
   if (clientPromise !== null) {
     return clientPromise;
   }
-  clientPromise = doCreateClient(onStatus).finally(() => {
-    clientPromise = null;
+  const creating = doCreateClient(onStatus).finally(() => {
+    if (clientPromise === creating) {
+      clientPromise = null;
+    }
   });
+  clientPromise = creating;
   return clientPromise;
 }
 
@@ -114,15 +118,19 @@ async function doCreateClient(onStatus?: StatusCallback): Promise<Api> {
   // disconnect), invalidate the cached client so the next `ensureClient`
   // redials. Without this, every subsequent read returns `null` silently
   // (the "name not found" path) even though the upstream is dead.
+  clientInstance = client;
+  apiInstance = api;
   api.onStop(() => {
+    if (apiInstance !== api) {
+      return;
+    }
     log.warn('[dot.li rpc-resolve] chainHead follow stopped, invalidating RPC client');
     destroyRpcClient();
   });
+  await api.whenReady();
 
-  clientInstance = client;
-  apiInstance = api;
   onStatus?.('Connected to Asset Hub RPC');
-  return apiInstance;
+  return api;
 }
 
 /**
@@ -234,15 +242,19 @@ export function getConnectedAssetHubRpcEndpoint(): string | null {
  * endpoint can't satisfy reads against the new network's config.
  */
 export function destroyRpcClient(): void {
-  if (clientInstance !== null) {
+  const api = apiInstance;
+  const client = clientInstance;
+  clientInstance = null;
+  apiInstance = null;
+  clientPromise = null;
+
+  if (client !== null) {
     try {
-      apiInstance?.destroy();
-      clientInstance.destroy();
-      // eslint-disable-next-line no-restricted-syntax -- best-effort teardown: the WS client may already be disconnected; we still clear references below.
+      api?.destroy();
+      client.destroy();
+      // eslint-disable-next-line no-restricted-syntax -- teardown can race a dead transport; cached references were cleared before notifying onStop.
     } catch {
       /* already dead */
     }
-    clientInstance = null;
-    apiInstance = null;
   }
 }

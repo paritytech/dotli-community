@@ -2,22 +2,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { Window } from 'happy-dom';
 import {
-  getRecentLabels,
   addRecentLabel,
+  clearInstalledExecutableCache,
+  evictCachedInstalledExecutable,
+  getCachedInstalledExecutable,
+  getRecentLabels,
+  reconcileInstalledExecutable,
   removeRecentLabel,
-  getCachedCid,
-  getCachedCidResult,
-  setCachedCid,
-  evictCachedCid,
+  setCachedInstalledExecutable,
+  type InstalledExecutable,
 } from '../src/cid-cache.js';
-import { getDb } from '../src/db.js';
-import { NetworkName } from '@dotli/config';
+// Vitest's happy-dom environment omits global storage in isolated workers.
+vi.stubGlobal('localStorage', new Window({ url: 'https://host.dot.li/' }).localStorage);
 
-const PASEO = NetworkName.PASEO;
-
-// Recent labels live in localStorage (happy-dom). CIDs live in IndexedDB (fake-indexeddb).
+// Recent labels live in localStorage. Installed executables live in IndexedDB.
 
 describe('getRecentLabels', () => {
   beforeEach(() => {
@@ -118,45 +119,50 @@ describe('removeRecentLabel', () => {
   });
 });
 
-const NO_MANIFESTS = { root: null, app: null };
-const ROOT = '{"$v":1,"displayName":"DOOM","description":"","icon":{"cid":"bafk","format":"png"}}';
-const APP = '{"$v":1,"kind":"app","appVersion":[0,1,9]}';
+const NETWORK = 'paseo-next-v2';
+const OTHER_NETWORK = 'previewnet';
+const ROOT_MANIFEST = '{"$v":1,"displayName":"App","description":"","icon":{"cid":"bafy-icon","format":"png"}}';
+const OLD_EXECUTABLE: InstalledExecutable = {
+  contenthash: 'bafy-old',
+  executableManifest: '{"$v":1,"kind":"app","appVersion":[1,0,0]}',
+  rootManifest: ROOT_MANIFEST,
+};
+const NEW_EXECUTABLE: InstalledExecutable = {
+  contenthash: 'bafy-new',
+  executableManifest: '{"$v":1,"kind":"app","appVersion":[2,0,0]}',
+  rootManifest: ROOT_MANIFEST,
+};
 
-async function putRawEntry(entry: object): Promise<void> {
-  const db = await getDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('cids', 'readwrite');
-    tx.objectStore('cids').put(entry);
-    tx.oncomplete = () => {
-      resolve();
+interface RawInstalledExecutable extends InstalledExecutable {
+  label: string;
+  network: string;
+  modality: string;
+  timestamp: number;
+}
+
+async function openInstalledExecutableDb(): Promise<IDBDatabase> {
+  return await new Promise((resolve, reject) => {
+    const request = indexedDB.open('dotli-installed-executables', 1);
+    request.onsuccess = () => {
+      resolve(request.result);
     };
-    tx.onerror = () => {
-      reject(tx.error ?? new Error('put failed'));
+    request.onerror = () => {
+      reject(request.error ?? new Error('DB open failed'));
     };
   });
 }
 
-async function clearCidStore(): Promise<void> {
-  const db = await getDb();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction('cids', 'readwrite');
-    tx.objectStore('cids').clear();
-    tx.oncomplete = () => {
-      resolve();
-    };
-    tx.onerror = () => {
-      reject(tx.error ?? new Error('clear failed'));
-    };
-  });
-}
-
-async function readRawEntry(label: string): Promise<{ label: string; cid: string; timestamp: number } | undefined> {
-  const db = await getDb();
+async function readRawEntry(
+  label: string,
+  network = NETWORK,
+  modality = 'app',
+): Promise<RawInstalledExecutable | undefined> {
+  const db = await openInstalledExecutableDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction('cids', 'readonly');
-    const req = tx.objectStore('cids').get(label);
+    const tx = db.transaction('installed_executables', 'readonly');
+    const req = tx.objectStore('installed_executables').get([network, modality, label]);
     req.onsuccess = () => {
-      resolve(req.result as { label: string; cid: string; timestamp: number } | undefined);
+      resolve(req.result as RawInstalledExecutable | undefined);
     };
     req.onerror = () => {
       reject(req.error ?? new Error('read failed'));
@@ -164,82 +170,178 @@ async function readRawEntry(label: string): Promise<{ label: string; cid: string
   });
 }
 
-describe('CID IndexedDB round-trip', () => {
+describe('installed executable IndexedDB cache', () => {
   beforeEach(async () => {
-    await clearCidStore();
+    await clearInstalledExecutableCache();
   });
 
-  it('setCachedCid → getCachedCidResult returns hit', async () => {
-    await setCachedCid('myapp', PASEO, 'bafy123', NO_MANIFESTS);
-    expect(await getCachedCidResult('myapp', PASEO)).toEqual({
+  it('stores the manifest and contenthash as one record', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
       kind: 'hit',
-      cid: 'bafy123',
-      manifests: NO_MANIFESTS,
+      executable: OLD_EXECUTABLE,
     });
   });
 
-  it('keeps the manifest records next to the CID', async () => {
-    await setCachedCid('doom', PASEO, 'bafy-doom', { root: ROOT, app: APP });
-    expect(await getCachedCidResult('doom', PASEO)).toEqual({
-      kind: 'hit',
-      cid: 'bafy-doom',
-      manifests: { root: ROOT, app: APP },
+  it('treats a record written before root manifests were retained as a cache miss', async () => {
+    const db = await openInstalledExecutableDb();
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction('installed_executables', 'readwrite');
+      tx.objectStore('installed_executables').put({
+        label: 'legacy',
+        network: NETWORK,
+        modality: 'app',
+        timestamp: 1,
+        contenthash: OLD_EXECUTABLE.contenthash,
+        executableManifest: OLD_EXECUTABLE.executableManifest,
+      });
+      tx.oncomplete = () => {
+        resolve();
+      };
+      tx.onerror = () => {
+        reject(tx.error ?? new Error('legacy cache fixture write failed'));
+      };
     });
+    db.close();
+    expect(await getCachedInstalledExecutable('legacy', NETWORK, 'app')).toEqual({ kind: 'miss' });
   });
 
-  it('reads an entry cached before manifests were kept as a miss, so the next load re-reads them', async () => {
-    await putRawEntry({ label: 'doom', cid: 'bafy-doom', timestamp: Date.now() });
-    expect(await getCachedCidResult('doom', PASEO)).toEqual({ kind: 'miss' });
+  it('scopes records by network and modality', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+    await setCachedInstalledExecutable('myapp', OTHER_NETWORK, 'app', NEW_EXECUTABLE);
+    await setCachedInstalledExecutable('myapp', NETWORK, 'worker', {
+      contenthash: 'bafy-worker',
+      rootManifest: null,
+      executableManifest:
+        '{"$v":1,"kind":"worker","appVersion":[1,0,0],"entrypoint":"worker.js","includes":{"chat":false,"pocket":false}}',
+    });
+
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
+      kind: 'hit',
+      executable: OLD_EXECUTABLE,
+    });
+    expect(await getCachedInstalledExecutable('myapp', OTHER_NETWORK, 'app')).toEqual({
+      kind: 'hit',
+      executable: NEW_EXECUTABLE,
+    });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'widget')).toEqual({ kind: 'miss' });
   });
 
-  it('reads an entry cached on another network as a miss, so that network resolves the name itself', async () => {
-    await setCachedCid('doom', NetworkName.PREVIEWNET, 'bafy-doom', { root: ROOT, app: APP });
-    expect(await getCachedCidResult('doom', PASEO)).toEqual({ kind: 'miss' });
-  });
+  it('atomically replaces both fields and refreshes the timestamp', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValueOnce(100).mockReturnValueOnce(200);
+    try {
+      await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+      const before = await readRawEntry('myapp');
 
-  it('getCachedCidResult returns miss for unset label', async () => {
-    expect(await getCachedCidResult('never-stored', PASEO)).toEqual({ kind: 'miss' });
-  });
+      await setCachedInstalledExecutable('myapp', NETWORK, 'app', NEW_EXECUTABLE);
 
-  it('legacy getCachedCid collapses miss to null', async () => {
-    expect(await getCachedCid('never-stored', PASEO)).toBeNull();
-  });
-
-  it('legacy getCachedCid returns the cid on hit', async () => {
-    await setCachedCid('myapp', PASEO, 'bafy456', NO_MANIFESTS);
-    expect(await getCachedCid('myapp', PASEO)).toEqual({ cid: 'bafy456', manifests: NO_MANIFESTS });
-  });
-
-  it('setCachedCid overwrites the existing entry and refreshes timestamp', async () => {
-    await setCachedCid('myapp', PASEO, 'bafy-old', NO_MANIFESTS);
-    const first = await readRawEntry('myapp');
-    expect(first?.cid).toBe('bafy-old');
-
-    // Force a measurable timestamp delta even on fast machines / coarse clocks.
-    await new Promise(resolve => setTimeout(resolve, 2));
-
-    await setCachedCid('myapp', PASEO, 'bafy-new', NO_MANIFESTS);
-    const second = await readRawEntry('myapp');
-    expect(second?.cid).toBe('bafy-new');
-    expect(second?.timestamp ?? 0).toBeGreaterThan(first?.timestamp ?? 0);
+      const after = await readRawEntry('myapp');
+      expect(after?.contenthash).toBe(NEW_EXECUTABLE.contenthash);
+      expect(after?.executableManifest).toBe(NEW_EXECUTABLE.executableManifest);
+      expect(after?.rootManifest).toBe(NEW_EXECUTABLE.rootManifest);
+      expect(after?.timestamp ?? 0).toBeGreaterThan(before?.timestamp ?? 0);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
 
-describe('evictCachedCid', () => {
+describe('reconcileInstalledExecutable', () => {
   beforeEach(async () => {
-    await clearCidStore();
+    await clearInstalledExecutableCache();
   });
 
-  it('removes an existing entry', async () => {
-    await setCachedCid('myapp', PASEO, 'bafy-doomed', NO_MANIFESTS);
-    expect((await getCachedCid('myapp', PASEO))?.cid).toBe('bafy-doomed');
+  it('preserves the complete pair on a warm reload with the same contenthash', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
 
-    await evictCachedCid('myapp');
-    expect(await getCachedCidResult('myapp', PASEO)).toEqual({ kind: 'miss' });
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: OLD_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
+    ).toEqual({ kind: 'match' });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
+      kind: 'hit',
+      executable: OLD_EXECUTABLE,
+    });
   });
 
-  it('is a no-op for an unset label', async () => {
-    await evictCachedCid('never-stored');
-    expect(await getCachedCidResult('never-stored', PASEO)).toEqual({ kind: 'miss' });
+  it('evicts the old pair when contenthash changes without caching an unpaired hash', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, NEW_EXECUTABLE.contenthash, {
+        app: NEW_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
+    ).toEqual({
+      kind: 'update',
+      contenthash: NEW_EXECUTABLE.contenthash,
+    });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', NEW_EXECUTABLE);
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({
+      kind: 'hit',
+      executable: NEW_EXECUTABLE,
+    });
+  });
+
+  it('evicts the pair when the executable manifest changes at the same contenthash', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: NEW_EXECUTABLE.executableManifest,
+        root: ROOT_MANIFEST,
+      }),
+    ).toEqual({
+      kind: 'update',
+      contenthash: OLD_EXECUTABLE.contenthash,
+    });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+  });
+
+  it('evicts the record when the root manifest changes at the same contenthash', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, OLD_EXECUTABLE.contenthash, {
+        app: OLD_EXECUTABLE.executableManifest,
+        root: '{"$v":2}',
+      }),
+    ).toEqual({ kind: 'update', contenthash: OLD_EXECUTABLE.contenthash });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+  });
+
+  it('evicts the pair when contenthash is cleared', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+
+    expect(
+      await reconcileInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE, null, { root: null, app: null }),
+    ).toEqual({
+      kind: 'cleared',
+    });
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+  });
+});
+
+describe('evictCachedInstalledExecutable', () => {
+  beforeEach(async () => {
+    await clearInstalledExecutableCache();
+  });
+
+  it('removes only the selected scoped record', async () => {
+    await setCachedInstalledExecutable('myapp', NETWORK, 'app', OLD_EXECUTABLE);
+    await setCachedInstalledExecutable('myapp', OTHER_NETWORK, 'app', NEW_EXECUTABLE);
+
+    await evictCachedInstalledExecutable('myapp', NETWORK, 'app');
+
+    expect(await getCachedInstalledExecutable('myapp', NETWORK, 'app')).toEqual({ kind: 'miss' });
+    expect(await getCachedInstalledExecutable('myapp', OTHER_NETWORK, 'app')).toEqual({
+      kind: 'hit',
+      executable: NEW_EXECUTABLE,
+    });
   });
 });

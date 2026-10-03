@@ -36,9 +36,12 @@ function fakeApi(readSlot = (): Promise<Uint8Array | null> => Promise.resolve(nu
     destroy: vi.fn<() => void>(),
     onStop: (cb: () => void) => {
       mocks.stops.push(cb);
+      return () => {
+        mocks.stops = mocks.stops.filter(stop => stop !== cb);
+      };
     },
-    readSlot,
-  } as unknown as Api;
+    withContract: (_address, read) => read({ readSlot }),
+  };
 }
 
 function stoppedRead(): Promise<never> {

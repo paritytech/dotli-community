@@ -5,9 +5,9 @@
 //
 // Archive serving only, no smoldot and no chain sync.
 // Runs on <label>.app.dot.li and serves the multi-file SPA archive the page
-// hands it. It keeps nothing across reloads: the iframe is credentialless, so
-// this origin's storage lasts only as long as the host page. The host keeps
-// the content blocks instead (`@dotli/storage/block-cache`).
+// hands it. A credentialless origin's IndexedDB keeps the archive across idle
+// worker restarts, not host-page reloads. The host keeps the content blocks
+// across those reloads instead (`@dotli/storage/block-cache`).
 
 /// <reference lib="webworker" />
 declare const self: ServiceWorkerGlobalScope;
@@ -17,10 +17,12 @@ declare const self: ServiceWorkerGlobalScope;
 declare const __SW_VERSION__: string;
 
 import { getMimeType } from '@dotli/shared';
+import { shadowsHostOwnedPath } from './host-owned-paths.js';
 
 // Base path, derived at runtime from the SW script location.
 const BASE = self.location.pathname.replace(/(?:src\/)?app-sw\.[jt]s$/, '');
 const DOTLI_APP_PREFIX = `${BASE}dotli-app/`;
+const POLKAVM_RUNTIME_PREFIX = `${BASE}polkavm-runtime/`;
 
 function hasExtension(path: string): boolean {
   const lastSlash = path.lastIndexOf('/');
@@ -49,6 +51,39 @@ const CURRENT_ARCHIVE_KEY = 'current';
 
 /** Files of the archive the fetch handler serves, keyed by path. */
 let servedFiles: Record<string, ArrayBuffer> | null = null;
+
+function isUnknownArray(value: unknown): value is unknown[] {
+  return Array.isArray(value);
+}
+
+function parseArchiveIndex(value: unknown, packedLength: number): ArchiveIndex | null {
+  if (!isUnknownArray(value)) {
+    return null;
+  }
+  const index: ArchiveIndex = [];
+  for (const candidate of value) {
+    if (
+      typeof candidate !== 'object' ||
+      candidate === null ||
+      !('p' in candidate) ||
+      typeof candidate.p !== 'string' ||
+      !('o' in candidate) ||
+      typeof candidate.o !== 'number' ||
+      !Number.isSafeInteger(candidate.o) ||
+      candidate.o < 0 ||
+      !('l' in candidate) ||
+      typeof candidate.l !== 'number' ||
+      !Number.isSafeInteger(candidate.l) ||
+      candidate.l < 0 ||
+      candidate.o > packedLength ||
+      candidate.l > packedLength - candidate.o
+    ) {
+      return null;
+    }
+    index.push({ p: candidate.p, o: candidate.o, l: candidate.l });
+  }
+  return index;
+}
 
 /** The read-back of the persisted archive, started by the first fetch that finds no archive in memory. */
 let restoring: Promise<void> | null = null;
@@ -97,13 +132,13 @@ async function persistArchive(archive: PersistedArchive): Promise<void> {
   }
 }
 
-async function loadPersistedArchive(): Promise<PersistedArchive | null> {
+async function loadPersistedArchive(): Promise<unknown> {
   const db = await openArchiveDb();
   try {
     return await new Promise((resolve, reject) => {
       const request = db.transaction(ARCHIVE_STORE, 'readonly').objectStore(ARCHIVE_STORE).get(CURRENT_ARCHIVE_KEY);
       request.onsuccess = () => {
-        resolve((request.result as PersistedArchive | undefined) ?? null);
+        resolve(request.result ?? null);
       };
       request.onerror = () => {
         reject(request.error ?? new Error('Failed to read the archive'));
@@ -115,20 +150,34 @@ async function loadPersistedArchive(): Promise<PersistedArchive | null> {
 }
 
 function restoreArchive(): Promise<void> {
-  restoring ??= loadPersistedArchive().then(
-    archive => {
+  restoring ??= loadPersistedArchive()
+    .then(archive => {
+      // A SET_ARCHIVE that landed while the read was in flight is newer.
+      if (servedFiles !== null) {
+        return;
+      }
       if (archive === null) {
         nothingPersisted = true;
         return;
       }
-      // A SET_ARCHIVE that landed while the read was in flight is newer.
-      servedFiles ??= unpackArchive(archive.packed, archive.index);
-    },
-    (err: unknown) => {
+      if (
+        typeof archive !== 'object' ||
+        !('packed' in archive) ||
+        !(archive.packed instanceof ArrayBuffer) ||
+        !('index' in archive)
+      ) {
+        throw new Error('Persisted archive has an invalid payload');
+      }
+      const index = parseArchiveIndex(archive.index, archive.packed.byteLength);
+      if (index === null || index.some(entry => shadowsHostOwnedPath(entry.p))) {
+        throw new Error('Persisted archive has an invalid or host-owned path index');
+      }
+      servedFiles = unpackArchive(archive.packed, index);
+    })
+    .catch((err: unknown) => {
       console.error('Failed to restore the archive after a worker restart:', err);
       nothingPersisted = true;
-    },
-  );
+    });
   return restoring;
 }
 
@@ -181,16 +230,31 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     // Reject malformed payloads loudly instead of ACKing as if it
     // worked. The sender will loop forever trying to serve archives
     // from an empty SW if we ACK without applying the payload.
-    const packed = data['packed'] as ArrayBuffer | undefined;
-    const idx = data['index'] as ArchiveIndex | undefined;
-
-    if (packed === undefined || idx === undefined) {
+    const packed = data['packed'];
+    if (!(packed instanceof ArrayBuffer)) {
       if (event.source) {
         (event.source as Client).postMessage({
           type: 'ARCHIVE_ERROR',
           reason: 'SET_ARCHIVE missing packed/index payload',
         });
       }
+      return;
+    }
+
+    const idx = parseArchiveIndex(data['index'], packed.byteLength);
+    if (idx === null) {
+      event.source?.postMessage({
+        type: 'ARCHIVE_ERROR',
+        reason: 'SET_ARCHIVE contains a malformed index entry',
+      });
+      return;
+    }
+    const reserved = idx.find(entry => shadowsHostOwnedPath(entry.p));
+    if (reserved !== undefined) {
+      event.source?.postMessage({
+        type: 'ARCHIVE_ERROR',
+        reason: `archive path is reserved by the host: ${reserved.p}`,
+      });
       return;
     }
 
@@ -235,6 +299,11 @@ self.addEventListener('fetch', (event: FetchEvent) => {
   }
 
   if (event.request.mode === 'navigate' && !url.pathname.startsWith(DOTLI_APP_PREFIX)) {
+    return;
+  }
+
+  // Runtime assets must always come from the host, never the application archive.
+  if (url.pathname.startsWith(POLKAVM_RUNTIME_PREFIX)) {
     return;
   }
 

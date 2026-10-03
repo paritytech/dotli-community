@@ -46,6 +46,7 @@ export {
   requestWalletOwner,
   resolveDotNameRemote,
   resolveExecutableManifestRemote,
+  resolveOwnerRemote,
   resolveRootManifestRemote,
   setProtocolSubMode,
   subscribeSharedAuthStorage,

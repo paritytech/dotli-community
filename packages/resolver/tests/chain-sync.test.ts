@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 import type { ChainLifecycle } from '@parity/truapi-provider';
+import type * as MetricsModule from '@dotli/metrics';
+import { getActiveServicesConfig } from '@dotli/config';
 
 import type * as ChainSyncModule from '../src/chain-sync.js';
 import type { ChainSyncTap, ParsedRpcMessage } from '../src/chain-sync.js';
@@ -12,7 +14,8 @@ import type { ChainSyncTap, ParsedRpcMessage } from '../src/chain-sync.js';
 // metrics-stripped path without tearing down the module registry.
 const metrics = { enabled: true };
 
-vi.mock('../../metrics/src/metrics.js', () => ({
+vi.mock('@dotli/metrics', async importOriginal => ({
+  ...(await importOriginal<typeof MetricsModule>()),
   m: {
     get enabled() {
       return metrics.enabled;
@@ -464,7 +467,6 @@ describe('Chain detail reporting works', () => {
   it('As a maintainer, a second connection to the same chain cannot rewrite a warm start as cold', async () => {
     // Given
     const mod = await import('../src/chain-sync.js');
-    const { getActiveServicesConfig } = await import('../../config/src/network.js');
     const genesis = getActiveServicesConfig().bulletin.genesis;
     const seen: unknown[] = [];
     mod.onChainDetail(detail => seen.push(detail));
@@ -480,7 +482,6 @@ describe('Chain detail reporting works', () => {
   it('As a maintainer, a panel opened late still shows the warm start rather than the later miss', async () => {
     // Given
     const mod = await import('../src/chain-sync.js');
-    const { getActiveServicesConfig } = await import('../../config/src/network.js');
     const genesis = getActiveServicesConfig().bulletin.genesis;
     mod.reportDbCache(genesis, true);
     mod.reportDbCache(genesis, false);

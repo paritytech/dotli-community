@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect } from 'vitest';
-import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin } from '../src/config.js';
+import { TIMEOUTS, BASE_DOMAIN, isSandboxOrigin, sandboxOriginForLabel } from '../src/index.js';
 import { NETWORK_NAME_TO_SERVICES_CONFIG, NetworkName } from '../src/network.js';
 
 describe('config constants', () => {
@@ -102,6 +102,13 @@ describe('config constants', () => {
       expect(isSandboxOrigin('garbage')).toBe(false);
       expect(isSandboxOrigin('')).toBe(false);
       expect(isSandboxOrigin(`name.app.${BASE_DOMAIN}`)).toBe(false);
+      expect(isSandboxOrigin('null')).toBe(false);
+    });
+
+    it('derives one exact sandbox origin for a label', () => {
+      const origin = sandboxOriginForLabel('my-app');
+      expect(new URL(origin).hostname).toBe('my-app.app.localhost');
+      expect(isSandboxOrigin(origin)).toBe(true);
     });
   });
 });

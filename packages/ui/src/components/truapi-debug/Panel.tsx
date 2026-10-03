@@ -41,6 +41,9 @@ import {
   matches,
   type FilterState,
   panelDockInset,
+  clearPolkaVmDebugSnapshot,
+  onPolkaVmDebugSnapshot,
+  type PolkaVmDebugSnapshot,
 } from '@dotli/truapi-debug';
 
 import type { ResolutionRecorder } from '@dotli/truapi-debug';
@@ -56,6 +59,7 @@ import type { ArchiveLoader } from './archive-source.js';
 import { ResolutionView } from './ResolutionView.js';
 import { Tabs, type PanelView } from './Tabs.js';
 import { TimelineView } from './TimelineView.js';
+import { RuntimeBadge, RuntimeView } from './RuntimeView.js';
 
 export const PANEL_ID = 'truapi-debug-panel';
 
@@ -210,6 +214,7 @@ export function Panel(props: {
   const stacked = createMemo(() => placement() === 'right' || narrow());
   const [paused, setPaused] = createSignal(store.isPaused());
   const [detailRevision, setDetailRevision] = createSignal(0);
+  const [runtimeSnapshot, setRuntimeSnapshot] = createSignal<PolkaVmDebugSnapshot | null>(null);
 
   /** The events and filters `visible` last filtered. */
   let filtered: {
@@ -420,6 +425,22 @@ export function Panel(props: {
     });
   };
 
+  const unsubscribeRuntime = onPolkaVmDebugSnapshot(next => {
+    // Startup replay can run while this component is mounting; do not force
+    // a nested flush. Solid settles live samples without touching the store.
+    setRuntimeSnapshot(next);
+    if (next === null && untrack(view) === 'runtime') {
+      untrack(() => {
+        selectView('list');
+      });
+    }
+  });
+  window.addEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  onCleanup(() => {
+    unsubscribeRuntime();
+    window.removeEventListener('dotli:product-loaded', clearPolkaVmDebugSnapshot);
+  });
+
   /** Exports carry the filtered view — what the user currently sees. */
   const exportJson = (): string => {
     const all = store.list();
@@ -442,10 +463,7 @@ export function Panel(props: {
   // Keep the safety-sensitive controller across tab swaps; visibility clears
   // secrets and invalidates late reads, while disposal removes all listeners.
   const wallet = untrack(() => (DEBUG ? props.wallet : undefined));
-  const openWallet = (): void => {
-    if (wallet === undefined) {
-      return;
-    }
+  const openView = (next: 'wallet' | 'runtime'): void => {
     if (collapsed()) {
       if (panelEl !== undefined && expandedHeight !== '') {
         panelEl.style.height = expandedHeight;
@@ -456,8 +474,14 @@ export function Panel(props: {
         refreshSnapshot();
       });
     }
-    selectView('wallet');
+    selectView(next);
     refit();
+  };
+  const openWallet = (): void => {
+    if (wallet === undefined) {
+      return;
+    }
+    openView('wallet');
     walletView?.content.focus();
   };
   const walletView = wallet === undefined ? undefined : createWalletControls(wallet, store, openWallet);
@@ -491,6 +515,14 @@ export function Panel(props: {
       <ResizeHandle panel={() => panelEl} collapsed={collapsed()} dock={placement()} onResize={refit} />
       <Header
         walletEntry={walletView?.entry}
+        runtimeEntry={
+          <RuntimeBadge
+            snapshot={runtimeSnapshot()}
+            onOpen={() => {
+              openView('runtime');
+            }}
+          />
+        }
         counts={counts()}
         paused={paused()}
         collapsed={collapsed()}
@@ -543,9 +575,15 @@ export function Panel(props: {
         }}
       />
       <Filters filters={filters()} products={snapshot().products} onChange={changeFilters} />
-      <div class="td-body">
+      <div class={view() === 'runtime' ? 'td-body runtime-only' : 'td-body'}>
         <div class="td-views">
-          <Tabs view={view()} wallet={wallet !== undefined} onSelect={selectView} />
+          <Tabs
+            view={view()}
+            wallet={wallet !== undefined}
+            runtime={runtimeSnapshot() !== null}
+            onSelect={selectView}
+          />
+          <RuntimeView snapshot={runtimeSnapshot()} active={view() === 'runtime' && !collapsed()} />
           {walletView?.content}
           <EventList
             events={visible()}

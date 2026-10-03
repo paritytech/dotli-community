@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "ea1a1441ff0219b1";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7c073d1a8c5db314";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -221,6 +221,8 @@ export declare class LocaleClient {
     constructor(transport: TrUApiTransport);
     /** Subscribe to the host's selected locale. */
     subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
+    /** Localize a bounded batch of UTC instants in a host locale snapshot. */
+    localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {

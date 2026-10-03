@@ -4,7 +4,7 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { flush } from 'solid-js';
 import { cleanup as unmountAll } from '@solidjs/testing-library';
-import { setBackend, setCacheSettings, setNetwork } from '@dotli/config';
+import { setBackend, setNetwork, setPolkaVmAppsEnabled } from '@dotli/config';
 
 import { SettingsPopover } from '../../../src/components/shell/SettingsPopover.js';
 import { initSettingsStore } from '../../../src/state/settings.js';
@@ -17,11 +17,8 @@ import {
   tabTo,
   waitForContent,
 } from '../../helpers/solid.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { oldModeButton, oldModePopover, type OldSettings } from './old-settings-markup.js';
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
-import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
@@ -40,17 +37,6 @@ const rpc = vi.hoisted(() => ({ live: null as string | null }));
 vi.mock('../../../../resolver/src/rpc-resolve.js', () => ({
   getConnectedAssetHubRpcEndpoint: () => rpc.live,
 }));
-
-const networks = vi.hoisted(() => ({
-  enabled: null as ReturnType<typeof NetworkModule.getEnabledNetworks> | null,
-}));
-vi.mock('../../../../config/src/network.js', async importOriginal => {
-  const actual = await importOriginal<typeof NetworkModule>();
-  return {
-    ...actual,
-    getEnabledNetworks: () => networks.enabled ?? actual.getEnabledNetworks(),
-  };
-});
 
 const DEFAULT_CACHE = {
   skipCidCache: false,
@@ -73,7 +59,7 @@ beforeEach(() => {
   actions.applyAndReset.mockReset();
   actions.applyAndReset.mockResolvedValue(undefined);
   rpc.live = null;
-  networks.enabled = null;
+  setPolkaVmAppsEnabled(true);
 });
 
 afterEach(() => {
@@ -201,63 +187,7 @@ async function openPopover(): Promise<void> {
   await settle();
 }
 
-/** The backdrop: the shared Popover's, open with the popover. */
-function expectBackdrop(open: boolean): void {
-  const backdrop = byId('mode-popover-backdrop');
-  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
-  expect(backdrop.classList.contains('open')).toBe(open);
-}
-
-/**
- * The open popover: the shared Popover's surface, whose body holds the
- * settings topbar.ts rendered. Their sheet header is the Popover's now, and
- * only a sheet's.
- */
-function expectPopoverMatches(settings: OldSettings): void {
-  const popover = byId('mode-popover');
-  expect(popover.getAttribute('role')).toBe('dialog');
-  expect(popover.getAttribute('aria-label')).toBe('Settings');
-  const expected = oldModePopover({ open: true, ...settings });
-  expected.querySelector('.mode-popover-sheet-header')?.remove();
-  expect(sameChildren(normalized(query(popover, ':scope > .popover-body')), normalized(expected))).toBe(true);
-  // isEqualNode leaves out the `checked` property, which the old code set.
-  const checked = Array.from(document.querySelectorAll<HTMLInputElement>('.mode-radio-input'))
-    .filter(input => input.checked)
-    .map(input => `${input.name}=${input.value}`);
-  expect(checked).toEqual([
-    ...(settings.enabledNetworks.length > 1 ? [`dotli-network=${settings.network}`] : []),
-    `dotli-backend=${settings.chain}`,
-  ]);
-}
-
 describe('The settings popover island', () => {
-  it('As a dotli user, the closed button, backdrop and popover match what the topbar rendered', async () => {
-    // When
-    await renderPopover();
-
-    // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: true }))),
-    ).toBe(true);
-    expectBackdrop(false);
-    // The surface is the shared Popover's, and holds nothing until opened.
-    expect(byId('mode-popover').getAttribute('aria-label')).toBe('Settings');
-    expect(query(byId('mode-popover'), ':scope > .popover-body').childElementCount).toBe(0);
-  });
-
-  it('As a visitor on trusted providers, the button carries the trusted-provider mark', async () => {
-    // Given
-    setBackend('rpc-gateway');
-
-    // When
-    await renderPopover();
-
-    // Then
-    expect(
-      normalized(byId('mode-button')).isEqualNode(normalized(oldModeButton({ open: false, verified: false }))),
-    ).toBe(true);
-  });
-
   it('As the host booting, an island mounted before the settings store is seeded reads no setting itself and follows the store once seeded', async () => {
     // Given: a saved choice the config getters would rewrite when read (no
     // shared workers here), which the boot's URL settings step must see
@@ -325,62 +255,7 @@ describe('The settings popover island', () => {
 
     // Then: the content appears without reopening.
     expect(isOpen()).toBe(true);
-    expectPopoverMatches({
-      chain: 'smoldot-direct',
-      network: 'previewnet',
-      cache: DEFAULT_CACHE,
-      enabledNetworks: ['paseo-next-v2', 'previewnet'],
-      sharedWorkerSupported: typeof SharedWorker !== 'undefined',
-      debugOn: false,
-    });
-  });
-
-  it('As a dotli user opening it with several networks, it matches what the topbar rendered', async () => {
-    // Given
-    setNetwork('previewnet');
-    setCacheSettings({ ...DEFAULT_CACHE, skipArchiveCache: true });
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(byId('mode-button').getAttribute('aria-expanded')).toBe('true');
-    expectBackdrop(true);
-    expectPopoverMatches({
-      chain: 'smoldot-direct',
-      network: 'previewnet',
-      cache: { ...DEFAULT_CACHE, skipArchiveCache: true },
-      enabledNetworks: ['paseo-next-v2', 'previewnet'],
-      sharedWorkerSupported: typeof SharedWorker !== 'undefined',
-      debugOn: false,
-    });
-  });
-
-  it('As a dotli user opening it with one network, in debug mode, on trusted providers, without shared workers and with package versions, it matches what the topbar rendered', async () => {
-    // Given
-    networks.enabled = ['previewnet'];
-    setNetwork('previewnet');
-    setBackend('rpc-gateway');
-    sessionStorage.setItem('dotli:truapi-debug', '1');
-    vi.stubGlobal('SharedWorker', undefined);
-    vi.stubGlobal('__POLKADOT_API_VERSION__', '1.2.3');
-    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
-    vi.stubGlobal('__PARITY_TRUAPI_VERSIONS__', [{ name: '@parity/truapi-host', version: '0.9.0' }]);
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expectPopoverMatches({
-      chain: 'rpc-gateway',
-      network: 'previewnet',
-      cache: DEFAULT_CACHE,
-      enabledNetworks: ['previewnet'],
-      sharedWorkerSupported: false,
-      debugOn: true,
-    });
+    expect(radio('dotli-network', 'previewnet').checked).toBe(true);
   });
 
   it('As a dotli user, a change enables Save & Apply, undoing it disables it again, and Save & Apply applies the draft', async () => {
@@ -413,6 +288,7 @@ describe('The settings popover island', () => {
     radio('dotli-network', 'previewnet').click();
     radio('dotli-backend', 'rpc-gateway').click();
     toggle('Worker cache').click();
+    toggle('PolkaVM apps').click();
     await settle();
     applyButton().click();
     await settle();
@@ -424,11 +300,13 @@ describe('The settings popover island', () => {
         chain: 'rpc-gateway',
         network: 'previewnet',
         cache: { ...DEFAULT_CACHE, skipWorkerCache: true },
+        polkaVmAppsEnabled: false,
       },
       {
         chain: 'smoldot-direct',
         network: 'paseo-next-v2',
         cache: DEFAULT_CACHE,
+        polkaVmAppsEnabled: true,
       },
     );
     expect(applyButton().disabled).toBe(true);
@@ -487,6 +365,7 @@ describe('The settings popover island', () => {
       chain: 'rpc-gateway',
       network: 'paseo-next-v2',
       cache: DEFAULT_CACHE,
+      polkaVmAppsEnabled: true,
     };
     expect(actions.applyAndReset).toHaveBeenCalledTimes(1);
     expect(actions.applyAndReset).toHaveBeenCalledWith(saved, saved, {

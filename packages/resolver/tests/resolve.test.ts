@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import type { JsonRpcConnection, JsonRpcProvider } from '@polkadot-api/json-rpc-provider';
 import { DisjointError, RpcError } from '@polkadot-api/substrate-client';
 import { log } from '@dotli/shared';
-import type { Api } from '../src/api.js';
+import type { Api, ContractStorage } from '../src/api.js';
 
 const mocks = vi.hoisted(() => ({
   stops: [] as (() => void)[],
@@ -34,17 +34,18 @@ function must<T>(value: T | undefined, what: string): T {
   return value;
 }
 
-function fakeApi(): Api {
+function fakeApi(readSlot: ContractStorage['readSlot'] = () => Promise.resolve(null)): Api {
   return {
     whenReady: () => Promise.resolve(),
-    withBestBlock: <T>(read: (hash: string) => Promise<T>) => read('0x01'),
-    resolveTrieId: () => Promise.resolve(null),
     destroy: vi.fn<() => void>(),
     onStop: (cb: () => void) => {
       mocks.stops.push(cb);
+      return () => {
+        mocks.stops = mocks.stops.filter(stop => stop !== cb);
+      };
     },
-    readSlot: () => Promise.resolve(null),
-  } as unknown as Api;
+    withContract: (_address, read) => read({ readSlot }),
+  };
 }
 
 /** An `ApiStoppedError` as `api.ts` raises it; the module is mocked here. */
@@ -64,16 +65,14 @@ function haltedBeforeReady(): Api {
  * is answered with `err`, then the follow gets its `stop`.
  */
 function haltedMidRead(err: Error): () => Api {
-  return () => ({
-    ...fakeApi(),
-    readSlot: () => {
+  return () =>
+    fakeApi(() => {
       const answer = Promise.reject(err);
       for (const stop of mocks.stops) {
         stop();
       }
       return answer;
-    },
-  });
+    });
 }
 
 describe('resolve', () => {
@@ -83,7 +82,7 @@ describe('resolve', () => {
   beforeEach(() => {
     vi.spyOn(log, 'warn').mockImplementation(() => undefined);
     destroyResolverClient();
-    mocks.createRawApi.mockReset().mockImplementation(fakeApi);
+    mocks.createRawApi.mockReset().mockImplementation(() => fakeApi());
     mocks.stops = [];
     disconnect = vi.fn<() => void>();
     factory = vi.fn<() => JsonRpcProvider>(
@@ -176,23 +175,21 @@ describe('resolve', () => {
     const result = resolveOwner('alice');
 
     // Then
-    await expect(result).rejects.toThrow('chainHead follow stopped');
+    await expect(result).rejects.toMatchObject({ name: 'ApiStoppedError' });
     expect(factory).toHaveBeenCalledTimes(4);
   });
 
   it('As a dotli user on a light client, a read that fails for any other reason is not retried', async () => {
     // Given
     setResolverAssetHubProvider(factory);
-    mocks.createRawApi.mockImplementationOnce(() => ({
-      ...fakeApi(),
-      readSlot: () => Promise.reject(new RpcError({ code: -32603, message: 'Unknown subscription/token' })),
-    }));
+    const failure = new RpcError({ code: -32603, message: 'Unknown subscription/token' });
+    mocks.createRawApi.mockImplementationOnce(() => fakeApi(() => Promise.reject(failure)));
 
     // When
     const result = resolveOwner('alice');
 
     // Then
-    await expect(result).rejects.toThrow('Unknown subscription/token');
+    await expect(result).rejects.toBe(failure);
     expect(factory).toHaveBeenCalledTimes(1);
   });
 

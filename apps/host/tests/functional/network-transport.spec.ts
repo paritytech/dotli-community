@@ -58,13 +58,13 @@ interface GaugePoint {
   mode: string;
 }
 
-async function readGauge(request: APIRequestContext): Promise<GaugePoint[]> {
+async function readGauge(request: APIRequestContext, mode: string): Promise<GaugePoint[]> {
   const res = await request.get(METRICS_URL);
   if (!res.ok()) {
     throw new Error(`preview-server returned HTTP ${String(res.status())}`);
   }
   const points = (await res.json()) as GaugePoint[];
-  return points.filter(p => p.name === 'dotli.smoldot.active');
+  return points.filter(p => p.name === 'dotli.smoldot.active' && p.mode === mode);
 }
 
 // Long enough for a flush that lands after the last context reports, so an
@@ -83,17 +83,22 @@ const SETTLE_MS = 5_000;
  * Not self-fulfilling. A count that never reaches `expected` still returns
  * whatever did arrive, and the caller's assertion fails with the real number.
  */
-async function settledGauge(request: APIRequestContext, page: Page, expected: number): Promise<GaugePoint[]> {
+async function settledGauge(
+  request: APIRequestContext,
+  page: Page,
+  expected: number,
+  mode: string,
+): Promise<GaugePoint[]> {
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
-    const points = await readGauge(request);
+    const points = await readGauge(request, mode);
     if (points.reduce((sum, p) => sum + p.value, 0) >= expected) {
       break;
     }
     await page.waitForTimeout(1_000);
   }
   await page.waitForTimeout(SETTLE_MS);
-  return readGauge(request);
+  return readGauge(request, mode);
 }
 
 for (const [label, backend, expected] of [
@@ -136,16 +141,15 @@ for (const [label, backend, expected] of [
     await tabB.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
     expect(await findAppFrame(tabB, TIMEOUT_MS)).not.toBeNull();
 
-    const points = await settledGauge(request, tabA, expected);
+    // The collector is process-wide. A prior test context can finish flushing
+    // after DELETE, so isolate this assertion by the mode emitted with each
+    // point. A backend fallback still fails: the requested mode contributes 0.
+    const expectedMode = backend === 'smoldot-shared-worker' ? 'shared-worker' : 'direct';
+    const points = await settledGauge(request, tabA, expected, expectedMode);
 
     // Then
     const total = points.reduce((sum, p) => sum + p.value, 0);
     expect(total, `expected ${String(expected)} light client(s) in ${backend}, saw ${String(total)}`).toBe(expected);
-
-    // Without this, a run that silently fell back to another backend would
-    // still report the right number and read as a pass.
-    const modes = [...new Set(points.map(p => p.mode))];
-    expect(modes).toEqual([backend === 'smoldot-shared-worker' ? 'shared-worker' : 'direct']);
   });
 }
 

@@ -4,15 +4,19 @@
 // Public API of @dotli/truapi-debug. Other workspace packages import only from here.
 // Every other module under src/ is private to the package.
 
+export { decodeChainAnnotations, type ChainAnnotations } from './chain-decode.js';
 export { formatLatency, formatTime, renderGroupDetail, renderSingleDetail } from './detail-html.js';
 export { readStoredDock, writeStoredDock, type DockPosition } from './dock-storage.js';
 export {
   emitDotliDebugEvent,
+  emitPolkaVmDebugSnapshot,
+  clearPolkaVmDebugSnapshot,
+  onPolkaVmDebugSnapshot,
   hasDotliDebugListeners,
   onDotliDebugEvent,
   type DotliDebugBusEvent,
 } from './dotli-debug-bus.js';
-export { type DotliDebugEvent } from './dotli-debug-types.js';
+export { type DotliDebugEvent, type PolkaVmDebugSnapshot, type PolkaVmDebugMessage } from './dotli-debug-types.js';
 export {
   EventStore,
   correlationKeyOf,

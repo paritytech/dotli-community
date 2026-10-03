@@ -8,16 +8,30 @@ export { type ResolvePhase } from './access-raw-storage.js';
 export { chainBytesReceived, installByteMeter } from './byte-meter.js';
 export { type ChainKey, type ChainPeer, type ChainSyncKind } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
-// From the schema module, not `./manifest.js`: the host validates cached
-// manifests on its eager path, and the reader would drag the chain-storage
-// code (namehash, storage reads, hashers) in with it.
+// Keep cached-manifest validation free of the chain-storage reader.
 export {
+  parseExecutableManifest,
+  parseRootManifest,
   toExecutableManifestResult,
   toRootManifestResult,
+  validateExecutableManifest,
+  validateRootManifest,
+  type AppManifest,
+  type AppManifestV1,
+  type AppManifestV2,
+  type AppVersion,
+  type ExecutableKind,
   type ExecutableManifest,
+  type FileInputHandler,
+  type FileInputRequirement,
   type ManifestRecordResult,
   type ManifestResult,
+  type PolkaVmAppManifestV2,
   type RootManifest,
+  type WebAppManifestV2,
+  type WidgetManifest,
+  type WorkerManifest,
+  type ValidationResult,
 } from './manifest-types.js';
 export { createChainProvider, isChainSupported, onProviderFatal, onSmoldotDbOutcome } from './provider.js';
 export {

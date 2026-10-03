@@ -33,6 +33,7 @@ export const ROOT_MANIFEST_KEY = 'manifest';
 export const EXECUTABLE_MANIFEST_KEY = 'executable';
 
 /**
+
  * Read the root manifest at `<label>.<tld>` text-record key `"manifest"`.
  *
  * Returns `{ kind: "unsupported" }` when the active network's content

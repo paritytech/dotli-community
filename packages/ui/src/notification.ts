@@ -9,6 +9,7 @@
 // API when the tab is hidden; that part does not depend on the overlays.
 
 import { presentToast } from './overlays/load.js';
+import { dismissToast } from './state/toasts.js';
 
 /** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;
@@ -82,14 +83,14 @@ function fireBrowserNotification(text: string, deeplink: string | undefined, lab
   }
 }
 
-export function showNotification(params: NotificationParams): void {
+export function showNotification(params: NotificationParams): () => void {
   const text = sanitizeText(params.text);
   if (!text) {
-    return;
+    return () => undefined;
   }
   const deeplink = validateDeeplink(params.deeplink);
 
-  presentToast({
+  const id = presentToast({
     text,
     label: params.label,
     icon: params.icon ?? BELL_SVG,
@@ -105,4 +106,7 @@ export function showNotification(params: NotificationParams): void {
   if ((params.browserNotification ?? true) && document.visibilityState !== 'visible') {
     fireBrowserNotification(text, deeplink, params.label);
   }
+  return () => {
+    dismissToast(id);
+  };
 }

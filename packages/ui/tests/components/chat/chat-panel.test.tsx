@@ -59,7 +59,7 @@ vi.mock('../../../src/chat/service.js', async original => {
       return messages;
     }),
     userPostMessage: vi.fn(() => Promise.resolve()),
-    renderCustomMessage: (_productId: string, _request: unknown, sink: Sink) => {
+    render: (_productId: string, _request: unknown, sink: Sink) => {
       h.sinks.push(sink);
       return () => undefined;
     },

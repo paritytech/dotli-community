@@ -33,7 +33,10 @@ const socialMeta = socialMetaAttributes({
   <head>
     {runtimeNetworkConfig && <script is:inline src="/dotli-network.js"></script>}
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <title>{TITLE}</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="preconnect" href="https://host.dot.li" crossorigin />
@@ -42,11 +45,12 @@ const socialMeta = socialMetaAttributes({
          src/db.ts picks it up from window.__dotliDb. */}
     <script is:inline>
       window.__dotliDb = new Promise(function (resolve, reject) {
-        const req = indexedDB.open('dotli', 5);
+        const req = indexedDB.open('dotli', 6);
         req.onupgradeneeded = function () {
           const db = req.result;
-          if (!db.objectStoreNames.contains('cids')) {
-            db.createObjectStore('cids', { keyPath: 'label' });
+          // v6 combines main's block stores with removal of the old CID-only cache.
+          if (db.objectStoreNames.contains('cids')) {
+            db.deleteObjectStore('cids');
           }
           if (!db.objectStoreNames.contains('chains')) {
             db.createObjectStore('chains', { keyPath: 'chain' });

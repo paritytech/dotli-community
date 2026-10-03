@@ -5,7 +5,8 @@
   "version": "0.6.0",
   "type": "module",
   "sideEffects": [
-    "**/*.css"
+    "**/*.css",
+    "./src/bc-ur-polyfill.ts"
   ],
   "exports": {
     ".": "./src/index.ts",
@@ -35,12 +36,15 @@
     "@dotli/shared": "*",
     "@dotli/storage": "*",
     "@dotli/truapi-debug": "*",
+    "@ngraveio/bc-ur": "^1.1.13",
     "@noble/hashes": "^2.4.0",
     "@parity/truapi": "file:../../vendor/truapi",
     "@parity/truapi-host": "file:../../vendor/truapi-host",
     "@polkadot-api/json-rpc-provider": "^0.2.0",
     "@scure/base": "^2.4.0",
     "@scure/bip39": "^2.4.0",
+    "@zxing/browser": "^0.1.5",
+    "buffer": "^6.0.3",
     "@solidjs/web": "2.0.0-rc.13",
     "neverthrow": "^8.2.0",
     "polkadot-api": "^3.2.0",

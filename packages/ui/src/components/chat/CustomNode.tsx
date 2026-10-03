@@ -15,11 +15,26 @@
 
 import { createEffect, createUniqueId, For, Match, onCleanup, Show, Switch, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { RendererNode } from '@parity/truapi';
+import type { ImageFit, ImageSource, RendererNode } from '@parity/truapi';
 import { boxStyle, columnStyle, modifierStyle, rowStyle, textStyle } from '../../chat/custom-styles.js';
 
 /** Reports a user gesture inside a rendered tree back to the product. */
 export type CustomActionHandler = (actionId: string, payload?: Uint8Array) => void;
+
+/** Resources belong to one streamed tree, not the message's lifetime. */
+export interface RendererResources {
+  signal: AbortSignal;
+  loadImage(source: ImageSource, signal: AbortSignal): Promise<Blob>;
+  onError(error: Error): void;
+}
+
+const IMAGE_FIT_CSS = {
+  None: 'none',
+  Fill: 'fill',
+  Cover: 'cover',
+  Contain: 'contain',
+  ScaleDown: 'scale-down',
+} as const satisfies Record<ImageFit, string>;
 
 type NodeTag = Exclude<RendererNode['tag'], 'Nil'>;
 type NodeValues = {
@@ -43,10 +58,14 @@ function buttonVariant(variant: NodeValue<'Button'>['props']['variant']): string
   return variant === 'Secondary' ? 'secondary' : 'text';
 }
 
-function Children(props: { nodes: RendererNode[]; onAction: CustomActionHandler }): JSX.Element {
+function Children(props: {
+  nodes: RendererNode[];
+  onAction: CustomActionHandler;
+  resources: RendererResources | undefined;
+}): JSX.Element {
   return (
     <For each={props.nodes} keyed={false}>
-      {child => <CustomNode node={child()} onAction={props.onAction} />}
+      {child => <CustomNode node={child()} onAction={props.onAction} resources={props.resources} />}
     </For>
   );
 }
@@ -178,8 +197,134 @@ function TextField(props: { value: NodeValue<'TextField'>; onAction: CustomActio
   );
 }
 
+function Image(props: { value: NodeValue<'Image'>; resources: RendererResources | undefined }): JSX.Element {
+  let image: HTMLImageElement | undefined;
+  createEffect(
+    () => ({ source: props.value.props.source, resources: props.resources }),
+    ({ source, resources }) => {
+      if (resources === undefined) {
+        throw new Error('Image rendering requires host resources');
+      }
+      if (resources.signal.aborted || image === undefined) {
+        return;
+      }
+      const element = image;
+      const load = new AbortController();
+      let active = true;
+      let url: string | undefined;
+      const dispose = (): void => {
+        if (!active) {
+          return;
+        }
+        active = false;
+        load.abort();
+        element.removeAttribute('src');
+        if (url !== undefined) {
+          URL.revokeObjectURL(url);
+          url = undefined;
+        }
+      };
+      const fail = (error: unknown): void => {
+        if (active && !resources.signal.aborted) {
+          resources.onError(error instanceof Error ? error : new Error(String(error)));
+        }
+      };
+      const decodeError = (): void => {
+        fail(new Error('Renderer image could not be decoded'));
+      };
+      element.addEventListener('error', decodeError);
+      resources.signal.addEventListener('abort', dispose, { once: true });
+      void resources
+        .loadImage(source, load.signal)
+        .then(blob => {
+          if (active && !resources.signal.aborted) {
+            url = URL.createObjectURL(blob);
+            element.src = url;
+          }
+        })
+        .catch(fail);
+      // Solid's effect callback has no owner; its returned disposer runs on
+      // both dependency replacement and node removal.
+      return () => {
+        resources.signal.removeEventListener('abort', dispose);
+        element.removeEventListener('error', decodeError);
+        dispose();
+      };
+    },
+  );
+  return (
+    <img
+      ref={el => {
+        image = el;
+      }}
+      class="chat-custom-image"
+      alt=""
+      style={{ 'object-fit': IMAGE_FIT_CSS[props.value.props.fit ?? 'Fill'], ...modifierStyle(props.value.modifiers) }}
+    />
+  );
+}
+
+function Effect(props: {
+  value: NodeValue<'Effect'>;
+  onAction: CustomActionHandler;
+  resources: RendererResources | undefined;
+}): JSX.Element {
+  let tint: HTMLSpanElement | undefined;
+  createEffect(
+    () => props.resources,
+    resources => {
+      if (
+        tint === undefined ||
+        resources?.signal.aborted === true ||
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      ) {
+        return;
+      }
+      const animation = tint.animate([{ filter: 'hue-rotate(0deg)' }, { filter: 'hue-rotate(360deg)' }], {
+        duration: 4000,
+        iterations: Infinity,
+      });
+      let active = true;
+      const cancel = (): void => {
+        if (!active) {
+          return;
+        }
+        active = false;
+        animation.cancel();
+      };
+      resources?.signal.addEventListener('abort', cancel, { once: true });
+      return () => {
+        resources?.signal.removeEventListener('abort', cancel);
+        cancel();
+      };
+    },
+  );
+  return (
+    <div class="chat-custom-effect" style={{ position: 'relative', isolation: 'isolate' }}>
+      <Children nodes={props.value.children} onAction={props.onAction} resources={props.resources} />
+      <span
+        ref={el => {
+          tint = el;
+        }}
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: '0',
+          'pointer-events': 'none',
+          'mix-blend-mode': 'color',
+          background: 'linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)',
+        }}
+      />
+    </div>
+  );
+}
+
 /** One node of a product-authored render tree. `Nil` renders nothing. */
-export function CustomNode(props: { node: RendererNode; onAction: CustomActionHandler }): JSX.Element {
+export function CustomNode(props: {
+  node: RendererNode;
+  onAction: CustomActionHandler;
+  resources?: RendererResources | undefined;
+}): JSX.Element {
   return (
     <Switch>
       <Match when={valueOf(props.node, 'String')}>{value => <>{value().text}</>}</Match>
@@ -187,7 +332,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       <Match when={valueOf(props.node, 'Box')}>
         {value => (
           <div class="chat-custom-box" style={boxStyle(value().props.contentAlignment, value().modifiers)}>
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} resources={props.resources} />
           </div>
         )}
       </Match>
@@ -198,7 +343,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             class="chat-custom-column"
             style={columnStyle(value().props.horizontalAlignment, value().props.verticalArrangement, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} resources={props.resources} />
           </div>
         )}
       </Match>
@@ -209,7 +354,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             class="chat-custom-row"
             style={rowStyle(value().props.horizontalArrangement, value().props.verticalAlignment, value().modifiers)}
           >
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} resources={props.resources} />
           </div>
         )}
       </Match>
@@ -221,7 +366,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
       <Match when={valueOf(props.node, 'Text')}>
         {value => (
           <span class="chat-custom-text" style={textStyle(value().props.style, value().props.color, value().modifiers)}>
-            <Children nodes={value().children} onAction={props.onAction} />
+            <Children nodes={value().children} onAction={props.onAction} resources={props.resources} />
           </span>
         )}
       </Match>
@@ -241,6 +386,7 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
             }}
           >
             {value().props.text}
+            <Children nodes={value().children} onAction={props.onAction} resources={props.resources} />
           </button>
         )}
       </Match>
@@ -249,18 +395,12 @@ export function CustomNode(props: { node: RendererNode; onAction: CustomActionHa
         {value => <TextField value={value()} onAction={props.onAction} />}
       </Match>
 
-      {/* No fetch path for Bulletin or archive image bytes in the host frame
-          yet, so an image draws as the empty space the RFC gives a miss. */}
       <Match when={valueOf(props.node, 'Image')}>
-        {value => <div class="chat-custom-image" style={modifierStyle(value().modifiers)} />}
+        {value => <Image value={value()} resources={props.resources} />}
       </Match>
 
       <Match when={valueOf(props.node, 'Effect')}>
-        {value => (
-          <div class={`chat-custom-effect chat-custom-effect-${value().props.effect.toLowerCase()}`}>
-            <Children nodes={value().children} onAction={props.onAction} />
-          </div>
-        )}
+        {value => <Effect value={value()} onAction={props.onAction} resources={props.resources} />}
       </Match>
     </Switch>
   );

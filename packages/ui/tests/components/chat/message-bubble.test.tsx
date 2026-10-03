@@ -8,8 +8,9 @@ import type { ChatMessageRecord } from '../../../src/chat/service.js';
 
 const service = vi.hoisted(() => ({
   userTriggerAction: vi.fn(),
-  renderCustomMessage: vi.fn(),
+  render: vi.fn(),
   userTriggerRendererAction: vi.fn(),
+  loadRendererImage: vi.fn(),
 }));
 vi.mock('../../../src/chat/service.js', () => service);
 
@@ -156,7 +157,7 @@ describe('message bubble', () => {
     // Given
     vi.stubGlobal('IntersectionObserver', undefined);
     const stop = vi.fn();
-    service.renderCustomMessage.mockReturnValue(stop);
+    service.render.mockReturnValue(stop);
     const view = renderComponent(() => (
       <MessageBubble
         record={record({
@@ -174,7 +175,7 @@ describe('message bubble', () => {
     expect(bubble.className).toBe('chat-msg-bubble chat-msg-custom');
     expect(bubble.firstElementChild?.className).toBe('chat-custom-root');
     expect(bubble.lastElementChild?.tagName).toBe('TIME');
-    expect(service.renderCustomMessage).toHaveBeenCalledTimes(1);
+    expect(service.render).toHaveBeenCalledTimes(1);
 
     // When
     view.unmount();

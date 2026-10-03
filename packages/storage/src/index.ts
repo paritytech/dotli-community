@@ -19,17 +19,23 @@ export {
 } from './chat.js';
 export {
   RECENT_KEY,
-  clearCidCache,
-  evictCachedCid,
-  getCachedCid,
+  addRecentLabel,
+  clearInstalledExecutableCache,
+  evictCachedInstalledExecutable,
+  getCachedInstalledExecutable,
   getRecentLabels,
   parseRecentLabels,
+  reconcileInstalledExecutable,
+  removeRecentLabel,
   serializeRecentLabels,
-  setCachedCid,
+  setCachedInstalledExecutable,
   withRecentLabel,
   writeRecentLabels,
-  type CachedCid,
   type CachedManifests,
+  type ExecutableModality,
+  type InstalledExecutable,
+  type InstalledExecutableCacheResult,
+  type RevalidateOutcome,
 } from './cid-cache.js';
 export {
   allocateId,

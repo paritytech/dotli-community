@@ -28,6 +28,7 @@
     "@dotli/sandbox-checker": "*",
     "@dotli/shared": "*",
     "@dotli/storage": "*",
+    "@dotli/truapi-debug": "*",
     "@dotli/ui": "*",
     "@sentry/browser": "^11.1.0",
     "@sentry/vite-plugin": "^5.4.0"

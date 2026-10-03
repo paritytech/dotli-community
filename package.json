@@ -27,6 +27,8 @@
     "set-version": "node scripts/set-version.ts",
     "link:truapi": "node scripts/link-truapi-local.ts",
     "unlink:truapi": "node scripts/unlink-truapi-local.ts",
+    "sync:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts",
+    "check:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts --check",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +",
     "prepare": "husky"
   },

@@ -93,6 +93,7 @@ function DockBottomIcon(): JSX.Element {
 export function Header(props: {
   counts: string;
   walletEntry?: JSX.Element | undefined;
+  runtimeEntry?: JSX.Element | undefined;
   paused: boolean;
   collapsed: boolean;
   dock: DockPosition;
@@ -184,6 +185,7 @@ export function Header(props: {
       {props.walletEntry}
       <span class="td-title">TrUAPI Debug</span>
       <span class="td-counts">{props.counts}</span>
+      {props.runtimeEntry}
       <span class="td-spacer" />
       <button
         class={props.paused ? 'td-btn td-pause active' : 'td-btn td-pause'}

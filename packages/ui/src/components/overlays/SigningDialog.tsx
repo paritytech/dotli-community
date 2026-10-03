@@ -62,7 +62,10 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
       <div class="signing-fields">
         <For each={view.fields}>
           {field => (
-            <div class={['signing-field', { 'signing-field-warning': field.warning === true }]}>
+            <div
+              class={['signing-field', { 'signing-field-warning': field.warning === true }]}
+              role={field.warning === true ? 'alert' : undefined}
+            >
               <div class="signing-field-label">{field.label}</div>
               <div class={['signing-field-value', { mono: field.mono === true }]}>{field.value}</div>
             </div>

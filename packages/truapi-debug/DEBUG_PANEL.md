@@ -18,6 +18,7 @@ dynamically imported, so users who never see the panel pay zero download cost.
 - [Views](#views)
   - [List view](#list-view)
   - [Timeline view](#timeline-view)
+  - [Runtime view](#runtime-view)
   - [Wallet view](#wallet-view)
 - [Filters](#filters)
 - [Detail pane](#detail-pane)
@@ -37,8 +38,9 @@ dynamically imported, so users who never see the panel pay zero download cost.
 
 A resizable, dockable panel at the bottom of the viewport. It mounts visible whenever debug mode is on; the panel's `×`
 button exits debug mode entirely (see [Enabling and disabling](#enabling-and-disabling)). The **List** and **Timeline**
-tabs share a detail inspector for the selected event, with a draggable splitter between the panes. **Resolution** and
-the debug-build-only **Wallet** tab use the full pane width.
+tabs share a detail inspector for the selected event, with a draggable splitter between the panes. **Resolution**,
+**Runtime**, and the debug-build-only **Wallet** tab use the full pane width. For PolkaVM products, a live header badge
+and **Runtime** view show backend, startup, frame, update, translation, cache, and audio diagnostics.
 
 Hover any element in the Timeline for a zero-delay tooltip with the decoded method + summary. Click any row or box to
 pin it in the detail pane.
@@ -52,10 +54,10 @@ The panel ships in every build. Default behavior depends on the build flag `VITE
   covering content unsolicited.
 - **Staging / production** (`VITE_APP_DEBUG` unset): the panel is off until the user explicitly opts in.
 
-When the panel isn't mounted, the bus stays in a null-stub state and every `emitDotliDebugEvent(...)` call site
-scattered through `main.ts`, `bridge.ts`, and `container.ts` is a cheap early-return. The panel UI
-(`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree) is a dynamic import — it isn't fetched until the
-panel mounts.
+Until debug mode is enabled, the bus stays in a null-stub state: event and PolkaVM snapshot publication are cheap
+early-returns. Once enabled, runtime publication retains only the latest snapshot reference and skips dispatch when no
+runtime listener is attached. The panel UI (`packages/ui/src/components/truapi-debug/mount.tsx`, a Solid tree) is a
+dynamic import — it isn't fetched until the panel mounts.
 
 Two ways to explicitly turn the panel on (mounts **expanded**):
 
@@ -107,8 +109,8 @@ changes.
 Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@dotli/truapi-debug`
 (`src/dotli-debug-bus.ts`).
 
-- `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`, `url_parsed`, `cid_cache_checked`,
-  `landing_page_shown`, `ready`, `failed`.
+- `boot:*` — `started`, `protocol_warmup_started`, `topbar_ready`, `url_parsed`, `installed_executable_cache_checked`,
+  `block_cache`, `landing_page_shown`, `ready`, `failed`.
 - `resolve:*` — `started`, `phase`, `storage_read`, `completed`, `failed`.
 - `render:*` — `iframe_begin`, `iframe_ready`.
 - `bridge:*` — `setup_begin`, `setup_ready`, `iframe_load`, `first_inbound`, `first_outbound`.
@@ -116,8 +118,8 @@ Dotli-internal host-side orchestration, captured by `onDotliDebugEvent` from `@d
 
 ## Views
 
-List and Timeline operate on the same filtered slice of the event store. Clicking an event in one view pins the same
-event in the detail pane regardless of which view is active.
+List and Timeline operate on the same filtered slice of the event store. Clicking an event in either view pins the same
+event in the detail pane. Runtime is a live snapshot and does not add sampled FPS values to the event ring buffer.
 
 ### List view
 
@@ -143,6 +145,28 @@ its Y range.
 Each swimlane has its own horizontal scroll, so a chain with many concurrent operations can grow wide without pushing
 the whole view. Vertical scroll is shared across all swimlanes, so events at the same Y in different swimlanes occurred
 at the same moment.
+
+### Runtime view
+
+PolkaVM products publish their latest runtime snapshot from the product sandbox to the authenticated host frame. The
+panel exposes the current backend (**JIT**, **Interpreter**, or **Starting**) and FPS in its header badge, with
+first-frame latency in the tooltip. Clicking the badge expands the panel and opens the Runtime view with:
+
+- startup stage and total startup / first-frame latency;
+- translation-cache result, translation time, compilation time, and translated Wasm size;
+- current FPS, presented frame count, and update count;
+- update p50, p95, and maximum latency;
+- emitted audio chunk and sample counts.
+- compiler fallback stage and reason when compiler startup failed (not for a forced interpreter).
+
+The snapshot is replaced in place rather than appended to List or Timeline. Pausing or clearing event capture does not
+stop these live counters. Loading another product clears the current snapshot, hides Runtime, and returns to List if
+Runtime was selected. PolkaVM no longer renders a separate diagnostics overlay over product content.
+
+The `@dotli/truapi-debug` barrel exports `PolkaVmDebugSnapshot`, `PolkaVmDebugMessage`, `emitPolkaVmDebugSnapshot`,
+`onPolkaVmDebugSnapshot`, and `clearPolkaVmDebugSnapshot`. Subscribers immediately receive the latest available sample;
+reset publishes `null` and clears that replay value. Disposal unsubscribes the panel without adding samples to the event
+store.
 
 ### Wallet view
 
@@ -179,7 +203,7 @@ risks, and recovery behavior.
 
 ## Filters
 
-The filter bar at the top of the panel applies to both views:
+The filter bar at the top of the panel applies to the two event views:
 
 - **TrUAPI / System checkboxes** — coarse kind toggle. Unchecking hides events of that kind from both views, and the
   affected swimlanes disappear when they have nothing to show.

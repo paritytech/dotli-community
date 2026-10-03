@@ -28,12 +28,14 @@ import {
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
 import {
-  BASE_DOMAIN,
   DEBUG,
   getActiveServicesConfig,
   SANDBOX_CONTRACT_PARAMS,
   SANDBOX_SCHEMA_VERSION,
   getBackend,
+  getPolkaVmAppsEnabled,
+  SITE_ID,
+  sandboxOriginForLabel,
   getNetwork,
   withActiveTld,
 } from '@dotli/config';
@@ -88,11 +90,16 @@ export { hostAssetHubProvider, hostChainProvider } from './host-callbacks/Chain.
 import { setProductLoaded } from './state/product.js';
 import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
-import { registerChatConnection } from './chat/service.js';
+import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
 import { showNotification } from './notification.js';
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
 import { mountViolationPanel } from './components/sandbox-checker/mount.js';
+import { CameraInputCancelledError, CameraInputPermissionError, scanCameraUr } from './mediated-input-camera.js';
+import { MediatedInputHost, validatedMediatedInputRequest } from './mediated-input-host.js';
+import { decidePromptPermission } from './host-callbacks/PromptPermission.js';
+import { createSubmitRateLimiter } from './host-callbacks/rate-limit.js';
+import { installPolkaVmViewInsetsRelay } from './polkavm-view-insets.js';
 
 const noop = (): void => undefined;
 
@@ -122,12 +129,77 @@ type CurrentProduct =
       mode: 'subdomain';
       label: string;
       cid: string;
+      executableManifest: string | null;
     };
 
 let currentHost: ActiveHost | null = null;
 let currentPanelDispose: (() => void) | null = null;
 let currentProduct: CurrentProduct | null = null;
 let renderGeneration = 0;
+let blockingModalCoordinator: BlockingModalCoordinator | null = null;
+const mediatedInputPermissionLimiter = createSubmitRateLimiter();
+const mediatedInputHost = new MediatedInputHost({
+  authorize: async (label, signal) => {
+    const coordinator = blockingModalCoordinator;
+    if (coordinator === null) {
+      throw new Error('blocking modal coordinator is unavailable');
+    }
+    const scope = coordinator.createScope();
+    const abort = (): void => {
+      scope.dispose('mediated input cancelled');
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    try {
+      const decision = await decidePromptPermission(
+        label,
+        'Camera',
+        {
+          kind: 'Device',
+          limiter: mediatedInputPermissionLimiter,
+          gatedByIframe: false,
+        },
+        scope,
+      );
+      return decision !== 'Deny';
+    } finally {
+      signal.removeEventListener('abort', abort);
+      scope.dispose();
+    }
+  },
+  scan: (label, request, signal) => scanCameraUr(label, request, signal),
+  send: (owner, handle, status, bytes) => {
+    const product = currentProduct;
+    const source = currentHost?.iframe.contentWindow;
+    if (product?.mode !== 'subdomain' || source === null || source === undefined || owner !== source) {
+      return;
+    }
+    if (bytes === undefined) {
+      source.postMessage(
+        {
+          type: 'dotli:polkavm-mediated-input-result',
+          handle,
+          status,
+        },
+        sandboxOriginForLabel(product.label),
+      );
+      return;
+    }
+    const result = new Uint8Array(bytes);
+    source.postMessage(
+      {
+        type: 'dotli:polkavm-mediated-input-result',
+        handle,
+        status,
+        bytes: result,
+      },
+      sandboxOriginForLabel(product.label),
+      [result.buffer],
+    );
+  },
+  isCancellation: error =>
+    error instanceof CameraInputCancelledError || (error instanceof DOMException && error.name === 'AbortError'),
+  isPermissionDenied: error => error instanceof CameraInputPermissionError,
+});
 
 let localIdentityOperationPending = false;
 
@@ -402,7 +474,7 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     origin:
       context.product.mode === 'iframe'
         ? new URL(context.product.url, window.location.href).origin
-        : getAppOrigin(context.product.label),
+        : sandboxOriginForLabel(context.product.label),
     accountPublicKey,
     accountError,
     derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
@@ -604,7 +676,7 @@ function rerenderProduct(product: CurrentProduct): void {
       ? renderIframe(product.url, product.label, {
           productId: product.productId,
         })
-      : renderAppSubdomain(product.cid, product.label);
+      : renderAppSubdomain(product.cid, product.label, product.executableManifest);
   void render.catch((error: unknown) => {
     // A newer render superseded this one, so its result owns the UI now.
     if (renderGeneration !== expectedGeneration) {
@@ -636,24 +708,191 @@ window.addEventListener('dotli:device-permission-changed', () => {
   }
 });
 
-// The sandbox strips its contract params after a successful boot, so a
-// reload of the sandbox window (a dApp calling `location.reload()`, a
-// browser restoring a crashed frame) boots without `?cid=` and cannot
-// recover on its own. It posts a recover request and the host rebuilds
-// the iframe from the tracked product state. The origin gate restricts
-// the request to the product currently rendered. The interval guard stops
-// a reload-looping product from pinning the host in endless re-renders.
-// A rate-limited sandbox shows its own contract error once its
-// `TIMEOUTS.SANDBOX_RECOVER` grace expires.
+let motionRelayCleanup: (() => void) | null = null;
+let motionPromptSource: Window | null = null;
+let motionPromptDismiss: (() => void) | null = null;
+
+function stopMotionRelay(): void {
+  motionRelayCleanup?.();
+  motionRelayCleanup = null;
+  motionPromptDismiss?.();
+  motionPromptDismiss = null;
+  motionPromptSource = null;
+}
+
+function sendMotionStatus(source: Window, origin: string, availability: 0 | 1 | 2): void {
+  source.postMessage({ type: 'dotli:polkavm-motion-status', availability }, origin);
+}
+
+function offerTopLevelMotionPermission(source: Window, origin: string, label: string): void {
+  if (motionRelayCleanup !== null) {
+    sendMotionStatus(source, origin, 1);
+    return;
+  }
+  if (motionPromptSource === source) {
+    return;
+  }
+  motionPromptSource = source;
+  let permissionPending = false;
+  const dismissPrompt = showNotification({
+    label: withActiveTld(label),
+    text: 'Enable motion to tilt this application with your device.',
+    dismissMs: 0,
+    browserNotification: false,
+    action: {
+      label: 'Enable motion',
+      onClick: () => {
+        if (motionRelayCleanup !== null) {
+          sendMotionStatus(source, origin, 1);
+          return;
+        }
+        if (permissionPending) {
+          return;
+        }
+        permissionPending = true;
+        const constructor =
+          typeof DeviceMotionEvent === 'undefined'
+            ? null
+            : (DeviceMotionEvent as typeof DeviceMotionEvent & {
+                requestPermission?: () => Promise<'granted' | 'denied'>;
+              });
+        let request: Promise<'granted' | 'denied' | 'unavailable'>;
+        try {
+          request =
+            constructor === null
+              ? Promise.resolve('unavailable')
+              : typeof constructor.requestPermission === 'function'
+                ? constructor.requestPermission()
+                : Promise.resolve('granted');
+        } catch {
+          permissionPending = false;
+          sendMotionStatus(source, origin, 2);
+          return;
+        }
+        void request
+          .then(permission => {
+            if (currentHost?.iframe.contentWindow !== source || currentProduct?.mode !== 'subdomain') {
+              return;
+            }
+            if (permission === 'unavailable') {
+              sendMotionStatus(source, origin, 0);
+              return;
+            }
+            if (permission !== 'granted') {
+              sendMotionStatus(source, origin, 2);
+              return;
+            }
+            const onMotion = (event: DeviceMotionEvent): void => {
+              const acceleration = event.accelerationIncludingGravity;
+              const rotation = event.rotationRate;
+              source.postMessage(
+                {
+                  type: 'dotli:polkavm-motion-sample',
+                  timestampMs: performance.now(),
+                  acceleration:
+                    acceleration === null
+                      ? null
+                      : {
+                          x: acceleration.x,
+                          y: acceleration.y,
+                          z: acceleration.z,
+                        },
+                  rotation:
+                    rotation === null
+                      ? null
+                      : {
+                          alpha: rotation.alpha,
+                          beta: rotation.beta,
+                          gamma: rotation.gamma,
+                        },
+                },
+                origin,
+              );
+            };
+            window.addEventListener('devicemotion', onMotion);
+            motionRelayCleanup = () => {
+              window.removeEventListener('devicemotion', onMotion);
+            };
+            dismissPrompt();
+            motionPromptSource = null;
+            sendMotionStatus(source, origin, 1);
+          })
+          .catch(() => {
+            sendMotionStatus(source, origin, 2);
+          })
+          .finally(() => {
+            permissionPending = false;
+          });
+      },
+    },
+    onDismiss: () => {
+      if (motionPromptDismiss === dismissPrompt) {
+        motionPromptDismiss = null;
+      }
+      if (motionPromptSource === source) {
+        motionPromptSource = null;
+      }
+    },
+  });
+  motionPromptDismiss = dismissPrompt;
+}
+
+// A sandbox reload asks the host to rebuild the iframe from tracked product
+// state. A schema mismatch is different: re-rendering would resend the same
+// stale contract, so forward a host-update event to the PWA coordinator.
+// Both messages are origin-gated to the product currently rendered. Recovery
+// is rate-limited so a reload-looping product cannot pin the host in endless
+// re-renders; update activation has its own idempotence guard in `pwa.ts`.
 const RECOVER_MIN_INTERVAL_MS = 5_000;
 let lastRecoverAt = 0;
 window.addEventListener('message', (event: MessageEvent) => {
   const data = event.data as Record<string, unknown> | null;
-  if (data === null || typeof data !== 'object' || data['type'] !== 'dotli:sandbox-recover') {
+  const type = data?.['type'];
+  if (
+    type !== 'dotli:sandbox-recover' &&
+    type !== 'dotli:host-update-required' &&
+    type !== 'dotli:polkavm-motion-request' &&
+    type !== 'dotli:polkavm-mediated-input-request' &&
+    type !== 'dotli:polkavm-mediated-input-cancel'
+  ) {
     return;
   }
   const product = currentProduct;
-  if (product?.mode !== 'subdomain' || event.origin !== getAppOrigin(product.label)) {
+  const source = currentHost?.iframe.contentWindow;
+  if (
+    product?.mode !== 'subdomain' ||
+    event.origin !== sandboxOriginForLabel(product.label) ||
+    source === null ||
+    source === undefined ||
+    event.source !== source
+  ) {
+    return;
+  }
+  if (type === 'dotli:polkavm-motion-request') {
+    offerTopLevelMotionPermission(source, event.origin, product.label);
+    return;
+  }
+  if (type === 'dotli:polkavm-mediated-input-request') {
+    const request = validatedMediatedInputRequest(data);
+    if (request !== null) {
+      mediatedInputHost.request(source, product.label, request);
+    }
+    return;
+  }
+  if (type === 'dotli:polkavm-mediated-input-cancel') {
+    if (
+      data !== null &&
+      Object.keys(data).every(key => key === 'type' || key === 'handle') &&
+      Number.isInteger(data['handle']) &&
+      Number(data['handle']) >= 1 &&
+      Number(data['handle']) <= 0xffffffff
+    ) {
+      mediatedInputHost.cancel(source, Number(data['handle']));
+    }
+    return;
+  }
+  if (type === 'dotli:host-update-required') {
+    window.dispatchEvent(new Event('dotli:host-update-required'));
     return;
   }
   const now = Date.now();
@@ -664,6 +903,179 @@ window.addEventListener('message', (event: MessageEvent) => {
   rerenderProduct(product);
 });
 
+type PolkaVmPlatformCommand =
+  | Readonly<{ type: 'copy-text'; text: string }>
+  | Readonly<{
+      type: 'copy-image';
+      width: number;
+      height: number;
+      rgba: Uint8Array;
+    }>
+  | Readonly<{ type: 'open-url'; url: string }>;
+
+// Cold guest work can exceed one second. Browser transient activation must
+// still be live when the command arrives; this bound never extends it.
+const POLKAVM_PLATFORM_ACTIVATION_MS = 5_000;
+const MAX_POLKAVM_COPY_TEXT_BYTES = 64 * 1024;
+const MAX_POLKAVM_COPY_IMAGE_PIXELS = 1024 * 1024;
+const MAX_POLKAVM_COPY_IMAGE_DIMENSION = 2048;
+const MAX_POLKAVM_OPEN_URL_BYTES = 8 * 1024;
+const polkavmPlatformEncoder = new TextEncoder();
+let polkavmPlatformActivation: Readonly<{
+  source: MessageEventSource;
+  origin: string;
+  expiresAt: number;
+}> | null = null;
+
+function validatedPolkaVmPlatformCommand(value: unknown): PolkaVmPlatformCommand | null {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const command = value as Record<string, unknown>;
+  if (
+    command['type'] === 'copy-text' &&
+    Object.keys(command).every(key => key === 'type' || key === 'text') &&
+    typeof command['text'] === 'string' &&
+    polkavmPlatformEncoder.encode(command['text']).byteLength <= MAX_POLKAVM_COPY_TEXT_BYTES
+  ) {
+    return { type: 'copy-text', text: command['text'] };
+  }
+  if (
+    command['type'] === 'copy-image' &&
+    Object.keys(command).every(key => ['type', 'width', 'height', 'rgba'].includes(key)) &&
+    Number.isInteger(command['width']) &&
+    Number.isInteger(command['height']) &&
+    Number(command['width']) > 0 &&
+    Number(command['height']) > 0 &&
+    Number(command['width']) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command['height']) <= MAX_POLKAVM_COPY_IMAGE_DIMENSION &&
+    Number(command['width']) * Number(command['height']) <= MAX_POLKAVM_COPY_IMAGE_PIXELS &&
+    command['rgba'] instanceof Uint8Array &&
+    command['rgba'].byteLength === Number(command['width']) * Number(command['height']) * 4
+  ) {
+    return {
+      type: 'copy-image',
+      width: Number(command['width']),
+      height: Number(command['height']),
+      rgba: command['rgba'],
+    };
+  }
+  if (
+    command['type'] === 'open-url' &&
+    Object.keys(command).every(key => key === 'type' || key === 'url') &&
+    typeof command['url'] === 'string' &&
+    command['url'] !== '' &&
+    polkavmPlatformEncoder.encode(command['url']).byteLength <= MAX_POLKAVM_OPEN_URL_BYTES
+  ) {
+    return {
+      type: 'open-url',
+      url: command['url'],
+    };
+  }
+  return null;
+}
+
+function clipboardImagePng(command: Extract<PolkaVmPlatformCommand, { type: 'copy-image' }>): Promise<Blob> {
+  const canvas = document.createElement('canvas');
+  canvas.width = command.width;
+  canvas.height = command.height;
+  const context = canvas.getContext('2d');
+  if (context === null) {
+    return Promise.reject(new Error('2D canvas is unavailable'));
+  }
+  context.putImageData(new ImageData(new Uint8ClampedArray(command.rgba), command.width, command.height), 0, 0);
+  const { promise, resolve, reject } = (
+    Promise as PromiseConstructor & {
+      withResolvers<T>(): {
+        promise: Promise<T>;
+        resolve: (value: T | PromiseLike<T>) => void;
+        reject: (reason?: unknown) => void;
+      };
+    }
+  ).withResolvers<Blob>();
+  canvas.toBlob(blob => {
+    if (blob === null) {
+      reject(new Error('PNG encoding failed'));
+    } else {
+      resolve(blob);
+    }
+  }, 'image/png');
+  return promise;
+}
+
+window.addEventListener('message', (event: MessageEvent) => {
+  const data = event.data as { type?: unknown; command?: unknown } | null;
+  if (data?.type !== 'dotli:polkavm-user-activation' && data?.type !== 'dotli:polkavm-ui-command') {
+    return;
+  }
+  const product = currentProduct;
+  const source = currentHost?.iframe.contentWindow;
+  if (
+    product?.mode !== 'subdomain' ||
+    event.origin !== sandboxOriginForLabel(product.label) ||
+    source === null ||
+    event.source !== source
+  ) {
+    return;
+  }
+  if (data.type === 'dotli:polkavm-user-activation') {
+    if (navigator.userActivation.isActive) {
+      polkavmPlatformActivation = {
+        source,
+        origin: event.origin,
+        expiresAt: performance.now() + POLKAVM_PLATFORM_ACTIVATION_MS,
+      };
+    }
+    return;
+  }
+  const activation = polkavmPlatformActivation;
+  polkavmPlatformActivation = null;
+  if (activation === null) {
+    return;
+  }
+  if (
+    activation.source !== event.source ||
+    activation.origin !== event.origin ||
+    activation.expiresAt < performance.now() ||
+    !navigator.userActivation.isActive
+  ) {
+    return;
+  }
+  const command = validatedPolkaVmPlatformCommand(data.command);
+  if (command === null) {
+    return;
+  }
+  if (command.type === 'copy-text') {
+    void navigator.clipboard.writeText(command.text).catch((error: unknown) => {
+      log.warn('[dot.li] PolkaVM clipboard request was declined:', error);
+    });
+    return;
+  }
+  if (command.type === 'copy-image') {
+    try {
+      const item = new ClipboardItem({
+        'image/png': clipboardImagePng(command),
+      });
+      void navigator.clipboard.write([item]).catch((error: unknown) => {
+        log.warn('[dot.li] PolkaVM image clipboard request was declined:', error);
+      });
+    } catch (error) {
+      log.warn('[dot.li] PolkaVM image clipboard is unavailable:', error);
+    }
+    return;
+  }
+  let destination: URL;
+  try {
+    destination = new URL(command.url);
+  } catch {
+    return;
+  }
+  if (destination.protocol !== 'https:') {
+    return;
+  }
+  window.open(destination.href, '_blank', 'noopener,noreferrer');
+});
+
 let bridgeEventListenersInitialized = false;
 
 export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordinator): void {
@@ -671,6 +1083,7 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
     return;
   }
   initPageCore(modalCoordinator);
+  blockingModalCoordinator = modalCoordinator;
   bridgeEventListenersInitialized = true;
   (window as typeof window & { __dotliTruapiBridgeReady?: boolean }).__dotliTruapiBridgeReady = true;
   if (DEBUG) {
@@ -870,7 +1283,7 @@ function emitWireFrameDebug(direction: 'incoming' | 'outgoing', productId: strin
       direction,
       productId,
       requestId: decoded.value.requestId,
-      payload: describeWireFrame(decoded.value.payload, decoded.value.payload.value),
+      payload: describeWireFrame(decoded.value.payload),
     });
     // eslint-disable-next-line no-restricted-syntax -- this runs synchronously on the transport path and nanoevents does not isolate listener exceptions, so a debug listener must never be able to break message delivery.
   } catch {
@@ -1050,9 +1463,12 @@ async function createHost(args: {
   allowedOrigin: string;
   sandbox: string;
   label: string;
+  archiveCid?: string;
   productId?: string | undefined;
   container: HTMLElement;
+  extraAllow?: readonly string[];
   debugFlowId: string;
+  viewInsetsRelay?: boolean;
 }): Promise<ActiveHost> {
   const lease = await acquireCore();
   let connection: CoreConnection;
@@ -1069,10 +1485,12 @@ async function createHost(args: {
     throw error;
   }
   const coreProvider = wrapCoreProviderForDebug(connection);
-  const unregisterChat = chatCapable ? registerProductChat(connection) : noop;
+  const unregisterChat = chatCapable ? registerProductChat(connection, args.archiveCid) : noop;
   const unregisterPermissions = registerPermissionAuthorizationProvider(args.label, coreProvider);
   let productProvider: Provider | null = null;
   let disposePipe: (() => void) | null = null;
+  let productProbeCleanup: (() => void) | null = null;
+  let disposeViewInsets: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
@@ -1084,6 +1502,11 @@ async function createHost(args: {
     disposePipe = null;
     productProvider = null;
   };
+  const connectProductPort = (port: MessagePort): void => {
+    cleanupProductSide();
+    productProvider = createMessagePortProvider(port);
+    disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
+  };
   const cleanupCoreSide = (): void => {
     unregisterPermissions();
     unregisterChat();
@@ -1092,37 +1515,79 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const allow = `${await buildAllowAttribute(args.label)}; cross-origin-isolated`;
+    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
+      '; ',
+    );
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
       allow,
       sandbox: args.sandbox,
       container: args.container,
-      onPort: port => {
-        productProvider = createMessagePortProvider(port);
-        disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
-      },
+      onPort: connectProductPort,
     });
+    if (args.viewInsetsRelay === true) {
+      disposeViewInsets = installPolkaVmViewInsetsRelay(host.iframe, args.allowedOrigin);
+    }
 
+    // Codec-1 Nova products post raw SCALE frames to window.parent. Those
+    // bytes have no codec marker and must never reach the codec-2 decoder.
+    // Only the modern SDK's transferred MessagePort is supported.
+    let probeMode: 'pending' | 'modern' = 'pending';
+    let warnedLegacyTransport = false;
+    const onProbe = (event: MessageEvent): void => {
+      const targetWindow = host.iframe.contentWindow;
+      if (!targetWindow || event.source !== targetWindow || event.origin !== args.allowedOrigin) {
+        return;
+      }
+      if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
+        if (probeMode === 'modern') {
+          const channel = new MessageChannel();
+          connectProductPort(channel.port1);
+          targetWindow.postMessage({ type: 'truapi-init' }, args.allowedOrigin, [channel.port2]);
+        } else {
+          probeMode = 'modern';
+        }
+        return;
+      }
+      if (event.data instanceof Uint8Array && !warnedLegacyTransport) {
+        warnedLegacyTransport = true;
+        showNotification({
+          text: 'This product uses the unsupported legacy Nova host API. Update it to @parity/truapi 0.16 or newer with the MessagePort transport.',
+          label: 'Product update required',
+          browserNotification: false,
+        });
+      }
+    };
+    window.addEventListener('message', onProbe);
+    productProbeCleanup = () => {
+      window.removeEventListener('message', onProbe);
+      productProbeCleanup = null;
+    };
     return {
       core: coreProvider,
       wallet: connection.wallet,
       generation: renderGeneration,
       iframe: host.iframe,
       dispose() {
+        mediatedInputHost.stop();
+        disposeViewInsets?.();
+        productProbeCleanup?.();
         cleanupCoreSide();
         host.dispose();
       },
     };
   } catch (error) {
+    disposeViewInsets?.();
+    productProbeCleanup?.();
     cleanupCoreSide();
     throw error;
   }
 }
 
-function registerProductChat({ provider, productId }: CoreConnection): () => void {
+function registerProductChat({ provider, productId }: CoreConnection, archiveCid?: string): () => void {
   return registerChatConnection(productId, {
+    loadRendererImage: createRendererImageLoader(archiveCid),
     publish: action =>
       provider.publishChatAction === undefined
         ? Promise.reject(new Error('chat publishing unavailable'))
@@ -1246,6 +1711,28 @@ export async function renderIframe(
   });
 }
 
+function isPolkaVmExecutableManifest(value: string | null): boolean {
+  if (value === null) {
+    return false;
+  }
+  try {
+    const manifest: unknown = JSON.parse(value);
+    if (
+      manifest === null ||
+      typeof manifest !== 'object' ||
+      !('runtime' in manifest) ||
+      manifest.runtime === null ||
+      typeof manifest.runtime !== 'object' ||
+      !('kind' in manifest.runtime)
+    ) {
+      return false;
+    }
+    return manifest.runtime.kind === 'polkavm';
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Render content in a cross-origin app subdomain iframe (cid.app.dot.li).
  * Used by the host build to delegate content fetching+rendering to the app context.
@@ -1254,7 +1741,11 @@ export async function renderIframe(
  * iframe. Only the app subdomain itself participates in the TrUAPI
  * MessageChannel. Any nested dApp iframe it loads is opaque to the host.
  */
-export async function renderAppSubdomain(cid: string, label: string): Promise<void> {
+export async function renderAppSubdomain(
+  cid: string,
+  label: string,
+  executableManifest: string | null = null,
+): Promise<void> {
   const myRenderGeneration = ++renderGeneration;
   const renderFlowId = newFlowId('render');
   const bridgeFlowId = newFlowId('bridge');
@@ -1269,6 +1760,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
     mode: 'subdomain',
     label,
     cid,
+    executableManifest,
   };
 
   // Propagate the current sandbox contract. The `?mode=` preset param is no
@@ -1276,7 +1768,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   // rejects unknown params.
   const chainBackend = getBackend();
   const network = getNetwork();
-  const appOrigin = getAppOrigin(label);
+  const appOrigin = sandboxOriginForLabel(label);
   const deepPath = getDeepPath();
   // One-shot: the settings popover sets this flag right before reloading so
   // the first sandbox boot after "Save & Apply" wipes its own origin too.
@@ -1300,6 +1792,10 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.v, String(SANDBOX_SCHEMA_VERSION));
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.chainBackend, chainBackend);
   parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.network, network);
+  parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.polkaVmEnabled, getPolkaVmAppsEnabled(SITE_ID) ? '1' : '0');
+  if (executableManifest !== null) {
+    parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.executableManifest, executableManifest);
+  }
   if (fullReset) {
     parsedUrl.searchParams.set(SANDBOX_CONTRACT_PARAMS.fullReset, '1');
   }
@@ -1317,6 +1813,7 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   const keepLoading = previousHost === null;
 
   const iframeUrl = new URL(url);
+  const isPolkaVm = isPolkaVmExecutableManifest(executableManifest);
   emitDotliDebugEvent({
     layer: 'bridge',
     event: 'setup_begin',
@@ -1336,6 +1833,9 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
     allowedOrigin: iframeUrl.origin,
     sandbox: 'allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups',
     label,
+    archiveCid: cid,
+    extraAllow: isPolkaVm ? ['accelerometer', 'gyroscope'] : [],
+    viewInsetsRelay: isPolkaVm,
     container: app,
     debugFlowId: bridgeFlowId,
   });
@@ -1384,16 +1884,9 @@ export async function renderAppSubdomain(cid: string, label: string): Promise<vo
   });
 }
 
-function getAppOrigin(label: string): string {
-  const hostname = window.location.hostname;
-  if (hostname.endsWith('.localhost') || hostname === 'localhost') {
-    const port = import.meta.env.DEV ? '5174' : window.location.port;
-    return `http://${label}.app.localhost:${port}`;
-  }
-  return `https://${label}.app.${BASE_DOMAIN}`;
-}
-
 function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoading = false): void {
+  stopMotionRelay();
+  mediatedInputHost.stop();
   if (currentPanelDispose) {
     currentPanelDispose();
     currentPanelDispose = null;

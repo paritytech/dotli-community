@@ -216,56 +216,23 @@ describe('chat custom renderer', () => {
     expect(onAction).toHaveBeenCalledWith('name-changed', new TextEncoder().encode('Alice'));
   });
 
-  it('As a product, opacity, blending and the new node kinds map onto host DOM', () => {
-    const effect = renderElement({
-      tag: 'Effect',
+  it('applies square corners, opacity and compositing to the rendered body', () => {
+    const box = renderElement({
+      tag: 'Box',
       value: {
-        props: { effect: 'Rainbow' },
-        children: [
-          {
-            tag: 'Box',
-            value: {
-              modifiers: [
-                { tag: 'Opacity', value: 51 },
-                { tag: 'BlendingMode', value: 'Multiply' },
-                {
-                  tag: 'Background',
-                  value: { color: 'BgSurfaceMain', shape: { tag: 'Square' } },
-                },
-              ],
-              props: {},
-              children: [
-                {
-                  tag: 'Image',
-                  value: {
-                    modifiers: [
-                      { tag: 'Width', value: 24 },
-                      { tag: 'Height', value: 24 },
-                    ],
-                    props: {
-                      source: { tag: 'Archive', value: 'icon.png' },
-                      fit: 'Cover',
-                    },
-                  },
-                },
-              ],
-            },
-          },
+        modifiers: [
+          { tag: 'Background', value: { color: 'BgSurfaceMain', shape: { tag: 'Rounded', value: 12 } } },
+          { tag: 'Border', value: { width: 1, color: 'FgPrimary', shape: { tag: 'Square' } } },
+          { tag: 'Opacity', value: 128 },
+          { tag: 'BlendingMode', value: 'ColorDodge' },
         ],
+        props: {},
+        children: [],
       },
     });
-    expect(effect.className).toBe('chat-custom-effect chat-custom-effect-rainbow');
-    const box = effect.children[0] as HTMLElement;
-    expect(box.style.opacity).toBe('0.2');
-    expect(box.style.mixBlendMode).toBe('multiply');
     expect(box.style.borderRadius).toBe('0px');
-    // Image bytes are not fetched yet: the node is empty space, never an URL.
-    const image = box.children[0] as HTMLElement;
-    expect(image.className).toBe('chat-custom-image');
-    expect(image.style.width).toBe('24px');
-    expect(image.style.height).toBe('24px');
-    expect(image.childNodes).toHaveLength(0);
-    expect(image.querySelector('img')).toBeNull();
+    expect(Number(box.style.opacity)).toBeCloseTo(128 / 255);
+    expect(box.style.mixBlendMode).toBe('color-dodge');
   });
 
   it('As a product, text can never inject markup', () => {
@@ -646,4 +613,252 @@ describe('chat custom renderer, a text field the product echoes', () => {
     expect(inputs[0]?.id).not.toBe(inputs[1]?.id);
     expect(labels.map(label => label.htmlFor)).toEqual(inputs.map(input => input.id));
   });
+});
+
+describe('custom tree resources', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps button children visible', () => {
+    const button = renderElement({
+      tag: 'Button',
+      value: {
+        modifiers: [],
+        props: { text: 'Vote' },
+        children: [{ tag: 'String', value: { text: ' (3 remaining)' } }],
+      },
+    });
+    expect(button.textContent).toBe('Vote (3 remaining)');
+  });
+
+  it('honors later fill modifiers disabling earlier fill requests', () => {
+    const box = renderElement({
+      tag: 'Box',
+      value: {
+        modifiers: [
+          { tag: 'FillWidth', value: true },
+          { tag: 'FillHeight', value: true },
+          { tag: 'FillWidth', value: false },
+          { tag: 'FillHeight', value: false },
+        ],
+        props: {},
+        children: [],
+      },
+    });
+    expect(box.style.width).toBe('');
+    expect(box.style.height).toBe('');
+  });
+
+  it('loads a fitted image and releases its URL when its node is removed without aborting the whole tree', async () => {
+    const controller = new AbortController();
+    const createObjectURL = vi.fn(() => 'blob:renderer-image');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static override createObjectURL = createObjectURL;
+        static override revokeObjectURL = revokeObjectURL;
+      },
+    );
+    const [node, setNode] = createSignal<RendererNode>({
+      tag: 'Image',
+      value: {
+        modifiers: [{ tag: 'Width', value: 64 }],
+        props: { source: { tag: 'Archive', value: 'icon.png' }, fit: 'ScaleDown' },
+      },
+    });
+    const view = renderComponent(() => (
+      <CustomNode
+        node={node()}
+        onAction={noAction}
+        resources={{
+          signal: controller.signal,
+          loadImage: () => Promise.resolve(new Blob(['image bytes'], { type: 'image/png' })),
+          onError: error => {
+            throw error;
+          },
+        }}
+      />
+    ));
+    await settle();
+    await settle();
+    const image = view.container.querySelector('img');
+    expect(image?.getAttribute('src')).toBe('blob:renderer-image');
+    expect(image?.style.objectFit).toBe('scale-down');
+    expect(image?.style.width).toBe('64px');
+    setNode({ tag: 'Nil' });
+    await settle();
+    expect(image?.hasAttribute('src')).toBe(false);
+    expect(revokeObjectURL).toHaveBeenCalledWith('blob:renderer-image');
+    expect(controller.signal.aborted).toBe(false);
+  });
+
+  it.each(['resolve', 'reject'] as const)('cancels replaced image loads and ignores a stale %s', async outcome => {
+    const controller = new AbortController();
+    const loads: {
+      signal: AbortSignal;
+      resolve: (blob: Blob) => void;
+      reject: (error: Error) => void;
+    }[] = [];
+    const createObjectURL = vi.fn(() => 'blob:current-image');
+    const revokeObjectURL = vi.fn();
+    const onError = vi.fn();
+    vi.stubGlobal(
+      'URL',
+      class extends URL {
+        static override createObjectURL = createObjectURL;
+        static override revokeObjectURL = revokeObjectURL;
+      },
+    );
+    const imageNode = (path: string): RendererNode => ({
+      tag: 'Image',
+      value: { modifiers: [], props: { source: { tag: 'Archive', value: path } } },
+    });
+    const [node, setNode] = createSignal(imageNode('first.png'));
+    const view = renderComponent(() => (
+      <CustomNode
+        node={node()}
+        onAction={noAction}
+        resources={{
+          signal: controller.signal,
+          loadImage: (_source, signal) =>
+            new Promise<Blob>((resolve, reject) => {
+              loads.push({ signal, resolve, reject });
+            }),
+          onError,
+        }}
+      />
+    ));
+    await settle();
+    const first = nth(loads, 0);
+    const element = view.container.querySelector('img');
+    setNode(imageNode('second.png'));
+    await settle();
+    expect(first.signal.aborted).toBe(true);
+    expect(controller.signal.aborted).toBe(false);
+    expect(view.container.querySelector('img')).toBe(element);
+    if (outcome === 'resolve') {
+      first.resolve(new Blob(['obsolete']));
+    } else {
+      first.reject(new Error('obsolete fetch failed'));
+    }
+    await settle();
+    expect(createObjectURL).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    const current = nth(loads, 1);
+    current.resolve(new Blob(['current']));
+    await settle();
+    expect(element?.getAttribute('src')).toBe('blob:current-image');
+    setNode({ tag: 'Nil' });
+    await settle();
+    expect(current.signal.aborted).toBe(true);
+    expect(controller.signal.aborted).toBe(false);
+    expect(element?.hasAttribute('src')).toBe(false);
+    expect(revokeObjectURL).toHaveBeenCalledExactlyOnceWith('blob:current-image');
+    controller.abort();
+    view.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledTimes(1);
+  });
+
+  it('cancels a removed rainbow node without ending its tree or cancelling twice', async () => {
+    const controller = new AbortController();
+    const cancel = vi.fn();
+    vi.stubGlobal('matchMedia', () => ({ matches: false }));
+    const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
+    Object.defineProperty(Element.prototype, 'animate', {
+      configurable: true,
+      value: vi.fn(() => ({ cancel })),
+    });
+    try {
+      const [node, setNode] = createSignal<RendererNode>({
+        tag: 'Effect',
+        value: { props: { effect: 'Rainbow' }, children: [{ tag: 'String', value: { text: 'Tinted' } }] },
+      });
+      const view = renderComponent(() => (
+        <CustomNode
+          node={node()}
+          onAction={noAction}
+          resources={{
+            signal: controller.signal,
+            loadImage: () => Promise.reject(new Error('No images in this tree')),
+            onError: error => {
+              throw error;
+            },
+          }}
+        />
+      ));
+      await settle();
+      expect(view.container.textContent).toBe('Tinted');
+      setNode({ tag: 'Nil' });
+      await settle();
+      expect(cancel).toHaveBeenCalledTimes(1);
+      expect(controller.signal.aborted).toBe(false);
+      controller.abort();
+      view.unmount();
+      expect(cancel).toHaveBeenCalledTimes(1);
+    } finally {
+      if (originalAnimate === undefined) {
+        Reflect.deleteProperty(Element.prototype, 'animate');
+      } else {
+        Object.defineProperty(Element.prototype, 'animate', originalAnimate);
+      }
+    }
+  });
+
+  it.each([false, true])(
+    'tints children without intercepting actions and respects reduced motion (%s)',
+    async reducedMotion => {
+      const controller = new AbortController();
+      const cancel = vi.fn();
+      const animate = vi.fn(() => ({ cancel }));
+      vi.stubGlobal('matchMedia', () => ({ matches: reducedMotion }));
+      const originalAnimate = Object.getOwnPropertyDescriptor(Element.prototype, 'animate');
+      Object.defineProperty(Element.prototype, 'animate', { configurable: true, value: animate });
+      try {
+        const onAction = vi.fn();
+        const view = renderComponent(() => (
+          <CustomNode
+            node={{
+              tag: 'Effect',
+              value: {
+                props: { effect: 'Rainbow' },
+                children: [
+                  {
+                    tag: 'Button',
+                    value: { modifiers: [], props: { text: 'Tinted button', clickAction: 'tap' }, children: [] },
+                  },
+                ],
+              },
+            }}
+            onAction={onAction}
+            resources={{
+              signal: controller.signal,
+              loadImage: () => Promise.reject(new Error('No images in this tree')),
+              onError: error => {
+                throw error;
+              },
+            }}
+          />
+        ));
+        await settle();
+        expect(view.container.textContent).toBe('Tinted button');
+        expect(view.container.querySelector<HTMLElement>('[aria-hidden]')?.style.pointerEvents).toBe('none');
+        view.container.querySelector('button')?.click();
+        expect(onAction).toHaveBeenCalledWith('tap');
+        expect(animate).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
+        controller.abort();
+        expect(cancel).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
+        view.unmount();
+        expect(cancel).toHaveBeenCalledTimes(reducedMotion ? 0 : 1);
+      } finally {
+        if (originalAnimate === undefined) {
+          Reflect.deleteProperty(Element.prototype, 'animate');
+        } else {
+          Object.defineProperty(Element.prototype, 'animate', originalAnimate);
+        }
+      }
+    },
+  );
 });

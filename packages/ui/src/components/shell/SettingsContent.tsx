@@ -29,10 +29,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
     chain: saved.backend,
     network: saved.network,
     cache: saved.cache,
+    polkaVmAppsEnabled: saved.polkaVmAppsEnabled,
   };
   const [chain, setChain] = createSignal<Backend>(persisted.chain);
   const [network, setNetwork] = createSignal<Network>(persisted.network);
   const [cache, setCache] = createSignal(persisted.cache);
+  const [polkaVmAppsEnabled, setPolkaVmAppsEnabled] = createSignal(persisted.polkaVmAppsEnabled);
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
 
@@ -43,7 +45,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
       network() !== persisted.network ||
       draft.skipCidCache !== persisted.cache.skipCidCache ||
       draft.skipArchiveCache !== persisted.cache.skipArchiveCache ||
-      draft.skipWorkerCache !== persisted.cache.skipWorkerCache
+      draft.skipWorkerCache !== persisted.cache.skipWorkerCache ||
+      polkaVmAppsEnabled() !== persisted.polkaVmAppsEnabled
     );
   });
 
@@ -67,6 +70,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         chain: untrack(chain),
         network: untrack(network),
         cache: untrack(cache),
+        polkaVmAppsEnabled: untrack(polkaVmAppsEnabled),
       },
       persisted,
     );
@@ -168,7 +172,9 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           </div>
         </div>
         <div class="mode-popover-col">
-          <SectionHeader text="Diagnostics" />
+          <SectionHeader text="Experimental" />
+          <CacheToggle label="PolkaVM apps" checked={persisted.polkaVmAppsEnabled} update={setPolkaVmAppsEnabled} />
+          <SectionHeader text="Diagnostics" modifier="mode-popover-section--spaced" />
           <Diagnostics backend={persisted.chain} />
         </div>
       </div>

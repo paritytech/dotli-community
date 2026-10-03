@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as MetricsModule from '@dotli/metrics';
 
 // `getHandle` is not exercised here. It calls `init()` against the real
 // truapi-provider wasm, which is not something a unit test should boot. The
@@ -13,7 +14,8 @@ const gauge = vi.fn();
 // metrics-stripped path without tearing down the module registry.
 const metrics = { enabled: true };
 
-vi.mock('../../metrics/src/metrics.js', () => ({
+vi.mock('@dotli/metrics', async importOriginal => ({
+  ...(await importOriginal<typeof MetricsModule>()),
   m: {
     get enabled() {
       return metrics.enabled;

@@ -342,6 +342,10 @@ export const WIRE_DECODE_TABLE = {
         2: (payload) => S.Result(S._void, S.CallError(T.VersionedHostLocaleSubscribeError)).dec(payload),
         3: () => undefined,
     },
+    [W.LOCALE_LOCALIZE_TIMESTAMPS.trait * 256 + W.LOCALE_LOCALIZE_TIMESTAMPS.method]: {
+        0: (payload) => T.VersionedHostLocaleLocalizeTimestampsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostLocaleLocalizeTimestampsResponse, S.CallError(T.VersionedHostLocaleLocalizeTimestampsError)).dec(payload),
+    },
     [W.RENDERER_RENDER.trait * 256 + W.RENDERER_RENDER.method]: {
         0: (payload) => T.VersionedProductRendererRenderRequest.dec(payload),
         1: (payload) => T.VersionedProductRendererRenderItem.dec(payload),
