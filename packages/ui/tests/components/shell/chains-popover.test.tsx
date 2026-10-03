@@ -620,7 +620,9 @@ describe('The network popover island', () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      root: 'popover:chains-popover',
+      flow: 'ui',
+      step: 'root_render',
+      tags: { root: 'popover:chains-popover' },
     });
     expect(vi.getTimerCount()).toBe(0);
     expect(monitor.stopNetworkWatch).toHaveBeenCalledTimes(1);

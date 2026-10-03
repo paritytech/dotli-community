@@ -91,7 +91,7 @@ function Broken(props: { error: unknown; reset: () => void }): JSX.Element {
   createEffect(
     () => props.error,
     error => {
-      captureException(error, { root: 'chat' });
+      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: 'chat' } });
       setChatPanelOpen(false);
     },
   );

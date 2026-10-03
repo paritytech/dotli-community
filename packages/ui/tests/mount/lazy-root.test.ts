@@ -21,7 +21,7 @@ describe('createLazyRoot', () => {
   it('As a loader, ensure loads and mounts once, however often it is called', async () => {
     // Given
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
+    const root = createLazyRoot({ load, root: 'x', onFailure: vi.fn() });
 
     // When
     const first = root.ensure();
@@ -44,7 +44,7 @@ describe('createLazyRoot', () => {
     const onFailure = vi.fn();
     const root = createLazyRoot({
       load,
-      errorKind: 'thing_load_error',
+      root: 'thing',
       onFailure,
     });
 
@@ -54,7 +54,9 @@ describe('createLazyRoot', () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-      kind: 'thing_load_error',
+      flow: 'ui',
+      step: 'root_load',
+      tags: { root: 'thing', kind: 'thing_load_error' },
     });
     expect(onFailure).toHaveBeenCalledTimes(1);
 
@@ -74,7 +76,7 @@ describe('createLazyRoot', () => {
         Promise.resolve().then(() => {
           throw new Error('container missing');
         }),
-      errorKind: 'thing_load_error',
+      root: 'thing',
       onFailure,
     });
 
@@ -83,7 +85,9 @@ describe('createLazyRoot', () => {
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledWith(expect.objectContaining({ message: 'container missing' }), {
-      kind: 'thing_load_error',
+      flow: 'ui',
+      step: 'root_load',
+      tags: { root: 'thing', kind: 'thing_load_error' },
     });
     expect(onFailure).toHaveBeenCalledTimes(1);
   });
@@ -96,7 +100,7 @@ describe('createLazyRoot', () => {
       return Promise.resolve();
     });
     const onFailure = vi.fn();
-    const root = createLazyRoot({ load, errorKind: 'x', onFailure });
+    const root = createLazyRoot({ load, root: 'x', onFailure });
     await root.ensure();
 
     // When
@@ -122,7 +126,7 @@ describe('createLazyRoot', () => {
     });
     vi.stubGlobal('requestIdleCallback', requestIdleCallback);
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
+    const root = createLazyRoot({ load, root: 'x', onFailure: vi.fn() });
 
     // When
     root.prefetch();
@@ -146,7 +150,7 @@ describe('createLazyRoot', () => {
     vi.useFakeTimers();
     vi.stubGlobal('requestIdleCallback', undefined);
     const load = vi.fn(() => Promise.resolve());
-    const root = createLazyRoot({ load, errorKind: 'x', onFailure: vi.fn() });
+    const root = createLazyRoot({ load, root: 'x', onFailure: vi.fn() });
 
     // When
     root.prefetch();

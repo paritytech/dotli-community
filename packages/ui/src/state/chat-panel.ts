@@ -70,7 +70,7 @@ const INITIAL: ChatPanelState = {
 
 // A width drag past the clamp, a cleared composer error and repeated
 // availability or topbar events rebuild an equal state: nobody is notified.
-const panel = createSyncStore<ChatPanelState>(INITIAL, {
+const panel = createSyncStore<ChatPanelState>('chat_panel', INITIAL, {
   equals: shallowEqual,
 });
 export const chatPanelStore: ReadableStore<ChatPanelState> = panel;

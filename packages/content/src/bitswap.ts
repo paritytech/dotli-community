@@ -7,7 +7,9 @@ import { hexToBytes } from '@noble/hashes/utils.js';
 import { CHAIN_HALTED_ERROR_DATA, createRemoteChainProvider, isRemoteChainSupported } from '@dotli/protocol';
 import { isSandboxOrigin, getBackend, getActiveServicesConfig } from '@dotli/config';
 
-import { log, serializeError } from '@dotli/shared';
+import { errorName, log, serializeError } from '@dotli/shared';
+
+import { CONTENT_ERRORS, named } from './errors.js';
 
 // JSON-RPC error codes returned by `bitswap_v1_get`. RETRY and BACKOFF are
 // the retryable pair. Anything else, including an invalid CID, falls to the
@@ -157,7 +159,10 @@ function ensureConnection(): JsonRpcConnection {
   const bulletinGenesis = getActiveServicesConfig().bulletin.genesis;
   const provider = createRemoteChainProvider(bulletinGenesis);
   if (provider === null) {
-    throw new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`);
+    throw named(
+      new Error(`Bulletin Paseo (${bulletinGenesis}) is not in the supported chain set`),
+      CONTENT_ERRORS.BITSWAP_UNAVAILABLE,
+    );
   }
   const opened = provider(
     (message: JsonRpcMessage) => {
@@ -173,7 +178,10 @@ function ensureConnection(): JsonRpcConnection {
       }
       pending.delete(message.id);
       if ('error' in message) {
-        const err = new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`);
+        const err = named(
+          new Error(`bitswap_v1_get failed (code=${String(message.error.code)}): ${message.error.message}`),
+          CONTENT_ERRORS.BITSWAP_RPC,
+        );
         // The chain halted under this request. The pool answers it before the
         // connection hears `onHalt`, which then drops it, so the retry loop's
         // next attempt redials a rebuilt chain.
@@ -183,7 +191,12 @@ function ensureConnection(): JsonRpcConnection {
         return;
       }
       if (typeof message.result !== 'string') {
-        entry.reject(new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`));
+        entry.reject(
+          named(
+            new Error(`bitswap_v1_get: expected hex string result, got ${typeof message.result}`),
+            CONTENT_ERRORS.BITSWAP_RPC,
+          ),
+        );
         return;
       }
       // Parse hex to bytes ONCE host-side. The sandbox-bound buffer is then
@@ -205,7 +218,7 @@ function ensureConnection(): JsonRpcConnection {
       connection = null;
       for (const [id, entry] of pending) {
         pending.delete(id);
-        const err = new Error('Bulletin connection halted');
+        const err = named(new Error('Bulletin connection halted'), CONTENT_ERRORS.BITSWAP_CONNECTION);
         // A halted chain is rebuilt on the next connect, so the retry loop
         // redials. A dead frame is fatal and is never retried inside a fetch.
         if (reason === 'chain') {
@@ -270,8 +283,11 @@ export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uin
     attempt += 1;
     const remaining = deadline - Date.now();
     if (remaining <= 0) {
-      throw new Error(
-        `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts made)`,
+      throw named(
+        new Error(
+          `bitswap_v1_get(${cid}): timed out after ${String(TOTAL_BUDGET_MS)}ms (${String(attempt - 1)} attempts made)`,
+        ),
+        CONTENT_ERRORS.BITSWAP_TIMEOUT,
       );
     }
     const callTimeout = Math.min(PER_CALL_TIMEOUT_MS, remaining);
@@ -288,8 +304,11 @@ export async function bitswapGet(cid: string, signal?: AbortSignal): Promise<Uin
         discoveryAttempts += 1;
         if (discoveryAttempts > DISCOVERY_RETRIES) {
           throw Object.assign(
-            new Error(
-              `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} attempts made): ${serializeError(err)}`,
+            named(
+              new Error(
+                `bitswap_v1_get(${cid}): provider discovery exhausted after ${String(discoveryAttempts)} failures (${String(attempt)} attempts made): ${serializeError(err)}`,
+              ),
+              CONTENT_ERRORS.BITSWAP_NOT_FOUND,
             ),
             { code },
           );
@@ -341,7 +360,10 @@ function sendOnce(cid: string, timeoutMs: number, signal?: AbortSignal): Promise
       signal?.removeEventListener('abort', onAbort);
     };
     const timer = setTimeout(() => {
-      const err = new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`);
+      const err = named(
+        new Error(`bitswap_v1_get(${cid}): per-call timed out after ${String(timeoutMs)}ms`),
+        CONTENT_ERRORS.BITSWAP_TIMEOUT,
+      );
       (err as { code?: number }).code = ERR_FAIL_RETRY;
       cleanup();
       reject(err);
@@ -396,6 +418,10 @@ interface BitswapResultErr {
   id: string;
   ok: false;
   error: string;
+  /** The failure's class, so the sandbox rebuilds it as the same exception type. */
+  errorName?: string;
+  /** The JSON-RPC code, when the failure carried one. */
+  code?: number;
 }
 
 function isBitswapGetMessage(value: unknown): value is BitswapGetMessage {
@@ -606,11 +632,15 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
         });
       })
       .catch((err: unknown) => {
+        const name = errorName(err);
+        const code = errorCode(err);
         const reply: BitswapResultErr = {
           type: 'dotli:bitswap-result',
           id: data.id,
           ok: false,
           error: serializeError(err),
+          ...(name !== undefined ? { errorName: name } : {}),
+          ...(code !== null ? { code } : {}),
         };
         source.postMessage(reply, { targetOrigin: event.origin });
       });

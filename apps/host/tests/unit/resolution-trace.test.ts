@@ -3,6 +3,7 @@
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import { m } from '@dotli/metrics';
+import { markContinuation } from '@dotli/shared';
 import { updateLoading } from '@dotli/ui';
 import { startResolutionTrace } from '../../src/resolution-trace.js';
 
@@ -70,6 +71,11 @@ function span(name: string): RecordedSpan | undefined {
   return spans.find(s => s.name === `dotli.${name}`);
 }
 
+/** happy-dom drops `persisted` from the PageTransitionEvent init, so it is set by hand. */
+function pagehide(persisted: boolean): Event {
+  return Object.assign(new Event('pagehide'), { persisted });
+}
+
 function names(): string[] {
   return spans.map(s => s.name);
 }
@@ -80,10 +86,14 @@ beforeEach(() => {
   m.bind(fake.sentry as Parameters<typeof m.bind>[0]);
 });
 
+const ATTEMPT = { journeyId: 'journey-1', attemptNumber: 2, entry: 'reload_button' } as const;
+
 const OPTS = {
   domain: 'host-playground.dot',
   network: 'paseo-next-v2',
   backend: 'smoldot-direct',
+  attempt: ATTEMPT,
+  startedAt: performance.now(),
 };
 
 describe('A resolution is traced as one unit', () => {
@@ -202,7 +212,7 @@ describe('A resolution is traced as one unit', () => {
 });
 
 describe('A resolution reports how it ended', () => {
-  it('As a maintainer, a rendered load reports its outcome and duration', () => {
+  it('As a maintainer, a load that reached the app reports its outcome and duration', () => {
     // Given
     const trace = startResolutionTrace(OPTS);
 
@@ -238,12 +248,13 @@ describe('A resolution reports how it ended', () => {
     const trace = startResolutionTrace(OPTS);
 
     // When
-    trace.finish('error', 'no contenthash');
+    trace.finish('error', { reason: 'Sync to Asset Hub timed out', errorKind: 'hub-sync-timeout' });
 
     // Then
     expect(span('resolution')?.attributes).toMatchObject({
       outcome: 'error',
-      failure_reason: 'no contenthash',
+      failure_reason: 'Sync to Asset Hub timed out',
+      error_kind: 'hub-sync-timeout',
     });
   });
 
@@ -300,5 +311,108 @@ describe('A resolution reports how it ended', () => {
 
     // Then
     expect(span('resolution')?.attributes['bytes_total']).toBe(21_266_125);
+  });
+
+  it('As a maintainer, a content load that failed names the sandbox step it stopped at', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+    trace.step('content');
+
+    // When
+    trace.finish('content_error', { failedStep: 'content_fetch' });
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({
+      outcome: 'content_error',
+      loading_phase: 'content',
+      failed_step: 'content_fetch',
+    });
+  });
+
+  it('As a maintainer, I can tell which step a load was in when the visitor left', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+    trace.step('manifest_read');
+
+    // When
+    trace.finish('abandoned');
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({ loading_phase: 'manifest_read' });
+  });
+
+  it('As a maintainer, I can tell whether the visitor had seen a slow-load warning', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+
+    // When
+    trace.warningShown();
+    trace.finish('abandoned');
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({ warning_shown: true });
+  });
+});
+
+describe('A resolution is one attempt of a journey', () => {
+  it('As a maintainer, every attempt carries its journey, its number and how it began', () => {
+    // When
+    startResolutionTrace(OPTS);
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({
+      journey_id: 'journey-1',
+      attempt_number: 2,
+      entry: 'reload_button',
+    });
+  });
+
+  it('As a maintainer, the trace starts when the page load did, not when resolution began', () => {
+    // Given a page load that started 1.5s before the trace opened
+    const startedAt = performance.now() - 1_500;
+
+    // When
+    const before = Date.now();
+    startResolutionTrace({ ...OPTS, startedAt });
+
+    // Then
+    expect(span('resolution')?.startTime).toBeLessThanOrEqual(before - 1_400);
+  });
+
+  it('As a maintainer, a page kept in the back/forward cache is told apart from one that unloaded', () => {
+    // Given
+    startResolutionTrace(OPTS);
+
+    // When
+    window.dispatchEvent(pagehide(true));
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'bfcache' });
+  });
+
+  it('As a maintainer, a load the visitor left by reloading from the error page says so', () => {
+    // Given
+    startResolutionTrace(OPTS);
+    markContinuation('reload_button');
+
+    // When
+    window.dispatchEvent(pagehide(false));
+
+    // Then
+    expect(span('resolution')?.attributes).toMatchObject({ outcome: 'abandoned', exit: 'reload_button' });
+    sessionStorage.clear();
+  });
+
+  it('As a maintainer, leaving after the app loaded is not an abandonment', () => {
+    // Given
+    const trace = startResolutionTrace(OPTS);
+    trace.finish('rendered');
+
+    // When
+    window.dispatchEvent(pagehide(false));
+
+    // Then
+    expect(span('resolution')?.attributes['outcome']).toBe('rendered');
+    expect(span('resolution')?.attributes['exit']).toBeUndefined();
   });
 });

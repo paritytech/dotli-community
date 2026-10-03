@@ -16,6 +16,28 @@ export class ProtocolInitFailedError extends Error {
 }
 
 /**
+ * A protocol request that failed on the other side of the iframe boundary, or
+ * never came back.
+ *
+ * The sender's error crosses postMessage as text, so this is a new object
+ * thrown at the one line that receives every response, and its own stack says
+ * nothing. `method` and `remoteStack` carry what that line cannot know: which
+ * request failed and where the sender threw. `captureException` reports them
+ * as the `protocol_method` tag and the `remote_stack` extra.
+ */
+export class ProtocolRequestError extends Error {
+  readonly method: string;
+  readonly remoteStack: string | undefined;
+
+  constructor(message: string, name: string, method: string, remoteStack?: string) {
+    super(message);
+    this.name = name;
+    this.method = method;
+    this.remoteStack = remoteStack;
+  }
+}
+
+/**
  * Messages for the frame lifecycle failures callers surface to the user.
  *
  * Plain strings rather than `Error` subclasses: `describeError` in the host

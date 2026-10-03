@@ -8,6 +8,7 @@
 // view renders that store and calls back in here (closeAuthModal, retryLogin).
 
 import { withActiveTld } from '@dotli/config';
+import { log } from '@dotli/shared';
 import type { BlockingModalCoordinator, BlockingModalScope } from './blocking-modal-queue.js';
 import { ERRORS } from './errors.js';
 import type { DotliAuthState } from './host-callbacks/AuthState.js';
@@ -56,6 +57,12 @@ export function initAuthController(modalCoordinator: BlockingModalCoordinator): 
  * can never close an active pairing modal.
  */
 function applyAuthState(state: DotliAuthState): void {
+  // The tag and failure kind only: a failure's reason can carry wallet text.
+  log.event('auth state', {
+    flow: 'wallet',
+    state: state.tag,
+    ...(state.tag === 'LoginFailed' ? { kind: state.kind } : {}),
+  });
   switch (state.tag) {
     case 'Disconnected':
       setLoggedIn(false);
@@ -325,7 +332,11 @@ function ensureAuthModalLease(): void {
           updateAuthModal({ open: true });
         }),
     )
-    .catch(() => {
-      // Closing a pending or active authentication modal disposes its lease.
+    .catch((error: unknown) => {
+      // Closing a pending or active authentication modal disposes its lease,
+      // which rejects with an AbortError.
+      if (!(error instanceof DOMException && error.name === 'AbortError')) {
+        log.warn('[dot.li auth] authentication modal lease failed:', error);
+      }
     });
 }

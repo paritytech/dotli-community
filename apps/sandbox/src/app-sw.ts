@@ -114,6 +114,25 @@ async function loadPersistedArchive(): Promise<PersistedArchive | null> {
   }
 }
 
+/**
+ * Tell the page a write or read-back of the archive failed.
+ *
+ * The worker has no error reporting of its own, and both failures surface
+ * long after the page's archive exchange finished: a failed write only shows
+ * once a restarted worker has nothing to serve.
+ */
+function reportArchiveFailure(clients: readonly Client[], stage: 'persist' | 'restore', err: unknown): void {
+  const message = {
+    type: 'ARCHIVE_FAILURE',
+    stage,
+    name: err instanceof Error ? err.name : 'NonErrorThrow',
+    message: err instanceof Error ? err.message : String(err),
+  } as const;
+  for (const client of clients) {
+    client.postMessage(message);
+  }
+}
+
 function restoreArchive(): Promise<void> {
   restoring ??= loadPersistedArchive().then(
     archive => {
@@ -127,6 +146,13 @@ function restoreArchive(): Promise<void> {
     (err: unknown) => {
       console.error('Failed to restore the archive after a worker restart:', err);
       nothingPersisted = true;
+      // Not awaited: the fetch waiting on this read-back must not wait on the report too.
+      void self.clients.matchAll({ type: 'window' }).then(
+        clients => {
+          reportArchiveFailure(clients, 'restore', err);
+        },
+        () => undefined,
+      );
     },
   );
   return restoring;
@@ -198,9 +224,13 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
     // Serving starts now, from memory. The write only matters to the next
     // instance, so it does not hold up the ACK, and `waitUntil` keeps this
     // instance alive until it lands.
+    const sender = event.source as Client | null;
     event.waitUntil(
       persistArchive({ packed, index: idx }).catch((err: unknown) => {
         console.error('Failed to persist the archive; a restarted worker will not serve it:', err);
+        if (sender !== null) {
+          reportArchiveFailure([sender], 'persist', err);
+        }
       }),
     );
     if (event.source) {

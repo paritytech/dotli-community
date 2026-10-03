@@ -10,6 +10,9 @@ const ORIGIN = 'https://coffer.app.dot.li';
 
 type WorkerScope = EventTarget;
 
+/** What the sandbox pages the worker controls were sent, across every page. */
+let pageInbox: unknown[] = [];
+
 /**
  * Start a worker instance the way the browser does: fresh module state over
  * the origin's existing storage. Calling it a second time is the restart
@@ -20,7 +23,17 @@ async function startWorker(): Promise<WorkerScope> {
   const scope = Object.assign(new EventTarget(), {
     location: new URL(`${ORIGIN}/app-sw.js`),
     skipWaiting: () => Promise.resolve(),
-    clients: { claim: () => Promise.resolve() },
+    clients: {
+      claim: () => Promise.resolve(),
+      matchAll: () =>
+        Promise.resolve([
+          {
+            postMessage: (message: unknown) => {
+              pageInbox.push(message);
+            },
+          },
+        ]),
+    },
   });
   vi.stubGlobal('self', scope);
   await import('../src/app-sw.js');
@@ -52,6 +65,20 @@ async function setArchive(scope: WorkerScope, files: Record<string, string>): Pr
   return replies;
 }
 
+/** An IndexedDB that refuses to open, as a storage-starved or blocked origin's does. */
+function brokenIndexedDb(): unknown {
+  return {
+    open: () => {
+      const request: { error: DOMException | null; onerror: (() => void) | null } = { error: null, onerror: null };
+      setTimeout(() => {
+        request.error = new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        request.onerror?.();
+      }, 0);
+      return request;
+    },
+  };
+}
+
 /** Issue a fetch through the worker. `undefined` means it let the request go to the network. */
 async function request(scope: WorkerScope, path: string): Promise<Response | undefined> {
   let answer: Response | Promise<Response> | undefined;
@@ -69,6 +96,7 @@ describe('app service worker', () => {
   let network: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    pageInbox = [];
     vi.stubGlobal('indexedDB', new IDBFactory());
     network = vi.fn(() =>
       Promise.resolve(new Response('<!doctype html>shell', { headers: { 'Content-Type': 'text/html' } })),
@@ -126,5 +154,47 @@ describe('app service worker', () => {
     expect(await shellAsset?.text()).toBe('<!doctype html>shell');
     expect(network).toHaveBeenCalledOnce();
     expect(appPath?.status).toBe(503);
+  });
+
+  it('As an operator, an archive the worker could not keep for its next restart is reported to the page', async () => {
+    // Given an origin whose storage refuses the write
+    vi.stubGlobal('indexedDB', brokenIndexedDb());
+    const scope = await startWorker();
+
+    // When the page hands over its archive
+    const replies = await setArchive(scope, { 'index.html': '<html></html>', 'app.js': '1' });
+
+    // Then the page can still serve now, and hears why a restart would not
+    expect(replies).toEqual([
+      { type: 'ARCHIVE_READY' },
+      {
+        type: 'ARCHIVE_FAILURE',
+        stage: 'persist',
+        name: 'QuotaExceededError',
+        message: 'The quota has been exceeded.',
+      },
+    ]);
+  });
+
+  it('As an operator, a restarted worker that cannot read the archive back is reported to the page', async () => {
+    // Given a restarted worker over storage it cannot read
+    vi.stubGlobal('indexedDB', brokenIndexedDb());
+    const scope = await startWorker();
+
+    // When the app asks it for a file
+    const response = await request(scope, '/dotli-app/main.js');
+
+    // Then the request fails as before, and the page hears why
+    expect(response?.status).toBe(503);
+    await vi.waitFor(() => {
+      expect(pageInbox).toEqual([
+        {
+          type: 'ARCHIVE_FAILURE',
+          stage: 'restore',
+          name: 'QuotaExceededError',
+          message: 'The quota has been exceeded.',
+        },
+      ]);
+    });
   });
 });

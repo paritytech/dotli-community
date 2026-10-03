@@ -71,8 +71,9 @@ describe('island failures', () => {
     // Then
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      kind: 'island_hydration_error',
-      root: 'island:ChatDock',
+      flow: 'ui',
+      step: 'island_hydration',
+      tags: { root: 'island:ChatDock', kind: 'island_hydration_error' },
     });
   });
 
@@ -132,8 +133,9 @@ describe('island failures', () => {
       // Then
       expect(sentry.captureException).toHaveBeenCalledTimes(1);
       expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-        kind: 'island_hydration_error',
-        root: 'island:LoadingScreen',
+        flow: 'ui',
+        step: 'island_hydration',
+        tags: { root: 'island:LoadingScreen', kind: 'island_hydration_error' },
       });
       roots.disposeAppRoot('loading');
       expect(screen.childElementCount).toBe(0);

@@ -229,6 +229,7 @@ describe('smoldot chain provider hooks', () => {
       provider: typeof ProviderModule;
       warn: Mock<(...args: unknown[]) => void>;
       error: Mock<(...args: unknown[]) => void>;
+      event: Mock<(name: string, attrs?: Record<string, unknown>) => void>;
     }
 
     /** A fresh provider, with the log it writes to (fresh too) spied on. */
@@ -237,9 +238,11 @@ describe('smoldot chain provider hooks', () => {
       const { log } = await import('@dotli/shared');
       const warn = vi.fn<(...args: unknown[]) => void>();
       const error = vi.fn<(...args: unknown[]) => void>();
+      const event = vi.fn<(name: string, attrs?: Record<string, unknown>) => void>();
       vi.spyOn(log, 'warn').mockImplementation(warn);
       vi.spyOn(log, 'error').mockImplementation(error);
-      return { provider: await import('../src/provider.js'), warn, error };
+      vi.spyOn(log, 'event').mockImplementation(event);
+      return { provider: await import('../src/provider.js'), warn, error, event };
     }
 
     afterEach(() => {
@@ -248,7 +251,7 @@ describe('smoldot chain provider hooks', () => {
 
     it('As a dotli user on a light client, one chain that stops responding halts on its own without failing the app', async () => {
       // Given
-      const { provider, warn, error } = await freshProvider();
+      const { provider, error, event } = await freshProvider();
       const onFatal = vi.fn<(message: string) => void>();
       provider.onProviderFatal(onFatal);
       const chainHooks = hooks();
@@ -265,7 +268,7 @@ describe('smoldot chain provider hooks', () => {
         expect(chainHooks.onHalt).toHaveBeenCalledTimes(1);
       });
       expect(onFatal).not.toHaveBeenCalled();
-      expect(warn).toHaveBeenCalledWith('[dot.li provider] truapi-provider ready (embedded smoldot wasm)');
+      expect(event).toHaveBeenCalledWith('Light client ready', { flow: 'protocol' });
       expect(error).not.toHaveBeenCalled();
     });
 
@@ -294,12 +297,13 @@ describe('smoldot chain provider hooks', () => {
       expect(error).not.toHaveBeenCalled();
       expect(warn).toHaveBeenCalledWith(
         `[dot.li provider] chain ${people} read failed, halting it: malformed response`,
+        failure,
       );
     });
 
     it('As a dotli user on a light client, a light client that cannot open a chain still fails the app', async () => {
       // Given
-      const { provider, warn, error } = await freshProvider();
+      const { provider, error, event } = await freshProvider();
       const onFatal = vi.fn<(message: string) => void>();
       provider.onProviderFatal(onFatal);
       truapi.connect = () => Promise.reject(new Error('catalog has no such chain'));
@@ -314,7 +318,7 @@ describe('smoldot chain provider hooks', () => {
       });
       expect(onFatal).toHaveBeenCalledTimes(1);
       expect(onFatal.mock.calls[0]?.[0]).toContain('connection failed');
-      expect(warn).toHaveBeenCalledWith('[dot.li provider] truapi-provider ready (embedded smoldot wasm)');
+      expect(event).toHaveBeenCalledWith('Light client ready', { flow: 'protocol' });
       expect(error).toHaveBeenCalledWith(
         `[dot.li provider] chain ${people} connection failed: catalog has no such chain`,
       );

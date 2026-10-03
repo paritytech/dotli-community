@@ -275,10 +275,10 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(store.getLoadingState().phase).toBe('dismissing');
-    expect(onDone).toHaveBeenCalledExactlyOnceWith('loaded');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('loaded', undefined);
   });
 
-  it('As the shell, a sandbox that failed to load its content reports the failure to the done callbacks', () => {
+  it('As the shell, a sandbox that failed to load its content reports the failure and the step it stopped at', () => {
     // Given
     const onDone = vi.fn();
     ctl.listenForSandboxStatus();
@@ -287,14 +287,32 @@ describe('The loading controller drives the loading store', () => {
     // When
     window.dispatchEvent(
       new MessageEvent('message', {
-        data: { type: 'dotli:loading-status', done: true, outcome: 'failed' },
+        data: { type: 'dotli:loading-status', done: true, outcome: 'failed', failedStep: 'content_fetch' },
         origin: SANDBOX_ORIGIN,
       }),
     );
 
     // Then
     expect(store.getLoadingState().phase).toBe('dismissing');
-    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed', 'content_fetch');
+  });
+
+  it('As the shell, a failed step that is not a short token is dropped before it can become a tag', () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'failed', failedStep: 'Failed: <script>' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed', undefined);
   });
 
   it('As a visitor at a password prompt, the loading screen is dismissed while the done callbacks keep waiting for the content', () => {

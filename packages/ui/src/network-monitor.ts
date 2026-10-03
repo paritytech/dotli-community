@@ -185,9 +185,7 @@ function attach(state: ChainState): void {
       recordBlock(state, blockNumber);
     });
   } catch (err: unknown) {
-    log.warn(
-      `[dot.li network] could not watch ${state.role.role}: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    log.warn(`[dot.li network] could not watch ${state.role.role}:`, err);
   }
 }
 

@@ -7,6 +7,7 @@
 export { packArchive, parseIpfsResponse, type ArchiveFiles } from './archive.js';
 export { bitswapGet, listenForSandboxBitswap, onContentProgress } from './bitswap.js';
 export { decryptContent, isEncrypted } from './decrypt.js';
+export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
 export { computePreimageKey, hashToCid } from './preimage.js';
