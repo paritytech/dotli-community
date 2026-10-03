@@ -1,22 +1,44 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { omit } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './IconButton.module.css';
 
-export interface IconButtonProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'class'> {
+// Explicit props, not a rest spread of button attributes: splitting the rest
+// off pulls Solid's `omit` into the boot bundle.
+export interface IconButtonProps {
+  ref?: (el: HTMLButtonElement) => void;
+  onClick?: (ev: MouseEvent) => void;
+  id?: string;
+  title?: string;
+  hidden?: boolean;
+  'aria-label'?: string;
+  'aria-haspopup'?: 'dialog' | 'menu' | undefined;
+  'aria-expanded'?: 'true' | 'false';
+  'aria-controls'?: string;
+  'data-idle'?: '' | undefined;
   active?: boolean;
   badge?: boolean;
   class?: string | undefined;
   testId?: string;
+  children?: JSX.Element;
 }
 
 export function IconButton(props: IconButtonProps): JSX.Element {
-  const button = omit(props, 'active', 'badge', 'class', 'testId', 'children');
   return (
     <button
-      {...button}
+      ref={props.ref}
+      onClick={ev => {
+        props.onClick?.(ev);
+      }}
+      id={props.id}
+      title={props.title}
+      hidden={props.hidden}
+      aria-label={props['aria-label']}
+      aria-haspopup={props['aria-haspopup']}
+      aria-expanded={props['aria-expanded']}
+      aria-controls={props['aria-controls']}
+      data-idle={props['data-idle']}
       class={[s['button'], props.class]}
       data-active={props.active === true ? '' : undefined}
       data-badge={props.badge === true ? '' : undefined}

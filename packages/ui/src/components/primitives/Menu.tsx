@@ -1,7 +1,6 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { omit } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Menu.module.css';
 
@@ -40,7 +39,13 @@ export function Menu(props: MenuProps): JSX.Element {
   );
 }
 
-export interface MenuRowProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonElement>, 'class' | 'role'> {
+// Explicit props, not a rest spread of button attributes: splitting the rest
+// off pulls Solid's `omit` into the boot bundle.
+export interface MenuRowProps {
+  onClick?: (ev: MouseEvent) => void;
+  'data-item'?: string;
+  'data-theme-option'?: string;
+  children?: JSX.Element;
   /** `menuitemradio` for one of a set of choices, with `checked`. */
   role?: 'menuitem' | 'menuitemradio';
   checked?: boolean;
@@ -49,10 +54,13 @@ export interface MenuRowProps extends Omit<JSX.ButtonHTMLAttributes<HTMLButtonEl
 }
 
 export function MenuRow(props: MenuRowProps): JSX.Element {
-  const row = omit(props, 'role', 'checked', 'class', 'testId', 'children');
   return (
     <button
-      {...row}
+      onClick={ev => {
+        props.onClick?.(ev);
+      }}
+      data-item={props['data-item']}
+      data-theme-option={props['data-theme-option']}
       class={[s['row'], props.class]}
       role={props.role ?? 'menuitem'}
       aria-checked={props.role === 'menuitemradio' ? (props.checked === true ? 'true' : 'false') : undefined}
