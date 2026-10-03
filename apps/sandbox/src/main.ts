@@ -292,7 +292,7 @@ async function ensureFreshServiceWorker(registration: ServiceWorkerRegistration)
   if (actual === null || actual === expected) {
     return;
   }
-  contentLog.warn(`[dot.li app] SW version mismatch (active=${actual}, expected=${expected}); prompting user`);
+  log.event('Service worker outdated, reload offered', { flow: 'content', active: actual, expected });
   showNotification({
     label: 'New version available',
     text: `App was updated. Reload to use the latest version.`,
@@ -860,7 +860,7 @@ const MAX_RUN_ATTEMPTS = 5;
 
 function run(): void {
   if (runInFlight) {
-    log.warn('[dot.li app] run() already in flight; ignoring re-entry');
+    log.debug('[dot.li app] run() already in flight; ignoring re-entry');
     return;
   }
   if (runAttempts >= MAX_RUN_ATTEMPTS) {

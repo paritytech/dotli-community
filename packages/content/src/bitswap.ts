@@ -560,7 +560,8 @@ export function listenForSandboxBitswap(options: SandboxBitswapOptions = {}): ()
   }
   relayInstalled = true;
   if (getBackend() === 'rpc-gateway') {
-    log.warn('[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.');
+    // The gateway backend fetches archives over HTTP, so no bitswap request is expected.
+    log.debug('[dot.li bitswap-relay] Bitswap is unavailable in RPC gateway mode; sandbox bitswap requests will fail.');
   } else if (!isRemoteChainSupported(getActiveServicesConfig().bulletin.genesis)) {
     log.warn('[dot.li bitswap-relay] Bulletin not in supported chain set; sandbox bitswap requests will fail.');
   }

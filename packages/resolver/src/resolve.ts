@@ -241,7 +241,7 @@ export async function waitForPeopleFinalized(onStatus?: StatusCallback): Promise
   // use) rather than corrupting the broker's follow stream.
   const peopleProvider = resolverPeopleProvider;
   if (peopleProvider === null) {
-    log.warn('[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)');
+    log.debug('[dot.li resolve] People provider not set — skipping warm-keep (resolves on demand via broker)');
     return;
   }
   peoplePromise ??= (async () => {
