@@ -83,7 +83,12 @@ function showStatus(message: string): void {
   window.parent.postMessage({ type: 'dotli:loading-status', message }, '*');
 }
 
-function notifyLoadingDone(): void {
+function notifyLoadingDone(outcome: 'loaded' | 'failed'): void {
+  window.parent.postMessage({ type: 'dotli:loading-status', done: true, outcome }, '*');
+}
+
+/** Clear the host overlay for a prompt shown before the content has loaded. */
+function dismissHostLoading(): void {
   window.parent.postMessage({ type: 'dotli:loading-status', done: true }, '*');
 }
 
@@ -157,7 +162,7 @@ function requestHostRerender(reason: string): void {
  * visibly: the error title plus the still-ticking progress bar from above.
  */
 function failLoading(...args: Parameters<typeof showError>): void {
-  notifyLoadingDone();
+  notifyLoadingDone('failed');
   showError(...args);
 }
 
@@ -386,7 +391,7 @@ async function decryptIfNeeded(data: Uint8Array, cid: string): Promise<ArchiveFi
 
   // Tell the host to dismiss its loading overlay so the password prompt
   // isn't covered by the shell's spinner.
-  notifyLoadingDone();
+  dismissHostLoading();
 
   // Re-use password from this session if available
   let password = decryptedPasswords.get(cid);
@@ -680,7 +685,7 @@ async function main(): Promise<void> {
     bytes: result.type === 'single' ? result.content.byteLength : archiveBytes(result.files),
     fileCount: result.type === 'single' ? 1 : Object.keys(result.files).length,
   });
-  notifyLoadingDone();
+  notifyLoadingDone('loaded');
   performance.mark('dotli:app:end');
   stopApp();
   stripContractParamsFromUrl();

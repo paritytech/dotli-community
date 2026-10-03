@@ -591,12 +591,15 @@ export function dismissLoading(): void {
  * nested cross-origin frame or browser extension) could spoof the status
  * text or prematurely dismiss the overlay while content is still loading.
  */
+/** How the sandbox's content load ended. */
+export type SandboxOutcome = 'loaded' | 'failed';
+
 // One-shot subscribers for the sandbox's terminal `done` signal. The host
 // uses it to time telemetry that must not be captured before the content
 // fetch has run (the bulletin chain is only dialed during that fetch).
-const sandboxDoneCallbacks: (() => void)[] = [];
+const sandboxDoneCallbacks: ((outcome: SandboxOutcome) => void)[] = [];
 
-export function onSandboxDone(cb: () => void): void {
+export function onSandboxDone(cb: (outcome: SandboxOutcome) => void): void {
   sandboxDoneCallbacks.push(cb);
 }
 
@@ -616,10 +619,16 @@ export function listenForSandboxStatus(): void {
     // The progress prose the sandbox writes is written for a developer reading
     // the console, so it is left there. The stage messages narrate this step
     // to the user, and `done` is the part the loading screen acts on.
+    // A `done` without an outcome only clears the overlay for a prompt the
+    // sandbox shows before its content has loaded (the archive password), so
+    // the callbacks wait for the outcome that ends the load.
     if (data['done'] === true) {
       dismissLoading();
-      for (const cb of sandboxDoneCallbacks.splice(0)) {
-        cb();
+      const outcome = data['outcome'];
+      if (outcome === 'loaded' || outcome === 'failed') {
+        for (const cb of sandboxDoneCallbacks.splice(0)) {
+          cb(outcome);
+        }
       }
     }
   });
