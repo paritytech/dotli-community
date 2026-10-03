@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/chat-seity-profile",
-  "upstreamRevision": "2a8e909086ccce34731375a44f6fb47770dfe12c",
+  "upstreamRevision": "bd55ec2af4b5db75afaf827404f63d11f6881a02",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1001",
   "packages": {
     "vendor/truapi": {
@@ -23,5 +23,5 @@
       ]
     }
   },
-  "wasmUpstreamRevision": "2a8e909086ccce34731375a44f6fb47770dfe12c"
+  "wasmUpstreamRevision": "bd55ec2af4b5db75afaf827404f63d11f6881a02"
 }
