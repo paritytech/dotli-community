@@ -89,7 +89,6 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                     }}
                   >
                     <span>{choice.label}</span>
-                    <span class="contacts-picker-identity">{choice.detail}</span>
                   </button>
                 )}
               </For>

@@ -115,14 +115,14 @@ describe('native Chat contacts', () => {
     await expect(adapter.callbacks.contacts({ handleKey, handles: [] })).resolves.toEqual({ accounts: [] });
   });
 
-  it('renders verified names as text, identifies unnamed peers, and revalidates the choice', async () => {
+  it('renders verified names as text without exposing account IDs and revalidates the choice', async () => {
     const state = fixture();
     must(state.snapshot.contacts[0], 'Alice contact').username = '<img src=x onerror=alert(1)>';
     const picked = state.adapter.callbacks.pickContact(product);
     const buttons = await choices();
     expect(must(buttons[0], 'Alice choice').textContent).toContain('<img src=x onerror=alert(1)>');
     expect(must(buttons[0], 'Alice choice').querySelector('img')).toBeNull();
-    expect(must(buttons[1], 'Bob choice').textContent).toContain(bob);
+    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
     expect(document.querySelector('[role=dialog]')?.textContent).toContain(product.productId);
     must(buttons[1], 'Bob choice').click();
     await expect(picked).resolves.toEqual({

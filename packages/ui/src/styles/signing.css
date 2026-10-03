@@ -169,8 +169,3 @@
   text-align: left;
   overflow-wrap: anywhere;
 }
-.contacts-picker-identity {
-  font-family: monospace;
-  font-size: 0.7rem;
-  opacity: 0.75;
-}

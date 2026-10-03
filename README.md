@@ -570,6 +570,8 @@ Solid host picker cancels when its connection closes or the session, roster, wal
 a selection before returning a contact handle. Product prompts have connection-owned modal scopes; authentication,
 private storage and attachment custody stay with the one page core.
 
+Picker rows show verified contact names, with a generic label for unnamed contacts; raw account IDs are not displayed.
+
 Use the existing **List**, **Timeline**, and **Resolution** tabs for activity and diagnostics. Wallet does not duplicate
 their event viewer or capture controls.
 

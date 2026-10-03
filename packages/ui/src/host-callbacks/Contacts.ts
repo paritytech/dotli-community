@@ -237,7 +237,6 @@ async function showContactPicker(
       notice: `${product.productId} is asking you to choose a Chat contact. Names and account identities stay in this host picker.`,
       choices: contacts.map(contact => ({
         label: contact.username !== undefined && contact.username !== '' ? contact.username : 'Chat contact',
-        detail: contact.peerIdentity,
         result: contact.peerIdentity,
       })),
       buttons: [{ label: 'Cancel', variant: 'cancel', result: 'dismissed' }],
