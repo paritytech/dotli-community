@@ -122,6 +122,16 @@ function sentryEnvironment(): string {
 }
 
 /**
+ * Semver from the build (see `@config/vite/sentry-release`), so Sentry can
+ * order releases. The commit is the fallback for a build with no reachable
+ * tag, and an empty value counts as unset, as an `.env` line leaves it.
+ */
+function sentryRelease(): string | undefined {
+  const release = import.meta.env.VITE_SENTRY_RELEASE;
+  return release !== undefined && release !== '' ? release : import.meta.env.VITE_COMMIT_SHA;
+}
+
+/**
  * Initialize Sentry with the dot.li-standard config for the given source
  * and bind it to `@dotli/metrics` so spans/counters flow through. Safe to
  * call unconditionally. When the DSN env var is unset, Sentry becomes a
@@ -151,7 +161,7 @@ export function initSentry(source: SentrySource): void {
     dsn,
     tunnel: '/t',
     environment: env,
-    release: import.meta.env.VITE_COMMIT_SHA,
+    release: sentryRelease(),
     beforeSend: tagSmoldotEvents,
     integrations: defaultIntegrations => [
       ...excludeBrowserApiErrorsIntegration(defaultIntegrations).filter(
@@ -187,6 +197,11 @@ export function initSentry(source: SentrySource): void {
   // `dotli.dotli_source` after the mirroring layer's prefix and drift away
   // from the documented schema.
   m.setDefaults({ source, env });
+  const commit = import.meta.env.VITE_COMMIT_SHA;
+  if (commit !== undefined && commit !== '') {
+    // The release names a version; the exact build is still one search away.
+    Sentry.setTag('commit', commit);
+  }
 
   // If the DSN is missing in any non-development build, warn loudly once so
   // an operator doesn't lose hours wondering why the dashboard is empty.
