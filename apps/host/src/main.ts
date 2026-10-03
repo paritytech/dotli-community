@@ -1739,6 +1739,9 @@ async function main(): Promise<void> {
   const captureResolveResult = (outcome: 'ok' | 'no_content' | 'content_error'): void => {
     Sentry.captureMessage('dotli.resolve_result', {
       level: 'info',
+      // A message carries a stack trace, and Sentry groups those by call site,
+      // which splits one count across an issue per caller and per build.
+      fingerprint: ['dotli.resolve_result'],
       tags: {
         surface: 'host_main_resolve',
         outcome,
@@ -1826,6 +1829,7 @@ async function main(): Promise<void> {
     // One event per cold resolve attempt, BEFORE anything that can fail.
     Sentry.captureMessage('dotli.resolve_attempt', {
       level: 'info',
+      fingerprint: ['dotli.resolve_attempt'],
       tags: {
         surface: 'host_main_resolve',
         outcome: 'pending',
