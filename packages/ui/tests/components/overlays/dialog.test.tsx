@@ -361,4 +361,22 @@ describe('signing dialog', () => {
     // Then
     expect(document.activeElement).toBe(incoming);
   });
+
+  it('As a dotli user answering two queued prompts, the second opens over the scrim that is already up', async () => {
+    // Given
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+
+    // Then: the first prompt brings its scrim in.
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(false);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Second');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
+  });
 });

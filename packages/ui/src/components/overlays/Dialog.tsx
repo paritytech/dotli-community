@@ -1,8 +1,9 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Shared dialog shell: backdrop, dialog semantics, initial focus, a Tab trap,
-// Escape, and focus restored on close.
+// Shared dialog shell: the scrim and the glass card (a bottom sheet at 560 px
+// and below), dialog semantics, initial focus, a Tab trap, Escape, and focus
+// restored on close.
 
 import { onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
@@ -44,6 +45,15 @@ function restoreTargetNow(): HTMLElement | null {
 }
 
 /**
+ * Whether a dialog opening now takes over from one still on screen: the next
+ * in the queue opens while the last one holds focus, over the scrim it left.
+ */
+function followsDialog(): boolean {
+  const active = document.activeElement;
+  return active instanceof HTMLElement && active.closest('[data-dialog]') !== null;
+}
+
+/**
  * Put focus back on `target`, or, when it left the page meanwhile, on the
  * product frame the dialog was most likely raised from, rather than let it
  * fall to the page body. Nothing to restore (focus was on the body) leaves
@@ -64,6 +74,9 @@ export function Dialog(props: DialogProps): JSX.Element {
   let backdrop!: HTMLDivElement;
   let dialog!: HTMLDivElement;
   const previouslyFocused = restoreTargetNow();
+  // Read once, before this dialog takes focus: a follow-up keeps the scrim
+  // still rather than fade it in again.
+  const follows = followsDialog();
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
@@ -89,6 +102,7 @@ export function Dialog(props: DialogProps): JSX.Element {
   return (
     <div
       class={s['backdrop']}
+      data-follows={follows ? '' : undefined}
       data-testid={props.testId === undefined ? undefined : `${props.testId}-backdrop`}
       ref={el => {
         backdrop = el;
@@ -101,6 +115,7 @@ export function Dialog(props: DialogProps): JSX.Element {
     >
       <div
         class={s['dialog']}
+        data-chrome=""
         data-dialog=""
         data-testid={props.testId}
         ref={el => {

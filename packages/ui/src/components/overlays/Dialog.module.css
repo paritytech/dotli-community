@@ -1,26 +1,99 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The board's modal: a centred glass card over the dark scrim, and at 560 px
+   and below (PHONE_QUERY in phone-viewport.ts) a bottom sheet. Both come in
+   with the board's keyframes. Nothing animates out: the outlet unmounts an
+   answered dialog in the update that mounts the next queued one. */
+
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 3000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
   margin: 0;
-  padding: 0;
-  background: var(--backdrop);
+  padding: var(--sp-6);
+  background: var(--chrome-scrim);
+  animation: fade-in var(--dur) both;
+}
+/* The next queued dialog opens over the scrim the last one left up. */
+.backdrop[data-follows] {
+  animation: none;
 }
 
 .dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
   box-sizing: border-box;
-  width: 100%;
-  max-width: 420px;
+  width: var(--w-pop-lg);
+  max-width: 100%;
+  max-height: calc(100dvh - 2 * var(--sp-6));
   margin: 0;
-  padding: 24px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  background: var(--surface);
+  padding: var(--sp-6);
+  overflow: hidden;
+  border-radius: var(--r-xl);
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+  animation: modal-in var(--dur) var(--ease-spring) both;
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .dialog {
+    background: var(--chrome-solid);
+  }
+}
+/* Focused itself on open, so keyboard users start inside: no ring for that. */
+.dialog:focus-visible {
+  outline: none;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+/* The board's ds-modal: up from 8 px lower, grown from 96%. */
+@keyframes modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(var(--sp-2)) scale(0.96);
+  }
+}
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+/* A media-query twin of the surface geometry in components/sheet/Sheet.module.css:
+   keep the two in step. */
+@media (max-width: 560px) {
+  .backdrop {
+    place-items: end stretch;
+    padding: 0;
+  }
+  /* The board's .sheet. It covers the whole screen, the header included, so
+     its 85% cap is of the screen. The bottom is the board's sheet content
+     padding (16) and scroll padding (24), then the home indicator. */
+  .dialog {
+    width: 100%;
+    max-height: 85dvh;
+    padding: var(--sp-6) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    box-shadow: var(--chrome-shadow-sheet);
+    animation: sheet-in var(--dur-morph) var(--ease-out) both;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop,
+  .dialog {
+    animation: none;
+  }
 }
