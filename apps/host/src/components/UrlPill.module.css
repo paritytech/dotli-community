@@ -35,14 +35,12 @@
 .pill:hover {
   background: var(--chrome-well-strong);
 }
-/* Clip from the head so the TLD stays anchored, like a browser address bar. */
+/* The board's address keeps the name's head and ellipsizes its end. */
 .text {
   min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
 }
 .domain {
   color: var(--chrome-text);
@@ -76,10 +74,6 @@
   }
   .pill {
     position: relative;
-  }
-  /* The board's phone address keeps the name's head and ellipsizes its end. */
-  .text {
-    direction: ltr;
   }
   .pill:has([aria-expanded='true']) {
     background: var(--chrome-well-strong);
