@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { JSX } from '@solidjs/web';
+import type { StatusTone } from './StatusDot.js';
 import s from './IconButton.module.css';
 
 // Explicit props, not a rest spread of button attributes: splitting the rest
@@ -19,6 +20,8 @@ export interface IconButtonProps {
   'data-idle'?: '' | undefined;
   active?: boolean;
   badge?: boolean;
+  /** The badge's colour; white without one. */
+  badgeTone?: StatusTone;
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
@@ -42,6 +45,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       class={[s['button'], props.class]}
       data-active={props.active === true ? '' : undefined}
       data-badge={props.badge === true ? '' : undefined}
+      data-badge-tone={props.badgeTone}
       data-testid={props.testId}
     >
       {props.children}

@@ -67,3 +67,67 @@
   background: var(--inverse-bg);
   box-shadow: 0 0 0 1.5px var(--inverse-fg);
 }
+
+/* Inside the bar the button is chrome: round, 44 px, white on the dark glass,
+   a raised fill while its surface is open. The landing page keeps the rules
+   above. */
+:global(#topbar) .button {
+  width: var(--h-control);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  color: var(--chrome-text);
+  transition:
+    background var(--dur-fast),
+    box-shadow var(--dur-fast);
+}
+:global(#topbar) .button:hover {
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+:global(#topbar) .button:active {
+  background: var(--chrome-fill-strong);
+}
+:global(#topbar) .button[data-active] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+:global(#topbar) .button:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+:global(#topbar) .button > svg {
+  width: 20px;
+  height: 20px;
+}
+/* On the 20 px icon's top-right corner. */
+:global(#topbar) .button[data-badge]::after {
+  top: 9px;
+  right: 9px;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  background: var(--chrome-action);
+  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
+}
+:global(#topbar) .button[data-badge-tone='ok']::after {
+  background: var(--chrome-ok);
+}
+:global(#topbar) .button[data-badge-tone='warn']::after {
+  background: var(--chrome-warn);
+}
+:global(#topbar) .button[data-badge-tone='err']::after {
+  background: var(--chrome-err);
+}
+:global(#topbar) .button[data-badge-tone='info']::after {
+  background: var(--chrome-info);
+}
+:global(#topbar) .button[data-badge-tone='idle']::after {
+  background: var(--chrome-idle);
+}
+@media (prefers-reduced-motion: reduce) {
+  :global(#topbar) .button {
+    transition: none;
+  }
+}

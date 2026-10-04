@@ -304,6 +304,16 @@ describe('The network popover island', () => {
     expect(body().childElementCount).toBe(0);
   });
 
+  it('As a user, the network button carries a badge in the network health tone', async () => {
+    // When
+    await renderPopover();
+
+    // Then: the health starts at syncing, whose tone is idle
+    const button = byId('chains-button');
+    expect(button.hasAttribute('data-badge')).toBe(true);
+    expect(button.dataset['badgeTone']).toBe('idle');
+  });
+
   const statuses: {
     name: string;
     chains: ChainStatus[];

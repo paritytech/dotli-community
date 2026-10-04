@@ -3,6 +3,8 @@
 
 import { lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { networkHealthStore } from '../../state/network-health.js';
+import { healthTone } from '../../network-health.js';
 import { topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
@@ -15,7 +17,7 @@ import s from './ChainsPopover.module.css';
 const Chains = lazy(() => import('./ChainsContent.js'), { export: 'ChainsContent' });
 
 /** The network globe, on the button and the More menu row. */
-function GlobeIcon(props: { size: number }): JSX.Element {
+function GlobeIcon(props: { size: number; stroke?: number }): JSX.Element {
   return (
     <svg
       width={props.size}
@@ -23,7 +25,7 @@ function GlobeIcon(props: { size: number }): JSX.Element {
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width={props.stroke ?? 2}
       stroke-linecap="round"
       stroke-linejoin="round"
     >
@@ -54,6 +56,7 @@ function GlobeIcon(props: { size: number }): JSX.Element {
  */
 export function ChainsPopover(): JSX.Element {
   const topbar = useStore(topbarStore);
+  const health = useStore(networkHealthStore);
   return (
     <Popover
       id="chains-popover"
@@ -69,8 +72,15 @@ export function ChainsPopover(): JSX.Element {
           visible={topbar().chainsButtonVisible}
           activate={t.onClick}
         >
-          <IconButton {...t} id="chains-button" title="Network" aria-label="Network">
-            <GlobeIcon size={12} />
+          <IconButton
+            {...t}
+            id="chains-button"
+            title="Network"
+            aria-label="Network"
+            badge
+            badgeTone={healthTone(health())}
+          >
+            <GlobeIcon size={20} stroke={1.75} />
           </IconButton>
         </TopbarItem>
       )}
