@@ -948,6 +948,11 @@ describe('PermissionsPopover', () => {
 
     // When
     reset.click();
+
+    // Then: the hand-off is at once, as a real browser drops the focus of a button that gets disabled.
+    expect(document.activeElement).toBe(byId('permissions-popover'));
+
+    // When
     await settleAll();
 
     // Then

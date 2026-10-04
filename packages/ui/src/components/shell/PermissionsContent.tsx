@@ -71,9 +71,9 @@ function ReloadIcon(): JSX.Element {
  * The permissions popover's body (PermissionsPopover), its own chunk: every
  * permission of the loaded product (productStore) in a Device and an App
  * group, each with Ask, Allow and Deny segments, and Reset all to Ask,
- * through the async API in permissions.ts. It reads the statuses as it mounts (the popover opening),
- * and again on a product loading or failing and on a permission change, the
- * last read winning. In a bottom sheet the sheet draws the title, so the
+ * through the async API in permissions.ts. It reads the statuses as it
+ * mounts (the popover opening), and again on a product loading or failing
+ * and on a permission change, the last read winning. In a bottom sheet the sheet draws the title, so the
  * surface leaves out its head and the host chip.
  */
 export function PermissionsContent(): JSX.Element {
@@ -181,14 +181,15 @@ export function PermissionsContent(): JSX.Element {
       return;
     }
     const { label } = read;
+    // Starting a reset disables the button under a keyboard user's focus, and
+    // a browser then drops that focus to the body, closing the popover.
+    if (document.activeElement === resetButton) {
+      document.getElementById(popover.id)?.focus();
+    }
     setResetting(true);
     void resetAllPermissions(label)
       .then(
         ({ reset, failed }) => {
-          // The re-read disables the button under a keyboard user's focus.
-          if (reset.length > 0 && document.activeElement === resetButton) {
-            document.getElementById(popover.id)?.focus();
-          }
           recordPermissionsChanged(label, reset);
           if (failed) {
             setRetries(n => n + 1);
