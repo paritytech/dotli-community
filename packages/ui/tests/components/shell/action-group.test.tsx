@@ -8,6 +8,7 @@
 
 import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { cleanup } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TopbarContext, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
@@ -18,6 +19,7 @@ import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId, byTestId } from '../../support.js';
 import { ITEM_WIDTH, moreRow, renderTopbar } from './topbar-harness.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 interface Activation {
   name: string;
@@ -97,6 +99,8 @@ async function pressKey(key: string): Promise<void> {
 afterEach(() => {
   activations = [];
   resetStores();
+  // Dispose first: the menu's portal removes its own node from the body.
+  cleanup();
   document.body.replaceChildren();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -422,5 +426,55 @@ describe('ActionGroup', () => {
     expect(inline('network')).toBe(true);
     expect(byId('more-button').hasAttribute('data-badge')).toBe(false);
     expect(byId('more-button').getAttribute('aria-label')).toBe('More');
+  });
+
+  it('As a phone user, More opens as a bottom sheet titled More over a scrim, and a tap on the scrim closes it without reaching the page', async () => {
+    // Given
+    stubPhoneViewport(true);
+    await renderTopbar(() => <Items />, room(4));
+    const outsideClicks = vi.fn();
+
+    // When
+    mouseClick(byId('more-button'));
+    await settle();
+
+    // Then
+    const sheet = byId('more-popover');
+    expect(isOpen()).toBe(true);
+    expect(byId('topbar-actions').contains(sheet)).toBe(false);
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('menu-sheet-title', sheet).textContent).toBe('More');
+    expect(rowNames()).toEqual(['permissions', 'theme', 'settings']);
+
+    // When
+    document.addEventListener('click', outsideClicks);
+    pointerPress(byTestId('menu-scrim'));
+    await settle();
+    document.removeEventListener('click', outsideClicks);
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(outsideClicks).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(byId('more-button'));
+  });
+
+  it('As a keyboard user on a phone-width window, Enter on More opens the sheet on its first row, past its head', async () => {
+    // Given
+    stubPhoneViewport(true);
+    await renderTopbar(() => <Items />, room(4));
+    byId('more-button').focus();
+
+    // When
+    await pressKey('Enter');
+
+    // Then
+    expect(byId('more-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(document.activeElement).toBe(moreRow('permissions'));
+
+    // When
+    await pressKey('ArrowUp');
+
+    // Then: the head is no stop
+    expect(document.activeElement).toBe(moreRow('settings'));
   });
 });

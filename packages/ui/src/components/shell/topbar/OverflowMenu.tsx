@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { createEffect, For } from 'solid-js';
-import type { JSX } from '@solidjs/web';
+import { Portal, type JSX } from '@solidjs/web';
 import { IconButton } from '../../primitives/IconButton.js';
 import { Menu, MenuRow } from '../../primitives/Menu.js';
 import type { StatusTone } from '../../primitives/StatusDot.js';
@@ -32,7 +32,7 @@ function Chevron(): JSX.Element {
 
 /**
  * The topbar's More button (`#more-button`) and its flyout
- * (`#more-popover`), holding a row for each item the bar has collapsed
+ * (`#more-popover`, rendered into the body), holding a row for each item the bar has collapsed
  * (`rows`, in bar order). Once the bar measures (the group's
  * `data-collapsible`), the button shows only while there is a row. Until
  * then it stays measurable, out of flow and invisible (`data-idle`), so the
@@ -42,7 +42,9 @@ function Chevron(): JSX.Element {
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
- * items. Each row is the board's menu row: the item's icon, its label and a
+ * items. It drops under the bar, and on a phone it opens as a bottom sheet
+ * titled More over a scrim (createPopover's `sheet`), its rows in a well.
+ * Each row is the board's menu row: the item's icon, its label and a
  * chevron. An item may add to its row after the label (the network's dot
  * and verdict word) and raise a status, which More shows as its badge and in
  * its name while that item is collapsed. The menu is named More whatever its
@@ -60,6 +62,7 @@ export function OverflowMenu(props: {
   let popover: HTMLDivElement | undefined;
   const menu = createPopover({
     mode: 'menu',
+    sheet: true,
     trigger: () => button,
     surface: () => popover,
   });
@@ -127,32 +130,45 @@ export function OverflowMenu(props: {
           <span class={s['bar']} />
         </span>
       </IconButton>
-      <Menu
-        ref={el => {
-          popover = el;
-        }}
-        id="more-popover"
-        open={menu.open()}
-        label="More"
-      >
-        <For each={props.rows}>
-          {entry => (
-            <MenuRow
-              onClick={ev => {
-                choose(entry, ev);
-              }}
-              data-item={entry.name}
-            >
-              <span class={s['icon']} aria-hidden="true">
-                {entry.icon()}
-              </span>
-              <span class={s['label']}>{entry.label}</span>
-              {entry.aside()}
-              <Chevron />
-            </MenuRow>
-          )}
-        </For>
-      </Menu>
+      {/* In the body: inside the bar, whose glass is a backdrop filter, a
+          fixed menu would be placed against the bar instead of the page. */}
+      <Portal>
+        <Menu
+          ref={el => {
+            popover = el;
+          }}
+          id="more-popover"
+          class={s['menu']}
+          open={menu.open()}
+          label="More"
+          sheet={menu.sheet()}
+          sheetTitle="More"
+          onDismiss={() => {
+            menu.setOpen(false);
+          }}
+        >
+          <div class={s['rows']}>
+            <For each={props.rows}>
+              {entry => (
+                <MenuRow
+                  class={s['row']}
+                  onClick={ev => {
+                    choose(entry, ev);
+                  }}
+                  data-item={entry.name}
+                >
+                  <span class={s['icon']} aria-hidden="true">
+                    {entry.icon()}
+                  </span>
+                  <span class={s['label']}>{entry.label}</span>
+                  {entry.aside()}
+                  <Chevron />
+                </MenuRow>
+              )}
+            </For>
+          </div>
+        </Menu>
+      </Portal>
     </>
   );
 }

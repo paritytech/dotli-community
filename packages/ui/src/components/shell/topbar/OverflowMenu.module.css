@@ -70,9 +70,9 @@
   }
 }
 
-/* The board's .menu-row parts in the Menu's 44 px rows (the phone sheet's
-   56 px rows are stage 3). Each item draws its icon at 14 px for any place,
-   so the row sizes it to the board's 20 px with its 1.75 stroke. */
+/* The board's .menu-row parts in the Menu's 44 px rows. Each item draws its
+   icon at 14 px for any place, so the row sizes it to the board's 20 px with
+   its 1.75 stroke. */
 .icon {
   display: inline-flex;
   flex: none;
@@ -89,4 +89,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+/* Phones: the board's More sheet, its rows in a flush well under the head,
+   56 px tall at 15 px, with hairlines between them. */
+.menu[data-sheet] .rows {
+  margin: var(--sp-1) var(--sp-4) 0;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+.menu[data-sheet] .row {
+  height: var(--h-row-lg);
+  padding: 0 var(--sp-4);
+  border-radius: 0;
+  font-size: var(--fs-title);
+}
+.menu[data-sheet] .row + .row {
+  border-top: 1px solid var(--chrome-line);
 }
