@@ -221,7 +221,8 @@ export interface ResetAllResult {
  * Set every granted or denied permission of `label` back to ask.
  *
  * The writes run together and each may fail on its own, so the caller learns
- * which ones landed and can announce them as one change.
+ * which ones landed and can announce them as one change. A status read that
+ * fails rejects, before anything is written.
  */
 export async function resetAllPermissions(label: string): Promise<ResetAllResult> {
   const names = ALL_PERMISSIONS.map(({ name }) => name);

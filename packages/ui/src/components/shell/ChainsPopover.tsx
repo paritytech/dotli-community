@@ -44,12 +44,12 @@ function GlobeIcon(props: { size: number; stroke?: number }): JSX.Element {
  *
  * The button shows once the host has a product on screen (topbarStore's
  * `chainsButtonVisible`, which setChainsButtonVisible in topbar.ts writes).
- * The popover's body, ChainsContent, is its own chunk: the overall verdict,
- * a strip of block bars and the peer count per chain, the download while
- * the product is loading, and tips, with every chain's block arrivals
- * watched while it is mounted. A content failure is reported as
- * `popover:chains-popover` and closes it; the next opening renders it
- * afresh.
+ * The popover's body, ChainsContent, is its own chunk: a head with the
+ * network chip, a status well with the overall verdict, a strip of block
+ * bars and the peer count per chain, the download while the product is
+ * loading, and tips, with every chain's block arrivals watched while it is
+ * mounted. A content failure is reported as `popover:chains-popover` and
+ * closes it, and the next opening renders it afresh.
  *
  * A press outside, focus leaving it, Escape and a blocking modal close the
  * popover, a non-modal one.

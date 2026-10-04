@@ -94,7 +94,7 @@ describe('Topbar actions island', () => {
     }
   });
 
-  it("As a mobile user, the More menu's Theme and Settings rows open the theme menu and the settings popover", async () => {
+  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance menu and the settings popover", async () => {
     // Given
     initSettingsStore();
     stubTopbarLayout(MORE_ONLY);
@@ -159,7 +159,7 @@ describe('Topbar actions island', () => {
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
   });
 
-  it("As a visitor on the landing page, the group renders nothing, so the page's own account and theme buttons are the only ones", async () => {
+  it("As a visitor on the landing page, the group renders nothing, so the page's own account and appearance buttons are the only ones", async () => {
     // Given
     stubTopbarLayout(6 * ITEM_WIDTH);
     await renderIsland();

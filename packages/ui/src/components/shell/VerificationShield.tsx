@@ -22,10 +22,10 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
 
 /**
  * The URL pill's shield (`#verification-shield`) and its "How was this site
- * loaded?" explainer (`#verification-tooltip`), a Popover that drops from the pill below the shield,
- * in the body: a disclosure (the button toggles it, and it takes no focus)
- * that also shows while a mouse rests on the shield, and a bottom sheet on
- * phones. It closes on a press outside both, on focus leaving both, on
+ * loaded?" explainer (`#verification-tooltip`), a Popover in the body that
+ * drops from the pill below the shield: a disclosure (the button toggles it,
+ * and it takes no focus) that also shows while a mouse rests on the shield,
+ * and a bottom sheet on phones. It closes on a press outside both, on focus leaving both, on
  * Escape (focus back to the button when it was inside or lost to the body),
  * on window blur (a tap inside the product iframe) and when a blocking modal
  * comes up. The shield's state is the url-pill store's (pillShield), null

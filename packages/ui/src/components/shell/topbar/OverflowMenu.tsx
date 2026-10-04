@@ -13,7 +13,6 @@ import s from './OverflowMenu.module.css';
 function Chevron(): JSX.Element {
   return (
     <svg
-      class={s['chevron']}
       data-testid="more-row-chevron"
       width="16"
       height="16"
@@ -34,16 +33,16 @@ function Chevron(): JSX.Element {
  * The topbar's More button (`#more-button`) and its flyout
  * (`#more-popover`), holding a row for each item the bar has collapsed
  * (`rows`, in bar order). Once the bar measures (the group's
- * `data-collapsible`), the button
- * shows only while there is a row; until then it stays measurable, out of
- * flow and invisible (`data-idle`), so the bar knows the room it takes.
+ * `data-collapsible`), the button shows only while there is a row. Until
+ * then it stays measurable, out of flow and invisible (`data-idle`), so the
+ * bar knows the room it takes.
  * Before the bar measures (its build-time render), it shows on a narrow
  * viewport, where the bar most likely collapses something.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
- * items. Each row is the board's menu row: the item's icon, its label and a chevron.
- * Choosing a row closes the flyout and hands focus back to the More
+ * items. Each row is the board's menu row: the item's icon, its label and a
+ * chevron. Choosing a row closes the flyout and hands focus back to the More
  * button, then activates the row's item with the row click, so the surface
  * it opens takes focus as its own mode dictates (a keyboard choice opens a
  * menu on its first item), and hands it back to the More button when it

@@ -12,7 +12,8 @@ const InSheet = createContext<Accessor<boolean>>(() => false);
 
 /**
  * The glass body of a popover. In a bottom sheet (`sheet`) the sheet already
- * draws the glass and the title, so this draws neither.
+ * draws the glass and the title, so this draws neither. `bare` does the same
+ * for the glass inside a Popover, whose own surface is already glass.
  */
 export function Surface(props: {
   width?: SurfaceWidth;

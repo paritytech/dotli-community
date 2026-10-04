@@ -286,6 +286,25 @@ describe('resetAllPermissions', () => {
     }
   });
 
+  it('As a user whose permissions cannot be read, Reset all to Ask rejects and writes nothing', async () => {
+    // Given
+    const set = vi.fn(() => Promise.resolve());
+    const unregister = registerPermissionAuthorizationProvider('unreadable', {
+      getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
+      setPermissionAuthorizationStatus: set,
+    });
+    try {
+      // When
+      const result = resetAllPermissions('unreadable');
+
+      // Then
+      await expect(result).rejects.toThrow('core down');
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
   it('As a product without a permission provider, Reset all to Ask has nothing to reset', async () => {
     // When
     const result = await resetAllPermissions('nobody');
@@ -469,6 +488,7 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(names).toContain('Notifications');
     expect(names).not.toContain('TransactionSubmit');
   });
+
   it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {
     // Then
     expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([

@@ -847,15 +847,13 @@ describe('PermissionsPopover', () => {
     await openPopover();
     const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
 
-    // Then
-    expect(reset.textContent).toBe('Reset all to Ask');
-    expect(reset.disabled).toBe(true);
-
     // When
     reset.click();
     await settleAll();
 
     // Then
+    expect(reset.textContent).toBe('Reset all to Ask');
+    expect(reset.disabled).toBe(true);
     expect(provider.set).not.toHaveBeenCalled();
     expect(grants).toEqual([]);
     expect(devices).toEqual([]);

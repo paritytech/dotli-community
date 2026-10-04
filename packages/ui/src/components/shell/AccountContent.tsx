@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { requestTruapiDisconnect } from '../../auth-controller.js';
 import { Button } from '../primitives/Button.js';
 import { Surface } from '../primitives/Surface.js';
-import { Callout } from '../primitives/Well.js';
+import { Callout, InfoIcon } from '../primitives/Well.js';
 import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
 import { usePopover } from './Popover.js';
 import s from './AccountContent.module.css';
@@ -26,26 +26,6 @@ function UserIcon(): JSX.Element {
     >
       <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
       <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
-
-function InfoIcon(): JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
     </svg>
   );
 }

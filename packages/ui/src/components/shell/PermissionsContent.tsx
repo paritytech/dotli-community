@@ -54,8 +54,8 @@ function statusIn(statuses: readonly PermissionStatus[], name: EnforceablePermis
  * group, each with Ask, Allow and Deny segments, and Reset all to Ask,
  * through the async API in permissions.ts. It reads the statuses as it
  * mounts (the popover opening), and again on a product loading or failing
- * and on a permission change, the last read winning. In a bottom sheet the sheet draws the title, so the
- * surface leaves out its head and the host chip.
+ * and on a permission change, the last read winning. In a bottom sheet the
+ * sheet draws the title, so the surface leaves out its head and the host chip.
  */
 export function PermissionsContent(): JSX.Element {
   const product = useStore(productStore);

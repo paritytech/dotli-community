@@ -302,6 +302,12 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(document.activeElement).toBe(themeOption('system'));
+
+    // When
+    await pressThemeKey('ArrowRight');
+
+    // Then
+    expect(document.activeElement).toBe(themeOption('light'));
   });
 
   it('As a keyboard user, typing a letter in the theme menu focuses the option starting with it', async () => {

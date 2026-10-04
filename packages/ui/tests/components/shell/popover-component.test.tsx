@@ -626,6 +626,7 @@ describe('Popover', () => {
       expect(surface().style.transform).toBe('');
     });
   });
+
   it('As a screen-reader user, a disclosure says only whether it is shown, and its plain content takes no focus', async () => {
     // Given
     function Text() {

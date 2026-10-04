@@ -13,7 +13,7 @@ import { settingsStore } from '../../state/settings.js';
 import { Chip } from '../primitives/Chip.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { Surface, SurfaceHead } from '../primitives/Surface.js';
-import { Callout, Well } from '../primitives/Well.js';
+import { Callout, InfoIcon, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import {
   describeBlockDelay,
@@ -216,26 +216,6 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
         </For>
       </Show>
     </div>
-  );
-}
-
-function InfoIcon(): JSX.Element {
-  return (
-    <svg
-      width="16"
-      height="16"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <circle cx="12" cy="12" r="10" />
-      <path d="M12 16v-4" />
-      <path d="M12 8h.01" />
-    </svg>
   );
 }
 
