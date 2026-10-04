@@ -65,6 +65,20 @@ describe('focusables', () => {
     expect(ids(focusables(root))).toEqual(['r2', 'on']);
   });
 
+  it('As a keyboard user, Tab skips native controls taken out of the Tab order with a negative tabindex', () => {
+    // Given: a segmented control whose unpressed options are reached with the arrow keys.
+    const root = surface(`
+      <button id="ask" tabindex="-1">Ask</button>
+      <button id="allow" tabindex="0">Allow</button>
+      <button id="deny" tabindex="-1">Deny</button>
+      <input id="minus2" tabindex="-2">
+      <a id="link" href="#x" tabindex="-1">a</a>
+    `);
+
+    // Then
+    expect(ids(focusables(root))).toEqual(['allow']);
+  });
+
   it('As a keyboard user, Tab skips controls CSS hides', () => {
     // Given
     const root = surface(`<button id="shown"></button><button id="hidden"></button>`);
@@ -97,6 +111,30 @@ describe('containTab', () => {
     // Then
     expect(back.defaultPrevented).toBe(true);
     expect(document.activeElement).toBe(last);
+  });
+
+  it('As a keyboard user, Tab from an arrow-focused option past the last Tab stop wraps to the first, and Shift+Tab from one before the first wraps to the last', () => {
+    // Given: two segmented controls, each one Tab stop on its pressed option.
+    const root = surface(`
+      <button id="a-ask" tabindex="-1"></button><button id="a-allow" tabindex="0"></button>
+      <button id="b-ask" tabindex="0"></button><button id="b-allow" tabindex="-1"></button>
+    `);
+
+    // When
+    query(root, '#b-allow').focus();
+    const forward = tab(root);
+
+    // Then
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe('a-allow');
+
+    // When
+    query(root, '#a-ask').focus();
+    const back = tab(root, true);
+
+    // Then
+    expect(back.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe('b-ask');
   });
 
   it('As a keyboard user, Tab between the ends is left to the browser', () => {
