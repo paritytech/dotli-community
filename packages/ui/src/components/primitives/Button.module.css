@@ -9,10 +9,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
-  height: var(--h-control);
+  gap: 6px;
+  height: 36px;
   margin: 0;
-  padding: 0 var(--sp-5);
+  padding: 0 var(--sp-4);
   border: 0;
   border-radius: var(--r-full);
   background: var(--chrome-fill);
@@ -58,8 +58,8 @@
   background: var(--chrome-danger-fill-strong);
 }
 .button[data-size='sm'] {
-  height: var(--h-control-sm);
-  padding: 0 var(--sp-4);
+  height: 28px;
+  padding: 0 var(--sp-3);
   font-size: var(--fs-caption);
 }
 .button[data-size='lg'] {
@@ -72,7 +72,7 @@
 }
 /* A leading icon pulls the padding in, so icon and label look centred. */
 :where(.button:has(> svg:first-child)) {
-  padding-left: var(--sp-4);
+  padding-left: 13px;
 }
 .button:disabled {
   background: transparent;
@@ -80,6 +80,21 @@
   color: var(--chrome-text-muted);
   cursor: default;
   transform: none;
+}
+/* Phones: the boards' 44 px button, 36 px small. */
+@media (max-width: 560px) {
+  :where(.button) {
+    gap: var(--sp-2);
+    height: var(--h-control);
+    padding: 0 var(--sp-5);
+  }
+  .button[data-size='sm'] {
+    height: var(--h-control-sm);
+    padding: 0 var(--sp-4);
+  }
+  :where(.button:has(> svg:first-child)) {
+    padding-left: var(--sp-4);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .button {

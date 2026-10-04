@@ -21,10 +21,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
-  height: var(--h-row-sm);
+  gap: 6px;
+  height: 24px;
   margin: 0;
-  padding: 0 var(--sp-3);
+  padding: 0 10px;
   border: 0;
   border-radius: var(--r-full);
   background: transparent;
@@ -50,6 +50,14 @@
 }
 .option > svg {
   flex: none;
+}
+/* Phones: the boards' 36 px control, 32 px options. */
+@media (max-width: 560px) {
+  .option {
+    gap: var(--sp-2);
+    height: var(--h-row-sm);
+    padding: 0 var(--sp-3);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .option {

@@ -36,18 +36,18 @@
   position: fixed;
   /* Overlaps the bottom of the topbar so the surface attaches to its
      button instead of floating with a gap. */
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3));
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
   box-sizing: border-box;
   max-width: calc(100vw - 24px - var(--safe-left) - var(--safe-right));
   /* `--content-height` is dvh-based: it tracks the visible area as mobile
      browser chrome shows and hides, without the home indicator. */
   max-height: calc(
-    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--sp-3) - var(--sp-4) - var(--safe-bottom)
+    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
   );
   overflow-y: auto;
   border: 0;
-  border-radius: var(--r-lg);
+  border-radius: 20px;
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-pop);
@@ -92,7 +92,7 @@
 .loading {
   display: grid;
   place-items: center;
-  min-height: 96px;
+  min-height: 80px;
 }
 .loading::after {
   content: '';
@@ -123,6 +123,17 @@
   .surface[data-peek] {
     opacity: 0;
     transform: scale(0.92);
+  }
+}
+
+/* Phones: the boards' 24 px corners (anchored, as a peek) and 96 px
+   placeholder. A sheet draws its own corners. */
+@media (max-width: 560px) {
+  :where(.surface) {
+    border-radius: var(--r-lg);
+  }
+  .loading {
+    min-height: 96px;
   }
 }
 

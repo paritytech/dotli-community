@@ -2,27 +2,28 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The mockup's .well, .list, .row, .kv and .callout. Every layout starts its
-   text 16 px from the left edge, so wells line up with choices and callouts. */
+   text 12 px from the left edge (the boards' 16 on phones), so wells line up
+   with choices and callouts. */
 
 :where(.well) {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   margin: 0;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--r-md);
+  padding: 10px var(--sp-3);
+  border-radius: var(--r-sm);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
   color: var(--chrome-text);
 }
 .well[data-layout='list'] {
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-3);
 }
 .well[data-layout='controls'] {
-  padding: 0 var(--sp-2) 0 var(--sp-4);
+  padding: 0 6px 0 var(--sp-3);
 }
 .well[data-layout='kv'] {
-  padding: var(--sp-1) var(--sp-4);
+  padding: var(--sp-1) var(--sp-3);
 }
 .well[data-layout='flush'] {
   overflow: hidden;
@@ -31,8 +32,8 @@
 :where(.row) {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
-  min-height: var(--h-row);
+  gap: 10px;
+  min-height: 40px;
   font-size: var(--fs-body);
 }
 .row + .row,
@@ -50,21 +51,31 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-3);
-  min-height: var(--h-row-sm);
+  gap: 10px;
+  min-height: 28px;
   font-size: var(--fs-small);
   cursor: default;
 }
 .kv[data-dense] {
-  min-height: var(--h-row-xs);
+  min-height: 20px;
 }
 .key {
   flex: none;
   color: var(--chrome-text-muted);
 }
+/* A package name gives way before its version: the longest names outgrow
+   the desktop Settings column. */
 .kv[data-mono-key] .key {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kv[data-mono-key] .value {
+  flex: none;
 }
 .value {
   min-width: 0;
@@ -114,15 +125,52 @@
 :where(.callout) {
   flex-direction: row;
   align-items: flex-start;
-  gap: var(--sp-2);
+  gap: 6px;
   color: var(--chrome-text-muted);
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
 .callout > svg {
   flex: none;
+  width: 14px;
+  height: 14px;
   margin-top: var(--sp-hair);
 }
 .calloutText {
   margin: 0;
+}
+
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  :where(.well) {
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+  }
+  .well[data-layout='list'] {
+    padding: 0 var(--sp-4);
+  }
+  .well[data-layout='controls'] {
+    padding: 0 var(--sp-2) 0 var(--sp-4);
+  }
+  .well[data-layout='kv'] {
+    padding: var(--sp-1) var(--sp-4);
+  }
+  :where(.row) {
+    gap: var(--sp-3);
+    min-height: var(--h-row);
+  }
+  :where(.kv) {
+    gap: var(--sp-3);
+    min-height: var(--h-row-sm);
+  }
+  .kv[data-dense] {
+    min-height: var(--h-row-xs);
+  }
+  :where(.callout) {
+    gap: var(--sp-2);
+  }
+  .callout > svg {
+    width: 16px;
+    height: 16px;
+  }
 }

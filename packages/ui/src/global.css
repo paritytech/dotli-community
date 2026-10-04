@@ -250,10 +250,13 @@
   --h-bar-control: 36px;
   --topbar-inset: 10px;
 
-  --w-pop-sm: 300px;
-  --w-pop-md: 360px;
-  --w-pop-lg: 400px;
-  --w-pop-xl: 760px;
+  /* Desktop popover widths, the boards' 300 / 360 / 400 / 760 on phones.
+     The gap is the popover's distance below the pill. */
+  --w-pop-sm: 260px;
+  --w-pop-md: 320px;
+  --w-pop-lg: 360px;
+  --w-pop-xl: 680px;
+  --pop-gap: 10px;
   --w-toast: 380px;
 
   --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
@@ -273,6 +276,11 @@
   :root {
     --h-bar: 60px;
     --h-bar-control: 44px;
+    --w-pop-sm: 300px;
+    --w-pop-md: 360px;
+    --w-pop-lg: 400px;
+    --w-pop-xl: 760px;
+    --pop-gap: 12px;
   }
 }
 
@@ -304,6 +312,15 @@
   --warning: var(--chrome-warn);
   --caution: var(--chrome-warn-text);
   --knob: var(--chrome-text);
+  /* Desktop chrome type, a step under the page's: desktop is not touch. */
+  --fs-small: 12px;
+  --fs-body: 13px;
+}
+@media (max-width: 560px) {
+  [data-chrome] {
+    --fs-small: 13px;
+    --fs-body: 14px;
+  }
 }
 
 body {

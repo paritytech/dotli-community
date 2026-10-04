@@ -6,9 +6,9 @@
   display: inline-flex;
   flex: none;
   align-items: center;
-  height: var(--h-chip);
+  height: 18px;
   margin: 0;
-  padding: 0 var(--sp-2);
+  padding: 0 7px;
   border-radius: var(--r-full);
   background: var(--chrome-fill-strong);
   color: var(--chrome-text);
@@ -36,4 +36,11 @@
   letter-spacing: 0;
   text-overflow: ellipsis;
   text-transform: none;
+}
+/* Phones: the boards' 20 px chip. */
+@media (max-width: 560px) {
+  :where(.chip) {
+    height: var(--h-chip);
+    padding: 0 var(--sp-2);
+  }
 }

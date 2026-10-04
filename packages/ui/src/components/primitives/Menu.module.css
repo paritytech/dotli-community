@@ -14,13 +14,13 @@
   flex-direction: column;
   gap: 0;
   position: fixed;
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3));
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
   box-sizing: border-box;
   min-width: var(--w-pop-sm);
-  padding: var(--sp-2);
+  padding: 6px;
   border: 0;
-  border-radius: var(--r-lg);
+  border-radius: 20px;
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-pop);
@@ -65,13 +65,13 @@
 :where(.row) {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   box-sizing: border-box;
-  min-height: var(--h-control);
+  min-height: 36px;
   margin: 0;
-  padding: 0 var(--sp-3);
+  padding: 0 10px;
   border: none;
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   background: transparent;
   color: var(--chrome-text);
   font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
@@ -100,4 +100,18 @@
 .row > svg {
   flex: none;
   color: var(--chrome-text-muted);
+}
+
+/* Phones: the boards' 8 px inset, 24 px corners and 44 px rows. */
+@media (max-width: 560px) {
+  :where(.menu) {
+    padding: var(--sp-2);
+    border-radius: var(--r-lg);
+  }
+  :where(.row) {
+    gap: var(--sp-3);
+    min-height: var(--h-control);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+  }
 }

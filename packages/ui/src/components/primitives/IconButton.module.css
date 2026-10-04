@@ -141,11 +141,12 @@
     height: var(--sp-2);
   }
 }
-/* The board's .icon-btn-sm. Unscoped, unlike the bar rules above: toasts
-   render outside #topbar. Not used in the bar, whose size rule would win. */
+/* The board's .icon-btn-sm, 28 px on desktop. Unscoped, unlike the bar rules
+   above: toasts render outside #topbar. Not used in the bar, whose size rule
+   would win. */
 .button[data-size='sm'] {
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
+  width: 28px;
+  height: 28px;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -166,10 +167,20 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-/* The board's 16 px close cross. */
+/* The close cross: 14 px, the board's 16 on phones. */
 .button[data-size='sm'] > svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
+}
+@media (max-width: 560px) {
+  .button[data-size='sm'] {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+  }
+  .button[data-size='sm'] > svg {
+    width: 16px;
+    height: 16px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   :global(#topbar) .button {
