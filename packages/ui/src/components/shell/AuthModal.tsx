@@ -279,6 +279,13 @@ export function AuthModal(): JSX.Element {
     retryLogin();
   };
 
+  const showQr = (): void => {
+    // "Show QR instead" goes as the QR comes in: focus the dialog first, as
+    // Retry does, so focus stays in it rather than dropping to the body.
+    backdrop?.focus();
+    setQrShown(true);
+  };
+
   const onBackdropClick = (e: MouseEvent): void => {
     // Only a press on the scrim itself, outside the surface.
     if (e.target === e.currentTarget) {
@@ -336,13 +343,7 @@ export function AuthModal(): JSX.Element {
               <Show when={qr()} fallback={<Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />}>
                 {drawnQr => (
                   <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
-                    <MobileQr
-                      qr={drawnQr()}
-                      shown={qrShown()}
-                      reveal={() => {
-                        setQrShown(true);
-                      }}
-                    />
+                    <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />
                   </Show>
                 )}
               </Show>

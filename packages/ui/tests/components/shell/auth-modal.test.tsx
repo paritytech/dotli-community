@@ -1000,6 +1000,25 @@ describe('AuthModal on a phone', () => {
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
   });
+
+  it('As a keyboard user on a phone, Show QR instead keeps focus in the sign-in while the button goes away', async () => {
+    // Given
+    device.mobile = true;
+    await renderModal();
+    await authState(pairing());
+    const toggle = byTestId('auth-modal-qr-toggle', document);
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+
+    // When
+    toggle.click();
+    await settleQr();
+
+    // Then: the button is gone, and focus is on the dialog, not the body.
+    expect(toggle.isConnected).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document)).toBeInstanceOf(HTMLAnchorElement);
+    expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
+  });
 });
 
 describe('AuthModal on a phone, on unrelated store writes', () => {
