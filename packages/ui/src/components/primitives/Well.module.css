@@ -1,0 +1,90 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .well, .list, .row, .kv and .callout. Every layout starts its
+   text 16 px from the left edge, so wells line up with choices and callouts. */
+
+:where(.well) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+}
+.well[data-layout='list'] {
+  padding: 0 var(--sp-4);
+}
+.well[data-layout='controls'] {
+  padding: 0 var(--sp-2) 0 var(--sp-4);
+}
+.well[data-layout='kv'] {
+  padding: var(--sp-1) var(--sp-4);
+}
+.well[data-layout='flush'] {
+  overflow: hidden;
+  padding: 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--h-row);
+  font-size: var(--fs-body);
+}
+.row + .row,
+.kv + .kv {
+  border-top: 1px solid var(--chrome-line);
+}
+.rowLabel {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: var(--h-row-sm);
+  font-size: var(--fs-small);
+}
+.kv[data-dense] {
+  min-height: var(--h-row-xs);
+}
+.key {
+  flex: none;
+  color: var(--chrome-text-muted);
+}
+.kv[data-mono-key] .key {
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+}
+.value {
+  min-width: 0;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.callout {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.callout > svg {
+  flex: none;
+  margin-top: var(--sp-hair);
+}
+.calloutText {
+  margin: 0;
+}
