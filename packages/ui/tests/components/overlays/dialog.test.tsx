@@ -87,10 +87,6 @@ describe('signing dialog', () => {
     expect(
       query(document, '[data-testid="signing-field"][data-mono] [data-testid="signing-field-value"]').textContent,
     ).toBe('0x1234');
-    const callData = query(document, '[data-testid="signing-field"][data-mono] [data-testid="signing-field-value"]');
-    expect(callData.getAttribute('role')).toBe('region');
-    expect(callData.getAttribute('aria-label')).toBe('Call Data');
-    expect(callData.tabIndex).toBe(0);
     expect(byTestId('permission-modal-notice').textContent).toBe(
       'Granting this permission will reload the application.',
     );
@@ -229,9 +225,7 @@ describe('signing dialog', () => {
     fireEvent.keyDown(document, { key: 'Tab' });
 
     // Then
-    expect(document.activeElement).toBe(
-      query(document, '[data-testid="signing-field"][data-mono] [data-testid="signing-field-value"]'),
-    );
+    expect(document.activeElement).toBe(buttons[0]);
 
     // When
     fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });

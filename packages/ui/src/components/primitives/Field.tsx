@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createSignal, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Field.module.css';
 
@@ -8,7 +9,7 @@ import s from './Field.module.css';
 export function Field(props: {
   label: string;
   value: string;
-  /** Hashes and call data. */
+  /** Hashes and call data, in a box that scrolls once the value outgrows it. */
   mono?: boolean;
   /** A value the user must not miss, such as an unprotected signature. */
   warning?: boolean;
@@ -17,6 +18,28 @@ export function Field(props: {
   labelTestId?: string;
   valueTestId?: string;
 }): JSX.Element {
+  let value: HTMLSpanElement | undefined;
+  const [overflows, setOverflows] = createSignal(false);
+  // Safari makes no scroller focusable, so a value that scrolls takes the tab
+  // stop itself. One that fits is plain text, as in Chrome and Firefox.
+  const measure = (): void => {
+    setOverflows(value !== undefined && value.scrollHeight > value.clientHeight);
+  };
+  onSettled(() => {
+    if (props.mono !== true) {
+      return;
+    }
+    measure();
+    if (value === undefined || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(measure);
+    observer.observe(value);
+    return () => {
+      observer.disconnect();
+    };
+  });
+  const scrolls = (): boolean => props.mono === true && overflows();
   return (
     <div
       class={[s['field'], props.class]}
@@ -28,11 +51,14 @@ export function Field(props: {
         {props.label}
       </span>
       <span
+        ref={el => {
+          value = el;
+        }}
         class={s['value']}
         data-testid={props.valueTestId}
-        tabindex={props.mono === true ? 0 : undefined}
-        role={props.mono === true ? 'region' : undefined}
-        aria-label={props.mono === true ? props.label : undefined}
+        tabindex={scrolls() ? 0 : undefined}
+        role={scrolls() ? 'region' : undefined}
+        aria-label={scrolls() ? props.label : undefined}
       >
         {props.value}
       </span>
