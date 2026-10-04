@@ -7,6 +7,7 @@ import { resetStores } from './helpers/solid.js';
 
 const health = vi.hoisted(() => ({ value: 'syncing', listeners: new Set<() => void>() }));
 vi.mock('../src/state/network-health.js', () => ({
+  initNetworkHealth: () => () => {},
   networkHealthStore: {
     get: () => health.value,
     initial: 'syncing',

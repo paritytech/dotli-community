@@ -7,7 +7,7 @@
 // portalled to <body> and cannot see it.
 
 import { chatPanelStore, totalChatUnread } from './state/chat-panel.js';
-import { networkHealthStore } from './state/network-health.js';
+import { initNetworkHealth, networkHealthStore } from './state/network-health.js';
 import { topbarStore } from './state/topbar.js';
 import { needsAction } from './state/topbar-signals.js';
 
@@ -25,6 +25,10 @@ function publishBox(bar: HTMLElement): void {
 }
 
 export function bindTopbarStatus(bar: HTMLElement): () => void {
+  // The bar's script runs before initTopBar (which waits for the bridge), so
+  // it starts the health's online and offline listening itself. Shared and
+  // idempotent, so unbinding the bar leaves it running.
+  initNetworkHealth();
   const render = (): void => {
     bar.dataset['health'] = networkHealthStore.get();
     bar.toggleAttribute('data-action', needsAction(topbarStore.get(), totalChatUnread(chatPanelStore.get())));

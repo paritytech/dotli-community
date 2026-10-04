@@ -5,6 +5,7 @@
    build-time render on, as the bar most likely collapses something there. */
 .more {
   display: none;
+  flex: none;
 }
 :global(#topbar-actions[data-collapsible]) .more {
   display: inline-flex;

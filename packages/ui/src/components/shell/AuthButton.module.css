@@ -62,3 +62,16 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Phones: the account control is a 44 px circle, the icon or the avatar
+   alone, so the bar keeps room for the address and More. */
+@media (max-width: 560px) {
+  .chip,
+  .sign-in {
+    width: var(--h-control);
+    padding: 0;
+  }
+  .name,
+  .label {
+    display: none;
+  }
+}

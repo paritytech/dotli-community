@@ -145,14 +145,14 @@ export function AuthButton(props: {
                 aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
                 aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
                 variant={account.loggedIn() ? 'secondary' : 'primary'}
-                class={account.loggedIn() ? s['chip'] : undefined}
+                class={account.loggedIn() ? s['chip'] : s['signIn']}
               >
                 <Show
                   when={account.loggedIn() && account.session()}
                   fallback={
                     <>
                       <UserIcon size={16} />
-                      Sign in
+                      <span class={s['label']}>Sign in</span>
                     </>
                   }
                 >
