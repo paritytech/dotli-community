@@ -23,11 +23,6 @@ import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surf
 
 const HIDE_DELAY_MS = 5000;
 
-/** The bar's slide (#topbar in Topbar.module.css), unless the user asks for reduced motion. */
-export const SLIDE_TRANSITION = 'transform 0.3s ease';
-/** How long the slide takes, after which the app fits below the shown bar. */
-const SLIDE_MS = 300;
-
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
 
@@ -38,8 +33,6 @@ let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 let appFrameTracking = false;
-/** Fits the app below the bar once the bar has slid in. */
-let settleTimer: ReturnType<typeof setTimeout> | null = null;
 /** The bar (the host page's `#topbar`), while bound. */
 let bar: HTMLElement | undefined;
 /** The reveal control (the TopbarReveal island's), while mounted. */
@@ -65,51 +58,13 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
   };
 }
 
-function reducedMotionQuery(): MediaQueryList | null {
-  return typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-}
-
-/** The bar's transition now, for the frame to follow: none under reduced motion. */
-export function topbarTransition(): string {
-  return reducedMotionQuery()?.matches === true ? 'none' : SLIDE_TRANSITION;
-}
-
 /**
- * While auto-hide is active a transform moves the frame with the bar, so the
- * app's top is never covered and the product document does not relayout
- * while the bar slides. Once the bar has slid in, the frame takes the box
- * below it (one relayout), so the app's bottom stays on screen and reachable
- * while the bar is up; before the bar slides out again, the frame takes back
- * the full box, still under the bar, and slides up with it.
+ * Pinned, the frame starts below the bar. Once the bar has folded into the
+ * capsule for the first time, the frame takes the full height and the pill
+ * floats over it from then on, so the product never relayouts on a reveal.
  */
 function syncFrameLayout(): void {
-  if (settleTimer !== null) {
-    clearTimeout(settleTimer);
-    settleTimer = null;
-  }
-  if (!appFrameTracking) {
-    setTopbarLayout({ offset: true, shown: true, transition: '' });
-    return;
-  }
-  const transition = topbarTransition();
-  if (!getTopbarState().visible) {
-    // From wherever the frame sits (below the bar, or on its way there) to
-    // the full box under the bar, at once, and then the slide up.
-    setTopbarLayout({ offset: false, shown: true, transition: 'none' });
-    currentProductFrame()?.getBoundingClientRect();
-    setTopbarLayout({ offset: false, shown: false, transition });
-    return;
-  }
-  setTopbarLayout({ offset: false, shown: true, transition });
-  settleTimer = setTimeout(
-    () => {
-      settleTimer = null;
-      if (appFrameTracking && getTopbarState().visible) {
-        setTopbarLayout({ offset: true, shown: true, transition: '' });
-      }
-    },
-    transition === 'none' ? 0 : SLIDE_MS,
-  );
+  setTopbarLayout({ offset: !appFrameTracking });
 }
 
 function setVisible(next: boolean): void {
@@ -260,11 +215,6 @@ function bindListeners(): void {
     { signal },
   );
   document.addEventListener('keydown', onKeyDown, { signal });
-
-  const reducedMotion = reducedMotionQuery();
-  if (typeof reducedMotion?.addEventListener === 'function') {
-    reducedMotion.addEventListener('change', syncFrameLayout, { signal });
-  }
 }
 
 /**
@@ -304,10 +254,6 @@ export function pinTopbarVisible(): void {
  */
 export function disposeTopbarAutoHide(): void {
   pinTopbarVisible();
-  if (settleTimer !== null) {
-    clearTimeout(settleTimer);
-    settleTimer = null;
-  }
   listeners?.abort();
   listeners = null;
 }

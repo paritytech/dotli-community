@@ -1871,7 +1871,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     stubPanelBox(400, 300);
     const frame = attachFrame(true);
     layout.setChatWidth(360);
-    layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
+    layout.setTopbarLayout({ offset: false });
     const dispose = mount();
     expect(frame['height']).toBe(`calc(${FULL_HEIGHT} - 300px)`);
 
@@ -1882,7 +1882,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     expect(frame['width']).toBe(`calc(${SAFE_WIDTH} - 360px)`);
     expect(frame['height']).toBe(FULL_HEIGHT);
     expect(frame['top']).toBe('var(--safe-top, 0px)');
-    expect(frame['transform']).toBe('translateY(0)');
+    expect(frame['transform']).toBe('');
 
     // When a product loads after the panel is gone
     window.dispatchEvent(new CustomEvent('dotli:product-loaded'));

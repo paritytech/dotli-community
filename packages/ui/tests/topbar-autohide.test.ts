@@ -386,102 +386,40 @@ describe('topbar auto-hide reveal', () => {
   });
 });
 
-describe('topbar auto-hide motion and layout', () => {
-  it('As a dApp user, revealing the bar slides the app down with it, then fits the app below it so its bottom stays reachable', async () => {
+describe('topbar auto-hide layout', () => {
+  it('As a dApp user, once the bar folds into the capsule the app takes the full height and stays there when the pill comes back', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
-    advance(HIDE_DELAY_MS);
-    const hiddenTop = appFrame().style.top;
-    const hiddenHeight = appFrame().style.height;
-    expect(appFrame().style.transform).toBe('translateY(0)');
 
     // When
-    focusElement(byId('topbar-home'));
-
-    // Then: while the bar slides in, a transform moves the frame with it, so
-    // the app's top is never covered
-    expect(isHidden()).toBe(false);
-    expect(appFrame().style.top).toBe(hiddenTop);
-    expect(appFrame().style.height).toBe(hiddenHeight);
-    expect(hiddenTop).toBe('0px');
-    expect(hiddenHeight).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(calc(var(--topbar-height, 56px) - var(--safe-top, 0px)))');
-
-    // When: the slide is over
-    advance(300);
-
-    // Then: the frame sits below the bar at its size, nothing off-screen
-    expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
-  });
-
-  it('As a dApp user, hovering the bar while it is up leaves the app where it sits', async () => {
-    // Given: revealed and settled below the bar
-    const { armTopbarAutoHide, revealTopbar } = await loadAutoHide();
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-    focusElement(byId('topbar-home'));
-    advance(300);
-
-    // When: the pointer enters the bar again
-    revealTopbar();
-
-    // Then: no second slide, the frame stays below the bar
-    expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
-  });
-
-  it('As a dApp user, the bar hiding again slides the app back up from where it sits', async () => {
-    // Given: revealed and settled below the bar
-    const { armTopbarAutoHide } = await loadAutoHide();
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-    focusElement(byId('topbar-home'));
-    advance(300);
-    expect(appFrame().style.top).toBe('56px');
-
-    // When: focus leaves the bar, and the hide delay passes
-    focusElement(byId('toast'));
-    advance(0);
-    advance(HIDE_DELAY_MS);
-
-    // Then: the full box again, sliding up with the bar
-    expect(isHidden()).toBe(true);
-    expect(appFrame().style.top).toBe('0px');
-    expect(appFrame().style.height).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toContain('transform');
-  });
-
-  it('As a reduced-motion user, the app frame follows the bar without a slide', async () => {
-    // Given
-    stubReducedMotion(true);
-    const { armTopbarAutoHide } = await loadAutoHide();
-
-    // When
-    armTopbarAutoHide();
-    flushUi();
     advance(HIDE_DELAY_MS);
 
     // Then
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toBe('none');
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+
+    // When
+    focusElement(byId('topbar-home'));
+    advance(300);
+
+    // Then: the pill floats over the app, which does not move
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+    expect(appFrame().style.transform).toBe('');
   });
 
-  it('As a dotli integrator, a re-rendered product frame keeps the hidden-bar geometry', async () => {
+  it('As a dotli integrator, a re-rendered product frame keeps the full-height geometry', async () => {
     // Given
     const { armTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     advance(HIDE_DELAY_MS);
 
-    // When a new render hands the layout module a fresh frame
+    // When
     const { attachProductFrame } = await import('../src/product-frame-layout.js');
     const frame = document.createElement('iframe');
     appFrame().replaceWith(frame);
@@ -491,8 +429,7 @@ describe('topbar auto-hide motion and layout', () => {
     // Then
     expect(appFrame().style.top).toBe('0px');
     expect(appFrame().style.height).toBe('100vh');
-    expect(appFrame().style.transform).toBe('translateY(0)');
-    expect(appFrame().style.transition).toContain('transform');
+    expect(appFrame().style.transform).toBe('');
   });
 
   it('As a logged-out user, the bar is pinned and the app frame makes room for it', async () => {
@@ -514,6 +451,5 @@ describe('topbar auto-hide motion and layout', () => {
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe('56px');
     expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
-    expect(appFrame().style.transform).toBe('');
   });
 });
