@@ -14,6 +14,12 @@ import { needsAction } from './state/topbar-signals.js';
 function publishBox(bar: HTMLElement): void {
   const root = document.documentElement;
   const box = bar.getBoundingClientRect();
+  // A hidden bar (the landing page) has no box: the menus keep their own place.
+  if (box.width === 0) {
+    root.style.removeProperty('--topbar-inline-end');
+    root.style.removeProperty('--topbar-bottom');
+    return;
+  }
   root.style.setProperty('--topbar-inline-end', `${String(Math.max(0, root.clientWidth - box.right))}px`);
   root.style.setProperty('--topbar-bottom', `${String(box.bottom)}px`);
 }

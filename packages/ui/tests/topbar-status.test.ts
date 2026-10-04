@@ -79,4 +79,19 @@ describe('bindTopbarStatus', () => {
     expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('340px');
     expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('72px');
   });
+
+  it('As a menu on the landing page, I keep my own place while the bar is hidden', () => {
+    // Given: a hidden bar has no box
+    document.documentElement.style.setProperty('--topbar-inline-end', '340px');
+    document.documentElement.style.setProperty('--topbar-bottom', '72px');
+    const bar = document.createElement('header');
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 0, 0));
+
+    // When
+    unbind = bindTopbarStatus(bar);
+
+    // Then: the menus fall back to their own place
+    expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('');
+    expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('');
+  });
 });
