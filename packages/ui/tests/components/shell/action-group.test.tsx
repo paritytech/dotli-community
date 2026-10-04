@@ -172,7 +172,7 @@ describe('ActionGroup', () => {
     mouseClick(byId('more-button'));
     await settle();
     expect(isOpen()).toBe(true);
-    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(true);
+    expect(byTestId('more-icon').closest('#more-button')?.hasAttribute('data-active')).toBe(true);
 
     // When
     layout.setRoom(room(6));
@@ -184,7 +184,7 @@ describe('ActionGroup', () => {
     expect(rowNames()).toEqual([]);
     expect(moreShows()).toBe(false);
     expect(isOpen()).toBe(false);
-    expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(false);
+    expect(byTestId('more-icon').closest('#more-button')?.hasAttribute('data-active')).toBe(false);
   });
 
   it('As a user widening the window, items that collapsed into More come back once the pill has room', async () => {

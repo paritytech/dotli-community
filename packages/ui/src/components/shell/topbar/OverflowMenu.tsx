@@ -122,23 +122,18 @@ export function OverflowMenu(props: {
         data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
         aria-label={moreLabel()}
+        active={menu.open()}
         badge={badgeTone() !== undefined}
         badgeTone={badgeTone() ?? 'ok'}
         aria-haspopup="menu"
         aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="more-popover"
       >
-        {/* Three bars that cross into an X while the flyout is open. */}
-        <span
-          class={s['hamburger']}
-          data-testid="more-hamburger"
-          data-open={menu.open() ? '' : undefined}
-          aria-hidden="true"
-        >
-          <span class={s['bar']} />
-          <span class={s['bar']} />
-          <span class={s['bar']} />
-        </span>
+        <svg data-testid="more-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <circle cx="5" cy="12" r="1.8" />
+          <circle cx="12" cy="12" r="1.8" />
+          <circle cx="19" cy="12" r="1.8" />
+        </svg>
       </IconButton>
       {/* In the body: inside the bar, whose glass is a backdrop filter, a
           fixed menu would be placed against the bar instead of the page. */}

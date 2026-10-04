@@ -25,51 +25,6 @@
   pointer-events: none;
 }
 
-.hamburger {
-  display: inline-block;
-  position: relative;
-  width: 20px;
-  height: 16px;
-}
-.bar {
-  display: block;
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  transition:
-    top 0.22s ease,
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.12s ease;
-}
-.bar:nth-child(1) {
-  top: 1px;
-}
-.bar:nth-child(2) {
-  top: 7px;
-}
-.bar:nth-child(3) {
-  top: 13px;
-}
-.hamburger[data-open] .bar:nth-child(1) {
-  top: 7px;
-  transform: rotate(45deg);
-}
-.hamburger[data-open] .bar:nth-child(2) {
-  opacity: 0;
-}
-.hamburger[data-open] .bar:nth-child(3) {
-  top: 7px;
-  transform: rotate(-45deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .bar {
-    transition: none;
-  }
-}
-
 /* The board's .menu-row parts in the Menu's 44 px rows. Each item draws its
    icon at 14 px for any place, so the row sizes it to the board's 20 px with
    its 1.75 stroke. */
