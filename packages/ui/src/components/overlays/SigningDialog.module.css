@@ -17,7 +17,6 @@
 .title {
   margin: 0;
   padding: 0;
-  color: var(--chrome-text);
   font-size: var(--fs-title-lg);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
