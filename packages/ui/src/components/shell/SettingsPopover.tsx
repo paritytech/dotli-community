@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -87,6 +88,11 @@ export function SettingsPopover(): JSX.Element {
           name="settings"
           label="Settings"
           icon={() => <GearIcon size={14} />}
+          aside={
+            settings()?.verified === false
+              ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
+              : undefined
+          }
           priority={TOPBAR_PRIORITY.settings}
           activate={t.onClick}
         >

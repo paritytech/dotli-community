@@ -6,7 +6,7 @@
 // with stand-in items in action-group.test.tsx, and each item on its own in
 // its own test.
 
-import { cleanup } from '@solidjs/testing-library';
+import { cleanup, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TopbarActions } from '../../../src/components/shell/TopbarActions.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
@@ -21,6 +21,7 @@ import { setLoggedIn } from '../../../src/state/auth.js';
 import { CHAT_MESSAGE_EVENT } from '../../../src/chat/service.js';
 import { labelToProductId } from '../../../src/runtime-config.js';
 import { setChatCapability } from '@dotli/shared';
+import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { mouseClick, pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
@@ -235,6 +236,39 @@ describe('Topbar actions island', () => {
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Offline');
     expect(more.getAttribute('data-badge-tone')).toBe('err');
     expect(more.getAttribute('aria-label')).toBe('More, network offline');
+  });
+
+  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise none', async () => {
+    // Given: the trusted gateway backend, which is not a verified session
+    localStorage.setItem(BACKEND_KEY, 'rpc-gateway');
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    const unregister = registerPermissionAuthorizationProvider('app.dot', {
+      getPermissionAuthorizationStatuses: requests =>
+        Promise.resolve(requests.map(request => (request.tag === 'Device' ? 'Authorized' : 'NotDetermined'))),
+      setPermissionAuthorizationStatus: async () => {},
+    });
+    setProductLoaded('app.dot', 'app.dot');
+
+    try {
+      // When
+      await renderIsland();
+      await settle();
+
+      // Then
+      expect(byTestId('more-row-aside', moreRow('permissions'))).toBeTruthy();
+      expect(byTestId('more-row-aside', moreRow('settings'))).toBeTruthy();
+      expect(within(moreRow('permissions')).getByRole('img', { hidden: true }).getAttribute('aria-label')).toBe(
+        'Has permissions',
+      );
+      expect(within(moreRow('settings')).getByRole('img', { hidden: true }).getAttribute('aria-label')).toBe(
+        'Unverified session',
+      );
+      expect(byId('more-button').getAttribute('aria-label')).toBe('More');
+    } finally {
+      unregister();
+    }
   });
 
   it('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {

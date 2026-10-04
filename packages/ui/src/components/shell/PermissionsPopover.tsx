@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { Popover } from './Popover.js';
@@ -99,6 +100,7 @@ export function PermissionsPopover(): JSX.Element {
           name="permissions"
           label="Permissions"
           icon={() => <LockIcon size={14} />}
+          aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
           priority={TOPBAR_PRIORITY.permissions}
           activate={t.onClick}
         >
