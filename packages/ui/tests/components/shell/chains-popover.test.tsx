@@ -26,6 +26,7 @@ import type * as ChainsFormatModule from '../../../src/components/shell/chains-f
 import { focusables } from '../../../src/components/focus.js';
 import { byId, byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -528,12 +529,7 @@ describe('The network popover island', () => {
 
   it('As a phone user, the chains open as a sheet whose header names it, so the body has no Network heading', async () => {
     // Given
-    vi.stubGlobal('matchMedia', (media: string) => ({
-      matches: media === '(max-width: 560px)',
-      media,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    }));
+    stubPhoneViewport(true);
     await renderPopover();
 
     // When

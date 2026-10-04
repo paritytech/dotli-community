@@ -11,6 +11,7 @@ import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo, waitForC
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 useAuthController();
 
@@ -175,12 +176,7 @@ describe('UserPopover', () => {
 
   it('As a phone user, my account opens as a sheet titled Account, its body without a heading of its own', async () => {
     // Given
-    vi.stubGlobal('matchMedia', (media: string) => ({
-      matches: media === '(max-width: 560px)',
-      media,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    }));
+    stubPhoneViewport(true);
     await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
 
     // When

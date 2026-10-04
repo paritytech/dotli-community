@@ -11,6 +11,7 @@ import { EXIT_MS, Popover, SHEET_EXIT_MS, usePopover } from '../../../src/compon
 import { drag } from '../../helpers/drag.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -48,15 +49,6 @@ function Body() {
   );
 }
 
-function stubViewport(narrow: boolean): void {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(max-width: 560px)' && narrow,
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
-}
-
 function renderPopover(
   content: ReturnType<typeof chunk>['Content'],
   extra: Partial<Parameters<typeof Popover>[0]> = {},
@@ -86,7 +78,7 @@ const trigger = (): HTMLElement => byId('test-trigger');
 const isOpen = (): boolean => surface().hasAttribute('data-open');
 
 beforeEach(() => {
-  stubViewport(false);
+  stubPhoneViewport(false);
   sentry.captureException.mockReset();
   vi.stubGlobal('requestIdleCallback', () => 1);
   vi.stubGlobal('cancelIdleCallback', () => undefined);
@@ -481,7 +473,7 @@ describe('Popover', () => {
 
   it('As a phone user, a popover opens as a modal bottom sheet with a title and a close button', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content, { backdrop: true });
@@ -520,7 +512,7 @@ describe('Popover', () => {
   it('As a phone user, a closing sheet keeps its content until it has slid out', async () => {
     // Given
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content);
@@ -543,7 +535,7 @@ describe('Popover', () => {
 
   it('As a phone user, a resize past the breakpoint leaves the open sheet a sheet, and the next opening follows the viewport', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content);
@@ -552,7 +544,7 @@ describe('Popover', () => {
     await waitForContent('test-popover');
 
     // When
-    stubViewport(false);
+    stubPhoneViewport(false);
     window.dispatchEvent(new Event('resize'));
     await settle();
 
@@ -572,7 +564,7 @@ describe('Popover', () => {
 
   describe('swipe', () => {
     async function openSheet(): Promise<HTMLElement> {
-      stubViewport(true);
+      stubPhoneViewport(true);
       const { Content, release } = chunk(Body);
       release();
       renderPopover(Content);
@@ -647,7 +639,7 @@ describe('Popover', () => {
 
   it('As a phone user, a disclosure opens as a sheet, a modal dialog like any other', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content, { disclosure: true });

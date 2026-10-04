@@ -18,6 +18,7 @@ import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { focusables } from '../../../src/components/focus.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 const LABEL = 'localhost:3000';
 
@@ -268,12 +269,7 @@ describe('PermissionsPopover', () => {
 
   it('As a phone user, the permissions sheet leaves out its own heading and host, and lists every permission', async () => {
     // Given: a phone, where the popover opens as a sheet.
-    vi.stubGlobal('matchMedia', (media: string) => ({
-      matches: media === '(max-width: 560px)',
-      media,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    }));
+    stubPhoneViewport(true);
     provide(LABEL);
     setProductLoaded(LABEL, 'app.dot');
     await renderPopover();

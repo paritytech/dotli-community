@@ -17,6 +17,7 @@ import {
   waitForContent,
 } from './helpers/solid.js';
 import { byId, byTestId } from './support.js';
+import { stubPhoneViewport } from './helpers/viewport.js';
 
 function button(): HTMLButtonElement {
   return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);
@@ -68,12 +69,7 @@ afterEach(() => {
 describe('verification shield', () => {
   it('As a phone user, the explainer opens as a sheet whose header names it, so the body has no title of its own', async () => {
     // Given
-    vi.stubGlobal('matchMedia', (media: string) => ({
-      matches: media === '(max-width: 560px)',
-      media,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    }));
+    stubPhoneViewport(true);
 
     // When
     await openShield();

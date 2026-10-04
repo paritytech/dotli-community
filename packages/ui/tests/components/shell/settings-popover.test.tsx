@@ -37,6 +37,7 @@ import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 const actions = vi.hoisted(() => ({
   applyAndReset: vi.fn(),
@@ -171,24 +172,6 @@ function infoRow(label: string): HTMLElement {
     throw new Error(`no "${label}" row`);
   }
   return found;
-}
-
-/**
- * The viewport width against the CSS breakpoint where the popover becomes a
- * full-screen sheet, `(max-width: 560px)`: happy-dom cannot evaluate it.
- * Flip `narrow` to resize.
- */
-function stubViewport(narrow: boolean): { narrow: boolean } {
-  const viewport = { narrow };
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    get matches() {
-      return query === '(max-width: 560px)' && viewport.narrow;
-    },
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
-  return viewport;
 }
 
 /** The popover's controls that Tab reaches, in order. */
@@ -524,7 +507,7 @@ describe('The settings popover island', () => {
 
   it('As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded', async () => {
     // Given: the islands mounted before the host seeded the settings.
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover({ seed: false });
 
     // When
@@ -1056,7 +1039,7 @@ describe('The settings popover island', () => {
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
@@ -1118,7 +1101,7 @@ describe('The settings popover island', () => {
 
   it('As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     document.body.style.overflow = '';
     await renderPopover();
     byId('mode-button').focus();
@@ -1161,7 +1144,7 @@ describe('The settings popover island', () => {
 
   it('As a phone user, the Settings sheet going away while open unlocks the page', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover();
     await openPopover();
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
@@ -1179,7 +1162,7 @@ describe('The settings popover island', () => {
 
   it('As a desktop user, the settings popover is not modal: no aria-modal and no scroll lock, though Tab loops inside', async () => {
     // Given
-    stubViewport(false);
+    stubPhoneViewport(false);
     document.body.style.overflow = '';
     await renderPopover();
 
@@ -1197,7 +1180,7 @@ describe('The settings popover island', () => {
 
   it('As a user who resized the window, the settings open as a sheet or a popover by the width at each opening', async () => {
     // Given: opened wide, then closed.
-    const viewport = stubViewport(false);
+    const viewport = stubPhoneViewport(false);
     await renderPopover();
     await openPopover();
     expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
@@ -1205,7 +1188,7 @@ describe('The settings popover island', () => {
     await settle();
 
     // When: narrowed, then opened again.
-    viewport.narrow = true;
+    viewport.set(true);
     await openPopover();
 
     // Then
@@ -1215,7 +1198,7 @@ describe('The settings popover island', () => {
     expect(press('Tab').defaultPrevented).toBe(true);
 
     // When: widened while open, then closed and opened.
-    viewport.narrow = false;
+    viewport.set(false);
     press('Escape');
     await settle();
     await openPopover();
@@ -1226,7 +1209,7 @@ describe('The settings popover island', () => {
 
   it('As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans the sheet', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover();
 
     // When
@@ -1241,7 +1224,7 @@ describe('The settings popover island', () => {
   it('As a mobile user, the settings sheet I opened from the More menu takes focus, and closing it hands focus back to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
