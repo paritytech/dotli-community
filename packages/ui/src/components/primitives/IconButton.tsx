@@ -22,6 +22,8 @@ export interface IconButtonProps {
   badge?: boolean;
   /** The badge's colour; white without one. */
   badgeTone?: StatusTone;
+  /** The board's small round button on a fill (a toast's close), chrome inside or outside the bar. */
+  size?: 'sm';
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;
@@ -46,6 +48,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       data-active={props.active === true ? '' : undefined}
       data-badge={props.badge === true ? '' : undefined}
       data-badge-tone={props.badgeTone}
+      data-size={props.size}
       data-testid={props.testId}
     >
       {props.children}

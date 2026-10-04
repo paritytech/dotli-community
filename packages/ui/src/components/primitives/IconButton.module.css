@@ -126,8 +126,41 @@
 :global(#topbar) .button[data-badge-tone='idle']::after {
   background: var(--chrome-idle);
 }
+/* The board's .icon-btn-sm. Unscoped, unlike the bar rules above: toasts
+   render outside #topbar. Not used in the bar, whose 44 px rule would win. */
+.button[data-size='sm'] {
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+  transition: background var(--dur-fast);
+}
+/* Holds the board's look against the landing hover above. */
+.button[data-size='sm']:hover {
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+.button[data-size='sm']:active {
+  background: var(--chrome-fill-strong);
+}
+.button[data-size='sm']:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+/* The board's 16 px close cross. */
+.button[data-size='sm'] > svg {
+  width: 16px;
+  height: 16px;
+}
 @media (prefers-reduced-motion: reduce) {
   :global(#topbar) .button {
+    transition: none;
+  }
+  .button[data-size='sm'] {
     transition: none;
   }
 }
