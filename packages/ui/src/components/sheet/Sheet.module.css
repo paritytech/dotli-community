@@ -77,9 +77,11 @@
 
 /* A sheet taking another's place (createPopover's hand-off), as the board
    swaps the content of its one sheet: the leaving sheet and scrim go at once,
-   the coming ones start at rest, so the scrim never lightens. */
-.scrim[data-handoff],
-.sheet[data-sheet][data-handoff] {
+   the coming ones start at their end values, so the scrim never lightens.
+   Only the leaving side drops its transition: the coming sheet keeps it, so
+   a short drag still eases back. */
+.scrim[data-handoff]:not([data-open]),
+.sheet[data-sheet][data-handoff]:not([data-open]) {
   transition: none;
 }
 @starting-style {

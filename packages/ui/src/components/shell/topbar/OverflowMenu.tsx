@@ -100,7 +100,7 @@ export function OverflowMenu(props: {
     // listener, which would see it as outside the surface it opens.
     ev.stopPropagation();
     if (menu.sheet()) {
-      menu.handOff(() => {
+      menu.handOffTo(() => {
         entry.activate(ev);
       });
     } else {

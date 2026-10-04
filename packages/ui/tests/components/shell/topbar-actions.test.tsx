@@ -334,7 +334,7 @@ describe('Topbar actions island', () => {
   it('As a phone user choosing Chat in More, More closes as usual', async () => {
     // Given: a chat-capable product and a session, with nothing unread
     stubTopbarLayout(MORE_ONLY);
-    const viewport = stubPhoneViewport(true);
+    stubPhoneViewport(true);
     const stopChat = initChatPanelState();
     try {
       await renderIsland();
@@ -352,13 +352,13 @@ describe('Topbar actions island', () => {
       expect(more.hasAttribute('data-handoff')).toBe(false);
 
       // When: Appearance opens from its own button, not from More
-      viewport.set(false);
       mouseClick(byId('theme-toggle'));
       await settle();
 
-      // Then
+      // Then: the Chat choice left no hand-off waiting for this sheet
       const theme = byId('theme-popover');
       expect(theme.hasAttribute('data-open')).toBe(true);
+      expect(theme.hasAttribute('data-sheet')).toBe(true);
       expect(theme.hasAttribute('data-handoff')).toBe(false);
     } finally {
       stopChat();

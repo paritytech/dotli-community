@@ -91,7 +91,7 @@ export interface Popover {
    * When that opens another sheet, the two trade places at once (see
    * `handedOff`).
    */
-  handOff: (activate: () => void) => void;
+  handOffTo: (activate: () => void) => void;
   /**
    * The current opening (or closing) is one sheet taking another's place: the
    * surface and its scrim neither slide nor fade, so the scrim stays dark.
@@ -104,12 +104,12 @@ export interface Popover {
  * A sheet hand-off under way: `pending` while a sheet's chosen item runs,
  * `taken` once a sheet opened in its place.
  */
-let handoff: 'pending' | 'taken' | undefined;
+let pendingHandoff: 'pending' | 'taken' | undefined;
 /**
- * A call, not an inline comparison: TypeScript would keep `handoff` narrowed
- * to `pending` across the activation that sets it.
+ * A call, not an inline comparison: TypeScript would keep `pendingHandoff`
+ * narrowed to `pending` across the activation that sets it.
  */
-const handoffTaken = (): boolean => handoff === 'taken';
+const pendingHandoffTaken = (): boolean => pendingHandoff === 'taken';
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
 export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
@@ -249,15 +249,15 @@ export function createPopover(options: PopoverOptions): Popover {
   const setOpen = (next: boolean): void => {
     const wasOpen = current;
     current = next;
-    // Written in the same batch as the open state, so the surface takes its
-    // place and its open state in one render. A hand-off marks one opening
-    // or closing only.
+    // A hand-off marks one opening or closing only.
     setHandedOff(false);
     if (next && !wasOpen && options.sheet === true) {
       const phone = isPhoneViewport();
+      // Written in the same batch as the open state, so the surface takes its
+      // place and its open state in one render.
       setSheet(phone);
-      if (phone && handoff === 'pending') {
-        handoff = 'taken';
+      if (phone && pendingHandoff === 'pending') {
+        pendingHandoff = 'taken';
         setHandedOff(true);
       }
     }
@@ -486,16 +486,16 @@ export function createPopover(options: PopoverOptions): Popover {
       setOpen(false);
       focusBack();
     },
-    handOff: activate => {
-      handoff = 'pending';
+    handOffTo: activate => {
+      pendingHandoff = 'pending';
       try {
         setOpen(false);
         focusBack();
         activate();
         // In the batch of this close and that opening, so both land in one frame.
-        setHandedOff(handoffTaken());
+        setHandedOff(pendingHandoffTaken());
       } finally {
-        handoff = undefined;
+        pendingHandoff = undefined;
       }
     },
     handedOff,
