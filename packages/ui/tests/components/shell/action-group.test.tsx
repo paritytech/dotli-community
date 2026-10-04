@@ -272,7 +272,7 @@ describe('ActionGroup', () => {
     expect(byId('more-popover').hasAttribute('aria-orientation')).toBe(false);
   });
 
-  it('As a screen-reader user, the More button announces its menu, and each row is a menu item with the item label and icon', async () => {
+  it('As a screen-reader user, the More button announces its menu, and each row is a menu item with the item icon, label and a chevron', async () => {
     // When
     await renderTopbar(() => <Items />, room(5));
 
@@ -289,6 +289,8 @@ describe('ActionGroup', () => {
     expect(row.getAttribute('tabindex')).toBe('-1');
     expect(row.textContent).toBe('THEME');
     expect(row.querySelector('svg[data-testid="icon-theme"]')).not.toBeNull();
+    expect(row.lastElementChild?.getAttribute('data-testid')).toBe('more-row-chevron');
+    expect(row.lastElementChild?.getAttribute('aria-hidden')).toBe('true');
   });
 
   it('As a mobile user, a tap outside the menu or a blocking modal closes it', async () => {

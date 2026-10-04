@@ -9,6 +9,27 @@ import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
 import s from './OverflowMenu.module.css';
 
+/** The row's trailing chevron: choosing the row opens another surface. */
+function Chevron(): JSX.Element {
+  return (
+    <svg
+      class={s['chevron']}
+      data-testid="more-row-chevron"
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
 /**
  * The topbar's More button (`#more-button`) and its flyout
  * (`#more-popover`), holding a row for each item the bar has collapsed
@@ -21,7 +42,8 @@ import s from './OverflowMenu.module.css';
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
- * items. Choosing a row closes the flyout and hands focus back to the More
+ * items. Each row is the board's menu row: the item's icon, its label and a chevron.
+ * Choosing a row closes the flyout and hands focus back to the More
  * button, then activates the row's item with the row click, so the surface
  * it opens takes focus as its own mode dictates (a keyboard choice opens a
  * menu on its first item), and hands it back to the More button when it
@@ -101,8 +123,11 @@ export function OverflowMenu(props: {
               }}
               data-item={entry.name}
             >
-              {entry.icon()}
-              <span>{entry.label}</span>
+              <span class={s['icon']} aria-hidden="true">
+                {entry.icon()}
+              </span>
+              <span class={s['label']}>{entry.label}</span>
+              <Chevron />
             </MenuRow>
           )}
         </For>
