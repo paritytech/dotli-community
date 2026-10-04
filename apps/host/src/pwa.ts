@@ -21,7 +21,7 @@ import { SANDBOX_SCHEMA_VERSION } from '@dotli/config';
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 if ('serviceWorker' in navigator) {
-  const wb = new Workbox('/host-sw.js');
+  const wb = new Workbox('/host-sw.js', { updateViaCache: 'none' });
   navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
     const data = event.data;
     const reply = event.ports.at(0);
@@ -73,6 +73,9 @@ if ('serviceWorker' in navigator) {
       if (!registration) {
         return undefined;
       }
+      // The UI also looks up the registration if its listener mounts later.
+      // Keep the registration host-owned: it is never sent into a product.
+      window.dispatchEvent(new CustomEvent('dotli:receiving-registration', { detail: registration }));
       setInterval(() => {
         if (navigator.onLine) {
           void registration.update();

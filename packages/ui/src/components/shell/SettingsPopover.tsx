@@ -43,8 +43,9 @@ function GearIcon(props: { size: number }): JSX.Element {
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
  * transport choices, the cache switches, "Clear all caches" and the
- * diagnostics. Changes stay a draft until Save & Apply, which saves them and
- * reloads (settings-actions.ts); each opening starts from the saved
+ * diagnostics. Network, transport, cache and runtime changes stay a draft
+ * until Save & Apply, which saves them and reloads (settings-actions.ts);
+ * receiving controls apply immediately. Each opening starts from the saved
  * settings. The button carries `.gateway-mode` while the session is not
  * verified (trusted providers).
  *

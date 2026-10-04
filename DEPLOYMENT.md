@@ -216,6 +216,90 @@ paseo.fyi. Do not fall back to another environment if paseo.fyi qualification or
 same-origin identity proxy must already be configured, or its separately authorized `DEPLOY_NGINX` opt-in must target
 `fyi-paseo` as documented above.
 
+## Optional browser background receiving
+
+Receiving is host-owned and opt-in. It is unsupported when both build settings
+are absent; a partial configuration fails the build. There is no default relay
+or provider credential:
+
+```dotenv
+VITE_RECEIVING_RELAY_URL=https://relay.example.org
+VITE_RECEIVING_PUSH_ORIGIN=https://host.example.org
+VITE_RECEIVING_VAPID_PUBLIC_KEY=
+```
+
+These are illustrative addresses, not deployed services. Use the approved relay
+and host origins. Set both variables for the host build (or leave both empty).
+URLs must use HTTPS without credentials, query strings, or fragments. The push
+origin must be the exact host origin, without a trailing slash, and equal the
+relay's `PUSH_ORIGIN`. The relay must allow that origin through CORS and expose
+the canonical receiving transport endpoints. Set
+`VITE_RECEIVING_VAPID_PUBLIC_KEY` to the relay operator's public base64url VAPID
+application-server key to enable user-click Web Push enrollment. When omitted,
+enrollment reports an unsupported configuration; the key is not guessed or
+fetched from an unrelated provider.
+Keep VAPID private keys and provider credentials on the relay; never put them in
+`VITE_*`, product frames, or a notification payload. Existing build/deployment
+environments do not acquire these settings automatically.
+
+The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must
+come from the same receiving-enabled revision. Required exports are
+`browser-receiving-worker` and `WasmNotificationReceiver` from `wasm/web`.
+Regenerate/vendor that complete SDK before building; an older SDK is not a
+supported fallback. The build bundles `host-receiving.js` as a standalone classic
+IIFE and copies that SDK's WASM to a content-hashed, same-origin
+`assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker
+registration are used. The canonical installer owns callback SCALE adaptation.
+Workbox imports this bundle into `/host-sw.js`, retains its existing precache
+rules and prompted update behavior, and precaches the matching WASM. Deploy the
+complete host output together, not a worker or WASM file in isolation.
+
+For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`, an nginx
+`add_header` directive with the exact relay origin. Include this generated file
+from the `/host-sw.js` location in the deployed host's nginx configuration (using
+that deployment's absolute host-output path), alongside its existing headers.
+It permits only same-origin scripts, WASM compilation (`'wasm-unsafe-eval'`), and
+connections to self/the configured relay. Install the matching policy whenever
+the relay changes; do not copy a policy between environments. If an existing
+page CSP is enforced by a proxy, preserve its other directives while permitting
+`worker-src 'self'` and the configured relay in `connect-src`. HTML meta policies
+do not set a service worker's CSP. Static hosting other than nginx must translate
+the generated policy into the `/host-sw.js` response header.
+
+Receiving requires HTTPS, service workers, Push API, Notifications, IndexedDB,
+and Web Locks. A configured build still requires separate host receiving consent
+and OS notification permission. A host-origin mismatch or unavailable Web Locks
+leaves receiving unsupported without breaking Workbox shell updates. The host
+announces registration through `dotli:receiving-registration`; late-mounting UI
+looks up that same registration instead of registering another worker. Development
+servers do not install this production receiving worker: exercise receiving with
+a built host served over the approved HTTPS origin.
+
+The shell exposes **Background receiving** in Settings. Enabling Web Push must
+come from that button's user gesture; it does not enroll products. Enrollment
+requires a separate trusted host consent prompt. Revoke all receiving disables
+the durable registrations locally before any asynchronous relay synchronization.
+Explicit disconnect, wallet erase, network replacement, and full reset use the
+same local-first fence. A full reset retains the receiver's durable revocation
+ledger so pending remote deletions are not lost; ordinary product close, page
+close, and suspension do not erase consent or enrollments.
+
+Only the native core's authenticated `identityAccountId` can select an account.
+The host independently runs the existing CID content verifier, off the ordinary
+startup and messaging path, before using a validated SHA-256 root multihash as
+the artifact identity. This applies equally to HTML and PolkaVM archives.
+URL/development products, unsupported CID provenance, and missing authenticated
+identity report receiving unsupported. Product frames never supply receiving
+authority. Each connection retains its initial account/artifact/environment
+snapshot and is fenced on host navigation or account replacement.
+
+Notification activation only focuses or opens the host-retained verified
+product descriptor in the already selected unlocked account. It never unlocks,
+switches accounts, or follows a sender route as a URL. Once that execution is
+ready, the shared worker queues the canonical notification Activation event for
+the product to consume.
+
+
 ## Checking what is deployed
 
 Every origin serves its own build's `host_version.json` at the root:
