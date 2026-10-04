@@ -299,6 +299,10 @@ body {
   background: var(--bg-page);
   color: var(--text);
   font-family: system-ui, sans-serif;
+  /* The boards' (.ds) rendering: macOS's default subpixel smoothing draws
+     light text on the dark chrome a weight heavier than designed. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* A modal shell dialog is open (components/focus.ts lockScroll). An attribute,

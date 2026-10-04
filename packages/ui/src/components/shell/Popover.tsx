@@ -19,7 +19,6 @@ import { captureException } from '@dotli/metrics';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
-import { CloseIcon, IconButton } from '../primitives/IconButton.js';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
 import { createPopover } from './create-popover.js';
@@ -365,9 +364,17 @@ export function Popover(props: PopoverProps): JSX.Element {
           tabindex={plain() ? undefined : '-1'}
         >
           <Show when={sheet()}>
-            <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />
+            <SheetHead
+              title={props.title}
+              surface={() => surfaceEl}
+              onDismiss={close}
+              closeLabel={`Close ${props.title}`}
+              testId="popover-sheet-header"
+              titleTestId="popover-sheet-title"
+              closeTestId="popover-sheet-close"
+            />
           </Show>
-          <div data-testid="popover-body">
+          <div class={sheet() ? frame['body'] : undefined} data-testid="popover-body">
             {/* Keyed on the opening, and taking it as a parameter (Show calls
                 only a child that declares one), so each opening mounts the
                 content afresh, a reopening during the fade-out included. */}
@@ -404,33 +411,6 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
     },
   );
   return null;
-}
-
-/**
- * The sheet's header: a grabber, the title and a close button. A drag down
- * that starts on it swipes the sheet (dragSheet).
- */
-function SheetHeader(props: { title: string; surface: () => HTMLElement | undefined; close: () => void }): JSX.Element {
-  return (
-    <SheetHead
-      title={props.title}
-      surface={props.surface}
-      onDismiss={props.close}
-      testId="popover-sheet-header"
-      titleTestId="popover-sheet-title"
-    >
-      <IconButton
-        size="sm"
-        testId="popover-sheet-close"
-        aria-label={`Close ${props.title}`}
-        onClick={() => {
-          props.close();
-        }}
-      >
-        <CloseIcon />
-      </IconButton>
-    </SheetHead>
-  );
 }
 
 /**
