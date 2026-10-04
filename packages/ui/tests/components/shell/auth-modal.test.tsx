@@ -6,7 +6,8 @@ import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { AuthModal } from '../../../src/components/shell/AuthModal.js';
 import { setAuthState } from '../../../src/state/auth.js';
 import { updateAuthModal } from '../../../src/state/auth-modal.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
+import { getTopbarState, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
+import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
@@ -757,6 +758,58 @@ describe('AuthModal login flow', () => {
     expect(isOpen()).toBe(true);
     expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
     expect(document.querySelector('#auth-modal-qr canvas')).not.toBeNull();
+  });
+});
+
+describe('AuthModal and the topbar', () => {
+  it('As a dApp user with the bar folded into the capsule, a product asking me to sign in brings the pill back, and the bar counts the sign-in as open until it closes', async () => {
+    // Given
+    await renderModal();
+    setTopbarVisible(false);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    expect(anyTopbarSurfaceOpen()).toBe(true);
+
+    // When
+    byId('auth-modal-close').click();
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(anyTopbarSurfaceOpen()).toBe(false);
+  });
+
+  it('As a dApp user with the bar folded, a sign-in waiting behind another prompt leaves the capsule alone until it opens', async () => {
+    // Given: a prompt holds the blocking-modal queue.
+    await renderModal();
+    setTopbarVisible(false);
+    const scope = coordinator.createScope();
+    const { promise: held, resolve: release }: PromiseWithResolvers<void> = Promise.withResolvers();
+    const prompt = scope.enqueue(() => held);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(getTopbarState().visible).toBe(false);
+
+    // When
+    release();
+    await prompt;
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    scope.dispose();
   });
 });
 

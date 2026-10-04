@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
+import { revealTopbar } from '../../topbar-autohide.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
@@ -160,6 +161,11 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  * and a press on the scrim close it, which cancels the login. It is itself a
  * blocking modal (the controller opens it only once it holds the
  * blocking-modal lease), so it never closes on one coming up.
+ *
+ * Opening it reveals the topbar (revealTopbar) and the auto-hide holds the
+ * pill while it is open. A sign-in queued behind another blocking prompt
+ * reveals nothing until its lease opens it: the capsule's action dot says it
+ * is waiting.
  */
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
@@ -250,9 +256,15 @@ export function AuthModal(): JSX.Element {
       }
     },
   });
-  // The dialog follows the store.
+  // The dialog follows the store. The surface hangs from the pill, and a
+  // product can ask for sign-in while the bar is folded into the capsule, so
+  // opening brings the pill back. createPopover registers the dialog as a
+  // topbar surface, so the auto-hide keeps the pill up until it closes.
   createEffect(open, isOpen => {
     dialog.setOpen(isOpen);
+    if (isOpen) {
+      revealTopbar();
+    }
   });
 
   const hint = (): string =>
