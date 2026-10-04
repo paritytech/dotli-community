@@ -1,14 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, Show, useContext } from 'solid-js';
+import { createContext, createMemo, Show, useContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Surface.module.css';
 
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
 
 // An accessor, so a sheet that opens or closes around the surface is seen.
-const InSheet = createContext<() => boolean>(() => false);
+const InSheet = createContext<Accessor<boolean>>(() => false);
 
 /**
  * The glass body of a popover. In a bottom sheet (`sheet`) the sheet already
@@ -22,13 +22,14 @@ export function Surface(props: {
   testId?: string;
   children: JSX.Element;
 }): JSX.Element {
+  const sheet = createMemo(() => props.sheet === true);
   return (
-    <InSheet value={() => props.sheet === true}>
+    <InSheet value={sheet}>
       <section
         class={[s['surface'], props.class]}
         aria-label={props.label}
         data-width={props.width ?? 'md'}
-        data-sheet={props.sheet === true ? '' : undefined}
+        data-sheet={sheet() ? '' : undefined}
         data-testid={props.testId}
       >
         {props.children}
