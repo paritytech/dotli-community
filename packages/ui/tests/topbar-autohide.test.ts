@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as TopbarAutohideModule from '../src/topbar-autohide.js';
 import type * as TopbarSurfacesModule from '../src/state/topbar-surfaces.js';
 import { byId } from './support.js';
+import { stubPhoneViewport } from './helpers/viewport.js';
 
 // happy-dom rejects var() inside calc() and drops a bare dvh length, so the
 // box helper is mocked with plain stand-in values here. The real inset math and
@@ -72,13 +73,13 @@ function pressShortcut(): void {
   flushUi();
 }
 
-function stubReducedMotion(reduce: boolean): void {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: reduce && query.includes('prefers-reduced-motion'),
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
+/** The window's width: a phone's or a desktop's (see stubPhoneViewport). */
+let viewport: ReturnType<typeof stubPhoneViewport>;
+
+/** Resize the window across the phone width, then render what changed. */
+function setPhone(phone: boolean): void {
+  viewport.set(phone);
+  flushUi();
 }
 
 /** A popover of the bar, as createPopover registers it, open or not. */
@@ -134,7 +135,7 @@ async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
 beforeEach(() => {
   vi.resetModules();
   vi.unstubAllGlobals();
-  stubReducedMotion(false);
+  viewport = stubPhoneViewport(false);
   vi.useFakeTimers();
   installPageDom();
 });
@@ -451,5 +452,63 @@ describe('topbar auto-hide layout', () => {
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe('56px');
     expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
+  });
+});
+
+describe('topbar auto-hide on a phone', () => {
+  it('As a phone user, the header never folds away, and the app starts below it', async () => {
+    // Given
+    viewport.set(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('56px');
+  });
+
+  it('As a user narrowing the window to a phone width, the folded bar comes back as the header, the app moves below it, and widening folds it again', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+
+    // When
+    setPhone(true);
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('56px');
+
+    // When
+    setPhone(false);
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+  });
+
+  it('As a keyboard user on a phone-width window, Alt+Shift+T leaves the header where it is', async () => {
+    // Given
+    viewport.set(true);
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressShortcut();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(false);
   });
 });

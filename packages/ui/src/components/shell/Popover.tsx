@@ -19,7 +19,8 @@ import { captureException } from '@dotli/metrics';
 import { startDrag } from '../drag.js';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
-import { createPopover, isSheetViewport } from './create-popover.js';
+import { isPhoneViewport } from '../../phone-viewport.js';
+import { createPopover } from './create-popover.js';
 import s from './Popover.module.css';
 
 /** How long the content stays after a close: the surface's exit transition. */
@@ -164,7 +165,7 @@ export function Popover(props: PopoverProps): JSX.Element {
 
   const openNow = (): void => {
     clearTimeout(unmountTimer);
-    setSheet(isSheetViewport());
+    setSheet(isPhoneViewport());
     if (props.anchor === 'trigger') {
       measure();
     }

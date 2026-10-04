@@ -4,9 +4,10 @@
 // dot.li top bar auto-hide
 //
 // The bar folds into its status capsule a few seconds into a verified
-// desktop session and
-// returns on pointer hover, on keyboard focus, and on the reveal shortcut,
-// so home, settings, permissions and login never become mouse-only.
+// desktop session, never at a phone's width (PHONE_QUERY), where it is the
+// phone header, and returns on pointer hover, on keyboard focus, and on the
+// reveal shortcut, so home, settings, permissions and login never become
+// mouse-only.
 //
 // The timing and the input handling live here, framework-free; what shows
 // is the topbar store's: the bar's script (apps/host/src/components/
@@ -18,6 +19,7 @@
 import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';
 import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
+import { isPhoneViewport, PHONE_QUERY } from './phone-viewport.js';
 import { getLoggedIn } from './state/auth.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
@@ -60,12 +62,13 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
 }
 
 /**
- * Pinned, the frame starts below the bar. Once the bar has folded into the
- * capsule for the first time, the frame takes the full height and the pill
- * floats over it from then on, so the product never relayouts on a reveal.
+ * Pinned, or as the phone header, the bar keeps the frame below it. Once the
+ * bar has folded into the capsule for the first time, the frame takes the
+ * full height and the pill floats over it from then on, so the product never
+ * relayouts on a reveal.
  */
 function syncFrameLayout(): void {
-  setTopbarLayout({ offset: !appFrameTracking });
+  setTopbarLayout({ offset: !appFrameTracking || isPhoneViewport() });
 }
 
 function setVisible(next: boolean): void {
@@ -108,7 +111,7 @@ function isBusy(): boolean {
 }
 
 function canAutoHide(): boolean {
-  return getTopbarState().autoHide && !isMobileDevice() && getLoggedIn();
+  return getTopbarState().autoHide && !isMobileDevice() && !isPhoneViewport() && getLoggedIn();
 }
 
 /** Hide the bar after the delay, unless it is pinned or in use then. */
@@ -140,6 +143,22 @@ export function revealTopbarAndFocus(): void {
   revealTopbar();
   if (bar !== undefined) {
     focusables(bar)[0]?.focus();
+  }
+}
+
+/**
+ * The window crossed the phone width: as the phone header the bar comes back
+ * and stays, with the frame below it, and as the pill it folds away again
+ * after the delay, floating over the full-height frame.
+ */
+function onViewportChange(): void {
+  if (appFrameTracking) {
+    syncFrameLayout();
+  }
+  if (isPhoneViewport()) {
+    revealTopbar();
+  } else {
+    scheduleTopbarHide();
   }
 }
 
@@ -216,6 +235,7 @@ function bindListeners(): void {
     { signal },
   );
   document.addEventListener('keydown', onKeyDown, { signal });
+  window.matchMedia(PHONE_QUERY).addEventListener('change', onViewportChange, { signal });
 }
 
 /**
