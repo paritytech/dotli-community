@@ -30,6 +30,13 @@
 .surface[data-width='xl'] {
   width: var(--w-pop-xl);
 }
+/* Inside a Popover, whose surface already is the glass: one glass, not two. */
+.surface[data-bare] {
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
 .surface[data-sheet] {
   width: 100%;
   padding: var(--sp-1) var(--sp-4) var(--sp-4);

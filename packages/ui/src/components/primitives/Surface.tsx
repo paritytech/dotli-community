@@ -17,6 +17,8 @@ const InSheet = createContext<Accessor<boolean>>(() => false);
 export function Surface(props: {
   width?: SurfaceWidth;
   sheet?: boolean;
+  /** Inside a Popover, whose own surface is the glass: draws none of its own. */
+  bare?: boolean;
   label?: string;
   class?: string | undefined;
   testId?: string;
@@ -30,6 +32,7 @@ export function Surface(props: {
         aria-label={props.label}
         data-width={props.width ?? 'md'}
         data-sheet={sheet() ? '' : undefined}
+        data-bare={props.bare === true ? '' : undefined}
         data-testid={props.testId}
       >
         {props.children}
