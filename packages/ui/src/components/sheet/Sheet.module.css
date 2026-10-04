@@ -75,6 +75,22 @@
   transition: none;
 }
 
+/* A sheet taking another's place (createPopover's hand-off), as the board
+   swaps the content of its one sheet: the leaving sheet and scrim go at once,
+   the coming ones start at rest, so the scrim never lightens. */
+.scrim[data-handoff],
+.sheet[data-sheet][data-handoff] {
+  transition: none;
+}
+@starting-style {
+  .scrim[data-open][data-handoff] {
+    opacity: 1;
+  }
+  .sheet[data-sheet][data-open][data-handoff] {
+    transform: translateY(0);
+  }
+}
+
 /* The board's .sheet-head, sticky on its own glass so the content scrolls
    under it. Its row is at least the close button's height, so a head without
    one (a menu's) is as tall as a popover's. */

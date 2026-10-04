@@ -23,7 +23,7 @@ import { labelToProductId } from '../../../src/runtime-config.js';
 import { setChatCapability } from '@dotli/shared';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
-import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
+import { mouseClick, pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
@@ -265,6 +265,101 @@ describe('Topbar actions island', () => {
       expect(more.getAttribute('data-badge-tone')).toBe('info');
       expect(more.getAttribute('aria-label')).toBe('More, chat has unread messages');
       expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('2');
+    } finally {
+      stopChat();
+    }
+  });
+
+  it("As a phone user choosing Appearance in More, the Appearance sheet takes More's place without sliding", async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+
+    // When
+    await tapMoreRow('theme');
+
+    // Then: More goes and Appearance comes at rest, over a scrim that stays.
+    const more = byId('more-popover');
+    expect(more.hasAttribute('data-open')).toBe(false);
+    expect(more.hasAttribute('data-handoff')).toBe(true);
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(sheet.hasAttribute('data-handoff')).toBe(true);
+    const scrims = [...document.querySelectorAll('[data-testid="menu-scrim"]')];
+    expect(scrims).toHaveLength(2);
+    expect(scrims.every(scrim => scrim.hasAttribute('data-handoff'))).toBe(true);
+  });
+
+  it("As a phone user choosing Settings in More, the settings sheet takes More's place without sliding", async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+
+    // When
+    await tapMoreRow('settings');
+
+    // Then
+    expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
+    const sheet = byId('mode-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(sheet.hasAttribute('data-handoff')).toBe(true);
+    expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
+  });
+
+  it("As a phone user closing a sheet that took More's place, it slides out", async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    await tapMoreRow('theme');
+
+    // When
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+
+    // Then
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(false);
+    expect(sheet.hasAttribute('data-handoff')).toBe(false);
+    const scrim = sheet.previousElementSibling;
+    expect(scrim?.getAttribute('data-testid')).toBe('menu-scrim');
+    expect(scrim?.hasAttribute('data-handoff')).toBe(false);
+  });
+
+  it('As a phone user choosing Chat in More, More closes as usual', async () => {
+    // Given: a chat-capable product and a session, with nothing unread
+    stubTopbarLayout(MORE_ONLY);
+    const viewport = stubPhoneViewport(true);
+    const stopChat = initChatPanelState();
+    try {
+      await renderIsland();
+      window.dispatchEvent(new CustomEvent('dotli:product-loaded', { detail: { label: 'chatty' } }));
+      setChatCapability('chatty', true);
+      setLoggedIn(true);
+      await settle();
+
+      // When
+      await tapMoreRow('chat');
+
+      // Then
+      const more = byId('more-popover');
+      expect(more.hasAttribute('data-open')).toBe(false);
+      expect(more.hasAttribute('data-handoff')).toBe(false);
+
+      // When: Appearance opens from its own button, not from More
+      viewport.set(false);
+      mouseClick(byId('theme-toggle'));
+      await settle();
+
+      // Then
+      const theme = byId('theme-popover');
+      expect(theme.hasAttribute('data-open')).toBe(true);
+      expect(theme.hasAttribute('data-handoff')).toBe(false);
     } finally {
       stopChat();
     }

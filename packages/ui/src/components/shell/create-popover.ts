@@ -59,7 +59,8 @@ export interface PopoverOptions {
   /**
    * Open as a bottom sheet when the viewport is a phone's (isPhoneViewport)
    * as an opening starts (a menu on a phone). `sheet()` on the result says
-   * so. Popover.tsx keeps its own, since its mode and its peek depend on it.
+   * so. Popover.tsx keeps its own too, since its mode and its peek depend on
+   * it, and sets this for the hand-off (see `handedOff`).
    */
   sheet?: boolean;
   /** Called after every close, whatever closed it. */
@@ -85,7 +86,30 @@ export interface Popover {
    * the More button, when the topbar has collapsed the trigger).
    */
   onItemChosen: () => void;
+  /**
+   * A sheet's item was chosen: as `onItemChosen`, then `activate` the item.
+   * When that opens another sheet, the two trade places at once (see
+   * `handedOff`).
+   */
+  handOff: (activate: () => void) => void;
+  /**
+   * The current opening (or closing) is one sheet taking another's place: the
+   * surface and its scrim neither slide nor fade, so the scrim stays dark.
+   * The next open or close clears it, so the sheet's own close slides out.
+   */
+  handedOff: Accessor<boolean>;
 }
+
+/**
+ * A sheet hand-off under way: `pending` while a sheet's chosen item runs,
+ * `taken` once a sheet opened in its place.
+ */
+let handoff: 'pending' | 'taken' | undefined;
+/**
+ * A call, not an inline comparison: TypeScript would keep `handoff` narrowed
+ * to `pending` across the activation that sets it.
+ */
+const handoffTaken = (): boolean => handoff === 'taken';
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
 export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
@@ -209,6 +233,7 @@ export function createPopover(options: PopoverOptions): Popover {
     ownedWrite: true,
   });
   const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
+  const [handedOff, setHandedOff] = createSignal(false, { ownedWrite: true });
   /** The next opening came from the trigger's keyboard (menu mode). */
   let openedWithKeyboard = false;
   /** This closing must leave focus where the user put it. */
@@ -225,9 +250,16 @@ export function createPopover(options: PopoverOptions): Popover {
     const wasOpen = current;
     current = next;
     // Written in the same batch as the open state, so the surface takes its
-    // place and its open state in one render.
+    // place and its open state in one render. A hand-off marks one opening
+    // or closing only.
+    setHandedOff(false);
     if (next && !wasOpen && options.sheet === true) {
-      setSheet(isPhoneViewport());
+      const phone = isPhoneViewport();
+      setSheet(phone);
+      if (phone && handoff === 'pending') {
+        handoff = 'taken';
+        setHandedOff(true);
+      }
     }
     if (!next) {
       // A keyboard opening undone in the same batch must not mark the next.
@@ -454,6 +486,19 @@ export function createPopover(options: PopoverOptions): Popover {
       setOpen(false);
       focusBack();
     },
+    handOff: activate => {
+      handoff = 'pending';
+      try {
+        setOpen(false);
+        focusBack();
+        activate();
+        // In the batch of this close and that opening, so both land in one frame.
+        setHandedOff(handoffTaken());
+      } finally {
+        handoff = undefined;
+      }
+    },
+    handedOff,
   };
 }
 

@@ -57,7 +57,10 @@ function Chevron(): JSX.Element {
  * then activates the row's item with the row click, so the surface it opens
  * takes focus as its own mode dictates (a keyboard choice opens a menu on
  * its first item), and hands it back to the More button when it closes: the
- * item's own button is collapsed.
+ * item's own button is collapsed. On a phone, a sheet the row opens takes
+ * More's place in the same frame, with no slide and no scrim fade, as the
+ * board swaps the sheet's content in place. A row that opens no sheet (Chat)
+ * lets More slide out.
  */
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
@@ -96,8 +99,14 @@ export function OverflowMenu(props: {
     // The row's own click must not reach a document-level close-outside
     // listener, which would see it as outside the surface it opens.
     ev.stopPropagation();
-    menu.onItemChosen();
-    entry.activate(ev);
+    if (menu.sheet()) {
+      menu.handOff(() => {
+        entry.activate(ev);
+      });
+    } else {
+      menu.onItemChosen();
+      entry.activate(ev);
+    }
   };
 
   return (
@@ -143,6 +152,7 @@ export function OverflowMenu(props: {
           open={menu.open()}
           label="More"
           sheet={menu.sheet()}
+          handedOff={menu.handedOff()}
           sheetTitle="More"
           onDismiss={() => {
             menu.setOpen(false);

@@ -204,6 +204,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           label="Appearance"
           orientation="horizontal"
           sheet={menu.sheet()}
+          handedOff={menu.handedOff()}
           sheetTitle="Appearance"
           onDismiss={() => {
             menu.setOpen(false);

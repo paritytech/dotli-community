@@ -114,11 +114,12 @@ export function usePopover(): PopoverContextValue {
  * the popover, and the next opening loads it again. Focus and dismissal are
  * createPopover's (`popover` mode anchored, `dialog` mode as a sheet).
  *
- * The surface carries its state as `data-open`, `data-sheet`, `data-peek`
+ * The surface carries its state as `data-open`, `data-sheet`, `data-handoff`
+ * (a sheet taking another's place, createPopover's `handedOff`), `data-peek`
  * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
  * `data-dragging` (while a sheet is being dragged), and the backdrop
- * `data-open` and `data-sheet`. A consumer's class on the surface may react
- * to them. Content that lays out differently in a sheet
+ * `data-open`, `data-sheet` and `data-handoff`. A consumer's class on the
+ * surface may react to them. Content that lays out differently in a sheet
  * reads `usePopover().sheet()` and marks its own elements.
  */
 export function Popover(props: PopoverProps): JSX.Element {
@@ -148,6 +149,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     mode: () => (untrack(sheet) ? 'dialog' : 'popover'),
     trigger: () => triggerEl,
     surface: () => surfaceEl,
+    sheet: true,
     // Read at each opening, and on each key.
     get closeOnBlur() {
       return props.closeOnBlur === true;
@@ -333,6 +335,7 @@ export function Popover(props: PopoverProps): JSX.Element {
             data-testid="popover-backdrop"
             data-open={popover.open() ? '' : undefined}
             data-sheet={sheet() ? '' : undefined}
+            data-handoff={popover.handedOff() ? '' : undefined}
           />
         </Show>
         <div
@@ -343,6 +346,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           data-chrome=""
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
+          data-handoff={popover.handedOff() ? '' : undefined}
           data-peek={peek() ? '' : undefined}
           data-anchor={anchoredToTrigger() ? 'trigger' : undefined}
           style={

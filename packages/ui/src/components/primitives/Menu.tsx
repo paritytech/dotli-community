@@ -24,6 +24,11 @@ export interface MenuProps {
    * a head with the grabber and `sheetTitle`.
    */
   sheet?: boolean | undefined;
+  /**
+   * This sheet takes another's place, or gives its place to another
+   * (createPopover's `handedOff()`): it and its scrim appear or go at once.
+   */
+  handedOff?: boolean | undefined;
   /** The sheet head's title. Assistive technology reads the menu's own name instead. */
   sheetTitle?: string | undefined;
   /** A swipe down on the sheet's head asks to close it. */
@@ -51,6 +56,7 @@ export function Menu(props: MenuProps): JSX.Element {
           class={frame['scrim']}
           data-testid="menu-scrim"
           data-open={props.open ? '' : undefined}
+          data-handoff={props.handedOff === true ? '' : undefined}
           aria-hidden="true"
         />
       </Show>
@@ -70,6 +76,7 @@ export function Menu(props: MenuProps): JSX.Element {
         tabindex="-1"
         data-open={props.open ? '' : undefined}
         data-sheet={sheet() ? '' : undefined}
+        data-handoff={props.handedOff === true ? '' : undefined}
         data-testid={props.testId}
       >
         <Show when={sheet()}>
