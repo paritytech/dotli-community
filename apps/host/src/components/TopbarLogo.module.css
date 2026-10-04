@@ -49,7 +49,14 @@
   letter-spacing: var(--ls-caps);
   text-transform: uppercase;
 }
+/* Phones: the mark alone, centred in a 44 px box like an icon (the board's
+   .tb-logo). */
 @media (max-width: 560px) {
+  .home {
+    justify-content: center;
+    width: var(--h-control);
+    padding: 0;
+  }
   .brand,
   .beta {
     display: none;

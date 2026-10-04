@@ -66,6 +66,15 @@
   --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
 }
 
+/* Phones: the bar is the header's 60 px row under the top inset, with no
+   band around it (Topbar.astro), so the page and the product frame start
+   right below it. */
+@media (max-width: 560px) {
+  :root {
+    --topbar-height: calc(var(--h-bar) + var(--safe-top));
+  }
+}
+
 :root[data-theme='light'] {
   --text-strong: rgba(0, 0, 0, 0.92);
   --text: rgba(0, 0, 0, 0.82);

@@ -118,6 +118,30 @@
     background: var(--chrome-action-dim);
   }
 }
+/* Phones: the square header across the top (the board's .tb-header): the
+   glass, a hairline at the bottom, the 60 px row under the top inset, no
+   radius and no shadow. The auto-hide never folds it at this width
+   (topbar-autohide.ts), and it never slides away on scroll. Fixed rather
+   than in the flow: the host page never scrolls, and the page and the frame
+   already start below --topbar-height (global.css), so the two look the
+   same and the element keeps its desktop morph. */
+@media (max-width: 560px) {
+  .topbar {
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-width: none;
+    height: calc(var(--h-bar) + var(--safe-top));
+    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+    border-radius: 0;
+    box-shadow: inset 0 -1px 0 var(--chrome-line);
+    transform: none;
+    transition: none;
+  }
+  .row {
+    width: 100%;
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .topbar,
   .row,

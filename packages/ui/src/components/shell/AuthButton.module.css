@@ -62,8 +62,10 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* Phones: the account control is a 44 px circle, the icon or the avatar
-   alone, so the bar keeps room for the address and More. */
+/* Phones: the account control is a 44 px circle, so the header keeps room
+   for the address and More: the Sign in icon alone at 20 px on the primary
+   fill (the board's .icon-btn-primary), or the avatar filling the button
+   (the board's .avatar-md). */
 @media (max-width: 560px) {
   .chip,
   .sign-in {
@@ -73,5 +75,22 @@
   .name,
   .label {
     display: none;
+  }
+  .sign-in svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.75;
+  }
+  .chip {
+    background: transparent;
+  }
+  .chip .avatar {
+    width: var(--h-control);
+    height: var(--h-control);
+    font-size: var(--fs-title);
+  }
+  .chip .avatar svg {
+    width: 20px;
+    height: 20px;
   }
 }

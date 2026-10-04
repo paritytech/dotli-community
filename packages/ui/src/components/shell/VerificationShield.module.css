@@ -69,3 +69,26 @@
 .tooltip[data-anchor='trigger'] {
   top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3)) !important;
 }
+
+/* Phones: the whole address is the button (the board's button.address), so
+   the shield's hit area stretches over the pill, the nearest positioned box
+   once this wrap stops being one (UrlPill.module.css draws the hover, open
+   and focus states there). */
+@media (max-width: 560px) {
+  .wrap {
+    position: static;
+  }
+  .shield::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: var(--r-full);
+  }
+  .shield:hover,
+  .shield[aria-expanded='true'] {
+    background: transparent;
+  }
+  .shield:focus-visible {
+    outline: none;
+  }
+}
