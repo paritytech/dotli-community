@@ -7,7 +7,7 @@ import { CID } from 'multiformats/cid';
 import * as raw from 'multiformats/codecs/raw';
 import { sha256 } from 'multiformats/hashes/sha2';
 import { create as createDigest } from 'multiformats/hashes/digest';
-import type { SandboxBitswapOptions } from '../src/bitswap.js';
+import type * as BitswapModule from '../src/bitswap.js';
 import type * as ConfigModule from '@dotli/config';
 
 const mocks = vi.hoisted(() => ({
@@ -18,8 +18,8 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock(import('@dotli/protocol'), async importOriginal => ({
-  ...(await importOriginal()),
+vi.mock(import('@dotli/protocol'), async () => ({
+  ...(await import('../../protocol/src/chain-halted.js')),
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));
@@ -110,10 +110,14 @@ describe('listenForSandboxBitswap with a block cache', () => {
   let stop: () => void = () => {
     /* no relay installed yet */
   };
+  let listenForSandboxBitswap: typeof BitswapModule.listenForSandboxBitswap;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks();
     vi.resetModules();
+    // Finish loading before a test can install a relay. Otherwise an import
+    // that outlives a timed-out test can install its listener after teardown.
+    ({ listenForSandboxBitswap } = await import('../src/bitswap.js'));
   });
 
   afterEach(() => {
@@ -124,8 +128,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     vi.doUnmock('../src/verify.js');
   });
 
-  async function startRelay(options: SandboxBitswapOptions): Promise<void> {
-    const { listenForSandboxBitswap } = await import('../src/bitswap.js');
+  function startRelay(options: BitswapModule.SandboxBitswapOptions): void {
     stop = listenForSandboxBitswap(options);
   }
 
@@ -145,7 +148,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
     const served: string[] = [];
-    await startRelay({
+    startRelay({
       blockCache: cache,
       onBlockServed: from => served.push(from),
     });
@@ -173,7 +176,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     // Given a cache holding corrupted bytes for the block
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache([[blockCid, new Uint8Array([0x00])]]);
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -193,7 +196,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     // Given a chain that hands back bytes of some other block
     stubChain('0x0102');
     const cache = memoryCache();
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -211,7 +214,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
     cache.get.mockRejectedValue(new Error('QuotaExceededError'));
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -228,7 +231,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
   it('As a user with the archive cache off, every block comes from the network', async () => {
     // Given
     const chain = stubChain(BLOCK_HEX);
-    await startRelay({});
+    startRelay({});
 
     // When the same block is asked for twice
     const first = fakeFrame();
@@ -254,7 +257,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     });
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache([[blockCid, BLOCK.slice()]]);
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -275,7 +278,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     });
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -298,7 +301,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     const unsupportedCid = CID.create(1, raw.code, unsupportedDigest).toString();
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -328,7 +331,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     // Given a request whose "cid" does not parse as a CID at all
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
@@ -359,7 +362,7 @@ describe('listenForSandboxBitswap with a block cache', () => {
     const chain = stubChain(BLOCK_HEX);
     const cache = memoryCache();
     cache.put.mockRejectedValue(new Error('write failed'));
-    await startRelay({ blockCache: cache });
+    startRelay({ blockCache: cache });
 
     // When
     const frame = fakeFrame();
