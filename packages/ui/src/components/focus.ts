@@ -47,8 +47,9 @@ export function containTab(ev: KeyboardEvent, surface: HTMLElement): void {
   }
   const active = document.activeElement;
   // By document position, not by index: the focus can sit on a control
-  // outside the Tab order (an option reached with the arrow keys), and the
-  // browser tabs from there to the next stop after it, which may be outside.
+  // outside the Tab order (a tabindex -1 one, focused by a click or a
+  // script), and the browser tabs from there to the next stop after it,
+  // which may be outside.
   const side = ev.shiftKey ? Node.DOCUMENT_POSITION_PRECEDING : Node.DOCUMENT_POSITION_FOLLOWING;
   const browserStaysInside =
     active !== null && surface.contains(active) && items.some(el => (active.compareDocumentPosition(el) & side) !== 0);

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { For } from 'solid-js';
+import { createSignal, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './SegmentedControl.module.css';
 
@@ -37,20 +37,39 @@ const FOCUS_KEYS: Readonly<Record<string, (index: number, count: number) => numb
 
 /**
  * One choice out of a few, as pressed buttons in a sunken track. It is one
- * Tab stop, on the pressed option (the first while none is): the arrow keys,
- * Home and End move the focus between the options without picking, and a
- * click, Enter or Space picks the focused one.
+ * Tab stop: the focused option while focus is inside, else the pressed one
+ * (the first while none is). The arrow keys, Home and End move the focus
+ * between the options without picking, and a click, Enter or Space picks the
+ * focused one.
  */
 export function SegmentedControl<V extends string>(props: SegmentedControlProps<V>): JSX.Element {
+  // Tab from an arrow-focused option would otherwise stop on the pressed
+  // option of the same control before leaving it.
+  const [focused, setFocused] = createSignal<number | null>(null);
   const tabStop = (): number =>
+    focused() ??
     Math.max(
       props.options.findIndex(option => option.value === props.value),
       0,
     );
 
+  const buttonsOf = (group: HTMLElement): HTMLButtonElement[] =>
+    Array.from(group.querySelectorAll<HTMLButtonElement>(':scope > button'));
+
+  const onFocusIn = (e: FocusEvent): void => {
+    const index = buttonsOf(e.currentTarget as HTMLElement).indexOf(e.target as HTMLButtonElement);
+    setFocused(index < 0 ? null : index);
+  };
+
+  const onFocusOut = (e: FocusEvent): void => {
+    if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) {
+      setFocused(null);
+    }
+  };
+
   const onKeyDown = (e: KeyboardEvent): void => {
     const move = FOCUS_KEYS[e.key];
-    const buttons = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(':scope > button'));
+    const buttons = buttonsOf(e.currentTarget as HTMLElement);
     const index = buttons.indexOf(e.target as HTMLButtonElement);
     if (move === undefined || index < 0) {
       return;
@@ -67,6 +86,8 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       data-layout={props.layout ?? 'inline'}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
+      onFocusIn={onFocusIn}
+      onFocusOut={onFocusOut}
     >
       <For each={props.options}>
         {(option, index) => (

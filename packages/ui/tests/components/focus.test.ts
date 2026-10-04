@@ -113,8 +113,8 @@ describe('containTab', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  it('As a keyboard user, Tab from an arrow-focused option past the last Tab stop wraps to the first, and Shift+Tab from one before the first wraps to the last', () => {
-    // Given: two segmented controls, each one Tab stop on its pressed option.
+  it('As a keyboard user, Tab from a control outside the Tab order past the last stop wraps to the first, and Shift+Tab from one before the first wraps to the last', () => {
+    // Given: controls taken out of the Tab order around the stops, as a click can focus.
     const root = surface(`
       <button id="a-ask" tabindex="-1"></button><button id="a-allow" tabindex="0"></button>
       <button id="b-ask" tabindex="0"></button><button id="b-allow" tabindex="-1"></button>

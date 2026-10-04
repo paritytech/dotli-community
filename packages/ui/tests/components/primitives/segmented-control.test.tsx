@@ -114,6 +114,34 @@ describe('SegmentedControl', () => {
     expect(tabIndexes()).toEqual(['-1', '0', '-1']);
   });
 
+  it('As a keyboard user, the option I arrowed to is the Tab stop while focus is in the group, so Tab leaves the control at once, and the pressed option is again once focus leaves', () => {
+    // Given
+    renderComponent(() => (
+      <div>
+        <SegmentedControl<Status> label="Camera" options={OPTIONS} value="allow" onChange={() => {}} />
+        <button type="button" data-testid="after">
+          After
+        </button>
+      </div>
+    ));
+    byTestId('seg-allow').focus();
+
+    // When
+    press('ArrowLeft');
+    flush();
+
+    // Then
+    expect(document.activeElement).toBe(byTestId('seg-ask'));
+    expect(tabIndexes()).toEqual(['0', '-1', '-1']);
+
+    // When
+    byTestId('after').focus();
+    flush();
+
+    // Then
+    expect(tabIndexes()).toEqual(['-1', '0', '-1']);
+  });
+
   it('As a keyboard user, other keys pass through the control untouched', () => {
     // Given
     renderComponent(() => (
