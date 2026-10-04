@@ -1347,6 +1347,26 @@ describe('createPopover, touch outside (Radix usePointerDownOutside)', () => {
     expect(reached).toBe(true);
   });
 
+  it('As an assistive-technology user, a click that arrives after a tap closed the menu and a moment passed is not swallowed', async () => {
+    // Given: an outside tap closed the menu and no click followed it.
+    const popover = renderPopover('menu');
+    await openPopover(popover);
+    vi.useFakeTimers();
+    try {
+      touchDown(byId('outside'));
+      touchUp(byId('outside'));
+
+      // When: a moment passes, then a click lands on the page.
+      vi.advanceTimersByTime(1000);
+      const { reached } = tap(byId('outside'));
+
+      // Then
+      expect(reached).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('As a phone user, a touch outside the popover that becomes a scroll leaves it open', async () => {
     // Given
     const popover = renderPopover('popover');

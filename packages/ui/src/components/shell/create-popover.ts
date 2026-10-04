@@ -532,14 +532,21 @@ function awaitEvent<K extends 'click' | 'pointerup'>(
 }
 
 /**
+ * How long a swallowed click is awaited. A tap's click follows its pointerup
+ * within a frame or so, and iOS may fire none at all.
+ */
+const SWALLOW_CLICK_MS = 500;
+
+/**
  * Stops the click that follows an outside pointerdown from reaching what is
  * underneath, the way Radix's modal menu disables outside pointer events.
- * A press that never becomes a click (a scroll, a drag) stops waiting at
- * its pointercancel or the next pointerdown or keydown, so a later keyboard
- * or programmatic click is not eaten.
+ * A press that never becomes a click (a scroll, a drag, a tap iOS fires no
+ * click for) stops waiting at its pointercancel, the next pointerdown or
+ * keydown, or after a moment, so a later keyboard, assistive-technology or
+ * programmatic click is not eaten.
  */
 function swallowNextClick(): void {
-  awaitEvent(
+  const stop = awaitEvent(
     'click',
     ev => {
       ev.preventDefault();
@@ -547,6 +554,8 @@ function swallowNextClick(): void {
     },
     ['pointerdown', 'pointercancel', 'keydown'],
   );
+  // Stopping twice is harmless, so the timer need not be cleared when an event ends the wait first.
+  setTimeout(stop, SWALLOW_CLICK_MS);
 }
 
 /**
