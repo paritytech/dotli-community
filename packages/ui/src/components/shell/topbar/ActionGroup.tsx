@@ -77,13 +77,16 @@ export function ActionGroup(props: { growRoom?: (() => number) | undefined; chil
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
   onCleanup(() => observer?.disconnect());
   // In a content-sized pill the group only shrinks with the window, so a
-  // widening window is heard here rather than by the observer.
-  const onResize = (): void => {
-    measure();
-  };
-  window.addEventListener('resize', onResize);
-  onCleanup(() => {
-    window.removeEventListener('resize', onResize);
+  // widening window is heard here rather than by the observer. Settled, so
+  // the build-time render, which has no window, skips it.
+  onSettled(() => {
+    const onResize = (): void => {
+      measure();
+    };
+    window.addEventListener('resize', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+    };
   });
   const observe = (el: HTMLElement): void => {
     observer?.observe(el);
