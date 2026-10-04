@@ -9,13 +9,13 @@ import {
   type LiveVerdict,
 } from '../../../src/components/shell/chains-format.js';
 
-describe('describeNetworkStatus', () => {
+describe('describeNetworkStatus under a light client', () => {
   it('As a user with a good connection, the caption counts the chains in sync', () => {
     // Given
     const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 4);
+    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
 
     // Then
     expect(line).toEqual({
@@ -30,7 +30,7 @@ describe('describeNetworkStatus', () => {
     const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, false, 10);
+    const line = describeNetworkStatus(health, false, 10, 'smoldot-direct');
 
     // Then
     expect(line.detail).toBe('Light client is in sync on all 10 chains');
@@ -41,7 +41,7 @@ describe('describeNetworkStatus', () => {
     const health: LiveVerdict = { text: 'Connecting, 2 of 3 ready', tone: 'idle' };
 
     // When
-    const line = describeNetworkStatus(health, false, 3);
+    const line = describeNetworkStatus(health, false, 3, 'smoldot-direct');
 
     // Then
     expect(line).toEqual({ tone: 'idle', title: 'Syncing', detail: 'Finding peers. This takes a few seconds.' });
@@ -52,7 +52,7 @@ describe('describeNetworkStatus', () => {
     const health: LiveVerdict = { text: 'Waiting on Hub and Identity', tone: 'warn', slow: ['Hub', 'Identity'] };
 
     // When
-    const line = describeNetworkStatus(health, false, 4);
+    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
 
     // Then
     expect(line).toEqual({
@@ -67,7 +67,7 @@ describe('describeNetworkStatus', () => {
     const health: LiveVerdict = { text: 'Waiting on Hub', tone: 'warn', slow: ['Hub'] };
 
     // When
-    const line = describeNetworkStatus(health, false, 4);
+    const line = describeNetworkStatus(health, false, 4, 'smoldot-direct');
 
     // Then
     expect(line.detail).toBe('Hub is short on peers');
@@ -78,10 +78,97 @@ describe('describeNetworkStatus', () => {
     const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
 
     // When
-    const line = describeNetworkStatus(health, true, 4);
+    const line = describeNetworkStatus(health, true, 4, 'smoldot-direct');
 
     // Then
     expect(line).toEqual({ tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' });
+  });
+
+  it('As a user with two chains, the caption says both rather than counting them', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
+
+    // When
+    const line = describeNetworkStatus(health, false, 2, 'smoldot-direct');
+
+    // Then
+    expect(line.detail).toBe('Light client is in sync on both chains');
+  });
+
+  it("As a user on the shared-worker light client, the captions are the light client's", () => {
+    // Given
+    const health: LiveVerdict = { text: 'Waiting on Hub', tone: 'warn', slow: ['Hub'] };
+
+    // When
+    const line = describeNetworkStatus(health, false, 4, 'smoldot-shared-worker');
+
+    // Then
+    expect(line.detail).toBe('Hub is short on peers');
+  });
+});
+
+describe('describeNetworkStatus under trusted providers', () => {
+  it('As a user on trusted providers with a good connection, the caption claims no light client', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
+
+    // When
+    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
+
+    // Then
+    expect(line).toEqual({ tone: 'ok', title: 'Your connection is good', detail: 'Served by trusted providers' });
+  });
+
+  it('As a user on trusted providers while the chains connect, the caption speaks of providers, not peers', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Connecting, 2 of 3 ready', tone: 'idle' };
+
+    // When
+    const line = describeNetworkStatus(health, false, 3, 'rpc-gateway');
+
+    // Then
+    expect(line).toEqual({
+      tone: 'idle',
+      title: 'Syncing',
+      detail: 'Reaching trusted providers. This takes a few seconds.',
+    });
+  });
+
+  it('As a user on trusted providers with stalled chains, the caption says they are behind', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Waiting on Hub and Identity', tone: 'warn', slow: ['Hub', 'Identity'] };
+
+    // When
+    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
+
+    // Then
+    expect(line).toEqual({ tone: 'warn', title: 'Connection is unstable', detail: 'Hub and Identity are behind' });
+  });
+
+  it('As a user on trusted providers with one stalled chain, the caption says "is"', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Waiting on Hub', tone: 'warn', slow: ['Hub'] };
+
+    // When
+    const line = describeNetworkStatus(health, false, 4, 'rpc-gateway');
+
+    // Then
+    expect(line.detail).toBe('Hub is behind');
+  });
+
+  it('As a user on trusted providers who went offline, the caption speaks of providers, not peers', () => {
+    // Given
+    const health: LiveVerdict = { text: 'Your connection is good', tone: 'ok' };
+
+    // When
+    const line = describeNetworkStatus(health, true, 4, 'rpc-gateway');
+
+    // Then
+    expect(line).toEqual({
+      tone: 'err',
+      title: 'You are offline',
+      detail: 'Trusted providers are out of reach. Retrying.',
+    });
   });
 });
 

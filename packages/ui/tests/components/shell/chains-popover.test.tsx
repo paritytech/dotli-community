@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { MockInstance } from 'vitest';
 import { flush } from 'solid-js';
-import { setNetwork } from '@dotli/config';
+import { setBackend, setNetwork } from '@dotli/config';
 import type { BlockBar, ChainStatus, TransferState } from '../../../src/network-monitor.js';
 import { ChainsPopover } from '../../../src/components/shell/ChainsPopover.js';
 import { mountRoot } from '../../../src/mount/root.js';
@@ -473,7 +473,7 @@ describe('The network popover island', () => {
       name: 'a good connection, after the product loaded',
       expected: {
         title: 'Your connection is good',
-        detail: 'Light client is in sync on all two chains',
+        detail: 'Light client is in sync on both chains',
         tone: 'ok',
         chains: [
           {
@@ -579,6 +579,24 @@ describe('The network popover island', () => {
     // Then
     expect(byTestId('chains-status-dot').getAttribute('data-tone')).toBe('err');
     expect(byTestId('chains-status').textContent).toBe('You are offlineNo peers on any chain. Retrying.');
+  });
+
+  it('As a user on trusted providers, the caption claims no light client', async () => {
+    // Given
+    setBackend('rpc-gateway');
+    initSettingsStore();
+    cleanups.push(() => {
+      localStorage.clear();
+    });
+    monitor.status = [chain({ latest: 10, bars: bars(8, 3), sinceLast: 500 })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byTestId('chains-status').textContent).toBe('Your connection is goodServed by trusted providers');
   });
 
   it('As a user on a chain with no peers, the count says 0 and is marked as none', async () => {

@@ -6,6 +6,8 @@
 // verdict takes the chains it judges instead of reading the monitor, and that
 // the menu's status line (describeNetworkStatus) is built from it.
 
+import type { Backend } from '@dotli/config';
+
 import type { ChainStatus } from '../../network-monitor.js';
 import type { StatusTone } from '../primitives/StatusDot.js';
 
@@ -108,33 +110,63 @@ function joinNames(names: readonly string[]): string {
   return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
 }
 
+/** "in sync", "in sync on both chains", "in sync on all four chains". */
+function inSync(chainCount: number): string {
+  if (chainCount < 2) {
+    return 'in sync';
+  }
+  if (chainCount === 2) {
+    return 'in sync on both chains';
+  }
+  return `in sync on all ${NUMBER_WORDS[chainCount - 2] ?? String(chainCount)} chains`;
+}
+
+/** The captions per backend: the gateway has no peers and verifies nothing, so it says neither. */
+interface Captions {
+  offline: string;
+  ok: (chainCount: number) => string;
+  slow: (names: readonly string[]) => string;
+  starting: string;
+}
+
+const LIGHT_CLIENT: Captions = {
+  offline: 'No peers on any chain. Retrying.',
+  ok: chainCount => `Light client is ${inSync(chainCount)}`,
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
+  starting: 'Finding peers. This takes a few seconds.',
+};
+
+const GATEWAY: Captions = {
+  offline: 'Trusted providers are out of reach. Retrying.',
+  ok: () => 'Served by trusted providers',
+  slow: names => `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} behind`,
+  starting: 'Reaching trusted providers. This takes a few seconds.',
+};
+
 /**
- * The network menu's status line, from the verdict and the browser's online state.
+ * The network menu's status line, from the verdict, the browser's online
+ * state and the backend serving the chains.
  *
  * Offline wins, as it does for the capsule and the network badge, so the three
  * never disagree: blocks that landed before the connection dropped would
  * otherwise still read as a good connection. Every state carries a caption.
  */
-export function describeNetworkStatus(verdict: LiveVerdict, offline: boolean, chainCount = 0): NetworkStatusLine {
+export function describeNetworkStatus(
+  verdict: LiveVerdict,
+  offline: boolean,
+  chainCount = 0,
+  backend?: Backend,
+): NetworkStatusLine {
+  const captions = backend === 'rpc-gateway' ? GATEWAY : LIGHT_CLIENT;
   if (offline) {
-    return { tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' };
+    return { tone: 'err', title: 'You are offline', detail: captions.offline };
   }
   const { text, tone, slow } = verdict;
   if (tone === 'ok') {
-    const count = NUMBER_WORDS[chainCount - 2] ?? String(chainCount);
-    return {
-      tone,
-      title: text,
-      detail: chainCount < 2 ? 'Light client is in sync' : `Light client is in sync on all ${count} chains`,
-    };
+    return { tone, title: text, detail: captions.ok(chainCount) };
   }
   if (tone === 'warn') {
-    const names = slow ?? [];
-    return {
-      tone,
-      title: UNSETTLED_TITLES[tone],
-      detail: `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
-    };
+    return { tone, title: UNSETTLED_TITLES[tone], detail: captions.slow(slow ?? []) };
   }
-  return { tone, title: UNSETTLED_TITLES[tone], detail: 'Finding peers. This takes a few seconds.' };
+  return { tone, title: UNSETTLED_TITLES[tone], detail: captions.starting };
 }

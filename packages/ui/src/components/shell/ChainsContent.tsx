@@ -260,12 +260,13 @@ export function ChainsContent(): JSX.Element {
   const settings = useStore(settingsStore);
   // The verdict reads from block arrivals, which both backends produce, so a
   // gateway connection reports its health the same way a light client does.
-  // Read three times per render: worked out once per update.
+  // Only the captions follow the backend. Read three times per render: worked out once per update.
   const status = createMemo(() =>
     describeNetworkStatus(
       describeLiveNetwork(network().chains),
       health() === 'offline',
       network().chains.filter(chain => chain.reachable).length,
+      settings()?.backend,
     ),
   );
   /** The network the host runs, once the host has seeded the settings. */
