@@ -135,6 +135,7 @@ let transfer: TransferState = {
 let listeners = new Set<() => void>();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
+let holds = 0;
 
 function notify(): void {
   for (const listener of listeners) {
@@ -306,6 +307,28 @@ export function endNetworkWatch(): void {
   watching = false;
 }
 
+/**
+ * Keep the watch running until the returned release is called. The status
+ * capsule and the network menu each hold it, so one closing does not drop
+ * the subscriptions the other reads. The idle grace starts when the last
+ * hold goes. Releasing twice counts once.
+ */
+export function holdNetworkWatch(): () => void {
+  holds += 1;
+  startNetworkWatch();
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    holds -= 1;
+    if (holds === 0) {
+      stopNetworkWatch();
+    }
+  };
+}
+
 /** Subscribe to any change in the tracked state. Returns an unsubscribe. */
 export function subscribeNetwork(listener: () => void): () => void {
   listeners.add(listener);
@@ -344,6 +367,7 @@ export function getNetworkStatus(): ChainStatus[] {
 /** For tests. Drops all state and listeners. */
 export function resetNetworkMonitor(): void {
   endNetworkWatch();
+  holds = 0;
   chains = new Map();
   peerCounts = new Map();
   phases = new Map();

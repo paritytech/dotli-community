@@ -64,6 +64,12 @@ vi.mock('../../../src/network-monitor.js', () => ({
   stopNetworkWatch: () => {
     monitor.stopNetworkWatch();
   },
+  holdNetworkWatch: () => {
+    monitor.startNetworkWatch();
+    return () => {
+      monitor.stopNetworkWatch();
+    };
+  },
 }));
 
 const NO_TRANSFER: TransferState = {
