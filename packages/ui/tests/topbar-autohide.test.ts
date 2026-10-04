@@ -102,10 +102,10 @@ function surface(open = false): StandInSurface {
   return stand;
 }
 
-async function loadAutoHide(): Promise<typeof TopbarAutohideModule> {
-  // Logged in, as the auth controller records it (state/auth.ts).
+async function loadAutoHide(loggedIn = true): Promise<typeof TopbarAutohideModule> {
+  // As the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import('../src/state/auth.js');
-  setLoggedIn(true);
+  setLoggedIn(loggedIn);
   // The host page has the topbar (initTopBar says so).
   const { setTopbarPresent } = await import('../src/state/topbar.js');
   setTopbarPresent();
@@ -433,25 +433,47 @@ describe('topbar auto-hide layout', () => {
     expect(appFrame().style.transform).toBe('');
   });
 
-  it('As a logged-out user, the bar is pinned and the app frame makes room for it', async () => {
+  it("As a logged-out user, the bar folds into the capsule as anyone else's does, over the full-height app", async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide(false);
+
+    // When
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+  });
+
+  it('As a dApp user, the app takes the full height under the pill before the bar first folds', async () => {
+    // Given: the bar is up and not armed yet (the shield still settling)
+    await loadAutoHide();
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
+  });
+
+  it('As a dotli integrator, pinning the bar keeps it up over the full-height app', async () => {
     // Given
     const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     advance(HIDE_DELAY_MS);
-    expect(isHidden()).toBe(true);
 
     // When
-    const { setLoggedIn } = await import('../src/state/auth.js');
-    setLoggedIn(false);
     pinTopbarVisible();
     flushUi();
     advance(HIDE_DELAY_MS * 2);
 
     // Then
     expect(isHidden()).toBe(false);
-    expect(appFrame().style.top).toBe('56px');
-    expect(appFrame().style.height).toBe('calc(100dvh - 56px)');
+    expect(appFrame().style.top).toBe('0px');
+    expect(appFrame().style.height).toBe('100vh');
   });
 });
 

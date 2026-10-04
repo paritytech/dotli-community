@@ -48,7 +48,6 @@ import {
   setChainsButtonVisible,
   wipeOriginState,
   armTopbarAutoHide,
-  pinTopbarVisible,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
@@ -352,16 +351,14 @@ function parseDotLabel(): string | null {
 // arms the topbar auto-hide only after that point.
 let shieldVerified = false;
 
-// Wire auth-state changes to topbar auto-hide. Login starts the hide timer
-// once the shield is verified, logout pins the topbar visible.
+// A login restarts the hide timer once the shield is verified, so the bar
+// folds a moment after sign-in closes. Signed out, the bar folds all the
+// same, as the board's does: sign-in stays one reveal away.
 function bindTopbarAutoHide(): void {
   window.addEventListener('dotli:authenticated', () => {
     if (shieldVerified) {
       armTopbarAutoHide();
     }
-  });
-  window.addEventListener('dotli:logged-out', () => {
-    pinTopbarVisible();
   });
 }
 

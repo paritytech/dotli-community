@@ -3,8 +3,8 @@
 
 // dot.li top bar auto-hide
 //
-// The bar folds into its status capsule a few seconds into a verified
-// desktop session, never at a phone's width (PHONE_QUERY), where it is the
+// The bar folds into its status capsule a few seconds after the site's
+// shield settles on desktop, signed in or not, never at a phone's width (PHONE_QUERY), where it is the
 // phone header, and returns on pointer hover, on keyboard focus, and on the
 // reveal shortcut, so home, settings, permissions and login never become
 // mouse-only.
@@ -13,14 +13,14 @@
 // is the topbar store's: the bar's script (apps/host/src/components/
 // Topbar.astro) folds it and sets its shortcut from `visible` and
 // `autoHide`, and the TopbarReveal island renders the reveal control and the
-// hover target over the capsule. The bar registers its element (registerTopbarElement) and the
-// popovers theirs (state/topbar-surfaces.ts), for the focus and open checks.
+// hover target over the capsule. The bar registers its element
+// (registerTopbarElement) and the popovers theirs (state/topbar-surfaces.ts),
+// for the focus and open checks.
 //
 import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';
 import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
 import { isPhoneViewport, PHONE_QUERY } from './phone-viewport.js';
-import { getLoggedIn } from './state/auth.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
@@ -35,16 +35,22 @@ export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
-let appFrameTracking = false;
 /** The bar (the host page's `#topbar`), while bound. */
 let bar: HTMLElement | undefined;
 /** The reveal control (the TopbarReveal island's), while mounted. */
 let revealButton: HTMLElement | undefined;
 
-/** Register the bar's element; returns the unregister. */
+/**
+ * Register the bar's element; returns the unregister. From here on the bar
+ * lays the frame out for the viewport it is in.
+ */
 export function registerTopbarElement(el: HTMLElement): () => void {
   bar = el;
+  syncFrameLayout();
+  const phone = window.matchMedia(PHONE_QUERY);
+  phone.addEventListener('change', syncFrameLayout);
   return () => {
+    phone.removeEventListener('change', syncFrameLayout);
     if (bar === el) {
       bar = undefined;
     }
@@ -62,28 +68,18 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
 }
 
 /**
- * Pinned, or as the phone header, the bar keeps the frame below it. Once the
- * bar has folded into the capsule for the first time, the frame takes the
- * full height and the pill floats over it from then on, so the product never
- * relayouts on a reveal.
+ * On desktop the pill and the capsule float over a full-height frame, as the
+ * board draws them, so the product never relayouts on a fold or a reveal.
+ * The phone header sits in the page flow, with the frame below it.
  */
 function syncFrameLayout(): void {
-  setTopbarLayout({ offset: !appFrameTracking || isPhoneViewport() });
+  setTopbarLayout({ offset: isPhoneViewport() });
 }
 
 function setVisible(next: boolean): void {
   // The hidden bar keeps its tab stops on purpose: tabbing into it is what
   // reveals it again for keyboard users.
-  if (!next) {
-    appFrameTracking = true;
-  }
-  // A hover or focus on the bar that is already up changes nothing, so the
-  // frame is not re-laid out.
-  const changed = getTopbarState().visible !== next;
   setTopbarVisible(next);
-  if (appFrameTracking && changed) {
-    syncFrameLayout();
-  }
 }
 
 function cancelHide(): void {
@@ -111,7 +107,7 @@ function isBusy(): boolean {
 }
 
 function canAutoHide(): boolean {
-  return getTopbarState().autoHide && !isMobileDevice() && !isPhoneViewport() && getLoggedIn();
+  return getTopbarState().autoHide && !isMobileDevice() && !isPhoneViewport();
 }
 
 /** Hide the bar after the delay, unless it is pinned or in use then. */
@@ -152,9 +148,6 @@ export function revealTopbarAndFocus(): void {
  * after the delay, floating over the full-height frame.
  */
 function onViewportChange(): void {
-  if (appFrameTracking) {
-    syncFrameLayout();
-  }
   if (isPhoneViewport()) {
     revealTopbar();
   } else {
@@ -252,7 +245,7 @@ export function armTopbarAutoHide(): void {
   scheduleTopbarHide();
 }
 
-/** Pin the bar on screen and stop auto-hiding, e.g. after logout. */
+/** Pin the bar on screen and stop auto-hiding. */
 export function pinTopbarVisible(): void {
   setTopbarAutoHide(false);
   cancelHide();
@@ -261,10 +254,6 @@ export function pinTopbarVisible(): void {
   if (focusoutTimer !== null) {
     clearTimeout(focusoutTimer);
     focusoutTimer = null;
-  }
-  if (appFrameTracking) {
-    appFrameTracking = false;
-    syncFrameLayout();
   }
   setVisible(true);
 }

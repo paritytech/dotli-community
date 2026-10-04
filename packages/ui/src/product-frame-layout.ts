@@ -5,7 +5,7 @@
  * The one writer of the product iframe's inline geometry.
  *
  * Several parties shape the frame: the bridge places each newly rendered frame,
- * the topbar auto-hide says whether the bar is pinned, the chat panel narrows it, and
+ * the topbar says whether the frame starts below it, the chat panel narrows it, and
  * the TrUAPI debug dock and the sandbox checker reserve an edge for their
  * panels. They each report their part here, and every change recomputes the
  * whole box from `productIframeBox()` and writes all of it, so a product reload
@@ -18,8 +18,9 @@ import { getTopbarState } from './state/topbar.js';
 
 export interface TopbarLayout {
   /**
-   * The frame starts below the bar (pinned). Otherwise it takes the full
-   * height and the bar floats over it, as the pill and the capsule do.
+   * The frame starts below the bar (the phone header). Otherwise it takes
+   * the full height and the bar floats over it, as the pill and the capsule
+   * do.
    */
   offset: boolean;
 }
@@ -99,7 +100,7 @@ export function currentProductFrame(): HTMLIFrameElement | null {
   return frame?.isConnected === true ? frame : null;
 }
 
-/** Report whether the bar is pinned, from the topbar auto-hide. */
+/** Report whether the frame starts below the bar, from the topbar auto-hide. */
 export function setTopbarLayout(layout: TopbarLayout): void {
   state.topbarOffset = layout.offset;
   write();
