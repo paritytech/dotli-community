@@ -62,7 +62,8 @@ function TerminalIcon(): JSX.Element {
 /**
  * The Diagnostics block of the settings popover, read when it mounts (each
  * time the popover opens): the base rows (some click-to-copy), the light
- * client and package versions, "Share diagnostic", which opens a GitHub
+ * client and package versions behind a Packages disclosure (closed at each
+ * opening), "Share diagnostic", which opens a GitHub
  * issue prefilled with the report, and the debug-mode switch, which reloads
  * the tab with `?debug=true` or `?debug=off`.
  *

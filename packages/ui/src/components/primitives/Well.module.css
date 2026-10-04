@@ -36,7 +36,7 @@
   font-size: var(--fs-body);
 }
 .row + .row,
-.kv + .kv {
+.kv:not([data-dense]) + .kv:not([data-dense]) {
   border-top: 1px solid var(--chrome-line);
 }
 .rowLabel {
@@ -53,6 +53,7 @@
   gap: var(--sp-3);
   min-height: var(--h-row-sm);
   font-size: var(--fs-small);
+  cursor: default;
 }
 .kv[data-dense] {
   min-height: var(--h-row-xs);

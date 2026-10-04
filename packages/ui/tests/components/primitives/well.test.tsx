@@ -31,7 +31,7 @@ describe('Well and its parts', () => {
     expect(byTestId('well').contains(byTestId('row'))).toBe(true);
   });
 
-  it('As a user, I click a copyable key-value row', () => {
+  it('As a user, I click a copyable key-value row and its handler runs', () => {
     // Given
     const onClick = vi.fn();
     renderComponent(() => (

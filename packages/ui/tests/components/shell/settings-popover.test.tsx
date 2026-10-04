@@ -795,7 +795,19 @@ describe('The settings popover island', () => {
     // Then
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     expect(byId('mode-packages').hidden).toBe(true);
+
+    // When: opened again, then the popover closed and reopened.
+    toggle.click();
+    await settle();
+    byId('mode-popover-backdrop').click();
+    await settle();
+    await openPopover();
+
+    // Then
+    expect(byTestId('mode-packages-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
   });
+
   it('As a dotli user on trusted providers, the AssetHub row shows the node the client is connected to, in the popover and the shared report', async () => {
     // Given
     setBackend('rpc-gateway');
