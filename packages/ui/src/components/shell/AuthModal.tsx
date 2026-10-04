@@ -11,6 +11,7 @@ import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalV
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
 import { Button, ButtonLink } from '../primitives/Button.js';
+import { IconTile } from '../primitives/IconTile.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { Surface } from '../primitives/Surface.js';
@@ -96,10 +97,9 @@ function QrCode(props: { qr: DrawnQr; link: boolean }): JSX.Element {
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
   return (
     <div class={s['errorView']}>
-      <div class={s['pendingIcon']}>
+      <IconTile class={s['pendingIcon']}>
         {/* Clock glyph for the "account still being set up" state. */}
         <svg
-          class={s['pendingGlyph']}
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -111,7 +111,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
           <circle cx="12" cy="12" r="9" />
           <path d="M12 7v5l3 2" />
         </svg>
-      </div>
+      </IconTile>
       <div class={s['pendingTitle']}>{props.view.title}</div>
       <div class={s['pendingSubtitle']}>{props.view.subtitle}</div>
       <Show when={(props.view.detail ?? '').length > 0}>

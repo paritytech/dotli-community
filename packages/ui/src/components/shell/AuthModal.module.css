@@ -227,23 +227,9 @@
   padding: 0;
   text-align: center;
 }
-/* The modal board's icon tile. */
+/* IconTile, 4 px further from the title than the view's gap. */
 .pending-icon {
-  display: grid;
-  place-items: center;
-  box-sizing: border-box;
-  width: var(--h-row);
-  height: var(--h-row);
   margin: 0 0 var(--sp-1);
-  padding: 0;
-  border-radius: var(--r-md);
-  background: var(--chrome-fill-strong);
-  box-shadow: var(--chrome-shadow-raised);
-  color: var(--chrome-text);
-}
-.pending-glyph {
-  width: var(--sp-6);
-  height: var(--sp-6);
 }
 .pending-title {
   margin: 0;

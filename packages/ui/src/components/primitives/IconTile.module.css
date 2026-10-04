@@ -1,0 +1,28 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board's .modal-icon. The base rule is wrapped in :where() so a
+   consumer's class (a margin, hiding it in a sheet) wins whatever order the
+   stylesheets load in. */
+
+:where(.tile) {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--h-row);
+  height: var(--h-row);
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-md);
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+/* The board's 20 px glyph at a 1.75 stroke, whatever size and stroke the
+   markup was drawn at (the app's prompt icons are 24 px at 2). */
+.tile > svg {
+  width: var(--sp-5);
+  height: var(--sp-5);
+  stroke-width: 1.75;
+}
