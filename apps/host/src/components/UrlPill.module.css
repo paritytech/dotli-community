@@ -77,6 +77,10 @@
   .pill {
     position: relative;
   }
+  /* The board's phone address keeps the name's head and ellipsizes its end. */
+  .text {
+    direction: ltr;
+  }
   .pill:has([aria-expanded='true']) {
     background: var(--chrome-well-strong);
   }
