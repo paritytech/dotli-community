@@ -2,6 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import {
+  observeRuntime,
+  wireFrames,
+  type DecodedWireFrame,
+  type Probe,
+} from '../functional/helpers/polkavm-qualification.js';
 
 interface ProductSmoke {
   label: string;
@@ -137,6 +143,51 @@ async function cancelSignIn(page: Page, canvas: Locator): Promise<void> {
     .toBeGreaterThan(framesAfterResponse);
 }
 
+async function assertHandshake(canvas: Locator, workerId: number, wireStart: number): Promise<void> {
+  const observedFrames = async (): Promise<DecodedWireFrame[]> => {
+    const worker = await canvas.evaluate(
+      (element, id) =>
+        element.ownerDocument.defaultView?.__polkavmQualification.workers.find(worker => worker.id === id),
+      workerId,
+    );
+    if (worker === undefined || worker.terminated) {
+      throw new Error('Handshake runtime worker disappeared');
+    }
+    return wireFrames([{ ...worker, wire: worker.wire.slice(wireStart) }]);
+  };
+  await expect
+    .poll(async () => (await observedFrames()).some(frame => frame.direction === 'request'), {
+      timeout: 30_000,
+      message: 'Run handshake must emit a real guest request',
+    })
+    .toBe(true);
+  const request = (await observedFrames()).find(frame => frame.direction === 'request');
+  expect(request, 'Malformed handshake request: expected trait 1, method 0, type 0, payload [0,3]').toMatchObject({
+    trait: 1,
+    method: 0,
+    type: 0,
+    payload: [0, 3],
+  });
+  await expect
+    .poll(async () => (await observedFrames()).some(frame => frame.direction === 'response'), {
+      timeout: 30_000,
+      message: 'Canonical handshake must receive a real host response',
+    })
+    .toBe(true);
+  const response = (await observedFrames()).find(frame => frame.direction === 'response');
+  expect(
+    response,
+    'Invalid handshake response: expected correlated trait 1, method 0, type 1, Result::Ok V1 [0,0], not a protocol error',
+  ).toEqual({
+    direction: 'response',
+    id: request?.id,
+    trait: 1,
+    method: 0,
+    type: 1,
+    payload: [0, 0],
+  });
+}
+
 async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<string, unknown>> {
   const productUrl = `https://${product.label}.${root}/`;
   const iframeSelector = `iframe[src*="${product.label}.app.${root}"]`;
@@ -202,11 +253,31 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
     await cancelSignIn(page, canvas);
   }
 
+  // Readiness alone precedes the first rendered UI and the host loader dismissal.
+  await expect.poll(() => counter(canvas, 'data-polkavm-frames'), { timeout: 30_000 }).toBeGreaterThan(0);
+  await expect(page.locator('#app-loading')).toBeHidden({ timeout: 30_000 });
+  let handshakeWorker: Probe['workers'][number] | undefined;
+  if (product.interaction === 'host-frame-handshake') {
+    await expect
+      .poll(
+        () =>
+          canvas.evaluate(
+            element => element.ownerDocument.defaultView?.__polkavmQualification.workers.at(-1)?.starts.length,
+          ),
+        { timeout: 30_000, message: 'Passive observer must capture the executed guest program hash' },
+      )
+      .toBe(1);
+    handshakeWorker = await canvas.evaluate(element =>
+      element.ownerDocument.defaultView?.__polkavmQualification.workers.at(-1),
+    );
+    if (handshakeWorker === undefined) {
+      throw new Error('Handshake runtime worker was not observed');
+    }
+  }
+
   const framesBefore = await counter(canvas, 'data-polkavm-frames');
   const updatesBefore = await counter(canvas, 'data-polkavm-updates');
   const audioBefore = await counter(canvas, 'data-polkavm-audio-samples');
-  const hostFrameRequestsBefore = await counter(canvas, 'data-polkavm-host-frame-requests');
-  const hostFrameResponsesBefore = await counter(canvas, 'data-polkavm-host-frame-responses');
 
   await canvas.click({
     position: product.clickPosition ?? { x: 160, y: 100 },
@@ -252,32 +323,10 @@ async function smokeProduct(page: Page, product: ProductSmoke): Promise<Record<s
       .toBeGreaterThan(motionSamplesBefore);
     await expect(canvas).toHaveAttribute('data-polkavm-motion-source', 'pointer');
   } else if (product.interaction === 'host-frame-handshake') {
-    // The product draws its own UI, so a click delivered before its first
-    // draw lands on nothing and asks the host for no frame at all. Waiting
-    // longer cannot recover a click that already missed, so re-issue the
-    // gesture until the bridge answers.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const requests = await counter(canvas, 'data-polkavm-host-frame-requests');
-      if (requests > hostFrameRequestsBefore) {
-        break;
-      }
-      if (attempt > 0) {
-        await canvas.click({
-          position: product.clickPosition ?? { x: 160, y: 100 },
-        });
-      }
-      await page.waitForTimeout(5_000);
+    if (handshakeWorker === undefined) {
+      throw new Error('Handshake runtime worker was not observed before input');
     }
-    await expect
-      .poll(() => counter(canvas, 'data-polkavm-host-frame-requests'), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(hostFrameRequestsBefore);
-    await expect
-      .poll(() => counter(canvas, 'data-polkavm-host-frame-responses'), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThan(hostFrameResponsesBefore);
+    await assertHandshake(canvas, handshakeWorker.id, handshakeWorker.wire.length);
   } else if (product.interaction === 'host-sign-in') {
     // A fresh prompt proves the guest handled input after cancellation.
     await cancelSignIn(page, canvas);
@@ -344,6 +393,9 @@ for (const product of products) {
     });
     const page = await context.newPage();
     try {
+      if (product.interaction === 'host-frame-handshake') {
+        await observeRuntime(page);
+      }
       const metrics = await smokeProduct(page, product);
       await testInfo.attach(`${product.label}-smoke.json`, {
         body: Buffer.from(JSON.stringify(metrics, null, 2)),
@@ -360,6 +412,37 @@ for (const product of products) {
       }
       throw error;
     } finally {
+      if (product.interaction === 'host-frame-handshake') {
+        try {
+          const frames = await Promise.all(
+            page.frames().map(async frame => {
+              const state = await frame.evaluate(() => ({
+                workers: (window as Partial<Window>).__polkavmQualification?.workers ?? [],
+                canvas: Object.fromEntries(
+                  Object.entries(document.querySelector<HTMLCanvasElement>('#dotli-polkavm-canvas')?.dataset ?? {}),
+                ),
+              }));
+              return {
+                url: frame.url(),
+                ...state,
+                decodedWire: state.workers.map(worker => {
+                  try {
+                    return { workerId: worker.id, frames: wireFrames([worker]) };
+                  } catch (error) {
+                    return { workerId: worker.id, decodeError: String(error) };
+                  }
+                }),
+              };
+            }),
+          );
+          await testInfo.attach(`${product.label}-wire-provenance.json`, {
+            body: JSON.stringify({ productUrl: page.url(), frames }, null, 2),
+            contentType: 'application/json',
+          });
+        } catch (evidenceError) {
+          console.warn('Could not capture handshake wire/program provenance:', evidenceError);
+        }
+      }
       await context.close();
     }
   });
