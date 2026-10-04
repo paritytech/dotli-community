@@ -29,6 +29,8 @@
     "unlink:truapi": "node scripts/unlink-truapi-local.ts",
     "sync:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts",
     "check:polkavm-runtime": "node scripts/sync-polkavm-runtime-assets.ts --check",
+    "prepare:polkavm-qualification": "node scripts/prepare-polkavm-qualification.ts",
+    "test:polkavm-qualification": "npm run check:polkavm-runtime && npm run --workspace apps/host test:polkavm-qualification",
     "clean": "find . -type d \\( -name node_modules -o -name dist \\) -prune -exec rm -rf {} +",
     "prepare": "husky"
   },

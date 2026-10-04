@@ -791,7 +791,7 @@
       if (this.stopped) {
         return;
       }
-      this.timeMs = timeMs;
+      this.timeMs = Math.max(this.timeMs ?? 0, timeMs);
       this.updateAfterMs = null;
       this.gpuSubmits = 0;
       this.hostFrameRequests = 0;
@@ -2174,7 +2174,7 @@
             address = this.#readU64(this.#u32(a2 + index * 16n));
             length = this.#readU64(this.#u32(a2 + index * 16n + 8n));
           } catch {
-            this.#setReg(7, errno(EFAULT));
+            this.#setReg(7, total || errno(EFAULT));
             return false;
           }
           const result =
@@ -2182,10 +2182,11 @@
               ? this.#readFile(a1, address, length)
               : this.#writeFile(a1, address, length);
           if (BigInt.asIntN(64, result) < 0n) {
-            this.#setReg(7, result);
+            this.#setReg(7, total || result);
             return false;
           }
-          total += length;
+          total += result;
+          if (result < length) break;
         }
         this.#setReg(7, total);
       } else if (syscall === SYS_EXIT) {
@@ -3027,6 +3028,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
     return program;
   }
 
+  async function instantiateRuntime(runtime, imports) {
+    const result = await WebAssembly.instantiate(runtime, imports);
+    return (result instanceof WebAssembly.Instance ? result : result.instance).exports;
+  }
+
   async function start(message) {
     if (disposed) {
       throw new Error("PolkaVM browser worker is stopped");
@@ -3077,9 +3083,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         },
       },
     };
-    pvm = (
-      await WebAssembly.instantiate(message.runtime, runtimeImports)
-    ).instance.exports;
+    pvm = await instantiateRuntime(message.runtime, runtimeImports);
     if (disposed) {
       pvm.polkavm_browser_reset?.();
       return;
@@ -3143,9 +3147,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
             `PolkaVM single-module compilation failed; compiling bounded code parts: ${error instanceof Error ? error.message : String(error)}`,
           );
           compilerStage = "compiler-translating-parts";
-          pvm = (
-            await WebAssembly.instantiate(message.runtime, runtimeImports)
-          ).instance.exports;
+          pvm = await instantiateRuntime(message.runtime, runtimeImports);
           if (disposed) {
             pvm.polkavm_browser_reset?.();
             return;
@@ -3235,9 +3237,7 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
         );
       }
       if (pvm === null) {
-        pvm = (
-          await WebAssembly.instantiate(message.runtime, runtimeImports)
-        ).instance.exports;
+        pvm = await instantiateRuntime(message.runtime, runtimeImports);
         if (disposed) {
           pvm.polkavm_browser_reset?.();
           return;
@@ -3262,7 +3262,11 @@ globalThis.createPolkaVmRuntime = (endpoint) => {
       postMessage({ type: "startup", stage: "interpreter-program-staged" });
       postMessage({ type: "startup", stage: "interpreter-launch-begin" });
       check(
-        begin(MAX_GAS_PER_UPDATE, message.audioEnabled ? 1 : 0, presentation),
+        begin(
+          BigInt(MAX_GAS_PER_UPDATE),
+          message.audioEnabled ? 1 : 0,
+          presentation,
+        ),
         "begin PolkaVM browser launch",
       );
       postMessage({ type: "startup", stage: "interpreter-launch-begun" });
