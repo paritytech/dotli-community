@@ -348,6 +348,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(card).toBeVisible();
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'info');
 
     // When
     await card.getByTestId('notif-card-close').click();
@@ -355,6 +356,23 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(card).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
+  });
+
+  test('As a desktop user, a part of the app that fails to load offers a reload in an error toast', async ({
+    page,
+  }) => {
+    // Given
+    await page.goto(LANDING_URL);
+
+    // When
+    await page.evaluate(() => window.dispatchEvent(new Event('vite:preloadError')));
+
+    // Then
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Asset failed to load' }),
+    });
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'err');
+    await expect(card.getByTestId('notif-action')).toHaveText('Reload');
   });
 
   test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {
