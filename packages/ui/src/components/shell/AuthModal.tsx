@@ -16,6 +16,7 @@ import { Spinner } from '../primitives/Spinner.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { Surface } from '../primitives/Surface.js';
 import { Well } from '../primitives/Well.js';
+import { SheetHead } from '../sheet/SheetHead.js';
 import s from './AuthModal.module.css';
 import { createPopover } from './create-popover.js';
 
@@ -144,7 +145,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  *
  * The glass surface drops from the pill's right edge like the topbar's
  * popovers, over a light scrim, and at 560 px and below it is a bottom sheet
- * over the dark scrim. The landing page has no pill, so there it takes the
+ * over the dark scrim. Opened as one (PHONE_QUERY as it opens, createPopover's
+ * `sheet`), it is led by the sheets' head (SheetHead): the grabber, "Sign in"
+ * and a close button, and a swipe down on it closes, as Cancel does. The landing page has no pill, so there it takes the
  * popovers' fallback place in the top right corner. The body follows the
  * store's view: a spinner, the pairing QR code on its tile with the Polkadot
  * badge, login progress, or an error with the friendly copy and, when it can
@@ -169,6 +172,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  */
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
+  let surface: HTMLElement | undefined;
   const state = useStore(authModalStore);
   // A phone's layout once hydrated: the build-time render, which has no
   // device, is the desktop one.
@@ -244,6 +248,8 @@ export function AuthModal(): JSX.Element {
 
   const dialog = createPopover({
     mode: 'dialog',
+    // For the sheet's head, which the phone layout's sheet has.
+    sheet: true,
     trigger: getAuthModalTrigger,
     surface: () => backdrop,
     closeOnBlockingModal: false,
@@ -319,68 +325,87 @@ export function AuthModal(): JSX.Element {
       aria-labelledby="auth-modal-title"
       tabindex="-1"
     >
-      <Surface class={s['surface']}>
-        <div class={s['head']}>
-          <h2 class={s['title']} id="auth-modal-title">
-            <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
-              {label => (
-                <>
-                  {label()}
-                  <span class={s['titleRest']}> wants you to sign in</span>
-                </>
-              )}
-            </Show>
-          </h2>
-          <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
-            {state().reason ?? ''}
-          </p>
-          <p class={s['hint']} id="auth-modal-hint">
-            {hint()}
-          </p>
-        </div>
-        <div
-          class={[s['qr'], !mobile() && s['qrScan']]}
-          id="auth-modal-qr"
-          style={{ '--qr-size': `${String(QR_SIZE)}px` }}
-        >
-          <Switch>
-            <Match when={view()?.kind === 'authenticating'}>
-              <div class={s['progress']}>
-                <Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />
-                <p class={s['progressText']}>Logging in...</p>
-              </div>
-            </Match>
-            <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
-            <Match when={view() !== null}>
-              <Show when={qr()} fallback={<Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />}>
-                {drawnQr => (
-                  <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
-                    <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />
-                  </Show>
+      <Surface
+        ref={el => {
+          surface = el;
+        }}
+        class={s['surface']}
+      >
+        <Show when={dialog.sheet()}>
+          <SheetHead
+            title="Sign in"
+            surface={() => surface}
+            onDismiss={closeAuthModal}
+            closeLabel="Close"
+            class={s['sheetHead']}
+            testId="auth-modal-sheet-head"
+            titleTestId="auth-modal-sheet-title"
+            closeTestId="auth-modal-sheet-close"
+          />
+        </Show>
+        <div class={s['body']}>
+          <div class={s['head']}>
+            <h2 class={s['title']} id="auth-modal-title">
+              <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
+                {label => (
+                  <>
+                    {label()}
+                    <span class={s['titleRest']}> wants you to sign in</span>
+                  </>
                 )}
               </Show>
-            </Match>
-          </Switch>
+            </h2>
+            <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
+              {state().reason ?? ''}
+            </p>
+            <p class={s['hint']} id="auth-modal-hint">
+              {hint()}
+            </p>
+          </div>
+          <div
+            class={[s['qr'], !mobile() && s['qrScan']]}
+            id="auth-modal-qr"
+            style={{ '--qr-size': `${String(QR_SIZE)}px` }}
+          >
+            <Switch>
+              <Match when={view()?.kind === 'authenticating'}>
+                <div class={s['progress']}>
+                  <Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />
+                  <p class={s['progressText']}>Logging in...</p>
+                </div>
+              </Match>
+              <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
+              <Match when={view() !== null}>
+                <Show when={qr()} fallback={<Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />}>
+                  {drawnQr => (
+                    <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
+                      <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />
+                    </Show>
+                  )}
+                </Show>
+              </Match>
+            </Switch>
+          </div>
+          <a
+            class={s['link']}
+            id="auth-modal-get-app"
+            href={POLKADOT_MOBILE_DOWNLOAD_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            hidden={getAppHidden()}
+          >
+            Don't have the app? Get Polkadot Mobile
+          </a>
+          <Button
+            id="auth-modal-close"
+            block
+            onClick={() => {
+              closeAuthModal();
+            }}
+          >
+            Cancel
+          </Button>
         </div>
-        <a
-          class={s['link']}
-          id="auth-modal-get-app"
-          href={POLKADOT_MOBILE_DOWNLOAD_URL}
-          target="_blank"
-          rel="noopener noreferrer"
-          hidden={getAppHidden()}
-        >
-          Don't have the app? Get Polkadot Mobile
-        </a>
-        <Button
-          id="auth-modal-close"
-          block
-          onClick={() => {
-            closeAuthModal();
-          }}
-        >
-          Cancel
-        </Button>
       </Surface>
     </div>
   );

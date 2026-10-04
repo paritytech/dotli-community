@@ -23,12 +23,16 @@ export function Surface(props: {
   label?: string;
   class?: string | undefined;
   testId?: string;
+  ref?: (el: HTMLElement) => void;
   children: JSX.Element;
 }): JSX.Element {
   const sheet = createMemo(() => props.sheet === true);
   return (
     <InSheet value={sheet}>
       <section
+        ref={el => {
+          props.ref?.(el);
+        }}
         class={[s['surface'], props.class]}
         aria-label={props.label}
         data-width={props.width ?? 'md'}

@@ -68,6 +68,17 @@
   }
 }
 
+/* The sheet's head (SheetHead) leads the phone layout only. A sheet's
+   opening that widens past it (a phone turned) drops it. */
+.surface .sheet-head {
+  display: none;
+}
+/* Its parts sit in the surface on wide screens, and scroll under the head in
+   the sheet. */
+.body {
+  display: contents;
+}
+
 /* Not SurfaceHead: that head is a row with an aside, this one stacks the
    reason and the hint under the title. */
 .head {
@@ -262,8 +273,9 @@
 }
 
 /* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
-   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap, the
-   --dur-morph slide and the --dur scrim fade): keep the two in step. */
+   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap, the head
+   over the body that scrolls, the --dur-morph slide and the --dur scrim
+   fade): keep the two in step. */
 @media (max-width: 560px) {
   /* The sheet sits inside the backdrop, so the scrim fades its colour, not
      its opacity, and stays displayed (catching a tap's trailing click) until
@@ -292,7 +304,9 @@
     width: 100%;
     max-width: 100%;
     max-height: 85dvh;
-    padding: var(--sp-6) var(--sp-4) calc(var(--sp-6) + var(--safe-bottom));
+    overflow: hidden;
+    gap: 0;
+    padding: 0;
     border-radius: var(--r-xl) var(--r-xl) 0 0;
     box-shadow: var(--chrome-shadow-sheet);
     opacity: 1;
@@ -308,6 +322,23 @@
       opacity: 1;
       transform: translateY(100%);
     }
+  }
+  /* A dragged sheet follows the finger without easing. */
+  .surface[data-dragging] {
+    transition: none;
+  }
+  .surface .sheet-head {
+    display: grid;
+  }
+  /* The board's .sheet-scroll around a sheet's .popover.is-sheet. */
+  .body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: var(--sp-3);
+    min-height: 0;
+    overflow: auto;
+    padding: var(--sp-1) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
   }
 }
 

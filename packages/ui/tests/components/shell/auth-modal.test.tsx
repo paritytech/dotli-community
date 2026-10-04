@@ -11,6 +11,7 @@ import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 import {
   byId,
   coordinator,
@@ -238,14 +239,17 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
   expect(tags(backdrop)).toEqual(['SECTION']);
+  // A wide viewport's: no sheet head, the parts in the body.
   const surface = nth(backdrop.children, 0);
-  expect(Array.from(surface.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+  expect(tags(surface)).toEqual(['DIV']);
+  const body = nth(surface.children, 0);
+  expect(Array.from(body.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
     'DIV#',
     'DIV#auth-modal-qr',
     'A#auth-modal-get-app',
     'BUTTON#auth-modal-close',
   ]);
-  const head = nth(surface.children, 0);
+  const head = nth(body.children, 0);
   expect(Array.from(head.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
     'H2#auth-modal-title',
     'P#auth-modal-reason',
@@ -1052,6 +1056,40 @@ describe('AuthModal on a phone', () => {
       getAppHidden: false,
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
+  });
+
+  it('As a phone user, the sign-in sheet is headed Sign in with a close button, which closes it and cancels the login', async () => {
+    // Given
+    device.mobile = true;
+    stubPhoneViewport(true);
+    try {
+      const backdrop = await renderModal();
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      await authState(pairing());
+
+      // Then: the head leads the sheet, above the body as it was.
+      const surface = nth(backdrop.children, 0);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      const title = byTestId('auth-modal-sheet-title', head);
+      expect(title.tagName).toBe('H2');
+      expect(title.textContent).toBe('Sign in');
+      expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+
+      // When
+      const close = byTestId('auth-modal-sheet-close', head);
+      expect(close.getAttribute('aria-label')).toBe('Close');
+      close.click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('As a keyboard user on a phone, Show QR instead keeps focus in the sign-in while the button goes away', async () => {
