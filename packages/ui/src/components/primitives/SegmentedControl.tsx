@@ -25,8 +25,40 @@ export interface SegmentedControlProps<V extends string> {
   testId?: string;
 }
 
-/** One choice out of a few, as pressed buttons in a sunken track. */
+/** Where each key moves the focus from option `index` of `count`. */
+const FOCUS_KEYS: Readonly<Record<string, (index: number, count: number) => number>> = {
+  ArrowRight: (index, count) => (index + 1) % count,
+  ArrowDown: (index, count) => (index + 1) % count,
+  ArrowLeft: (index, count) => (index - 1 + count) % count,
+  ArrowUp: (index, count) => (index - 1 + count) % count,
+  Home: () => 0,
+  End: (_index, count) => count - 1,
+};
+
+/**
+ * One choice out of a few, as pressed buttons in a sunken track. It is one
+ * Tab stop, on the pressed option (the first while none is): the arrow keys,
+ * Home and End move the focus between the options without picking, and a
+ * click, Enter or Space picks the focused one.
+ */
 export function SegmentedControl<V extends string>(props: SegmentedControlProps<V>): JSX.Element {
+  const tabStop = (): number =>
+    Math.max(
+      props.options.findIndex(option => option.value === props.value),
+      0,
+    );
+
+  const onKeyDown = (e: KeyboardEvent): void => {
+    const move = FOCUS_KEYS[e.key];
+    const buttons = Array.from((e.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>(':scope > button'));
+    const index = buttons.indexOf(e.target as HTMLButtonElement);
+    if (move === undefined || index < 0) {
+      return;
+    }
+    e.preventDefault();
+    buttons[move(index, buttons.length)]?.focus();
+  };
+
   return (
     <div
       role="group"
@@ -34,13 +66,15 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       class={[s['seg'], props.class]}
       data-layout={props.layout ?? 'inline'}
       data-testid={props.testId}
+      onKeyDown={onKeyDown}
     >
       <For each={props.options}>
-        {option => (
+        {(option, index) => (
           <button
             type="button"
             class={s['option']}
             aria-pressed={option.value === props.value ? 'true' : 'false'}
+            tabindex={index() === tabStop() ? 0 : -1}
             onClick={() => {
               if (option.value !== props.value) {
                 props.onChange(option.value);
