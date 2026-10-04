@@ -362,4 +362,21 @@ describe('toast stack', () => {
     // Then
     expect(toastsStore.get().expanded).toBe(false);
   });
+
+  it("As a dotli user, pressing a toast's action in a pile runs it once and leaves the pile as it was", async () => {
+    // Given
+    const onClick = vi.fn();
+    pushToast(input('A'));
+    pushToast(input('B', { action: { label: 'Reload', onClick } }));
+    await mountStack();
+
+    // When
+    fireEvent.click(byTestId('notif-action', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(toastsStore.get().expanded).toBe(false);
+    expect(toastsStore.get().items.map(t => t.leaving)).toEqual([false, false]);
+  });
 });

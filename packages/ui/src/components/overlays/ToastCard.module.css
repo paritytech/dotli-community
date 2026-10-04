@@ -1,65 +1,83 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Toasts sit on the inverse surface: light on the dark theme and dark on the
-   light theme. Muted text on it is --inverse-fg mixed with transparency. */
+/* The board's .toast: dark glass in both page themes, the icon tile tinted
+   by the toast's tone. */
 
 .card {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--sp-3);
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
-  padding: 8px;
-  border-radius: 10px;
-  background: var(--inverse-bg);
-  box-shadow: 0 2px 12px var(--shadow);
-  font-family: system-ui, sans-serif;
+  padding: var(--sp-3);
+  border-radius: var(--r-lg);
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
 }
 
+/* Piled in one cell, each older card 8 px higher, 4% smaller and 5% darker. */
 .stacked {
   grid-area: 1 / 1;
   align-self: end;
-  transform: translateY(calc(var(--i, 0) * -8px)) scale(calc(1 - var(--i, 0) * 0.04));
+  transform: translateY(calc(var(--i, 0) * -1 * var(--sp-2))) scale(calc(1 - var(--i, 0) * 0.04));
   filter: brightness(calc(1 - var(--i, 0) * 0.05));
   transition:
-    transform 0.3s ease,
-    filter 0.3s ease;
+    transform var(--dur) ease,
+    filter var(--dur) ease;
 }
 
 .expanded {
   opacity: 1;
-  transition: opacity 0.2s ease;
+  transition: opacity var(--dur) ease;
 }
 
 .card[data-hidden] {
   display: none;
 }
 
-/* The tile stays near-black in both themes: every toast icon strokes in white,
-   and callers may set their own tile color inline. */
 .icon {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
+  --tone: var(--chrome-info);
+  display: grid;
+  flex: none;
+  place-items: center;
   box-sizing: border-box;
-  width: 36px;
-  height: 36px;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
   margin: 0;
   padding: 0;
-  border-radius: 6px;
-  background: #0a0a0a;
-  color: #fafafa;
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--tone) var(--chrome-tint), transparent);
+  color: var(--tone);
 }
+.icon[data-tone='ok'] {
+  --tone: var(--chrome-ok);
+}
+.icon[data-tone='warn'] {
+  --tone: var(--chrome-warn);
+}
+.icon[data-tone='err'] {
+  --tone: var(--chrome-err);
+}
+.icon[data-tone='idle'] {
+  --tone: var(--chrome-idle);
+}
+/* Host icons are SVG strings without a size: the board's 20 px. */
 .icon svg {
-  width: 16px;
-  height: 16px;
+  width: 20px;
+  height: 20px;
 }
 
 .text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
+  gap: var(--sp-hair);
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
@@ -67,69 +85,42 @@
 }
 
 .title {
-  display: block;
-  font-size: 0.78rem;
-  font-weight: 500;
-  line-height: 1.35;
-  color: var(--inverse-fg);
+  min-width: 0;
+  overflow: hidden;
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .body {
-  display: block;
-  margin: 1px 0 0;
-  font-size: 0.68rem;
-  color: color-mix(in srgb, var(--inverse-fg) 60%, transparent);
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
 a.body {
+  border-radius: var(--r-hair);
   text-decoration: none;
 }
 a.body:hover {
   text-decoration: underline;
+  /* The board's .link offset. */
+  text-underline-offset: 3px;
+}
+a.body:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 
-.action {
-  flex-shrink: 0;
-  box-sizing: border-box;
-  margin: 0;
-  padding: 6px 12px;
-  border: none;
-  border-radius: 6px;
-  background: var(--inverse-fg);
-  color: var(--inverse-bg);
-  font-size: 0.72rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.action:hover {
-  background: color-mix(in srgb, var(--inverse-fg) 88%, var(--inverse-bg));
-}
-
+.action,
 .close {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  margin: 0;
-  padding: 0;
-  border: none;
-  border-radius: 4px;
-  background: none;
-  color: color-mix(in srgb, var(--inverse-fg) 40%, transparent);
-  cursor: pointer;
-  transition:
-    color 0.15s,
-    background 0.15s;
-}
-.close:hover {
-  background: color-mix(in srgb, var(--inverse-fg) 7%, transparent);
-  color: var(--inverse-fg);
+  flex: none;
 }
 
-/* The stack's close-all badge covers the other toasts. */
+/* The stack's close-all badge stands in for the cards' close buttons. */
 .stacked:not(.single) .close {
   display: none;
 }
@@ -137,15 +128,11 @@ a.body:hover {
 @keyframes enter {
   from {
     opacity: 0;
-    transform: translateY(12px) scale(1);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(var(--sp-3));
   }
 }
 .card[data-entering] {
-  animation: enter 0.3s ease;
+  animation: enter var(--dur) backwards var(--ease-spring);
 }
 
 @keyframes leave {
@@ -155,12 +142,15 @@ a.body:hover {
   }
 }
 .card[data-leaving] {
-  animation: leave 0.25s ease forwards;
+  animation: leave var(--dur) forwards ease;
   pointer-events: none;
 }
 
+/* A card is removed on its animationend, so the animations shrink to
+   nothing instead of going away. */
 @media (prefers-reduced-motion: reduce) {
-  .stacked {
+  .stacked,
+  .expanded {
     transition: none;
   }
   .card[data-entering],

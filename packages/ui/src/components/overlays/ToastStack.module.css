@@ -1,20 +1,27 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The board's .toast-stack: bottom right on desktop, full width on phones. */
+
 .stack {
   position: fixed;
-  right: 20px;
-  bottom: 20px;
+  right: var(--sp-5);
+  bottom: var(--sp-5);
+  /* Under the header, the scrims and the modals, so a toast never covers a
+     prompt the user has to answer. */
   z-index: 900;
   box-sizing: border-box;
-  width: 380px;
+  width: var(--w-toast);
   margin: 0;
   padding: 0;
 }
-@media (max-width: 480px) {
+/* PHONE_QUERY in phone-viewport.ts, where the bar becomes the header and
+   menus become sheets. */
+@media (max-width: 560px) {
   .stack {
-    right: 16px;
-    left: 16px;
+    right: var(--sp-4);
+    bottom: calc(var(--sp-4) + var(--safe-bottom));
+    left: var(--sp-4);
     width: auto;
   }
 }
@@ -25,43 +32,54 @@
   margin: 0;
   padding: 0;
 }
+/* The padding keeps the cards' shadows inside the scroll box, the margin
+   keeps the cards where they were. */
 .stack[data-expanded] .cards {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   max-height: 60dvh;
-  margin: -12px;
-  padding: 12px;
+  margin: calc(-1 * var(--sp-3));
+  padding: var(--sp-3);
   overflow-y: auto;
-}
-.stack:not([data-expanded]) .cards {
-  cursor: pointer;
 }
 
 .close-all {
   position: absolute;
-  top: -6px;
-  right: -6px;
+  top: calc(-1 * var(--sp-2));
+  right: calc(-1 * var(--sp-2));
   z-index: 20;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
-  width: 22px;
-  height: 22px;
+  width: var(--sp-6);
+  height: var(--sp-6);
   margin: 0;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--inverse-fg) 13%, transparent);
+  border: 0;
   border-radius: 50%;
-  background: var(--inverse-bg);
-  color: color-mix(in srgb, var(--inverse-fg) 60%, transparent);
-  box-shadow: 0 1px 4px var(--shadow);
+  background: var(--chrome-glass);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text-muted);
   cursor: pointer;
-  transition:
-    color 0.15s,
-    background 0.15s;
+  transition: color var(--dur-fast);
+}
+/* The board's 12 px badge cross: the shared 16 px close icon drawn smaller,
+   its stroke thickened so it reads at that size. */
+.close-all svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
 }
 .close-all:hover {
-  background: color-mix(in srgb, var(--inverse-fg) 2%, var(--inverse-bg));
-  color: var(--inverse-fg);
+  color: var(--chrome-text);
+}
+.close-all:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .close-all {
+    transition: none;
+  }
 }

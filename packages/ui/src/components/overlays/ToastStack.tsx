@@ -5,7 +5,8 @@ import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../state/toasts.js';
 import { useStore } from '../use-store.js';
-import { CLOSE_SVG, ToastCard } from './ToastCard.js';
+import { CloseIcon } from '../primitives/IconButton.js';
+import { ToastCard } from './ToastCard.js';
 import s from './ToastStack.module.css';
 
 const MAX_STACK = 3;
@@ -115,15 +116,15 @@ export function ToastStack(): JSX.Element {
           class={s['closeAll']}
           data-testid="notif-close-all"
           aria-label="Dismiss all"
-          // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-          innerHTML={CLOSE_SVG}
           style={{ display: many() ? '' : 'none' }}
           onClick={event => {
             event.stopPropagation();
             dismissAllToasts();
             setToastsExpanded(false);
           }}
-        />
+        >
+          <CloseIcon />
+        </button>
       </div>
     </Show>
   );
