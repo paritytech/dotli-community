@@ -19,8 +19,6 @@ export interface SegmentedControlProps<V extends string> {
   value: V;
   /** Called with a newly picked value, never with the current one. */
   onChange: (value: V) => void;
-  /** `tiles`: icon over label in a grid of equal tiles. */
-  layout?: 'inline' | 'tiles';
   class?: string | undefined;
   testId?: string;
 }
@@ -83,7 +81,6 @@ export function SegmentedControl<V extends string>(props: SegmentedControlProps<
       role="group"
       aria-label={props.label}
       class={[s['seg'], props.class]}
-      data-layout={props.layout ?? 'inline'}
       data-testid={props.testId}
       onKeyDown={onKeyDown}
       onFocusIn={onFocusIn}

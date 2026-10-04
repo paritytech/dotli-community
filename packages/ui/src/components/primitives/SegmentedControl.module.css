@@ -1,7 +1,7 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .seg and .seg-tiles. The pressed option is a raised fill with
+/* The mockup's .seg. The pressed option is a raised fill with
    white text, never coloured text, so it keeps AAA contrast and every option
    keeps its width (no layout shift between states). */
 
@@ -15,13 +15,6 @@
   border-radius: var(--r-full);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
-}
-.seg[data-layout='tiles'] {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--sp-1);
-  padding: var(--sp-1);
-  border-radius: var(--r-md);
 }
 .option {
   box-sizing: border-box;
@@ -54,12 +47,6 @@
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
-}
-.seg[data-layout='tiles'] .option {
-  flex-direction: column;
-  height: var(--h-tile);
-  border-radius: var(--r-sm);
-  font-size: var(--fs-small);
 }
 .option > svg {
   flex: none;

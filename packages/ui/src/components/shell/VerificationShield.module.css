@@ -60,8 +60,8 @@
 
 /* The explainer, over the topbar's other popovers, as wide as the menus.
    Popover writes the shield's bottom edge inline as the top. The explainer
-   drops from the pill instead, 12 px below it like every other menu, so that
-   inline top is overridden. */
+   drops from the pill instead, 12 px below it like every other menu. An
+   inline style beats any selector, so only !important overrides it. */
 .tooltip {
   z-index: 1600;
   width: var(--w-pop-md);
