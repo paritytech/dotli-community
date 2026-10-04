@@ -3,14 +3,27 @@
 
 import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { ChainStatus } from '../../network-monitor.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { networkStore, watchNetwork } from '../../state/network.js';
+import { networkHealthStore } from '../../state/network-health.js';
 import { productStore } from '../../state/product.js';
+import { settingsStore } from '../../state/settings.js';
+import { Chip } from '../primitives/Chip.js';
+import { StatusDot } from '../primitives/StatusDot.js';
+import { Surface, SurfaceHead } from '../primitives/Surface.js';
+import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
-import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
+import {
+  describeBlockDelay,
+  describeLiveNetwork,
+  describeNetworkStatus,
+  formatRate,
+  formatSize,
+  stripCapacity,
+} from './chains-format.js';
 import { usePopover } from './Popover.js';
-import { SettingsSection } from './SettingsRows.js';
 import s from './ChainsContent.module.css';
 
 /**
@@ -19,7 +32,7 @@ import s from './ChainsContent.module.css';
  */
 const PENDING_TICK_MS = 250;
 
-const TIPS = ['Close apps and tabs you are not using', 'Move closer to your router'];
+const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
 /**
  * Glide the strip left by the room the newly landed bars just took.
@@ -206,6 +219,26 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
   );
 }
 
+function InfoIcon(): JSX.Element {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4" />
+      <path d="M12 8h.01" />
+    </svg>
+  );
+}
+
 /**
  * A labelled strip per chain. The bars answer whether blocks are arriving;
  * the peer count beside the name answers who they are arriving from.
@@ -221,6 +254,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
         <span
           class={s['peers']}
           data-testid="chains-group-peers"
+          data-none={peers() === 0 ? '' : undefined}
           aria-label={
             peers() === null
               ? undefined
@@ -241,20 +275,27 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
 
 /**
  * The network popover's body (ChainsPopover), its own chunk, rendered while
- * the popover is open: the verdict (its tone as `data-tone`), the chains,
- * the transfer footer and the tips. Every chain's block arrivals are watched
- * while it is mounted.
+ * the popover is open: the head with the network, the status line (its tone
+ * as the dot's `data-tone`), the chains, the transfer rows and the tips.
+ * Every chain's block arrivals are watched while it is mounted.
  */
 export function ChainsContent(): JSX.Element {
   const popover = usePopover();
   // Once mounted: the watch goes with the content.
   onSettled(() => watchNetwork());
   const network = useStore(networkStore);
+  const health = useStore(networkHealthStore);
   const product = useStore(productStore);
+  const settings = useStore(settingsStore);
   // The verdict reads from block arrivals, which both backends produce, so a
   // gateway connection reports its health the same way a light client does.
-  // Read twice per render: worked out once per update.
-  const verdict = createMemo(() => describeLiveNetwork(network().chains));
+  // Read three times per render: worked out once per update.
+  const status = createMemo(() => describeNetworkStatus(describeLiveNetwork(network().chains), health() === 'offline'));
+  /** The network the host runs, once the host has seeded the settings. */
+  const networkLabel = (): string | undefined => {
+    const current = settings();
+    return current === null ? undefined : NETWORK_NAME_TO_SERVICES_CONFIG[current.network].label;
+  };
 
   const [now, setNow] = createSignal(Date.now());
   // Only a chain still waiting for its first block shows a countdown (its
@@ -299,15 +340,26 @@ export function ChainsContent(): JSX.Element {
         };
   };
   return (
-    <div class={s['content']} data-testid="chains-content" data-sheet={popover.sheet() ? '' : undefined}>
-      {/* A sheet's header names it already. */}
-      <Show when={!popover.sheet()}>
-        <SettingsSection text="Network" />
-      </Show>
-      <div class={s['status']} data-testid="chains-status">
-        <span class={s['dot']} data-testid="chains-status-dot" data-tone={verdict().tone} />
-        <span>{verdict().text}</span>
-      </div>
+    <Surface width="md" bare sheet={popover.sheet()} testId="chains-content">
+      <SurfaceHead
+        title="Network"
+        aside={
+          <Show when={networkLabel()}>
+            {label => (
+              <Chip tone="mono" testId="chains-network">
+                {label()}
+              </Chip>
+            )}
+          </Show>
+        }
+      />
+      <Well class={s['status']} testId="chains-status">
+        <StatusDot tone={status().tone} testId="chains-status-dot" />
+        <div class={s['statusText']}>
+          <p class={s['statusTitle']}>{status().title}</p>
+          <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>
+        </div>
+      </Well>
       <For each={network().chains} keyed={chain => chain.role}>
         {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
       </For>
@@ -334,12 +386,9 @@ export function ChainsContent(): JSX.Element {
         </p>
       </div>
       {/* What a visitor can actually do about a slow connection. */}
-      <div class={s['tips']} data-testid="chains-tips">
-        <p class={s['tipsTitle']}>Tips for better performance</p>
-        <ul class={s['tipsList']}>
-          <For each={TIPS}>{tip => <li class={s['tip']}>{tip}</li>}</For>
-        </ul>
-      </div>
-    </div>
+      <Callout icon={<InfoIcon />} testId="chains-tips">
+        {TIP}
+      </Callout>
+    </Surface>
   );
 }
