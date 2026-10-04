@@ -13,13 +13,3 @@
   flex-direction: column;
   gap: var(--sp-2);
 }
-/* The mockup's .label. */
-.group-label {
-  margin: 0;
-  padding: 0 var(--sp-1);
-  color: var(--chrome-text-muted);
-  font-size: var(--fs-label);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--ls-caps);
-  text-transform: uppercase;
-}

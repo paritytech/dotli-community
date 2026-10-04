@@ -1,12 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The base rules of the parts that take a consumer's class (the heading) are
-   wrapped in :where(), so that class wins over them
+/* Wrapped in :where() so the consumer's class (its padding in a list) wins
    whatever order the stylesheets load in. */
-
-/* The board's .label: the caps heading over a group. */
-:where(.section) {
+:where(.label) {
   margin: 0;
   padding: 0 var(--sp-1);
   color: var(--chrome-text-muted);

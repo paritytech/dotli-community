@@ -13,8 +13,9 @@ import {
   packageVersions,
 } from '../../settings-actions.js';
 import { Button } from '../primitives/Button.js';
+import { SectionLabel } from '../primitives/SectionLabel.js';
 import { Well } from '../primitives/Well.js';
-import { InfoRow, SettingsSection } from './SettingsRows.js';
+import { InfoRow } from './SettingsRows.js';
 import { loadRpcResolve } from '@dotli/resolver';
 import s from './Diagnostics.module.css';
 
@@ -141,7 +142,7 @@ export function Diagnostics(props: {
 
   return (
     <div class={s['diagnostics']}>
-      <SettingsSection text="Diagnostics" />
+      <SectionLabel text="Diagnostics" />
       <Well layout="kv" testId="mode-diagnostics">
         <For each={base}>
           {([label, value]) => (
@@ -184,14 +185,14 @@ export function Diagnostics(props: {
           </svg>
         </button>
         <div class={s['packages']} id="mode-packages" data-testid="mode-packages" hidden={!packagesOpen()}>
-          <SettingsSection text="Light client" class={s['packagesLabel']} />
+          <SectionLabel text="Light client" class={s['packagesLabel']} />
           <InfoRow label="@parity/truapi-provider" value={buildLightClientVersionLabel()} dense />
           <Show when={polkadotApi.length > 0}>
-            <SettingsSection text="@polkadot-api" class={s['packagesLabel']} />
+            <SectionLabel text="@polkadot-api" class={s['packagesLabel']} />
             <For each={polkadotApi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} dense />}</For>
           </Show>
           <Show when={parityTruapi.length > 0}>
-            <SettingsSection text="@parity/truapi" class={s['packagesLabel']} />
+            <SectionLabel text="@parity/truapi" class={s['packagesLabel']} />
             <For each={parityTruapi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} dense />}</For>
           </Show>
         </div>

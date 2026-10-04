@@ -4,21 +4,6 @@
 import { createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { KeyValue } from '../primitives/Well.js';
-import s from './SettingsRows.module.css';
-
-/** A section's caps label, over the cards, wells or rows it heads. */
-export function SettingsSection(props: {
-  text: string;
-  /** A class of the consumer's own, for its padding in a list. */
-  class?: string | undefined;
-  testId?: string;
-}): JSX.Element {
-  return (
-    <div class={[s['section'], props.class]} data-testid={props.testId}>
-      {props.text}
-    </div>
-  );
-}
 
 /** How long a copied row reads "Copied". */
 const COPIED_MS = 1000;

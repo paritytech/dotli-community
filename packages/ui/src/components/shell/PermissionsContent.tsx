@@ -17,6 +17,7 @@ import { recordPermissionsChanged } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
+import { SectionLabel } from '../primitives/SectionLabel.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
@@ -217,9 +218,7 @@ export function PermissionsContent(): JSX.Element {
                   aria-labelledby={`permissions-popover-group-${group.id}`}
                   data-testid="permissions-popover-group"
                 >
-                  <h3 class={s['groupLabel']} id={`permissions-popover-group-${group.id}`}>
-                    {group.label}
-                  </h3>
+                  <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
                   <Well layout="controls">
                     <For each={group.permissions}>
                       {perm => <PermissionRow perm={perm} status={statusIn(list(), perm.name)} choose={choose} />}

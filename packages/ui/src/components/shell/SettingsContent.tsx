@@ -10,13 +10,13 @@ import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
 import { Choice } from '../primitives/Choice.js';
+import { SectionLabel } from '../primitives/SectionLabel.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Switch } from '../primitives/Switch.js';
 import { Row, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
 import { usePopover } from './Popover.js';
-import { SettingsSection } from './SettingsRows.js';
 import s from './SettingsContent.module.css';
 
 interface Transport {
@@ -129,7 +129,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <div class={s['column']}>
           <Show when={networks.length > 1}>
             <div class={s['group']}>
-              <SettingsSection text="Network" />
+              <SectionLabel text="Network" />
               <div class={s['choices']} role="radiogroup" aria-label="Network">
                 <For each={networks}>
                   {value => (
@@ -151,7 +151,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </div>
           </Show>
           <div class={s['group']}>
-            <SettingsSection text="Network Transport" />
+            <SectionLabel text="Network Transport" />
             <div class={s['choices']} role="radiogroup" aria-label="Network Transport">
               <For each={TRANSPORTS}>
                 {transport => (
@@ -178,7 +178,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </div>
           </div>
           <div class={s['group']}>
-            <SettingsSection text="Cache" />
+            <SectionLabel text="Cache" />
             <Well layout="controls" testId="mode-cache">
               <For each={CACHES}>
                 {([key, label]) => (
