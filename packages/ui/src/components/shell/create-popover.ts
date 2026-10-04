@@ -60,7 +60,8 @@ export interface PopoverOptions {
    * Open as a bottom sheet when the viewport is a phone's (isPhoneViewport)
    * as an opening starts (a menu on a phone). `sheet()` on the result says
    * so. Popover.tsx keeps its own too, since its mode and its peek depend on
-   * it, and sets this for the hand-off (see `handedOff`).
+   * it, and sets this for the hand-off (see `handedOff`). An opening as a
+   * sheet swallows the outside press's click, as a menu does.
    */
   sheet?: boolean;
   /** Called after every close, whatever closed it. */
@@ -209,7 +210,8 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  *   roving focus (ArrowUp/ArrowDown looping and ArrowLeft/ArrowRight in a
  *   menu marked `aria-orientation="horizontal"`, Home, End, typeahead, pointer
  *   hover). Tab is prevented, and an outside pointerdown closes it and swallows
- *   its click, so the click does not activate what is underneath. Call
+ *   its click, so the click does not activate what is underneath
+ *   (as it does when it opens as a sheet, in any mode). Call
  *   `onItemChosen` when an item is chosen.
  * - `dialog`: Tab and Shift+Tab are trapped inside, and the page does not
  *   scroll while it is open (`data-scroll-locked` on the body).
@@ -554,8 +556,9 @@ function swallowNextClick({ afterRelease = false } = {}): void {
     },
     ['pointerdown', 'pointercancel', 'keydown'],
   );
-  // Armed at a pointerup the click follows at once. A mouse swallow is armed at the pointerdown and a
-  // held press must still have its click swallowed.
+  // Armed at a pointerup, the click follows at once, so it may time out. A
+  // mouse swallow is armed at the pointerdown, and a held press must still
+  // have its click swallowed.
   if (afterRelease) {
     // Stopping twice is harmless.
     setTimeout(stop, SWALLOW_CLICK_MS);

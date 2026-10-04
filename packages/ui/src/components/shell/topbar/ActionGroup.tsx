@@ -120,7 +120,7 @@ export function ActionGroup(props: {
   createEffect(
     () => entries().map(entry => entry.visible()),
     () => {
-      // The compute already tracks these reads, so the measure's own are not a second subscription.
+      // The measure's reads are deliberately untracked, which also keeps the strict-read check quiet.
       untrack(measure);
     },
   );

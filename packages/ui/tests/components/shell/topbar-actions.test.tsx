@@ -25,7 +25,7 @@ import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { mouseClick, pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
-import { byId, byTestId, must } from '../../support.js';
+import { byId, byTestId, must, query } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
@@ -337,6 +337,7 @@ describe('Topbar actions island', () => {
     expect(sheet.hasAttribute('data-open')).toBe(true);
     expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
+    expect(sheet.contains(document.activeElement)).toBe(true);
     const scrims = [...document.querySelectorAll('[data-testid="menu-scrim"]')];
     expect(scrims).toHaveLength(2);
     expect(scrims.every(scrim => scrim.hasAttribute('data-handoff'))).toBe(true);
@@ -359,6 +360,24 @@ describe('Topbar actions island', () => {
     expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
     expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
+  });
+
+  it('As a phone keyboard user choosing Appearance in More, the Appearance sheet opens on its first item', async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    pointerPress(byId('more-button'));
+    await settle();
+
+    // When: Enter on a row is a click with no pointer behind it
+    moreRow('theme').click();
+    await settle();
+
+    // Then
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(document.activeElement).toBe(query(sheet, '[role="menuitemradio"]'));
   });
 
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {

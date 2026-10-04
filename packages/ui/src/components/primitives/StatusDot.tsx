@@ -7,7 +7,10 @@ import s from './StatusDot.module.css';
 /** The status colours every chrome mark shares: dots, the capsule bar, badges and toast tiles. */
 export type StatusTone = 'ok' | 'warn' | 'err' | 'info' | 'idle';
 
-/** A coloured dot with a soft halo. Decorative unless given a `label`: the text beside it carries the meaning. */
+/**
+ * A coloured dot with a soft halo. Decorative, since the text beside it carries
+ * the meaning, unless a `label` names it.
+ */
 export function StatusDot(props: {
   tone: StatusTone;
   size?: 'md' | 'sm';

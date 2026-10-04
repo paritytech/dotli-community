@@ -765,7 +765,7 @@ describe('The settings popover island', () => {
     expect(writeText).toHaveBeenCalledTimes(1);
   });
 
-  it('As a keyboard user, a copyable diagnostics row is a focusable button named Copy Site that copies and announces', async () => {
+  it('As a keyboard user, a copyable diagnostics row is a focusable Copy Site button, and activating it copies and announces', async () => {
     // Given
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
