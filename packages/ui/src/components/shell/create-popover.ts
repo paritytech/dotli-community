@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, onSettled, useContext, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onSettled, untrack, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
@@ -352,6 +352,9 @@ export function createPopover(options: PopoverOptions): Popover {
       }
       setOpen(false);
     };
+    // A sheet's scrim goes the same frame under reduced motion, so the tap
+    // that closes it would otherwise land on the page beneath.
+    const swallowsOutsideClick = (): boolean => mode === 'menu' || untrack(sheet);
     /** Drops the close a touch outside is waiting to make on its click. */
     let cancelTouchClose: (() => void) | undefined;
     const onPointerDown = (ev: PointerEvent): void => {
@@ -377,7 +380,7 @@ export function createPopover(options: PopoverOptions): Popover {
         cancelTouchClose = awaitEvent(
           'pointerup',
           () => {
-            if (mode === 'menu') {
+            if (swallowsOutsideClick()) {
               swallowNextClick();
             }
             closeOutside();
@@ -386,7 +389,7 @@ export function createPopover(options: PopoverOptions): Popover {
         );
         return;
       }
-      if (mode === 'menu') {
+      if (swallowsOutsideClick()) {
         swallowNextClick();
       }
       closeOutside();

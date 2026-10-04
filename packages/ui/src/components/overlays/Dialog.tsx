@@ -34,6 +34,13 @@ const restoreTargets = new WeakMap<Element, HTMLElement | null>();
  */
 function restoreTargetNow(): HTMLElement | null {
   const active = document.activeElement;
+  // A scrim press blurs focus to the body while the dialog is still up.
+  if (active === document.body) {
+    const open = document.querySelector('[data-dialog]');
+    if (open !== null && restoreTargets.has(open)) {
+      return restoreTargets.get(open) ?? null;
+    }
+  }
   if (!(active instanceof HTMLElement)) {
     return null;
   }

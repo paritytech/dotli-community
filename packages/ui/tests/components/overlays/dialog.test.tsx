@@ -430,6 +430,28 @@ describe('signing dialog', () => {
     expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
   });
 
+  it('As a keyboard user, a scrim press that hands over to a queued dialog still returns focus to my trigger when the queue ends', async () => {
+    // Given: two queued prompts opened from a focused button.
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+    // A real press outside the card moves focus to the body first.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    // When: the scrim press dismisses the first, then the second is answered.
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
+    await settle();
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
   it('As a dotli user, a prompt that opens after the queue emptied brings its own scrim in', async () => {
     // Given
     void openModal(permissionLike());

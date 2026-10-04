@@ -902,6 +902,27 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     expect(popover.sheet()).toBe(false);
   });
 
+  it.each([
+    { phone: true, reached: false },
+    { phone: false, reached: true },
+  ])(
+    'As a user, an outside click on a popover opened with sheet reaches the page: $reached (phone: $phone)',
+    async ({ phone, reached: expected }) => {
+      // Given
+      stubPhoneViewport(phone);
+      const popover = renderPopover('popover', { sheet: true });
+      await openPopover(popover);
+
+      // When
+      const { reached } = pointerClick(byId('outside'));
+      await settle();
+
+      // Then
+      expect(popover.open()).toBe(false);
+      expect(reached).toBe(expected);
+    },
+  );
+
   it('As a phone user, a menu without sheet still drops as a menu', async () => {
     // Given
     stubPhoneViewport(true);
