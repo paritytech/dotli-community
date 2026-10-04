@@ -20,20 +20,70 @@
   display: block;
 }
 
+/* The board's Appearance popover (MenuTheme): a 300 px glass holding its
+   title over three tiles in a well. The Menu primitive draws the glass. */
 .menu {
-  min-width: 150px;
+  gap: var(--sp-3);
+  width: var(--w-pop-sm);
+  min-width: 0;
+  max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
+  padding: var(--sp-4);
 }
-.check {
-  margin-left: auto;
-  visibility: hidden;
+.head {
+  margin: 0;
+  padding: var(--sp-hair) var(--sp-1) 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
 }
-.option[aria-checked='true'] {
-  color: var(--text-strong);
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
 }
-.option[aria-checked='true'] .check {
-  visibility: visible;
+/* Menu rows turned into the board's .seg-tiles buttons. Each selector carries
+   the group's class, so it wins over the row's own hover and checked rules
+   whatever order the stylesheets load in. */
+.tiles .tile {
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--sp-2);
+  height: var(--h-tile);
+  min-height: 0;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--chrome-text-muted);
+  font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast),
+    box-shadow var(--dur-fast);
 }
-.option:focus-visible {
-  outline: 2px solid var(--text-faint);
-  outline-offset: -2px;
+.tiles .tile:hover {
+  background: transparent;
+  color: var(--chrome-text);
+}
+.tiles .tile[aria-checked='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+.tiles .tile > svg {
+  color: inherit;
+}
+.tiles .tile:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tiles .tile {
+    transition: none;
+  }
 }

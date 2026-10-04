@@ -133,7 +133,8 @@ describe('ThemeToggle', () => {
     ).toEqual([btn, btn, btn]);
     const popover = themePopover();
     expect(popover.getAttribute('role')).toBe('menu');
-    expect(popover.getAttribute('aria-label')).toBe('Theme');
+    expect(popover.getAttribute('aria-label')).toBe('Appearance');
+    expect(popover.getAttribute('aria-orientation')).toBe('horizontal');
     expect(popover.getAttribute('tabindex')).toBe('-1');
     const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('[data-theme-option]'));
     expect(options.map(o => o.dataset['themeOption'])).toEqual(['light', 'dark', 'system']);
@@ -163,8 +164,8 @@ describe('ThemeToggle', () => {
     expect(themeOption('system')?.getAttribute('aria-checked')).toBe('false');
     // A pointer opening focuses the menu itself, as in Radix DropdownMenu.
     expect(document.activeElement).toBe(popover);
-    expect(btn.title).toBe('Theme: Light');
-    expect(btn.getAttribute('aria-label')).toBe('Theme: Light');
+    expect(btn.title).toBe('Appearance: Light');
+    expect(btn.getAttribute('aria-label')).toBe('Appearance: Light');
   });
 
   it('As a dotli user, clicking the theme button again closes the menu', async () => {
@@ -198,8 +199,8 @@ describe('ThemeToggle', () => {
     expect(popover.hasAttribute('data-open')).toBe(false);
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(document.activeElement).toBe(btn);
-    expect(btn.title).toBe('Theme: Dark');
-    expect(btn.getAttribute('aria-label')).toBe('Theme: Dark');
+    expect(btn.title).toBe('Appearance: Dark');
+    expect(btn.getAttribute('aria-label')).toBe('Appearance: Dark');
   });
 
   it('As a dotli user, I select System from the theme menu and the theme resolves from the OS', async () => {
@@ -214,7 +215,7 @@ describe('ThemeToggle', () => {
     expect(localStorage.getItem('dotli-theme')).toBe('system');
     expect(document.documentElement.getAttribute('data-theme-pref')).toBe('system');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
-    expect(themeButton().title).toBe('Theme: System');
+    expect(themeButton().title).toBe('Appearance: System');
   });
 
   it('As a keyboard user, Enter on the theme button opens the menu on its first option, whichever is checked', async () => {
@@ -279,6 +280,25 @@ describe('ThemeToggle', () => {
 
     // When
     await pressThemeKey('End');
+
+    // Then
+    expect(document.activeElement).toBe(themeOption('system'));
+  });
+
+  it('As a keyboard user, I press ArrowRight and ArrowLeft in the tiles and focus moves along the row, wrapping at its ends', async () => {
+    // Given
+    await openThemeMenuWithKeyboard('dark', 'dark');
+
+    // When
+    const right = await pressThemeKey('ArrowRight');
+
+    // Then
+    expect(right.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(themeOption('dark'));
+
+    // When
+    await pressThemeKey('ArrowLeft');
+    await pressThemeKey('ArrowLeft');
 
     // Then
     expect(document.activeElement).toBe(themeOption('system'));
@@ -479,7 +499,7 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
-    expect(themeButton().title).toBe('Theme: Dark');
+    expect(themeButton().title).toBe('Appearance: Dark');
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(themeButton());
   });
@@ -546,7 +566,7 @@ describe('ThemeToggle', () => {
     await settle();
 
     // Then
-    expect(themeButton().title).toBe('Theme: System');
+    expect(themeButton().title).toBe('Appearance: System');
     expect(themeOption('system')?.getAttribute('aria-checked')).toBe('true');
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });

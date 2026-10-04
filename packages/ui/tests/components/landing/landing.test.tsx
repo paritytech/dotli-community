@@ -493,7 +493,7 @@ describe('landing page', () => {
     // Then
     expect(byId('landing-theme-popover').hasAttribute('data-open')).toBe(false);
     expect(query(document, '[data-theme-option="dark"]').getAttribute('aria-checked')).toBe('true');
-    expect(byId('landing-theme-toggle').title).toBe('Theme: Dark');
+    expect(byId('landing-theme-toggle').title).toBe('Appearance: Dark');
   });
 
   it('As a visitor, leaving the landing page takes its corner buttons and their menus with it', async () => {

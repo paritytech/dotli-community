@@ -11,6 +11,8 @@ export interface MenuProps {
   ref: (el: HTMLDivElement) => void;
   label?: string;
   labelledBy?: string;
+  /** `horizontal` for a row of items (the Appearance tiles): Left and Right move between them too. */
+  orientation?: 'horizontal' | undefined;
   onClick?: (ev: MouseEvent) => void;
   class?: string | undefined;
   testId?: string;
@@ -31,6 +33,7 @@ export function Menu(props: MenuProps): JSX.Element {
       data-chrome=""
       aria-label={props.label}
       aria-labelledby={props.labelledBy}
+      aria-orientation={props.orientation}
       tabindex="-1"
       data-open={props.open ? '' : undefined}
       data-testid={props.testId}

@@ -117,8 +117,9 @@ function menuItems(surface: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Roving focus in a menu: ArrowUp/ArrowDown (looping), Home, End and
- * typeahead on the first letter. Returns whether it handled the key.
+ * Roving focus in a menu: ArrowUp/ArrowDown (looping), also ArrowLeft/ArrowRight
+ * in a horizontal one, Home, End and typeahead on the first letter. Returns
+ * whether it handled the key.
  */
 function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   const items = menuItems(surface);
@@ -127,9 +128,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   }
   const index = items.indexOf(document.activeElement as HTMLElement);
   let next: HTMLElement | undefined;
-  if (ev.key === 'ArrowDown') {
+  // A row of items (aria-orientation) also takes the keys along the row.
+  const horizontal = surface.getAttribute('aria-orientation') === 'horizontal';
+  if (ev.key === 'ArrowDown' || (horizontal && ev.key === 'ArrowRight')) {
     next = items[(index + 1) % items.length];
-  } else if (ev.key === 'ArrowUp') {
+  } else if (ev.key === 'ArrowUp' || (horizontal && ev.key === 'ArrowLeft')) {
     next = items[index <= 0 ? items.length - 1 : index - 1];
   } else if (ev.key === 'Home') {
     next = items[0];
@@ -179,7 +182,8 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  *   first item (the click a browser may still fire for the key is dropped),
  *   and so does a trigger click with `detail` 0, while a pointer opening
  *   focuses the surface; the items have
- *   roving focus (ArrowUp/ArrowDown looping, Home, End, typeahead, pointer
+ *   roving focus (ArrowUp/ArrowDown looping and ArrowLeft/ArrowRight in a
+ *   menu marked `aria-orientation="horizontal"`, Home, End, typeahead, pointer
  *   hover); Tab is prevented; an outside pointerdown closes it and swallows
  *   its click, so the click does not activate what is underneath. Call
  *   `onItemChosen` when an item is chosen.

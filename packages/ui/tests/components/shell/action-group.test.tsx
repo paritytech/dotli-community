@@ -256,6 +256,22 @@ describe('ActionGroup', () => {
     expect(isOpen()).toBe(false);
   });
 
+  it('As a keyboard user, ArrowRight and ArrowLeft leave the focus on its row in the More menu, a column', async () => {
+    // Given
+    await renderTopbar(() => <Items />, room(4));
+    byId('more-button').focus();
+    await pressKey('Enter');
+    expect(document.activeElement).toBe(moreRow('permissions'));
+
+    // When
+    await pressKey('ArrowRight');
+    await pressKey('ArrowLeft');
+
+    // Then
+    expect(document.activeElement).toBe(moreRow('permissions'));
+    expect(byId('more-popover').hasAttribute('aria-orientation')).toBe(false);
+  });
+
   it('As a screen-reader user, the More button announces its menu, and each row is a menu item with the item label and icon', async () => {
     // When
     await renderTopbar(() => <Items />, room(5));

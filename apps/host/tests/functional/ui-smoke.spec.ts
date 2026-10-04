@@ -71,7 +71,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then: the landing page renders its own theme button, and the topbar's
     // action group, More button included, is gone.
-    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Theme: /);
+    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Appearance: /);
     await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
@@ -279,7 +279,7 @@ test.describe('Shell UI smoke', () => {
     await page.goto(LABEL_URL);
 
     // Then
-    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Theme: Light');
+    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Appearance: Light');
   });
 
   test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
@@ -337,7 +337,7 @@ test.describe('Shell UI smoke', () => {
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
     // The hydrated islands' build-time renders.
     await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Appearance: System');
 
     await context.close();
   });
