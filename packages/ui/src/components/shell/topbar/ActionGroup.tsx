@@ -38,7 +38,7 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * its absence and lay themselves out for a narrow screen as the bar would
  * most likely fit them.
  */
-export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
+export function ActionGroup(props: { growRoom?: () => number; children: JSX.Element }): JSX.Element {
   let group: HTMLDivElement | undefined;
   let more: HTMLButtonElement | undefined;
   /** In registration order; sorted by document order where it matters. */
@@ -67,7 +67,7 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
         width: entry.element()?.getBoundingClientRect().width ?? 0,
         priority: entry.priority,
       })),
-      group.clientWidth,
+      group.clientWidth + (props.growRoom?.() ?? 0),
       Number.parseFloat(getComputedStyle(group).columnGap) || 0,
       more?.getBoundingClientRect().width ?? 0,
     );
@@ -76,6 +76,15 @@ export function ActionGroup(props: { children: JSX.Element }): JSX.Element {
 
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
   onCleanup(() => observer?.disconnect());
+  // In a content-sized pill the group only shrinks with the window, so a
+  // widening window is heard here rather than by the observer.
+  const onResize = (): void => {
+    measure();
+  };
+  window.addEventListener('resize', onResize);
+  onCleanup(() => {
+    window.removeEventListener('resize', onResize);
+  });
   const observe = (el: HTMLElement): void => {
     observer?.observe(el);
   };

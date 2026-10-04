@@ -42,3 +42,16 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
     window.removeEventListener('resize', place);
   };
 }
+
+/**
+ * How far the bar can still widen before its max-width, in px: the room a
+ * content-sized pill gives its action group beyond its current width.
+ */
+export function topbarGrowRoom(): number {
+  const bar = document.getElementById('topbar');
+  if (bar === null) {
+    return 0;
+  }
+  const max = Number.parseFloat(getComputedStyle(bar).maxWidth);
+  return Number.isFinite(max) ? Math.max(0, max - bar.getBoundingClientRect().width) : 0;
+}

@@ -80,14 +80,19 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
 
 /**
  * Render `items` as the children of an ActionGroup in the document, as the
- * topbar island does, with `room` pixels for them (see stubTopbarLayout).
+ * topbar island does, with `room` pixels for them (see stubTopbarLayout) and
+ * the room the pill could still grow into (`growRoom`, none by default).
  * Returns the layout, to change the room later.
  */
-export async function renderTopbar(items: () => JSX.Element, room: number): Promise<TopbarLayout> {
+export async function renderTopbar(
+  items: () => JSX.Element,
+  room: number,
+  options: { growRoom?: () => number } = {},
+): Promise<TopbarLayout> {
   const layout = stubTopbarLayout(room);
   const container = document.createElement('div');
   document.body.append(container);
-  renderComponent(() => <ActionGroup>{items()}</ActionGroup>, { container });
+  renderComponent(() => <ActionGroup growRoom={options.growRoom}>{items()}</ActionGroup>, { container });
   await settle();
   return layout;
 }

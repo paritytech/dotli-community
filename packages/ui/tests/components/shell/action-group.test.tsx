@@ -162,6 +162,23 @@ describe('ActionGroup', () => {
     expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(false);
   });
 
+  it('As a user widening the window, items that collapsed into More come back once the pill can grow', async () => {
+    // Given: room for two items, and a pill that cannot grow
+    let grow = 0;
+    await renderTopbar(() => <Items />, room(2), { growRoom: () => grow });
+    expect(inline('settings')).toBe(false);
+
+    // When: the window widens, so the pill could grow by four items
+    grow = room(4);
+    window.dispatchEvent(new Event('resize'));
+    await settle();
+
+    // Then
+    for (const name of ['auth', 'network', 'chat', 'permissions', 'theme', 'settings']) {
+      expect(inline(name)).toBe(true);
+    }
+  });
+
   it('As a user, a hidden item shows neither in the bar nor in More, and takes its share of the room once it shows', async () => {
     // Given: room for all but chat.
     const [chat, setChat] = createSignal(false);

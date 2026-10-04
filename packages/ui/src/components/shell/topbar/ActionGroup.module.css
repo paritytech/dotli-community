@@ -1,18 +1,17 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* In the pill's row: icons 4 px apart. It may shrink below its content once
+   the pill reaches its max-width, which is what makes items collapse into
+   More (the address shrinks first, see UrlPill.module.css). */
 .group {
-  grid-column: 3;
   display: flex;
+  flex: 0 1 auto;
   align-items: center;
-  gap: 4px;
-  justify-self: end;
+  gap: var(--sp-1);
+  min-width: 0;
 }
-/* Measuring, it fills its cell: its width is the room its items are fitted
-   into. */
 .group[data-collapsible] {
   position: relative;
-  justify-self: stretch;
   justify-content: flex-end;
-  min-width: 0;
 }
