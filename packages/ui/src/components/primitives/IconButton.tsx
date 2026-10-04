@@ -57,12 +57,12 @@ export function IconButton(props: IconButtonProps): JSX.Element {
   );
 }
 
-/** The board's close cross, for a small icon button. */
-export function CloseIcon(): JSX.Element {
+/** The board's close cross, for a small icon button, 16 px unless `size` says otherwise. */
+export function CloseIcon(props: { size?: number }): JSX.Element {
   return (
     <svg
-      width="16"
-      height="16"
+      width={props.size ?? 16}
+      height={props.size ?? 16}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"

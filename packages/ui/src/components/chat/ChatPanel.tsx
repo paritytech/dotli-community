@@ -32,6 +32,7 @@ import {
   setChatPanelOpen,
 } from '../../state/chat-panel.js';
 import { useStore } from '../use-store.js';
+import { CloseIcon } from '../primitives/IconButton.js';
 import { ContactIcon } from './ContactIcon.js';
 import { contactEntries, type ContactEntry } from './contacts.js';
 import { MessageBubble } from './MessageBubble.js';
@@ -43,8 +44,6 @@ const TIME_REFRESH_MS = 60_000;
 
 const BACK_SVG =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>';
-const CLOSE_SVG =
-  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
 const SEND_SVG =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 
@@ -382,12 +381,12 @@ function PanelBody(): JSX.Element {
           id="chat-panel-close"
           title="Close chat"
           aria-label="Close chat"
-          // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-          innerHTML={CLOSE_SVG}
           onClick={() => {
             setChatPanelOpen(false);
           }}
-        />
+        >
+          <CloseIcon size={14} />
+        </button>
       </div>
       <div class={s['rooms']} id="chat-panel-rooms" role="list" aria-label="Chat rooms" hidden={view() !== 'list'}>
         <Show when={view() === 'list'}>
