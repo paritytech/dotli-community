@@ -74,6 +74,9 @@ export function Choice(props: ChoiceProps): JSX.Element {
               // the radio that was checked, so a refused pick leaves the group
               // as it was. Arrow keys click too, and still move the focus.
               ev.preventDefault();
+              // Safari leaves the focus where it was on a pointer pick. On the
+              // radio, the arrow keys go on from the pick.
+              ev.currentTarget.focus();
               if (!props.selected) {
                 radio().onChoose();
               }

@@ -5,28 +5,15 @@ import { createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './SettingsRows.module.css';
 
-/**
- * A section heading. `spaced` sets it apart from the section above it;
- * `bottom` also anchors it, and what follows it, to the bottom of its
- * column.
- */
+/** A section's caps label, over the cards, wells or rows it heads. */
 export function SettingsSection(props: {
   text: string;
-  spacing?: 'spaced' | 'bottom' | undefined;
-  /** A class of the consumer's own, for placement. */
+  /** A class of the consumer's own, for its padding in a list. */
   class?: string | undefined;
   testId?: string;
 }): JSX.Element {
   return (
-    <div
-      class={[
-        s['section'],
-        props.spacing === 'spaced' && s['spaced'],
-        props.spacing === 'bottom' && s['bottom'],
-        props.class,
-      ]}
-      data-testid={props.testId}
-    >
+    <div class={[s['section'], props.class]} data-testid={props.testId}>
       {props.text}
     </div>
   );
@@ -75,80 +62,6 @@ export function ClearButton(props: {
     >
       {props.children}
     </button>
-  );
-}
-
-/**
- * A radio choice with a label and a description, marked `data-selected`
- * and `data-disabled`. Picking it calls `choose` and keeps the focus on it,
- * so arrow navigation survives.
- */
-export function RadioRow(props: {
-  name: string;
-  value: string;
-  label: string;
-  description: string;
-  selected: boolean;
-  disabled?: boolean;
-  choose: () => void;
-}): JSX.Element {
-  const disabled = (): boolean => props.disabled === true;
-  return (
-    <label
-      class={s['radio']}
-      data-selected={props.selected ? '' : undefined}
-      data-disabled={disabled() ? '' : undefined}
-    >
-      <input
-        onChange={e => {
-          props.choose();
-          e.currentTarget.focus();
-        }}
-        type="radio"
-        name={props.name}
-        value={props.value}
-        checked={props.selected}
-        disabled={disabled()}
-        class={s['radioInput']}
-      />
-      <span class={s['dot']} />
-      <span class={s['radioText']}>
-        <span class={s['radioLabel']}>{props.label}</span>
-        <span class={s['radioDesc']}>{props.description}</span>
-      </span>
-    </label>
-  );
-}
-
-/**
- * A cache on/off switch. It keeps its own state from `checked` at mount on,
- * as the old toggle painted itself, and reports each flip to `update`.
- */
-export function CacheToggle(props: {
-  label: string;
-  checked: boolean;
-  update: (enabled: boolean) => void;
-}): JSX.Element {
-  const [on, setOn] = createSignal(untrack(() => props.checked));
-  return (
-    <SettingsRow>
-      <span class={s['cacheLabel']}>{props.label}</span>
-      <button
-        onClick={() => {
-          const next = !untrack(on);
-          setOn(next);
-          props.update(next);
-        }}
-        role="switch"
-        aria-label={props.label}
-        class={s['switch']}
-        aria-checked={on() ? 'true' : 'false'}
-      >
-        <span class={s['track']}>
-          <span class={s['knob']} />
-        </span>
-      </button>
-    </SettingsRow>
   );
 }
 

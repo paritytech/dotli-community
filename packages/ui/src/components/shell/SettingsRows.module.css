@@ -5,21 +5,15 @@
    and the button) are wrapped in :where(), so that class wins over them
    whatever order the stylesheets load in. */
 
+/* The board's .label: the caps heading over a group. */
 :where(.section) {
-  padding: 4px 14px 2px;
-  color: var(--text-faint);
-  font-size: 0.65rem;
-  letter-spacing: 0.05em;
+  margin: 0;
+  padding: 0 var(--sp-1);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
-}
-.spaced {
-  padding-top: 18px;
-}
-/* Anchors the section to the bottom of its column, so the cache switches
-   and Clear all caches line up with the diagnostics' links opposite. */
-.bottom {
-  margin-top: auto;
-  padding-top: 18px;
 }
 
 :where(.row) {
@@ -27,123 +21,6 @@
   align-items: center;
   justify-content: space-between;
   padding: 5px 14px;
-}
-
-.radio {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 14px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.radio:hover {
-  background: var(--fill-subtle);
-}
-.radio:has(.radio-input:focus-visible) {
-  outline: 2px solid var(--text-muted);
-  outline-offset: -2px;
-  border-radius: 6px;
-}
-.radio[data-disabled] {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
-.radio[data-disabled]:hover {
-  background: transparent;
-}
-.radio-input {
-  position: absolute;
-  margin: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-.dot {
-  position: relative;
-  flex-shrink: 0;
-  box-sizing: border-box;
-  width: 14px;
-  height: 14px;
-  margin-top: 1px;
-  border: 2px solid var(--border-strong);
-  border-radius: 50%;
-  transition: border-color 0.15s;
-}
-.radio[data-selected] .dot {
-  border-color: var(--inverse-bg);
-}
-.radio[data-selected] .dot::after {
-  content: '';
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--inverse-bg);
-}
-.radio-text {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.radio-label {
-  color: var(--text);
-  font-size: 0.8rem;
-}
-.radio-desc {
-  color: var(--text-faint);
-  font-size: 0.65rem;
-}
-
-.cache-label {
-  color: var(--text);
-  font-size: 0.78rem;
-}
-.switch {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-}
-.track {
-  display: block;
-  position: relative;
-  width: 28px;
-  height: 16px;
-  border-radius: 8px;
-  background: var(--border);
-  transition: background 0.15s;
-}
-.switch[aria-checked='true'] .track {
-  background: var(--inverse-bg);
-}
-.knob {
-  display: block;
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--knob);
-  transition:
-    transform 0.15s,
-    background 0.15s;
-}
-.switch[aria-checked='true'] .knob {
-  background: var(--inverse-fg);
-  transform: translateX(12px);
-}
-@media (prefers-reduced-motion: reduce) {
-  .knob {
-    transition: none;
-  }
 }
 
 .info {

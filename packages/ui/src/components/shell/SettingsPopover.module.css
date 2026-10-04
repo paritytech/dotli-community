@@ -4,5 +4,5 @@
 .popover {
   /* The content's footer pads a sheet's bottom edge for the home indicator. */
   --sheet-inset: 0;
-  width: 620px;
+  width: var(--w-pop-xl);
 }

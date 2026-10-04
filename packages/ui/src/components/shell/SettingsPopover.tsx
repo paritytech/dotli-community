@@ -45,7 +45,7 @@ function GearIcon(props: { size: number }): JSX.Element {
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
  * transport choices, the cache switches, "Clear all caches" and the
- * diagnostics. Changes stay a draft until Save & Apply, which saves them and
+ * diagnostics. Changes stay a draft until Save and apply, which saves them and
  * reloads (settings-actions.ts); each opening starts from the saved
  * settings. The button carries its badge (`data-badge`) while the session is
  * not verified (trusted providers).

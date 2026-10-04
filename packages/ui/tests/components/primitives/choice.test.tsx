@@ -31,6 +31,26 @@ describe('Choice', () => {
     expect(input.value).toBe('smoldot');
   });
 
+  it('As a user, I pick a choice with the pointer and the focus lands on its radio, so the arrow keys go on from there', () => {
+    // Given
+    renderComponent(() => (
+      <Choice
+        title="Light client"
+        description="Checked in your browser."
+        selected={false}
+        radio={{ name: 'transport', value: 'smoldot', onChoose: () => undefined }}
+        testId="choice"
+      />
+    ));
+    const input = query(byTestId('choice'), 'input[type="radio"]', HTMLInputElement);
+
+    // When
+    input.click();
+
+    // Then
+    expect(document.activeElement).toBe(input);
+  });
+
   it('As a user, I pick another transport that its owner refuses, and the current one stays checked', () => {
     // Given
     const onChoose = vi.fn();
