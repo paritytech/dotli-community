@@ -46,11 +46,11 @@ function restoreTargetNow(): HTMLElement | null {
 
 /**
  * Whether a dialog opening now takes over from one still on screen: the next
- * in the queue opens while the last one holds focus, over the scrim it left.
+ * in the queue mounts before the answered one is removed. Decided by presence,
+ * not focus, since a scrim press blurs focus to the body first.
  */
 function followsDialog(): boolean {
-  const active = document.activeElement;
-  return active instanceof HTMLElement && active.closest('[data-dialog]') !== null;
+  return document.querySelector('[data-dialog]') !== null;
 }
 
 /**
@@ -74,7 +74,7 @@ export function Dialog(props: DialogProps): JSX.Element {
   let backdrop!: HTMLDivElement;
   let dialog!: HTMLDivElement;
   const previouslyFocused = restoreTargetNow();
-  // Read once, before this dialog takes focus: a follow-up keeps the scrim
+  // Read once, before this dialog is in the page: a follow-up keeps the scrim
   // still rather than fade it in again.
   const follows = followsDialog();
 

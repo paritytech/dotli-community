@@ -379,4 +379,38 @@ describe('signing dialog', () => {
     expect(query(document, 'h2').textContent).toBe('Second');
     expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
   });
+
+  it('As a dotli user denying a prompt with a scrim press, the queued one still opens over the same scrim', async () => {
+    // Given
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+    // A real press outside the card moves focus to the body first.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Second');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
+  });
+
+  it('As a dotli user, a prompt that opens after the queue emptied brings its own scrim in', async () => {
+    // Given
+    void openModal(permissionLike());
+    await mountOutlet();
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
+
+    // When
+    void openModal(permissionLike({ title: 'Later' }));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Later');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(false);
+  });
 });
