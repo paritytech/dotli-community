@@ -7,19 +7,31 @@
   left: 50%;
   z-index: 1001;
   margin: 0;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-2);
-  color: var(--text-strong);
-  font: inherit;
-  font-size: 0.8rem;
+  padding: var(--sp-2) var(--sp-4);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-glass);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
   transform: translateX(-50%);
 }
 .reveal:focus {
-  top: 64px;
-  outline: 2px solid var(--knob);
+  top: calc(var(--sp-6) + var(--safe-top));
+  outline: var(--chrome-focus-ring);
   outline-offset: 2px;
+}
+
+/* The collapsed capsule is too small to aim at, so a wider transparent
+   target sits over it. */
+.hit {
+  position: fixed;
+  top: 0;
+  left: 50%;
+  z-index: 999;
+  width: 200px;
+  height: calc(var(--sp-8) + var(--safe-top));
+  transform: translateX(-50%);
 }

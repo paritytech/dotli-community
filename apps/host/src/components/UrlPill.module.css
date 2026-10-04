@@ -1,48 +1,39 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The shield is an island. A local product (data-localhost, set by bindUrlPill)
-   gets a terminal icon instead. */
-
+/* The address: a sunken well with 20 px ends, so the shield's glyph and the
+   end of the text sit the same distance from the edges. In a pill at its
+   max-width it shrinks first (a large flex-shrink), down to 160 px, before
+   any action collapses into More. A local product (data-localhost, set by
+   bindUrlPill) gets a terminal icon instead of the shield. */
 .url {
-  grid-column: 2;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Flex items default to `min-width: auto`. Without this, a long
-     nowrap pill pushes the right cluster off-screen past `max-width`. */
-  min-width: 0;
-  max-width: 480px;
-  margin: 0 12px;
+  flex: 0 100 auto;
+  min-width: 160px;
 }
 .url[hidden] {
   display: none;
 }
 .pill {
   display: flex;
+  flex: 1;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: var(--sp-2);
   box-sizing: border-box;
   min-width: 0;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 20px;
-  background: var(--fill-subtle);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.01em;
+  height: var(--h-control);
+  padding: 0 var(--sp-5);
+  border-radius: var(--r-full);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
   user-select: none;
+  transition: background var(--dur-fast);
 }
 .pill:hover {
-  background: var(--fill);
-  border-color: var(--border);
-}
-@media (max-width: 560px) {
-  .pill {
-    height: 36px;
-    padding: 0 12px;
-  }
+  background: var(--chrome-well-strong);
 }
 /* Clip from the head so the TLD stays anchored, like a browser address bar. */
 .text {
@@ -54,21 +45,20 @@
   text-align: left;
 }
 .domain {
-  color: var(--text-strong);
-  font-weight: 500;
+  color: var(--chrome-text);
+  font-weight: var(--fw-semibold);
 }
 .tld {
-  color: var(--text-faint);
-  font-weight: 500;
+  color: var(--chrome-text-muted);
 }
 .localhost-icon {
   flex-shrink: 0;
-  color: var(--text-muted);
+  color: var(--chrome-text-muted);
 }
 .pill:not([data-localhost]) .localhost-icon {
   display: none;
 }
 .pill[data-localhost] .domain {
-  font-family: monospace;
-  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
 }

@@ -280,27 +280,26 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Theme: Light');
   });
 
-  test("As a user who loses the connection, I see an offline banner that goes away when I'm back", async ({
+  test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
     page,
     context,
   }) => {
     // Given
     await page.goto(LABEL_URL);
-    await expect(page.locator('#topbar')).toBeVisible();
-    const banner = page.locator('#offline-banner');
+    const bar = page.locator('#topbar');
+    await expect(bar).toBeVisible();
 
     // When
     await context.setOffline(true);
 
     // Then
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveText('You are offline');
+    await expect(bar).toHaveAttribute('data-health', 'offline');
 
     // When
     await context.setOffline(false);
 
     // Then
-    await expect(banner).toBeHidden();
+    await expect(bar).not.toHaveAttribute('data-health', 'offline');
   });
 
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {

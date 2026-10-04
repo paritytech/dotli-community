@@ -1,43 +1,52 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The logo sits where an icon would in a 44 px button, so it is inset like
+   the icons on the right (10 px plus the row's 8 px). */
 .home {
-  grid-column: 1;
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-2);
   box-sizing: border-box;
-  width: fit-content;
-  margin-left: -14px;
-  padding: 11px 14px;
+  height: var(--h-control);
+  margin: 0;
+  padding: 0 var(--sp-2) 0 calc((var(--h-control) - 24px) / 2);
+  border-radius: var(--r-full);
+  color: var(--chrome-text);
   text-decoration: none;
+}
+.home:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 .mark {
   display: block;
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   overflow: visible;
 }
 .mark path {
-  fill: var(--text-strong);
+  fill: var(--chrome-text);
 }
+/* The wordmark's cap height matches 17 px semibold text, the mockup's size. */
 .brand {
   display: block;
   width: auto;
-  height: 13px;
-  color: var(--text-strong);
+  height: 14px;
+  color: var(--chrome-text);
 }
+/* The mockup's outline chip. */
 .beta {
-  align-self: center;
-  padding: 2px 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  background: var(--fill);
-  color: var(--text-muted);
-  font-size: 0.55rem;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  height: var(--h-chip);
+  padding: 0 var(--sp-2);
+  border-radius: var(--r-full);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  color: var(--chrome-text-muted);
+  font: var(--fw-semibold) var(--fs-label) / 1 var(--font-sans);
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
 }
 @media (max-width: 560px) {

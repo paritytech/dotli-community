@@ -1,13 +1,14 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Pulled into the pill's padding, so the 44px target does not widen it. */
+/* A 32 px circle pulled into the address's 20 px end, so its glyph sits
+   where the text's end sits on the other side. */
 .wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  margin: 0 -15px;
+  margin: 0 0 0 calc(-1 * var(--sp-2));
 }
 .shield {
   display: flex;
@@ -15,34 +16,46 @@
   justify-content: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  width: 44px;
-  height: 44px;
+  width: var(--h-row-sm);
+  height: var(--h-row-sm);
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--r-full);
   background: transparent;
-  color: var(--text-faint);
+  color: var(--chrome-idle);
   cursor: pointer;
-  transition: color 0.3s ease;
+  transition:
+    background var(--dur-fast),
+    color var(--dur);
+}
+.shield:hover,
+.shield[aria-expanded='true'] {
+  background: var(--chrome-fill-strong);
 }
 .shield:focus-visible {
-  outline-offset: -6px;
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 .shield[data-state='trusted'] {
-  color: var(--trusted);
+  color: var(--chrome-warn);
 }
 .shield[data-state='verified'] {
-  color: var(--success);
+  color: var(--chrome-ok);
 }
 .glyph {
   display: none;
-  width: 14px;
-  height: 14px;
+  width: 16px;
+  height: 16px;
 }
 .shield:not([data-state='trusted']) .verified-glyph,
 .shield[data-state='trusted'] .trusted-glyph {
   display: block;
+}
+@media (prefers-reduced-motion: reduce) {
+  .shield {
+    transition: none;
+  }
 }
 
 /* The explainer's surface, over the topbar's popovers. Its copy sets its
