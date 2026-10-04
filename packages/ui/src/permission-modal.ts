@@ -111,7 +111,7 @@ export async function showPermissionRequestModal(
 ): Promise<PermissionPromptDecision> {
   const allowOnce = options.allowOnce === true;
   const buttons: ModalButton<PermissionPromptDecision>[] = [
-    { label: 'Deny', variant: 'cancel', result: 'denied' },
+    { label: 'Deny', variant: 'danger', result: 'denied' },
     allowOnce
       ? { label: 'Always allow', variant: 'secondary', result: 'granted' }
       : { label: 'Allow', variant: 'primary', result: 'granted' },

@@ -35,6 +35,7 @@ describe('preimage submit modal', () => {
     const decision = showPreimageSubmitModal(512);
     await overlaysReady();
     expect(byTestId('signing-field-value').textContent).toBe('512 B');
+    expect(byTestId('signing-btn-cancel').dataset['variant']).toBe('secondary');
 
     // When
     byTestId('signing-modal-backdrop').click();

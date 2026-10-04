@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { showPermissionRequestModal } from '../src/permission-modal.js';
-import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { footerVariants, overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId } from './support.js';
 
 afterEach(() => {
@@ -69,6 +69,19 @@ describe('permission request modal', () => {
       { text: 'Deny', testId: 'signing-btn-cancel' },
       { text: 'Always allow', testId: 'signing-btn-secondary' },
       { text: 'Allow once', testId: 'signing-btn-sign' },
+    ]);
+  });
+
+  it('As a dotli user, Deny is drawn as the destructive answer to a permission prompt', async () => {
+    // When
+    void showPermissionRequestModal('myapp', 'ChainSubmit', undefined, { allowOnce: true });
+    await overlaysReady();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Deny', 'danger'],
+      ['Always allow', 'secondary'],
+      ['Allow once', 'primary'],
     ]);
   });
 

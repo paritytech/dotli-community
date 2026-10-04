@@ -54,9 +54,10 @@ async function showConfirmationModal(
   allowOnce: boolean,
 ): Promise<ConfirmationDecision> {
   const buttons: ModalButton<ConfirmationDecision>[] = [
+    // Every cancel here rejects the core's request, so it is drawn destructive.
     {
       label: copy.cancelAction ?? 'Cancel',
-      variant: 'cancel',
+      variant: 'danger',
       result: 'rejected',
     },
     allowOnce
