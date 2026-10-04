@@ -24,7 +24,7 @@ import { setChatCapability } from '@dotli/shared';
 import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
-import { mouseClick, pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
+import { mouseClick, pointerPress, renderComponent, settle, tabTo, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
@@ -318,6 +318,35 @@ describe('Topbar actions island', () => {
     } finally {
       stopChat();
     }
+  });
+
+  it('As a phone keyboard user, Tab in the More sheet reaches its Close button, which closes it and hands focus back to More', async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    const button = byId('more-button');
+    button.focus();
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await settle();
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+
+    // When
+    const tab = tabTo(document.body);
+
+    // Then: focus stays in the sheet, on its head's close button.
+    const close = within(sheet).getByRole('button', { name: 'Close' });
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(close);
+
+    // When
+    close.click();
+    await settle();
+
+    // Then
+    expect(sheet.hasAttribute('data-open')).toBe(false);
+    expect(document.activeElement).toBe(button);
   });
 
   it("As a phone user choosing Appearance in More, the Appearance sheet takes More's place without sliding", async () => {

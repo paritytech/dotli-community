@@ -3,6 +3,7 @@
 
 import { onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { CloseIcon, IconButton } from '../primitives/IconButton.js';
 import { dragSheet } from './sheet-drag.js';
 import s from './Sheet.module.css';
 
@@ -10,23 +11,21 @@ export interface SheetHeadProps {
   title: string;
   /** The sheet the head leads, which a swipe moves. */
   surface: () => HTMLElement | undefined;
-  /** A swipe down far or fast enough asks to close the sheet. */
+  /** A swipe down far or fast enough, or the close button, asks to close the sheet. */
   onDismiss: () => void;
-  /**
-   * Hidden from assistive technology: inside `role="menu"` only items belong,
-   * and the menu carries its own name.
-   */
-  hidden?: boolean | undefined;
+  /** The close button's accessible name. */
+  closeLabel: string;
   testId: string;
   titleTestId: string;
-  /** After the title (a popover sheet's close button). */
-  children?: JSX.Element;
+  closeTestId: string;
+  class?: string | undefined;
 }
 
 /**
  * The head of a bottom sheet (Sheet.module.css's frame): the grabber, the
- * title and an optional trailing control. A drag down that starts on it
- * swipes the sheet (dragSheet). A press on a button in it is that button's.
+ * title and the close button, as the board's .sheet-head always has. A drag
+ * down that starts on it swipes the sheet (dragSheet). A press on the close
+ * button is the button's.
  */
 export function SheetHead(props: SheetHeadProps): JSX.Element {
   let head: HTMLDivElement | undefined;
@@ -49,16 +48,24 @@ export function SheetHead(props: SheetHeadProps): JSX.Element {
       ref={el => {
         head = el;
       }}
-      class={s['head']}
+      class={[s['head'], props.class]}
       data-testid={props.testId}
-      aria-hidden={props.hidden === true ? 'true' : undefined}
       onPointerDown={onPointerDown}
     >
       <div class={s['grabber']} aria-hidden="true" />
-      <span class={s['title']} data-testid={props.titleTestId}>
+      <h2 class={s['title']} data-testid={props.titleTestId}>
         {props.title}
-      </span>
-      {props.children}
+      </h2>
+      <IconButton
+        size="sm"
+        testId={props.closeTestId}
+        aria-label={props.closeLabel}
+        onClick={() => {
+          props.onDismiss();
+        }}
+      >
+        <CloseIcon />
+      </IconButton>
     </div>
   );
 }

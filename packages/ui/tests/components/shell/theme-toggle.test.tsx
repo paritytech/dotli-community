@@ -216,7 +216,7 @@ describe('ThemeToggle', () => {
     const sheet = themePopover();
     expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(byTestId('menu-sheet-title', sheet).textContent).toBe('Appearance');
-    expect(sheet.getAttribute('aria-label')).toBe('Appearance');
+    expect(byTestId('menu-sheet-body', sheet).getAttribute('aria-label')).toBe('Appearance');
 
     // When
     themeOption('light')?.click();

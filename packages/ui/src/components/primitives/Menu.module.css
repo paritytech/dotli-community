@@ -56,12 +56,6 @@
     transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
   }
 }
-/* As a sheet (components/sheet/Sheet.module.css) the head runs edge to
-   edge, and the frame keeps the room under the rows. */
-.menu[data-sheet] {
-  padding-top: 0;
-  padding-inline: 0;
-}
 @media (prefers-reduced-motion: reduce) {
   .menu {
     transition: none !important;

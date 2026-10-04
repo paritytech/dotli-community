@@ -19,9 +19,9 @@ import { TopbarContext } from './topbar/context.js';
  *   surface has `role="dialog"` and `tabindex="-1"`.
  * - `menu` (Radix DropdownMenu, modal): the trigger has
  *   `aria-haspopup="menu"`, `aria-expanded` and `aria-controls`. The surface
- *   has `role="menu"` and `tabindex="-1"`, and its items have
- *   `role="menuitem"` (or `menuitemradio`, `menuitemcheckbox`) and
- *   `tabindex="-1"`.
+ *   has `role="menu"` and `tabindex="-1"` (as a sheet, an element in it does,
+ *   under the sheet's head), and its items have `role="menuitem"` (or
+ *   `menuitemradio`, `menuitemcheckbox`) and `tabindex="-1"`.
  * - `dialog` (Radix Dialog, modal): the surface has `role="dialog"`,
  *   `aria-modal="true"` and `tabindex="-1"`, behind a backdrop outside it.
  */
@@ -131,6 +131,11 @@ export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLEle
 
 const MENU_ITEM_SELECTOR = '[role^="menuitem"]';
 
+/** The `role="menu"` element: the surface, or a sheet's body under its head. */
+function menuElement(surface: HTMLElement): HTMLElement {
+  return surface.matches('[role="menu"]') ? surface : (surface.querySelector<HTMLElement>('[role="menu"]') ?? surface);
+}
+
 /** The menu's items that can take focus, in order. */
 function menuItems(surface: HTMLElement): HTMLElement[] {
   return Array.from(surface.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)).filter(
@@ -155,7 +160,7 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   const index = items.indexOf(document.activeElement as HTMLElement);
   let next: HTMLElement | undefined;
   // A row of items (aria-orientation) also takes the keys along the row.
-  const horizontal = surface.getAttribute('aria-orientation') === 'horizontal';
+  const horizontal = menuElement(surface).getAttribute('aria-orientation') === 'horizontal';
   if (ev.key === 'ArrowDown' || (horizontal && ev.key === 'ArrowRight')) {
     next = items[(index + 1) % items.length];
   } else if (ev.key === 'ArrowUp' || (horizontal && ev.key === 'ArrowLeft')) {
@@ -206,10 +211,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * - `menu`: Enter, Space or ArrowDown on the trigger opens it and focuses the
  *   first item (the click a browser may still fire for the key is dropped),
  *   and so does a trigger click with `detail` 0, while a pointer opening
- *   focuses the surface. The items have
+ *   focuses the menu element. The items have
  *   roving focus (ArrowUp/ArrowDown looping and ArrowLeft/ArrowRight in a
  *   menu marked `aria-orientation="horizontal"`, Home, End, typeahead, pointer
- *   hover). Tab is prevented, and an outside pointerdown closes it and swallows
+ *   hover). Tab is prevented (in a sheet it stays inside, for the head's
+ *   close button), and an outside pointerdown closes it and swallows
  *   its click, so the click does not activate what is underneath
  *   (as it does when it opens as a sheet, in any mode). Call
  *   `onItemChosen` when an item is chosen.
@@ -413,7 +419,12 @@ export function createPopover(options: PopoverOptions): Popover {
         containTab(ev, surface);
       } else if (mode === 'menu' && surface.contains(document.activeElement)) {
         if (ev.key === 'Tab') {
-          ev.preventDefault();
+          // A sheet's head holds its close button, which Tab reaches.
+          if (untrack(sheet)) {
+            containTab(ev, surface);
+          } else {
+            ev.preventDefault();
+          }
         } else {
           moveMenuFocus(ev, surface);
         }
@@ -454,8 +465,8 @@ export function createPopover(options: PopoverOptions): Popover {
     }
     if (surface !== undefined) {
       // A menu opened with the keyboard focuses its first item, one opened
-      // with a pointer the surface.
-      focusInto(surface, mode === 'menu' ? (keyboard ? menuItems(surface) : []) : undefined);
+      // with a pointer the menu itself.
+      focusInto(surface, mode === 'menu' ? (keyboard ? menuItems(surface) : [menuElement(surface)]) : undefined);
     }
     // Last, so nothing after it can throw and leave the page locked.
     const unlockScroll = mode === 'dialog' ? lockScroll() : undefined;

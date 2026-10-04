@@ -29,9 +29,9 @@ export interface MenuProps {
    * (createPopover's `handedOff()`): it and its scrim appear or go at once.
    */
   handedOff?: boolean | undefined;
-  /** The sheet head's title. Assistive technology reads the menu's own name instead. */
+  /** The sheet head's title. */
   sheetTitle?: string | undefined;
-  /** A swipe down on the sheet's head asks to close it. */
+  /** A swipe down on the sheet's head, or its close button, asks to close it. */
   onDismiss?: (() => void) | undefined;
   children: JSX.Element;
 }
@@ -41,14 +41,15 @@ export interface MenuProps {
  * consumer wires to the surface it receives through `ref`.
  *
  * As a sheet (components/sheet) the scrim comes first, outside the surface,
- * so a press on it is a press outside the menu, which closes it. The head is
- * hidden from assistive technology and takes no focus, so the menu keeps only
- * its items, and it has no close button, which `role="menu"` cannot hold.
+ * so a press on it is a press outside the menu, which closes it. The surface
+ * is then the frame: the head, with its close button, and under it the body
+ * that scrolls, which is the `role="menu"` element, since a menu holds only
+ * its items. The surface keeps the id, the test id and the state attributes
+ * in both forms.
  */
 export function Menu(props: MenuProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
   const sheet = (): boolean => props.sheet === true;
-
   return (
     <>
       <Show when={sheet()}>
@@ -68,28 +69,41 @@ export function Menu(props: MenuProps): JSX.Element {
         onClick={ev => props.onClick?.(ev)}
         class={[s['menu'], frame['sheet'], props.class]}
         id={props.id}
-        role="menu"
+        role={sheet() ? undefined : 'menu'}
+        aria-label={sheet() ? undefined : props.label}
+        aria-labelledby={sheet() ? undefined : props.labelledBy}
+        aria-orientation={sheet() ? undefined : props.orientation}
         data-chrome=""
-        aria-label={props.label}
-        aria-labelledby={props.labelledBy}
-        aria-orientation={props.orientation}
         tabindex="-1"
         data-open={props.open ? '' : undefined}
         data-sheet={sheet() ? '' : undefined}
         data-handoff={props.handedOff === true ? '' : undefined}
         data-testid={props.testId}
       >
-        <Show when={sheet()}>
+        {/* Each form renders the items afresh: the form changes only as an
+            opening starts. */}
+        <Show when={sheet()} fallback={props.children}>
           <SheetHead
             title={props.sheetTitle ?? ''}
             surface={() => surface}
             onDismiss={() => props.onDismiss?.()}
-            hidden
+            closeLabel="Close"
             testId="menu-sheet-head"
             titleTestId="menu-sheet-title"
+            closeTestId="menu-sheet-close"
           />
+          <div
+            class={frame['body']}
+            role="menu"
+            aria-label={props.label}
+            aria-labelledby={props.labelledBy}
+            aria-orientation={props.orientation}
+            tabindex="-1"
+            data-testid="menu-sheet-body"
+          >
+            {props.children}
+          </div>
         </Show>
-        {props.children}
       </div>
     </>
   );

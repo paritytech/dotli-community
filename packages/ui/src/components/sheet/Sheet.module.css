@@ -4,8 +4,9 @@
 /* The one bottom sheet frame: popovers (Popover.tsx) and menus (Menu.tsx)
    open in it on phones, PHONE_QUERY (phone-viewport.ts) read as each opening
    starts. Each puts `.sheet` on its surface, marked `data-sheet` for a sheet
-   opening, `.scrim` on the dark layer under it, and SheetHead first inside
-   the surface. The rules key on two attributes, so the frame's place and
+   opening, `.scrim` on the dark layer under it, SheetHead first inside the
+   surface and `.body` on what follows it, the part that scrolls (the board's
+   .sheet-scroll). The rules key on two attributes, so the frame's place and
    width outrank a consumer's own class. The sign-in (AuthModal.module.css)
    and the dialogs (overlays/Dialog.module.css) keep media-query twins of
    this frame: keep the three in step. */
@@ -44,14 +45,14 @@
   max-width: 100%;
   /* The board's 85%, of the whole screen: the sheet covers the header. */
   max-height: 85dvh;
-  overflow-y: auto;
+  /* On the base rule, not on [data-open], so the column holds through the
+     close transition, while allow-discrete keeps the open `display`. */
+  flex-direction: column;
+  overflow: hidden;
+  padding: 0;
   border: none;
   border-radius: var(--r-xl) var(--r-xl) 0 0;
   box-shadow: var(--chrome-shadow-sheet);
-  /* The board's 24 px under the content, then the home indicator. A consumer
-     whose content pads the bottom edge itself sets --sheet-inset: 0 on its
-     surface class. */
-  padding-bottom: var(--sheet-inset, calc(var(--sp-6) + var(--safe-bottom)));
   opacity: 1;
   transform: translateY(100%);
   transform-origin: bottom center;
@@ -61,6 +62,7 @@
     display var(--dur-morph) allow-discrete;
 }
 .sheet[data-sheet][data-open] {
+  display: flex;
   transform: translateY(0);
 }
 @starting-style {
@@ -93,22 +95,16 @@
   }
 }
 
-/* The board's .sheet-head, sticky on its own glass so the content scrolls
-   under it. Its row is at least the close button's height, so a head without
-   one (a menu's) is as tall as a popover's. */
+/* The board's .sheet-head: on the sheet's own glass, over the body that
+   scrolls under it. */
 .head {
-  position: sticky;
-  top: 0;
-  z-index: 2;
+  position: relative;
+  flex: none;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-rows: minmax(var(--h-control-sm), auto);
   align-items: center;
   column-gap: var(--sp-3);
   padding: var(--sp-6) var(--sp-4) var(--sp-3) var(--sp-5);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  backdrop-filter: var(--chrome-blur);
   touch-action: none;
   cursor: grab;
 }
@@ -126,11 +122,26 @@
 }
 .title {
   min-width: 0;
+  margin: 0;
   color: var(--chrome-text);
   font-size: var(--fs-title-lg);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
+}
+
+/* The board's .sheet-scroll: 24 px under the content, then the home
+   indicator. */
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
+}
+/* A menu's body takes focus itself (tabindex -1) for a pointer opening, and
+   shows no ring for it: its rows carry the ring. */
+.body:focus-visible {
+  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {

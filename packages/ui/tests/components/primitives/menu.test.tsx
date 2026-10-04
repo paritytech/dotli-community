@@ -23,21 +23,35 @@ afterEach(() => {
 });
 
 describe('Menu', () => {
-  it('As a phone user, a menu sheet shows its title over a scrim, and a screen reader hears the menu by its own name', async () => {
+  it('As a phone user, a menu sheet shows its title and a close button over a scrim, and a screen reader hears the menu by its own name', async () => {
     // When
     renderMenu(true);
     await settle();
 
-    // Then
-    const menu = byId('menu');
-    expect(menu.hasAttribute('data-sheet')).toBe(true);
+    // Then: the head leads the sheet, outside the menu, which holds only its items.
+    const sheet = byId('menu');
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    const head = byTestId('menu-sheet-head', sheet);
+    expect(sheet.firstElementChild).toBe(head);
+    expect(byTestId('menu-sheet-title', head).textContent).toBe('Things');
+    expect(byTestId('menu-sheet-close', head).getAttribute('aria-label')).toBe('Close');
+    const menu = byTestId('menu-sheet-body', sheet);
     expect(menu.getAttribute('role')).toBe('menu');
     expect(menu.getAttribute('aria-label')).toBe('Things');
-    const head = byTestId('menu-sheet-head', menu);
-    expect(menu.firstElementChild).toBe(head);
-    expect(head.getAttribute('aria-hidden')).toBe('true');
-    expect(byTestId('menu-sheet-title', head).textContent).toBe('Things');
+    expect(menu.contains(head)).toBe(false);
     expect(byTestId('menu-scrim').hasAttribute('data-open')).toBe(true);
+  });
+
+  it('As a phone user, the close button in the menu sheet head asks to close it', async () => {
+    // Given
+    const { onDismiss } = renderMenu(true);
+    await settle();
+
+    // When
+    byTestId('menu-sheet-close').click();
+
+    // Then
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   });
 
   it('As a desktop user, a menu that is no sheet has no head and no scrim', async () => {
@@ -47,6 +61,7 @@ describe('Menu', () => {
 
     // Then
     expect(byId('menu').hasAttribute('data-sheet')).toBe(false);
+    expect(byId('menu').getAttribute('role')).toBe('menu');
     expect(document.querySelector('[data-testid="menu-sheet-head"]')).toBeNull();
     expect(document.querySelector('[data-testid="menu-scrim"]')).toBeNull();
   });
