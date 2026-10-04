@@ -16,10 +16,11 @@ import {
 } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
-import { startDrag } from '../drag.js';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
+import { SheetHead } from '../sheet/SheetHead.js';
+import frame from '../sheet/Sheet.module.css';
 import { createPopover } from './create-popover.js';
 import s from './Popover.module.css';
 
@@ -27,12 +28,6 @@ import s from './Popover.module.css';
 export const EXIT_MS = 220;
 export const SHEET_EXIT_MS = 280;
 
-/** A swipe past this share of the sheet's height closes it. */
-const SWIPE_CLOSE_FRACTION = 0.3;
-/** So does one faster than this, in px/ms... */
-const SWIPE_CLOSE_SPEED = 0.5;
-/** ...that went at least this far, so a tap's jitter is no flick. */
-const SWIPE_FLICK_MIN_PX = 24;
 /** How long a mouse rests on the trigger before an `openOnHover` popover shows. */
 const HOVER_SHOW_MS = 200;
 /** How long after the mouse leaves before it hides. */
@@ -109,10 +104,10 @@ export function usePopover(): PopoverContextValue {
  * A shell popover: the trigger, and in the body a surface (`role="dialog"`)
  * with an optional backdrop. The surface opens anchored (under the topbar at
  * its right edge, or under its trigger) or, when the viewport matches
- * SHEET_QUERY as it opens, as a modal bottom sheet. The content is a lazy
- * component in its own chunk: preloaded when the browser is idle, mounted
- * when the popover opens, and unmounted once it has closed and faded out,
- * so each opening starts afresh. Content that cannot load or throws is
+ * SHEET_QUERY as it opens, as a modal bottom sheet (components/sheet). The
+ * content is a lazy component in its own chunk: preloaded when the browser
+ * is idle, mounted when the popover opens, and unmounted once it has closed
+ * and faded out, so each opening starts afresh. Content that cannot load or throws is
  * reported once and closes the popover; the next opening loads it again.
  * Focus and dismissal are createPopover's (`popover` mode anchored,
  * `dialog` mode as a sheet).
@@ -331,7 +326,7 @@ export function Popover(props: PopoverProps): JSX.Element {
         <Show when={props.backdrop === true || sheet()}>
           <div
             onClick={close}
-            class={s['backdrop']}
+            class={sheet() ? frame['scrim'] : s['backdrop']}
             id={`${props.id}-backdrop`}
             data-testid="popover-backdrop"
             data-open={popover.open() ? '' : undefined}
@@ -342,7 +337,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           ref={el => {
             surfaceEl = el;
           }}
-          class={[s['surface'], props.class]}
+          class={[s['surface'], frame['sheet'], props.class]}
           data-chrome=""
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
@@ -407,65 +402,18 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
 
 /**
  * The sheet's header: a grabber, the title and a close button. A drag down
- * that starts on it moves the sheet with the pointer; released past 30% of
- * the sheet's height, or in a flick, it closes the sheet, and the sheet
- * springs back otherwise.
+ * that starts on it swipes the sheet (dragSheet).
  */
 function SheetHeader(props: { title: string; surface: () => HTMLElement | undefined; close: () => void }): JSX.Element {
-  let header: HTMLDivElement | undefined;
-  let closeButton: HTMLButtonElement | undefined;
-  let stop: (() => void) | undefined;
-  onCleanup(() => stop?.());
-
-  const onPointerDown = (down: PointerEvent): void => {
-    const surface = props.surface();
-    if (header === undefined || surface === undefined || down.button !== 0) {
-      return;
-    }
-    // Not from the close button: its own click closes.
-    if (closeButton?.contains(down.target as Node) === true) {
-      return;
-    }
-    const startY = down.clientY;
-    const startTime = performance.now();
-    let dy = 0;
-    surface.setAttribute('data-dragging', '');
-    stop = startDrag(header, down, {
-      move: ev => {
-        dy = Math.max(0, ev.clientY - startY);
-        surface.style.transform = `translateY(${String(dy)}px)`;
-      },
-      end: () => {
-        const speed = dy / Math.max(1, performance.now() - startTime);
-        surface.removeAttribute('data-dragging');
-        if (
-          dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION ||
-          (dy >= SWIPE_FLICK_MIN_PX && speed > SWIPE_CLOSE_SPEED)
-        ) {
-          props.close();
-        }
-        surface.style.transform = '';
-      },
-    });
-  };
-
   return (
-    <div
-      ref={el => {
-        header = el;
-      }}
-      class={s['sheetHeader']}
-      data-testid="popover-sheet-header"
-      onPointerDown={onPointerDown}
+    <SheetHead
+      title={props.title}
+      surface={props.surface}
+      onDismiss={props.close}
+      testId="popover-sheet-header"
+      titleTestId="popover-sheet-title"
     >
-      <div class={s['grabber']} aria-hidden="true" />
-      <span class={s['sheetTitle']} data-testid="popover-sheet-title">
-        {props.title}
-      </span>
       <button
-        ref={el => {
-          closeButton = el;
-        }}
         type="button"
         class={s['sheetClose']}
         data-testid="popover-sheet-close"
@@ -476,7 +424,7 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       >
         ✕
       </button>
-    </div>
+    </SheetHead>
   );
 }
 

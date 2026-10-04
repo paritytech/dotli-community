@@ -8,6 +8,7 @@ import { createSignal, lazy } from 'solid-js';
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT_MS, Popover, SHEET_EXIT_MS, usePopover } from '../../../src/components/shell/Popover.js';
+import { drag } from '../../helpers/drag.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
 
@@ -565,17 +566,6 @@ describe('Popover', () => {
   });
 
   describe('swipe', () => {
-    /** A drag on `el` from y 100 by `dy` pixels over `ms` milliseconds. */
-    function drag(el: HTMLElement, dy: number, ms: number): void {
-      const now = vi.spyOn(performance, 'now');
-      now.mockReturnValue(1000);
-      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientY: 100, button: 0 }));
-      now.mockReturnValue(1000 + ms);
-      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
-      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
-      now.mockRestore();
-    }
-
     async function openSheet(): Promise<HTMLElement> {
       stubViewport(true);
       const { Content, release } = chunk(Body);

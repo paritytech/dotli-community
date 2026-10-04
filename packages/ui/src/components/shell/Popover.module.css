@@ -3,8 +3,8 @@
 
 /* The surface's base rule is wrapped in :where(), so a consumer's own class (its
    place, width and look) wins over it whatever order the stylesheets load in.
-   The state rules keep their specificity, so a sheet still takes the full width
-   over a consumer's width. */
+   The state rules keep their specificity, so a sheet (the shared frame's
+   two-attribute rules) still takes the full width over a consumer's width. */
 
 .backdrop {
   display: none;
@@ -28,9 +28,6 @@
   .backdrop[data-open] {
     opacity: 0;
   }
-}
-.backdrop[data-sheet] {
-  background: var(--chrome-scrim);
 }
 
 :where(.surface) {
@@ -111,72 +108,9 @@
   }
 }
 
-/* On phones (SHEET_QUERY, read as each opening starts) a popover is a modal
-   bottom sheet. */
-.surface[data-sheet] {
-  top: auto;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  width: 100%;
-  max-width: 100%;
-  max-height: calc(var(--content-height) * 0.85);
-  overflow-y: auto;
-  border: none;
-  border-top: 1px solid var(--chrome-line);
-  border-radius: 16px 16px 0 0;
-  /* A consumer whose content pads the home indicator itself sets
-     --sheet-inset: 0 on its surface class. */
-  padding-bottom: var(--sheet-inset, var(--safe-bottom));
-  opacity: 1;
-  transform: translateY(100%);
-  transform-origin: bottom center;
-  transition:
-    transform 0.28s cubic-bezier(0.32, 0.72, 0, 1),
-    display 0.28s allow-discrete;
-}
-.surface[data-sheet][data-open] {
-  transform: translateY(0);
-}
-@starting-style {
-  .surface[data-sheet][data-open] {
-    opacity: 1;
-    transform: translateY(100%);
-  }
-}
-.surface[data-dragging] {
-  transition: none;
-}
-.sheet-header {
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  padding: 18px 14px 12px;
-  border-bottom: 1px solid var(--chrome-line);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  backdrop-filter: var(--chrome-blur);
-  touch-action: none;
-  cursor: grab;
-}
-.grabber {
-  position: absolute;
-  top: 7px;
-  left: 50%;
-  width: 36px;
-  height: 4px;
-  margin-left: -18px;
-  border-radius: 2px;
-  background: var(--chrome-ring-strong);
-}
-.sheet-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--chrome-text);
-}
+/* As a sheet, the surface and its backdrop take the sheet frame
+   (components/sheet/Sheet.module.css). The head's close button is the
+   popover's own. */
 .sheet-close {
   appearance: none;
   margin: 0;
