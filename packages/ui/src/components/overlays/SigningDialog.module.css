@@ -91,16 +91,10 @@
 }
 
 /* PHONE_QUERY in phone-viewport.ts: Dialog.module.css makes the dialog a
-   bottom sheet, and the title leads it as the board's sheet title, without
-   the tile, 4 px in from the content and 16 px over it. */
+   bottom sheet whose head carries the title, so the board's .modal.is-sheet
+   drops the modal's own head and stacks the answers. */
 @media (max-width: 560px) {
   .head {
-    align-items: stretch;
-    margin-bottom: calc(var(--sp-4) - var(--sp-5));
-    padding: 0 0 0 var(--sp-1);
-    text-align: left;
-  }
-  .icon {
     display: none;
   }
   .actions {

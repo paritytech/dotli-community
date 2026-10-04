@@ -31,7 +31,10 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
  * One queued prompt as the board's modal: the icon tile over the centred
  * title, a well of fields, the notice, the password input, and a row of
  * equal-width answers. At 560 px and below the dialog is a bottom sheet led
- * by the title alone (SigningDialog.module.css).
+ * by the sheets' head with the title and a close button, the icon tile and
+ * the centred title gone, and the answers stacked (SigningDialog.module.css).
+ * The close button (or a swipe) answers as the scrim does, and on a prompt
+ * the scrim cannot dismiss, as its Cancel does.
  */
 export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   // The outlet re-creates this component per entry (keyed), so reading once is intended.
@@ -61,6 +64,15 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
     }
   };
 
+  const close = (): void => {
+    const cancel = view.buttons.find(b => b.variant === 'cancel');
+    if (view.dismissOnBackdrop) {
+      dismiss();
+    } else if (cancel !== undefined) {
+      choose(cancel);
+    }
+  };
+
   const submitWithEnter = (): void => {
     const primary = view.buttons.find(b => b.variant === 'primary');
     if (primary !== undefined) {
@@ -69,11 +81,16 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   };
 
   return (
-    <Dialog titleId={titleId} initialFocus={() => input} onDismiss={dismiss} testId="signing-modal">
+    <Dialog
+      titleId={titleId}
+      title={view.title}
+      initialFocus={() => input}
+      onDismiss={dismiss}
+      onClose={close}
+      testId="signing-modal"
+    >
       <div class={s['head']}>
-        <Show when={view.icon}>
-          {icon => <IconTile markup={icon()} class={s['icon']} testId="permission-modal-icon" />}
-        </Show>
+        <Show when={view.icon}>{icon => <IconTile markup={icon()} testId="permission-modal-icon" />}</Show>
         <h2 class={s['title']} id={titleId}>
           {view.title}
         </h2>

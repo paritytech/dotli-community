@@ -2,23 +2,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 // Shared dialog shell: the scrim and the glass card (a bottom sheet at 560 px
-// and below), dialog semantics, initial focus, a Tab trap, Escape, and focus
-// restored on close.
+// and below, led by the sheets' head), dialog semantics, initial focus, a Tab
+// trap, Escape, and focus restored on close.
 
 import { onCleanup, onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab } from '../focus.js';
+import { SheetHead } from '../sheet/SheetHead.js';
 import s from './Dialog.module.css';
 
 export interface DialogProps {
   titleId: string;
+  /** The phone sheet head's title. */
+  title: string;
   /** Element to focus first. Defaults to the dialog itself. */
   initialFocus?: () => HTMLElement | undefined;
   /** Backdrop click and Escape. */
   onDismiss: () => void;
-  /** Rendered as `data-testid` on the dialog panel, and with `-backdrop` appended on the backdrop. */
-  testId?: string;
+  /** The phone sheet head's close button and swipe. */
+  onClose: () => void;
+  /**
+   * Rendered as `data-testid` on the dialog panel, and with `-backdrop`,
+   * `-sheet-head`, `-sheet-title` and `-sheet-close` appended on those parts.
+   */
+  testId: string;
   children: JSX.Element;
 }
 
@@ -110,7 +118,7 @@ export function Dialog(props: DialogProps): JSX.Element {
     <div
       class={s['backdrop']}
       data-follows={follows ? '' : undefined}
-      data-testid={props.testId === undefined ? undefined : `${props.testId}-backdrop`}
+      data-testid={`${props.testId}-backdrop`}
       ref={el => {
         backdrop = el;
       }}
@@ -134,7 +142,18 @@ export function Dialog(props: DialogProps): JSX.Element {
         aria-labelledby={props.titleId}
         tabindex="-1"
       >
-        {props.children}
+        {/* Always in the dialog: the stylesheet shows it at phone width only. */}
+        <SheetHead
+          title={props.title}
+          surface={() => dialog}
+          onDismiss={props.onClose}
+          closeLabel="Close"
+          class={s['sheetHead']}
+          testId={`${props.testId}-sheet-head`}
+          titleTestId={`${props.testId}-sheet-title`}
+          closeTestId={`${props.testId}-sheet-close`}
+        />
+        <div class={s['body']}>{props.children}</div>
       </div>
     </div>
   );

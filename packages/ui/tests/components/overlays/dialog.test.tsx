@@ -77,9 +77,9 @@ describe('signing dialog', () => {
     const modal = query(document, '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]');
     expect(modal.getAttribute('role')).toBe('dialog');
     expect(modal.getAttribute('aria-modal')).toBe('true');
-    const title = query(modal, 'h2');
+    const title = query(modal, `#${modal.getAttribute('aria-labelledby') ?? ''}`);
+    expect(title.tagName).toBe('H2');
     expect(title.textContent).toBe('Permission Request');
-    expect(modal.getAttribute('aria-labelledby')).toBe(title.id);
     expect(modal.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
     expect(
       [...document.querySelectorAll('[data-testid="signing-field"]')].map(f => f.hasAttribute('data-warning')),
@@ -203,6 +203,45 @@ describe('signing dialog', () => {
     // Then
     expect(settled).toBe(false);
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
+  });
+
+  it("As a phone user, a prompt's sheet is headed by its title, and its close button dismisses it as the scrim does", async () => {
+    // Given
+    const outcome = openModal(permissionLike());
+    await mountOutlet();
+
+    // Then: the head leads the sheet.
+    const modal = byTestId('signing-modal', document);
+    const head = byTestId('signing-modal-sheet-head', modal);
+    expect(modal.firstElementChild).toBe(head);
+    expect(byTestId('signing-modal-sheet-title', head).textContent).toBe('Permission Request');
+    const close = byTestId('signing-modal-sheet-close', head, HTMLButtonElement);
+    expect(close.getAttribute('aria-label')).toBe('Close');
+
+    // When
+    fireEvent.click(close);
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'dismissed' });
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
+  });
+
+  it('As a phone user, the close button on a prompt that must be answered answers it with its Cancel, without what I typed', async () => {
+    // Given
+    const outcome = openModal(passwordView());
+    await mountOutlet();
+    fireEvent.input(byTestId('password-prompt-input', document, HTMLInputElement), {
+      target: { value: 'typed' },
+    });
+    await settle();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'cancel' });
   });
 
   it('As a dotli user, focus starts on the dialog, not on the approve button, and Tab stays inside', async () => {
