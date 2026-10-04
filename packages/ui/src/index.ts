@@ -33,6 +33,7 @@ export { initSettingsStore } from './state/settings.js';
 export { openSettings, setLandingPage, topbarStore } from './state/topbar.js';
 export { setVerificationShieldState, showLocalhostPill, showProductPill } from './state/url-pill.js';
 export { bindUrlPill } from './url-pill.js';
+export { bindTopbarStatus } from './topbar-status.js';
 export {
   armTopbarAutoHide,
   pinTopbarVisible,
