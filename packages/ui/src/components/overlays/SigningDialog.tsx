@@ -34,7 +34,7 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
  * by the sheets' head with the title and a close button, the icon tile and
  * the centred title gone, and the answers stacked (SigningDialog.module.css).
  * The close button (or a swipe) answers as the scrim does, and on a prompt
- * the scrim cannot dismiss, as its Cancel does.
+ * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
  */
 export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   // The outlet re-creates this component per entry (keyed), so reading once is intended.
@@ -64,12 +64,16 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
     }
   };
 
+  // Close always answers: the scrim's answer where it has one, else Cancel,
+  // else the danger reject, so no prompt shape leaves a dead button.
   const close = (): void => {
-    const cancel = view.buttons.find(b => b.variant === 'cancel');
-    if (view.dismissOnBackdrop) {
-      dismiss();
-    } else if (cancel !== undefined) {
-      choose(cancel);
+    if (view.dismissOnBackdrop && view.dismissResult !== undefined) {
+      settleModal(id, view.dismissResult);
+      return;
+    }
+    const decline = view.buttons.find(b => b.variant === 'cancel') ?? view.buttons.find(b => b.variant === 'danger');
+    if (decline !== undefined) {
+      choose(decline);
     }
   };
 

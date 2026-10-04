@@ -126,7 +126,8 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
  * itself. The arrows (Left and Right along the row, Up and Down too, all
  * wrapping), Home, End and typeahead move between the tiles
  * (`menuitemradio`, `aria-checked` on the current one). Escape closes and
- * hands focus back to the button, Tab is prevented, and a press outside
+ * hands focus back to the button, Tab is prevented (in a sheet, Tab reaches
+ * the head's close button), and a press outside
  * closes it without reaching what is underneath. Picking a tile applies it
  * through theme-controller.ts, closes the menu and focuses the button (or
  * the More button, while the topbar has collapsed the appearance button).

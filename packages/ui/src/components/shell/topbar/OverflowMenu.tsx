@@ -122,7 +122,6 @@ export function OverflowMenu(props: {
         data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
         aria-label={moreLabel()}
-        active={menu.open()}
         badge={badgeTone() !== undefined}
         badgeTone={badgeTone() ?? 'ok'}
         aria-haspopup="menu"

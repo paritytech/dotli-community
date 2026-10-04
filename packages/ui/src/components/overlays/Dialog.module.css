@@ -97,7 +97,14 @@
     padding: 0;
     border-radius: var(--r-xl) var(--r-xl) 0 0;
     box-shadow: var(--chrome-shadow-sheet);
-    animation: sheet-in var(--dur-morph) var(--ease-out) both;
+    /* No fill: a finished animation that keeps filling its transform stops
+       the transition below from easing a short swipe back. */
+    animation: sheet-in var(--dur-morph) var(--ease-out);
+    transition: transform var(--dur-morph) var(--ease-out);
+  }
+  /* A dragged sheet follows the finger without easing. */
+  .dialog[data-dragging] {
+    transition: none;
   }
   .dialog .sheet-head {
     display: grid;
@@ -121,5 +128,6 @@
   .backdrop,
   .dialog {
     animation: none;
+    transition: none;
   }
 }

@@ -82,7 +82,7 @@
 .bars {
   position: relative;
   display: flex;
-  /* 48 slots share the width; the newest is at the right edge. */
+  /* 48 slots share the width. The newest is at the right edge. */
   flex-direction: row;
   align-items: flex-end;
   gap: var(--sp-hair);

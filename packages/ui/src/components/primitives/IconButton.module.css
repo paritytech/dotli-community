@@ -89,8 +89,8 @@
   background: var(--chrome-fill-strong);
 }
 /* The board's .icon-btn.is-on, on every bar button while its surface is
-   open: the Popover triggers carry only aria-expanded. */
-:global(#topbar) .button:is([data-active], [aria-expanded='true']) {
+   open, which each says with aria-expanded. */
+:global(#topbar) .button[aria-expanded='true'] {
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);

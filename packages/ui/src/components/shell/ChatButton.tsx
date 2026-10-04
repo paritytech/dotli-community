@@ -91,7 +91,6 @@ export function ChatButton(): JSX.Element {
         }}
         onClick={toggle}
         id="chat-button"
-        active={open()}
         title="Chat"
         aria-label="Chat"
         aria-expanded={open() ? 'true' : 'false'}

@@ -95,8 +95,8 @@
   }
 }
 
-/* The board's .sheet-head: on the sheet's own glass, over the body that
-   scrolls under it. */
+/* The board's .sheet-head: no glass of its own, a fixed row above the body
+   that scrolls. */
 .head {
   position: relative;
   flex: none;

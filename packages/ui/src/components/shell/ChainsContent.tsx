@@ -161,8 +161,8 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
     if (strip === undefined || prev === undefined) {
       return;
     }
-    // Only blocks newer than the newest shown landed: bars revealed on the
-    // left by a wider strip are history, not arrivals.
+    // Only blocks newer than the newest shown landed, so a re-render with the
+    // same history slides nothing.
     const newest = prev.at(-1)?.number;
     const landed = newest === undefined ? list.length : list.filter(bar => bar.number > newest).length;
     // Bars landing in a strip that showed none (on opening, or after the

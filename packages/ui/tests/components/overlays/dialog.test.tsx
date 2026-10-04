@@ -244,6 +244,33 @@ describe('signing dialog', () => {
     await expect(outcome).resolves.toEqual({ result: 'cancel' });
   });
 
+  it('As a phone user, the close button on a prompt with no Cancel and no scrim answer answers it with its danger reject', async () => {
+    // Given
+    const outcome = openModal(permissionLike({ dismissOnBackdrop: false }));
+    await mountOutlet();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'deny' });
+  });
+
+  it('As a phone user, the close button on a scrim-dismissable prompt with no scrim answer answers it with its danger reject', async () => {
+    // Given
+    const { dismissResult: _unused, ...view } = permissionLike();
+    const outcome = openModal(view);
+    await mountOutlet();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'deny' });
+  });
+
   it('As a dotli user, focus starts on the dialog, not on the approve button, and Tab stays inside', async () => {
     // Given
     const opener = document.createElement('button');
