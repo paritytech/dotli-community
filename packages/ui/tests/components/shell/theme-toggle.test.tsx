@@ -7,9 +7,10 @@ import { initTheme } from '../../../src/theme-controller.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { moreRow, renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { mountLandingPage } from '../../helpers/landing.js';
-import { byId } from '../../support.js';
+import { byId, byTestId } from '../../support.js';
 
 // The landing page loads the recent names from the shared storage frame,
 // which happy-dom would try to fetch.
@@ -201,6 +202,30 @@ describe('ThemeToggle', () => {
     expect(document.activeElement).toBe(btn);
     expect(btn.title).toBe('Appearance: Dark');
     expect(btn.getAttribute('aria-label')).toBe('Appearance: Dark');
+  });
+
+  it('As a phone user, the Appearance menu opens as a bottom sheet with its title in the head, and picking a tile applies it and closes the sheet', async () => {
+    // Given
+    await renderToggle('dark', 'dark');
+    stubPhoneViewport(true);
+
+    // When
+    mouseClick(themeButton());
+    await settle();
+
+    // Then
+    const sheet = themePopover();
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('menu-sheet-title', sheet).textContent).toBe('Appearance');
+    expect(sheet.getAttribute('aria-label')).toBe('Appearance');
+
+    // When
+    themeOption('light')?.click();
+    await settle();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(document.documentElement.getAttribute('data-theme-pref')).toBe('light');
   });
 
   it('As a dotli user, I select System from the theme menu and the theme resolves from the OS', async () => {

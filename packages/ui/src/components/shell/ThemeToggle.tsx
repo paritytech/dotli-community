@@ -153,6 +153,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
 
   const menu = createPopover({
     mode: 'menu',
+    sheet: true,
     trigger: () => button,
     surface: () => popover,
   });
@@ -201,6 +202,11 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           open={menu.open()}
           label="Appearance"
           orientation="horizontal"
+          sheet={menu.sheet()}
+          sheetTitle="Appearance"
+          onDismiss={() => {
+            menu.setOpen(false);
+          }}
         >
           <div class={s['head']} aria-hidden="true">
             Appearance

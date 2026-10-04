@@ -87,3 +87,15 @@
     transition: none;
   }
 }
+
+/* Phones: the sheet's head carries the title, and the tiles sit inset
+   under it (the board's .popover.is-sheet). */
+.menu[data-sheet] {
+  gap: 0;
+}
+.menu[data-sheet] .head {
+  display: none;
+}
+.menu[data-sheet] .tiles {
+  margin: var(--sp-1) var(--sp-4) 0;
+}
