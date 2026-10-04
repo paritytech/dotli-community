@@ -795,6 +795,7 @@ describe('The settings popover island', () => {
     const button = query(site, 'button', HTMLButtonElement);
     const status = query(site, '[role="status"]');
     expect(button.getAttribute('aria-label')).toBe('Copy Site');
+    expect(byId(button.getAttribute('aria-describedby') ?? '').textContent).toBe(window.location.host);
     expect(focusables(byId('mode-popover'))).toContain(button);
     expect(infoRow('Build').querySelector('button')).toBeNull();
 

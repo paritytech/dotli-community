@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createUniqueId } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import s from './Well.module.css';
 
@@ -61,6 +62,7 @@ export function KeyValue(props: {
   class?: string | undefined;
   testId?: string;
 }): JSX.Element {
+  const valueId = createUniqueId();
   return (
     <div
       onClick={() => {
@@ -75,8 +77,10 @@ export function KeyValue(props: {
     >
       <span class={s['key']}>{props.k}</span>
       {props.copyable === true ? (
-        <button type="button" class={s['copy']} aria-label={`Copy ${props.k}`}>
-          <code class={s['value']}>{props.v}</code>
+        <button type="button" class={s['copy']} aria-label={`Copy ${props.k}`} aria-describedby={valueId}>
+          <code id={valueId} class={s['value']}>
+            {props.v}
+          </code>
         </button>
       ) : (
         <code class={s['value']}>{props.v}</code>
