@@ -11,14 +11,14 @@ import { TopbarContext } from './topbar/context.js';
 
 /**
  * How a shell surface behaves, after the Radix UI v1 primitive it
- * corresponds to. The primitive handles focus and dismissal; the component
+ * corresponds to. The primitive handles focus and dismissal. The component
  * renders the markup, which each mode expects to carry:
  *
  * - `popover` (Radix Popover, non-modal, with a focus trap): the trigger has
- *   `aria-haspopup="dialog"`, `aria-expanded` and `aria-controls`; the
+ *   `aria-haspopup="dialog"`, `aria-expanded` and `aria-controls`. The
  *   surface has `role="dialog"` and `tabindex="-1"`.
  * - `menu` (Radix DropdownMenu, modal): the trigger has
- *   `aria-haspopup="menu"`, `aria-expanded` and `aria-controls`; the surface
+ *   `aria-haspopup="menu"`, `aria-expanded` and `aria-controls`. The surface
  *   has `role="menu"` and `tabindex="-1"`, and its items have
  *   `role="menuitem"` (or `menuitemradio`, `menuitemcheckbox`) and
  *   `tabindex="-1"`.
@@ -45,14 +45,14 @@ export interface PopoverOptions {
    */
   closeOnBlur?: boolean;
   /**
-   * `popover` mode: loop Tab and Shift+Tab inside the surface. Default true;
-   * false for a disclosure with nothing to focus inside (the verification
+   * `popover` mode: loop Tab and Shift+Tab inside the surface. Default true.
+   * False for a disclosure with nothing to focus inside (the verification
    * shield's explainer), where a trap would leave Tab going nowhere.
    */
   trapFocus?: boolean;
   /**
    * Close when a blocking modal comes up (`topbarStore`'s
-   * `blockingModalActive` turning true). Default true; false for the
+   * `blockingModalActive` turning true). Default true. False for the
    * blocking modal itself.
    */
   closeOnBlockingModal?: boolean;
@@ -76,7 +76,7 @@ export interface Popover {
   sheet: Accessor<boolean>;
   setOpen: (open: boolean) => void;
   /**
-   * Open or close; wire the trigger's click to it. For a menu, a click with
+   * Open or close. Wire the trigger's click to it. For a menu, a click with
    * `detail` 0 (a key's, or one forwarded from a keyboard choice, like the
    * "more" menu's) opens it as a keyboard opening, on its first item.
    */
@@ -188,13 +188,12 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * and wires the trigger's click to `toggle`.
  *
  * In every mode, opening focuses the first tabbable element in the surface,
- * or the surface itself when it has a tabindex; Escape closes and hands
- * focus back to the trigger; a pointerdown outside the trigger and the
- * surface closes (a touch one on its click, so a scroll that starts outside
- * does not, as Radix's usePointerDownOutside does); and so do a blocking
- * modal coming up (unless
- * `closeOnBlockingModal` is false) and, with `closeOnBlur`, the window
- * losing focus. Closing hands focus back to the
+ * or the surface itself when it has a tabindex. Escape closes and hands
+ * focus back to the trigger. A pointerdown outside the trigger and the
+ * surface closes (a touch one on its pointerup, so a scroll that starts
+ * outside does not, as Radix's usePointerDownOutside does). So do a blocking
+ * modal coming up (unless `closeOnBlockingModal` is false) and, with
+ * `closeOnBlur`, the window losing focus. Closing hands focus back to the
  * trigger, unless the user moved it elsewhere (or, for `popover`, closed it
  * by interacting outside). Per mode:
  *
@@ -206,10 +205,10 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * - `menu`: Enter, Space or ArrowDown on the trigger opens it and focuses the
  *   first item (the click a browser may still fire for the key is dropped),
  *   and so does a trigger click with `detail` 0, while a pointer opening
- *   focuses the surface; the items have
+ *   focuses the surface. The items have
  *   roving focus (ArrowUp/ArrowDown looping and ArrowLeft/ArrowRight in a
  *   menu marked `aria-orientation="horizontal"`, Home, End, typeahead, pointer
- *   hover); Tab is prevented; an outside pointerdown closes it and swallows
+ *   hover). Tab is prevented, and an outside pointerdown closes it and swallows
  *   its click, so the click does not activate what is underneath. Call
  *   `onItemChosen` when an item is chosen.
  * - `dialog`: Tab and Shift+Tab are trapped inside, and the page does not
