@@ -212,23 +212,19 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         </div>
         <Diagnostics backend={persisted.chain} />
       </div>
-      {/* One unit, so in a sheet it pins to the bottom edge with the primary
-          action in reach. */}
-      <div class={s['footer']}>
-        <SurfaceFoot
-          hint={
-            <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
-              Transport and cache changes reload the app
-            </Hint>
-          }
-        >
-          <div class={s['apply']} data-testid="mode-apply-row">
-            <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
-              {applying() ? 'Resetting…' : 'Save and apply'}
-            </Button>
-          </div>
-        </SurfaceFoot>
-      </div>
+      <SurfaceFoot
+        hint={
+          <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
+            Transport and cache changes reload the app
+          </Hint>
+        }
+      >
+        <div class={s['apply']} data-testid="mode-apply-row">
+          <Button variant="primary" block={popover.sheet()} onClick={apply} disabled={!dirty() || applying()}>
+            {applying() ? 'Resetting…' : 'Save and apply'}
+          </Button>
+        </div>
+      </SurfaceFoot>
     </Surface>
   );
 }
