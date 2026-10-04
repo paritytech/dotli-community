@@ -11,7 +11,7 @@
   border-left: 2px solid var(--td-teal);
   border-radius: 0 3px 3px 0;
   color: var(--td-fg);
-  font-size: 11.5px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -87,5 +87,5 @@
   color: var(--td-teal-pale);
   padding: 0 3px;
   border-radius: 2px;
-  font-size: 10.5px;
+  font-size: 11px;
 }

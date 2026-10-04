@@ -49,7 +49,7 @@
 }
 .time {
   color: var(--td-fg-faint);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .arrowIn {
   color: var(--td-green);
@@ -70,7 +70,7 @@
   font-style: italic;
 }
 .rid {
-  font-size: 10.5px;
+  font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 0 4px;
@@ -108,14 +108,14 @@
 .latency {
   color: var(--td-green);
   margin-left: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .layer {
   display: inline-flex;
   align-items: center;
   font-family: system-ui, sans-serif;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 3px;
@@ -166,7 +166,7 @@
   background: var(--td-slate-bg);
   color: var(--td-blue-soft);
   border: 1px solid var(--td-slate-line);
-  font-size: 9.5px;
+  font-size: 10px;
   white-space: nowrap;
 }
 .pending[data-slow] {

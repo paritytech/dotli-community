@@ -18,7 +18,7 @@
   display: flex;
   align-items: center;
   color: var(--td-fg-dim);
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   margin: 0 0 2px;
@@ -35,7 +35,7 @@
   border: 1px solid var(--td-line-hover);
   border-radius: 50%;
   color: var(--td-fg-dim);
-  font-size: 7.5px;
+  font-size: 8px;
   font-style: italic;
   font-weight: 700;
   line-height: 1;
