@@ -1,0 +1,97 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .choice and .radio. The native radio is visually hidden but
+   stays focusable, so the arrow keys and the form semantics are the browser's. */
+
+:where(.choice) {
+  box-sizing: border-box;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  width: 100%;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring-subtle);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+  text-align: left;
+  transition: box-shadow var(--dur-fast);
+}
+label.choice {
+  cursor: pointer;
+}
+label.choice:hover {
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+}
+.choice[data-selected] {
+  box-shadow: inset 0 0 0 1.5px var(--chrome-ring-strong);
+}
+.choice[data-disabled] {
+  cursor: default;
+  opacity: 0.45;
+}
+.choice > svg {
+  flex: none;
+  margin-top: var(--sp-hair);
+}
+.input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+}
+.radio {
+  box-sizing: border-box;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: var(--sp-hair);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--chrome-ring-strong);
+}
+.choice[data-selected] .radio {
+  background: var(--chrome-text);
+  box-shadow: none;
+}
+.choice[data-selected] .radio::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--chrome-on-primary);
+}
+.input:focus-visible + .radio {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+.title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.description {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+@media (prefers-reduced-motion: reduce) {
+  .choice {
+    transition: none;
+  }
+}
