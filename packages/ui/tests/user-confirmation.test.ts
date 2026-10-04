@@ -96,6 +96,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Sign Transaction');
+    expect(byTestId('permission-modal-icon').querySelector('path[d="M12 20h9"]')).not.toBeNull();
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
@@ -189,6 +190,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Sign Message');
+    expect(byTestId('permission-modal-icon').querySelector('path[d="M12 20h9"]')).not.toBeNull();
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
@@ -388,6 +390,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Resource Allocation');
+    expect(document.querySelector('[data-testid="permission-modal-icon"]')).toBeNull();
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'localhost:3000',

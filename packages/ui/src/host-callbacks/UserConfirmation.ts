@@ -29,10 +29,19 @@ import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } fro
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
+// The board's pen, for every prompt that asks for a signature. Markup, as
+// the modal view is plain data.
+const PEN_ICON =
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M12 20h9"/>' +
+  '<path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+
 interface ConfirmationCopy {
   title: string;
   action: string;
   cancelAction?: string;
+  /** SVG markup for the head's tile. */
+  icon?: string;
 }
 
 type ConfirmationField = ModalField;
@@ -73,6 +82,7 @@ async function showConfirmationModal(
   }
   const { result } = await presentModal<ConfirmationDecision>(
     {
+      ...(copy.icon === undefined ? {} : { icon: copy.icon }),
       title: copy.title,
       fields: confirmationDisplay(label, review).fields,
       buttons,
@@ -300,15 +310,15 @@ function createResourceAllocationFields(review: ResourceAllocationReview): Confi
 function confirmationCopy(review: ModalReview): ConfirmationCopy {
   switch (review.tag) {
     case 'SignPayload':
-      return { title: 'Sign Transaction', action: 'Sign' };
+      return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
     case 'SignRaw':
-      return { title: 'Sign Message', action: 'Sign' };
+      return { title: 'Sign Message', action: 'Sign', icon: PEN_ICON };
     case 'StatementStoreProductSign':
-      return { title: 'Sign Statement', action: 'Sign' };
+      return { title: 'Sign Statement', action: 'Sign', icon: PEN_ICON };
     case 'SignVrf':
-      return { title: 'Sign VRF Transcript', action: 'Sign' };
+      return { title: 'Sign VRF Transcript', action: 'Sign', icon: PEN_ICON };
     case 'CreateTransaction':
-      return { title: 'Sign Transaction', action: 'Sign' };
+      return { title: 'Sign Transaction', action: 'Sign', icon: PEN_ICON };
     case 'AccountAlias':
       return {
         title: 'Alias Permission',

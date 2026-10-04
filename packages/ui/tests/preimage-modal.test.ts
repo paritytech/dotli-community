@@ -20,6 +20,9 @@ describe('preimage submit modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Submit Preimage');
+    expect(
+      byTestId('permission-modal-icon').querySelector('path[d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"]'),
+    ).not.toBeNull();
     expect(byTestId('signing-field-label').textContent).toBe('Data size');
     expect(byTestId('signing-field-value').textContent).toBe('2 KB');
 
