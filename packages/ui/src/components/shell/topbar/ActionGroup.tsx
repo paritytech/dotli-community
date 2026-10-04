@@ -38,7 +38,7 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * its absence and lay themselves out for a narrow screen as the bar would
  * most likely fit them.
  */
-export function ActionGroup(props: { growRoom?: () => number; children: JSX.Element }): JSX.Element {
+export function ActionGroup(props: { growRoom?: (() => number) | undefined; children: JSX.Element }): JSX.Element {
   let group: HTMLDivElement | undefined;
   let more: HTMLButtonElement | undefined;
   /** In registration order; sorted by document order where it matters. */
