@@ -21,7 +21,8 @@ import {
   describeNetworkStatus,
   formatRate,
   formatSize,
-  stripCapacity,
+  HISTORY_SLOTS,
+  slotOpacity,
 } from './chains-format.js';
 import { usePopover } from './Popover.js';
 import s from './ChainsContent.module.css';
@@ -111,6 +112,7 @@ function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JS
   );
   return (
     <>
+      <Stubs count={HISTORY_SLOTS - 1} />
       <span
         class={[s['bar'], s['pending']]}
         data-testid="chains-bar-pending"
@@ -124,10 +126,21 @@ function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JS
   );
 }
 
+/** The empty slots of a strip that has fewer samples than slots, at the left. */
+function Stubs(props: { count: number }): JSX.Element {
+  const slots = createMemo(() => Array.from({ length: Math.max(0, props.count) }, (_, i) => i));
+  return (
+    <For each={slots()}>
+      {slot => <span class={s['stub']} data-testid="chains-bar-stub" style={{ opacity: slotOpacity(slot) }} />}
+    </For>
+  );
+}
+
 /**
- * One chain's strip of block bars, newest at the right. Bars keep their element while they stay on screen, so
- * newly landed ones slide in (see slideStrip) instead of the strip being
- * rebuilt.
+ * One chain's strip of block bars: always 48 slots, filled from the right as
+ * samples arrive, the rest stubs. Bars keep their element while they stay on
+ * screen, so newly landed ones slide in (see slideStrip) instead of the strip
+ * being rebuilt.
  */
 function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   let strip: HTMLDivElement | undefined;
@@ -136,35 +149,11 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
   // changes one, so the same bars mean no block landed, and nothing below
   // runs for such an update.
   const bars = createMemo(() => props.chain.bars, { equals: shallowEqual });
-  /** How many bars the strip fits: all of them until it is measured. */
-  const [capacity, setCapacity] = createSignal(Number.POSITIVE_INFINITY);
-  const measure = (): void => {
-    if (strip !== undefined) {
-      setCapacity(stripCapacity(strip, Number.POSITIVE_INFINITY));
-    }
-  };
-  // Measured once the strip is in the page, which is as the popover opens
-  // (the strip mounts with the popover's content), and again whenever it
-  // resizes. Network updates read no layout.
-  onSettled(() => {
-    measure();
-    if (strip === undefined || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(strip);
-    return () => {
-      observer.disconnect();
-    };
-  });
-  // Only the newest marks the strip can fit are rendered. The rest stay in
-  // the monitor, so widening the panel reveals more history rather than
-  // starting it over.
+  // Only the newest slots' worth is drawn. The rest stay in the monitor.
   const visible = createMemo(
     () => {
       const list = bars();
-      const fit = capacity();
-      return fit >= list.length ? list : list.slice(-fit);
+      return list.length > HISTORY_SLOTS ? list.slice(-HISTORY_SLOTS) : list;
     },
     { equals: shallowEqual },
   );
@@ -194,8 +183,9 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
         when={props.chain.bars.length > 0}
         fallback={<PendingBar chain={props.chain} sinceLast={props.sinceLast} />}
       >
+        <Stubs count={HISTORY_SLOTS - visible().length} />
         <For each={visible()}>
-          {bar => {
+          {(bar, index) => {
             const block = String(bar.number);
             // Hovering a bar answers the only question it raises: how late
             // was it.
@@ -208,6 +198,7 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
                 data-block={block}
                 class={s['bar']}
                 data-health={bar.health}
+                style={{ opacity: slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
                 title={delay}
                 aria-label={`Block ${block}, ${delay}`}
               />
@@ -270,7 +261,13 @@ export function ChainsContent(): JSX.Element {
   // The verdict reads from block arrivals, which both backends produce, so a
   // gateway connection reports its health the same way a light client does.
   // Read three times per render: worked out once per update.
-  const status = createMemo(() => describeNetworkStatus(describeLiveNetwork(network().chains), health() === 'offline'));
+  const status = createMemo(() =>
+    describeNetworkStatus(
+      describeLiveNetwork(network().chains),
+      health() === 'offline',
+      network().chains.filter(chain => chain.reachable).length,
+    ),
+  );
   /** The network the host runs, once the host has seeded the settings. */
   const networkLabel = (): string | undefined => {
     const current = settings();

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy } from 'solid-js';
+import { For, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
 import { pillShield, urlPillStore } from '../../state/url-pill.js';
@@ -69,25 +69,31 @@ export function VerificationShield(): JSX.Element {
               class={[s['glyph'], s['verifiedGlyph']]}
               data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
-              fill="currentColor"
-              fill-rule="evenodd"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
               // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
               focusable="false"
             >
-              <path d={GLYPH_PATHS.verified} />
+              <For each={GLYPH_PATHS.verified}>{d => <path d={d} />}</For>
             </svg>
             <svg
               class={[s['glyph'], s['trustedGlyph']]}
               data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
-              fill="currentColor"
-              fill-rule="evenodd"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
               // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
               focusable="false"
             >
-              <path d={GLYPH_PATHS.trusted} />
+              <For each={GLYPH_PATHS.trusted}>{d => <path d={d} />}</For>
             </svg>
           </button>
         )}

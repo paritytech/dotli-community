@@ -53,13 +53,16 @@ export function VerificationContent(): JSX.Element {
                 class={[s['icon'], s[source.state]]}
                 data-testid="verification-tooltip-icon"
                 viewBox="0 0 24 24"
-                fill="currentColor"
-                fill-rule="evenodd"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.75"
+                stroke-linecap="round"
+                stroke-linejoin="round"
                 aria-hidden="true"
                 // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
                 focusable="false"
               >
-                <path d={GLYPH_PATHS[source.state]} />
+                <For each={GLYPH_PATHS[source.state]}>{d => <path d={d} />}</For>
               </svg>
             }
             testId={`verification-tooltip-row-${source.state}`}

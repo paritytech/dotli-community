@@ -791,8 +791,8 @@ async function applyUrlSettings(): Promise<void> {
 
   if (sharedWorkerFallback) {
     showNotification({
-      label: 'Light Client Shared unavailable',
-      text: "This browser doesn't support Light Client Shared. Falling back to Light Client Per-Tab.",
+      label: 'Light client shared unavailable',
+      text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
       tone: 'warn',
       dismissMs: 5_000,
     });

@@ -137,7 +137,7 @@ const GROUPS: readonly { label: string; names: readonly string[] }[] = [
     label: 'Device',
     names: ['Notifications', 'Camera', 'Microphone', 'Location', 'Bluetooth', 'NFC', 'Clipboard', 'Biometrics'],
   },
-  { label: 'App', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
+  { label: 'Account and chain', names: ['IdentityDisclosure', 'ChainSubmit', 'PreimageSubmit', 'StatementSubmit'] },
 ];
 
 /** The row of permission `name`. */
@@ -486,7 +486,7 @@ describe('PermissionsPopover', () => {
     const device = must(row('Camera').closest('[data-testid="permissions-popover-group"]'), 'the Device group');
     expect(byId(device.getAttribute('aria-labelledby') ?? '').textContent).toBe('Device');
     const app = must(row('ChainSubmit').closest('[data-testid="permissions-popover-group"]'), 'the App group');
-    expect(byId(app.getAttribute('aria-labelledby') ?? '').textContent).toBe('App');
+    expect(byId(app.getAttribute('aria-labelledby') ?? '').textContent).toBe('Account and chain');
   });
 
   it('As a keyboard user, Escape on a segment closes the popover at once and hands focus back to the button', async () => {

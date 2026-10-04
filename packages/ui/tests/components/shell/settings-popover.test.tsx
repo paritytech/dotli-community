@@ -303,11 +303,11 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
     });
   }
 
-  const transports = expectRadioGroup(nth(sections, at++), 'Network Transport');
+  const transports = expectRadioGroup(nth(sections, at++), 'Network transport');
   const choices: [Backend, string][] = [
-    ['smoldot-direct', 'Verified in your browser, separate per tab'],
+    ['smoldot-direct', 'Verified in your browser, separate for each tab'],
     ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
-    ['rpc-gateway', 'Fetched from trusted servers, fastest but less private'],
+    ['rpc-gateway', 'Fetched from trusted servers. Fastest, but less private'],
   ];
   expect(transports.childElementCount).toBe(choices.length);
   choices.forEach(([value, description], i) => {
@@ -434,7 +434,7 @@ function expectPopoverMatches(settings: Settings, sheet = false): void {
   expect(apply.textContent).toBe('Save and apply');
   const hint = byTestId('mode-apply-warning');
   expect(footer.contains(hint)).toBe(true);
-  expect(hint.textContent).toBe('Applying reloads the app. Caches you turn off are cleared.');
+  expect(hint.textContent).toBe('Transport and cache changes reload the app');
 
   const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
     .filter(input => input.checked)
@@ -669,7 +669,7 @@ describe('The settings popover island', () => {
 
     // Then
     const checked = document.querySelector<HTMLInputElement>(
-      '[role="radiogroup"][aria-label="Network Transport"] input:checked',
+      '[role="radiogroup"][aria-label="Network transport"] input:checked',
     );
     expect(checked?.value).toBe('rpc-gateway');
     expect(document.activeElement).toBe(checked);
@@ -901,7 +901,7 @@ describe('The settings popover island', () => {
         `Site: ${window.location.host}`,
         'Build: 0.0.0 (dev)',
         'Network: ' + (infoRow('Network').querySelector('code')?.textContent ?? ''),
-        'Network Transport: Light Client Per-Tab',
+        'Transport: Light client per tab',
         `Browser: ${infoRow('Browser').querySelector('code')?.textContent ?? ''}`,
         '',
         'Cache:',

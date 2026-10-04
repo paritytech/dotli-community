@@ -26,9 +26,9 @@ interface Transport {
 }
 
 const TRANSPORTS: readonly Transport[] = [
-  { value: 'smoldot-direct', description: 'Verified in your browser, separate per tab', recommended: true },
+  { value: 'smoldot-direct', description: 'Verified in your browser, separate for each tab', recommended: true },
   { value: 'smoldot-shared-worker', description: 'Verified in your browser, shared across tabs', recommended: false },
-  { value: 'rpc-gateway', description: 'Fetched from trusted servers, fastest but less private', recommended: false },
+  { value: 'rpc-gateway', description: 'Fetched from trusted servers. Fastest, but less private', recommended: false },
 ];
 
 type CacheKey = 'skipCidCache' | 'skipArchiveCache' | 'skipWorkerCache';
@@ -151,8 +151,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </div>
           </Show>
           <div class={s['group']}>
-            <SectionLabel text="Network Transport" />
-            <div class={s['choices']} role="radiogroup" aria-label="Network Transport">
+            <SectionLabel text="Network transport" />
+            <div class={s['choices']} role="radiogroup" aria-label="Network transport">
               <For each={TRANSPORTS}>
                 {transport => (
                   <Choice
@@ -218,7 +218,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <SurfaceFoot
           hint={
             <Hint icon={<ReloadIcon />} testId="mode-apply-warning">
-              Applying reloads the app. Caches you turn off are cleared.
+              Transport and cache changes reload the app
             </Hint>
           }
         >

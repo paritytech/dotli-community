@@ -318,10 +318,10 @@ export function buildBaseDiagnosticsRows(): [label: string, value: string][] {
     ['Site', window.location.host],
     ['Build', `${version} (${shortSha(sha)})`],
     ['Network', NETWORK_NAME_TO_SERVICES_CONFIG[network].label],
-    ['Network Transport', backendLabel(backend)],
+    ['Transport', backendLabel(backend)],
   ];
 
-  // Sub-row attached to the Network Transport row:
+  // Sub-row attached to the Transport row:
   //   - smoldot-shared-worker: "Worker" label and build SHA. The SharedWorker
   //     is a cached script. If it's running an older bundle than the current
   //     page, this SHA diverges from Build, which is the tell-tale for a stale

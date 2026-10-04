@@ -22,6 +22,7 @@ import {
   tabTo,
   waitForContent,
 } from '../../helpers/solid.js';
+import { HISTORY_SLOTS } from '../../../src/components/shell/chains-format.js';
 import type * as ChainsFormatModule from '../../../src/components/shell/chains-format.js';
 import { focusables } from '../../../src/components/focus.js';
 import { byId, byTestId, query } from '../../support.js';
@@ -82,6 +83,7 @@ const NO_TRANSFER: TransferState = {
   total: null,
 };
 
+const SEARCHING = 'Finding peers. This takes a few seconds.';
 const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
@@ -212,8 +214,8 @@ interface ExpectedChain {
 interface ExpectedBody {
   /** The status line's title. */
   title: string;
-  /** The verdict under it, while syncing or unstable. */
-  detail?: string;
+  /** The caption under it. */
+  detail: string;
   /** The status dot's tone. */
   tone: 'idle' | 'warn' | 'ok' | 'err';
   chains: ExpectedChain[];
@@ -247,9 +249,7 @@ function expectBody(expected: ExpectedBody): void {
   expect(status.getAttribute('data-testid')).toBe('chains-status');
   expect(status.childElementCount).toBe(2);
   expect(status.children[0]?.getAttribute('data-tone')).toBe(expected.tone);
-  expect(texts(nth(status.children, 1))).toEqual(
-    expected.detail === undefined ? [expected.title] : [expected.title, expected.detail],
-  );
+  expect(texts(nth(status.children, 1))).toEqual([expected.title, expected.detail]);
 
   expected.chains.forEach((chainExpected, i) => {
     const group = nth(sections, 2 + i);
@@ -266,16 +266,22 @@ function expectBody(expected: ExpectedBody): void {
     } else if (chainExpected.cell.kind === 'waiting') {
       expect(cell.childElementCount).toBe(1);
       const strip = nth(cell.children, 0);
-      expect(strip.childElementCount).toBe(2);
-      const ghost = strip.children[0] as HTMLElement;
+      expect(strip.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(HISTORY_SLOTS - 1);
+      expect(strip.childElementCount).toBe(HISTORY_SLOTS + 1);
+      const ghost = strip.children[HISTORY_SLOTS - 1] as HTMLElement;
       expect(ghost.textContent).toBe('');
       expect(ghost.dataset['pending']).toBe(chainExpected.cell.ghost);
       expect(ghost.style.height).toBe(chainExpected.cell.ghostHeight ?? '');
-      expect(strip.children[1]?.textContent).toBe(chainExpected.cell.text);
+      expect(strip.children[HISTORY_SLOTS]?.textContent).toBe(chainExpected.cell.text);
     } else {
       expect(cell.childElementCount).toBe(1);
-      const marks = Array.from(nth(cell.children, 0).children) as HTMLElement[];
+      const slots = Array.from(nth(cell.children, 0).children) as HTMLElement[];
       const { titles, health, firstBlock } = chainExpected.cell;
+      expect(slots).toHaveLength(HISTORY_SLOTS);
+      const marks = slots.filter(slot => slot.hasAttribute('data-block'));
+      expect(
+        slots.slice(0, HISTORY_SLOTS - marks.length).every(slot => slot.dataset['testid'] === 'chains-bar-stub'),
+      ).toBe(true);
       expect(marks.map(mark => mark.dataset['block'])).toEqual(titles.map((_, n) => String(firstBlock + n)));
       expect(marks.map(mark => mark.dataset['health'])).toEqual(health);
       expect(marks.map(mark => mark.title)).toEqual(titles);
@@ -338,7 +344,7 @@ describe('The network popover island', () => {
       name: 'starting, with no chain reachable',
       expected: {
         title: 'Syncing',
-        detail: 'Starting',
+        detail: SEARCHING,
         tone: 'idle',
         chains: [
           { label: 'Relay chain', cell: { kind: 'unavailable' } },
@@ -351,7 +357,7 @@ describe('The network popover island', () => {
       name: 'connecting, before any block or phase',
       expected: {
         title: 'Syncing',
-        detail: 'Connecting',
+        detail: SEARCHING,
         tone: 'idle',
         chains: [
           { label: 'Relay chain', cell: { kind: 'waiting', text: 'connecting', ghost: 'searching' } },
@@ -367,7 +373,7 @@ describe('The network popover island', () => {
       name: 'connecting, a chain syncing and one without an endpoint',
       expected: {
         title: 'Syncing',
-        detail: 'Connecting',
+        detail: SEARCHING,
         tone: 'idle',
         chains: [
           {
@@ -394,7 +400,7 @@ describe('The network popover island', () => {
       name: 'one of two ready, the other counting down to its next block',
       expected: {
         title: 'Syncing',
-        detail: 'Connecting, 2 of 3 ready',
+        detail: SEARCHING,
         tone: 'idle',
         chains: [
           {
@@ -434,7 +440,7 @@ describe('The network popover island', () => {
       name: 'waiting on overdue chains, one of them due any moment',
       expected: {
         title: 'Connection is unstable',
-        detail: 'Waiting on Relay chain and Asset Hub',
+        detail: 'Relay chain and Asset Hub are short on peers',
         tone: 'warn',
         chains: [
           {
@@ -467,6 +473,7 @@ describe('The network popover island', () => {
       name: 'a good connection, after the product loaded',
       expected: {
         title: 'Your connection is good',
+        detail: 'Light client is in sync on all two chains',
         tone: 'ok',
         chains: [
           {
@@ -571,7 +578,7 @@ describe('The network popover island', () => {
 
     // Then
     expect(byTestId('chains-status-dot').getAttribute('data-tone')).toBe('err');
-    expect(byTestId('chains-status').textContent).toBe('You are offline');
+    expect(byTestId('chains-status').textContent).toBe('You are offlineNo peers on any chain. Retrying.');
   });
 
   it('As a user on a chain with no peers, the count says 0 and is marked as none', async () => {
@@ -627,7 +634,7 @@ describe('The network popover island', () => {
       '12',
     ]);
     expect(byTestId('chains-group-peers').textContent).toBe('2 peers');
-    expect(byTestId('chains-status').textContent).toBe('Your connection is good');
+    expect(byTestId('chains-status').textContent).toBe('Your connection is goodLight client is in sync');
   });
 
   it('As a dotli user watching a chain between blocks, the countdown ticks while the popover is open and stops when it closes', async () => {
@@ -879,30 +886,11 @@ describe('The network popover island', () => {
 });
 
 describe('The network popover island, on network updates', () => {
-  /** A stand-in ResizeObserver whose callbacks a test fires. */
-  let resizeCallbacks: (() => void)[] = [];
   /** The width the bar strips lay out at. */
   let stripWidth = 0;
 
   beforeEach(() => {
-    resizeCallbacks = [];
     stripWidth = 0;
-    vi.stubGlobal(
-      'ResizeObserver',
-      class {
-        private readonly callback: () => void;
-        constructor(callback: () => void) {
-          this.callback = callback;
-        }
-        observe(): void {
-          resizeCallbacks.push(this.callback);
-        }
-        unobserve(): void {}
-        disconnect(): void {
-          resizeCallbacks = resizeCallbacks.filter(cb => cb !== this.callback);
-        }
-      },
-    );
   });
 
   afterEach(() => {
@@ -956,30 +944,17 @@ describe('The network popover island, on network updates', () => {
     expect(shownBlocks()).toHaveLength(10);
   });
 
-  it('As a dotli user, the strip shows the bars that fit as it opens, and more once it widens', async () => {
-    // Given: 20 bars; the strip fits 10 of them.
-    spyStripLayout();
-    stripWidth = 76;
-    monitor.status = [chain({ latest: 20, bars: bars(1, 20), sinceLast: 0 })];
+  it('As a dotli user, the strip keeps its 48 slots as blocks land, however wide the panel', async () => {
+    // Given
+    monitor.status = [chain({ latest: 60, bars: bars(1, 60), sinceLast: 0 })];
     notify();
     await renderPopover();
 
     // When
     await openPopover();
 
-    // Then
-    expect(shownBlocks()).toEqual(Array.from({ length: 10 }, (_, i) => String(11 + i)));
-
-    // When: the panel widens to fit all 20, with no network update.
-    stripWidth = 156;
-    for (const callback of resizeCallbacks) {
-      callback();
-    }
-    await settle();
-
-    // Then: the older bars are revealed, not slid in as new blocks.
-    expect(shownBlocks()).toHaveLength(20);
-    expect(document.querySelectorAll('[data-block][data-new]')).toHaveLength(0);
+    // Then: the newest 48 of the 60.
+    expect(shownBlocks()).toEqual(Array.from({ length: 48 }, (_, i) => String(13 + i)));
   });
 
   it('As a dotli user watching a chain between blocks, the countdown is computed once per tick', async () => {
@@ -1021,7 +996,7 @@ describe('The network popover island, on network updates', () => {
 
     // Then
     expect(format.describeLiveNetwork).toHaveBeenCalledTimes(1);
-    expect(byTestId('chains-status').textContent).toBe('Your connection is good');
+    expect(byTestId('chains-status').textContent).toBe('Your connection is goodLight client is in sync');
   });
 
   it('As a dotli user, the countdown ticker stops once no chain is waiting for its first block', async () => {

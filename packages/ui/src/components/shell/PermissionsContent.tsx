@@ -31,7 +31,7 @@ const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 /** The menu's groups, each a labelled well of rows. */
 const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: typeof ALL_PERMISSIONS }[] = [
   { id: 'device', label: 'Device', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'device') },
-  { id: 'app', label: 'App', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
+  { id: 'app', label: 'Account and chain', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
 ];
 
 /** The last statuses read, for the product they were read for. */

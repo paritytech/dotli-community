@@ -97,10 +97,10 @@ export const ALL_PERMISSIONS: readonly {
   { name: 'NFC', label: 'NFC', group: 'device' },
   { name: 'Clipboard', label: 'Clipboard', group: 'device' },
   { name: 'Biometrics', label: 'Biometrics', group: 'device' },
-  { name: 'IdentityDisclosure', label: 'Identity Disclosure', group: 'app' },
-  { name: 'ChainSubmit', label: 'Sign Transactions', group: 'app' },
-  { name: 'PreimageSubmit', label: 'Submit Preimages', group: 'app' },
-  { name: 'StatementSubmit', label: 'Submit Statements', group: 'app' },
+  { name: 'IdentityDisclosure', label: 'Identity disclosure', group: 'app' },
+  { name: 'ChainSubmit', label: 'Sign transactions', group: 'app' },
+  { name: 'PreimageSubmit', label: 'Submit preimages', group: 'app' },
+  { name: 'StatementSubmit', label: 'Submit statements', group: 'app' },
 ];
 
 /** Returns true if the permission name maps to an iframe `allow` directive. */
