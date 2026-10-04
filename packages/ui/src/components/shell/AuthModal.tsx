@@ -149,9 +149,9 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  * badge, login progress, or an error with the friendly copy and, when it can
  * help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
  * and a drawing that finishes after the view moved on (a newer code,
- * progress, a close) is dropped. On a phone the deeplink button leads and the QR sits
- * behind "Show QR instead", and the "get the app" link shows until pairing is
- * past the QR.
+ * progress, a close) is dropped. On a phone the deeplink button leads and
+ * the QR sits behind "Show QR instead", and the "get the app" link shows
+ * until pairing is past the QR.
  *
  * While open it is a modal dialog, like Radix Dialog (createPopover's
  * `dialog` mode, driven by the store's `open`): it focuses its first control

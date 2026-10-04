@@ -258,9 +258,12 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
-/* The raw reason, kept for bug reports: mono text in the Well. */
+/* The raw reason, kept for bug reports: mono text in the Well, on the
+   board's tighter padding and radius rather than the Well's own. */
 .error {
   align-self: stretch;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
   color: var(--chrome-text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
