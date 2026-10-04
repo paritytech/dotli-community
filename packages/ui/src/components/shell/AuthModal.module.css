@@ -262,14 +262,27 @@
 }
 
 /* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
-   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap and the
-   --dur-morph slide): keep the two in step. */
+   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap, the
+   --dur-morph slide and the --dur scrim fade): keep the two in step. */
 @media (max-width: 560px) {
+  /* The sheet sits inside the backdrop, so the scrim fades its colour, not
+     its opacity, and stays displayed (catching a tap's trailing click) until
+     the slide ends rather than the shared scrim's fade. */
   .backdrop {
-    background: var(--chrome-scrim);
+    background: transparent;
+    opacity: 1;
     transition:
-      opacity var(--dur-morph) var(--ease-out),
+      background-color var(--dur) var(--ease-out),
       display var(--dur-morph) allow-discrete;
+  }
+  .backdrop[data-open] {
+    background: var(--chrome-scrim);
+  }
+  @starting-style {
+    .backdrop[data-open] {
+      background: transparent;
+      opacity: 1;
+    }
   }
   .surface {
     top: auto;

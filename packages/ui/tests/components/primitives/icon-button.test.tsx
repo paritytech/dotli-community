@@ -25,4 +25,24 @@ describe('IconButton', () => {
     expect(button.getAttribute('aria-label')).toBe('Dismiss');
     expect(button.getAttribute('data-size')).toBe('sm');
   });
+
+  it('As a user filling a form, I press an icon button in it and the form is not submitted', () => {
+    // Given
+    const onSubmit = vi.fn((ev: SubmitEvent) => {
+      ev.preventDefault();
+    });
+    renderComponent(() => (
+      <form onSubmit={onSubmit}>
+        <IconButton aria-label="Clear" testId="clear">
+          <svg />
+        </IconButton>
+      </form>
+    ));
+
+    // When
+    byTestId('clear', document, HTMLButtonElement).click();
+
+    // Then
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
 });

@@ -6,9 +6,9 @@
    starts. Each puts `.sheet` on its surface, marked `data-sheet` for a sheet
    opening, `.scrim` on the dark layer under it, and SheetHead first inside
    the surface. The rules key on two attributes, so the frame's place and
-   width outrank a consumer's own class. The sign-in (AuthModal.module.css) and the dialogs
-   (overlays/Dialog.module.css) keep media-query twins of this frame: keep
-   the three in step. */
+   width outrank a consumer's own class. The sign-in (AuthModal.module.css)
+   and the dialogs (overlays/Dialog.module.css) keep media-query twins of
+   this frame: keep the three in step. */
 
 /* The fading scrim still takes the tap's trailing click, so it never reaches
    the frame below. `display` flips to none as the fade ends (allow-discrete),
@@ -101,6 +101,7 @@
   left: 50%;
   width: 36px;
   height: var(--sp-1);
+  /* Half its width, to centre it on the left: 50%. */
   margin-left: -18px;
   border-radius: var(--r-full);
   background: var(--chrome-ring-strong);

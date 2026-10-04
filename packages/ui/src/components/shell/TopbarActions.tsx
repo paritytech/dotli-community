@@ -21,8 +21,8 @@ import { topbarActionRoom } from '../../topbar-status.js';
  * where every action is in More, it follows More directly). The group fits
  * into the room the pill gives it (topbarActionRoom). An island of the host
  * page's top bar (apps/host/src/components/Topbar.astro). Their surfaces
- * render through portals into the body. On the landing page, which has its own account and theme buttons, it
- * renders nothing.
+ * render through portals into the body. On the landing page, which has its
+ * own account and theme buttons, it renders nothing.
  */
 export function TopbarActions(): JSX.Element {
   const landing = useStore(topbarStore, state => state.landing);

@@ -66,7 +66,9 @@
 /* Phones: the address fills the header between the logo and More, and the
    whole of it opens the site source sheet: the shield's hit area stretches
    over it (VerificationShield.module.css), so the pill draws that button's
-   states, a stronger well while the sheet is open and the focus ring. */
+   states. Its hover is the .pill:hover above (the board's
+   button.address:hover), then a stronger well while the sheet is open and
+   the focus ring. */
 @media (max-width: 560px) {
   .url {
     flex: 1 1 auto;

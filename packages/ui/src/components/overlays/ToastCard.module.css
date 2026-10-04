@@ -101,7 +101,9 @@
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
 }
+/* Its hover, underline and focus ring hug the text, not the card's width. */
 a.body {
+  align-self: flex-start;
   border-radius: var(--r-hair);
   text-decoration: none;
 }

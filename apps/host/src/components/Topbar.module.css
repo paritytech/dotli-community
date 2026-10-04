@@ -124,7 +124,7 @@
    (topbar-autohide.ts), and it never slides away on scroll. Fixed rather
    than in the flow: the host page never scrolls, and the page and the frame
    already start below --topbar-height (global.css), so the two look the
-   same and the element keeps its desktop morph. */
+   same and the element stays the one that morphs at desktop widths. */
 @media (max-width: 560px) {
   .topbar {
     top: 0;

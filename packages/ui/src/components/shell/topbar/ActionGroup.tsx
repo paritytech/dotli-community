@@ -24,13 +24,14 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
 /**
  * The topbar's action group (`#topbar-actions`): its children are the items
  * (each wrapping its button in a TopbarItem), in bar order, followed by the
- * More menu, then `end`, the item that ends the bar. Items sit in the bar while they fit; the ones that do not move
- * into the More menu, lowest priority first (fitActions, TOPBAR_PRIORITY),
- * and come back as room frees up. The group fills its grid cell, so its
- * width is the room there is; a ResizeObserver on it, on every item and on
- * the More button measures again whenever one of them changes size (the
- * window, an account badge, the chat unread count), and an item showing or
- * hiding does too. The More button only shows while something is collapsed.
+ * More menu, then `end`, the item that ends the bar. Items sit in the bar
+ * while they fit. The ones that do not move into the More menu, lowest
+ * priority first (fitActions, TOPBAR_PRIORITY), and come back as room frees
+ * up. The group fills its grid cell, so its width is the room there is. A
+ * ResizeObserver on it, on every item and on the More button measures again
+ * whenever one of them changes size (the window, an account badge, the chat
+ * unread count), and an item showing or hiding does too. The More button
+ * only shows while something is collapsed.
  *
  * `data-collapsible` marks the group once it is mounted and measuring. The
  * build-time render (the Astro page) goes without it, and until the group

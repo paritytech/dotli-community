@@ -30,8 +30,8 @@ export interface TopbarItemProps {
  * invisible (`data-collapsed`), so it can still be measured and its button
  * still anchors its surface. An item that may collapse is marked
  * `data-may-collapse`, and until the bar measures (its build-time render,
- * before the group's `data-collapsible`) a narrow viewport hides it. Outside an ActionGroup (the landing page) it is always
- * inline.
+ * before the group's `data-collapsible`) a narrow viewport hides it. Outside
+ * an ActionGroup (the landing page) it is always inline.
  */
 export function TopbarItem(props: TopbarItemProps): JSX.Element {
   const bar = useContext(TopbarContext);

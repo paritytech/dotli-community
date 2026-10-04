@@ -4,16 +4,10 @@
 import { createEffect, createSignal, onCleanup, onSettled, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
-import { isPhoneViewport, PHONE_QUERY } from '../../phone-viewport.js';
+import { isPhoneViewport } from '../../phone-viewport.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
-
-/**
- * The viewport where a popover opens as a bottom sheet (Popover.tsx), which
- * marks its surface `data-sheet` for that opening: the phone's.
- */
-export const SHEET_QUERY = PHONE_QUERY;
 
 /**
  * How a shell surface behaves, after the Radix UI v1 primitive it
@@ -63,9 +57,9 @@ export interface PopoverOptions {
    */
   closeOnBlockingModal?: boolean;
   /**
-   * Open as a bottom sheet when the viewport matches PHONE_QUERY as an
-   * opening starts (a menu on a phone). `sheet()` on the result says so.
-   * Popover.tsx keeps its own, since its mode and its peek depend on it.
+   * Open as a bottom sheet when the viewport is a phone's (isPhoneViewport)
+   * as an opening starts (a menu on a phone). `sheet()` on the result says
+   * so. Popover.tsx keeps its own, since its mode and its peek depend on it.
    */
   sheet?: boolean;
   /** Called after every close, whatever closed it. */

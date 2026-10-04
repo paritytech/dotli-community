@@ -119,7 +119,8 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
  * in its corner.
  *
  * The menu is the board's Appearance popover: a title over three tiles
- * (Light, Dark, System). It is a modal menu, like Radix DropdownMenu with a
+ * (Light, Dark, System). On a phone it opens as a bottom sheet whose head
+ * carries the title. It is a modal menu, like Radix DropdownMenu with a
  * RadioGroup (createPopover's `menu` mode, which owns its keys and focus): a
  * keyboard opening focuses the first tile and a pointer opening the menu
  * itself. The arrows (Left and Right along the row, Up and Down too, all

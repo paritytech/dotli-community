@@ -33,6 +33,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
   return (
     <button
       ref={props.ref}
+      type="button"
       onClick={ev => {
         props.onClick?.(ev);
       }}

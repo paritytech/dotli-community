@@ -109,17 +109,16 @@ export function usePopover(): PopoverContextValue {
  * PHONE_QUERY (phone-viewport.ts) as it opens, as a modal bottom sheet
  * (components/sheet). The content is a lazy component in its own chunk:
  * preloaded when the browser is idle, mounted when the popover opens, and
- * unmounted once it has closed and faded out, so each opening starts afresh. Content that cannot load
- * or throws is reported once and closes the popover; the next opening loads
- * it again.
- * Focus and dismissal are createPopover's (`popover` mode anchored,
- * `dialog` mode as a sheet).
+ * unmounted once it has closed and faded out, so each opening starts
+ * afresh. Content that cannot load or throws is reported once and closes
+ * the popover, and the next opening loads it again. Focus and dismissal are
+ * createPopover's (`popover` mode anchored, `dialog` mode as a sheet).
  *
  * The surface carries its state as `data-open`, `data-sheet`, `data-peek`
  * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
- * `data-dragging` (while a sheet is being dragged),
- * and the backdrop `data-open` and `data-sheet`. A consumer's class on the
- * surface may react to them. Content that lays out differently in a sheet
+ * `data-dragging` (while a sheet is being dragged), and the backdrop
+ * `data-open` and `data-sheet`. A consumer's class on the surface may react
+ * to them. Content that lays out differently in a sheet
  * reads `usePopover().sheet()` and marks its own elements.
  */
 export function Popover(props: PopoverProps): JSX.Element {
