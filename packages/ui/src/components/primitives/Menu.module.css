@@ -99,6 +99,11 @@
   outline: var(--chrome-focus-ring);
   outline-offset: -2px;
 }
+/* The menu takes focus itself (tabindex -1) for a pointer opening, as a
+   popover surface does, and shows no ring for it: its rows carry the ring. */
+.menu:focus-visible {
+  outline: none;
+}
 .row > svg {
   flex: none;
   color: var(--chrome-text-muted);
