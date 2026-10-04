@@ -23,6 +23,10 @@
   overflow-wrap: anywhere;
 }
 .field[data-mono] .value {
+  /* Call data can run to kilobytes: it scrolls in its own box, so the fields
+     after it (an unprotected-signature warning) and the notice stay in view. */
+  max-height: 120px;
+  overflow-y: auto;
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
 }
