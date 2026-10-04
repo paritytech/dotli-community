@@ -66,12 +66,6 @@ export interface PopoverOptions {
    * blocking modal itself.
    */
   closeOnBlockingModal?: boolean;
-  /**
-   * Asked on Escape: false leaves the popover open, for something inside it
-   * that consumes Escape first (the permissions popover's open row dropdown,
-   * which closes on its own Escape listener). Absent means always handle.
-   */
-  shouldHandleEscape?: () => boolean;
   /** Called after every close, whatever closed it. */
   onClose?: () => void;
 }
@@ -362,9 +356,7 @@ export function createPopover(options: PopoverOptions): Popover {
         return;
       }
       if (ev.key === 'Escape') {
-        if (options.shouldHandleEscape?.() !== false) {
-          closeReturningFocus();
-        }
+        closeReturningFocus();
         return;
       }
       if (surface === undefined) {

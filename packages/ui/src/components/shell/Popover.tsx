@@ -84,11 +84,6 @@ interface PopoverContextValue {
   /** The surface's id, for ids inside the content. */
   id: string;
   close: () => void;
-  /**
-   * Ask `handler` first on Escape: true means it took the key, and the
-   * popover stays open. Removed with the content.
-   */
-  onEscape: (handler: () => boolean) => void;
   /** Whether this opening is a bottom sheet. */
   sheet: Accessor<boolean>;
   /**
@@ -149,7 +144,6 @@ export function Popover(props: PopoverProps): JSX.Element {
   const anchoredToTrigger = (): boolean => props.anchor === 'trigger' && !sheet();
   /** A disclosure shown anchored: plain content, not a dialog. */
   const plain = (): boolean => props.disclosure === true && !sheet();
-  const escapeHandlers = new Set<() => boolean>();
   let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
   const popover = createPopover({
@@ -163,7 +157,6 @@ export function Popover(props: PopoverProps): JSX.Element {
     get trapFocus() {
       return props.trapFocus !== false;
     },
-    shouldHandleEscape: () => ![...escapeHandlers].some(handler => handler()),
     onClose: () => {
       props.onOpenChange?.(false);
     },
@@ -326,12 +319,6 @@ export function Popover(props: PopoverProps): JSX.Element {
       return props.id;
     },
     close,
-    onEscape: handler => {
-      escapeHandlers.add(handler);
-      onCleanup(() => {
-        escapeHandlers.delete(handler);
-      });
-    },
     sheet,
     open: popover.open,
   };

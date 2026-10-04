@@ -478,35 +478,6 @@ describe('Popover', () => {
     });
   });
 
-  it('As a user, something inside the content takes Escape first', async () => {
-    // Given
-    let taking = true;
-    function EscapeTaker() {
-      usePopover().onEscape(() => taking);
-      return <button id="taker" type="button" />;
-    }
-    const { Content, release } = chunk(EscapeTaker);
-    release();
-    renderPopover(Content);
-    await settle();
-    mouseClick(trigger());
-    await waitForContent('test-popover');
-
-    // When
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    taking = false;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
   it('As a phone user, a popover opens as a modal bottom sheet with a title and a close button', async () => {
     // Given
     stubViewport(true);

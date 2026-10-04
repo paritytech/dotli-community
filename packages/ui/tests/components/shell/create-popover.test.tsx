@@ -279,34 +279,6 @@ describe('createPopover, in every mode', () => {
     expect(document.activeElement).toBe(byId('trigger'));
   });
 
-  it('As a keyboard user, Escape leaves the popover open, and focus alone, while shouldHandleEscape says something inside consumes it', async () => {
-    // Given: something inside (a row's dropdown) is open, then closes.
-    let inner = true;
-    const popover = renderPopover('popover', {
-      shouldHandleEscape: () => !inner,
-    });
-    await openPopover(popover);
-    byId('last').focus();
-
-    // When
-    const consumed = press('Escape');
-    await settle();
-
-    // Then
-    expect(popover.open()).toBe(true);
-    expect(document.activeElement).toBe(byId('last'));
-    expect(consumed.defaultPrevented).toBe(false);
-
-    // When
-    inner = false;
-    press('Escape');
-    await settle();
-
-    // Then
-    expect(popover.open()).toBe(false);
-    expect(document.activeElement).toBe(byId('trigger'));
-  });
-
   it('As a keyboard user, Escape still closes a popover whose surface is not rendered', async () => {
     // Given
     let popover: Popover | undefined;
