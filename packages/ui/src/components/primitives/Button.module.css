@@ -46,7 +46,7 @@
   color: var(--chrome-on-primary);
   font-weight: var(--fw-semibold);
 }
-.button[data-variant='primary']:hover {
+.button[data-variant='primary']:not(:disabled):hover {
   background: var(--chrome-primary-hover);
 }
 .button[data-variant='danger'] {
@@ -54,7 +54,7 @@
   box-shadow: inset 0 0 0 1px var(--chrome-danger-ring);
   color: var(--chrome-danger-text);
 }
-.button[data-variant='danger']:hover {
+.button[data-variant='danger']:not(:disabled):hover {
   background: var(--chrome-danger-fill-strong);
 }
 .button[data-size='sm'] {
@@ -71,7 +71,7 @@
   width: 100%;
 }
 /* A leading icon pulls the padding in, so icon and label look centred. */
-.button:has(> svg:first-child) {
+:where(.button:has(> svg:first-child)) {
   padding-left: var(--sp-4);
 }
 .button:disabled {

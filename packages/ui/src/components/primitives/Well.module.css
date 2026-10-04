@@ -28,7 +28,7 @@
   overflow: hidden;
   padding: 0;
 }
-.row {
+:where(.row) {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
@@ -46,7 +46,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.kv {
+:where(.kv) {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -73,7 +73,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.callout {
+:where(.callout) {
   flex-direction: row;
   align-items: flex-start;
   gap: var(--sp-2);

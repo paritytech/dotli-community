@@ -69,11 +69,14 @@ export function Choice(props: ChoiceProps): JSX.Element {
             value={radio().value}
             checked={props.selected}
             disabled={radio().disabled}
-            onChange={ev => {
-              // The owner decides: the radio shows `selected` until it changes.
-              ev.currentTarget.checked = props.selected;
-              radio().onChoose();
-              ev.currentTarget.focus();
+            onClick={ev => {
+              // The owner decides. A cancelled click makes the browser restore
+              // the radio that was checked, so a refused pick leaves the group
+              // as it was. Arrow keys click too, and still move the focus.
+              ev.preventDefault();
+              if (!props.selected) {
+                radio().onChoose();
+              }
             }}
           />
           <span class={s['radio']} aria-hidden="true" />
