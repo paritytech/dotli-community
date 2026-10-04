@@ -9,6 +9,7 @@
 // API when the tab is hidden; that part does not depend on the overlays.
 
 import { presentToast } from './overlays/load.js';
+import type { StatusTone } from './components/primitives/StatusDot.js';
 
 /** Default auto-dismiss delay in ms. */
 export const NOTIFICATION_DISMISS_MS = 10_000;
@@ -24,8 +25,8 @@ export interface NotificationParams {
   deeplink?: string | undefined;
   /** SVG string for the icon. Default: bell. */
   icon?: string;
-  /** CSS color for the icon tile's background. Default: the tile's own near-black. */
-  iconBackground?: string;
+  /** What the notification reports, which tints its icon tile. Default: info. */
+  tone?: StatusTone;
   /** Auto-dismiss in ms. 0 = persistent (manual close only). Default: NOTIFICATION_DISMISS_MS. */
   dismissMs?: number;
   /** Send browser Notification API when the tab is hidden. Default: true. */
@@ -93,11 +94,9 @@ export function showNotification(params: NotificationParams): void {
     text,
     label: params.label,
     icon: params.icon ?? BELL_SVG,
+    tone: params.tone ?? 'info',
     dismissMs: params.dismissMs ?? NOTIFICATION_DISMISS_MS,
     ...(deeplink === undefined ? {} : { deeplink }),
-    ...(params.iconBackground === undefined || params.iconBackground === ''
-      ? {}
-      : { iconBackground: params.iconBackground }),
     ...(params.onDismiss === undefined ? {} : { onDismiss: params.onDismiss }),
     ...(params.action === undefined ? {} : { action: params.action }),
   });

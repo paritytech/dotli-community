@@ -25,6 +25,15 @@ afterEach(() => {
 });
 
 describe('showNotification', () => {
+  it('As a dotli integrator, a notification keeps the tone it is given, info by default', () => {
+    // When
+    showNotification({ label: 'Plain', text: 'Body' });
+    showNotification({ label: 'Failed', text: 'Body', tone: 'err' });
+
+    // Then
+    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'err']);
+  });
+
   it('As a dotli user, a notification appears in the overlay root with the default bell icon', async () => {
     // When
     showNotification({ label: 'Hello', text: '  World  ' });

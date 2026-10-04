@@ -59,9 +59,9 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       <div
         class={s['icon']}
         data-testid="notif-icon"
+        data-tone={props.entry.tone}
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
         innerHTML={props.entry.icon}
-        style={props.entry.iconBackground === undefined ? undefined : { background: props.entry.iconBackground }}
       />
       <div class={s['text']} data-testid="notif-text">
         <span class={s['title']} data-testid="notif-title">
