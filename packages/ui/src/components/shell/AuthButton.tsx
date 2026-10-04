@@ -6,19 +6,20 @@ import type { JSX } from '@solidjs/web';
 import { startLogin } from '../../auth-controller.js';
 import { getAuthState } from '../../state/auth.js';
 import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
+import { Button } from '../primitives/Button.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
-import { sessionInitials, useAccount } from './account.js';
+import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './AuthButton.module.css';
 
-function UserIcon(): JSX.Element {
+function UserIcon(props: { size?: number } = {}): JSX.Element {
   return (
     <svg
-      width="12"
-      height="12"
+      width={props.size ?? 12}
+      height={props.size ?? 12}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -58,7 +59,10 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * `idPrefix` sets another instance's ids apart (the landing page's, whose
  * page also holds the topbar's build-time markup).
  */
-export function AuthButton(props: { idPrefix?: string }): JSX.Element {
+export function AuthButton(props: {
+  idPrefix?: string | undefined;
+  variant?: 'icon' | 'chip' | undefined;
+}): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   let button: HTMLButtonElement | undefined;
   const account = useAccount();
@@ -68,7 +72,9 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
    * onClick), so the ARIA says so.
    */
   const opensPopover = account.connected;
-  const label = (): string => (account.loggedIn() ? 'Account' : 'Login with Polkadot Mobile');
+  /** The bar's look: a Sign in button, then an avatar and name chip. */
+  const chip = (): boolean => props.variant === 'chip';
+  const label = (): string => (account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile');
   // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => (button === undefined ? undefined : setAuthModalTrigger(button)));
 
@@ -88,38 +94,89 @@ export function AuthButton(props: { idPrefix?: string }): JSX.Element {
         };
         return (
           <TopbarItem name="auth" label={label()} icon={UserIcon} priority={TOPBAR_PRIORITY.auth} activate={onClick}>
-            <IconButton
-              {...t}
-              ref={el => {
-                button = el;
-                t.ref(el);
-              }}
-              onClick={onClick}
-              id={id('auth-button')}
-              title={label()}
-              aria-label={label()}
-              aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
-              aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
-            >
-              <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
-                {session => (
-                  <Show
-                    when={sessionInitials(session())}
-                    fallback={
-                      <div class={s['badge']} data-testid="user-badge" data-anon="">
-                        <UserIcon />
-                      </div>
-                    }
-                  >
-                    {initials => (
-                      <div class={s['badge']} data-testid="user-badge">
-                        {initials()}
-                      </div>
+            <Show
+              when={chip()}
+              fallback={
+                <IconButton
+                  {...t}
+                  ref={el => {
+                    button = el;
+                    t.ref(el);
+                  }}
+                  onClick={onClick}
+                  id={id('auth-button')}
+                  title={label()}
+                  aria-label={label()}
+                  aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
+                  aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
+                >
+                  <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
+                    {session => (
+                      <Show
+                        when={sessionInitials(session())}
+                        fallback={
+                          <div class={s['badge']} data-testid="user-badge" data-anon="">
+                            <UserIcon />
+                          </div>
+                        }
+                      >
+                        {initials => (
+                          <div class={s['badge']} data-testid="user-badge">
+                            {initials()}
+                          </div>
+                        )}
+                      </Show>
                     )}
                   </Show>
-                )}
-              </Show>
-            </IconButton>
+                </IconButton>
+              }
+            >
+              {/* One element across login and logout, so the auth modal keeps its trigger. */}
+              <Button
+                ref={el => {
+                  button = el;
+                  t.ref(el);
+                }}
+                onClick={onClick}
+                id={id('auth-button')}
+                title={label()}
+                aria-label={label()}
+                aria-haspopup={t['aria-haspopup']}
+                aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
+                aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
+                variant={account.loggedIn() ? 'secondary' : 'primary'}
+                class={account.loggedIn() ? s['chip'] : undefined}
+              >
+                <Show
+                  when={account.loggedIn() && account.session()}
+                  fallback={
+                    <>
+                      <UserIcon size={16} />
+                      Sign in
+                    </>
+                  }
+                >
+                  {session => (
+                    <>
+                      <span
+                        class={s['avatar']}
+                        data-testid="user-badge"
+                        data-anon={sessionInitials(session()) === undefined ? '' : undefined}
+                      >
+                        <Show when={sessionInitials(session())} fallback={<UserIcon size={16} />}>
+                          {initials => initials()}
+                        </Show>
+                      </span>
+                      <span class={s['name']}>
+                        {sessionUsername(session()) ??
+                          shortenAccount(session().identityAccountId ?? session().publicKey) ??
+                          'Account'}
+                      </span>
+                    </>
+                  )}
+                </Show>
+              </Button>
+            </Show>
           </TopbarItem>
         );
       }}

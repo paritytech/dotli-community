@@ -19,10 +19,10 @@ export interface ButtonProps {
   /** Full width of its container. */
   block?: boolean;
   disabled?: boolean;
-  'aria-label'?: string;
-  'aria-expanded'?: 'true' | 'false';
-  'aria-controls'?: string;
-  'aria-haspopup'?: 'dialog' | 'menu';
+  'aria-label'?: string | undefined;
+  'aria-expanded'?: 'true' | 'false' | undefined;
+  'aria-controls'?: string | undefined;
+  'aria-haspopup'?: 'dialog' | 'menu' | undefined;
   class?: string | undefined;
   testId?: string;
   children?: JSX.Element;

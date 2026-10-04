@@ -33,7 +33,7 @@ export function TopbarActions(): JSX.Element {
         <PermissionsPopover />
         <ThemeToggle />
         <SettingsPopover />
-        <AuthButton />
+        <AuthButton variant="chip" />
       </ActionGroup>
     </Show>
   );

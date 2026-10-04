@@ -25,3 +25,40 @@
   width: 220px;
   overflow: hidden;
 }
+
+/* The bar's account chip: a secondary button led by an avatar, inset evenly
+   on all sides (the avatar sits 6 px from the chip's left edge, as the chip's
+   own top and bottom). */
+.chip {
+  max-width: 160px;
+  padding: 0 var(--sp-4) 0 calc((var(--h-control) - var(--h-row-sm)) / 2);
+  box-shadow: none;
+  font-weight: var(--fw-semibold);
+}
+.chip[aria-expanded='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+}
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: var(--h-row-sm);
+  height: var(--h-row-sm);
+  border-radius: 50%;
+  background: var(--chrome-avatar);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+  font-size: var(--fs-body);
+  font-weight: var(--fw-semibold);
+}
+.avatar svg {
+  width: 16px;
+  height: 16px;
+}
+.name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
