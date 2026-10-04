@@ -108,6 +108,150 @@
   --chat-fg-warning: #d97706;
 }
 
+/* The chrome: the topbar, its menus and sheets, the modals and the toasts.
+   Always dark glass in both page themes, so nothing here is overridden under
+   data-theme='light'. Text ratios are against the lightest the glass gets,
+   --chrome-top over a white page (#2e2e32). */
+:root {
+  --chrome-top: rgba(40, 40, 44, 0.97);
+  --chrome-bottom: rgba(24, 24, 27, 0.98);
+  --chrome-glass: linear-gradient(180deg, var(--chrome-top) 0%, var(--chrome-bottom) 100%);
+  --chrome-blur: blur(32px) saturate(150%);
+  --chrome-solid: #2a2a2e;
+  --chrome-well: rgba(0, 0, 0, 0.3);
+  --chrome-well-strong: rgba(0, 0, 0, 0.45);
+  --chrome-fill: rgba(255, 255, 255, 0.07);
+  --chrome-fill-strong: rgba(255, 255, 255, 0.12);
+  --chrome-line: rgba(255, 255, 255, 0.08);
+  --chrome-ring-subtle: rgba(255, 255, 255, 0.06);
+  --chrome-ring: rgba(255, 255, 255, 0.14);
+  --chrome-ring-strong: rgba(255, 255, 255, 0.5);
+
+  --chrome-text: #f4f4f5; /* 12.3:1 */
+  --chrome-text-muted: #c4c4ca; /* 7.8:1, 9.4:1 on --chrome-well */
+  --chrome-on-primary: #141416; /* 13.1:1 on --chrome-primary */
+  --chrome-primary: linear-gradient(180deg, #fafafa 0%, #d9d9dd 100%);
+  --chrome-primary-hover: linear-gradient(180deg, #ffffff 0%, #e3e3e7 100%);
+  --chrome-avatar: linear-gradient(160deg, #4e4e55 0%, #2a2a2f 100%); /* initials 7.5:1 */
+  --chrome-focus: #96b8ff;
+  --chrome-focus-ring: 2px solid var(--chrome-focus);
+
+  /* Status marks: dots, bars, badges and icon tiles, 3:1 or more. */
+  --chrome-ok: #4cc38a;
+  --chrome-warn: #f0a93b;
+  --chrome-err: #f2555a;
+  --chrome-info: #7aa2ff;
+  --chrome-idle: #a1a1aa;
+  --chrome-action: #ffffff;
+  --chrome-action-dim: #5e5e66;
+  /* Status text. */
+  --chrome-ok-text: #9ff0c6; /* 10.1:1 */
+  --chrome-warn-text: #ffd48a; /* 9.7:1 */
+  --chrome-err-text: #ffb8ba; /* 8.3:1 */
+  /* Two strengths of any status colour, for chips, icon tiles, halos and hovers. */
+  --chrome-tint: 16%;
+  --chrome-tint-strong: 22%;
+  /* A red tint, never solid red, so the primary action stays the brightest. */
+  --chrome-danger-fill: color-mix(in srgb, var(--chrome-err) var(--chrome-tint), transparent);
+  --chrome-danger-fill-strong: color-mix(in srgb, var(--chrome-err) var(--chrome-tint-strong), transparent);
+  --chrome-danger-ring: color-mix(in srgb, var(--chrome-err) 45%, transparent);
+  --chrome-danger-text: #ffd0d1; /* 7.5:1 on --chrome-danger-fill-strong */
+
+  --chrome-shadow-pop:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 24px 48px rgba(0, 0, 0, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  --chrome-shadow-bar:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 18px 44px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+  --chrome-shadow-capsule:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 6px 18px rgba(0, 0, 0, 0.18);
+  --chrome-shadow-sheet:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 -12px 40px rgba(0, 0, 0, 0.3);
+  --chrome-shadow-raised:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --chrome-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--chrome-ring-subtle);
+  --chrome-shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --chrome-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --chrome-shadow-tile: 0 8px 24px rgba(0, 0, 0, 0.3);
+
+  --chrome-scrim: rgba(0, 0, 0, 0.45); /* behind a sheet or a modal */
+  --chrome-scrim-light: rgba(0, 0, 0, 0.06); /* behind a desktop popover */
+  /* Black on white whatever the theme, so phones can scan it. */
+  --qr-bg: #ffffff;
+  --qr-ink: #141416;
+}
+
+/* Layout scales shared by the chrome: a 4 px spacing grid with a 2 px
+   hairline step, radii, control sizes (44 px is the touch minimum), popover
+   widths, type and motion. */
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --fs-label: 11px;
+  --fs-caption: 12px;
+  --fs-small: 13px;
+  --fs-body: 14px;
+  --fs-title: 15px;
+  --fs-title-lg: 17px;
+  --fs-h2: 20px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --lh-tight: 1.3;
+  --lh-body: 1.5;
+  --ls-caps: 0.08em;
+  --ls-tight: -0.01em;
+
+  --sp-hair: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+  --sp-14: 56px;
+
+  --r-hair: 2px;
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 28px;
+  --r-full: 999px;
+
+  --h-chip: 20px;
+  --h-row-xs: 24px;
+  --h-row-sm: 32px;
+  --h-control-sm: 36px;
+  --h-control: 44px;
+  --h-row: 48px;
+  --h-control-lg: 52px;
+  --h-row-lg: 56px;
+  --h-tile: 72px;
+  /* The topbar row: a 44 px control with 8 px above and below. */
+  --h-bar: 60px;
+
+  --w-pop-sm: 300px;
+  --w-pop-md: 360px;
+  --w-pop-lg: 400px;
+  --w-pop-xl: 760px;
+  --w-toast: 380px;
+
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 0.15s;
+  --dur: 0.26s;
+  --dur-morph: 0.46s;
+  /* The pill's content waits for the morph. */
+  --delay-content: 0.2s;
+  --delay-tip: 0.35s;
+  /* Pulses. */
+  --loop: 1.4s;
+}
+
 body {
   margin: 0;
   background: var(--bg-page);
