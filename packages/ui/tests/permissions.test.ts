@@ -616,7 +616,7 @@ describe('three-way permission prompts', () => {
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
-  it('As a dotli user, a stored notification denial is answered without a prompt', async () => {
+  it('As a dotli user, a stored notification denial is answered without a prompt and with a quiet blocked notice', async () => {
     // Given
     await setPermissionStatus('myapp', 'Notifications', 'denied');
 
@@ -630,6 +630,7 @@ describe('three-way permission prompts', () => {
     expect(document.body.textContent).toContain(
       'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
     );
+    expect(byTestId('notif-icon').getAttribute('data-tone')).toBe('idle');
   });
 
   it('As a dotli user, dismissing a notification prompt records no decision', async () => {
