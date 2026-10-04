@@ -17,7 +17,7 @@ import { setProductLoaded } from '../../../src/state/product.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
-import { byId } from '../../support.js';
+import { byId, byTestId, must } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
@@ -84,7 +84,11 @@ describe('Topbar actions island', () => {
       // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
-      expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
+      const camera = must(
+        byId('permissions-popover-name-Camera').closest('[data-testid="permissions-popover-row"]'),
+        'the Camera row',
+      );
+      expect(byTestId('permissions-popover-segment-granted', camera).getAttribute('aria-pressed')).toBe('true');
     } finally {
       unregister();
     }

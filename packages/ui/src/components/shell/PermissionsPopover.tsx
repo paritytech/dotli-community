@@ -42,15 +42,15 @@ function LockIcon(props: { size: number }): JSX.Element {
  * src/islands/), rendered with the host page and hydrated.
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
- * product's permissions, each with a dropdown to allow, deny or reset it.
+ * product's permissions in a Device and an App group, each set with Ask,
+ * Allow and Deny segments.
  * The button carries its badge (`data-badge`) while the product has any
  * permission granted, read again on a product loading or failing and on a
  * permission change.
  *
  * A press outside (the backdrop included), focus leaving it, Escape and a
- * blocking modal close the popover, a non-modal one. An open row dropdown
- * takes Escape first. The More menu's Permissions row opens it while the
- * topbar has collapsed the button.
+ * blocking modal close the popover, a non-modal one. The More menu's
+ * Permissions row opens it while the topbar has collapsed the button.
  */
 export function PermissionsPopover(): JSX.Element {
   const product = useStore(productStore);

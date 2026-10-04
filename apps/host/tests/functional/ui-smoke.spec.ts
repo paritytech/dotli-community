@@ -173,6 +173,8 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
+    await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);
 
     // When
     await sheet.getByTestId('popover-sheet-close').click();

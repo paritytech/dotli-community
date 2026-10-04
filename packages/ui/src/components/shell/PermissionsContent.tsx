@@ -6,14 +6,17 @@ import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
   getPermissionStatuses,
-  isDevicePermission,
   resetPermission,
   setPermissionStatus,
   type EnforceablePermissionName,
+  type PermissionGroup,
   type PermissionStatus,
 } from '../../permissions.js';
-import { recordPermissionChange } from '../../state/permissions.js';
+import { recordPermissionsChanged } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
+import { Chip } from '../primitives/Chip.js';
+import { Hint, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
+import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
@@ -21,6 +24,12 @@ import { usePopover } from './Popover.js';
 import s from './PermissionsContent.module.css';
 
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
+
+/** The menu's groups, each a labelled well of rows. */
+const MENU_GROUPS: readonly { id: PermissionGroup; label: string; permissions: typeof ALL_PERMISSIONS }[] = [
+  { id: 'device', label: 'Device', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'device') },
+  { id: 'app', label: 'App', permissions: ALL_PERMISSIONS.filter(({ group }) => group === 'app') },
+];
 
 /** The last statuses read, for the product they were read for. */
 type Fetched = { label: string; statuses: PermissionStatus[] } | { label: string; failed: true };
@@ -31,46 +40,45 @@ function currentLabel(): string | null {
   return product.status === 'loaded' ? product.label : null;
 }
 
+/** The status read for `name`, Ask when the read has none. */
+function statusIn(statuses: readonly PermissionStatus[], name: EnforceablePermissionName): PermissionStatus {
+  return statuses[PERMISSION_NAMES.indexOf(name)] ?? 'ask';
+}
+
+/** The reload notice's arrow. */
+function ReloadIcon(): JSX.Element {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+    </svg>
+  );
+}
+
 /**
  * The permissions popover's body (PermissionsPopover), its own chunk: every
- * permission of the loaded product (productStore) with a dropdown to allow,
- * deny or reset it, through the async API in permissions.ts. It reads the
- * statuses as it mounts (the popover opening), and again on a product
- * loading or failing and on a permission change, the last read winning. An
- * open row dropdown takes Escape first: the first Escape closes the
- * dropdown, the next the popover.
+ * permission of the loaded product (productStore) in a Device and an App
+ * group, each with Ask, Allow and Deny segments, through the async API in
+ * permissions.ts. It reads the statuses as it mounts (the popover opening),
+ * and again on a product loading or failing and on a permission change, the
+ * last read winning. In a bottom sheet the sheet draws the title, so the
+ * surface leaves out its head and the host chip.
  */
 export function PermissionsContent(): JSX.Element {
-  /** The open row dropdown's listbox. */
-  let menu: HTMLDivElement | undefined;
-  /** Each row's select, by permission. */
-  const selects = new Map<EnforceablePermissionName, HTMLButtonElement>();
   const product = useStore(productStore);
   const changes = createPermissionChanges();
-  const [fetched, setFetched] = createSignal<Fetched | null>(null);
-  const [openRow, setOpenRow] = createSignal<EnforceablePermissionName | null>(null);
-
-  /** Close the open dropdown, handing focus to its select if it had it. */
-  const closeDropdown = (): void => {
-    const name = untrack(openRow);
-    if (name === null) {
-      return;
-    }
-    const hadFocus = menu?.contains(document.activeElement) === true;
-    setOpenRow(null);
-    if (hadFocus) {
-      selects.get(name)?.focus();
-    }
-  };
-
   const popover = usePopover();
-  popover.onEscape(() => {
-    if (untrack(openRow) === null) {
-      return false;
-    }
-    closeDropdown();
-    return true;
-  });
+  const [fetched, setFetched] = createSignal<Fetched | null>(null);
 
   const label = (): string | null => {
     const current = product();
@@ -85,7 +93,6 @@ export function PermissionsContent(): JSX.Element {
   createEffect(
     () => (popover.open() ? { label: label(), change: changes(), retry: retries() } : undefined),
     key => {
-      closeDropdown();
       if (key === undefined) {
         setFetched(null);
         return;
@@ -115,36 +122,7 @@ export function PermissionsContent(): JSX.Element {
     },
   );
 
-  // While a dropdown is open: its selected option has the focus, and a click
-  // outside its select closes it. Escape closes it too, before the popover
-  // (onEscape below).
-  createEffect(openRow, name => {
-    if (name === null) {
-      return;
-    }
-    menu?.querySelector<HTMLButtonElement>('[aria-selected="true"]')?.focus();
-    const wrap = menu?.parentElement;
-    const onClick = (ev: MouseEvent): void => {
-      if (wrap?.contains(ev.target as Node) !== true) {
-        closeDropdown();
-      }
-    };
-    document.addEventListener('click', onClick);
-    return () => {
-      document.removeEventListener('click', onClick);
-    };
-  });
-
-  const toggleDropdown = (name: EnforceablePermissionName): void => {
-    const wasOpen = untrack(openRow) === name;
-    closeDropdown();
-    if (!wasOpen) {
-      setOpenRow(name);
-    }
-  };
-
   const choose = (name: EnforceablePermissionName, next: PermissionStatus): void => {
-    closeDropdown();
     const read = untrack(fetched);
     if (read === null) {
       return;
@@ -156,13 +134,7 @@ export function PermissionsContent(): JSX.Element {
       } else {
         await setPermissionStatus(label, name, next);
       }
-      // A device permission changes the iframe's `allow` attribute, so the
-      // bridge reloads the product on its event; the others only re-render.
-      recordPermissionChange({
-        kind: isDevicePermission(name) ? 'device' : 'grant',
-        label,
-        permission: name,
-      });
+      recordPermissionsChanged(label, [name]);
     })().catch(() => {
       // Re-read the list (only while open: a closed popover reads afresh on
       // its next open).
@@ -192,40 +164,59 @@ export function PermissionsContent(): JSX.Element {
       : undefined;
   };
 
+  /** The loaded product's host, for the head's chip. */
+  const host = (): string | undefined => {
+    const current = product();
+    return current.status === 'loaded' ? current.productId : undefined;
+  };
+
   return (
-    <>
-      <Show when={!popover.sheet()}>
-        <div class={s['header']} data-testid="permissions-popover-header">
-          Permissions
-        </div>
-      </Show>
+    <Surface width="lg" bare sheet={popover.sheet()}>
+      <SurfaceHead
+        title="Permissions"
+        testId="permissions-popover-header"
+        aside={
+          <Show when={host()}>
+            {id => (
+              <Chip tone="mono" testId="permissions-popover-host">
+                {id()}
+              </Chip>
+            )}
+          </Show>
+        }
+      />
       <div class={s['list']} id="permissions-popover-list">
-        <Show when={hint()}>{text => <div class={s['footer']}>{text()}</div>}</Show>
+        <Show when={hint()}>{text => <Callout testId="permissions-popover-hint">{text()}</Callout>}</Show>
         <Show when={statuses()}>
           {list => (
-            <>
-              <For each={ALL_PERMISSIONS}>
-                {(perm, index) => (
-                  <PermissionRow
-                    perm={perm}
-                    status={list()[index()] ?? 'ask'}
-                    open={openRow() === perm.name}
-                    toggleMenu={toggleDropdown}
-                    choose={choose}
-                    menuRef={el => {
-                      menu = el;
-                    }}
-                    selectRef={el => {
-                      selects.set(perm.name, el);
-                    }}
-                  />
-                )}
-              </For>
-              <div class={s['footer']}>Changing permissions will reload the app.</div>
-            </>
+            <For each={MENU_GROUPS}>
+              {group => (
+                <div
+                  class={s['group']}
+                  role="group"
+                  aria-labelledby={`permissions-popover-group-${group.id}`}
+                  data-testid="permissions-popover-group"
+                >
+                  <h3 class={s['groupLabel']} id={`permissions-popover-group-${group.id}`}>
+                    {group.label}
+                  </h3>
+                  <Well layout="controls">
+                    <For each={group.permissions}>
+                      {perm => <PermissionRow perm={perm} status={statusIn(list(), perm.name)} choose={choose} />}
+                    </For>
+                  </Well>
+                </div>
+              )}
+            </For>
           )}
         </Show>
       </div>
-    </>
+      <Show when={statuses() !== undefined}>
+        <SurfaceFoot
+          testId="permissions-popover-foot"
+          hint={<Hint icon={<ReloadIcon />}>Changes reload the app</Hint>}
+        />
+      </Show>
+    </Surface>
   );
 }
