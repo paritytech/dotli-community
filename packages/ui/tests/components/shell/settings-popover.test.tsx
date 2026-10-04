@@ -242,7 +242,10 @@ function expectCacheRow(row: Element | undefined, label: string, checked: boolea
   expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
 }
 
-/** A diagnostics row: label and value, the copy hint on the copyable ones, dense in the package list. */
+/**
+ * A diagnostics row: label and value, the copy hint on the copyable ones,
+ * dense in the package list with the full name as its tooltip.
+ */
 function expectInfoRow(
   row: Element | undefined,
   label: string,
@@ -254,7 +257,13 @@ function expectInfoRow(
   expect(row?.children[1]?.textContent).toBe(value);
   expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
   expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
-  expect(row?.getAttribute('title')).toBe(opts.copyable === true ? `Click to copy ${label}` : null);
+  let title: string | null = null;
+  if (opts.copyable === true) {
+    title = `Click to copy ${label}`;
+  } else if (opts.dense === true) {
+    title = label;
+  }
+  expect(row?.getAttribute('title')).toBe(title);
 }
 
 /** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */

@@ -28,6 +28,8 @@
   stroke-width: 1.75;
 }
 
+/* PHONE_QUERY in phone-viewport.ts: the board's 48 px tile, 16 px corners
+   and 20 px glyph. */
 @media (max-width: 560px) {
   :where(.tile) {
     width: var(--h-row);

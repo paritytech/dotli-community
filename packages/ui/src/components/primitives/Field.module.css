@@ -41,6 +41,7 @@
   color: var(--chrome-warn-text);
 }
 
+/* PHONE_QUERY in phone-viewport.ts: the board's 12 px padding. */
 @media (max-width: 560px) {
   :where(.field) {
     padding: var(--sp-3) 0;

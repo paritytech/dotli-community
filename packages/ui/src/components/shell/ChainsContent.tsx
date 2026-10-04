@@ -332,7 +332,7 @@ export function ChainsContent(): JSX.Element {
         }
       />
       <Well class={s['status']} testId="chains-status">
-        <StatusDot tone={status().tone} testId="chains-status-dot" />
+        <StatusDot tone={status().tone} class={s['statusDot']} testId="chains-status-dot" />
         <div class={s['statusText']}>
           <p class={s['statusTitle']}>{status().title}</p>
           <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>

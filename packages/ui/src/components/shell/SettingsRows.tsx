@@ -20,6 +20,13 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
     clearTimeout(copiedTimer);
   });
   const copyable = untrack(() => props.copyable === true);
+  // A dense row's name truncates, so its tooltip carries it in full.
+  const title = (): string | undefined => {
+    if (copyable) {
+      return `Click to copy ${props.label}`;
+    }
+    return props.dense === true ? props.label : undefined;
+  };
   return (
     <KeyValue
       k={props.label}
@@ -27,7 +34,7 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
       dense={props.dense === true}
       monoKey={props.dense === true}
       copyable={copyable}
-      title={copyable ? `Click to copy ${props.label}` : undefined}
+      title={title()}
       onClick={() => {
         if (!copyable) {
           return;

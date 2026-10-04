@@ -7,7 +7,7 @@
    with the board's keyframes. Nothing animates out: the outlet unmounts an
    answered dialog in the update that mounts the next queued one. Desktop
    draws the card at 360 px with 20 px padding, a 16 px gap and 24 px
-   corners, the boards' 400 / 24 / 20 / 28 under the phone width. */
+   corners. The boards' card is 400 / 24 / 20 / 28. */
 
 .backdrop {
   position: fixed;

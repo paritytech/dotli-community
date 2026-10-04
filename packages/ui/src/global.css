@@ -251,12 +251,14 @@
   --topbar-inset: 10px;
 
   /* Desktop popover widths, the boards' 300 / 360 / 400 / 760 on phones.
-     The gap is the popover's distance below the pill. */
+     The gap is the popover's distance below the pill. The corner is the
+     popovers' and menus', the boards' 24 on phones. */
   --w-pop-sm: 260px;
   --w-pop-md: 320px;
   --w-pop-lg: 360px;
   --w-pop-xl: 680px;
   --pop-gap: 10px;
+  --r-pop: 20px;
   /* The board's toast is 380. Phones' toasts are full width. */
   --w-toast: 340px;
 
@@ -270,19 +272,6 @@
   --delay-tip: 0.35s;
   /* Pulses. */
   --loop: 1.4s;
-}
-
-/* Phones: the header's 60 px row of 44 px touch controls (the boards'). */
-@media (max-width: 560px) {
-  :root {
-    --h-bar: 60px;
-    --h-bar-control: 44px;
-    --w-pop-sm: 300px;
-    --w-pop-md: 360px;
-    --w-pop-lg: 400px;
-    --w-pop-xl: 760px;
-    --pop-gap: 12px;
-  }
 }
 
 /* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
@@ -318,7 +307,20 @@
   --fs-small: 12px;
   --fs-body: 13px;
 }
+
+/* Phones: the header's 60 px row of 44 px touch controls, the popovers and
+   the chrome type at the boards' sizes. */
 @media (max-width: 560px) {
+  :root {
+    --h-bar: 60px;
+    --h-bar-control: 44px;
+    --w-pop-sm: 300px;
+    --w-pop-md: 360px;
+    --w-pop-lg: 400px;
+    --w-pop-xl: 760px;
+    --pop-gap: 12px;
+    --r-pop: var(--r-lg);
+  }
   [data-chrome] {
     --fs-small: 13px;
     --fs-body: 14px;

@@ -20,6 +20,7 @@ import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.j
 import type * as TopbarStateModule from '../../src/state/topbar.js';
 import { byTestId, query, must } from '../support.js';
 import { nth } from '../helpers/nth.js';
+import { setViewportWidth } from '../helpers/viewport.js';
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
@@ -158,13 +159,6 @@ function type(input: HTMLInputElement, value: string): void {
 function toggle(checkbox: HTMLInputElement): void {
   checkbox.checked = !checkbox.checked;
   checkbox.dispatchEvent(new Event('change', { bubbles: true }));
-}
-
-/** Resize the viewport as a phone or a rotation does; media queries follow. */
-function setViewportWidth(width: number): void {
-  (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
-    width,
-  });
 }
 
 function pointer(target: EventTarget, type: string, x = 0, y = 0): void {

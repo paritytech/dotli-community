@@ -128,19 +128,6 @@
 :global(#topbar) .button[data-badge-tone='idle']::after {
   background: var(--chrome-idle);
 }
-/* Phones: the board's 20 px icon and 8 px badge. */
-@media (max-width: 560px) {
-  :global(#topbar) .button > svg {
-    width: 20px;
-    height: 20px;
-  }
-  :global(#topbar) .button[data-badge]::after {
-    top: 9px;
-    right: 9px;
-    width: var(--sp-2);
-    height: var(--sp-2);
-  }
-}
 /* The board's .icon-btn-sm, 28 px on desktop. Unscoped, unlike the bar rules
    above: toasts render outside #topbar. Not used in the bar, whose size rule
    would win. */
@@ -172,7 +159,19 @@
   width: 14px;
   height: 14px;
 }
+/* Phones: the board's 20 px bar icon and 8 px badge, and its 36 px small
+   button. */
 @media (max-width: 560px) {
+  :global(#topbar) .button > svg {
+    width: 20px;
+    height: 20px;
+  }
+  :global(#topbar) .button[data-badge]::after {
+    top: 9px;
+    right: 9px;
+    width: var(--sp-2);
+    height: var(--sp-2);
+  }
   .button[data-size='sm'] {
     width: var(--h-control-sm);
     height: var(--h-control-sm);

@@ -11,7 +11,7 @@ import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
-import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { setViewportWidth, stubPhoneViewport } from '../../helpers/viewport.js';
 import {
   byId,
   coordinator,
@@ -337,7 +337,7 @@ describe('AuthModal markup', () => {
 
   it("As a user on a phone-width window, the QR code is drawn at the phone sheet's larger size", async () => {
     // Given
-    stubPhoneViewport(true);
+    setViewportWidth(390);
     try {
       await renderModal();
       byId('auth-button').click();
@@ -354,7 +354,38 @@ describe('AuthModal markup', () => {
         expect.objectContaining({ width: 248 }),
       );
     } finally {
-      vi.unstubAllGlobals();
+      setViewportWidth(1024);
+    }
+  });
+
+  it('As a desktop user narrowing the window to a phone width and back, the open QR code is redrawn at each size', async () => {
+    // Given
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+      await authState(pairing());
+      const canvas = qr.toCanvas.mock.calls[0]?.[0];
+
+      // When
+      setViewportWidth(390);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(2);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 248 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+
+      // When
+      setViewportWidth(1024);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(3);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 218 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+    } finally {
+      setViewportWidth(1024);
     }
   });
 

@@ -123,7 +123,7 @@
 
 .qr {
   --qr-gap: 10px;
-  /* qrSize() in AuthModal.tsx. */
+  /* The drawn code's side, read by qrSize() in AuthModal.tsx. */
   --qr-size: 218px;
   display: flex;
   flex-direction: column;

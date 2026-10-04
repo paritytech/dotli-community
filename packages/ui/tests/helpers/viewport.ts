@@ -42,3 +42,19 @@ export function stubPhoneViewport(initial: boolean): { set: (phone: boolean) => 
     },
   };
 }
+
+/**
+ * Resize the viewport as a phone or a rotation does: the stylesheets' media
+ * queries and `matchMedia` follow, and the phone query's listeners hear the
+ * change. Happy DOM's window starts 1024 wide.
+ */
+export function setViewportWidth(width: number): void {
+  (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
+    width,
+  });
+  // Happy DOM keeps an element's computed style until the DOM changes, not
+  // on a resize. A stylesheet coming and going drops it.
+  const style = document.createElement('style');
+  document.head.append(style);
+  style.remove();
+}

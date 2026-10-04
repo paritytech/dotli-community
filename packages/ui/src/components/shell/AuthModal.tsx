@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
-import { isPhoneViewport } from '../../phone-viewport.js';
+import { PHONE_QUERY } from '../../phone-viewport.js';
 import { revealTopbar } from '../../topbar-autohide.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
@@ -27,14 +27,13 @@ const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
 
 /**
- * The drawn code's side in CSS px, its 2-module quiet zone included, for the
- * viewport the code is drawn in. The tile's padding adds the rest of the
- * white, so the tile is the board's 264 px on a phone and 234 px in the
- * desktop's narrower surface. AuthModal.module.css repeats both as
- * `--qr-size` to reserve the tile's height before the code is drawn.
+ * The drawn code's side in CSS px, its 2-module quiet zone included: the QR
+ * box's `--qr-size` (AuthModal.module.css), which also reserves the tile's
+ * height before the code is drawn. The stylesheet owns it, so the code
+ * follows the layout's breakpoint.
  */
-function qrSize(): number {
-  return isPhoneViewport() ? 248 : 218;
+function qrSize(box: HTMLElement): number {
+  return Number.parseInt(getComputedStyle(box).getPropertyValue('--qr-size'), 10);
 }
 
 type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
@@ -177,6 +176,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
   let surface: HTMLElement | undefined;
+  let qrBox: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
   // A phone's layout once hydrated: the build-time render, which has no
   // device, is the desktop one.
@@ -214,7 +214,8 @@ export function AuthModal(): JSX.Element {
   // once the payload is no longer on show.
   const [drawn, setDrawn] = createSignal<DrawnQr | null>(null);
   createEffect(pairingPayload, payload => {
-    if (payload === null) {
+    const box = qrBox;
+    if (payload === null || box === undefined) {
       return;
     }
     let current = true;
@@ -223,26 +224,34 @@ export function AuthModal(): JSX.Element {
     canvas.className = s['qrCanvas'] ?? '';
     canvas.setAttribute('role', 'img');
     canvas.setAttribute('aria-label', 'Sign-in QR code');
-    void import('qrcode')
-      .then(QRCode =>
-        QRCode.default.toCanvas(canvas, payload, {
-          width: qrSize(),
-          margin: 2,
-          // The badge hides the code's centre: Q recovers a quarter of it.
-          errorCorrectionLevel: 'Q',
-          color: { dark: '#000000', light: '#ffffff' },
-        }),
-      )
-      .then(() => {
-        if (current) {
-          setDrawn({ payload, canvas });
-        }
-      })
-      .catch((err: unknown) => {
-        log.error('[dot.li] QR render failed:', err);
-      });
+    const draw = (): void => {
+      void import('qrcode')
+        .then(QRCode =>
+          QRCode.default.toCanvas(canvas, payload, {
+            width: qrSize(box),
+            margin: 2,
+            // The badge hides the code's centre: Q recovers a quarter of it.
+            errorCorrectionLevel: 'Q',
+            color: { dark: '#000000', light: '#ffffff' },
+          }),
+        )
+        .then(() => {
+          if (current) {
+            setDrawn({ payload, canvas });
+          }
+        })
+        .catch((err: unknown) => {
+          log.error('[dot.li] QR render failed:', err);
+        });
+    };
+    draw();
+    // A window crossing the phone width (a phone turned, a desktop narrowed)
+    // moves `--qr-size` to the other layout's: redraw to fill the new tile.
+    const phone = window.matchMedia(PHONE_QUERY);
+    phone.addEventListener('change', draw);
     return () => {
       current = false;
+      phone.removeEventListener('change', draw);
     };
   });
   const qr = (): DrawnQr | undefined => {
@@ -365,7 +374,13 @@ export function AuthModal(): JSX.Element {
               {hint()}
             </p>
           </div>
-          <div class={[s['qr'], !mobile() && s['qrScan']]} id="auth-modal-qr">
+          <div
+            ref={el => {
+              qrBox = el;
+            }}
+            class={[s['qr'], !mobile() && s['qrScan']]}
+            id="auth-modal-qr"
+          >
             <Switch>
               <Match when={view()?.kind === 'authenticating'}>
                 <div class={s['progress']}>

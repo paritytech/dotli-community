@@ -47,7 +47,7 @@
   );
   overflow-y: auto;
   border: 0;
-  border-radius: 20px;
+  border-radius: var(--r-pop);
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-pop);
@@ -126,12 +126,8 @@
   }
 }
 
-/* Phones: the boards' 24 px corners (anchored, as a peek) and 96 px
-   placeholder. A sheet draws its own corners. */
+/* Phones: the boards' 96 px placeholder. */
 @media (max-width: 560px) {
-  :where(.surface) {
-    border-radius: var(--r-lg);
-  }
   .loading {
     min-height: 96px;
   }

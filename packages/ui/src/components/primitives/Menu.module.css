@@ -20,7 +20,7 @@
   min-width: var(--w-pop-sm);
   padding: 6px;
   border: 0;
-  border-radius: 20px;
+  border-radius: var(--r-pop);
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   box-shadow: var(--chrome-shadow-pop);
@@ -102,11 +102,10 @@
   color: var(--chrome-text-muted);
 }
 
-/* Phones: the boards' 8 px inset, 24 px corners and 44 px rows. */
+/* Phones: the boards' 8 px inset and 44 px rows. */
 @media (max-width: 560px) {
   :where(.menu) {
     padding: var(--sp-2);
-    border-radius: var(--r-lg);
   }
   :where(.row) {
     gap: var(--sp-3);

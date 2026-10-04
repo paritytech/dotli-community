@@ -13,7 +13,7 @@
   max-width: 100%;
   margin: 0;
   padding: var(--sp-3);
-  border-radius: 20px;
+  border-radius: var(--r-pop);
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
@@ -50,7 +50,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--sp-3);
+  gap: 10px;
   min-width: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
 }
@@ -88,7 +88,9 @@
   :where(.surface) {
     gap: var(--sp-3);
     padding: var(--sp-4);
-    border-radius: var(--r-lg);
+  }
+  .head {
+    gap: var(--sp-3);
   }
   .title {
     font-size: var(--fs-title);
