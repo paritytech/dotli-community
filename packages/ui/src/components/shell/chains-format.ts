@@ -3,9 +3,11 @@
 
 // What the network popover (ChainsPopover.tsx) says, as plain functions of
 // the network store's values: moved unchanged from topbar.ts, except that the
-// verdict takes the chains it judges instead of reading the monitor.
+// verdict takes the chains it judges instead of reading the monitor, and that
+// the menu's status line (describeNetworkStatus) is built from it.
 
 import type { ChainStatus } from '../../network-monitor.js';
+import type { StatusTone } from '../primitives/StatusDot.js';
 
 /**
  * How the arrival of a single block reads on hover.
@@ -58,6 +60,12 @@ export function stripCapacity(strip: HTMLElement, fallback: number): number {
   return Math.max(1, Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step));
 }
 
+/** The verdict describeLiveNetwork reaches: its words, and the tone of its dot. */
+export interface LiveVerdict {
+  text: string;
+  tone: Extract<StatusTone, 'ok' | 'warn' | 'idle'>;
+}
+
 /**
  * The overall verdict, from the blocks actually arriving.
  *
@@ -65,10 +73,7 @@ export function stripCapacity(strip: HTMLElement, fallback: number): number {
  * verdict built from those latches at whatever the last chain to bootstrap
  * reported and keeps saying it after the connection dies.
  */
-export function describeLiveNetwork(status: readonly ChainStatus[]): {
-  text: string;
-  tone: string;
-} {
+export function describeLiveNetwork(status: readonly ChainStatus[]): LiveVerdict {
   const chains = status.filter(c => c.reachable);
   if (chains.length === 0) {
     return { text: 'Starting', tone: 'idle' };
@@ -91,4 +96,34 @@ export function describeLiveNetwork(status: readonly ChainStatus[]): {
     };
   }
   return { text: 'Your connection is good', tone: 'ok' };
+}
+
+/** The network menu's status line: a title, and the verdict's own words where they add to it. */
+export interface NetworkStatusLine {
+  tone: StatusTone;
+  title: string;
+  detail: string | null;
+}
+
+const UNSETTLED_TITLES: Record<'idle' | 'warn', string> = {
+  idle: 'Syncing',
+  warn: 'Connection is unstable',
+};
+
+/**
+ * The network menu's status line, from the verdict and the browser's online state.
+ *
+ * Offline wins, as it does for the capsule and the network badge, so the three
+ * never disagree: blocks that landed before the connection dropped would
+ * otherwise still read as a good connection.
+ */
+export function describeNetworkStatus(verdict: LiveVerdict, offline: boolean): NetworkStatusLine {
+  if (offline) {
+    return { tone: 'err', title: 'You are offline', detail: null };
+  }
+  const { text, tone } = verdict;
+  if (tone === 'ok') {
+    return { tone, title: text, detail: null };
+  }
+  return { tone, title: UNSETTLED_TITLES[tone], detail: text };
 }
