@@ -1,0 +1,75 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .glass and .popover: one padding (16 px) and one gap (12 px)
+   for every popover. */
+
+:where(.surface) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: var(--w-pop-md);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-4);
+  border-radius: var(--r-lg);
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
+}
+.surface[data-width='sm'] {
+  width: var(--w-pop-sm);
+}
+.surface[data-width='lg'] {
+  width: var(--w-pop-lg);
+}
+.surface[data-width='xl'] {
+  width: var(--w-pop-xl);
+}
+.surface[data-sheet] {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+  border-radius: 0;
+  background: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-hair) var(--sp-1) 0;
+}
+.title {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-1) 0;
+  border-top: 1px solid var(--chrome-line);
+}
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.hint > svg {
+  flex: none;
+}
