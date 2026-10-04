@@ -1,0 +1,54 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .switch: a 44 x 26 track with a 20 px knob inset 3 px. On, the
+   track turns white and the knob dark, the same pair as the primary button. */
+
+:where(.switch) {
+  box-sizing: border-box;
+  display: flex;
+  flex: none;
+  width: 44px;
+  height: 26px;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+  cursor: pointer;
+  transition: background var(--dur-fast);
+}
+.switch::after {
+  content: '';
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--chrome-text);
+  box-shadow: var(--chrome-shadow-knob);
+  transition:
+    transform var(--dur) var(--ease-spring),
+    background var(--dur-fast);
+}
+.switch[aria-checked='true'] {
+  background: var(--chrome-text);
+  box-shadow: none;
+}
+.switch[aria-checked='true']::after {
+  background: var(--chrome-on-primary);
+  transform: translateX(18px);
+}
+.switch:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.switch:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+@media (prefers-reduced-motion: reduce) {
+  .switch,
+  .switch::after {
+    transition: none;
+  }
+}
