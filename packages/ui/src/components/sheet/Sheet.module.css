@@ -8,7 +8,9 @@
    rules key on two attributes, so the frame's place and width outrank a
    consumer's own class. */
 
-/* A closing scrim lets presses through at once. */
+/* The fading scrim still takes the tap's trailing click, so it never reaches
+   the frame below. `display` flips to none as the fade ends (allow-discrete),
+   so it blocks nothing afterwards. */
 .scrim {
   display: none;
   position: fixed;
@@ -16,7 +18,6 @@
   z-index: 1400;
   background: var(--chrome-scrim);
   opacity: 0;
-  pointer-events: none;
   transition:
     opacity 0.18s ease-out,
     display 0.18s allow-discrete;
@@ -24,7 +25,6 @@
 .scrim[data-open] {
   display: block;
   opacity: 1;
-  pointer-events: auto;
 }
 @starting-style {
   .scrim[data-open] {

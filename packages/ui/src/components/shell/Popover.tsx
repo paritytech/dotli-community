@@ -107,8 +107,9 @@ export function usePopover(): PopoverContextValue {
  * SHEET_QUERY as it opens, as a modal bottom sheet (components/sheet). The
  * content is a lazy component in its own chunk: preloaded when the browser
  * is idle, mounted when the popover opens, and unmounted once it has closed
- * and faded out, so each opening starts afresh. Content that cannot load or throws is
- * reported once and closes the popover; the next opening loads it again.
+ * and faded out, so each opening starts afresh. Content that cannot load
+ * or throws is reported once and closes the popover; the next opening loads
+ * it again.
  * Focus and dismissal are createPopover's (`popover` mode anchored,
  * `dialog` mode as a sheet).
  *
