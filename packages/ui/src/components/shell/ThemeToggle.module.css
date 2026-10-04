@@ -1,23 +1,18 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The icon follows <html data-theme-pref>, which the inline bootstrap script sets
-   before the island hydrates, so the build-time button already shows the stored
-   choice. */
+/* The icon follows <html data-theme>, the theme in effect, which the inline
+   bootstrap script sets before the island hydrates, so the build-time button
+   already shows it. */
 
-.sun,
-.system {
+.sun {
   display: none;
 }
-:global([data-theme-pref='light']) .sun {
+:global([data-theme='light']) .sun {
   display: block;
 }
-:global([data-theme-pref='light']) .moon,
-:global([data-theme-pref='system']) .moon {
+:global([data-theme='light']) .moon {
   display: none;
-}
-:global([data-theme-pref='system']) .system {
-  display: block;
 }
 
 /* The board's Appearance popover (MenuTheme): a 300 px glass holding its

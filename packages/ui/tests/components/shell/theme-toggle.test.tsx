@@ -128,10 +128,9 @@ describe('ThemeToggle', () => {
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     expect(btn.getAttribute('aria-controls')).toBe('theme-popover');
     expect(
-      ['sun', 'moon', 'system'].map(
-        icon => document.querySelector(`[data-testid="theme-icon-${icon}"]`)?.parentElement,
-      ),
-    ).toEqual([btn, btn, btn]);
+      ['sun', 'moon'].map(icon => document.querySelector(`[data-testid="theme-icon-${icon}"]`)?.parentElement),
+    ).toEqual([btn, btn]);
+    expect(btn.querySelector('[data-testid="theme-icon-system"]')).toBeNull();
     const popover = themePopover();
     expect(popover.getAttribute('role')).toBe('menu');
     expect(popover.getAttribute('aria-label')).toBe('Appearance');

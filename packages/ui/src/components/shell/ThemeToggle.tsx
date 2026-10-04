@@ -87,15 +87,15 @@ function MonitorGlyph(props: GlyphProps): JSX.Element {
 }
 
 /**
- * The sun, moon and monitor, of which CSS shows the one for
- * `<html data-theme-pref>`: on the button or a More menu row.
+ * The sun and moon, of which CSS shows the theme in effect,
+ * `<html data-theme>`, so System shows what it resolved to: on the button or
+ * a More menu row.
  */
 function ThemeIcons(props: { size: number }): JSX.Element {
   return (
     <>
       <SunGlyph size={props.size} class={s['sun']} testId="theme-icon-sun" />
       <MoonGlyph size={props.size} class={s['moon']} testId="theme-icon-moon" />
-      <MonitorGlyph size={props.size} class={s['system']} testId="theme-icon-system" />
     </>
   );
 }
@@ -133,10 +133,11 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
  * The title is hidden from assistive technology, as the menu's own name
  * already says it.
  *
- * The button's icon comes from CSS on `<html data-theme-pref>`, which the
- * inline bootstrap script and theme-controller.ts own, never this component:
- * the script sets it before the island hydrates, so the build-time button
- * already shows the stored choice.
+ * The button's icon comes from CSS on `<html data-theme>`, which the inline
+ * bootstrap script and theme-controller.ts own, never this component: the
+ * script sets it before the island hydrates, so the build-time button already
+ * shows the theme in effect, and the controller follows the OS while the
+ * choice is System.
  * The More menu's Appearance row opens this menu with the row click: a
  * keyboard choice (`detail` 0) opens it as a keyboard opening, on the first
  * tile.
