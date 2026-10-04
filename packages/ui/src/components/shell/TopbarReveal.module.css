@@ -19,7 +19,8 @@
   transform: translateX(-50%);
 }
 .reveal:focus {
-  top: calc(var(--sp-6) + var(--safe-top));
+  /* Just below the pill it reveals, never over its address. */
+  top: calc(var(--topbar-height) + var(--sp-1));
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }

@@ -74,6 +74,18 @@ export function AuthButton(props: {
   const opensPopover = account.connected;
   /** The bar's look: a Sign in button, then an avatar and name chip. */
   const chip = (): boolean => props.variant === 'chip';
+  /** The name the chip shows: the username, else the shortened account. */
+  const chipName = (): string | undefined => {
+    const session = account.loggedIn() ? account.session() : undefined;
+    return session === undefined
+      ? undefined
+      : (sessionUsername(session) ?? shortenAccount(session.identityAccountId ?? session.publicKey));
+  };
+  // The visible name starts the button's name, so speech input can use it.
+  const chipLabel = (): string => {
+    const name = chipName();
+    return name === undefined ? label() : `${name}, account`;
+  };
   const label = (): string => (account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile');
   // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => (button === undefined ? undefined : setAuthModalTrigger(button)));
@@ -140,7 +152,7 @@ export function AuthButton(props: {
                 onClick={onClick}
                 id={id('auth-button')}
                 title={label()}
-                aria-label={label()}
+                aria-label={chipLabel()}
                 aria-haspopup={t['aria-haspopup']}
                 aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
                 aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
@@ -167,11 +179,7 @@ export function AuthButton(props: {
                           {initials => initials()}
                         </Show>
                       </span>
-                      <span class={s['name']}>
-                        {sessionUsername(session()) ??
-                          shortenAccount(session().identityAccountId ?? session().publicKey) ??
-                          'Account'}
-                      </span>
+                      <span class={s['name']}>{chipName() ?? 'Account'}</span>
                     </>
                   )}
                 </Show>

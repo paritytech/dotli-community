@@ -162,14 +162,14 @@ describe('ActionGroup', () => {
     expect(byTestId('more-hamburger').hasAttribute('data-open')).toBe(false);
   });
 
-  it('As a user widening the window, items that collapsed into More come back once the pill can grow', async () => {
-    // Given: room for two items, and a pill that cannot grow
-    let grow = 0;
-    await renderTopbar(() => <Items />, room(2), { growRoom: () => grow });
+  it('As a user widening the window, items that collapsed into More come back once the pill has room', async () => {
+    // Given: the pill gives the group room for two items
+    let available = room(2);
+    await renderTopbar(() => <Items />, room(2), { room: () => available });
     expect(inline('settings')).toBe(false);
 
-    // When: the window widens, so the pill could grow by four items
-    grow = room(4);
+    // When: the window widens, so the pill has room for all six
+    available = room(6);
     window.dispatchEvent(new Event('resize'));
     await settle();
 

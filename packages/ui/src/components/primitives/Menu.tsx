@@ -28,6 +28,7 @@ export function Menu(props: MenuProps): JSX.Element {
       class={[s['menu'], props.class]}
       id={props.id}
       role="menu"
+      data-chrome=""
       aria-label={props.label}
       aria-labelledby={props.labelledBy}
       tabindex="-1"

@@ -54,14 +54,26 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
 }
 
 /**
- * How far the bar can still widen before its max-width, in px: the room a
- * content-sized pill gives its action group beyond its current width.
+ * The room the action group has in the pill: the pill's max width less
+ * everything else in its row, with the address counted at its minimum. The
+ * same at rest and while the pill morphs (when the address is squeezed), so
+ * items never pop in and out during a reveal. Undefined without the bar.
  */
-export function topbarGrowRoom(): number {
+export function topbarActionRoom(group: HTMLElement): number | undefined {
   const bar = document.getElementById('topbar');
-  if (bar === null) {
-    return 0;
+  const row = group.parentElement;
+  if (bar === null || row === null) {
+    return undefined;
   }
   const max = Number.parseFloat(getComputedStyle(bar).maxWidth);
-  return Number.isFinite(max) ? Math.max(0, max - bar.getBoundingClientRect().width) : 0;
+  if (!Number.isFinite(max)) {
+    return undefined;
+  }
+  const url = document.getElementById('topbar-url');
+  let urlSlack = 0;
+  if (url !== null && url.hidden !== true) {
+    const min = Number.parseFloat(getComputedStyle(url).minWidth);
+    urlSlack = Math.max(0, url.getBoundingClientRect().width - (Number.isFinite(min) ? min : 0));
+  }
+  return max - (row.scrollWidth - group.getBoundingClientRect().width) + urlSlack;
 }

@@ -22,7 +22,7 @@ import UrlPill from './UrlPill.astro';
 import s from './Topbar.module.css';
 ---
 
-<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar">
+<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar" data-chrome>
   {/* The collapsed capsule: the health bar, led by the action dot. Decorative,
       the reveal button and the pill carry the words. */}
   <span class={s['strip']} aria-hidden="true">

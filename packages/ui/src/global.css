@@ -254,6 +254,36 @@
   --loop: 1.4s;
 }
 
+/* Inside the chrome (data-chrome: the topbar, its popovers and menus), the
+   page tokens read as the dark palette whatever the page theme, so content
+   written with them stays legible on the always-dark glass. */
+[data-chrome] {
+  --text-strong: var(--chrome-text);
+  --text: var(--chrome-text);
+  --text-secondary: var(--chrome-text-muted);
+  --text-muted: var(--chrome-text-muted);
+  --text-faint: var(--chrome-text-muted);
+  --surface: var(--chrome-solid);
+  --surface-2: var(--chrome-solid);
+  --surface-glass: var(--chrome-solid);
+  --fill-subtle: var(--chrome-fill);
+  --fill: var(--chrome-fill);
+  --fill-strong: var(--chrome-fill-strong);
+  --border-subtle: var(--chrome-line);
+  --border: var(--chrome-ring);
+  --border-strong: var(--chrome-ring-strong);
+  --border-focus: var(--chrome-ring-strong);
+  --inverse-bg: #fafafa;
+  --inverse-bg-hover: #ffffff;
+  --inverse-fg: #0a0a0a;
+  --shadow: rgba(0, 0, 0, 0.4);
+  --danger: var(--chrome-err-text);
+  --success: var(--chrome-ok);
+  --warning: var(--chrome-warn);
+  --caution: var(--chrome-warn-text);
+  --knob: var(--chrome-text);
+}
+
 body {
   margin: 0;
   background: var(--bg-page);

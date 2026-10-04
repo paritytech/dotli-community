@@ -12,13 +12,13 @@ import { PermissionsPopover } from './PermissionsPopover.js';
 import { SettingsPopover } from './SettingsPopover.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import { ActionGroup } from './topbar/ActionGroup.js';
-import { topbarGrowRoom } from '../../topbar-status.js';
+import { topbarActionRoom } from '../../topbar-status.js';
 
 /**
  * The topbar's action group with its items, in bar order: the actions the
  * More menu collapses when they do not fit, then the account button, which
  * never collapses and sits apart after a hairline. The group fits into the
- * room the pill can still grow into (topbarGrowRoom). An island of the host page's top bar (apps/host/src/
+ * room the pill gives it (topbarActionRoom). An island of the host page's top bar (apps/host/src/
  * components/Topbar.astro). Their surfaces render through portals into the
  * body. On the landing page, which has its own account and theme buttons, it
  * renders nothing.
@@ -27,7 +27,7 @@ export function TopbarActions(): JSX.Element {
   const landing = useStore(topbarStore, state => state.landing);
   return (
     <Show when={!landing()}>
-      <ActionGroup growRoom={topbarGrowRoom}>
+      <ActionGroup room={topbarActionRoom}>
         <ChainsPopover />
         <ChatButton />
         <PermissionsPopover />

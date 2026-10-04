@@ -21,7 +21,6 @@
 }
 
 .popover {
-  top: calc(var(--topbar-height) + 4px);
   width: 220px;
   overflow: hidden;
 }

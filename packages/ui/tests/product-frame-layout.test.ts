@@ -31,8 +31,8 @@ function recordingFrame(): {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_TOP = 'var(--topbar-height, 56px)';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
+const BELOW_BAR_TOP = 'var(--topbar-height, 84px)';
+const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 84px) - var(--safe-bottom, 0px))';
 const HIDDEN_BAR_TOP = 'var(--safe-top, 0px)';
 const HIDDEN_BAR_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 

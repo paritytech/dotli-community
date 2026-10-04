@@ -38,7 +38,11 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * its absence and lay themselves out for a narrow screen as the bar would
  * most likely fit them.
  */
-export function ActionGroup(props: { growRoom?: (() => number) | undefined; children: JSX.Element }): JSX.Element {
+export function ActionGroup(props: {
+  /** The group's room, when its container knows better than its own width (a content-sized pill). */
+  room?: ((group: HTMLElement) => number | undefined) | undefined;
+  children: JSX.Element;
+}): JSX.Element {
   let group: HTMLDivElement | undefined;
   let more: HTMLButtonElement | undefined;
   /** In registration order; sorted by document order where it matters. */
@@ -67,7 +71,7 @@ export function ActionGroup(props: { growRoom?: (() => number) | undefined; chil
         width: entry.element()?.getBoundingClientRect().width ?? 0,
         priority: entry.priority,
       })),
-      group.clientWidth + (props.growRoom?.() ?? 0),
+      props.room?.(group) ?? group.clientWidth,
       Number.parseFloat(getComputedStyle(group).columnGap) || 0,
       more?.getBoundingClientRect().width ?? 0,
     );
@@ -76,10 +80,14 @@ export function ActionGroup(props: { growRoom?: (() => number) | undefined; chil
 
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(measure);
   onCleanup(() => observer?.disconnect());
-  // In a content-sized pill the group only shrinks with the window, so a
-  // widening window is heard here rather than by the observer. Settled, so
-  // the build-time render, which has no window, skips it.
+  // In a content-sized pill the group's own size says nothing about its
+  // room, so the row (the address changing) and the window are heard too.
+  // Settled, so the build-time render, which has no window, skips it.
   onSettled(() => {
+    const row = group?.parentElement;
+    if (row !== null && row !== undefined) {
+      observer?.observe(row);
+    }
     const onResize = (): void => {
       measure();
     };

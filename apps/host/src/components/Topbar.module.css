@@ -38,7 +38,9 @@
   top: calc(var(--sp-1) + var(--safe-top));
   width: 120px;
   height: var(--sp-2);
-  overflow: hidden;
+  /* Clip, not hidden: a hidden overflow is a scroll container, and focusing
+     a clipped control would scroll the strip out of view. */
+  overflow: clip;
   box-shadow: var(--chrome-shadow-capsule);
 }
 :global(body[data-landing]) .topbar {
@@ -118,7 +120,8 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .topbar,
-  .row {
+  .row,
+  .topbar[data-hidden] .row {
     transition: none;
   }
   .bar,

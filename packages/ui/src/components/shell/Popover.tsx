@@ -355,6 +355,7 @@ export function Popover(props: PopoverProps): JSX.Element {
             surfaceEl = el;
           }}
           class={[s['surface'], props.class]}
+          data-chrome=""
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
           data-peek={peek() ? '' : undefined}

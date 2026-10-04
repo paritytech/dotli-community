@@ -65,7 +65,7 @@ describe('AuthButton in the bar', () => {
     expect(button.getAttribute('aria-controls')).toBe('auth-modal-backdrop');
   });
 
-  it('As a signed-in user in the bar, I see my initials and my name', async () => {
+  it("As a signed-in user in the bar, I see my initials and my name, which also starts the button's name", async () => {
     // Given
     const button = await renderButton({ variant: 'chip' });
 
@@ -76,7 +76,7 @@ describe('AuthButton in the bar', () => {
     // Then
     expect(byTestId('user-badge').textContent).toBe('AS');
     expect(button.textContent).toContain('Alice Smith');
-    expect(button.getAttribute('aria-label')).toBe('Account');
+    expect(button.getAttribute('aria-label')).toBe('Alice Smith, account');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
   });
 
