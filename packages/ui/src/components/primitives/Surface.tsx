@@ -7,7 +7,8 @@ import s from './Surface.module.css';
 
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
 
-const InSheet = createContext(false);
+// An accessor, so a sheet that opens or closes around the surface is seen.
+const InSheet = createContext<() => boolean>(() => false);
 
 /**
  * The glass body of a popover. In a bottom sheet (`sheet`) the sheet already
@@ -22,7 +23,7 @@ export function Surface(props: {
   children: JSX.Element;
 }): JSX.Element {
   return (
-    <InSheet value={props.sheet === true}>
+    <InSheet value={() => props.sheet === true}>
       <section
         class={[s['surface'], props.class]}
         aria-label={props.label}
@@ -45,7 +46,7 @@ export function SurfaceHead(props: {
 }): JSX.Element {
   const inSheet = useContext(InSheet);
   return (
-    <Show when={!inSheet}>
+    <Show when={!inSheet()}>
       <div class={s['head']} data-testid={props.testId}>
         <h2 class={s['title']} id={props.titleId}>
           {props.title}
