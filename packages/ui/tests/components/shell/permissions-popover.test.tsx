@@ -788,4 +788,171 @@ describe('PermissionsPopover', () => {
     expect(isOpen()).toBe(true);
     expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(ALL_PERMISSIONS.length);
   });
+
+  it('As a user, Reset all to Ask sets every permission of the app back to Ask, and the app reloads once', async () => {
+    // Given
+    const provider = provide(LABEL, { Camera: 'Authorized', Microphone: 'Denied', ChainSubmit: 'Authorized' });
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(provider.set).toHaveBeenCalledTimes(3);
+    expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Camera' }, 'NotDetermined');
+    expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Microphone' }, 'NotDetermined');
+    expect(provider.set).toHaveBeenCalledWith(
+      { tag: 'Remote', value: { permission: { tag: 'ChainSubmit' } } },
+      'NotDetermined',
+    );
+    expect(devices).toEqual([{ label: LABEL, permission: 'Camera' }]);
+    expect(grants).toEqual([]);
+    expectPopover({ open: true, list: { kind: 'rows', host: 'app.dot', statuses: {} } });
+    expect(byTestId('permissions-popover-reset', document, HTMLButtonElement).disabled).toBe(true);
+    expect(byId('permissions-button').hasAttribute('data-badge')).toBe(false);
+  });
+
+  it('As a user whose app has only permissions the iframe does not gate decided, Reset all to Ask applies them without a reload', async () => {
+    // Given
+    provide(LABEL, { Notifications: 'Authorized', ChainSubmit: 'Denied' });
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(grants).toEqual([{ label: LABEL, permission: 'Notifications' }]);
+    expect(devices).toEqual([]);
+    expect(statusOf('Notifications')).toBe('ask');
+    expect(statusOf('ChainSubmit')).toBe('ask');
+  });
+
+  it('As a user with nothing granted or denied, Reset all to Ask is disabled and writes nothing', async () => {
+    // Given
+    const provider = provide(LABEL);
+    const grants = recordEvents('dotli:permission-changed');
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
+
+    // Then
+    expect(reset.textContent).toBe('Reset all to Ask');
+    expect(reset.disabled).toBe(true);
+
+    // When
+    reset.click();
+    await settleAll();
+
+    // Then
+    expect(provider.set).not.toHaveBeenCalled();
+    expect(grants).toEqual([]);
+    expect(devices).toEqual([]);
+  });
+
+  it('As a user pressing Reset all to Ask again while it runs, the app reloads once', async () => {
+    // Given: every write waits until the test lets it through.
+    const stored = new Map<string, PermissionAuthorizationStatus>([['Camera', 'Authorized']]);
+    const releases: (() => void)[] = [];
+    const set = vi.fn(
+      (request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) =>
+        new Promise<void>(resolve => {
+          releases.push(() => {
+            stored.set(nameOf(request), status);
+            resolve();
+          });
+        }),
+    );
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: requests =>
+          Promise.resolve(requests.map(request => stored.get(nameOf(request)) ?? 'NotDetermined')),
+        setPermissionAuthorizationStatus: set,
+      }),
+    );
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+    for (const release of releases.splice(0)) {
+      release();
+    }
+    await settleAll();
+
+    // Then
+    expect(set).toHaveBeenCalledTimes(1);
+    expect(devices).toEqual([{ label: LABEL, permission: 'Camera' }]);
+    expect(statusOf('Camera')).toBe('ask');
+  });
+
+  it('As a user, a reset that cannot change one permission still reloads once for the others, and shows the one that stayed', async () => {
+    // Given: the core refuses to change the camera.
+    const stored = new Map<string, PermissionAuthorizationStatus>([
+      ['Camera', 'Authorized'],
+      ['Microphone', 'Authorized'],
+    ]);
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: requests =>
+          Promise.resolve(requests.map(request => stored.get(nameOf(request)) ?? 'NotDetermined')),
+        setPermissionAuthorizationStatus: (request, status) => {
+          if (nameOf(request) === 'Camera') {
+            return Promise.reject(new Error('core down'));
+          }
+          stored.set(nameOf(request), status);
+          return Promise.resolve();
+        },
+      }),
+    );
+    const devices = recordEvents('dotli:device-permission-changed');
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+
+    // When
+    byTestId('permissions-popover-reset').click();
+    await settleAll();
+
+    // Then
+    expect(devices).toEqual([{ label: LABEL, permission: 'Microphone' }]);
+    expect(statusOf('Camera')).toBe('granted');
+    expect(statusOf('Microphone')).toBe('ask');
+    expect(byTestId('permissions-popover-reset', document, HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('As a keyboard user, Reset all to Ask leaves my focus in the popover once the button has nothing left to reset', async () => {
+    // Given
+    provide(LABEL, { Camera: 'Authorized' });
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reset = byTestId('permissions-popover-reset', document, HTMLButtonElement);
+    reset.focus();
+
+    // When
+    reset.click();
+    await settleAll();
+
+    // Then
+    expect(reset.disabled).toBe(true);
+    expect(isOpen()).toBe(true);
+    expect(document.activeElement).toBe(byId('permissions-popover'));
+  });
 });

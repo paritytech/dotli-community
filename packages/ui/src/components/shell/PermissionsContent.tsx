@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
   getPermissionStatuses,
+  resetAllPermissions,
   resetPermission,
   setPermissionStatus,
   type EnforceablePermissionName,
@@ -14,6 +15,7 @@ import {
 } from '../../permissions.js';
 import { recordPermissionsChanged } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
+import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
 import { Hint, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Callout, Well } from '../primitives/Well.js';
@@ -68,8 +70,8 @@ function ReloadIcon(): JSX.Element {
 /**
  * The permissions popover's body (PermissionsPopover), its own chunk: every
  * permission of the loaded product (productStore) in a Device and an App
- * group, each with Ask, Allow and Deny segments, through the async API in
- * permissions.ts. It reads the statuses as it mounts (the popover opening),
+ * group, each with Ask, Allow and Deny segments, and Reset all to Ask,
+ * through the async API in permissions.ts. It reads the statuses as it mounts (the popover opening),
  * and again on a product loading or failing and on a permission change, the
  * last read winning. In a bottom sheet the sheet draws the title, so the
  * surface leaves out its head and the host chip.
@@ -164,6 +166,43 @@ export function PermissionsContent(): JSX.Element {
       : undefined;
   };
 
+  /** Receives the focus handed back once a reset disables it. */
+  let resetButton: HTMLButtonElement | undefined;
+  const [resetting, setResetting] = createSignal(false);
+
+  /** Something to reset, and no reset running. */
+  const canReset = (): boolean => !resetting() && (statuses()?.some(status => status !== 'ask') ?? false);
+
+  // One reset at a time, announced as one change, so a device permission
+  // among those reset reloads the app once. A failed write re-reads the list.
+  const resetAll = (): void => {
+    const read = untrack(fetched);
+    if (read === null || 'failed' in read || untrack(resetting)) {
+      return;
+    }
+    const { label } = read;
+    setResetting(true);
+    void resetAllPermissions(label)
+      .then(
+        ({ reset, failed }) => {
+          // The re-read disables the button under a keyboard user's focus.
+          if (reset.length > 0 && document.activeElement === resetButton) {
+            document.getElementById(popover.id)?.focus();
+          }
+          recordPermissionsChanged(label, reset);
+          if (failed) {
+            setRetries(n => n + 1);
+          }
+        },
+        () => {
+          setRetries(n => n + 1);
+        },
+      )
+      .finally(() => {
+        setResetting(false);
+      });
+  };
+
   /** The loaded product's host, for the head's chip. */
   const host = (): string | undefined => {
     const current = product();
@@ -212,10 +251,19 @@ export function PermissionsContent(): JSX.Element {
         </Show>
       </div>
       <Show when={statuses() !== undefined}>
-        <SurfaceFoot
-          testId="permissions-popover-foot"
-          hint={<Hint icon={<ReloadIcon />}>Changes reload the app</Hint>}
-        />
+        <SurfaceFoot testId="permissions-popover-foot" hint={<Hint icon={<ReloadIcon />}>Changes reload the app</Hint>}>
+          <Button
+            ref={el => {
+              resetButton = el;
+            }}
+            size="sm"
+            disabled={!canReset()}
+            onClick={resetAll}
+            testId="permissions-popover-reset"
+          >
+            Reset all to Ask
+          </Button>
+        </SurfaceFoot>
       </Show>
     </Surface>
   );

@@ -43,7 +43,7 @@ function LockIcon(props: { size: number }): JSX.Element {
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
  * product's permissions in a Device and an App group, each set with Ask,
- * Allow and Deny segments.
+ * Allow and Deny segments, and Reset all to Ask, which reloads the app once.
  * The button carries its badge (`data-badge`) while the product has any
  * permission granted, read again on a product loading or failing and on a
  * permission change.
