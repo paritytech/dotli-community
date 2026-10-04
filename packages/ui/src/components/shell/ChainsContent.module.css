@@ -66,13 +66,6 @@
   overflow: hidden;
   text-align: left;
 }
-/* Older blocks fade, from half strength at the left edge to full at the
-   newest. A mask on the cell, not the strip, so the fade stays put while the
-   strip slides. The gradient sets alpha only. */
-.cell:not([data-unavailable]) {
-  -webkit-mask-image: linear-gradient(90deg, rgb(0 0 0 / 50%), rgb(0 0 0));
-  mask-image: linear-gradient(90deg, rgb(0 0 0 / 50%), rgb(0 0 0));
-}
 .cell[data-unavailable],
 .waiting {
   color: var(--chrome-text-muted);
@@ -81,18 +74,16 @@
   white-space: nowrap;
 }
 .waiting {
-  align-self: center;
-  margin-left: var(--sp-1);
+  position: absolute;
+  top: 50%;
+  left: var(--sp-1);
+  transform: translateY(-50%);
 }
 .bars {
-  /* Read back by the panel (stripCapacity) to work out how many marks fit,
-     so the width lives in one place instead of being duplicated in JS. */
-  --chains-bar-w: 4px;
+  position: relative;
   display: flex;
-  /* Packed to the right, so the newest block lands at the right edge and
-     the oldest run off the left, where `overflow` clips them. */
+  /* 48 slots share the width; the newest is at the right edge. */
   flex-direction: row;
-  justify-content: flex-end;
   align-items: flex-end;
   gap: var(--sp-hair);
   box-sizing: border-box;
@@ -109,11 +100,19 @@
   transition: transform 340ms cubic-bezier(0.22, 0.61, 0.36, 1);
 }
 .bar {
-  flex-shrink: 0;
-  width: var(--chains-bar-w);
+  flex: 1;
+  min-width: 0;
   height: 100%;
   border-radius: var(--r-hair);
   transform-origin: bottom center;
+}
+/* A slot with no sample yet. */
+.stub {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  border-radius: var(--r-hair);
+  background: var(--chrome-fill-strong);
 }
 .bar[data-new] {
   animation: bar-in 340ms cubic-bezier(0.22, 0.61, 0.36, 1);

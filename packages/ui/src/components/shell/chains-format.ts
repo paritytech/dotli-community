@@ -40,30 +40,20 @@ export function formatRate(bytesPerSecond: number): string {
     : `${(bytesPerSecond / 1_048_576).toFixed(1)} MB/s`;
 }
 
-/**
- * How many marks this strip can actually show.
- *
- * Measured rather than assumed, so the history a visitor sees is exactly the
- * history that fits: widen the panel and it lengthens, narrow it and it
- * shortens. Falls back to the full set before first layout, when the strip has
- * no width to measure and every number would be a guess.
- */
-export function stripCapacity(strip: HTMLElement, fallback: number): number {
-  const width = strip.getBoundingClientRect().width;
-  if (width <= 0) {
-    return fallback;
-  }
-  const style = getComputedStyle(strip);
-  const barWidth = Number.parseFloat(style.getPropertyValue('--chains-bar-w'));
-  const gap = Number.parseFloat(style.gap);
-  const step = (Number.isFinite(barWidth) ? barWidth : 4) + (Number.isFinite(gap) ? gap : 4);
-  return Math.max(1, Math.floor((width + (Number.isFinite(gap) ? gap : 4)) / step));
+/** Slots in a chain's history strip, filled from the right as samples arrive. */
+export const HISTORY_SLOTS = 48;
+
+/** Older slots fade: half strength at the left edge, full at the newest. */
+export function slotOpacity(slot: number): string {
+  return (0.5 + (0.5 * slot) / (HISTORY_SLOTS - 1)).toFixed(2);
 }
 
 /** The verdict describeLiveNetwork reaches: its words, and the tone of its dot. */
 export interface LiveVerdict {
   text: string;
   tone: Extract<StatusTone, 'ok' | 'warn' | 'idle'>;
+  /** The chains behind a warning, by label. */
+  slow?: readonly string[];
 }
 
 /**
@@ -87,6 +77,7 @@ export function describeLiveNetwork(status: readonly ChainStatus[]): LiveVerdict
     return {
       text: `Waiting on ${overdue.map(c => c.label).join(' and ')}`,
       tone: 'warn',
+      slow: overdue.map(c => c.label),
     };
   }
   if (started.length < chains.length) {
@@ -110,20 +101,40 @@ const UNSETTLED_TITLES: Record<'idle' | 'warn', string> = {
   warn: 'Connection is unstable',
 };
 
+const NUMBER_WORDS = ['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine'];
+
+/** "A", "A and B", "A, B and C". */
+function joinNames(names: readonly string[]): string {
+  return names.length < 2 ? (names[0] ?? '') : `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
+}
+
 /**
  * The network menu's status line, from the verdict and the browser's online state.
  *
  * Offline wins, as it does for the capsule and the network badge, so the three
  * never disagree: blocks that landed before the connection dropped would
- * otherwise still read as a good connection.
+ * otherwise still read as a good connection. Every state carries a caption.
  */
-export function describeNetworkStatus(verdict: LiveVerdict, offline: boolean): NetworkStatusLine {
+export function describeNetworkStatus(verdict: LiveVerdict, offline: boolean, chainCount = 0): NetworkStatusLine {
   if (offline) {
-    return { tone: 'err', title: 'You are offline', detail: null };
+    return { tone: 'err', title: 'You are offline', detail: 'No peers on any chain. Retrying.' };
   }
-  const { text, tone } = verdict;
+  const { text, tone, slow } = verdict;
   if (tone === 'ok') {
-    return { tone, title: text, detail: null };
+    const count = NUMBER_WORDS[chainCount - 2] ?? String(chainCount);
+    return {
+      tone,
+      title: text,
+      detail: chainCount < 2 ? 'Light client is in sync' : `Light client is in sync on all ${count} chains`,
+    };
   }
-  return { tone, title: UNSETTLED_TITLES[tone], detail: text };
+  if (tone === 'warn') {
+    const names = slow ?? [];
+    return {
+      tone,
+      title: UNSETTLED_TITLES[tone],
+      detail: `${joinNames(names)} ${names.length === 1 ? 'is' : 'are'} short on peers`,
+    };
+  }
+  return { tone, title: UNSETTLED_TITLES[tone], detail: 'Finding peers. This takes a few seconds.' };
 }
