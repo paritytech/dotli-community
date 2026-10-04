@@ -28,14 +28,14 @@
 }
 
 /* The account sits apart from the actions: a hairline with 8 px each side
-   (4 px of margin plus the group's 4 px gap). On the item, so the bar's
-   measure counts it. */
+   (before it the group's 4 px gap plus 4 px of margin, after it 8 px of
+   margin). On the item, so the bar's measure counts it. */
 :global(#topbar-actions) .item[data-item='auth']::before {
   content: '';
   align-self: center;
   flex: none;
   width: 1px;
   height: var(--sp-6);
-  margin: 0 var(--sp-1);
+  margin: 0 var(--sp-2) 0 var(--sp-1);
   background: var(--chrome-ring);
 }
