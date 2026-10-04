@@ -3,8 +3,9 @@
 
 // dot.li top bar auto-hide
 //
-// The bar folds into its status capsule a few seconds after the site's
-// shield settles on desktop, signed in or not, never at a phone's width (PHONE_QUERY), where it is the
+// The bar folds into its status capsule a moment after the product's content
+// shows on desktop, signed in or not (never over the loading screen or an
+// error page), never at a phone's width (PHONE_QUERY), where it is the
 // phone header, and returns on pointer hover, on keyboard focus, and on the
 // reveal shortcut, so home, settings, permissions and login never become
 // mouse-only.
@@ -21,10 +22,12 @@ import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';
 import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
 import { isPhoneViewport, PHONE_QUERY } from './phone-viewport.js';
+import { productStore } from './state/product.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
 
-const HIDE_DELAY_MS = 5000;
+/** The board's auto-hide delay. */
+const HIDE_DELAY_MS = 2500;
 
 /** Keyboard reveal, advertised on the bar via aria-keyshortcuts. */
 export const TOPBAR_REVEAL_SHORTCUT = 'Alt+Shift+T';
@@ -35,6 +38,8 @@ export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
+/** The product's own content is on screen, as the host reports it. */
+let contentShown = false;
 /** The bar (the host page's `#topbar`), while bound. */
 let bar: HTMLElement | undefined;
 /** The reveal control (the TopbarReveal island's), while mounted. */
@@ -107,7 +112,7 @@ function isBusy(): boolean {
 }
 
 function canAutoHide(): boolean {
-  return getTopbarState().autoHide && !isMobileDevice() && !isPhoneViewport();
+  return getTopbarState().autoHide && contentShown && !isMobileDevice() && !isPhoneViewport();
 }
 
 /** Hide the bar after the delay, unless it is pinned or in use then. */
@@ -211,6 +216,14 @@ function bindListeners(): void {
   listeners = new AbortController();
   const { signal } = listeners;
 
+  // Every error page marks the product failed (state/product.ts).
+  const unsubscribe = productStore.subscribe(() => {
+    if (productStore.get().status === 'error') {
+      setProductContentShown(false);
+    }
+  });
+  signal.addEventListener('abort', unsubscribe);
+
   // Tabbing into the offscreen bar reveals it, leaving it re-arms the timer.
   document.addEventListener('focusin', syncFocus, { signal });
   document.addEventListener(
@@ -259,6 +272,20 @@ export function pinTopbarVisible(): void {
 }
 
 /**
+ * Report whether the product's content is on screen: once the sandbox has
+ * loaded it, or a local or preview frame has rendered. The bar folds only
+ * over it, and comes back and stays for a loading screen or a failure.
+ */
+export function setProductContentShown(shown: boolean): void {
+  contentShown = shown;
+  if (shown) {
+    scheduleTopbarHide();
+  } else {
+    revealTopbar();
+  }
+}
+
+/**
  * Drop every listener and reset the state. The host arms once per session and
  * never needs this, tests do.
  */
@@ -266,4 +293,5 @@ export function disposeTopbarAutoHide(): void {
   pinTopbarVisible();
   listeners?.abort();
   listeners = null;
+  contentShown = false;
 }

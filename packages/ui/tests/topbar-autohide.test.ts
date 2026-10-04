@@ -19,7 +19,7 @@ vi.mock('../src/product-iframe-box.js', () => ({
       : { top: '0px', left: '0px', width: '100%', height: '100vh' },
 }));
 
-const HIDE_DELAY_MS = 5000;
+const HIDE_DELAY_MS = 2500;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
 
@@ -102,7 +102,7 @@ function surface(open = false): StandInSurface {
   return stand;
 }
 
-async function loadAutoHide(loggedIn = true): Promise<typeof TopbarAutohideModule> {
+async function loadAutoHide(loggedIn = true, contentShown = true): Promise<typeof TopbarAutohideModule> {
   // As the auth controller records it (state/auth.ts).
   const { setLoggedIn } = await import('../src/state/auth.js');
   setLoggedIn(loggedIn);
@@ -115,6 +115,10 @@ async function loadAutoHide(loggedIn = true): Promise<typeof TopbarAutohideModul
   surfaces = await import('../src/state/topbar-surfaces.js');
   const mod = await import('../src/topbar-autohide.js');
   disposers.push(mod.disposeTopbarAutoHide);
+  // The product's content is on screen, as the host reports once the sandbox has loaded it.
+  if (contentShown) {
+    mod.setProductContentShown(true);
+  }
 
   // The bar registers its element, as its script does on the host page
   // (apps/host/src/components/Topbar.astro).
@@ -474,6 +478,64 @@ describe('topbar auto-hide layout', () => {
     expect(isHidden()).toBe(false);
     expect(appFrame().style.top).toBe('0px');
     expect(appFrame().style.height).toBe('100vh');
+  });
+});
+
+describe('topbar auto-hide over the product', () => {
+  it("As a user on the loading screen, the bar stays up until the app's content shows, then folds", async () => {
+    // Given
+    const { armTopbarAutoHide, setProductContentShown } = await loadAutoHide(true, false);
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    setProductContentShown(true);
+    flushUi();
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a user whose app fails to load, the folded bar comes back and stays over the error page', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    expect(isHidden()).toBe(true);
+
+    // When
+    const { setProductError } = await import('../src/state/product.js');
+    setProductError();
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+  });
+
+  it('As a user whose app reports its own failure in the frame, the folded bar comes back and stays', async () => {
+    // Given
+    const { armTopbarAutoHide, setProductContentShown } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS);
+    expect(isHidden()).toBe(true);
+
+    // When
+    setProductContentShown(false);
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
   });
 });
 

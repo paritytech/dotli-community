@@ -48,6 +48,7 @@ import {
   setChainsButtonVisible,
   wipeOriginState,
   armTopbarAutoHide,
+  setProductContentShown,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
@@ -1103,6 +1104,7 @@ async function main(): Promise<void> {
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(previewTargetUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    setProductContentShown(true);
     const nextSearch = new URLSearchParams({
       url: previewTargetUrl,
     });
@@ -1140,6 +1142,7 @@ async function main(): Promise<void> {
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(localhostUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    setProductContentShown(true);
 
     shieldVerified = true;
     bindTopbarAutoHide();
@@ -1803,6 +1806,7 @@ async function main(): Promise<void> {
       if (resolveFailed) {
         return;
       }
+      setProductContentShown(outcome === 'loaded');
       if (outcome === 'loaded') {
         log.event('Content loaded', { flow: 'content' });
         endJourney();

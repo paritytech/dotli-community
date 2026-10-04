@@ -37,6 +37,7 @@ export { bindTopbarStatus } from './topbar-status.js';
 export {
   armTopbarAutoHide,
   pinTopbarVisible,
+  setProductContentShown,
   registerTopbarElement,
   revealTopbar,
   scheduleTopbarHide,
