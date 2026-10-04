@@ -21,7 +21,7 @@
 }
 
 /* The menu's width, also for the loading spinner before its body's chunk is
-   in. Its place is the Popover's: 12 px below the pill. */
+   in. Its place is the Popover's: 10 px below the pill. */
 .popover {
   width: var(--w-pop-sm);
 }

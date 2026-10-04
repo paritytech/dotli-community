@@ -1,11 +1,11 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's right column of Settings: one stack 8 px apart. */
+/* The board's right column of Settings: one stack 6 px apart (8 on phones). */
 .diagnostics {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 6px;
   min-width: 0;
 }
 
@@ -15,11 +15,11 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   width: 100%;
-  height: var(--h-control);
+  height: 36px;
   margin: 0;
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-3);
   border: 0;
   background: transparent;
   color: var(--chrome-text);
@@ -47,6 +47,8 @@
 }
 .chevron {
   flex: none;
+  width: 14px;
+  height: 14px;
   color: var(--chrome-text-muted);
   transition: transform var(--dur-fast);
 }
@@ -57,16 +59,43 @@
 .packages {
   max-height: 220px;
   overflow: auto;
-  padding: 0 var(--sp-4) var(--sp-3);
+  padding: 0 var(--sp-3) 10px;
   border-top: 1px solid var(--chrome-line);
 }
 .packages-label {
-  padding: var(--sp-3) 0 var(--sp-1);
+  padding: 10px 0 var(--sp-1);
 }
 .actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--sp-2);
+  gap: 6px;
+}
+.actions svg {
+  width: 14px;
+  height: 14px;
+}
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  .diagnostics,
+  .actions {
+    gap: var(--sp-2);
+  }
+  .disclosure {
+    gap: var(--sp-3);
+    height: var(--h-control);
+    padding: 0 var(--sp-4);
+  }
+  .chevron,
+  .actions svg {
+    width: 16px;
+    height: 16px;
+  }
+  .packages {
+    padding: 0 var(--sp-4) var(--sp-3);
+  }
+  .packages-label {
+    padding-top: var(--sp-3);
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .disclosure,

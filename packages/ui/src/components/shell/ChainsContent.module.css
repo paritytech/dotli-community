@@ -3,12 +3,18 @@
 
 /* The board's network menu: the status well, then per chain its name and
    peers over a strip of block bars, the download rows and the tips. The
-   Surface around them sets the 12 px rhythm between them. */
+   Surface around them sets the rhythm between them. */
 
 .status {
   flex-direction: row;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
+}
+/* The status dot, 8 px in a 3 px halo on desktop. */
+.status > :first-child {
+  width: var(--sp-2);
+  height: var(--sp-2);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
 }
 .status-text {
   display: flex;
@@ -32,10 +38,10 @@
 .group {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 6px;
   padding: 0 var(--sp-1);
 }
-/* 16 px between chains: the surface's 12 plus 4. */
+/* The surface's gap plus 4 between chains. */
 .group + .group {
   margin-top: var(--sp-1);
 }
@@ -43,7 +49,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--sp-2);
+  gap: 6px;
   margin: 0;
   color: var(--chrome-text);
   font-size: var(--fs-small);
@@ -90,7 +96,7 @@
   /* A flex item defaults to `min-width: auto`, which lets its content set
      the floor and defeats the clipping. */
   min-width: 0;
-  height: var(--sp-4);
+  height: var(--sp-3);
   overflow: hidden;
 }
 /* Set for one frame after a block lands (slideStrip): the strip starts
@@ -110,7 +116,7 @@
 .stub {
   flex: 1;
   min-width: 0;
-  height: 4px;
+  height: 3px;
   border-radius: var(--r-hair);
   background: var(--chrome-fill-strong);
 }
@@ -130,13 +136,13 @@
 .bar[data-health='onTime'] {
   background: var(--chrome-ok);
 }
-/* 10 and 6 of the strip's 16 px, as on the board. */
+/* 8 and 5 of the strip's 12 px (the board's 10 and 6 of 16). */
 .bar[data-health='late'] {
-  height: 62.5%;
+  height: 8px;
   background: var(--chrome-warn);
 }
 .bar[data-health='veryLate'] {
-  height: 37.5%;
+  height: 5px;
   background: var(--chrome-err);
 }
 /* Its inline height is the elapsed share of the chain's block time once a first
@@ -190,7 +196,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--sp-3);
+  gap: 10px;
   margin: 0;
   font-size: var(--fs-caption);
   line-height: var(--lh-body);
@@ -206,4 +212,35 @@
   color: var(--chrome-text);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* Phones: the boards' sizes, the dot is StatusDot's own. */
+@media (max-width: 560px) {
+  .status {
+    gap: var(--sp-3);
+  }
+  .status > :first-child {
+    width: 10px;
+    height: 10px;
+    box-shadow: 0 0 0 var(--sp-1) color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
+  }
+  .group,
+  .group-label {
+    gap: var(--sp-2);
+  }
+  .bars {
+    height: var(--sp-4);
+  }
+  .stub {
+    height: 4px;
+  }
+  .bar[data-health='late'] {
+    height: 10px;
+  }
+  .bar[data-health='veryLate'] {
+    height: 6px;
+  }
+  .transfer-row {
+    gap: var(--sp-3);
+  }
 }

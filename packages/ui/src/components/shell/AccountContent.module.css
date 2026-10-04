@@ -2,12 +2,13 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The board's account menu: the large avatar beside "Welcome back" and the
-   name, inset 4 px like a popover head, then the hint, a hairline and Log out. */
+   name, inset 4 px like a popover head, then the hint, a hairline and Log out.
+   Desktop: a 40 px avatar and a 15 px name (the boards' 48 and 17 on phones). */
 
 .identity {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   min-width: 0;
   padding: var(--sp-1) var(--sp-1) 0;
 }
@@ -15,14 +16,18 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: var(--h-row);
-  height: var(--h-row);
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   background: var(--chrome-avatar);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
-  font-size: var(--fs-h2);
+  font-size: 16px;
   font-weight: var(--fw-semibold);
+}
+.avatar svg {
+  width: 16px;
+  height: 16px;
 }
 .text {
   display: flex;
@@ -38,7 +43,7 @@
 .name {
   overflow: hidden;
   color: var(--chrome-text);
-  font-size: var(--fs-title-lg);
+  font-size: 15px;
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   text-overflow: ellipsis;
@@ -53,4 +58,31 @@
   margin: 0 var(--sp-1);
   border: 0;
   background: var(--chrome-line);
+}
+/* Log out's icon. */
+.icon {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 560px) {
+  .identity {
+    gap: var(--sp-3);
+  }
+  .avatar {
+    width: var(--h-row);
+    height: var(--h-row);
+    font-size: var(--fs-h2);
+  }
+  .avatar svg {
+    width: 20px;
+    height: 20px;
+  }
+  .name {
+    font-size: var(--fs-title-lg);
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
 }

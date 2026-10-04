@@ -10,7 +10,7 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   align-items: start;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
 }
 .content[data-sheet] .columns {
   grid-template-columns: minmax(0, 1fr);
@@ -18,14 +18,19 @@
 .column {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
   min-width: 0;
 }
 .group,
 .choices {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 6px;
+}
+/* The clear-caches button's icon. */
+.icon {
+  width: 14px;
+  height: 14px;
 }
 .apply {
   flex: none;
@@ -34,4 +39,20 @@
 .content[data-sheet] .apply {
   flex: 1 0 100%;
   margin-left: 0;
+}
+
+/* Phones: the boards' 20 px column rhythm, 8 px stacks and 16 px icon. */
+@media (max-width: 560px) {
+  .columns,
+  .column {
+    gap: var(--sp-5);
+  }
+  .group,
+  .choices {
+    gap: var(--sp-2);
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
 }

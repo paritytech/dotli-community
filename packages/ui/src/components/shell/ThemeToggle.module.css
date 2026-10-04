@@ -15,20 +15,20 @@
   display: none;
 }
 
-/* The board's Appearance popover (MenuTheme): a 300 px glass holding its
+/* The board's Appearance popover (MenuTheme): a small glass holding its
    title over three tiles in a well. The Menu primitive draws the glass. */
 .menu {
-  gap: var(--sp-3);
+  gap: 10px;
   width: var(--w-pop-sm);
   min-width: 0;
   max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
-  padding: var(--sp-4);
+  padding: var(--sp-3);
 }
 .head {
   margin: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
   color: var(--chrome-text);
-  font-size: var(--fs-title);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
@@ -38,7 +38,7 @@
   gap: var(--sp-1);
   margin: 0;
   padding: var(--sp-1);
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
 }
@@ -48,11 +48,11 @@
 .tiles .tile {
   flex-direction: column;
   justify-content: center;
-  gap: var(--sp-2);
-  height: var(--h-tile);
+  gap: 6px;
+  height: 60px;
   min-height: 0;
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-sm);
+  padding: 0 10px;
+  border-radius: var(--r-xs);
   background: transparent;
   color: var(--chrome-text-muted);
   font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
@@ -71,6 +71,8 @@
   color: var(--chrome-text);
 }
 .tiles .tile > svg {
+  width: 16px;
+  height: 16px;
   color: inherit;
 }
 .tiles .tile:focus-visible {
@@ -80,6 +82,30 @@
 @media (prefers-reduced-motion: reduce) {
   .tiles .tile {
     transition: none;
+  }
+}
+
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  .menu {
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+  }
+  .head {
+    font-size: var(--fs-title);
+  }
+  .tiles {
+    border-radius: var(--r-md);
+  }
+  .tiles .tile {
+    gap: var(--sp-2);
+    height: var(--h-tile);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .tiles .tile > svg {
+    width: 20px;
+    height: 20px;
   }
 }
 

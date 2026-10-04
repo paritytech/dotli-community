@@ -1,15 +1,21 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The pill shield's own glyphs, at the board's 20 px, in the shield's
-   colours. Choice places them. */
+/* The pill shield's own glyphs, 16 px (the board's 20 on phones), in the
+   shield's colours. Choice places them. */
 .icon {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 .verified {
   color: var(--chrome-ok);
 }
 .trusted {
   color: var(--chrome-warn);
+}
+@media (max-width: 560px) {
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
 }

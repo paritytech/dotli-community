@@ -7,11 +7,13 @@
 .label {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   min-width: 0;
 }
 .icon {
   flex: none;
+  width: 16px;
+  height: 16px;
   color: var(--chrome-text-muted);
 }
 .name {
@@ -19,4 +21,15 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Phones: the boards' 20 px icon, 12 px from the name. */
+@media (max-width: 560px) {
+  .label {
+    gap: var(--sp-3);
+  }
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
 }

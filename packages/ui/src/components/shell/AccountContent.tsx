@@ -33,6 +33,7 @@ function UserIcon(): JSX.Element {
 function LogOutIcon(): JSX.Element {
   return (
     <svg
+      class={s['icon']}
       width="16"
       height="16"
       viewBox="0 0 24 24"
