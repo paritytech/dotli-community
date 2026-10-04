@@ -108,6 +108,41 @@ test.describe('Shell UI smoke', () => {
     await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
   });
 
+  test('As a phone user, the header spans the top with the address, More and then the account, and More opens as a sheet a tap on the scrim closes', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 60 });
+    await expect(page.locator('#theme-toggle')).toBeHidden();
+    await expect(page.locator('#permissions-button')).toBeHidden();
+    const more = await page.locator('#more-button').boundingBox();
+    const account = await page.locator('#auth-button').boundingBox();
+    expect((more?.x ?? 0) < (account?.x ?? 0)).toBe(true);
+    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
+
+    // When
+    await page.locator('#more-button').click();
+
+    // Then
+    const sheet = page.locator('#more-popover');
+    await expect(sheet).toHaveAttribute('data-sheet');
+    await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
+    await expect.poll(() => sheetBottom(sheet)).toBe(844);
+
+    // When
+    await page.mouse.click(195, 100);
+
+    // Then
+    await expect(sheet).not.toHaveAttribute('data-open');
+  });
+
   test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
     page,
   }) => {
