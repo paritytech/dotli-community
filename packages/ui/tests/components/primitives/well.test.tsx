@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Field } from '../../../src/components/primitives/Field.js';
 import { Callout, KeyValue, Row, Well } from '../../../src/components/primitives/Well.js';
 import { renderComponent } from '../../helpers/solid.js';
@@ -29,6 +29,28 @@ describe('Well and its parts', () => {
     expect(byTestId('kv').textContent).toBe('Build0.9.3');
     expect(byTestId('callout').textContent).toBe('Changes reload the app');
     expect(byTestId('well').contains(byTestId('row'))).toBe(true);
+  });
+
+  it('As a user, I click a copyable key-value row', () => {
+    // Given
+    const onClick = vi.fn();
+    renderComponent(() => (
+      <Well layout="kv">
+        <KeyValue k="Site" v="dot.li" copyable title="Click to copy Site" onClick={onClick} testId="kv" />
+      </Well>
+    ));
+    const row = byTestId('kv');
+
+    // Then
+    expect(row.hasAttribute('data-copyable')).toBe(true);
+    expect(row.getAttribute('title')).toBe('Click to copy Site');
+    expect(row.children[1]?.tagName).toBe('CODE');
+
+    // When
+    row.click();
+
+    // Then
+    expect(onClick).toHaveBeenCalledTimes(1);
   });
 
   it('As a reviewer of a signing request, I read each field label over its value', () => {

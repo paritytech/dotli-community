@@ -40,6 +40,11 @@ export function Row(props: {
   );
 }
 
+/**
+ * A key and its mono value (code, so it reads as a value to copy). A
+ * `copyable` row is the click target: it carries the pointer and underlines
+ * its value on hover.
+ */
 export function KeyValue(props: {
   k: JSX.Element;
   v: JSX.Element;
@@ -47,18 +52,26 @@ export function KeyValue(props: {
   monoKey?: boolean;
   /** 24 px rows, for long lists such as packages. */
   dense?: boolean;
+  copyable?: boolean;
+  title?: string | undefined;
+  onClick?: (() => void) | undefined;
   class?: string | undefined;
   testId?: string;
 }): JSX.Element {
   return (
     <div
+      onClick={() => {
+        props.onClick?.();
+      }}
+      title={props.title}
       class={[s['kv'], props.class]}
+      data-copyable={props.copyable === true ? '' : undefined}
       data-mono-key={props.monoKey === true ? '' : undefined}
       data-dense={props.dense === true ? '' : undefined}
       data-testid={props.testId}
     >
       <span class={s['key']}>{props.k}</span>
-      <span class={s['value']}>{props.v}</span>
+      <code class={s['value']}>{props.v}</code>
     </div>
   );
 }

@@ -210,10 +210,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             </div>
           </div>
         </div>
-        <div class={s['column']}>
-          <SettingsSection text="Diagnostics" />
-          <Diagnostics backend={persisted.chain} />
-        </div>
+        <Diagnostics backend={persisted.chain} />
       </div>
       {/* One unit, so in a sheet it pins to the bottom edge with the primary
           action in reach. */}

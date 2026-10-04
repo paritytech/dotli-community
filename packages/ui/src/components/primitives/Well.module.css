@@ -68,10 +68,18 @@
 .value {
   min-width: 0;
   overflow: hidden;
+  color: var(--chrome-text);
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.kv[data-copyable] {
+  cursor: pointer;
+}
+.kv[data-copyable]:hover .value {
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 :where(.callout) {
   flex-direction: row;

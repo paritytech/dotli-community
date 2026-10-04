@@ -1,8 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The base rules of the parts that take a consumer's class (the heading, the row
-   and the button) are wrapped in :where(), so that class wins over them
+/* The base rules of the parts that take a consumer's class (the heading) are
+   wrapped in :where(), so that class wins over them
    whatever order the stylesheets load in. */
 
 /* The board's .label: the caps heading over a group. */
@@ -14,86 +14,4 @@
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-caps);
   text-transform: uppercase;
-}
-
-:where(.row) {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 5px 14px;
-}
-
-.info {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 4px 14px;
-  font-size: 0.7rem;
-  cursor: default;
-}
-.info[data-copyable] {
-  cursor: pointer;
-}
-.info[data-copyable]:hover {
-  background: var(--fill-subtle);
-}
-.info-label {
-  flex-shrink: 0;
-  color: var(--text-muted);
-}
-.info-value {
-  max-width: 60%;
-  overflow: hidden;
-  color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.65rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.info[data-copyable][data-copied] .info-value {
-  color: var(--text-strong);
-}
-
-:where(.clear) {
-  box-sizing: border-box;
-  width: 100%;
-  margin: 0;
-  padding: 5px 0;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
-}
-.clear:hover {
-  border-color: var(--border-strong);
-  background: var(--fill-subtle);
-  color: var(--text-strong);
-}
-.clear:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-.clear:disabled:hover {
-  border-color: var(--border);
-  background: transparent;
-  color: var(--text-secondary);
-}
-.clear[data-primary] {
-  border-color: var(--inverse-bg);
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-weight: 600;
-}
-.clear[data-primary]:hover {
-  border-color: var(--inverse-bg-hover);
-  background: var(--inverse-bg-hover);
-  color: var(--inverse-fg);
 }

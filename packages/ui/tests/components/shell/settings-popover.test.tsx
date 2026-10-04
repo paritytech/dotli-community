@@ -249,13 +249,19 @@ function expectCacheRow(row: Element | undefined, label: string, checked: boolea
   expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
 }
 
-/** A diagnostics row: label and value, and the copy hint on the copyable ones. */
-function expectInfoRow(row: Element | undefined, label: string, value: string, copyable = false): void {
+/** A diagnostics row: label and value, the copy hint on the copyable ones, dense in the package list. */
+function expectInfoRow(
+  row: Element | undefined,
+  label: string,
+  value: string,
+  opts: { copyable?: boolean; dense?: boolean } = {},
+): void {
   expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'CODE']);
   expect(row?.children[0]?.textContent).toBe(label);
   expect(row?.children[1]?.textContent).toBe(value);
-  expect(row?.hasAttribute('data-copyable')).toBe(copyable);
-  expect(row?.getAttribute('title')).toBe(copyable ? `Click to copy ${label}` : null);
+  expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
+  expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
+  expect(row?.getAttribute('title')).toBe(opts.copyable === true ? `Click to copy ${label}` : null);
 }
 
 /** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */
@@ -342,44 +348,61 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
   expect(sections).toHaveLength(at);
 }
 
-/** The right column: diagnostics, versions and the share and debug buttons. */
+/** The right column: the diagnostics well, the closed Packages disclosure and the share and debug buttons. */
 function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
-  const items = Array.from(right.children);
-  let at = 0;
-  expectHeader(items[at++], 'Diagnostics');
+  expect(tags(right)).toEqual(['DIV', 'DIV', 'DIV', 'DIV']);
+  const [header, diagnostics, packages, actions] = Array.from(right.children) as [Element, Element, Element, Element];
+  expectHeader(header, 'Diagnostics');
+
+  expect(diagnostics.getAttribute('data-testid')).toBe('mode-diagnostics');
   const copyable = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
-  for (const [label, value] of buildBaseDiagnosticsRows()) {
-    expectInfoRow(items[at++], label, value, copyable.has(label));
-  }
-  expectHeader(items[at++], 'Light client');
-  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel());
+  const base = buildBaseDiagnosticsRows();
+  expect(diagnostics.childElementCount).toBe(base.length);
+  base.forEach(([label, value], i) => {
+    expectInfoRow(diagnostics.children[i], label, value, { copyable: copyable.has(label) });
+  });
+
+  expect(packages.getAttribute('data-testid')).toBe('mode-packages-well');
   const { polkadotApi, parityTruapi } = packageVersions();
+  const toggle = byTestId('mode-packages-toggle', packages, HTMLButtonElement);
+  expect(toggle.type).toBe('button');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.getAttribute('aria-controls')).toBe('mode-packages');
+  expect(toggle.textContent).toBe(`Packages${String(1 + polkadotApi.length + parityTruapi.length)}`);
+  const list = byId('mode-packages');
+  expect(list.parentElement).toBe(packages);
+  expect(list.hidden).toBe(true);
+  const items = Array.from(list.children);
+  let at = 0;
+  expectHeader(items[at++], 'Light client');
+  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel(), { dense: true });
   if (polkadotApi.length > 0) {
     expectHeader(items[at++], '@polkadot-api');
     for (const pkg of polkadotApi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version);
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
     }
   }
   if (parityTruapi.length > 0) {
     expectHeader(items[at++], '@parity/truapi');
     for (const pkg of parityTruapi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version);
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
     }
   }
-  const actions = nth(items, at++);
+  expect(items).toHaveLength(at);
+
+  expect(actions.getAttribute('data-testid')).toBe('mode-diagnostic-actions');
   expect(tags(actions)).toEqual(['BUTTON', 'BUTTON']);
   const [share, debug] = Array.from(actions.children) as [HTMLButtonElement, HTMLButtonElement];
   expect(share.type).toBe('button');
   expect(share.textContent).toBe('Share diagnostic');
   expect(share.title).toBe('Open a new issue on paritytech/dotli pre-filled with these diagnostics');
   expect(debug.type).toBe('button');
-  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Open in debug mode');
+  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Debug mode');
   expect(debug.title).toBe(
     debugOn
       ? 'Reload this tab with the TrUAPI debug panel disabled'
       : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)',
   );
-  expect(items).toHaveLength(at);
 }
 
 /**
@@ -733,7 +756,6 @@ describe('The settings popover island', () => {
     // Then
     expect(writeText).toHaveBeenCalledWith(window.location.host);
     expect(value.textContent).toBe('Copied');
-    expect(site.hasAttribute('data-copied')).toBe(true);
 
     // When
     vi.advanceTimersByTime(1000);
@@ -741,7 +763,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(value.textContent).toBe(window.location.host);
-    expect(site.hasAttribute('data-copied')).toBe(false);
 
     // When: a row that is not copyable.
     infoRow('Build').click();
@@ -751,6 +772,30 @@ describe('The settings popover island', () => {
     expect(writeText).toHaveBeenCalledTimes(1);
   });
 
+  it('As a dotli user, I open Packages to read the package versions and close it again', async () => {
+    // Given
+    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
+    await renderPopover();
+    await openPopover();
+    const toggle = byTestId('mode-packages-toggle');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(byId('mode-packages').hidden).toBe(false);
+    expect(infoRow('@polkadot-api/ws-provider').children[1]?.textContent).toBe('0.4.0');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
+  });
   it('As a dotli user on trusted providers, the AssetHub row shows the node the client is connected to, in the popover and the shared report', async () => {
     // Given
     setBackend('rpc-gateway');
@@ -827,7 +872,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // When
-    button('Open in debug mode').click();
+    button('Debug mode').click();
 
     // Then
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/path?x=1&debug=true');

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createSignal, For, onCleanup, untrack } from 'solid-js';
+import { createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { Backend } from '@dotli/config';
 import {
@@ -12,12 +12,52 @@ import {
   isTruapiDebugEnabled,
   packageVersions,
 } from '../../settings-actions.js';
-import { ClearButton, InfoRow, SettingsRow, SettingsSection } from './SettingsRows.js';
+import { Button } from '../primitives/Button.js';
+import { Well } from '../primitives/Well.js';
+import { InfoRow, SettingsSection } from './SettingsRows.js';
 import { loadRpcResolve } from '@dotli/resolver';
 import s from './Diagnostics.module.css';
 
 /** The rows a click copies. */
 const COPYABLE_ROWS = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
+
+function CopyIcon(): JSX.Element {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function TerminalIcon(): JSX.Element {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="m4 17 6-6-6-6" />
+      <path d="M12 19h8" />
+    </svg>
+  );
+}
 
 /**
  * The Diagnostics block of the settings popover, read when it mounts (each
@@ -66,6 +106,9 @@ export function Diagnostics(props: {
 
   const { polkadotApi, parityTruapi } = packageVersions();
   const debugOn = isTruapiDebugEnabled();
+  const [packagesOpen, setPackagesOpen] = createSignal(false);
+  // The light client's own row and every listed package.
+  const packageCount = 1 + polkadotApi.length + parityTruapi.length;
 
   const share = (): void => {
     void (async () => {
@@ -96,52 +139,80 @@ export function Diagnostics(props: {
   };
 
   return (
-    <>
-      <For each={base}>
-        {([label, value]) => (
-          <InfoRow
-            label={label}
-            value={label === 'AssetHub node' ? (assetHubNode() ?? value) : value}
-            copyable={COPYABLE_ROWS.has(label)}
-          />
-        )}
-      </For>
+    <div class={s['diagnostics']}>
+      <SettingsSection text="Diagnostics" />
+      <Well layout="kv" testId="mode-diagnostics">
+        <For each={base}>
+          {([label, value]) => (
+            <InfoRow
+              label={label}
+              value={label === 'AssetHub node' ? (assetHubNode() ?? value) : value}
+              copyable={COPYABLE_ROWS.has(label)}
+            />
+          )}
+        </For>
+      </Well>
       {/* Version only. The per-chain block heights live in the network
           popover, where they can be read live. */}
-      <SettingsSection text="Light client" />
-      <InfoRow label="@parity/truapi-provider" value={buildLightClientVersionLabel()} />
-      {polkadotApi.length > 0 && (
-        <>
-          <SettingsSection text="@polkadot-api" />
-          <For each={polkadotApi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} />}</For>
-        </>
-      )}
-      {parityTruapi.length > 0 && (
-        <>
-          <SettingsSection text="@parity/truapi" />
-          <For each={parityTruapi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} />}</For>
-        </>
-      )}
-      <SettingsRow class={s['links']}>
-        <ClearButton
-          onClick={share}
-          class={s['link']}
-          title="Open a new issue on paritytech/dotli pre-filled with these diagnostics"
+      <Well layout="flush" testId="mode-packages-well">
+        <button
+          onClick={() => {
+            setPackagesOpen(open => !open);
+          }}
+          type="button"
+          class={s['disclosure']}
+          data-testid="mode-packages-toggle"
+          aria-expanded={packagesOpen() ? 'true' : 'false'}
+          aria-controls="mode-packages"
         >
+          <span class={s['disclosureLabel']}>Packages</span>
+          <span class={s['count']}>{packageCount}</span>
+          <svg
+            class={s['chevron']}
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+        <div class={s['packages']} id="mode-packages" data-testid="mode-packages" hidden={!packagesOpen()}>
+          <SettingsSection text="Light client" class={s['packagesLabel']} />
+          <InfoRow label="@parity/truapi-provider" value={buildLightClientVersionLabel()} dense />
+          <Show when={polkadotApi.length > 0}>
+            <SettingsSection text="@polkadot-api" class={s['packagesLabel']} />
+            <For each={polkadotApi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} dense />}</For>
+          </Show>
+          <Show when={parityTruapi.length > 0}>
+            <SettingsSection text="@parity/truapi" class={s['packagesLabel']} />
+            <For each={parityTruapi}>{pkg => <InfoRow label={pkg.name} value={pkg.version} dense />}</For>
+          </Show>
+        </div>
+      </Well>
+      <div class={s['actions']} data-testid="mode-diagnostic-actions">
+        <Button block onClick={share} title="Open a new issue on paritytech/dotli pre-filled with these diagnostics">
+          <CopyIcon />
           Share diagnostic
-        </ClearButton>
-        <ClearButton
+        </Button>
+        <Button
+          block
           onClick={toggleDebug}
-          class={s['link']}
           title={
             debugOn
               ? 'Reload this tab with the TrUAPI debug panel disabled'
               : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)'
           }
         >
-          {debugOn ? 'Exit debug mode' : 'Open in debug mode'}
-        </ClearButton>
-      </SettingsRow>
-    </>
+          <TerminalIcon />
+          {debugOn ? 'Exit debug mode' : 'Debug mode'}
+        </Button>
+      </div>
+    </div>
   );
 }
