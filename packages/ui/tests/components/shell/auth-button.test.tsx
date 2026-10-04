@@ -80,6 +80,20 @@ describe('AuthButton in the bar', () => {
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
   });
 
+  it('As a signed-in user whose name changes, the badge in the bar follows the new initials', async () => {
+    // Given
+    await renderButton({ variant: 'chip' });
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
+
+    // When
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Bob Jones' } });
+    await settleAll();
+
+    // Then
+    expect(byTestId('user-badge').textContent).toBe('BJ');
+  });
+
   it('As a visitor on the landing page, I keep the icon account button', async () => {
     // When
     const button = await renderButton({ idPrefix: 'landing-' });

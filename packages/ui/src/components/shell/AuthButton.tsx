@@ -176,7 +176,7 @@ export function AuthButton(props: {
                         data-anon={sessionInitials(session()) === undefined ? '' : undefined}
                       >
                         <Show when={sessionInitials(session())} fallback={<UserIcon size={16} />}>
-                          {initials => initials()}
+                          {initials => <>{initials()}</>}
                         </Show>
                       </span>
                       <span class={s['name']}>{chipName() ?? 'Account'}</span>

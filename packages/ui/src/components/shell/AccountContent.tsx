@@ -104,7 +104,7 @@ export function AccountContent(): JSX.Element {
       <div class={s['identity']}>
         <span class={s['avatar']} aria-hidden="true">
           <Show when={initials()} fallback={<UserIcon />}>
-            {value => value()}
+            {value => <>{value()}</>}
           </Show>
         </span>
         <div class={s['text']}>

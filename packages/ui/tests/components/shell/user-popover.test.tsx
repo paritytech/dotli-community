@@ -116,6 +116,21 @@ describe('UserPopover', () => {
     });
   });
 
+  it('As a user whose name changes, the avatar in the popover follows the new initials', async () => {
+    // Given
+    await renderAccount({ connected: true, publicKey: PUBLIC_KEY, fullUsername: 'Alice Smith' });
+    await openPopover();
+    const avatar = nth(Array.from(byTestId('account-content').firstElementChild?.children ?? []), 0);
+    expect(avatar.textContent).toBe('AS');
+
+    // When
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: PUBLIC_KEY, fullUsername: 'Bob Jones' } });
+    await settleAll();
+
+    // Then
+    expect(avatar.textContent).toBe('BJ');
+  });
+
   it('As a user whose account has no username, the popover shows my shortened address and explains why', async () => {
     // When
     const popover = await renderAccount({
