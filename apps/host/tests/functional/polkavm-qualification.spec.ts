@@ -53,8 +53,8 @@ test('As a product user, I complete a handshake and write, read and clear privat
   try {
     await expect(run.canvas).toHaveAttribute('data-polkavm-profile', 'tri2d');
 
-    // When: source-backed egui coordinates at 780x700, including the 56px host header.
-    await page.mouse.click(470, 332);
+    // When: source-backed egui coordinates relative to the canvas at a 780x700 viewport.
+    await run.canvas.click({ position: { x: 470, y: 276 } });
     await run.until('real handshake response', async () =>
       wireFrames(await run.workers()).some(
         frame => frame.direction === 'response' && frame.trait === 1 && frame.method === 0,
@@ -74,13 +74,13 @@ test('As a product user, I complete a handshake and write, read and clear privat
     await run.screenshot('handshake-completed');
 
     // When
-    await page.mouse.click(85, 211); // Methods
+    await run.canvas.click({ position: { x: 85, y: 155 } }); // Methods
     const navigationFrame = Number(await run.canvas.getAttribute('data-polkavm-frames'));
     await run.until(
       'methods view is presented',
       async () => Number(await run.canvas.getAttribute('data-polkavm-frames')) > navigationFrame + 1,
     );
-    await page.mouse.click(475, 318); // Run write/read/clear round trip
+    await run.canvas.click({ position: { x: 475, y: 262 } }); // Run write/read/clear round trip
     await run.until('guest completes storage round trip', async () =>
       wireFrames(await run.workers()).some(
         frame => frame.direction === 'response' && frame.trait === 7 && frame.method === 2,
