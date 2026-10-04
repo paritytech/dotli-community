@@ -602,6 +602,24 @@ describe('createPopover, popover mode (Radix Popover, non-modal)', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it.each([
+    { phone: true, reached: false, title: 'on a phone, it never reaches the page' },
+    { phone: false, reached: true, title: 'on a wide screen, it reaches the page' },
+  ])('As a user, a mouse click outside a sheet-capable popover: $title', async ({ phone, reached: expected }) => {
+    // Given
+    stubPhoneViewport(phone);
+    const popover = renderPopover('popover', { sheet: true });
+    await openPopover(popover);
+
+    // When
+    const { reached } = pointerClick(byId('outside'));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(false);
+    expect(reached).toBe(expected);
+  });
+
   it('As a keyboard user, closing the popover from inside it hands focus back to the trigger', async () => {
     // Given
     const popover = renderPopover('popover');
@@ -901,27 +919,6 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     // Then
     expect(popover.sheet()).toBe(false);
   });
-
-  it.each([
-    { phone: true, reached: false },
-    { phone: false, reached: true },
-  ])(
-    'As a user, an outside click on a popover opened with sheet reaches the page: $reached (phone: $phone)',
-    async ({ phone, reached: expected }) => {
-      // Given
-      stubPhoneViewport(phone);
-      const popover = renderPopover('popover', { sheet: true });
-      await openPopover(popover);
-
-      // When
-      const { reached } = pointerClick(byId('outside'));
-      await settle();
-
-      // Then
-      expect(popover.open()).toBe(false);
-      expect(reached).toBe(expected);
-    },
-  );
 
   it('As a phone user, a menu without sheet still drops as a menu', async () => {
     // Given
@@ -1249,6 +1246,25 @@ describe('createPopover, touch outside (Radix usePointerDownOutside)', () => {
     el.removeEventListener('click', onClick);
     return { click, reached };
   }
+
+  it.each([
+    { phone: true, reached: false, title: 'on a phone, it never reaches the page' },
+    { phone: false, reached: true, title: 'on a wide screen, it reaches the page' },
+  ])('As a touch user, a tap outside a sheet-capable popover: $title', async ({ phone, reached: expected }) => {
+    // Given
+    stubPhoneViewport(phone);
+    const popover = renderPopover('popover', { sheet: true });
+    await openPopover(popover);
+
+    // When
+    touchDown(byId('outside'));
+    const { reached } = tap(byId('outside'));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(false);
+    expect(reached).toBe(expected);
+  });
 
   it.each<PopoverMode>(['popover', 'menu', 'dialog'])(
     'As a phone user, a touch outside the %s closes it only once it is a tap',

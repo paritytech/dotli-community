@@ -430,7 +430,7 @@ describe('signing dialog', () => {
     expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
   });
 
-  it('As a keyboard user, a scrim press that hands over to a queued dialog still returns focus to my trigger when the queue ends', async () => {
+  it('As a dotli user, a scrim press that hands over to a queued dialog still returns focus to where I was when the queue ends', async () => {
     // Given: two queued prompts opened from a focused button.
     const opener = document.createElement('button');
     document.body.appendChild(opener);

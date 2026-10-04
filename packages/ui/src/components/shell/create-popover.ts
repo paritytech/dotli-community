@@ -375,8 +375,8 @@ export function createPopover(options: PopoverOptions): Popover {
         // is a tap, so a scroll or drag that starts outside (a
         // pointercancel, a scroll) closes nothing. The tap is its pointerup,
         // not its click: iOS fires no click on a non-interactive element
-        // when the only listeners are on the document. A menu's close
-        // swallows the click, if one follows.
+        // when the only listeners are on the document. A menu's or a sheet's
+        // close swallows the click, if one follows.
         cancelTouchClose = awaitEvent(
           'pointerup',
           () => {
