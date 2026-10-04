@@ -16,6 +16,11 @@ import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
+import { initChatPanelState } from '../../../src/state/chat-panel.js';
+import { setLoggedIn } from '../../../src/state/auth.js';
+import { CHAT_MESSAGE_EVENT } from '../../../src/chat/service.js';
+import { labelToProductId } from '../../../src/runtime-config.js';
+import { setChatCapability } from '@dotli/shared';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
@@ -218,7 +223,7 @@ describe('Topbar actions island', () => {
     expect(moreRowNames()[0]).toBe('network');
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
     expect(more.getAttribute('data-badge-tone')).toBe('idle');
-    expect(more.getAttribute('aria-label')).toBe('More, network needs attention');
+    expect(more.getAttribute('aria-label')).toBe('More, network syncing');
 
     // When
     initNetworkHealth();
@@ -229,5 +234,39 @@ describe('Topbar actions island', () => {
     // Then
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Offline');
     expect(more.getAttribute('data-badge-tone')).toBe('err');
+    expect(more.getAttribute('aria-label')).toBe('More, network offline');
+  });
+
+  it('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {
+    // Given: a chat-capable product, a session, and two messages while the panel is closed
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    const stopChat = initChatPanelState();
+    try {
+      await renderIsland();
+      window.dispatchEvent(new CustomEvent('dotli:product-loaded', { detail: { label: 'chatty' } }));
+      setChatCapability('chatty', true);
+      setLoggedIn(true);
+
+      // When
+      for (const _ of [1, 2]) {
+        window.dispatchEvent(
+          new CustomEvent(CHAT_MESSAGE_EVENT, {
+            detail: { productId: labelToProductId('chatty'), roomId: 'support', author: 'product' },
+          }),
+        );
+      }
+      await settle();
+
+      // Then
+      const more = byId('more-button');
+      expect(moreRowNames()).toContain('chat');
+      expect(more.hasAttribute('data-badge')).toBe(true);
+      expect(more.getAttribute('data-badge-tone')).toBe('info');
+      expect(more.getAttribute('aria-label')).toBe('More, chat has unread messages');
+      expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('2');
+    } finally {
+      stopChat();
+    }
   });
 });

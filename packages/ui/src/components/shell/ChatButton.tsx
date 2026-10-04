@@ -11,6 +11,7 @@ import {
   setChatPanelOpen,
   totalChatUnread,
 } from '../../state/chat-panel.js';
+import { Chip } from '../primitives/Chip.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { focusLostOrInside, focusTrigger } from './create-popover.js';
@@ -41,9 +42,11 @@ function ChatIcon(props: { size: number }): JSX.Element {
  * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded
  * product has chat and a session is active (chatButtonVisible), shows pressed
  * (`data-active`) while the panel is open, and carries the unread count while
- * the panel is closed (the room rows carry their own while it is open). When
- * the panel closes with focus inside it (Escape, its own close button), focus
- * comes back here, or to the More button while the bar has collapsed this one.
+ * the panel is closed (the room rows carry their own while it is open).
+ * Collapsed into More (always, on a phone), the count moves to its Chat row
+ * and More raises an info badge for it. When the panel closes with focus
+ * inside it (Escape, its own close button), focus comes back here, or to the
+ * More button while the bar has collapsed this one.
  */
 export function ChatButton(): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -75,6 +78,8 @@ export function ChatButton(): JSX.Element {
       name="chat"
       label="Chat"
       icon={() => <ChatIcon size={14} />}
+      alert={unread() === 0 ? undefined : { tone: 'info', label: 'chat has unread messages' }}
+      aside={unread() === 0 ? undefined : () => <Chip>{chatUnreadLabel(unread())}</Chip>}
       priority={TOPBAR_PRIORITY.chat}
       visible={visible()}
       activate={toggle}

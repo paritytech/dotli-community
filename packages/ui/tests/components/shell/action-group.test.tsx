@@ -10,9 +10,8 @@ import { createSignal } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TopbarContext, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
+import { TopbarContext, type TopbarAlert, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
-import type { StatusTone } from '../../../src/components/primitives/StatusDot.js';
 import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.js';
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
@@ -32,7 +31,8 @@ function Item(props: {
   name: string;
   priority: number;
   visible?: boolean;
-  alert?: StatusTone | undefined;
+  alert?: TopbarAlert | undefined;
+  aside?: string | undefined;
 }): JSX.Element {
   return (
     <TopbarItem
@@ -42,6 +42,7 @@ function Item(props: {
       priority={props.priority}
       visible={props.visible ?? true}
       alert={props.alert}
+      aside={props.aside === undefined ? undefined : () => props.aside}
       activate={ev => {
         activations.push({ name: props.name, detail: ev.detail });
       }}
@@ -381,7 +382,7 @@ describe('ActionGroup', () => {
 
   it('As a user whose collapsed item raises a status, More carries it as its badge and in its name, until the status clears', async () => {
     // Given
-    const [alert, setAlert] = createSignal<StatusTone | undefined>('warn');
+    const [alert, setAlert] = createSignal<TopbarAlert | undefined>({ tone: 'warn', label: 'network unstable' });
     await renderTopbar(
       () => (
         <>
@@ -398,7 +399,7 @@ describe('ActionGroup', () => {
     expect(rowNames()).toEqual(['network', 'settings']);
     expect(more.hasAttribute('data-badge')).toBe(true);
     expect(more.getAttribute('data-badge-tone')).toBe('warn');
-    expect(more.getAttribute('aria-label')).toBe('More, network needs attention');
+    expect(more.getAttribute('aria-label')).toBe('More, network unstable');
     expect(byId('more-popover').getAttribute('aria-label')).toBe('More');
 
     // When
@@ -416,7 +417,7 @@ describe('ActionGroup', () => {
       () => (
         <>
           <Item name="auth" priority={PINNED} />
-          <Item name="network" priority={5} alert="err" />
+          <Item name="network" priority={5} alert={{ tone: 'err', label: 'network offline' }} />
         </>
       ),
       room(4),
@@ -426,6 +427,37 @@ describe('ActionGroup', () => {
     expect(inline('network')).toBe(true);
     expect(byId('more-button').hasAttribute('data-badge')).toBe(false);
     expect(byId('more-button').getAttribute('aria-label')).toBe('More');
+  });
+
+  it('As a phone user with several collapsed items raising a status, I see the most severe one as More badge and hear every one in its name', async () => {
+    // Given: the network still syncing (idle) ahead of unread chat (info)
+    stubPhoneViewport(true);
+    const [network, setNetwork] = createSignal<TopbarAlert | undefined>({ tone: 'idle', label: 'network syncing' });
+    await renderTopbar(
+      () => (
+        <>
+          <Item name="auth" priority={PINNED} />
+          <Item name="network" priority={5} alert={network()} />
+          <Item name="chat" priority={4} alert={{ tone: 'info', label: 'chat has unread messages' }} aside="3" />
+        </>
+      ),
+      room(1),
+    );
+
+    // Then
+    const more = byId('more-button');
+    expect(more.getAttribute('data-badge-tone')).toBe('info');
+    expect(more.getAttribute('aria-label')).toBe('More, network syncing, chat has unread messages');
+    expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('3');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+
+    // When
+    setNetwork({ tone: 'err', label: 'network offline' });
+    await settle();
+
+    // Then
+    expect(more.getAttribute('data-badge-tone')).toBe('err');
+    expect(more.getAttribute('aria-label')).toBe('More, network offline, chat has unread messages');
   });
 
   it('As a phone user, More opens as a bottom sheet titled More over a scrim, and a tap on the scrim closes it without reaching the page', async () => {

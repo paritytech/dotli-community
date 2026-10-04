@@ -46,7 +46,7 @@ function GlobeIcon(props: { size: number; stroke?: number }): JSX.Element {
  * The button shows once the host has a product on screen (topbarStore's
  * `chainsButtonVisible`, which setChainsButtonVisible in topbar.ts writes).
  * Collapsed into More, its row ends with the health's dot and word, and while
- * the health is not ok More carries its badge.
+ * the health is not ok More carries its badge and names the verdict.
  * The popover's body, ChainsContent, is its own chunk: a head with the
  * network chip, a status well with the overall verdict, a strip of block
  * bars and the peer count per chain, the download while the product is
@@ -71,12 +71,16 @@ export function ChainsPopover(): JSX.Element {
           name="network"
           label="Network"
           icon={() => <GlobeIcon size={14} />}
-          alert={health() === 'ok' ? undefined : healthTone(health())}
+          alert={
+            health() === 'ok'
+              ? undefined
+              : { tone: healthTone(health()), label: `network ${healthWord(health()).toLowerCase()}` }
+          }
           aside={() => (
-            <span class={s['aside']} data-testid="more-row-aside">
+            <>
               <StatusDot tone={healthTone(health())} size="sm" pulse={health() === 'syncing'} />
               <span>{healthWord(health())}</span>
-            </span>
+            </>
           )}
           priority={TOPBAR_PRIORITY.network}
           visible={topbar().chainsButtonVisible}

@@ -3,8 +3,7 @@
 
 import { useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { StatusTone } from '../../primitives/StatusDot.js';
-import { TopbarContext } from './context.js';
+import { TopbarContext, type TopbarAlert } from './context.js';
 import { PINNED } from './fit.js';
 import s from './TopbarItem.module.css';
 
@@ -12,8 +11,8 @@ export interface TopbarItemProps {
   name: string;
   label: string;
   icon: () => JSX.Element;
-  /** A status the More button raises as its badge while the item is in the menu. */
-  alert?: StatusTone | undefined;
+  /** A status the More button raises while the item is in the menu. */
+  alert?: TopbarAlert | undefined;
   /** Shown in the item's More row after its label. */
   aside?: (() => JSX.Element) | undefined;
   priority: number;
@@ -48,7 +47,7 @@ export function TopbarItem(props: TopbarItemProps): JSX.Element {
       },
       icon: () => props.icon(),
       alert: () => props.alert,
-      aside: () => props.aside?.(),
+      aside: () => props.aside,
       get priority() {
         return props.priority;
       },

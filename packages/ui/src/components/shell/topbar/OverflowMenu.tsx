@@ -1,14 +1,16 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, For } from 'solid-js';
+import { createEffect, For, Show } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { IconButton } from '../../primitives/IconButton.js';
 import { Menu, MenuRow } from '../../primitives/Menu.js';
 import type { StatusTone } from '../../primitives/StatusDot.js';
 import { createPopover } from '../create-popover.js';
-import type { TopbarEntry } from './context.js';
+import type { TopbarAlert, TopbarEntry } from './context.js';
 import s from './OverflowMenu.module.css';
+
+const SEVERITY: Record<StatusTone, number> = { ok: 0, idle: 1, info: 2, warn: 3, err: 4 };
 
 /** The row's trailing chevron: choosing the row opens another surface. */
 function Chevron(): JSX.Element {
@@ -31,14 +33,14 @@ function Chevron(): JSX.Element {
 }
 
 /**
- * The topbar's More button (`#more-button`) and its flyout
- * (`#more-popover`, rendered into the body), holding a row for each item the bar has collapsed
- * (`rows`, in bar order). Once the bar measures (the group's
+ * The topbar's More button (`#more-button`) and its flyout (`#more-popover`,
+ * rendered into the body), holding a row for each item the bar has
+ * collapsed (`rows`, in bar order). Once the bar measures (the group's
  * `data-collapsible`), the button shows only while there is a row. Until
  * then it stays measurable, out of flow and invisible (`data-idle`), so the
- * bar knows the room it takes.
- * Before the bar measures (its build-time render), it shows on a narrow
- * viewport, where the bar most likely collapses something.
+ * bar knows the room it takes. Before the bar measures (its build-time
+ * render), it shows on a narrow viewport, where the bar most likely
+ * collapses something.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
@@ -46,13 +48,16 @@ function Chevron(): JSX.Element {
  * titled More over a scrim (createPopover's `sheet`), its rows in a well.
  * Each row is the board's menu row: the item's icon, its label and a
  * chevron. An item may add to its row after the label (the network's dot
- * and verdict word) and raise a status, which More shows as its badge and in
- * its name while that item is collapsed. The menu is named More whatever its
- * button says. Choosing a row closes the flyout and hands focus back to the More
- * button, then activates the row's item with the row click, so the surface
- * it opens takes focus as its own mode dictates (a keyboard choice opens a
- * menu on its first item), and hands it back to the More button when it
- * closes: the item's own button is collapsed.
+ * and verdict word, the chat's unread count) and raise a status while it is
+ * collapsed. More's badge takes the most severe tone raised, and its name
+ * lists every raised status ("More, network offline, chat has unread
+ * messages"). The menu is named More whatever its button says.
+ *
+ * Choosing a row closes the flyout and hands focus back to the More button,
+ * then activates the row's item with the row click, so the surface it opens
+ * takes focus as its own mode dictates (a keyboard choice opens a menu on
+ * its first item), and hands it back to the More button when it closes: the
+ * item's own button is collapsed.
  */
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
@@ -76,20 +81,16 @@ export function OverflowMenu(props: {
     },
   );
 
-  /** The first collapsed item's raised status, with its label: More's badge and name. */
-  const raised = (): { tone: StatusTone; label: string } | undefined => {
-    for (const entry of props.rows) {
-      const tone = entry.alert();
-      if (tone !== undefined) {
-        return { tone, label: entry.label };
-      }
-    }
-    return undefined;
-  };
-  const moreLabel = (): string => {
-    const status = raised();
-    return status === undefined ? 'More' : `More, ${status.label.toLowerCase()} needs attention`;
-  };
+  /** The collapsed items' raised statuses, in bar order. */
+  const raised = (): TopbarAlert[] =>
+    props.rows.map(entry => entry.alert()).filter((alert): alert is TopbarAlert => alert !== undefined);
+  /** More's badge: the most severe tone raised, so an offline network outranks unread chat. */
+  const badgeTone = (): StatusTone | undefined =>
+    raised().reduce<StatusTone | undefined>(
+      (worst, alert) => (worst === undefined || SEVERITY[alert.tone] > SEVERITY[worst] ? alert.tone : worst),
+      undefined,
+    );
+  const moreLabel = (): string => ['More', ...raised().map(alert => alert.label)].join(', ');
 
   const choose = (entry: TopbarEntry, ev: MouseEvent): void => {
     // The row's own click must not reach a document-level close-outside
@@ -112,8 +113,8 @@ export function OverflowMenu(props: {
         data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
         aria-label={moreLabel()}
-        badge={raised() !== undefined}
-        badgeTone={raised()?.tone ?? 'ok'}
+        badge={badgeTone() !== undefined}
+        badgeTone={badgeTone() ?? 'ok'}
         aria-haspopup="menu"
         aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="more-popover"
@@ -161,7 +162,13 @@ export function OverflowMenu(props: {
                     {entry.icon()}
                   </span>
                   <span class={s['label']}>{entry.label}</span>
-                  {entry.aside()}
+                  <Show when={entry.aside()}>
+                    {aside => (
+                      <span class={s['aside']} data-testid="more-row-aside">
+                        {aside()()}
+                      </span>
+                    )}
+                  </Show>
                   <Chevron />
                 </MenuRow>
               )}

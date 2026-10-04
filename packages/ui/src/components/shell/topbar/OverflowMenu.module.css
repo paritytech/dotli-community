@@ -91,6 +91,19 @@
   white-space: nowrap;
 }
 
+/* What an item adds at its row's end, 12 px apart like the row's other
+   parts: the network's dot and verdict word (the board's .dot.dot-sm and
+   .caption.menu-row-end), the chat's unread count. */
+.aside {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+
 .rows {
   display: flex;
   flex-direction: column;
