@@ -4,9 +4,10 @@
 import { lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
-import { healthTone } from '../../network-health.js';
+import { healthTone, healthWord } from '../../network-health.js';
 import { topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -44,6 +45,8 @@ function GlobeIcon(props: { size: number; stroke?: number }): JSX.Element {
  *
  * The button shows once the host has a product on screen (topbarStore's
  * `chainsButtonVisible`, which setChainsButtonVisible in topbar.ts writes).
+ * Collapsed into More, its row ends with the health's dot and word, and while
+ * the health is not ok More carries its badge.
  * The popover's body, ChainsContent, is its own chunk: a head with the
  * network chip, a status well with the overall verdict, a strip of block
  * bars and the peer count per chain, the download while the product is
@@ -68,6 +71,13 @@ export function ChainsPopover(): JSX.Element {
           name="network"
           label="Network"
           icon={() => <GlobeIcon size={14} />}
+          alert={health() === 'ok' ? undefined : healthTone(health())}
+          aside={() => (
+            <span class={s['aside']} data-testid="more-row-aside">
+              <StatusDot tone={healthTone(health())} size="sm" pulse={health() === 'syncing'} />
+              <span>{healthWord(health())}</span>
+            </span>
+          )}
           priority={TOPBAR_PRIORITY.network}
           visible={topbar().chainsButtonVisible}
           activate={t.onClick}

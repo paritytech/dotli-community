@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ChainStatus } from '../src/network-monitor.js';
-import { healthTone, judgeNetworkHealth } from '../src/network-health.js';
+import { healthTone, healthWord, judgeNetworkHealth } from '../src/network-health.js';
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
   return {
@@ -46,5 +46,12 @@ describe('The network health verdict', () => {
     expect(healthTone('syncing')).toBe('idle');
     expect(healthTone('degraded')).toBe('warn');
     expect(healthTone('offline')).toBe('err');
+  });
+
+  it('As the More menu, I name each verdict in one word', () => {
+    expect(healthWord('ok')).toBe('Connected');
+    expect(healthWord('syncing')).toBe('Syncing');
+    expect(healthWord('degraded')).toBe('Unstable');
+    expect(healthWord('offline')).toBe('Offline');
   });
 });

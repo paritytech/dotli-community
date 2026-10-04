@@ -3,6 +3,7 @@
 
 import { useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { StatusTone } from '../../primitives/StatusDot.js';
 import { TopbarContext } from './context.js';
 import { PINNED } from './fit.js';
 import s from './TopbarItem.module.css';
@@ -11,6 +12,10 @@ export interface TopbarItemProps {
   name: string;
   label: string;
   icon: () => JSX.Element;
+  /** A status the More button raises as its badge while the item is in the menu. */
+  alert?: StatusTone | undefined;
+  /** Shown in the item's More row after its label. */
+  aside?: (() => JSX.Element) | undefined;
   priority: number;
   /** Default true. A hidden item shows neither inline nor in the menu. */
   visible?: boolean;
@@ -42,6 +47,8 @@ export function TopbarItem(props: TopbarItemProps): JSX.Element {
         return props.label;
       },
       icon: () => props.icon(),
+      alert: () => props.alert,
+      aside: () => props.aside?.(),
       get priority() {
         return props.priority;
       },

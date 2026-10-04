@@ -31,3 +31,15 @@ const TONES: Record<NetworkHealth, StatusTone> = {
 export function healthTone(health: NetworkHealth): StatusTone {
   return TONES[health];
 }
+
+const WORDS: Record<NetworkHealth, string> = {
+  ok: 'Connected',
+  syncing: 'Syncing',
+  degraded: 'Unstable',
+  offline: 'Offline',
+};
+
+/** The verdict in one word, for the More menu's Network row. */
+export function healthWord(health: NetworkHealth): string {
+  return WORDS[health];
+}

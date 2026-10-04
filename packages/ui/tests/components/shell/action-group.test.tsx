@@ -11,6 +11,7 @@ import type { JSX } from '@solidjs/web';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TopbarContext, type TopbarBar } from '../../../src/components/shell/topbar/context.js';
 import { PINNED } from '../../../src/components/shell/topbar/fit.js';
+import type { StatusTone } from '../../../src/components/primitives/StatusDot.js';
 import { OverflowMenu } from '../../../src/components/shell/topbar/OverflowMenu.js';
 import { TopbarItem } from '../../../src/components/shell/topbar/TopbarItem.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
@@ -25,7 +26,12 @@ interface Activation {
 
 let activations: Activation[] = [];
 
-function Item(props: { name: string; priority: number; visible?: boolean }): JSX.Element {
+function Item(props: {
+  name: string;
+  priority: number;
+  visible?: boolean;
+  alert?: StatusTone | undefined;
+}): JSX.Element {
   return (
     <TopbarItem
       name={props.name}
@@ -33,6 +39,7 @@ function Item(props: { name: string; priority: number; visible?: boolean }): JSX
       icon={() => <svg data-testid={`icon-${props.name}`} />}
       priority={props.priority}
       visible={props.visible ?? true}
+      alert={props.alert}
       activate={ev => {
         activations.push({ name: props.name, detail: ev.detail });
       }}
@@ -296,7 +303,9 @@ describe('ActionGroup', () => {
     expect(button.getAttribute('aria-expanded')).toBe('false');
     const popover = byId('more-popover');
     expect(popover.getAttribute('role')).toBe('menu');
-    expect(popover.getAttribute('aria-labelledby')).toBe('more-button');
+    expect(popover.getAttribute('aria-label')).toBe('More');
+    expect(button.getAttribute('aria-label')).toBe('More');
+    expect(button.hasAttribute('data-badge')).toBe(false);
     const row = moreRow('theme');
     expect(row.getAttribute('role')).toBe('menuitem');
     expect(row.getAttribute('tabindex')).toBe('-1');
@@ -364,5 +373,54 @@ describe('ActionGroup', () => {
     const wrapper = byId('settings-button').parentElement;
     expect(wrapper?.hasAttribute('data-collapsed')).toBe(true);
     expect(byId('settings-button').isConnected).toBe(true);
+  });
+
+  it('As a user whose collapsed item raises a status, More carries it as its badge and in its name, until the status clears', async () => {
+    // Given
+    const [alert, setAlert] = createSignal<StatusTone | undefined>('warn');
+    await renderTopbar(
+      () => (
+        <>
+          <Item name="auth" priority={PINNED} />
+          <Item name="network" priority={5} alert={alert()} />
+          <Item name="settings" priority={1} />
+        </>
+      ),
+      room(2),
+    );
+
+    // Then
+    const more = byId('more-button');
+    expect(rowNames()).toEqual(['network', 'settings']);
+    expect(more.hasAttribute('data-badge')).toBe(true);
+    expect(more.getAttribute('data-badge-tone')).toBe('warn');
+    expect(more.getAttribute('aria-label')).toBe('More, network needs attention');
+    expect(byId('more-popover').getAttribute('aria-label')).toBe('More');
+
+    // When
+    setAlert(undefined);
+    await settle();
+
+    // Then
+    expect(more.hasAttribute('data-badge')).toBe(false);
+    expect(more.getAttribute('aria-label')).toBe('More');
+  });
+
+  it('As a desktop user with room for the item that raises a status, More raises nothing: the item shows its own', async () => {
+    // When
+    await renderTopbar(
+      () => (
+        <>
+          <Item name="auth" priority={PINNED} />
+          <Item name="network" priority={5} alert="err" />
+        </>
+      ),
+      room(4),
+    );
+
+    // Then
+    expect(inline('network')).toBe(true);
+    expect(byId('more-button').hasAttribute('data-badge')).toBe(false);
+    expect(byId('more-button').getAttribute('aria-label')).toBe('More');
   });
 });

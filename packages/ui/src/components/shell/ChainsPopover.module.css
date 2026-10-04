@@ -7,3 +7,16 @@
 .popover {
   width: var(--w-pop-md);
 }
+
+/* The Network row's end in the More menu: the status dot and the verdict
+   word (the board's .dot.dot-sm and .caption.menu-row-end), 12 px apart
+   like the row's other parts. */
+.aside {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}

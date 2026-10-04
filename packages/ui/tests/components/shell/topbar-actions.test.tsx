@@ -14,6 +14,7 @@ import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
 import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
+import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
@@ -144,7 +145,8 @@ describe('Topbar actions island', () => {
     await settle();
 
     // Then
-    expect(moreRow('network').textContent).toBe('Network');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
+    expect(moreRow('network').textContent).toBe('NetworkSyncing');
 
     // When
     await tapMoreRow('network');
@@ -201,5 +203,31 @@ describe('Topbar actions island', () => {
     expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
+  });
+
+  it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
+    // Given: the chains are still starting
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    await renderIsland();
+    setChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    const more = byId('more-button');
+    expect(moreRowNames()[0]).toBe('network');
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
+    expect(more.getAttribute('data-badge-tone')).toBe('idle');
+    expect(more.getAttribute('aria-label')).toBe('More, network needs attention');
+
+    // When
+    initNetworkHealth();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await settle();
+
+    // Then
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Offline');
+    expect(more.getAttribute('data-badge-tone')).toBe('err');
   });
 });

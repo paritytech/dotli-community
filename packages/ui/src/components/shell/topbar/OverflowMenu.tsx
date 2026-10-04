@@ -5,6 +5,7 @@ import { createEffect, For } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { IconButton } from '../../primitives/IconButton.js';
 import { Menu, MenuRow } from '../../primitives/Menu.js';
+import type { StatusTone } from '../../primitives/StatusDot.js';
 import { createPopover } from '../create-popover.js';
 import type { TopbarEntry } from './context.js';
 import s from './OverflowMenu.module.css';
@@ -42,7 +43,10 @@ function Chevron(): JSX.Element {
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
  * items. Each row is the board's menu row: the item's icon, its label and a
- * chevron. Choosing a row closes the flyout and hands focus back to the More
+ * chevron. An item may add to its row after the label (the network's dot
+ * and verdict word) and raise a status, which More shows as its badge and in
+ * its name while that item is collapsed. The menu is named More whatever its
+ * button says. Choosing a row closes the flyout and hands focus back to the More
  * button, then activates the row's item with the row click, so the surface
  * it opens takes focus as its own mode dictates (a keyboard choice opens a
  * menu on its first item), and hands it back to the More button when it
@@ -69,6 +73,21 @@ export function OverflowMenu(props: {
     },
   );
 
+  /** The first collapsed item's raised status, with its label: More's badge and name. */
+  const raised = (): { tone: StatusTone; label: string } | undefined => {
+    for (const entry of props.rows) {
+      const tone = entry.alert();
+      if (tone !== undefined) {
+        return { tone, label: entry.label };
+      }
+    }
+    return undefined;
+  };
+  const moreLabel = (): string => {
+    const status = raised();
+    return status === undefined ? 'More' : `More, ${status.label.toLowerCase()} needs attention`;
+  };
+
   const choose = (entry: TopbarEntry, ev: MouseEvent): void => {
     // The row's own click must not reach a document-level close-outside
     // listener, which would see it as outside the surface it opens.
@@ -89,7 +108,9 @@ export function OverflowMenu(props: {
         class={s['more']}
         data-idle={props.rows.length === 0 ? '' : undefined}
         title="More"
-        aria-label="More"
+        aria-label={moreLabel()}
+        badge={raised() !== undefined}
+        badgeTone={raised()?.tone ?? 'ok'}
         aria-haspopup="menu"
         aria-expanded={menu.open() ? 'true' : 'false'}
         aria-controls="more-popover"
@@ -112,7 +133,7 @@ export function OverflowMenu(props: {
         }}
         id="more-popover"
         open={menu.open()}
-        labelledBy="more-button"
+        label="More"
       >
         <For each={props.rows}>
           {entry => (
@@ -126,6 +147,7 @@ export function OverflowMenu(props: {
                 {entry.icon()}
               </span>
               <span class={s['label']}>{entry.label}</span>
+              {entry.aside()}
               <Chevron />
             </MenuRow>
           )}

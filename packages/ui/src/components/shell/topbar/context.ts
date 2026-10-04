@@ -3,6 +3,7 @@
 
 import { createContext, type Accessor } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import type { StatusTone } from '../../primitives/StatusDot.js';
 
 /** What a topbar item tells the bar it sits in (see TopbarItem). */
 export interface TopbarEntry {
@@ -12,6 +13,13 @@ export interface TopbarEntry {
   readonly label: string;
   /** The menu row's icon, rendered afresh for each row. */
   readonly icon: () => JSX.Element;
+  /**
+   * A status the More button raises as its badge while the item is in the
+   * menu (the network's, while it is not ok), undefined for none.
+   */
+  readonly alert: Accessor<StatusTone | undefined>;
+  /** What the menu row shows after its label (the network's dot and verdict word), if anything. */
+  readonly aside: () => JSX.Element;
   /** See TOPBAR_PRIORITY. */
   readonly priority: number;
   /** Whether the item shows at all, inline or as a row. */
