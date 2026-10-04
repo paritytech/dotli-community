@@ -9,6 +9,7 @@ import { attachProductFrame, resetProductFrameLayout } from '../../../src/produc
 import { renderComponent, settle } from '../../helpers/solid.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { footerVariants } from '../../helpers/overlays.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
 
@@ -23,7 +24,7 @@ function permissionLike(overrides: Partial<ModalView<Choice>> = {}): ModalView<C
     ],
     notice: 'Granting this permission will reload the application.',
     buttons: [
-      { label: 'Deny', variant: 'cancel', result: 'deny' },
+      { label: 'Deny', variant: 'danger', result: 'deny' },
       { label: 'Always allow', variant: 'secondary', result: 'allow' },
       { label: 'Allow once', variant: 'primary', result: 'once' },
     ],
@@ -83,7 +84,9 @@ describe('signing dialog', () => {
     expect(
       [...document.querySelectorAll('[data-testid="signing-field"]')].map(f => f.hasAttribute('data-warning')),
     ).toEqual([false, false, true]);
-    expect(query(document, '[data-testid="signing-field-value"][data-mono]').textContent).toBe('0x1234');
+    expect(
+      query(document, '[data-testid="signing-field"][data-mono] [data-testid="signing-field-value"]').textContent,
+    ).toBe('0x1234');
     expect(byTestId('permission-modal-notice').textContent).toBe(
       'Granting this permission will reload the application.',
     );
@@ -96,6 +99,30 @@ describe('signing dialog', () => {
       ['Deny', 'signing-btn-cancel'],
       ['Always allow', 'signing-btn-secondary'],
       ['Allow once', 'signing-btn-sign'],
+    ]);
+  });
+
+  it('As a dotli user, the answer that rejects a request is drawn destructive, and Cancel on a password prompt is not', async () => {
+    // Given
+    void openModal(permissionLike());
+    await mountOutlet();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Deny', 'danger'],
+      ['Always allow', 'secondary'],
+      ['Allow once', 'primary'],
+    ]);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    void openModal(passwordView());
+    await settle();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Cancel', 'secondary'],
+      ['Unlock', 'primary'],
     ]);
   });
 

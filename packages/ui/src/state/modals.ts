@@ -8,7 +8,15 @@
 import { blockingModalAbortError } from '../blocking-modal-queue.js';
 import { createSyncStore, type ReadableStore } from './create-store.js';
 
-export type ModalButtonVariant = 'cancel' | 'secondary' | 'primary';
+/**
+ * What an answer means, which decides how it is drawn. `danger` rejects the
+ * request (Deny, Cancel on a signing prompt) and is drawn destructive.
+ * `cancel` backs out of a prompt that is not a request to reject (Cancel on
+ * the preimage and password prompts) and is drawn plain. `secondary` is the
+ * lesser approval ("Always allow" beside "Allow once"). `primary` is the main
+ * approval: Enter submits it, and a password must be typed before it.
+ */
+export type ModalButtonVariant = 'cancel' | 'danger' | 'secondary' | 'primary';
 
 export interface ModalField {
   label: string;

@@ -4,21 +4,35 @@
 import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '../../state/modals.js';
+import { Button, type ButtonVariant } from '../primitives/Button.js';
+import { Field } from '../primitives/Field.js';
+import { IconTile } from '../primitives/IconTile.js';
+import { ReloadIcon } from '../primitives/Surface.js';
+import { Callout, Well } from '../primitives/Well.js';
 import { Dialog } from './Dialog.js';
 import s from './SigningDialog.module.css';
 
-const BUTTON_CLASS: Record<ModalButtonVariant, string | undefined> = {
-  cancel: s['cancel'],
-  secondary: s['secondary'],
-  primary: s['primary'],
+const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {
+  danger: 'danger',
+  cancel: 'secondary',
+  secondary: 'secondary',
+  primary: 'primary',
 };
 
+// A reject keeps the cancel test id: it is the same answer, drawn destructive.
 const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
+  danger: 'signing-btn-cancel',
   cancel: 'signing-btn-cancel',
   secondary: 'signing-btn-secondary',
   primary: 'signing-btn-sign',
 };
 
+/**
+ * One queued prompt as the board's modal: the icon tile over the centred
+ * title, a well of fields, the notice, the password input, and a row of
+ * equal-width answers. At 560 px and below the dialog is a bottom sheet led
+ * by the title alone (SigningDialog.module.css).
+ */
 export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
   // The outlet re-creates this component per entry (keyed), so reading once is intended.
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
@@ -56,37 +70,38 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
 
   return (
     <Dialog titleId={titleId} initialFocus={() => input} onDismiss={dismiss} testId="signing-modal">
-      <Show when={view.icon}>
-        {icon => (
-          // eslint-disable-next-line solid/no-innerhtml -- trusted SVG markup from ModalView.icon, not user input
-          <div class={s['icon']} data-testid="permission-modal-icon" innerHTML={icon()} />
-        )}
-      </Show>
-      <h2 class={s['title']} id={titleId}>
-        {view.title}
-      </h2>
-      <div class={s['fields']}>
-        <For each={view.fields}>
-          {field => (
-            <div class={s['field']} data-testid="signing-field" data-warning={field.warning === true ? '' : undefined}>
-              <div class={s['fieldLabel']} data-testid="signing-field-label">
-                {field.label}
-              </div>
-              <div
-                class={s['fieldValue']}
-                data-testid="signing-field-value"
-                data-mono={field.mono === true ? '' : undefined}
-              >
-                {field.value}
-              </div>
-            </div>
-          )}
-        </For>
+      <div class={s['head']}>
+        <Show when={view.icon}>
+          {icon => <IconTile markup={icon()} class={s['icon']} testId="permission-modal-icon" />}
+        </Show>
+        <h2 class={s['title']} id={titleId}>
+          {view.title}
+        </h2>
+      </div>
+      <div class={s['body']}>
+        <Show when={view.fields.length > 0}>
+          <Well layout="list">
+            <For each={view.fields}>
+              {field => (
+                <Field
+                  label={field.label}
+                  value={field.value}
+                  mono={field.mono === true}
+                  warning={field.warning === true}
+                  testId="signing-field"
+                  labelTestId="signing-field-label"
+                  valueTestId="signing-field-value"
+                />
+              )}
+            </For>
+          </Well>
+        </Show>
         <Show when={view.notice}>
           {notice => (
-            <div class={s['notice']} data-testid="permission-modal-notice">
+            // The one notice says the app reloads, hence the board's reload arrow.
+            <Callout icon={<ReloadIcon />} testId="permission-modal-notice">
               {notice()}
-            </div>
+            </Callout>
           )}
         </Show>
         <Show when={view.input}>
@@ -94,16 +109,16 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
             <>
               <Show when={spec().hint}>
                 {hint => (
-                  <div class={s['fieldValue']} data-testid="password-prompt-hint">
+                  <p class={s['caption']} data-testid="password-prompt-hint">
                     {hint()}
-                  </div>
+                  </p>
                 )}
               </Show>
               <Show when={spec().error}>
                 {error => (
-                  <div class={s['passwordError']} data-testid="password-prompt-error" role="alert">
+                  <p class={s['error']} data-testid="password-prompt-error" role="alert">
                     {error()}
-                  </div>
+                  </p>
                 )}
               </Show>
               <input
@@ -111,7 +126,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
                   input = el;
                 }}
                 type="password"
-                class={s['passwordInput']}
+                class={s['input']}
                 data-testid="password-prompt-input"
                 aria-labelledby={titleId}
                 placeholder={spec().placeholder}
@@ -128,20 +143,21 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
           )}
         </Show>
       </div>
-      <div class={s['footer']} data-testid="signing-modal-footer">
+      <div class={s['actions']} data-testid="signing-modal-footer">
         <For each={view.buttons}>
           {button => (
-            <button
-              type="button"
-              class={BUTTON_CLASS[button.variant]}
-              data-testid={BUTTON_TEST_ID[button.variant]}
+            <Button
+              variant={BUTTON_VARIANT[button.variant]}
+              block
+              class={s['action']}
+              testId={BUTTON_TEST_ID[button.variant]}
               disabled={needsPassword(button) && password() === ''}
               onClick={() => {
                 choose(button);
               }}
             >
               {button.label}
-            </button>
+            </Button>
           )}
         </For>
       </div>

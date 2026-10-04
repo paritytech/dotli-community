@@ -1,182 +1,110 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 48px;
-  height: 48px;
-  margin: 0 0 12px;
-  padding: 0;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--fill);
-  color: var(--text);
-}
+/* A prompt's content as the board's modal: .modal-head, .modal-title, the
+   wells, the password .input and .modal-actions. Dialog.module.css draws the
+   glass, the scrim and the phone sheet around it. */
 
-.title {
-  margin: 0 0 16px;
-  padding: 0;
-  font-size: 1rem;
-  color: var(--text-strong);
-}
-
-.fields {
+.head {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  box-sizing: border-box;
-  max-height: 50dvh;
-  margin: 0 0 20px;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
   padding: 0;
+  text-align: center;
+}
+.title {
+  margin: 0;
+  padding: 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+/* Between the head and the answers, and the part that scrolls when a review
+   is taller than the window, so the title and the answers stay in view. The
+   2 px padding, given back by the margin, keeps the input's focus ring inside
+   the scroll's clip. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  min-height: 0;
+  margin: calc(-1 * var(--sp-hair));
+  padding: var(--sp-hair);
   overflow-y: auto;
 }
 
-.field {
-  box-sizing: border-box;
+.caption {
   margin: 0;
-  padding: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  text-align: center;
 }
-
-.field-label {
-  margin: 0 0 4px;
-  padding: 0;
-  font-size: 0.7rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
-
-.field-value {
-  box-sizing: border-box;
+.error {
   margin: 0;
-  padding: 0;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  color: var(--text);
-  word-break: break-all;
+  color: var(--chrome-err-text);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-body);
+  text-align: center;
 }
-
-.field-value[data-mono] {
-  max-height: 120px;
-  padding: 8px;
-  overflow-y: auto;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg-page);
-  color: var(--text-secondary);
-  font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, 'DejaVu Sans Mono', monospace;
-  font-size: 0.75rem;
-}
-
-/* Comes later, so it wins over the mono color. */
-.field[data-warning] .field-label,
-.field[data-warning] .field-value {
-  color: var(--caution);
-}
-
-.notice {
-  margin: 4px 0 0;
-  padding: 0;
-  font-size: 0.75rem;
-  font-style: italic;
-  color: var(--text-muted);
-}
-
-.password-error {
-  margin: -4px 0 0;
-  padding: 0;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: var(--text);
-}
-
-.password-input {
+.input {
   box-sizing: border-box;
   width: 100%;
+  height: var(--h-control);
   margin: 0;
-  padding: 10px 12px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  padding: 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-full);
   outline: none;
-  background: var(--bg-page);
-  color: var(--text);
-  font-family: inherit;
-  font-size: 0.9rem;
-  transition: border-color 0.15s;
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
 }
-.password-input:focus {
-  border-color: var(--border-focus);
+.input::placeholder {
+  color: var(--chrome-text-muted);
+  opacity: 1;
 }
-.password-input::placeholder {
-  color: var(--text-faint);
+/* The board's ring sits flush on the pill. */
+.input:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 0;
 }
 
-.footer {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-  box-sizing: border-box;
+.actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--sp-2);
   margin: 0;
   padding: 0;
 }
-
-.cancel {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 8px 16px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--neutral-solid);
-  font-family: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.cancel:hover {
-  background: var(--fill);
+/* Three answers take a third of the row each. 12 px sides, not the board's
+   20, let the app's "Always allow" fit where the board says "Allow". */
+.action {
+  padding: 0 var(--sp-3);
 }
 
-.secondary {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 8px 16px;
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  background: transparent;
-  color: var(--text-strong);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.secondary:hover {
-  background: var(--fill);
-}
-
-.primary {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 8px 20px;
-  border: none;
-  border-radius: 8px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-.primary:hover {
-  background: var(--inverse-bg-hover);
-}
-.primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+/* PHONE_QUERY in phone-viewport.ts: Dialog.module.css makes the dialog a
+   bottom sheet, and the title leads it as the board's sheet title, without
+   the tile, 4 px in from the content and 16 px over it. */
+@media (max-width: 560px) {
+  .head {
+    align-items: stretch;
+    margin-bottom: calc(var(--sp-4) - var(--sp-5));
+    padding: 0 0 0 var(--sp-1);
+    text-align: left;
+  }
+  .icon {
+    display: none;
+  }
+  .actions {
+    grid-auto-flow: row;
+  }
 }
