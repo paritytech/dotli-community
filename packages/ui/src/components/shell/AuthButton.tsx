@@ -93,7 +93,7 @@ export function AuthButton(props: {
   return (
     <Popover
       id={id('user-popover')}
-      title="Welcome back"
+      title="Account"
       class={s['popover']}
       content={Account}
       trigger={t => {

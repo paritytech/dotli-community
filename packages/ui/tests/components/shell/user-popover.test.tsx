@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { requestTruapiDisconnect } from '../../../src/auth-controller.js';
 import { setAuthState } from '../../../src/state/auth.js';
@@ -9,9 +9,14 @@ import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import type { TruapiSessionUiState } from '../../../src/host-callbacks/SessionStore.js';
 import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo, waitForContent } from '../../helpers/solid.js';
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { query } from '../../support.js';
+import { byTestId, query } from '../../support.js';
+import { nth } from '../../helpers/nth.js';
 
 useAuthController();
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 
@@ -39,27 +44,43 @@ function isOpen(): boolean {
 
 /**
  * The popover: a Radix-style non-modal popover surface (role="dialog", named
- * by its "Welcome back" heading, with the tabindex that lets it take focus)
- * whose body holds the username and hint.
+ * "Account", with the tabindex that lets it take focus) whose body leads with
+ * the avatar, "Welcome back" and the name, then the hint, a divider and Log out.
  */
-function expectMarkup(popover: Element, opts: { username: string; hint: boolean; open: boolean }): void {
+function expectMarkup(
+  popover: Element,
+  opts: { username: string; hint: boolean; open: boolean; initials?: string },
+): void {
   expect(popover.getAttribute('role')).toBe('dialog');
-  expect(popover.getAttribute('aria-label')).toBe('Welcome back');
+  expect(popover.getAttribute('aria-label')).toBe('Account');
   expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.hasAttribute('data-open')).toBe(opts.open);
   const body = query(popover, ':scope > [data-testid="popover-body"]');
-  expect(Array.from(body.children).map(child => child.tagName)).toEqual(['DIV', 'DIV', 'BUTTON']);
-  const [nameBlock, divider, disconnect] = Array.from(body.children) as [HTMLElement, HTMLElement, HTMLElement];
-  const nameParts = Array.from(nameBlock.children);
-  expect(nameParts.map(child => child.tagName)).toEqual(opts.hint ? ['DIV', 'DIV', 'DIV'] : ['DIV', 'DIV']);
+  const content = query(body, ':scope > [data-testid="account-content"]');
+  const parts = Array.from(content.children);
+  expect(parts.map(child => child.tagName)).toEqual(
+    opts.hint ? ['DIV', 'DIV', 'HR', 'BUTTON'] : ['DIV', 'HR', 'BUTTON'],
+  );
+  const identity = nth(parts, 0);
+  const [avatar, text] = Array.from(identity.children) as [HTMLElement, HTMLElement];
+  if (opts.initials === undefined) {
+    expect(avatar.querySelector('svg')).not.toBeNull();
+  } else {
+    expect(avatar.textContent).toBe(opts.initials);
+  }
+  const nameParts = Array.from(text.children);
+  expect(nameParts.map(child => child.tagName)).toEqual(['DIV', 'DIV']);
   expect(nameParts[0]?.textContent).toBe('Welcome back');
   expect(nameParts[1]?.id).toBe('user-popover-username');
   expect(nameParts[1]?.textContent).toBe(opts.username);
   if (opts.hint) {
-    expect(nameParts[2]?.id).toBe('user-popover-hint');
-    expect(nameParts[2]?.textContent).toBe('No username found for this account on this network.');
+    const hint = byId('user-popover-hint');
+    expect(nth(parts, 1).contains(hint)).toBe(true);
+    expect(hint.textContent).toBe('No username found for this account on this network.');
   }
+  const divider = nth(parts, parts.length - 2);
   expect(divider.childNodes).toHaveLength(0);
+  const disconnect = nth(parts, parts.length - 1);
   expect(disconnect.id).toBe('user-popover-disconnect');
   expect(disconnect.querySelector('svg')).not.toBeNull();
   expect(disconnect.textContent).toBe('Log out');
@@ -91,6 +112,7 @@ describe('UserPopover', () => {
       username: 'pgherveou.04',
       hint: false,
       open: true,
+      initials: 'PG',
     });
   });
 
@@ -134,6 +156,26 @@ describe('UserPopover', () => {
       hint: true,
       open: true,
     });
+  });
+
+  it('As a phone user, my account opens as a sheet titled Account, its body without a heading of its own', async () => {
+    // Given
+    vi.stubGlobal('matchMedia', (media: string) => ({
+      matches: media === '(max-width: 560px)',
+      media,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    }));
+    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byId('user-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('popover-sheet-title').textContent).toBe('Account');
+    expect(byTestId('account-content').hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('account-content').querySelector('h2')).toBeNull();
   });
 
   it('As a user whose username contains markup, the popover shows it as text', async () => {
@@ -234,7 +276,7 @@ describe('UserPopover', () => {
 
     // Then
     expect(popover.getAttribute('role')).toBe('dialog');
-    expect(popover.getAttribute('aria-label')).toBe('Welcome back');
+    expect(popover.getAttribute('aria-label')).toBe('Account');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
     expect(button.getAttribute('aria-expanded')).toBe('false');

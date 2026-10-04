@@ -20,9 +20,10 @@
   height: 12px;
 }
 
+/* The menu's width, also for the loading spinner before its body's chunk is
+   in. Its place is the Popover's: 12 px below the pill. */
 .popover {
-  width: 220px;
-  overflow: hidden;
+  width: var(--w-pop-sm);
 }
 
 /* The bar's account chip: a secondary button led by an avatar, inset evenly
