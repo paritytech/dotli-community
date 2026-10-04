@@ -52,6 +52,18 @@ from there (`import { log } from "@dotli/shared"`). Every other module under `sr
   one it imports. CSS is exported as `./styles.css`.
 - Each `package.json` declares `sideEffects`. List a module there if it is imported only for its effects.
 
+### Dependency auditing
+
+Run `npm audit` before promoting a browser-stack update. Also check the affected API's callers; an advisory range alone
+does not establish exposure or prove that an upgrade fixes the reported behavior.
+
+Astro uses `http-cache-semantics` only in its build-time remote-image loader, with internally constructed requests and
+`storable()`/`timeToLive()`. It does not pass client cache directives to `satisfiesWithoutRevalidation()`. The lockfile
+uses 4.3.0, outside [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch52-4w7c-c8xp)'s reported range, but the
+reported `max-stale` behavior remains in that version. The
+[maintainer disputes the advisory](https://github.com/kornelski/http-cache-semantics/issues/56#issuecomment-5975759591);
+do not describe the version bump as a security patch or use this dependency as a shared authenticated-response cache.
+
 ### Commit hook
 
 `npm install` sets up a husky pre-commit hook. It runs lint-staged, which formats the staged files with Prettier
