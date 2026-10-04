@@ -290,7 +290,9 @@ describe('verification shield', () => {
     // Then
     const glyphs = button().querySelectorAll('[data-testid="verification-shield-icon"]');
     expect(glyphs).toHaveLength(2);
-    const [verified, trusted] = Array.from(glyphs).map(svg => svg.querySelector('path')?.getAttribute('d') ?? '');
+    const [verified, trusted] = Array.from(glyphs).map(svg =>
+      Array.from(svg.querySelectorAll('path'), path => path.getAttribute('d')).join(' '),
+    );
     expect(verified).not.toBe(trusted);
     for (const state of ['verified', 'trusted']) {
       expect(rowFor(state).querySelector('[data-testid="verification-tooltip-icon"]')).not.toBeNull();
