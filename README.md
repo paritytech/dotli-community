@@ -322,8 +322,9 @@ small explicit capacity; large timeline workloads have separate work-bound tests
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
 ready before boot finishes rewriting the URL.
 
-Bitswap unit fixtures load a fresh module before installing each case's provider and attach result assertions before
-advancing the fake clock. Cold module loading cannot resume a timed-out case against the next case's provider.
+Bitswap unit fixtures load a fresh module before installing each case's provider, relay, or fake clock. Relay
+installation is synchronous, so a timed-out import cannot install a listener after teardown. Protocol fixtures use the
+real halt-error definitions without loading the browser transport implementation.
 
 Local development uses wildcard subdomains:
 
@@ -351,6 +352,15 @@ VITE_METRICS=true npm run --workspace apps/host test:functional
 ```
 
 Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
+
+Functional CI retains JSON results and failure screenshots/traces in `functional-results-<attempt>` for three days. Open
+a failed test's `trace.zip` with `npx playwright show-trace` to distinguish RPC/manifest resolution, gateway delivery,
+and sandbox startup failures. The suite still resolves and loads the real published playground.
+
+Gateway CAR requests select their representation with `?format=car`, leaving the browser's default Accept header intact.
+A media-specific Accept header bypasses the Paseo gateway's immutable-content cache despite returning the same archive.
+URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
+verification remain unchanged.
 
 ### Qualifying a PolkaVM runtime update locally
 
