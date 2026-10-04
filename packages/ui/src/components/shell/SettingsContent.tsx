@@ -9,6 +9,7 @@ import { applyAndReset, type ModeDraft } from '../../settings-actions.js';
 import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
+import { ReceivingContent } from './ReceivingContent.js';
 import { CacheToggle, RadioRow, SectionHeader } from './SettingsRows.js';
 
 const CHAIN_CHOICES: [Backend, string][] = [
@@ -19,9 +20,9 @@ const CHAIN_CHOICES: [Backend, string][] = [
 
 /**
  * The popover's content for one opening. It starts from the saved settings
- * and keeps the changes in a draft: nothing is saved or reloaded until Save
- * & Apply, and the next opening starts afresh, so a closed popover drops
- * its draft.
+ * and keeps network, transport, cache and runtime changes in a draft until
+ * Save & Apply. Receiving controls take effect immediately. The next opening
+ * starts afresh, so a closed popover drops its settings draft.
  */
 function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const saved = untrack(() => props.saved);
@@ -37,6 +38,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const [polkaVmAppsEnabled, setPolkaVmAppsEnabled] = createSignal(persisted.polkaVmAppsEnabled);
   const [applying, setApplying] = createSignal(false);
   const [clearing, setClearing] = createSignal(false);
+  const [resetError, setResetError] = createSignal('');
 
   const dirty = createMemo(() => {
     const draft = cache();
@@ -51,20 +53,25 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   });
 
   const clearAll = (): void => {
-    if (untrack(clearing)) {
+    if (untrack(clearing) || untrack(applying)) {
       return;
     }
     setClearing(true);
-    // Force the full-reset pipeline: wipe every origin regardless of the
-    // current cache toggles, then re-seed localStorage with the baseline.
-    void applyAndReset(persisted, persisted, { forceFullWipe: true });
+    setResetError('');
+    // Reset all origins regardless of cache toggles, retaining receiving
+    // revocation tombstones until remote deletion is acknowledged.
+    void applyAndReset(persisted, persisted, { forceFullWipe: true }).catch(() => {
+      setClearing(false);
+      setResetError('Could not clear all caches. Background receiving revocation must be saved before reset. Try again.');
+    });
   };
 
   const apply = (): void => {
-    if (!untrack(dirty) || untrack(applying)) {
+    if (!untrack(dirty) || untrack(applying) || untrack(clearing)) {
       return;
     }
     setApplying(true);
+    setResetError('');
     void applyAndReset(
       {
         chain: untrack(chain),
@@ -73,7 +80,10 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         polkaVmAppsEnabled: untrack(polkaVmAppsEnabled),
       },
       persisted,
-    );
+    ).catch(() => {
+      setApplying(false);
+      setResetError('Could not apply settings. Background receiving revocation must be saved before changing networks. Try again.');
+    });
   };
 
   const networks = saved.enabledNetworks;
@@ -164,8 +174,8 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
             <button
               onClick={clearAll}
               class="mode-clear-btn"
-              title="Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline."
-              disabled={clearing()}
+              title="Clear caches and reset app data across all origins. Receiving revocation records remain until remote deletion is acknowledged. The app will reload."
+              disabled={clearing() || applying()}
             >
               {clearing() ? 'Clearing…' : 'Clear all caches'}
             </button>
@@ -174,6 +184,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <div class="mode-popover-col">
           <SectionHeader text="Experimental" />
           <CacheToggle label="PolkaVM apps" checked={persisted.polkaVmAppsEnabled} update={setPolkaVmAppsEnabled} />
+          <ReceivingContent />
           <SectionHeader text="Diagnostics" modifier="mode-popover-section--spaced" />
           <Diagnostics backend={persisted.chain} />
         </div>
@@ -187,7 +198,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
           <button
             onClick={apply}
             class={`mode-clear-btn${dirty() ? ' mode-apply-dirty' : ''}`}
-            disabled={!dirty() || applying()}
+            disabled={!dirty() || applying() || clearing()}
           >
             {applying() ? 'Resetting…' : 'Save & Apply'}
           </button>
@@ -198,6 +209,9 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
         <p class={`mode-apply-warning${dirty() ? ' visible' : ''}`}>
           Applying reloads the app. Caches you turn off are cleared.
         </p>
+        <Show when={resetError()}>
+          <p class="mode-radio-desc" role="alert">{resetError()}</p>
+        </Show>
       </div>
     </>
   );

@@ -23,6 +23,7 @@ import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
+import { receivingWorker } from './receiving-build.ts';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -286,6 +287,8 @@ export default defineConfig({
     astroSolid(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
+    // Emits the classic receiver and matching WASM before Workbox precaching.
+    receivingWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. `registerType:
@@ -315,11 +318,12 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/host-receiving.js'],
         globPatterns: ['**/*.{js,css,html,svg,png,ico,wasm}'],
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm'],
+        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', 'host-receiving.js'],
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.

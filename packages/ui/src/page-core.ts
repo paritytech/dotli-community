@@ -34,6 +34,8 @@ import {
 } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { showNotification } from './notification.js';
+import { setReceivingAccount } from './receiving.js';
+import { createReceivingExecution, type ReceivingExecution } from './receiving-execution.js';
 
 export interface PageProduct {
   label: string;
@@ -56,13 +58,14 @@ export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
   wallet: LiveLocalWallet | undefined;
+  receiving: ReceivingExecution;
   close(): void;
 }
 
 export interface CoreLease {
   runtime: PageRuntime;
   wallet: LiveLocalWallet | undefined;
-  connect(executionKind?: ProductExecutionKind): Promise<CoreConnection>;
+  connect(executionKind?: ProductExecutionKind, archiveCid?: string, isCurrentExecution?: () => boolean): Promise<CoreConnection>;
   release(): void;
 }
 
@@ -182,7 +185,7 @@ export async function acquireCore(): Promise<CoreLease> {
     if (!cores.has(core)) {
       throw new Error('Page core retired before it became ready');
     }
-    return { runtime, wallet: core.wallet, connect: kind => connect(core, runtime, kind), release };
+    return { runtime, wallet: core.wallet, connect: (kind, archiveCid, isCurrentExecution) => connect(core, runtime, kind, archiveCid, isCurrentExecution), release };
   } catch (error) {
     release();
     throw error;
@@ -261,7 +264,11 @@ function createCore(product: PageProduct): Core {
     pairingHostGlobal: product.pairing?.hostGlobal,
     blockingModalScope,
   });
-  const forwardAuthState = callbacks.auth.authStateChanged;
+  const presentAuthState = callbacks.auth.authStateChanged;
+  const forwardAuthState = (state: AuthState): void => {
+    if (isPageProduct(core) && state.tag === 'Connected') setReceivingAccount(state.value.identityAccountId);
+    presentAuthState(state);
+  };
   callbacks.auth.authStateChanged = state => {
     if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
       return;
@@ -502,27 +509,34 @@ async function connect(
   core: Core,
   runtime: PageRuntime,
   executionKind: ProductExecutionKind = 'App',
+  archiveCid?: string,
+  isCurrentExecution?: () => boolean,
 ): Promise<CoreConnection> {
   if (!cores.has(core)) {
     throw new Error('Page core is closed');
   }
   const productId = productIdOf(core.product);
   const callbacks = core.openCallbacks();
+  const receiving = createReceivingExecution(productId, archiveCid, isCurrentExecution);
+  callbacks.callbacks.notifications.receiverCommand = (product, action, payload) => receiving.command(product, action, payload);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
   } catch (error) {
+    receiving.close();
     callbacks.dispose();
     core.faulted = true;
     throw error;
   }
   if (!cores.has(core)) {
+    receiving.close();
     callbacks.dispose();
     provider.dispose();
     throw new Error('Page core closed while connecting the product');
   }
   let closing = false;
   provider.subscribeClose?.(() => {
+    receiving.close();
     callbacks.dispose();
     if (!closing) {
       core.faulted = true;
@@ -532,11 +546,13 @@ async function connect(
     provider,
     productId,
     wallet: core.wallet,
+    receiving,
     close() {
       if (closing) {
         return;
       }
       closing = true;
+      receiving.close();
       callbacks.dispose();
       provider.dispose();
     },

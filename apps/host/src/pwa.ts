@@ -20,7 +20,7 @@ import { log } from '@dotli/shared';
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
 if ('serviceWorker' in navigator) {
-  const wb = new Workbox('/host-sw.js');
+  const wb = new Workbox('/host-sw.js', { updateViaCache: 'none' });
   let hostUpdateRequired = false;
   let applyingUpdate = false;
 
@@ -57,6 +57,9 @@ if ('serviceWorker' in navigator) {
       if (!registration) {
         return undefined;
       }
+      // The UI also looks up the registration if its listener mounts later.
+      // Keep the registration host-owned: it is never sent into a product.
+      window.dispatchEvent(new CustomEvent('dotli:receiving-registration', { detail: registration }));
       setInterval(() => {
         if (navigator.onLine) {
           void registration.update();

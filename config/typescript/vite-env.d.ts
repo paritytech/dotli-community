@@ -13,6 +13,9 @@ interface ImportMetaEnv {
   readonly VITE_DESKTOP_DOWNLOAD_URL?: string;
   readonly VITE_METRICS?: string;
   readonly VITE_NETWORKS?: string;
+  readonly VITE_RECEIVING_RELAY_URL?: string;
+  readonly VITE_RECEIVING_PUSH_ORIGIN?: string;
+  readonly VITE_RECEIVING_VAPID_PUBLIC_KEY?: string;
   readonly VITE_RESOLUTION_SAMPLE_RATE?: string;
   readonly VITE_RUNTIME_NETWORK_CONFIG?: string;
   readonly VITE_SANDBOX_CHECKER?: string;
