@@ -58,14 +58,14 @@
   }
 }
 
-/* The explainer's surface, over the topbar's popovers. Its copy sets its
-   own padding (VerificationContent). */
+/* The explainer, over the topbar's other popovers, as wide as the menus.
+   Popover writes the shield's bottom edge inline as the top. The explainer
+   drops from the pill instead, 12 px below it like every other menu, so that
+   inline top is overridden. */
 .tooltip {
   z-index: 1600;
-  width: 268px;
-  border-radius: 10px;
-  box-shadow: 0 12px 28px var(--shadow);
-  color: var(--text);
-  font-family: system-ui, sans-serif;
-  text-align: left;
+  width: var(--w-pop-md);
+}
+.tooltip[data-anchor='trigger'] {
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3)) !important;
 }
