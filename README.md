@@ -189,6 +189,12 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
+The current pin is the `0.3.2-rc.1` release candidate; this update retains the separately pinned TrUAPI host SDK.
+Synchronization verifies the package's complete checksum inventory, including its session API and
+type declarations, but serves only the host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`,
+`THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those artifacts; the consolidated attribution bundle
+replaces the older standalone PolkaVM license files.
+
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
 Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
@@ -345,6 +351,60 @@ VITE_METRICS=true npm run --workspace apps/host test:functional
 ```
 
 Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
+
+### Qualifying a PolkaVM runtime update locally
+
+Keep `vendor/truapi-host.lock.json` and the vendored host SDK unchanged when
+qualifying a runtime-only update. The qualification suite uses the real host
+bridge and SDK; only name resolution and content-addressed CAR delivery are
+local fixtures. Nothing is published, signed, or deployed.
+
+```bash
+npm ci
+npx playwright install chromium
+npm run prepare:polkavm-qualification
+VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
+npm run test:polkavm-qualification
+```
+
+Preparation archives the exact app-kit commit in
+`apps/host/tests/functional/fixtures/polkavm/qualification.lock.json` into an
+isolated build directory under ignored `dist/polkavm-qualification/`. It does not
+use an arbitrary existing app bundle. Install the recorded Rust nightlies with
+`rust-src`, `polkatool`, Clang, and LLVM tools first; the lock records the producer's
+Node/npm/compiler versions. `PVM_CLANG`, `PVM_LLVM_AR`, and `PVM_LLVM_RANLIB` can
+select the corresponding executables. `--source <clean-checkout>` avoids fetching
+app-kit, but still requires the exact pinned revision and copies it into the
+isolated build. Dependencies remain locked and sccache is disabled.
+
+The source pin uses the migrated `host_frame_*` guest SDK. Each fixture records
+the guest SDK revision, CAR CID, and CAR/manifest/program SHA-256 hashes.
+Freedoom Phase 1 mounts only `game/freedoom1.wad`; Phase 2 mounts only
+`game/freedoom2.wad`. The same engine selects its campaign by filename, not by
+examining replacement WAD bytes. Both CARs include the campaign's licenses.
+
+An intentional source/toolchain refresh uses
+`npm run prepare:polkavm-qualification -- --record-artifacts`. Review the changed
+lock, then rerun preparation without that flag: ordinary preparation fails on
+toolchain or artifact mismatches. This verifies repeat builds with the recorded
+toolchain, not cross-platform reproducibility; the pinned Doom build enumerates
+C sources in filesystem order. Verified prepared fixtures can be copied to
+another browser test machine without rebuilding them.
+
+The suite covers handshake and private-storage write/read/clear through the
+unchanged SDK, both campaigns' rendering/input/audio, file-consent cancellation
+and approval, warm compiler-cache restart, real tab background/resume, and worker
+teardown. It runs headed to exercise actual visibility changes; use
+`xvfb-run -a npm run test:polkavm-qualification` on a display-less Linux runner.
+Playwright results attach fixture/runtime/SDK provenance, screenshots, passive
+worker observations, browser logs, and teardown evidence.
+Each story gets a fresh Chromium profile, connected with Playwright's
+`noDefaults: true` so its usual focus emulation cannot force background tabs to
+remain visible. Visibility is observed from the browser, never synthesized.
+
+These fixtures do **not** qualify cartridge-save isolation: that needs a
+save-capable cartridge guest and two distinct cartridge contents. Wallet signing
+and native hosts are also outside this suite.
 
 ### Running the host-playground E2E locally
 

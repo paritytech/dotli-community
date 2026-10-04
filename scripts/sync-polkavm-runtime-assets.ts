@@ -41,10 +41,11 @@ const runtimeExports = new Map([
   ['polkavm-worker.js', 'worker'],
   ['polkavm-gpu-worker.js', 'gpu-worker'],
 ]);
+const legalInventory = ['LICENSE-MPL-2.0', 'THIRD_PARTY_NOTICES.md', 'THIRD_PARTY_LICENSES.txt'];
 // Artifacts the package manifest covers. The translated backend, the runtime
 // core, and the worker entry are embedded inside `polkavm-worker.js`, so they
 // are attested but never served on their own.
-const runtimeInventory = [
+const packageInventory = [
   'polkavm-browser-runtime.wasm',
   'polkavm-worker.js',
   'polkavm-gpu-worker.js',
@@ -52,12 +53,16 @@ const runtimeInventory = [
   'polkavm-runtime-core.js',
   'polkavm-wasm-worker-entry.js',
   'polkavm-computer.js',
+  'session.js',
+  'session.d.ts',
+  'file-input-router.js',
+  'file-input-router.d.ts',
+  ...legalInventory,
 ];
-const generatedInventory = ['SHA256SUMS', 'SOURCE.json', 'LICENSE-MPL-2.0'];
-const auxiliaryInventory = ['PolkaVM-LICENSE-APACHE', 'PolkaVM-LICENSE-MIT'];
+const generatedInventory = ['SHA256SUMS', 'SOURCE.json'];
 const synchronizedInventory = Object.keys(lock.assets);
 const runtimeAssets = synchronizedInventory.filter(
-  name => !generatedInventory.includes(name) && !auxiliaryInventory.includes(name),
+  name => !generatedInventory.includes(name) && !legalInventory.includes(name),
 );
 for (const name of runtimeAssets) {
   if (!runtimeExports.has(name)) {
@@ -122,7 +127,7 @@ function provenanceRecord(): string {
   )}\n`;
 }
 
-for (const name of generatedInventory) {
+for (const name of [...generatedInventory, ...legalInventory]) {
   if (lock.assets[name] === undefined) {
     throw new Error(`runtime lock is missing ${name}`);
   }
@@ -130,7 +135,6 @@ for (const name of generatedInventory) {
 if (runtimeAssets.length === 0) {
   throw new Error('runtime lock names no runtime artifacts');
 }
-requireExactInventory(await readdir(destination), synchronizedInventory, 'vendored runtime directory');
 
 if (!checkOnly) {
   let checksumsPath;
@@ -150,7 +154,7 @@ if (!checkOnly) {
   }
   const packageChecksums = parseChecksumManifest(
     await readFile(checksumsPath, 'utf8'),
-    runtimeInventory,
+    packageInventory,
     'package SHA256SUMS',
   );
   for (const name of runtimeAssets) {
@@ -165,10 +169,14 @@ if (!checkOnly) {
       throw new Error(`${name} does not match the package SHA256SUMS`);
     }
   }
-  await copyFile(resolve(dirname(dirname(checksumsPath)), 'LICENSE-MPL-2.0'), resolve(destination, 'LICENSE-MPL-2.0'));
+  for (const name of legalInventory) {
+    await copyFile(resolve(dirname(checksumsPath), name), resolve(destination, name));
+  }
   await copyFile(checksumsPath, resolve(destination, 'SHA256SUMS'));
   await writeFile(resolve(destination, 'SOURCE.json'), provenanceRecord());
 }
+
+requireExactInventory(await readdir(destination), synchronizedInventory, 'vendored runtime directory');
 
 const actualDigests = new Map<string, string>();
 for (const [name, expected] of Object.entries(lock.assets)) {
@@ -179,14 +187,13 @@ for (const [name, expected] of Object.entries(lock.assets)) {
   actualDigests.set(name, actual);
 }
 
-// The package manifest attests every runtime artifact, including the three the
-// worker embeds rather than fetches.
+// The package manifest also attests the notices shipped with the runtime.
 const vendoredChecksums = parseChecksumManifest(
   await readFile(resolve(destination, 'SHA256SUMS'), 'utf8'),
-  runtimeInventory,
+  packageInventory,
   'vendored SHA256SUMS',
 );
-for (const name of runtimeAssets) {
+for (const name of [...runtimeAssets, ...legalInventory]) {
   if (vendoredChecksums.get(name) !== actualDigests.get(name)) {
     throw new Error(`${name} does not match the vendored SHA256SUMS`);
   }
