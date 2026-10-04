@@ -15,8 +15,9 @@
 // learn which of its contacts shared a profile.
 
 import type { ProfilePlatform } from '@parity/truapi-host';
+import { bytesToHex } from '@parity/truapi/scale';
 import { fromHex, log } from '@dotli/shared';
-import { showProfileDrawer, type LoadedProfile } from '../profile/drawer.js';
+import { showProfileDrawer, type LoadedProfile, type ProfileDrawerOptions } from '../profile/drawer.js';
 import {
   createAvatarProfileCache,
   createContactAvatarOverlay,
@@ -34,6 +35,7 @@ import { resolveSeitySlotRemote, type RemoteSeitySlot } from '@dotli/protocol';
 import { getBackend } from '@dotli/config';
 import { loadRpcResolve } from '@dotli/resolver';
 import { createPreimageAdapters } from './Preimage.js';
+import type { NativeChatContactsDirectory } from './Contacts.js';
 
 /** Bulletin retrieval can wait on bitswap providers attaching. */
 const AVATAR_FETCH_TIMEOUT_MS = 90_000;
@@ -110,12 +112,14 @@ export async function presentContactProfileReference(
   reference: string | undefined,
   username: string | undefined,
   signal?: AbortSignal,
+  loadContactName?: ProfileDrawerOptions['loadContactName'],
 ): Promise<void> {
   signal?.throwIfAborted();
   await showProfileDrawer({
     productId,
     contactName: username === undefined || username === '' ? UNNAMED_CONTACT : username,
     ...(reference === undefined ? {} : { loadProfile: profileLoader(reference) }),
+    ...(loadContactName === undefined ? {} : { loadContactName }),
     ...(signal === undefined ? {} : { signal }),
   });
 }
@@ -206,13 +210,33 @@ export function createContactAvatars(): ContactAvatarOverlay {
 export function createProfilePlatform(
   avatars: ContactAvatarOverlay | null = null,
   signal?: AbortSignal,
+  contactsDirectory?: NativeChatContactsDirectory,
 ): Required<ProfilePlatform> {
   return {
     presentProfile(product, request) {
       return presentProfileReference(product.productId, request.reference, signal);
     },
     presentContactProfile(product, presented) {
-      return presentContactProfileReference(product.productId, presented.shared?.reference, presented.username, signal);
+      const username = presented.username?.trim();
+      return presentContactProfileReference(
+        product.productId,
+        presented.shared?.reference,
+        username,
+        signal,
+        (username !== undefined && username !== '') || contactsDirectory === undefined
+          ? undefined
+          : async presentationSignal => {
+              const lookupSignal = AbortSignal.any([
+                presentationSignal,
+                contactsDirectory.signal,
+                AbortSignal.timeout(2_000),
+              ]);
+              const snapshot = await contactsDirectory.snapshot(lookupSignal);
+              const peerIdentity = bytesToHex(presented.peerIdentity);
+              const name = snapshot.contacts.find(contact => contact.peerIdentity === peerIdentity)?.username?.trim();
+              return name === '' ? undefined : name;
+            },
+      );
     },
     placeContactAvatars(_product, placed) {
       return Promise.resolve().then(() => {

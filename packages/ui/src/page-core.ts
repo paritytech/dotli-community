@@ -333,6 +333,7 @@ function createCore(product: PageProduct): Core {
       profileSignal: profileLifetime.signal,
       ...(custodyLease === undefined ? {} : { custodyLease }),
       ...(nativeContacts === undefined ? {} : { contacts: nativeContacts.callbacks }),
+      ...(contactsDirectory === undefined ? {} : { contactsDirectory }),
     });
     runtimeCallbacks = callbacks;
     if (contactsDirectory !== undefined) {
@@ -546,6 +547,7 @@ function createCore(product: PageProduct): Core {
         ...(options.contactAvatars === undefined ? {} : { contactAvatars: options.contactAvatars }),
         ...(custodyLease === undefined ? {} : { custodyLease }),
         ...(contacts === undefined ? {} : { contacts: contacts.callbacks }),
+        ...(contactsDirectory === undefined ? {} : { contactsDirectory }),
       });
       // Session state, encrypted storage and file custody belong to the core.
       // Interactive product prompts belong only to their live connection.

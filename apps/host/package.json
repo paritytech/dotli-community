@@ -21,6 +21,7 @@
     "test:perf:compare": "node tests/performance/compare.ts",
     "test:perf:compare:md": "node tests/performance/compare.ts --markdown",
     "test:polkavm:doom": "playwright test --config=tests/performance/playwright.config.ts tests/performance/polkavm-doom.spec.ts",
+    "test:polkavm-qualification": "HEADED=1 playwright test --config=tests/functional/playwright.config.ts tests/functional/polkavm-qualification.spec.ts --workers=1",
     "test:smoke:products": "playwright test --config=tests/smoke/playwright.config.ts tests/smoke/polkavm-products.spec.ts",
     "test:smoke:truapi": "playwright test --config=tests/smoke/playwright.config.ts tests/smoke/truapi-playground.spec.ts",
     "lint": "eslint .",

@@ -28,6 +28,8 @@ export interface ProfileDrawerOptions {
    * Never an address or a product-supplied name.
    */
   readonly contactName?: string;
+  /** Best-effort host-directory lookup; never delays opening or reaches the product. */
+  readonly loadContactName?: (signal: AbortSignal) => Promise<string | undefined>;
   /** Fetch and decrypt a received profile; absent when no reference was shared. */
   readonly loadProfile?: (signal: AbortSignal) => Promise<LoadedProfile>;
   /** The product connection owns this presentation's lifetime. */

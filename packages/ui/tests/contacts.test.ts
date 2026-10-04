@@ -185,14 +185,14 @@ describe('native Chat contacts', () => {
     await expect(adapter.callbacks.contacts({ handleKey, handles: [] })).resolves.toEqual({ accounts: [] });
   });
 
-  it('renders verified names as text, identifies unnamed peers, and revalidates the choice', async () => {
+  it('renders verified names as text without exposing account IDs and revalidates the choice', async () => {
     const state = fixture();
     must(state.snapshot.contacts[0], 'Alice contact').username = '<img src=x onerror=alert(1)>';
     const picked = state.adapter.callbacks.pickContact(product);
     const buttons = await choices();
     expect(must(buttons[0], 'Alice choice').textContent).toContain('<img src=x onerror=alert(1)>');
     expect(must(buttons[0], 'Alice choice').querySelector('img')).toBeNull();
-    expect(must(buttons[1], 'Bob choice').textContent).toContain(bob);
+    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
     expect(document.querySelector('[role=dialog]')?.textContent).toContain(product.productId);
     must(buttons[1], 'Bob choice').click();
     await expect(picked).resolves.toEqual({
@@ -353,11 +353,13 @@ describe('native Chat contacts', () => {
   });
 
   it('keeps preselected contacts when search hides them and confirms multiple people', async () => {
-    const { adapter } = fixture();
+    const { adapter, snapshot } = fixture();
+    must(snapshot.contacts[1], 'Bob contact').username = 'bob.paseo';
     const picked = adapter.callbacks.pickContacts(product, {
       selected: [alice],
     });
     const rows = await choices();
+    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
     const firstRow = must(rows[0], 'First contact choice');
     const secondRow = must(rows[1], 'Second contact choice');
     const first = must(firstRow.querySelector<HTMLInputElement>('input[type="checkbox"]'), 'First contact checkbox');
@@ -365,7 +367,7 @@ describe('native Chat contacts', () => {
     expect(first.checked).toBe(true);
     expect(second.checked).toBe(false);
     const search = must(document.querySelector<HTMLInputElement>('input[type="search"]'), 'Contact search');
-    search.value = bob;
+    search.value = 'bob';
     search.dispatchEvent(new Event('input', { bubbles: true }));
     await expect.poll(() => firstRow.hidden).toBe(true);
     expect(secondRow.hidden).toBe(false);
