@@ -17,7 +17,7 @@ import { initChatPanelState } from './state/chat-panel.js';
 import { emitPersistedSessionUiState } from './host-callbacks/SessionStore.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { initAuthController } from './auth-controller.js';
-import { recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
+import { getTopbarState, recordChainsButtonVisible, setTopbarPresent } from './state/topbar.js';
 import { initTheme } from './theme-controller.js';
 
 export function initTopBar(modalCoordinator: BlockingModalCoordinator = createBlockingModalCoordinator()): void {
@@ -63,5 +63,15 @@ function scheduleIdle(callback: () => void): void {
  */
 export function setChainsButtonVisible(visible: boolean): void {
   recordChainsButtonVisible(visible);
-  setNetworkHealthWatched(visible);
+  if (!visible) {
+    setNetworkHealthWatched(false);
+    return;
+  }
+  // The watch loads the block-watch chunk and a client per chain, so it waits
+  // until the product has rendered and the page is idle.
+  scheduleIdle(() => {
+    if (getTopbarState().chainsButtonVisible) {
+      setNetworkHealthWatched(true);
+    }
+  });
 }

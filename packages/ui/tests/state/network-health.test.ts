@@ -114,4 +114,20 @@ describe('The network health store', () => {
     // Then
     expect(fake.live()).toBe(0);
   });
+
+  it('As the test suite, a store reset releases a watch held without init', () => {
+    // Given
+    const fake = fakeSource();
+    setBlockSource(fake.source);
+    setNetworkHealthWatched(true);
+    expect(fake.live()).toBeGreaterThan(0);
+
+    // When
+    resetStores();
+    vi.advanceTimersByTime(61_000);
+
+    // Then
+    expect(fake.live()).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

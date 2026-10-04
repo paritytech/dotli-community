@@ -65,4 +65,7 @@ export function setNetworkHealthWatched(watched: boolean): void {
 
 registerStoreStateReset(() => {
   stopInit?.();
+  // A watch can be held without init (setChainsButtonVisible alone).
+  setNetworkHealthWatched(false);
+  health.set('syncing');
 });
