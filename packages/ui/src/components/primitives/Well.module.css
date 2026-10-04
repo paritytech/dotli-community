@@ -81,7 +81,8 @@
 }
 :where(.copy) {
   all: unset;
-  display: block;
+  /* Flex blockifies the code, so its ellipsis still applies. */
+  display: flex;
   min-width: 0;
   cursor: pointer;
 }

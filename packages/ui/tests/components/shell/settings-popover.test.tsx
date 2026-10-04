@@ -35,13 +35,22 @@ import {
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, byTestId, must, query } from '../../support.js';
+import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
 
-const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
-vi.mock('../../../src/settings-actions.js', async importOriginal => ({
-  ...(await importOriginal<typeof SettingsActionsModule>()),
-  applyAndReset: actions.applyAndReset,
+const actions = vi.hoisted(() => ({
+  applyAndReset: vi.fn(),
+  extraRows: [] as [label: string, value: string][],
 }));
+vi.mock('../../../src/settings-actions.js', async importOriginal => {
+  const actual = await importOriginal<typeof SettingsActionsModule>();
+  return {
+    ...actual,
+    applyAndReset: actions.applyAndReset,
+    // Lets a test add a row the default backend does not produce, such as a node reading "n/a".
+    buildBaseDiagnosticsRows: () => [...actual.buildBaseDiagnosticsRows(), ...actions.extraRows],
+  };
+});
 
 // No chain answers here: the share report's block heights read "n/a".
 vi.mock('../../../../protocol/src/client.js', () => ({
@@ -83,6 +92,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   actions.applyAndReset.mockReset();
+  actions.extraRows = [];
   actions.applyAndReset.mockResolvedValue(undefined);
   rpc.live = null;
   networks.enabled = null;
@@ -772,7 +782,7 @@ describe('The settings popover island', () => {
     expect(writeText).toHaveBeenCalledTimes(1);
   });
 
-  it('As a keyboard user, I reach a copyable diagnostics row as a button and copy it with Enter', async () => {
+  it('As a keyboard user, a copyable diagnostics row is a focusable button named Copy Site that copies and announces', async () => {
     // Given
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
@@ -784,37 +794,37 @@ describe('The settings popover island', () => {
     const site = infoRow('Site');
     const button = query(site, 'button', HTMLButtonElement);
     const status = query(site, '[role="status"]');
+    expect(button.getAttribute('aria-label')).toBe('Copy Site');
+    expect(focusables(byId('mode-popover'))).toContain(button);
+    expect(infoRow('Build').querySelector('button')).toBeNull();
 
     // When
-    button.focus();
     button.click();
     await Promise.resolve();
     await Promise.resolve();
     flush();
 
     // Then
-    expect(button.getAttribute('aria-label')).toBe('Copy Site');
-    expect(button.tabIndex).toBe(0);
-    expect(document.activeElement).toBe(button);
     expect(writeText).toHaveBeenCalledWith(window.location.host);
     expect(status.textContent).toBe('Copied');
-    expect(infoRow('Build').querySelector('button')).toBeNull();
   });
 
-  it('As a dotli user, clicking a copyable row that has no value copies nothing', async () => {
+  it('As a dotli user, clicking a copyable row that reads n/a copies nothing', async () => {
     // Given
     const writeText = vi.fn(() => Promise.resolve());
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText },
     });
+    actions.extraRows = [['Relay node', 'n/a']];
     await renderPopover();
     await openPopover();
-    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mode-info-row"]'));
-    const empty = rows.find(row => ['n/a', '…', ''].includes(row.querySelector('code')?.textContent ?? 'x'));
+    const row = infoRow('Relay node');
+    const button = query(row, 'button', HTMLButtonElement);
+    expect(query(row, 'code').textContent).toBe('n/a');
 
     // When
-    empty?.querySelector('button')?.click();
+    button.click();
     await Promise.resolve();
 
     // Then

@@ -55,8 +55,8 @@ export function KeyValue(props: {
   dense?: boolean;
   copyable?: boolean;
   title?: string | undefined;
-  /** Sits after the value, for a live region that announces the click's result. */
-  status?: JSX.Element;
+  /** Announced politely after a click, such as "Copied". Empty reads nothing. */
+  status?: string | undefined;
   onClick?: (() => void) | undefined;
   class?: string | undefined;
   testId?: string;
@@ -81,7 +81,11 @@ export function KeyValue(props: {
       ) : (
         <code class={s['value']}>{props.v}</code>
       )}
-      {props.status}
+      {props.copyable === true ? (
+        <span role="status" class={s['srOnly']}>
+          {props.status}
+        </span>
+      ) : undefined}
     </div>
   );
 }
