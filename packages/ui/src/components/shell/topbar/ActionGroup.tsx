@@ -120,7 +120,8 @@ export function ActionGroup(props: {
   createEffect(
     () => entries().map(entry => entry.visible()),
     () => {
-      measure();
+      // The compute already tracks these reads, so the measure's own are not a second subscription.
+      untrack(measure);
     },
   );
 
