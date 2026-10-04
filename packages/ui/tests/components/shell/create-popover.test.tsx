@@ -6,6 +6,7 @@ import { createPopover, type PopoverMode, type PopoverOptions } from '../../../s
 import { recordChainsButtonVisible, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
 import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId, must } from '../../support.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 type Popover = ReturnType<typeof createPopover>;
 
@@ -165,6 +166,7 @@ afterEach(() => {
   resetStores();
   document.body.style.overflow = '';
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('createPopover, in every mode', () => {
@@ -872,6 +874,44 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     // Then
     expect(popover.open()).toBe(false);
     expect(document.activeElement).toBe(byId('trigger'));
+  });
+
+  it('As a phone user, a menu with sheet opens as a sheet, slides out as one, and the next opening follows the viewport', async () => {
+    // Given
+    const viewport = stubPhoneViewport(true);
+    const popover = renderPopover('menu', { sheet: true });
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(true);
+
+    // When: the window widens, then the menu closes
+    viewport.set(false);
+    popover.setOpen(false);
+    await settle();
+
+    // Then: it closes as the sheet it opened as
+    expect(popover.sheet()).toBe(true);
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(false);
+  });
+
+  it('As a phone user, a menu without sheet still drops as a menu', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const popover = renderPopover('menu');
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(false);
   });
 });
 

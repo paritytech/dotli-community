@@ -56,6 +56,13 @@
     transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
   }
 }
+/* As a sheet (components/sheet/Sheet.module.css) the head runs edge to
+   edge, and the rows end the board's 24 px above the home indicator. */
+.menu[data-sheet] {
+  --sheet-inset: calc(var(--sp-6) + var(--safe-bottom));
+  padding-top: 0;
+  padding-inline: 0;
+}
 @media (prefers-reduced-motion: reduce) {
   .menu {
     transition: none !important;

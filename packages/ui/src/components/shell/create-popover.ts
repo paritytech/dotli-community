@@ -4,7 +4,7 @@
 import { createEffect, createSignal, onCleanup, onSettled, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
-import { PHONE_QUERY } from '../../phone-viewport.js';
+import { isPhoneViewport, PHONE_QUERY } from '../../phone-viewport.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
@@ -62,12 +62,23 @@ export interface PopoverOptions {
    * blocking modal itself.
    */
   closeOnBlockingModal?: boolean;
+  /**
+   * Open as a bottom sheet when the viewport matches PHONE_QUERY as an
+   * opening starts (a menu on a phone). `sheet()` on the result says so.
+   * Popover.tsx keeps its own, since its mode and its peek depend on it.
+   */
+  sheet?: boolean;
   /** Called after every close, whatever closed it. */
   onClose?: () => void;
 }
 
 export interface Popover {
   open: Accessor<boolean>;
+  /**
+   * Whether the current (or last) opening is a bottom sheet, so a closing
+   * sheet slides out as one. Always false without the `sheet` option.
+   */
+  sheet: Accessor<boolean>;
   setOpen: (open: boolean) => void;
   /**
    * Open or close; wire the trigger's click to it. For a menu, a click with
@@ -203,6 +214,7 @@ export function createPopover(options: PopoverOptions): Popover {
     // the store's producer is in (see useStore).
     ownedWrite: true,
   });
+  const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
   /** The next opening came from the trigger's keyboard (menu mode). */
   let openedWithKeyboard = false;
   /** This closing must leave focus where the user put it. */
@@ -218,6 +230,11 @@ export function createPopover(options: PopoverOptions): Popover {
   const setOpen = (next: boolean): void => {
     const wasOpen = current;
     current = next;
+    // Written in the same batch as the open state, so the surface takes its
+    // place and its open state in one render.
+    if (next && !wasOpen && options.sheet === true) {
+      setSheet(isPhoneViewport());
+    }
     if (!next) {
       // A keyboard opening undone in the same batch must not mark the next.
       openedWithKeyboard = false;
@@ -431,6 +448,7 @@ export function createPopover(options: PopoverOptions): Popover {
 
   return {
     open,
+    sheet,
     setOpen,
     toggle: (ev?: Event) => {
       if (!current && options.mode === 'menu' && ev instanceof MouseEvent && ev.detail === 0) {
