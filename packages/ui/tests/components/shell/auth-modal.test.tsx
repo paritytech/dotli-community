@@ -140,6 +140,16 @@ interface ModalExpectation {
 
 const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
 
+/** The drawn code on its tile: the canvas, named as an image, then the badge. */
+function expectQrTile(tile: Element, payload: string): void {
+  expect(tags(tile)).toEqual(['CANVAS', 'SPAN']);
+  const canvas = nth(tile.children, 0) as HTMLElement;
+  expect(canvas.dataset['qrPayload']).toBe(payload);
+  expect(canvas.getAttribute('role')).toBe('img');
+  expect(canvas.getAttribute('aria-label')).toBe('Sign-in QR code');
+  expect(tile.children[1]?.getAttribute('aria-hidden')).toBe('true');
+}
+
 /** The QR container's content for each view the modal can show. */
 function expectQrBody(qrBox: Element, body: ModalBody): void {
   switch (body.kind) {
@@ -150,26 +160,33 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       expectQrSpinnerView();
       break;
     case 'canvas': {
-      expect(tags(qrBox)).toEqual(['CANVAS']);
-      expect((qrBox.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      expect(tags(qrBox)).toEqual(['DIV', 'P']);
+      expectQrTile(byTestId('auth-modal-qr-tile', qrBox), body.payload);
+      expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
       break;
     }
     case 'mobile-qr': {
-      const expectedTags = body.qrShown ? ['BUTTON', 'A', 'A'] : ['A', 'BUTTON', 'A'];
-      expect(tags(qrBox)).toEqual(expectedTags);
-      const openApp = query(qrBox, 'a:not(:has(canvas))', HTMLAnchorElement);
-      const toggle = query(qrBox, 'button', HTMLButtonElement);
-      const qrLink = query(qrBox, 'a:has(canvas)', HTMLAnchorElement);
+      const openApp = byTestId('auth-modal-open-app', qrBox, HTMLAnchorElement);
       expect(openApp.getAttribute('href')).toBe(body.payload);
       expect(openApp.textContent).toBe('Login With Polkadot App');
-      expect(openApp.hidden).toBe(false);
-      expect(toggle.type).toBe('button');
-      expect(toggle.textContent).toBe('Show QR instead');
-      expect(toggle.hidden).toBe(body.qrShown);
-      expect(qrLink.getAttribute('href')).toBe(body.payload);
-      expect(qrLink.hidden).toBe(!body.qrShown);
-      expect(tags(qrLink)).toEqual(['CANVAS']);
-      expect((qrLink.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      if (body.qrShown) {
+        // The QR on top, the deeplink demoted to a link under it, the toggle gone.
+        expect(tags(qrBox)).toEqual(['A', 'P', 'A']);
+        const qrLink = byTestId('auth-modal-qr-link', qrBox, HTMLAnchorElement);
+        expect(qrLink.getAttribute('href')).toBe(body.payload);
+        expectQrTile(qrLink, body.payload);
+        expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
+        expect(qrBox.lastElementChild).toBe(openApp);
+        expect(qrBox.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+      } else {
+        // The deeplink leads, then the toggle, and no QR yet.
+        expect(tags(qrBox)).toEqual(['A', 'BUTTON']);
+        expect(qrBox.firstElementChild).toBe(openApp);
+        const toggle = byTestId('auth-modal-qr-toggle', qrBox, HTMLButtonElement);
+        expect(toggle.type).toBe('button');
+        expect(toggle.textContent).toBe('Show QR instead');
+        expect(qrBox.querySelector('canvas')).toBeNull();
+      }
       break;
     }
     case 'authenticating': {
@@ -185,7 +202,7 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       const view = nth(qrBox.children, 0);
       const expectedTags = ['DIV', 'DIV', 'DIV'];
       if (body.detail !== undefined && body.detail.length > 0) {
-        expectedTags.push('P');
+        expectedTags.push('DIV');
       }
       if (body.retry) {
         expectedTags.push('BUTTON');
@@ -208,9 +225,9 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
 }
 
 /**
- * The modal apart from styling: the dialog ARIA, the elements in order with
- * their ids and text, the visibility of the reason and the get-app link, and
- * the QR container's view.
+ * The surface apart from styling: the dialog ARIA, the head and the body in
+ * order with their ids and text, the visibility of the reason and the get-app
+ * link, and the QR container's view.
  */
 function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.id).toBe('auth-modal-backdrop');
@@ -219,18 +236,22 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
-  expect(tags(backdrop)).toEqual(['DIV']);
-  const dialog = nth(backdrop.children, 0);
-  expect(Array.from(dialog.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
-    'H2#auth-modal-title',
-    'P#auth-modal-reason',
-    'P#auth-modal-hint',
+  expect(tags(backdrop)).toEqual(['SECTION']);
+  const surface = nth(backdrop.children, 0);
+  expect(Array.from(surface.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'DIV#',
     'DIV#auth-modal-qr',
     'A#auth-modal-get-app',
     'BUTTON#auth-modal-close',
   ]);
+  const head = nth(surface.children, 0);
+  expect(Array.from(head.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'H2#auth-modal-title',
+    'P#auth-modal-reason',
+    'P#auth-modal-hint',
+  ]);
   expect(byId('auth-modal-title').textContent).toBe(
-    opts.productLabel !== undefined ? `${opts.productLabel} is asking you to sign in` : 'Login with Polkadot Mobile',
+    opts.productLabel !== undefined ? `${opts.productLabel} wants you to sign in` : 'Login with Polkadot Mobile',
   );
   const reason = byId('auth-modal-reason');
   expect(reason.hidden).toBe(opts.reason === undefined);
@@ -293,8 +314,9 @@ describe('AuthModal markup', () => {
     // Then
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(qr.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), DEEPLINK, {
-      width: 200,
+      width: 248,
       margin: 2,
+      errorCorrectionLevel: 'Q',
       color: { dark: '#000000', light: '#ffffff' },
     });
     expectMarkup(backdrop, {
@@ -321,7 +343,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(byId('auth-modal-title').querySelector('b')).toBeNull();
-    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> wants you to sign in');
     expect(byId('auth-modal-reason').textContent).toBe('<i>to vote</i>');
     expectMarkup(backdrop, {
       open: true,
@@ -733,7 +755,7 @@ describe('AuthModal login flow', () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
     expect(document.querySelector('#auth-modal-qr canvas')).not.toBeNull();
   });
 });
@@ -954,7 +976,7 @@ describe('AuthModal on a phone', () => {
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: true },
     });
 
-    // When: the wallet approved; the QR's hint and the column layout stay.
+    // When: the wallet approved, the QR's hint stays.
     await authState({ tag: 'Authenticating' });
 
     // Then
@@ -988,14 +1010,15 @@ describe('AuthModal on a phone, on unrelated store writes', () => {
     await authState(pairing());
     byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
-    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
 
     // When
     updateAuthModal({ reason: 'first' });
     await settleQr();
 
     // Then
-    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+    expect(byTestId('auth-modal-qr-link', document, HTMLAnchorElement).getAttribute('href')).toBe(DEEPLINK);
     expect(byId('auth-modal-hint').textContent).toBe(DESKTOP_HINT);
   });
 });

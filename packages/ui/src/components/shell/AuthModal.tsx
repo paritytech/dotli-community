@@ -9,7 +9,11 @@ import { closeAuthModal, retryLogin } from '../../auth-controller.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { useStore } from '../use-store.js';
+import { Button, ButtonLink } from '../primitives/Button.js';
 import { Spinner } from '../primitives/Spinner.js';
+import { StatusDot } from '../primitives/StatusDot.js';
+import { Surface } from '../primitives/Surface.js';
+import { Well } from '../primitives/Well.js';
 import s from './AuthModal.module.css';
 import { createPopover } from './create-popover.js';
 
@@ -18,12 +22,74 @@ const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 
 const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
 
+/**
+ * The drawn code's side in CSS px, its 2-module quiet zone included. The
+ * tile's padding (AuthModal.module.css) adds the rest of the white, so the
+ * tile is the board's 264 px. The stylesheet reads it as `--qr-size` to
+ * reserve the tile's height.
+ */
+const QR_SIZE = 248;
+
 type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 
 /** A drawn QR code, for the payload it encodes. */
 interface DrawnQr {
   payload: string;
   canvas: HTMLCanvasElement;
+}
+
+/** The Polkadot mark, in the current colour. */
+function PolkadotMark(): JSX.Element {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <ellipse cx="12" cy="3.6" rx="3.3" ry="2.1" />
+      <ellipse cx="12" cy="20.4" rx="3.3" ry="2.1" />
+      <ellipse cx="19.3" cy="7.8" rx="3.3" ry="2.1" transform="rotate(60 19.3 7.8)" />
+      <ellipse cx="19.3" cy="16.2" rx="3.3" ry="2.1" transform="rotate(-60 19.3 16.2)" />
+      <ellipse cx="4.7" cy="16.2" rx="3.3" ry="2.1" transform="rotate(60 4.7 16.2)" />
+      <ellipse cx="4.7" cy="7.8" rx="3.3" ry="2.1" transform="rotate(-60 4.7 7.8)" />
+    </svg>
+  );
+}
+
+/** The badge over the code's centre: decorative, the code is drawn to survive it. */
+function QrBadge(): JSX.Element {
+  return (
+    <span class={s['badge']} aria-hidden="true">
+      <span>
+        <PolkadotMark />
+      </span>
+    </span>
+  );
+}
+
+/**
+ * The drawn code on its white tile, then the waiting line. On a phone the
+ * tile is a link to the deeplink, so tapping the code pairs too.
+ */
+function QrCode(props: { qr: DrawnQr; link: boolean }): JSX.Element {
+  return (
+    <>
+      <Show
+        when={props.link}
+        fallback={
+          <div class={s['tile']} data-testid="auth-modal-qr-tile">
+            {props.qr.canvas}
+            <QrBadge />
+          </div>
+        }
+      >
+        <a href={props.qr.payload} class={s['tile']} data-testid="auth-modal-qr-link">
+          {props.qr.canvas}
+          <QrBadge />
+        </a>
+      </Show>
+      <p class={s['waiting']} data-testid="auth-modal-waiting">
+        <StatusDot tone="info" size="sm" />
+        Waiting for your phone
+      </p>
+    </>
+  );
 }
 
 function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
@@ -48,46 +114,52 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
       <div class={s['pendingTitle']}>{props.view.title}</div>
       <div class={s['pendingSubtitle']}>{props.view.subtitle}</div>
       <Show when={(props.view.detail ?? '').length > 0}>
-        <p class={s['error']} data-testid="auth-modal-error">
+        <Well class={s['error']} testId="auth-modal-error">
           {props.view.detail}
-        </p>
+        </Well>
       </Show>
       <Show when={props.view.retry}>
-        <button
+        <Button
+          variant="primary"
+          block
+          class={s['retry']}
+          testId="auth-modal-retry"
           onClick={() => {
             props.retry();
           }}
-          class={s['retry']}
-          data-testid="auth-modal-retry"
         >
           Retry
-        </button>
+        </Button>
       </Show>
     </div>
   );
 }
 
 /**
- * The QR pairing modal (`#auth-modal-backdrop`), a shell island (see
+ * The sign-in surface (`#auth-modal-backdrop`), a shell island (see
  * src/islands/), rendered with the host page, closed, and hydrated. It renders
  * authModalStore, which auth-controller.ts writes from boot onwards, so a
  * login that started before the island hydrated shows once it has.
  *
- * The body follows the store's view: a spinner, the pairing QR code, login
- * progress, or an error with the friendly copy and, when it can help, Retry.
- * The QR is drawn on a canvas by the lazily imported `qrcode`; a drawing
- * that finishes after the view moved on (a newer code, progress, a close)
- * is dropped. On a phone the deeplink button leads and the QR sits behind
- * "Show QR instead", and the "get the app" link shows until pairing is past
- * the QR.
+ * The glass surface drops from the pill's right edge like the topbar's
+ * popovers, over a light scrim, and at 560 px and below it is a bottom sheet
+ * over the dark scrim. The landing page has no pill, so there it takes the
+ * popovers' fallback place in the top right corner. The body follows the
+ * store's view: a spinner, the pairing QR code on its tile with the Polkadot
+ * badge, login progress, or an error with the friendly copy and, when it can
+ * help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
+ * and a drawing that finishes after the view moved on (a newer code,
+ * progress, a close) is dropped. On a phone the deeplink button leads and the QR sits
+ * behind "Show QR instead", and the "get the app" link shows until pairing is
+ * past the QR.
  *
  * While open it is a modal dialog, like Radix Dialog (createPopover's
  * `dialog` mode, driven by the store's `open`): it focuses its first control
  * (links skipped) or else itself, keeps Tab inside, stops the page scrolling,
  * and gives the focus back to the auth button when it closes. Escape, Cancel
- * and a click on the backdrop itself close it, which cancels the login.
- * It is itself a blocking modal (the controller opens it only once it holds
- * the blocking-modal lease), so it never closes on one coming up.
+ * and a press on the scrim close it, which cancels the login. It is itself a
+ * blocking modal (the controller opens it only once it holds the
+ * blocking-modal lease), so it never closes on one coming up.
  */
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
@@ -123,9 +195,6 @@ export function AuthModal(): JSX.Element {
       setQrShown(false);
     }
   });
-  // Once a phone's QR is drawn, the body keeps its column layout, as the
-  // topbar left the class on.
-  const [mobileLayout, setMobileLayout] = createSignal(false);
 
   // Last payload wins: each code starts a drawing whose result is dropped
   // once the payload is no longer on show.
@@ -135,24 +204,24 @@ export function AuthModal(): JSX.Element {
       return;
     }
     let current = true;
-    const onPhone = mobile();
     const canvas = document.createElement('canvas');
     canvas.dataset['qrPayload'] = payload;
     canvas.className = s['qrCanvas'] ?? '';
+    canvas.setAttribute('role', 'img');
+    canvas.setAttribute('aria-label', 'Sign-in QR code');
     void import('qrcode')
       .then(QRCode =>
         QRCode.default.toCanvas(canvas, payload, {
-          width: 200,
+          width: QR_SIZE,
           margin: 2,
+          // The badge hides the code's centre: Q recovers a quarter of it.
+          errorCorrectionLevel: 'Q',
           color: { dark: '#000000', light: '#ffffff' },
         }),
       )
       .then(() => {
         if (current) {
           setDrawn({ payload, canvas });
-          if (onPhone) {
-            setMobileLayout(true);
-          }
         }
       })
       .catch((err: unknown) => {
@@ -174,7 +243,7 @@ export function AuthModal(): JSX.Element {
     closeOnBlockingModal: false,
     onClose: () => {
       // Escape closed it: close the store too, which cancels the login. A
-      // close that came from the store (Cancel, the backdrop, a finished
+      // close that came from the store (Cancel, the scrim, a finished
       // login) finds it closed already.
       if (getAuthModalState().open) {
         closeAuthModal();
@@ -211,7 +280,7 @@ export function AuthModal(): JSX.Element {
   };
 
   const onBackdropClick = (e: MouseEvent): void => {
-    // Only a click on the backdrop itself, outside the modal.
+    // Only a press on the scrim itself, outside the surface.
     if (e.target === e.currentTarget) {
       closeAuthModal();
     }
@@ -231,35 +300,42 @@ export function AuthModal(): JSX.Element {
       aria-labelledby="auth-modal-title"
       tabindex="-1"
     >
-      <div class={s['modal']}>
-        <h2 class={s['title']} id="auth-modal-title">
-          <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
-            {label => (
-              <>
-                {label()} is asking you <span class={s['titleNowrap']}>to sign in</span>
-              </>
-            )}
-          </Show>
-        </h2>
-        <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
-          {state().reason ?? ''}
-        </p>
-        <p class={s['hint']} id="auth-modal-hint">
-          {hint()}
-        </p>
-        <div class={[s['qr'], mobileLayout() && s['qrMobile']]} id="auth-modal-qr">
+      <Surface class={s['surface']}>
+        <div class={s['head']}>
+          <h2 class={s['title']} id="auth-modal-title">
+            <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
+              {label => (
+                <>
+                  {label()}
+                  <span class={s['titleRest']}> wants you to sign in</span>
+                </>
+              )}
+            </Show>
+          </h2>
+          <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
+            {state().reason ?? ''}
+          </p>
+          <p class={s['hint']} id="auth-modal-hint">
+            {hint()}
+          </p>
+        </div>
+        <div
+          class={[s['qr'], !mobile() && s['qrScan']]}
+          id="auth-modal-qr"
+          style={{ '--qr-size': `${String(QR_SIZE)}px` }}
+        >
           <Switch>
             <Match when={view()?.kind === 'authenticating'}>
               <div class={s['progress']}>
-                <Spinner testId="auth-modal-spinner" />
+                <Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />
                 <p class={s['progressText']}>Logging in...</p>
               </div>
             </Match>
             <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
             <Match when={view() !== null}>
-              <Show when={qr()} fallback={<Spinner testId="auth-modal-spinner" />}>
-                {drawnQr =>
-                  mobile() ? (
+              <Show when={qr()} fallback={<Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />}>
+                {drawnQr => (
+                  <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
                     <MobileQr
                       qr={drawnQr()}
                       shown={qrShown()}
@@ -267,16 +343,14 @@ export function AuthModal(): JSX.Element {
                         setQrShown(true);
                       }}
                     />
-                  ) : (
-                    <>{drawnQr().canvas}</>
-                  )
-                }
+                  </Show>
+                )}
               </Show>
             </Match>
           </Switch>
         </div>
         <a
-          class={s['getApp']}
+          class={s['link']}
           id="auth-modal-get-app"
           href={POLKADOT_MOBILE_DOWNLOAD_URL}
           target="_blank"
@@ -285,16 +359,16 @@ export function AuthModal(): JSX.Element {
         >
           Don't have the app? Get Polkadot Mobile
         </a>
-        <button
+        <Button
+          id="auth-modal-close"
+          block
           onClick={() => {
             closeAuthModal();
           }}
-          class={s['close']}
-          id="auth-modal-close"
         >
           Cancel
-        </button>
-      </div>
+        </Button>
+      </Surface>
     </div>
   );
 }
@@ -306,28 +380,31 @@ export function AuthModal(): JSX.Element {
  * to a link.
  */
 function MobileQr(props: { qr: DrawnQr; shown: boolean; reveal: () => void }): JSX.Element {
-  const qrLink = (
-    <a href={props.qr.payload} class={s['qrLink']} data-testid="auth-modal-qr-link" hidden={!props.shown}>
-      {props.qr.canvas}
-    </a>
-  );
-  const openApp = (
-    <a href={props.qr.payload} class={[s['openApp'], props.shown && s['openAppLink']]}>
-      Login With Polkadot App
-    </a>
-  );
-  const toggle = (
-    <button
-      onClick={() => {
-        props.reveal();
-      }}
-      type="button"
-      class={s['qrToggle']}
-      data-testid="auth-modal-qr-toggle"
-      hidden={props.shown}
+  return (
+    <Show
+      when={props.shown}
+      fallback={
+        <>
+          <ButtonLink href={props.qr.payload} variant="primary" size="lg" block testId="auth-modal-open-app">
+            <PolkadotMark />
+            Login With Polkadot App
+          </ButtonLink>
+          <Button
+            block
+            testId="auth-modal-qr-toggle"
+            onClick={() => {
+              props.reveal();
+            }}
+          >
+            Show QR instead
+          </Button>
+        </>
+      }
     >
-      Show QR instead
-    </button>
+      <QrCode qr={props.qr} link />
+      <a href={props.qr.payload} class={s['link']} data-testid="auth-modal-open-app">
+        Login With Polkadot App
+      </a>
+    </Show>
   );
-  return <>{props.shown ? [toggle, qrLink, openApp] : [openApp, toggle, qrLink]}</>;
 }
