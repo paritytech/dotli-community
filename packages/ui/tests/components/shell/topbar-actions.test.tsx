@@ -255,20 +255,36 @@ describe('Topbar actions island', () => {
       // When
       await renderIsland();
       await settle();
+      pointerPress(byId('more-button'));
+      await settle();
 
       // Then
       expect(byTestId('more-row-aside', moreRow('permissions'))).toBeTruthy();
       expect(byTestId('more-row-aside', moreRow('settings'))).toBeTruthy();
-      expect(within(moreRow('permissions')).getByRole('img', { hidden: true }).getAttribute('aria-label')).toBe(
-        'Has permissions',
-      );
-      expect(within(moreRow('settings')).getByRole('img', { hidden: true }).getAttribute('aria-label')).toBe(
-        'Unverified session',
-      );
+      expect(within(moreRow('permissions')).getByRole('img').getAttribute('aria-label')).toBe('Has permissions');
+      expect(within(moreRow('settings')).getByRole('img').getAttribute('aria-label')).toBe('Unverified session');
       expect(byId('more-button').getAttribute('aria-label')).toBe('More');
     } finally {
       unregister();
     }
+  });
+
+  it('As a phone user with no grants and a verified session, I see the Permissions and Settings rows without badges', async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    setProductLoaded('app.dot', 'app.dot');
+
+    // When
+    await renderIsland();
+    await settle();
+    pointerPress(byId('more-button'));
+    await settle();
+
+    // Then
+    expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+    expect(moreRow('settings').querySelector('[data-testid="more-row-aside"]')).toBeNull();
   });
 
   it('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {
