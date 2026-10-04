@@ -485,6 +485,11 @@ The deployment smoke suites load published products through the deployed host, n
 suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
 E2E.
 
+The PolkaVM playground smoke passively verifies a canonical handshake request and its correlated `Result::Ok` reply, not
+merely increasing request/response counters. Input waits for a rendered frame and host loader dismissal, then uses an
+actionability-checked canvas click. Wire/provenance attachments retain raw and decoded frames and executed-program
+hashes on success and failure. A passing local fixture does not qualify a different published guest binary.
+
 The Duke and Quake gameplay checks require actual browser Pointer Lock, not just a capture request. Duke starts directly
 in a level, so its smoke does not send menu-navigation keys. The initial canvas click may already capture the pointer
 and clear the armed flag; otherwise the check waits for arming and clicks to acquire capture.
