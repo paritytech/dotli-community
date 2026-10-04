@@ -65,7 +65,7 @@
   height: 6px;
   border-radius: 50%;
   background: var(--inverse-bg);
-  box-shadow: 0 0 0 1.5px var(--inverse-fg);
+  box-shadow: 0 0 0 var(--sp-hair) var(--inverse-fg);
 }
 
 /* Inside the bar the button is chrome: round, 36 px (44 px on a phone),
