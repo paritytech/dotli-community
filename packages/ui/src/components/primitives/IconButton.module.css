@@ -68,9 +68,8 @@
   box-shadow: 0 0 0 1.5px var(--inverse-fg);
 }
 
-/* Inside the bar the button is chrome: round, 44 px, white on the dark glass,
-   a raised fill while its surface is open. The landing page keeps the rules
-   above. */
+/* Inside the bar the button is chrome: round, 44 px, white on the dark glass.
+   The landing page keeps the rules above. */
 :global(#topbar) .button {
   width: var(--h-control);
   min-width: 0;
@@ -89,7 +88,9 @@
 :global(#topbar) .button:active {
   background: var(--chrome-fill-strong);
 }
-:global(#topbar) .button[data-active] {
+/* The board's .icon-btn.is-on, on every bar button while its surface is
+   open: the Popover triggers carry only aria-expanded. */
+:global(#topbar) .button:is([data-active], [aria-expanded='true']) {
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
