@@ -63,8 +63,8 @@
   font-size: var(--fs-caption);
 }
 .button[data-size='lg'] {
-  height: var(--h-control-lg);
-  font-size: var(--fs-title);
+  height: var(--h-control);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
 }
 .button[data-block] {
@@ -81,7 +81,7 @@
   cursor: default;
   transform: none;
 }
-/* Phones: the boards' 44 px button, 36 px small. */
+/* Phones: the boards' 44 px button, 36 px small, 52 px large. */
 @media (max-width: 560px) {
   :where(.button) {
     gap: var(--sp-2);
@@ -91,6 +91,10 @@
   .button[data-size='sm'] {
     height: var(--h-control-sm);
     padding: 0 var(--sp-4);
+  }
+  .button[data-size='lg'] {
+    height: var(--h-control-lg);
+    font-size: var(--fs-title);
   }
   :where(.button:has(> svg:first-child)) {
     padding-left: var(--sp-4);

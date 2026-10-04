@@ -2,17 +2,20 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The board's .toast: dark glass in both page themes, the icon tile tinted
-   by the toast's tone. */
+   by the toast's tone. Desktop sizes by default, the board's in the phone
+   block. */
 
 .card {
+  /* The board's 8 px step on the narrower card. */
+  --pile-step: 7px;
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   box-sizing: border-box;
   min-width: 0;
   margin: 0;
-  padding: var(--sp-3);
-  border-radius: var(--r-lg);
+  padding: 10px;
+  border-radius: 20px;
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);
@@ -21,11 +24,11 @@
   font-family: var(--font-sans);
 }
 
-/* Piled in one cell, each older card 8 px higher, 4% smaller and 5% darker. */
+/* Piled in one cell, each older card a step higher, 4% smaller and 5% darker. */
 .stacked {
   grid-area: 1 / 1;
   align-self: end;
-  transform: translateY(calc(var(--i, 0) * -1 * var(--sp-2))) scale(calc(1 - var(--i, 0) * 0.04));
+  transform: translateY(calc(var(--i, 0) * -1 * var(--pile-step))) scale(calc(1 - var(--i, 0) * 0.04));
   filter: brightness(calc(1 - var(--i, 0) * 0.05));
   transition:
     transform var(--dur) ease,
@@ -47,11 +50,11 @@
   flex: none;
   place-items: center;
   box-sizing: border-box;
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
+  width: var(--sp-8);
+  height: var(--sp-8);
   margin: 0;
   padding: 0;
-  border-radius: var(--r-sm);
+  border-radius: 10px;
   background: color-mix(in srgb, var(--tone) var(--chrome-tint), transparent);
   color: var(--tone);
 }
@@ -67,10 +70,10 @@
 .icon[data-tone='idle'] {
   --tone: var(--chrome-idle);
 }
-/* Host icons are SVG strings without a size: the board's 20 px. */
+/* Host icons are SVG strings without a size. */
 .icon svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
 
 .text {
@@ -146,6 +149,25 @@ a.body:focus-visible {
 .card[data-leaving] {
   animation: leave var(--dur) forwards ease;
   pointer-events: none;
+}
+
+/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+@media (max-width: 560px) {
+  .card {
+    --pile-step: var(--sp-2);
+    gap: var(--sp-3);
+    padding: var(--sp-3);
+    border-radius: var(--r-lg);
+  }
+  .icon {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+    border-radius: var(--r-sm);
+  }
+  .icon svg {
+    width: 20px;
+    height: 20px;
+  }
 }
 
 /* A card is removed on its animationend, so the animations shrink to

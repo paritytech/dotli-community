@@ -3,26 +3,39 @@
 
 /* The board's .modal-icon. The base rule is wrapped in :where() so a
    consumer's class (a margin, hiding it in a sheet) wins whatever order the
-   stylesheets load in. */
+   stylesheets load in. 40 px with a 16 px glyph on desktop, the board's 48
+   and 20 on phones. */
 
 :where(.tile) {
   display: grid;
   flex: none;
   place-items: center;
   box-sizing: border-box;
-  width: var(--h-row);
-  height: var(--h-row);
+  width: var(--sp-10);
+  height: var(--sp-10);
   margin: 0;
   padding: 0;
-  border-radius: var(--r-md);
+  border-radius: var(--r-sm);
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
 }
-/* The board's 20 px glyph at a 1.75 stroke, whatever size and stroke the
-   markup was drawn at (the app's prompt icons are 24 px at 2). */
+/* The board's 1.75 stroke, whatever size and stroke the markup was drawn
+   at (the app's prompt icons are 24 px at 2). */
 .tile > svg {
-  width: var(--sp-5);
-  height: var(--sp-5);
+  width: var(--sp-4);
+  height: var(--sp-4);
   stroke-width: 1.75;
+}
+
+@media (max-width: 560px) {
+  :where(.tile) {
+    width: var(--h-row);
+    height: var(--h-row);
+    border-radius: var(--r-md);
+  }
+  .tile > svg {
+    width: var(--sp-5);
+    height: var(--sp-5);
+  }
 }

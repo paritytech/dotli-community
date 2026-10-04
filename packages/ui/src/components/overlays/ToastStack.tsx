@@ -83,6 +83,7 @@ export function ToastStack(): JSX.Element {
           root = el;
         }}
         class={s['stack']}
+        data-chrome=""
         data-testid="notif-stack"
         data-expanded={expanded() ? '' : undefined}
         onClick={onStackClick}

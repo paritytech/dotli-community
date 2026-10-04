@@ -10,7 +10,10 @@
    The backdrop, the anchored surface and the sheet are near twins of
    Popover.module.css's, kept here because each differs (layer, timing,
    position, radius) and a cross-file composes would copy that whole sheet
-   into this one. */
+   into this one.
+
+   Desktop sizes by default, the boards' in the phone block: the 234 px QR
+   tile in the 320 px surface is the board's 264 in 360. */
 
 /* Twin of Popover.module.css .backdrop, above the bar and on the --dur clock. */
 .backdrop {
@@ -43,11 +46,11 @@
 /* Twin of Popover.module.css .surface, placed in the backdrop. */
 .surface {
   position: absolute;
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3));
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
   right: var(--topbar-inline-end, calc(var(--sp-3) + var(--safe-right)));
   max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
   max-height: calc(
-    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--sp-3) - var(--sp-4) - var(--safe-bottom)
+    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
   );
   overflow-y: auto;
   opacity: 0;
@@ -83,7 +86,7 @@
 .head {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 6px;
   margin: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
 }
@@ -91,7 +94,7 @@
   margin: 0;
   padding: 0;
   color: var(--chrome-text);
-  font-size: var(--fs-title);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
@@ -119,21 +122,23 @@
 }
 
 .qr {
+  --qr-gap: 10px;
+  /* qrSize() in AuthModal.tsx. */
+  --qr-size: 218px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
+  gap: var(--qr-gap);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
 }
-/* The tile (--qr-size, set inline from QR_SIZE in AuthModal.tsx, plus the
-   tile's padding), the gap and the waiting line, from the spinner on, so the
-   surface keeps its size as the code comes in and as login progress replaces
-   it. */
+/* The tile (--qr-size plus the tile's padding), the gap and the waiting
+   line, from the spinner on, so the surface keeps its size as the code comes
+   in and as login progress replaces it. */
 .qr-scan {
-  min-height: calc(var(--qr-size) + 2 * var(--sp-2) + var(--sp-3) + var(--fs-caption) * var(--lh-body));
+  min-height: calc(var(--qr-size) + 2 * var(--sp-2) + var(--qr-gap) + var(--fs-caption) * var(--lh-body));
 }
 .qr .spinner {
   margin: 0;
@@ -146,7 +151,7 @@
   box-sizing: border-box;
   margin: 0;
   padding: var(--sp-2);
-  border-radius: var(--r-lg);
+  border-radius: 20px;
   background: var(--qr-bg);
   box-shadow: var(--chrome-shadow-tile);
   line-height: 0;
@@ -164,27 +169,32 @@
   left: 50%;
   display: grid;
   place-items: center;
-  width: var(--h-control);
-  height: var(--h-control);
-  border-radius: var(--r-sm);
+  width: var(--sp-10);
+  height: var(--sp-10);
+  border-radius: 11px;
   background: var(--qr-bg);
   transform: translate(-50%, -50%);
 }
 .badge > span {
   display: grid;
   place-items: center;
-  width: var(--h-control-sm);
-  height: var(--h-control-sm);
-  border-radius: var(--r-xs);
+  width: var(--sp-8);
+  height: var(--sp-8);
+  border-radius: 7px;
   background: var(--qr-ink);
   color: var(--qr-bg);
 }
-/* Not Hint: the board centres this line with a 12 px gap, Hint has 8 px. */
+.badge svg {
+  width: 18px;
+  height: 18px;
+}
+/* Not Hint: the board centres this line with a 12 px gap (10 on desktop),
+   Hint has 8 px. */
 .waiting {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-3);
+  gap: var(--qr-gap);
   margin: 0;
   padding: 0;
   color: var(--chrome-text-muted);
@@ -196,7 +206,7 @@
   align-self: center;
   box-sizing: border-box;
   margin: 0;
-  padding: var(--sp-2) var(--sp-1);
+  padding: 6px var(--sp-1);
   border-radius: var(--r-hair);
   color: var(--chrome-text);
   font-size: var(--fs-small);
@@ -213,7 +223,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--qr-gap);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -230,7 +240,7 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 6px;
   box-sizing: border-box;
   width: 100%;
   margin: 0;
@@ -244,7 +254,7 @@
 .pending-title {
   margin: 0;
   color: var(--chrome-text);
-  font-size: var(--fs-title);
+  font-size: 14px;
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
@@ -258,8 +268,8 @@
    board's tighter padding and radius rather than the Well's own. */
 .error {
   align-self: stretch;
-  padding: var(--sp-2) var(--sp-3);
-  border-radius: var(--r-sm);
+  padding: 6px 10px;
+  border-radius: 10px;
   color: var(--chrome-text-muted);
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
@@ -268,14 +278,55 @@
   overflow-wrap: anywhere;
 }
 .retry {
-  margin-top: var(--sp-2);
+  margin-top: 6px;
 }
 
 /* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
    in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap, the head
    over the body that scrolls, the --dur-morph slide and the --dur scrim
-   fade): keep the two in step. */
+   fade): keep the two in step. Then the boards' sizes of the parts. */
 @media (max-width: 560px) {
+  .head {
+    gap: var(--sp-2);
+  }
+  .title,
+  .pending-title {
+    font-size: var(--fs-title);
+  }
+  .qr {
+    --qr-gap: var(--sp-3);
+    --qr-size: 248px;
+  }
+  .tile {
+    border-radius: var(--r-lg);
+  }
+  .badge {
+    width: var(--h-control);
+    height: var(--h-control);
+    border-radius: var(--r-sm);
+  }
+  .badge > span {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+    border-radius: var(--r-xs);
+  }
+  .badge svg {
+    width: 20px;
+    height: 20px;
+  }
+  .link {
+    padding: var(--sp-2) var(--sp-1);
+  }
+  .error-view {
+    gap: var(--sp-2);
+  }
+  .error {
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .retry {
+    margin-top: var(--sp-2);
+  }
   /* The sheet sits inside the backdrop, so the scrim fades its colour, not
      its opacity, and stays displayed (catching a tap's trailing click) until
      the slide ends rather than the shared scrim's fade. */

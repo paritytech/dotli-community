@@ -5,7 +5,9 @@
    and below (PHONE_QUERY in phone-viewport.ts) a bottom sheet led by the
    sheets' head (SheetHead), as the board's phone draws a prompt. Both come in
    with the board's keyframes. Nothing animates out: the outlet unmounts an
-   answered dialog in the update that mounts the next queued one. */
+   answered dialog in the update that mounts the next queued one. Desktop
+   draws the card at 360 px with 20 px padding, a 16 px gap and 24 px
+   corners, the boards' 400 / 24 / 20 / 28 under the phone width. */
 
 .backdrop {
   position: fixed;
@@ -27,15 +29,15 @@
 .dialog {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
   box-sizing: border-box;
   width: var(--w-pop-lg);
   max-width: 100%;
   max-height: calc(100dvh - 2 * var(--sp-6));
   margin: 0;
-  padding: var(--sp-6);
+  padding: var(--sp-5);
   overflow: hidden;
-  border-radius: var(--r-xl);
+  border-radius: var(--r-lg);
   background: var(--chrome-glass);
   -webkit-backdrop-filter: var(--chrome-blur);
   backdrop-filter: var(--chrome-blur);

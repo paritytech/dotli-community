@@ -320,7 +320,7 @@ describe('AuthModal markup', () => {
     // Then
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(qr.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), DEEPLINK, {
-      width: 248,
+      width: 218,
       margin: 2,
       errorCorrectionLevel: 'Q',
       color: { dark: '#000000', light: '#ffffff' },
@@ -333,6 +333,29 @@ describe('AuthModal markup', () => {
       body: { kind: 'canvas', payload: DEEPLINK },
     });
     expect(document.querySelector('#auth-modal-qr canvas')).toBe(qr.toCanvas.mock.calls[0]?.[0]);
+  });
+
+  it("As a user on a phone-width window, the QR code is drawn at the phone sheet's larger size", async () => {
+    // Given
+    stubPhoneViewport(true);
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+
+      // When
+      await authState(pairing());
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(1);
+      expect(qr.toCanvas).toHaveBeenCalledWith(
+        expect.any(HTMLCanvasElement),
+        DEEPLINK,
+        expect.objectContaining({ width: 248 }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it('As a user asked to sign in by a product, the title names it and shows why, as text', async () => {

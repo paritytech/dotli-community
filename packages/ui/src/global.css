@@ -257,7 +257,8 @@
   --w-pop-lg: 360px;
   --w-pop-xl: 680px;
   --pop-gap: 10px;
-  --w-toast: 380px;
+  /* The board's toast is 380. Phones' toasts are full width. */
+  --w-toast: 340px;
 
   --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
   --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
@@ -284,9 +285,10 @@
   }
 }
 
-/* Inside the chrome (data-chrome: the topbar, its popovers and menus), the
-   page tokens read as the dark palette whatever the page theme, so content
-   written with them stays legible on the always-dark glass. */
+/* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
+   sign-in, the prompts and the toasts), the page tokens read as the dark
+   palette whatever the page theme, so content written with them stays
+   legible on the always-dark glass. */
 [data-chrome] {
   --text-strong: var(--chrome-text);
   --text: var(--chrome-text);

@@ -3,13 +3,14 @@
 
 /* A prompt's content as the board's modal: .modal-head, .modal-title, the
    wells, the password .input and .modal-actions. Dialog.module.css draws the
-   glass, the scrim and the phone sheet around it. */
+   glass, the scrim and the phone sheet around it. Desktop sizes by default,
+   the boards' in the phone block. */
 
 .head {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--sp-3);
+  gap: 10px;
   margin: 0;
   padding: 0;
   text-align: center;
@@ -17,7 +18,7 @@
 .title {
   margin: 0;
   padding: 0;
-  font-size: var(--fs-title-lg);
+  font-size: var(--fs-title);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
   overflow-wrap: anywhere;
@@ -30,7 +31,7 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
+  gap: var(--sp-4);
   min-height: 0;
   margin: calc(-1 * var(--sp-hair));
   padding: var(--sp-hair);
@@ -55,9 +56,9 @@
 .input {
   box-sizing: border-box;
   width: 100%;
-  height: var(--h-control);
+  height: var(--h-control-sm);
   margin: 0;
-  padding: 0 var(--sp-5);
+  padding: 0 var(--sp-4);
   border: 0;
   border-radius: var(--r-full);
   outline: none;
@@ -80,14 +81,15 @@
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-auto-flow: column;
-  gap: var(--sp-2);
+  gap: 6px;
   margin: 0;
   padding: 0;
 }
-/* Three answers take a third of the row each. 12 px sides, not the board's
-   20, let the app's "Always allow" fit where the board says "Allow". */
+/* Three answers take a third of the row each. 10 px sides (12 on phones),
+   not the board's 20, let the app's "Always allow" fit where the board says
+   "Allow". */
 .action {
-  padding: 0 var(--sp-3);
+  padding: 0 10px;
 }
 
 /* PHONE_QUERY in phone-viewport.ts: Dialog.module.css makes the dialog a
@@ -97,7 +99,18 @@
   .head {
     display: none;
   }
+  .body {
+    gap: var(--sp-5);
+  }
+  .input {
+    height: var(--h-control);
+    padding: 0 var(--sp-5);
+  }
   .actions {
     grid-auto-flow: row;
+    gap: var(--sp-2);
+  }
+  .action {
+    padding: 0 var(--sp-3);
   }
 }

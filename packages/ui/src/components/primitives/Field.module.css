@@ -1,13 +1,15 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* 10 px above and below on desktop, the board's 12 on phones. The value's
+   type follows the chrome's (the Dialog is data-chrome). */
 :where(.field) {
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   gap: var(--sp-1);
   margin: 0;
-  padding: var(--sp-3) 0;
+  padding: 10px 0;
 }
 .field + .field {
   border-top: 1px solid var(--chrome-line);
@@ -37,4 +39,10 @@
 .field[data-warning] .label,
 .field[data-warning] .value {
   color: var(--chrome-warn-text);
+}
+
+@media (max-width: 560px) {
+  :where(.field) {
+    padding: var(--sp-3) 0;
+  }
 }

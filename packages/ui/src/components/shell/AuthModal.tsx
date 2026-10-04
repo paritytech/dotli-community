@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
+import { isPhoneViewport } from '../../phone-viewport.js';
 import { revealTopbar } from '../../topbar-autohide.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
@@ -26,12 +27,15 @@ const POLKADOT_MOBILE_DOWNLOAD_URL = 'https://docs.polkadot.com/apps/';
 const SCAN_HINT = 'Scan with Polkadot Mobile to connect';
 
 /**
- * The drawn code's side in CSS px, its 2-module quiet zone included. The
- * tile's padding (AuthModal.module.css) adds the rest of the white, so the
- * tile is the board's 264 px. The stylesheet reads it as `--qr-size` to
- * reserve the tile's height.
+ * The drawn code's side in CSS px, its 2-module quiet zone included, for the
+ * viewport the code is drawn in. The tile's padding adds the rest of the
+ * white, so the tile is the board's 264 px on a phone and 234 px in the
+ * desktop's narrower surface. AuthModal.module.css repeats both as
+ * `--qr-size` to reserve the tile's height before the code is drawn.
  */
-const QR_SIZE = 248;
+function qrSize(): number {
+  return isPhoneViewport() ? 248 : 218;
+}
 
 type ErrorView = Extract<AuthModalView, { kind: 'error' }>;
 
@@ -222,7 +226,7 @@ export function AuthModal(): JSX.Element {
     void import('qrcode')
       .then(QRCode =>
         QRCode.default.toCanvas(canvas, payload, {
-          width: QR_SIZE,
+          width: qrSize(),
           margin: 2,
           // The badge hides the code's centre: Q recovers a quarter of it.
           errorCorrectionLevel: 'Q',
@@ -316,6 +320,7 @@ export function AuthModal(): JSX.Element {
       }}
       onClick={onBackdropClick}
       class={s['backdrop']}
+      data-chrome=""
       data-open={open() ? '' : undefined}
       id="auth-modal-backdrop"
       role="dialog"
@@ -360,11 +365,7 @@ export function AuthModal(): JSX.Element {
               {hint()}
             </p>
           </div>
-          <div
-            class={[s['qr'], !mobile() && s['qrScan']]}
-            id="auth-modal-qr"
-            style={{ '--qr-size': `${String(QR_SIZE)}px` }}
-          >
+          <div class={[s['qr'], !mobile() && s['qrScan']]} id="auth-modal-qr">
             <Switch>
               <Match when={view()?.kind === 'authenticating'}>
                 <div class={s['progress']}>

@@ -5,8 +5,8 @@
 
 .stack {
   position: fixed;
-  right: var(--sp-5);
-  bottom: var(--sp-5);
+  right: var(--sp-4);
+  bottom: var(--sp-4);
   /* Under the header, the scrims and the modals, so a toast never covers a
      prompt the user has to answer. */
   z-index: 900;
@@ -37,38 +37,42 @@
 .stack[data-expanded] .cards {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-2);
+  gap: 6px;
   max-height: 60dvh;
   margin: calc(-1 * var(--sp-3));
   padding: var(--sp-3);
   overflow-y: auto;
 }
 
+/* 20 px with its centre 4 px inside the card's corner, the board's 24 on
+   phones. */
 .close-all {
   position: absolute;
-  top: calc(-1 * var(--sp-2));
-  right: calc(-1 * var(--sp-2));
+  top: -6px;
+  right: -6px;
   z-index: 20;
   display: grid;
   place-items: center;
   box-sizing: border-box;
-  width: var(--sp-6);
-  height: var(--sp-6);
+  width: var(--sp-5);
+  height: var(--sp-5);
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: 50%;
   background: var(--chrome-glass);
+  /* No text: only so it does not hold the UA's fractional 13.333 px. */
+  font: inherit;
   box-shadow: var(--chrome-shadow-pop);
   color: var(--chrome-text-muted);
   cursor: pointer;
   transition: color var(--dur-fast);
 }
-/* The board's 12 px badge cross: the shared 16 px close icon drawn smaller,
+/* The shared 16 px close icon drawn at the board's 12 px (10 on desktop),
    its stroke thickened so it reads at that size. */
 .close-all svg {
-  width: 12px;
-  height: 12px;
+  width: 10px;
+  height: 10px;
   stroke-width: 2.5;
 }
 .close-all:hover {
@@ -77,6 +81,22 @@
 .close-all:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
+}
+/* PHONE_QUERY in phone-viewport.ts: the board's sizes. */
+@media (max-width: 560px) {
+  .stack[data-expanded] .cards {
+    gap: var(--sp-2);
+  }
+  .close-all {
+    top: calc(-1 * var(--sp-2));
+    right: calc(-1 * var(--sp-2));
+    width: var(--sp-6);
+    height: var(--sp-6);
+  }
+  .close-all svg {
+    width: 12px;
+    height: 12px;
+  }
 }
 @media (prefers-reduced-motion: reduce) {
   .close-all {
