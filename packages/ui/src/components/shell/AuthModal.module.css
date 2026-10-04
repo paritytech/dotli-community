@@ -68,8 +68,7 @@
   }
 }
 
-/* The sheet's head (SheetHead) leads the phone layout only. A sheet's
-   opening that widens past it (a phone turned) drops it. */
+/* The sheet's head (SheetHead) leads the phone layout only. */
 .surface .sheet-head {
   display: none;
 }

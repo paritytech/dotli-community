@@ -145,10 +145,10 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  *
  * The glass surface drops from the pill's right edge like the topbar's
  * popovers, over a light scrim, and at 560 px and below it is a bottom sheet
- * over the dark scrim. Opened as one (PHONE_QUERY as it opens, createPopover's
- * `sheet`), it is led by the sheets' head (SheetHead): the grabber, "Sign in"
- * and a close button, and a swipe down on it closes, as Cancel does. The landing page has no pill, so there it takes the
- * popovers' fallback place in the top right corner. The body follows the
+ * over the dark scrim, led by the sheets' head (SheetHead): the grabber,
+ * "Sign in" and a close button, and a swipe down on it closes, as Cancel
+ * does. The landing page has no pill, so there it takes the popovers'
+ * fallback place in the top right corner. The body follows the
  * store's view: a spinner, the pairing QR code on its tile with the Polkadot
  * badge, login progress, or an error with the friendly copy and, when it can
  * help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
@@ -248,8 +248,6 @@ export function AuthModal(): JSX.Element {
 
   const dialog = createPopover({
     mode: 'dialog',
-    // For the sheet's head, which the phone layout's sheet has.
-    sheet: true,
     trigger: getAuthModalTrigger,
     surface: () => backdrop,
     closeOnBlockingModal: false,
@@ -331,18 +329,18 @@ export function AuthModal(): JSX.Element {
         }}
         class={s['surface']}
       >
-        <Show when={dialog.sheet()}>
-          <SheetHead
-            title="Sign in"
-            surface={() => surface}
-            onDismiss={closeAuthModal}
-            closeLabel="Close"
-            class={s['sheetHead']}
-            testId="auth-modal-sheet-head"
-            titleTestId="auth-modal-sheet-title"
-            closeTestId="auth-modal-sheet-close"
-          />
-        </Show>
+        {/* Always in the surface: the stylesheet shows it at phone width,
+            so an open sign-in narrowed to a phone's gets it too. */}
+        <SheetHead
+          title="Sign in"
+          surface={() => surface}
+          onDismiss={closeAuthModal}
+          closeLabel="Close"
+          class={s['sheetHead']}
+          testId="auth-modal-sheet-head"
+          titleTestId="auth-modal-sheet-title"
+          closeTestId="auth-modal-sheet-close"
+        />
         <div class={s['body']}>
           <div class={s['head']}>
             <h2 class={s['title']} id="auth-modal-title">

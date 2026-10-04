@@ -239,10 +239,11 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
   expect(tags(backdrop)).toEqual(['SECTION']);
-  // A wide viewport's: no sheet head, the parts in the body.
+  // The sheet head, which only a phone's stylesheet shows, then the parts in the body.
   const surface = nth(backdrop.children, 0);
-  expect(tags(surface)).toEqual(['DIV']);
-  const body = nth(surface.children, 0);
+  expect(tags(surface)).toEqual(['DIV', 'DIV']);
+  expect(nth(surface.children, 0).getAttribute('data-testid')).toBe('auth-modal-sheet-head');
+  const body = nth(surface.children, 1);
   expect(Array.from(body.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
     'DIV#',
     'DIV#auth-modal-qr',
@@ -1082,6 +1083,36 @@ describe('AuthModal on a phone', () => {
       const close = byTestId('auth-modal-sheet-close', head);
       expect(close.getAttribute('aria-label')).toBe('Close');
       close.click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('As a user who narrows an open sign-in to a phone width, the sheet it becomes is headed Sign in with a close button', async () => {
+    // Given: the sign-in open on a wide screen.
+    const viewport = stubPhoneViewport(false);
+    try {
+      const backdrop = await renderModal();
+      await authState(pairing());
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      viewport.set(true);
+      await settleQr();
+
+      // Then
+      const surface = nth(backdrop.children, 0);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      expect(byTestId('auth-modal-sheet-title', head).textContent).toBe('Sign in');
+
+      // When
+      byTestId('auth-modal-sheet-close', head).click();
       await settleQr();
 
       // Then
