@@ -865,6 +865,30 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     expect(document.activeElement).toBe(byId('surface'));
   });
 
+  it('As a mouse user, a long outside press on a menu still has its click swallowed', async () => {
+    // Given
+    const popover = renderPopover('menu');
+    await openPopover(popover);
+    vi.useFakeTimers();
+    try {
+      byId('outside').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+
+      // When: held for a second, then released.
+      vi.advanceTimersByTime(1000);
+      byId('outside').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+      let reached = false;
+      byId('outside').addEventListener('click', () => {
+        reached = true;
+      });
+      byId('outside').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+
+      // Then
+      expect(reached).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('As a user, an outside pointerdown whose click never comes does not swallow a later click', async () => {
     // Given: a press outside that turns into a scroll, so no click follows.
     const popover = renderPopover('menu');

@@ -380,7 +380,7 @@ export function createPopover(options: PopoverOptions): Popover {
           'pointerup',
           () => {
             if (swallowsOutsideClick()) {
-              swallowNextClick();
+              swallowNextClick({ afterRelease: true });
             }
             closeOutside();
           },
@@ -542,10 +542,10 @@ const SWALLOW_CLICK_MS = 500;
  * underneath, the way Radix's modal menu disables outside pointer events.
  * A press that never becomes a click (a scroll, a drag, a tap iOS fires no
  * click for) stops waiting at its pointercancel, the next pointerdown or
- * keydown, or after a moment, so a later keyboard, assistive-technology or
- * programmatic click is not eaten.
+ * keydown, or, armed `afterRelease` (at a pointerup), after a moment, so a
+ * later keyboard, assistive-technology or programmatic click is not eaten.
  */
-function swallowNextClick(): void {
+function swallowNextClick({ afterRelease = false } = {}): void {
   const stop = awaitEvent(
     'click',
     ev => {
@@ -554,8 +554,12 @@ function swallowNextClick(): void {
     },
     ['pointerdown', 'pointercancel', 'keydown'],
   );
-  // Stopping twice is harmless, so the timer need not be cleared when an event ends the wait first.
-  setTimeout(stop, SWALLOW_CLICK_MS);
+  // Armed at a pointerup the click follows at once. A mouse swallow is armed at the pointerdown and a
+  // held press must still have its click swallowed.
+  if (afterRelease) {
+    // Stopping twice is harmless.
+    setTimeout(stop, SWALLOW_CLICK_MS);
+  }
 }
 
 /**
