@@ -27,16 +27,16 @@
   }
 }
 
-/* The account sits apart from the actions: a hairline with 8 px each side
-   (before it the group's 4 px gap plus 4 px of margin, after it 8 px of
-   margin). On the item, so the bar's measure counts it. */
+/* The account sits apart from the actions: a 20 px hairline with 6 px each
+   side (before it the group's 4 px gap plus 2 px of margin, after it 6 px
+   of margin). On the item, so the bar's measure counts it. */
 :global(#topbar-actions) .item[data-item='auth']::before {
   content: '';
   align-self: center;
   flex: none;
   width: 1px;
-  height: var(--sp-6);
-  margin: 0 var(--sp-2) 0 var(--sp-1);
+  height: 20px;
+  margin: 0 6px 0 2px;
   background: var(--chrome-ring);
 }
 

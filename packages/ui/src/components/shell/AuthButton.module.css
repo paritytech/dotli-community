@@ -26,12 +26,26 @@
   width: var(--w-pop-sm);
 }
 
-/* The bar's account chip: a secondary button led by an avatar, inset evenly
-   on all sides (the avatar sits 6 px from the chip's left edge, as the chip's
-   own top and bottom). */
+/* The bar's Sign in button and account chip: the Button at the bar's
+   control height, its type, padding and gap scaled with it. */
+.sign-in,
 .chip {
-  max-width: 160px;
-  padding: 0 var(--sp-4) 0 calc((var(--h-control) - var(--h-row-sm)) / 2);
+  gap: 6px;
+  height: var(--h-bar-control);
+  font-size: 13px;
+}
+.sign-in {
+  padding: 0 16px 0 13px;
+}
+.sign-in svg {
+  width: 14px;
+  height: 14px;
+}
+/* A secondary button led by an avatar, inset evenly on all sides (the
+   avatar sits 5 px from the chip's left edge, as from its top and bottom). */
+.chip {
+  max-width: 132px;
+  padding: 0 13px 0 calc((var(--h-bar-control) - 26px) / 2);
   box-shadow: none;
   font-weight: var(--fw-semibold);
 }
@@ -43,18 +57,18 @@
   display: grid;
   flex: none;
   place-items: center;
-  width: var(--h-row-sm);
-  height: var(--h-row-sm);
+  width: 26px;
+  height: 26px;
   border-radius: 50%;
   background: var(--chrome-avatar);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);
-  font-size: var(--fs-body);
+  font-size: 11px;
   font-weight: var(--fw-semibold);
 }
 .avatar svg {
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 .name {
   min-width: 0;
@@ -69,8 +83,10 @@
 @media (max-width: 560px) {
   .chip,
   .sign-in {
+    gap: var(--sp-2);
     width: var(--h-control);
     padding: 0;
+    font-size: var(--fs-body);
   }
   .name,
   .label {

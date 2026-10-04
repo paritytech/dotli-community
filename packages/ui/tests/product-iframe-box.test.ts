@@ -22,10 +22,10 @@ describe('product iframe box', () => {
     const box = productIframeBox(opts);
 
     // Then
-    expect(box.top).toBe('var(--topbar-height, 84px)');
+    expect(box.top).toBe('var(--topbar-height, 68px)');
     expect(box.left).toBe('var(--safe-left, 0px)');
     expect(box.width).toBe('calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))');
-    expect(box.height).toBe('calc(100dvh - var(--topbar-height, 84px) - var(--safe-bottom, 0px))');
+    expect(box.height).toBe('calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))');
   });
 
   it('As a user on a notched phone with the topbar hidden, the product still starts below the status bar', () => {
@@ -63,10 +63,10 @@ describe('product iframe box', () => {
 
     // Then
     // Without a fallback the whole declaration drops and the layout breaks, so
-    // each token must name one. The topbar keeps its own 56px default.
+    // each token must name one. The topbar keeps its own 68px default, the desktop band.
     expect(tokens.length).toBeGreaterThan(0);
     for (const token of tokens) {
-      expect(token).toMatch(/, (0px|84px)\)$/);
+      expect(token).toMatch(/, (0px|68px)\)$/);
     }
   });
 });

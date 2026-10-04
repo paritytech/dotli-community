@@ -8,7 +8,7 @@
 
 .topbar {
   position: fixed;
-  top: calc(var(--sp-3) + var(--safe-top));
+  top: calc(var(--topbar-inset) + var(--safe-top));
   left: 50%;
   z-index: 1000;
   box-sizing: border-box;
@@ -50,10 +50,10 @@
 .row {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: 6px;
   box-sizing: border-box;
   height: var(--h-bar);
-  padding: var(--sp-2);
+  padding: 6px;
   transition: opacity var(--dur) var(--delay-content) ease-out;
 }
 /* Collapsed, the row stays in the DOM and keeps its tab stops (tabbing into
@@ -139,7 +139,9 @@
     transition: none;
   }
   .row {
+    gap: var(--sp-2);
     width: 100%;
+    padding: var(--sp-2);
   }
 }
 @media (prefers-reduced-motion: reduce) {

@@ -1,14 +1,15 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A 32 px circle pulled into the address's 20 px end, so its glyph sits
-   where the text's end sits on the other side. */
+/* A 26 px circle pulled into the address's 16 px end (on a phone 32 px
+   into 20 px), so its glyph sits where the text's end sits on the other
+   side. */
 .wrap {
   position: relative;
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
-  margin: 0 0 0 calc(-1 * var(--sp-2));
+  margin: 0 0 0 -6px;
 }
 .shield {
   display: flex;
@@ -16,14 +17,15 @@
   justify-content: center;
   flex-shrink: 0;
   box-sizing: border-box;
-  width: var(--h-row-sm);
-  height: var(--h-row-sm);
+  width: 26px;
+  height: 26px;
   margin: 0;
   padding: 0;
   border: 0;
   border-radius: var(--r-full);
   background: transparent;
   color: var(--chrome-idle);
+  font: inherit;
   cursor: pointer;
   transition:
     background var(--dur-fast),
@@ -45,8 +47,8 @@
 }
 .glyph {
   display: none;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
 }
 .shield:not([data-state='trusted']) .verified-glyph,
 .shield[data-state='trusted'] .trusted-glyph {
@@ -77,6 +79,15 @@
 @media (max-width: 560px) {
   .wrap {
     position: static;
+    margin-left: calc(-1 * var(--sp-2));
+  }
+  .shield {
+    width: var(--h-row-sm);
+    height: var(--h-row-sm);
+  }
+  .glyph {
+    width: 16px;
+    height: 16px;
   }
   .shield::after {
     content: '';

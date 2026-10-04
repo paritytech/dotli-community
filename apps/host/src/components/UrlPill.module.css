@@ -1,15 +1,16 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The address: a sunken well with 20 px ends, so the shield's glyph and the
-   end of the text sit the same distance from the edges. In a pill at its
-   max-width it shrinks first (a large flex-shrink), down to 160 px, before
-   any action collapses into More. A local product (data-localhost, set by
-   bindUrlPill) gets a terminal icon instead of the shield. */
+/* The address: a sunken well with 16 px ends (20 px on a phone), so the
+   shield's glyph and the end of the text sit the same distance from the
+   edges. In a pill at its max-width it shrinks first (a large flex-shrink),
+   down to 136 px, before any action collapses into More. A local product
+   (data-localhost, set by bindUrlPill) gets a terminal icon instead of the
+   shield. */
 .url {
   display: flex;
   flex: 0 100 auto;
-  min-width: 160px;
+  min-width: 136px;
 }
 .url[hidden] {
   display: none;
@@ -19,16 +20,16 @@
   flex: 1;
   align-items: center;
   justify-content: center;
-  gap: var(--sp-2);
+  gap: 6px;
   box-sizing: border-box;
   min-width: 0;
-  height: var(--h-control);
-  padding: 0 var(--sp-5);
+  height: var(--h-bar-control);
+  padding: 0 var(--sp-4);
   border-radius: var(--r-full);
   background: var(--chrome-well);
   box-shadow: var(--chrome-shadow-inset);
   color: var(--chrome-text);
-  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
+  font: var(--fw-regular) 13px / 1 var(--font-sans);
   user-select: none;
   transition: background var(--dur-fast);
 }
@@ -51,6 +52,8 @@
 }
 .localhost-icon {
   flex-shrink: 0;
+  width: 10px;
+  height: 10px;
   color: var(--chrome-text-muted);
 }
 .pill:not([data-localhost]) .localhost-icon {
@@ -58,7 +61,7 @@
 }
 .pill[data-localhost] .domain {
   font-family: var(--font-mono);
-  font-size: var(--fs-caption);
+  font-size: 11px;
 }
 
 /* Phones: the address fills the header between the logo and More, and the
@@ -74,6 +77,16 @@
   }
   .pill {
     position: relative;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-body);
+  }
+  .localhost-icon {
+    width: 12px;
+    height: 12px;
+  }
+  .pill[data-localhost] .domain {
+    font-size: var(--fs-caption);
   }
   .pill:has([aria-expanded='true']) {
     background: var(--chrome-well-strong);

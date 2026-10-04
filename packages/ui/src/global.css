@@ -60,10 +60,10 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-  /* The pill's band: 12 px above, the 60 px pill, 12 px below. The product
+  /* The pill's band: 10 px above, the 48 px pill, 10 px below. The product
      frame runs under the floating pill, the loading screen and the docked
      panels start below it. */
-  --topbar-height: calc(var(--sp-3) + var(--h-bar) + var(--sp-3) + var(--safe-top));
+  --topbar-height: calc(var(--topbar-inset) + var(--h-bar) + var(--topbar-inset) + var(--safe-top));
   --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
 }
 
@@ -243,8 +243,12 @@
   --h-control-lg: 52px;
   --h-row-lg: 56px;
   --h-tile: 72px;
-  /* The topbar row: a 44 px control with 8 px above and below. */
-  --h-bar: 60px;
+  /* The desktop pill: 36 px controls with 6 px above and below, 10 px from
+     the top of the window. Desktop is not touch, so its bar is smaller than
+     the phone header below. */
+  --h-bar: 48px;
+  --h-bar-control: 36px;
+  --topbar-inset: 10px;
 
   --w-pop-sm: 300px;
   --w-pop-md: 360px;
@@ -262,6 +266,14 @@
   --delay-tip: 0.35s;
   /* Pulses. */
   --loop: 1.4s;
+}
+
+/* Phones: the header's 60 px row of 44 px touch controls (the boards'). */
+@media (max-width: 560px) {
+  :root {
+    --h-bar: 60px;
+    --h-bar-control: 44px;
+  }
 }
 
 /* Inside the chrome (data-chrome: the topbar, its popovers and menus), the

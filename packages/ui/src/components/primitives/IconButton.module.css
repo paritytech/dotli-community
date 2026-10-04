@@ -68,10 +68,11 @@
   box-shadow: 0 0 0 1.5px var(--inverse-fg);
 }
 
-/* Inside the bar the button is chrome: round, 44 px, white on the dark glass.
-   The landing page keeps the rules above. */
+/* Inside the bar the button is chrome: round, 36 px (44 px on a phone),
+   white on the dark glass. The landing page keeps the rules above. */
 :global(#topbar) .button {
-  width: var(--h-control);
+  width: var(--h-bar-control);
+  height: var(--h-bar-control);
   min-width: 0;
   padding: 0;
   border: 0;
@@ -100,15 +101,15 @@
   outline-offset: 2px;
 }
 :global(#topbar) .button > svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
 }
-/* On the 20 px icon's top-right corner. */
+/* On the icon's top-right corner, its centre 1 px inside it. */
 :global(#topbar) .button[data-badge]::after {
-  top: 9px;
-  right: 9px;
-  width: var(--sp-2);
-  height: var(--sp-2);
+  top: 8px;
+  right: 8px;
+  width: 6px;
+  height: 6px;
   background: var(--chrome-action);
   box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
 }
@@ -127,8 +128,21 @@
 :global(#topbar) .button[data-badge-tone='idle']::after {
   background: var(--chrome-idle);
 }
+/* Phones: the board's 20 px icon and 8 px badge. */
+@media (max-width: 560px) {
+  :global(#topbar) .button > svg {
+    width: 20px;
+    height: 20px;
+  }
+  :global(#topbar) .button[data-badge]::after {
+    top: 9px;
+    right: 9px;
+    width: var(--sp-2);
+    height: var(--sp-2);
+  }
+}
 /* The board's .icon-btn-sm. Unscoped, unlike the bar rules above: toasts
-   render outside #topbar. Not used in the bar, whose 44 px rule would win. */
+   render outside #topbar. Not used in the bar, whose size rule would win. */
 .button[data-size='sm'] {
   width: var(--h-control-sm);
   height: var(--h-control-sm);

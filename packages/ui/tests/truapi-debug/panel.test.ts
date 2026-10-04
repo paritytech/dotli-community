@@ -224,7 +224,7 @@ function attachFrame(withTopbar: boolean): Record<string, string> {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 84px) - var(--safe-bottom, 0px))';
+const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
 const FULL_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
 function stubClipboard(writeText: ((text: string) => Promise<void>) | null): void {

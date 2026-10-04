@@ -7,13 +7,13 @@
   left: 50%;
   z-index: 1001;
   margin: 0;
-  padding: var(--sp-2) var(--sp-4);
+  padding: 6px 12px;
   border: 0;
   border-radius: var(--r-full);
   background: var(--chrome-glass);
   box-shadow: var(--chrome-shadow-pop);
   color: var(--chrome-text);
-  font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
+  font: var(--fw-medium) 12px / 1 var(--font-sans);
   white-space: nowrap;
   cursor: pointer;
   transform: translateX(-50%);
@@ -23,6 +23,14 @@
   top: calc(var(--topbar-height) + var(--sp-1));
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
+}
+
+/* Phones: the boards' sizes, for a keyboard's Tab. */
+@media (max-width: 560px) {
+  .reveal {
+    padding: var(--sp-2) var(--sp-4);
+    font-size: var(--fs-small);
+  }
 }
 
 /* The collapsed capsule is too small to aim at, so a wider transparent
