@@ -22,19 +22,15 @@
 }
 .mark {
   display: block;
+  flex: none;
   width: 24px;
   height: 24px;
-  overflow: visible;
 }
-.mark path {
-  fill: var(--chrome-text);
-}
-/* The wordmark's cap height matches 17 px semibold text, the mockup's size. */
-.brand {
-  display: block;
-  width: auto;
-  height: 14px;
-  color: var(--chrome-text);
+.wordmark {
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-tight);
+  white-space: nowrap;
 }
 /* The mockup's outline chip. */
 .beta {
@@ -57,8 +53,15 @@
     width: var(--h-control);
     padding: 0;
   }
-  .brand,
   .beta {
     display: none;
+  }
+  /* Out of sight but still the link's accessible name. */
+  .wordmark {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }
