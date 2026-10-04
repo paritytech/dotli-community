@@ -19,6 +19,8 @@ export interface TopbarState {
    */
   landing: boolean;
   blockingModalActive: boolean;
+  /** Prompts queued behind the one on screen (the status capsule's action dot). */
+  blockingModalsWaiting: number;
   chainsButtonVisible: boolean;
   /**
    * The Settings panel is open. SettingsPopover writes it as the panel opens
@@ -35,6 +37,7 @@ const topbar = createSyncStore<TopbarState>(
     autoHide: false,
     landing: false,
     blockingModalActive: false,
+    blockingModalsWaiting: 0,
     chainsButtonVisible: false,
     settingsOpen: false,
   },
@@ -65,6 +68,10 @@ export function setLandingPage(landing: boolean): void {
 
 export function setBlockingModalActive(active: boolean): void {
   topbar.set({ ...topbar.get(), blockingModalActive: active });
+}
+
+export function setBlockingModalsWaiting(blockingModalsWaiting: number): void {
+  topbar.set({ ...topbar.get(), blockingModalsWaiting });
 }
 
 export function recordChainsButtonVisible(visible: boolean): void {

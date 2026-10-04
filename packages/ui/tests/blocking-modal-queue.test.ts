@@ -7,6 +7,8 @@ import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId, query } from './support.js';
+import { getTopbarState } from '../src/state/topbar.js';
+import { resetStores } from './helpers/solid.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -186,5 +188,56 @@ describe('blocking modal queue', () => {
     finishActive();
     await active;
     activeScope.dispose();
+  });
+});
+
+describe('blocking modal queue, waiting count', () => {
+  afterEach(() => {
+    resetStores();
+  });
+
+  it('As a user, the bar knows how many prompts wait behind the one on screen', async () => {
+    // Given
+    const scope = createBlockingModalCoordinator().createScope();
+    let finishFirst: () => void = () => {};
+    const first = scope.enqueue(
+      () =>
+        new Promise<void>(resolve => {
+          finishFirst = resolve;
+        }),
+    );
+    const second = scope.enqueue(() => new Promise<void>(() => {}));
+
+    // Then
+    expect(getTopbarState().blockingModalActive).toBe(true);
+    expect(getTopbarState().blockingModalsWaiting).toBe(1);
+
+    // When
+    finishFirst();
+    await first;
+
+    // Then
+    expect(getTopbarState().blockingModalsWaiting).toBe(0);
+    scope.dispose();
+    await second.catch(() => {});
+  });
+
+  it('As a user leaving a product, its waiting prompts no longer count', async () => {
+    // Given
+    const coordinator = createBlockingModalCoordinator();
+    const other = coordinator.createScope();
+    const leaving = coordinator.createScope();
+    const active = other.enqueue(() => new Promise<void>(() => {}));
+    const waiting = leaving.enqueue(() => new Promise<void>(() => {}));
+    expect(getTopbarState().blockingModalsWaiting).toBe(1);
+
+    // When
+    leaving.dispose();
+    await waiting.catch(() => {});
+
+    // Then
+    expect(getTopbarState().blockingModalsWaiting).toBe(0);
+    other.dispose();
+    await active.catch(() => {});
   });
 });
