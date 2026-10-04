@@ -599,6 +599,24 @@ describe('The network popover island', () => {
     expect(byTestId('chains-status').textContent).toBe('Your connection is goodServed by trusted providers');
   });
 
+  it('As a user on trusted providers, I get no tip about steadier peers', async () => {
+    // Given
+    setBackend('rpc-gateway');
+    initSettingsStore();
+    cleanups.push(() => {
+      localStorage.clear();
+    });
+    monitor.status = [chain({ latest: 10, bars: bars(8, 3), sinceLast: 500 })];
+    notify();
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(document.querySelector('[data-testid="chains-tips"]')).toBeNull();
+  });
+
   it('As a user on a chain with no peers, the count says 0 and is marked as none', async () => {
     // Given
     monitor.status = [chain({ latest: 10, sinceLast: 500, peers: 0 })];

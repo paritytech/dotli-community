@@ -363,10 +363,13 @@ export function ChainsContent(): JSX.Element {
           </Show>
         </p>
       </div>
-      {/* What a visitor can actually do about a slow connection. */}
-      <Callout icon={<InfoIcon />} testId="chains-tips">
-        {TIP}
-      </Callout>
+      {/* What a visitor can actually do about a slow light client. Trusted
+          providers have no peers to steady. */}
+      <Show when={settings()?.backend !== 'rpc-gateway'}>
+        <Callout icon={<InfoIcon />} testId="chains-tips">
+          {TIP}
+        </Callout>
+      </Show>
     </Surface>
   );
 }
