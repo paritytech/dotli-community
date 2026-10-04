@@ -390,7 +390,9 @@ and worker teardown. It runs headed to exercise actual visibility changes; use
 `xvfb-run -a npm run test:polkavm-qualification` on a display-less Linux runner. Playwright results attach
 fixture/runtime/SDK provenance, screenshots, passive worker observations, browser logs, and teardown evidence. Each
 story gets a fresh Chromium profile, connected with Playwright's `noDefaults: true` so its usual focus emulation cannot
-force background tabs to remain visible. Visibility is observed from the browser, never synthesized.
+force background tabs to remain visible. Visibility is observed from the browser, never synthesized. Guest input waits
+for the host loading overlay to disappear and uses canvas-relative, actionability-checked clicks. Use Playwright's
+matching Chromium build; a system-browser override is not equivalent qualification evidence.
 
 These fixtures do **not** qualify cartridge-save isolation: that needs a save-capable cartridge guest and two distinct
 cartridge contents. Wallet signing and native hosts are also outside this suite.

@@ -384,6 +384,8 @@ export class Qualification {
       'guest presents its first frame',
       async () => Number(await this.canvas.getAttribute('data-polkavm-frames')) > 0,
     );
+    // The first guest frame can precede dismissal of the host's input-blocking loader.
+    await expect(this.page.locator('#app-loading')).toBeHidden();
     await this.screenshot(warm ? 'warm-ready' : 'cold-ready');
   }
   async upload(): Promise<string> {
