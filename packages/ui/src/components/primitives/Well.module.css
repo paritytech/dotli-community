@@ -76,7 +76,35 @@
   white-space: nowrap;
 }
 .kv[data-copyable] {
+  position: relative;
   cursor: pointer;
+}
+:where(.copy) {
+  all: unset;
+  display: block;
+  min-width: 0;
+  cursor: pointer;
+}
+/* The button's hit area is the whole row, so no interactive element nests. */
+.copy::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+}
+.copy:focus-visible::after {
+  outline: var(--chrome-focus-ring);
+  outline-offset: -2px;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 .kv[data-copyable]:hover .value {
   text-decoration: underline;

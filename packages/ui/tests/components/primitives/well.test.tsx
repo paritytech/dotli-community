@@ -44,7 +44,9 @@ describe('Well and its parts', () => {
     // Then
     expect(row.hasAttribute('data-copyable')).toBe(true);
     expect(row.getAttribute('title')).toBe('Click to copy Site');
-    expect(row.children[1]?.tagName).toBe('CODE');
+    expect(row.children[1]?.tagName).toBe('BUTTON');
+    expect(row.children[1]?.getAttribute('aria-label')).toBe('Copy Site');
+    expect(row.children[1]?.querySelector('code')?.textContent).toBe('dot.li');
 
     // When
     row.click();

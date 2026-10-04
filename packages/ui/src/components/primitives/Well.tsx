@@ -43,10 +43,11 @@ export function Row(props: {
 /**
  * A key and its mono value (code, so it reads as a value to copy). A
  * `copyable` row is the click target: it carries the pointer and underlines
- * its value on hover.
+ * its value on hover. Its value sits in a button stretched over the row, so
+ * the keyboard reaches it and the click handler stays on the row.
  */
 export function KeyValue(props: {
-  k: JSX.Element;
+  k: string;
   v: JSX.Element;
   /** Package names and other code keys. */
   monoKey?: boolean;
@@ -54,6 +55,8 @@ export function KeyValue(props: {
   dense?: boolean;
   copyable?: boolean;
   title?: string | undefined;
+  /** Sits after the value, for a live region that announces the click's result. */
+  status?: JSX.Element;
   onClick?: (() => void) | undefined;
   class?: string | undefined;
   testId?: string;
@@ -71,7 +74,14 @@ export function KeyValue(props: {
       data-testid={props.testId}
     >
       <span class={s['key']}>{props.k}</span>
-      <code class={s['value']}>{props.v}</code>
+      {props.copyable === true ? (
+        <button type="button" class={s['copy']} aria-label={`Copy ${props.k}`}>
+          <code class={s['value']}>{props.v}</code>
+        </button>
+      ) : (
+        <code class={s['value']}>{props.v}</code>
+      )}
+      {props.status}
     </div>
   );
 }

@@ -30,6 +30,11 @@
   font-family: var(--font-mono);
   font-size: var(--fs-caption);
 }
+/* Safari makes no scroller focusable, so the value takes tabindex itself. */
+.field[data-mono] .value:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
 .field[data-warning] .label,
 .field[data-warning] .value {
   color: var(--chrome-warn-text);

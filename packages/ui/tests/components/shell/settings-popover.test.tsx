@@ -256,7 +256,7 @@ function expectInfoRow(
   value: string,
   opts: { copyable?: boolean; dense?: boolean } = {},
 ): void {
-  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'CODE']);
+  expect(tags(must(row, 'a row'))).toEqual(opts.copyable === true ? ['SPAN', 'BUTTON', 'SPAN'] : ['SPAN', 'CODE']);
   expect(row?.children[0]?.textContent).toBe(label);
   expect(row?.children[1]?.textContent).toBe(value);
   expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
@@ -770,6 +770,55 @@ describe('The settings popover island', () => {
 
     // Then
     expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a keyboard user, I reach a copyable diagnostics row as a button and copy it with Enter', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    await renderPopover();
+    await openPopover();
+    const site = infoRow('Site');
+    const button = query(site, 'button', HTMLButtonElement);
+    const status = query(site, '[role="status"]');
+
+    // When
+    button.focus();
+    button.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    flush();
+
+    // Then
+    expect(button.getAttribute('aria-label')).toBe('Copy Site');
+    expect(button.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(button);
+    expect(writeText).toHaveBeenCalledWith(window.location.host);
+    expect(status.textContent).toBe('Copied');
+    expect(infoRow('Build').querySelector('button')).toBeNull();
+  });
+
+  it('As a dotli user, clicking a copyable row that has no value copies nothing', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    await renderPopover();
+    await openPopover();
+    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mode-info-row"]'));
+    const empty = rows.find(row => ['n/a', '…', ''].includes(row.querySelector('code')?.textContent ?? 'x'));
+
+    // When
+    empty?.querySelector('button')?.click();
+    await Promise.resolve();
+
+    // Then
+    expect(writeText).not.toHaveBeenCalled();
   });
 
   it('As a dotli user, I open Packages to read the package versions and close it again', async () => {

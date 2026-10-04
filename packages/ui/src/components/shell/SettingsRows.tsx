@@ -4,6 +4,7 @@
 import { createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { KeyValue } from '../primitives/Well.js';
+import s from '../primitives/Well.module.css';
 
 /** How long a copied row reads "Copied". */
 const COPIED_MS = 1000;
@@ -45,6 +46,13 @@ export function InfoRow(props: { label: string; value: string; copyable?: boolea
           }, COPIED_MS);
         });
       }}
+      status={
+        copyable ? (
+          <span role="status" class={s['srOnly']}>
+            {copied() ? 'Copied' : ''}
+          </span>
+        ) : undefined
+      }
       testId="mode-info-row"
     />
   );

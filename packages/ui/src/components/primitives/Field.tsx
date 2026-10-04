@@ -27,7 +27,13 @@ export function Field(props: {
       <span class={s['label']} data-testid={props.labelTestId}>
         {props.label}
       </span>
-      <span class={s['value']} data-testid={props.valueTestId}>
+      <span
+        class={s['value']}
+        data-testid={props.valueTestId}
+        tabindex={props.mono === true ? 0 : undefined}
+        role={props.mono === true ? 'region' : undefined}
+        aria-label={props.mono === true ? props.label : undefined}
+      >
         {props.value}
       </span>
     </div>
