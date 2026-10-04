@@ -19,6 +19,7 @@ import { captureException } from '@dotli/metrics';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
+import { CloseIcon, IconButton } from '../primitives/IconButton.js';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
 import { createPopover } from './create-popover.js';
@@ -26,7 +27,8 @@ import s from './Popover.module.css';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
-export const SHEET_EXIT_MS = 280;
+/** A sheet's slide, `--dur-morph` in components/sheet/Sheet.module.css. */
+export const SHEET_EXIT_MS = 460;
 
 /** How long a mouse rests on the trigger before an `openOnHover` popover shows. */
 const HOVER_SHOW_MS = 200;
@@ -104,10 +106,10 @@ export function usePopover(): PopoverContextValue {
  * A shell popover: the trigger, and in the body a surface (`role="dialog"`)
  * with an optional backdrop. The surface opens anchored (under the topbar at
  * its right edge, or under its trigger) or, when the viewport matches
- * SHEET_QUERY as it opens, as a modal bottom sheet (components/sheet). The
- * content is a lazy component in its own chunk: preloaded when the browser
- * is idle, mounted when the popover opens, and unmounted once it has closed
- * and faded out, so each opening starts afresh. Content that cannot load
+ * PHONE_QUERY (phone-viewport.ts) as it opens, as a modal bottom sheet
+ * (components/sheet). The content is a lazy component in its own chunk:
+ * preloaded when the browser is idle, mounted when the popover opens, and
+ * unmounted once it has closed and faded out, so each opening starts afresh. Content that cannot load
  * or throws is reported once and closes the popover; the next opening loads
  * it again.
  * Focus and dismissal are createPopover's (`popover` mode anchored,
@@ -414,17 +416,16 @@ function SheetHeader(props: { title: string; surface: () => HTMLElement | undefi
       testId="popover-sheet-header"
       titleTestId="popover-sheet-title"
     >
-      <button
-        type="button"
-        class={s['sheetClose']}
-        data-testid="popover-sheet-close"
+      <IconButton
+        size="sm"
+        testId="popover-sheet-close"
         aria-label={`Close ${props.title}`}
         onClick={() => {
           props.close();
         }}
       >
-        ✕
-      </button>
+        <CloseIcon />
+      </IconButton>
     </SheetHead>
   );
 }

@@ -261,8 +261,9 @@
   margin-top: var(--sp-2);
 }
 
-/* SHEET_QUERY in create-popover.ts. Twin of Popover.module.css
-   .surface[data-sheet], on the board's radius and --dur-morph clock. */
+/* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
+   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap and the
+   --dur-morph slide): keep the two in step. */
 @media (max-width: 560px) {
   .backdrop {
     background: var(--chrome-scrim);
@@ -277,7 +278,7 @@
     left: 0;
     width: 100%;
     max-width: 100%;
-    max-height: calc(var(--content-height) * 0.85);
+    max-height: 85dvh;
     padding: var(--sp-6) var(--sp-4) calc(var(--sp-6) + var(--safe-bottom));
     border-radius: var(--r-xl) var(--r-xl) 0 0;
     box-shadow: var(--chrome-shadow-sheet);

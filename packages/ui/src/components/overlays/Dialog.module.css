@@ -71,8 +71,8 @@
   }
 }
 
-/* A media-query twin of the surface geometry in components/sheet/Sheet.module.css:
-   keep the two in step. */
+/* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
+   in components/sheet/Sheet.module.css: keep the two in step. */
 @media (max-width: 560px) {
   .backdrop {
     place-items: end stretch;

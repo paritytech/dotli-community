@@ -502,9 +502,14 @@ describe('Popover', () => {
       'sheet header',
     );
     expect(byTestId('popover-sheet-title', header).textContent).toBe('Test');
+    // The close is the small icon button: its name comes from its label alone.
+    const close = byTestId('popover-sheet-close', header, HTMLButtonElement);
+    expect(close.getAttribute('aria-label')).toBe('Close Test');
+    expect(close.getAttribute('data-size')).toBe('sm');
+    expect(close.textContent).toBe('');
 
     // When
-    mouseClick(must(header.querySelector<HTMLElement>('[data-testid="popover-sheet-close"]'), 'close'));
+    mouseClick(close);
     await settle();
 
     // Then

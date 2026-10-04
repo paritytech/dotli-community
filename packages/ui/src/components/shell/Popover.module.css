@@ -3,8 +3,9 @@
 
 /* The surface's base rule is wrapped in :where(), so a consumer's own class (its
    place, width and look) wins over it whatever order the stylesheets load in.
-   The state rules keep their specificity, so a sheet (the shared frame's
-   two-attribute rules) still takes the full width over a consumer's width. */
+   The state rules keep their specificity, so a sheet (the two-attribute
+   rules of the shared frame, components/sheet/Sheet.module.css) still takes
+   the full width over a consumer's width. */
 
 .backdrop {
   display: none;
@@ -106,26 +107,6 @@
   to {
     transform: rotate(360deg);
   }
-}
-
-/* As a sheet, the surface and its backdrop take the sheet frame
-   (components/sheet/Sheet.module.css). The head's close button is the
-   popover's own. */
-.sheet-close {
-  appearance: none;
-  margin: 0;
-  padding: 6px 10px;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--chrome-text-muted);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-}
-.sheet-close:hover {
-  background: var(--chrome-fill);
-  color: var(--chrome-text);
 }
 
 /* Under its trigger (anchor="trigger"): the place is set inline. */

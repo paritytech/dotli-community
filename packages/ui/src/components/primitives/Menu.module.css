@@ -57,9 +57,8 @@
   }
 }
 /* As a sheet (components/sheet/Sheet.module.css) the head runs edge to
-   edge, and the rows end the board's 24 px above the home indicator. */
+   edge, and the frame keeps the room under the rows. */
 .menu[data-sheet] {
-  --sheet-inset: calc(var(--sp-6) + var(--safe-bottom));
   padding-top: 0;
   padding-inline: 0;
 }
