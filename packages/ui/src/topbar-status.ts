@@ -6,6 +6,7 @@
 // publishes the pill's box, because the popovers that drop from it are
 // portalled to <body> and cannot see it.
 
+import { layoutParent } from './components/shell/topbar/fit.js';
 import { chatPanelStore, totalChatUnread } from './state/chat-panel.js';
 import { initNetworkHealth, networkHealthStore } from './state/network-health.js';
 import { topbarStore } from './state/topbar.js';
@@ -61,7 +62,7 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
  */
 export function topbarActionRoom(group: HTMLElement): number | undefined {
   const bar = document.getElementById('topbar');
-  const row = group.parentElement;
+  const row = layoutParent(group);
   if (bar === null || row === null) {
     return undefined;
   }

@@ -118,4 +118,19 @@ describe('bindTopbarStatus', () => {
     expect(topbarActionRoom(group)).toBe(440);
     document.body.replaceChildren();
   });
+
+  it('As the action group hydrated inside an island wrapper, my room is still measured against the pill row', () => {
+    // Given: the island wraps the group in a box-less element, as Astro does
+    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><astro-island style="display: contents"><div id="group"></div></astro-island></div></header>`;
+    const row = byId('row');
+    const url = byId('topbar-url');
+    const group = byId('group');
+    vi.spyOn(group, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 200, 44));
+    vi.spyOn(url, 'getBoundingClientRect').mockReturnValue(new DOMRect(0, 0, 300, 44));
+    vi.spyOn(row, 'scrollWidth', 'get').mockReturnValue(600);
+
+    // Then
+    expect(topbarActionRoom(group)).toBe(440);
+    document.body.replaceChildren();
+  });
 });

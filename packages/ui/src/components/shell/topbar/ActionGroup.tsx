@@ -4,7 +4,7 @@
 import { createEffect, createMemo, createSignal, onCleanup, onSettled, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { TopbarContext, type TopbarBar, type TopbarEntry } from './context.js';
-import { fitActions } from './fit.js';
+import { fitActions, layoutParent } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
 import s from './ActionGroup.module.css';
 
@@ -84,8 +84,8 @@ export function ActionGroup(props: {
   // room, so the row (the address changing) and the window are heard too.
   // Settled, so the build-time render, which has no window, skips it.
   onSettled(() => {
-    const row = group?.parentElement;
-    if (row !== null && row !== undefined) {
+    const row = group === undefined ? null : layoutParent(group);
+    if (row !== null) {
       observer?.observe(row);
     }
     const onResize = (): void => {
