@@ -75,7 +75,7 @@ async function checkedFile(path: string, hash: string): Promise<Buffer> {
 }
 
 /** Installs before any page script; never consumes, replaces or fabricates runtime messages. */
-async function observeRuntime(page: Page): Promise<void> {
+export async function observeRuntime(page: Page): Promise<void> {
   await page.addInitScript(() => {
     const probe: Probe = { workers: [], audio: [] };
     window.__polkavmQualification = probe;
@@ -431,15 +431,18 @@ export class Qualification {
   }
 }
 
-/** Decode the canonical SCALE string + trait/method/type frame header, without generating replies. */
-export function wireFrames(workers: WorkerObservation[]): {
+/** A passively observed canonical host frame and its decoded payload. */
+export interface DecodedWireFrame {
   direction: WireObservation['direction'];
   id: string;
   trait: number;
   method: number;
   type: number;
   payload: number[];
-}[] {
+}
+
+/** Decode the canonical SCALE string + trait/method/type frame header, without generating replies. */
+export function wireFrames(workers: WorkerObservation[]): DecodedWireFrame[] {
   return workers
     .flatMap(worker => worker.wire)
     .map(frame => {
