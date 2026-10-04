@@ -12,35 +12,37 @@
      close transition while allow-discrete keeps `display: flex`. Otherwise the
      rows briefly stack sideways on the way out. */
   flex-direction: column;
-  gap: 2px;
+  gap: 0;
   position: fixed;
-  top: var(--topbar-height);
-  right: calc(12px + var(--safe-right));
+  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--sp-3));
+  right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
   box-sizing: border-box;
-  min-width: 180px;
-  padding: 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  background: var(--surface-glass);
-  -webkit-backdrop-filter: blur(24px) saturate(180%);
-  box-shadow: 0 8px 32px var(--shadow);
+  min-width: var(--w-pop-sm);
+  padding: var(--sp-2);
+  border: 0;
+  border-radius: var(--r-lg);
+  background: var(--chrome-glass);
+  -webkit-backdrop-filter: var(--chrome-blur);
+  box-shadow: var(--chrome-shadow-pop);
+  color: var(--chrome-text);
+  font-family: var(--font-sans);
   z-index: 1500;
   opacity: 0;
-  transform: scale(0.92);
+  transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
   transform-origin: top right;
   transition:
-    opacity 0.15s ease-out,
-    transform 0.22s cubic-bezier(0.34, 1.5, 0.64, 1),
-    display 0.22s allow-discrete;
+    opacity var(--dur) var(--ease-spring),
+    transform var(--dur) var(--ease-spring),
+    display var(--dur) allow-discrete;
 }
 @supports (backdrop-filter: blur(1px)) {
   :where(.menu) {
-    backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: var(--chrome-blur);
   }
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   :where(.menu) {
-    background: var(--surface);
+    background: var(--chrome-solid);
   }
 }
 .menu[data-open] {
@@ -51,7 +53,7 @@
 @starting-style {
   .menu[data-open] {
     opacity: 0;
-    transform: scale(0.92);
+    transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -63,17 +65,16 @@
 :where(.row) {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
   box-sizing: border-box;
-  min-height: 44px;
+  min-height: var(--h-control);
   margin: 0;
-  padding: 8px 10px;
+  padding: 0 var(--sp-3);
   border: none;
-  border-radius: 8px;
+  border-radius: var(--r-sm);
   background: transparent;
-  color: var(--text);
-  font: inherit;
-  font-size: 0.8rem;
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
   text-align: left;
   cursor: pointer;
   transition:
@@ -81,6 +82,17 @@
     color 0.12s ease;
 }
 .row:hover {
-  background: var(--fill);
-  color: var(--text-strong);
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+.row[aria-checked='true'] {
+  background: var(--chrome-fill-strong);
+}
+.row:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: -2px;
+}
+.row > svg {
+  flex: none;
+  color: var(--chrome-text-muted);
 }
