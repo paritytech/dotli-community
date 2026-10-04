@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it, vi } from 'vitest';
-import { Button } from '../../../src/components/primitives/Button.js';
+import { Button, ButtonLink } from '../../../src/components/primitives/Button.js';
 import { mouseClick, renderComponent } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
 
@@ -60,5 +60,22 @@ describe('Button', () => {
     expect(button.getAttribute('aria-expanded')).toBe('true');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
+  });
+
+  it('As a phone user, I follow a link drawn as a primary button to where it points', () => {
+    // Given / When
+    renderComponent(() => (
+      <ButtonLink href="polkadotapp://pair?handshake=test" variant="primary" size="lg" block testId="open-app">
+        Log in with Polkadot App
+      </ButtonLink>
+    ));
+
+    // Then
+    const link = byTestId('open-app', document, HTMLAnchorElement);
+    expect(link.getAttribute('href')).toBe('polkadotapp://pair?handshake=test');
+    expect(link.textContent).toBe('Log in with Polkadot App');
+    expect(link.getAttribute('data-variant')).toBe('primary');
+    expect(link.getAttribute('data-size')).toBe('lg');
+    expect(link.getAttribute('data-block')).toBe('');
   });
 });

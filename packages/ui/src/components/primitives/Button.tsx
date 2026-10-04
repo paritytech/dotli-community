@@ -54,3 +54,30 @@ export function Button(props: ButtonProps): JSX.Element {
     </button>
   );
 }
+
+export interface ButtonLinkProps {
+  href: string;
+  variant?: ButtonVariant;
+  size?: ButtonSize;
+  /** Full width of its container. */
+  block?: boolean;
+  class?: string | undefined;
+  testId?: string;
+  children?: JSX.Element;
+}
+
+/** A link drawn as a Button, for an action that navigates (a deeplink). Attributes must stay in step with Button. */
+export function ButtonLink(props: ButtonLinkProps): JSX.Element {
+  return (
+    <a
+      href={props.href}
+      class={[s['button'], props.class]}
+      data-variant={props.variant ?? 'secondary'}
+      data-size={props.size ?? 'md'}
+      data-block={props.block === true ? '' : undefined}
+      data-testid={props.testId}
+    >
+      {props.children}
+    </a>
+  );
+}
