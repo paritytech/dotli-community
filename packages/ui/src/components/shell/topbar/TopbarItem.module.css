@@ -39,3 +39,10 @@
   margin: 0 var(--sp-2) 0 var(--sp-1);
   background: var(--chrome-ring);
 }
+
+/* Phones: no hairline, More and the account sit side by side. */
+@media (max-width: 560px) {
+  :global(#topbar-actions) .item[data-item='auth']::before {
+    display: none;
+  }
+}

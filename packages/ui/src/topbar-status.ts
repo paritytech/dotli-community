@@ -7,6 +7,7 @@
 // portalled to <body> and cannot see it.
 
 import { layoutParent } from './components/shell/topbar/fit.js';
+import { isPhoneViewport } from './phone-viewport.js';
 import { chatPanelStore, totalChatUnread } from './state/chat-panel.js';
 import { initNetworkHealth, networkHealthStore } from './state/network-health.js';
 import { topbarStore } from './state/topbar.js';
@@ -59,8 +60,13 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
  * everything else in its row, with the address counted at its minimum. The
  * same at rest and while the pill morphs (when the address is squeezed), so
  * items never pop in and out during a reveal. Undefined without the bar.
+ * On a phone the header holds only More and the account, so the actions get
+ * none and all move into More.
  */
 export function topbarActionRoom(group: HTMLElement): number | undefined {
+  if (isPhoneViewport()) {
+    return 0;
+  }
   const bar = document.getElementById('topbar');
   const row = layoutParent(group);
   if (bar === null || row === null) {

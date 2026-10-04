@@ -81,18 +81,26 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
 /**
  * Render `items` as the children of an ActionGroup in the document, as the
  * topbar island does, with `room` pixels for them (see stubTopbarLayout), or
- * the room `options.room` says, as the pill's does.
+ * the room `options.room` says, as the pill's does, and `options.end` after
+ * the More button, as the account is.
  * Returns the layout, to change the room later.
  */
 export async function renderTopbar(
   items: () => JSX.Element,
   room: number,
-  options: { room?: (group: HTMLElement) => number | undefined } = {},
+  options: { room?: (group: HTMLElement) => number | undefined; end?: () => JSX.Element } = {},
 ): Promise<TopbarLayout> {
   const layout = stubTopbarLayout(room);
   const container = document.createElement('div');
   document.body.append(container);
-  renderComponent(() => <ActionGroup room={options.room}>{items()}</ActionGroup>, { container });
+  renderComponent(
+    () => (
+      <ActionGroup room={options.room} end={options.end?.()}>
+        {items()}
+      </ActionGroup>
+    ),
+    { container },
+  );
   await settle();
   return layout;
 }

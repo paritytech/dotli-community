@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindTopbarStatus, topbarActionRoom } from '../src/topbar-status.js';
 import { resetStores } from './helpers/solid.js';
 import { byId } from './support.js';
+import { stubPhoneViewport } from './helpers/viewport.js';
 
 const health = vi.hoisted(() => ({ value: 'syncing', listeners: new Set<() => void>() }));
 vi.mock('../src/state/network-health.js', () => ({
@@ -131,6 +132,19 @@ describe('bindTopbarStatus', () => {
 
     // Then
     expect(topbarActionRoom(group)).toBe(440);
+    document.body.replaceChildren();
+  });
+
+  it('As the action group on a phone, I get no room, so every action moves into More', () => {
+    // Given: a pill row with room to spare, on a phone-wide viewport
+    stubPhoneViewport(true);
+    document.body.innerHTML = `<header id="topbar" style="max-width: 700px"><div id="row"><div id="topbar-url" style="min-width: 160px"></div><div id="group"></div></div></header>`;
+
+    // When
+    const room = topbarActionRoom(byId('group'));
+
+    // Then
+    expect(room).toBe(0);
     document.body.replaceChildren();
   });
 });

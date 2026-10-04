@@ -15,3 +15,13 @@
   position: relative;
   justify-content: flex-end;
 }
+
+/* Phones: More and the account are the header's last two controls, 8 px
+   apart like the rest of its row. The group is pinned to the right edge
+   because only the address grows there, and it is hidden until it shows. */
+@media (max-width: 560px) {
+  .group {
+    gap: var(--sp-2);
+    margin-inline-start: auto;
+  }
+}

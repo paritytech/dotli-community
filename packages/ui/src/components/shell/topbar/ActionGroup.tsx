@@ -24,7 +24,7 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
 /**
  * The topbar's action group (`#topbar-actions`): its children are the items
  * (each wrapping its button in a TopbarItem), in bar order, followed by the
- * More menu. Items sit in the bar while they fit; the ones that do not move
+ * More menu, then `end`, the item that ends the bar. Items sit in the bar while they fit; the ones that do not move
  * into the More menu, lowest priority first (fitActions, TOPBAR_PRIORITY),
  * and come back as room frees up. The group fills its grid cell, so its
  * width is the room there is; a ResizeObserver on it, on every item and on
@@ -42,6 +42,8 @@ export function ActionGroup(props: {
   /** The group's room, when its container knows better than its own width (a content-sized pill). */
   room?: ((group: HTMLElement) => number | undefined) | undefined;
   children: JSX.Element;
+  /** The item that ends the bar after the More button (the account), one that never collapses. */
+  end?: JSX.Element;
 }): JSX.Element {
   let group: HTMLDivElement | undefined;
   let more: HTMLButtonElement | undefined;
@@ -147,6 +149,7 @@ export function ActionGroup(props: {
             observe(el);
           }}
         />
+        {props.end}
       </div>
     </TopbarContext>
   );

@@ -16,6 +16,7 @@ import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
@@ -27,6 +28,13 @@ vi.mock('../../../src/recent-labels.js', () => ({
 
 /** Room for the More button only: every item is in the More menu. */
 const MORE_ONLY = ITEM_WIDTH;
+
+/** The items in the More menu, in its order. */
+function moreRowNames(): string[] {
+  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
+    el => el.dataset['item'] ?? '',
+  );
+}
 
 async function renderIsland(): Promise<void> {
   const container = document.createElement('div');
@@ -173,5 +181,25 @@ describe('Topbar actions island', () => {
     expect(document.getElementById('topbar-actions')).toBeNull();
     expect(document.getElementById('auth-button')).toBeNull();
     expect(document.getElementById('theme-toggle')).toBeNull();
+  });
+
+  it('As a phone user, the header keeps only More and then the account, however much room it measures: every action is in More', async () => {
+    // Given: a phone, though the stand-in layout has room for every item
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+
+    // When
+    await renderIsland();
+    setChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    expect(moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
+    expect(byId('more-button').hasAttribute('data-idle')).toBe(false);
+    const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
+    expect(account.hasAttribute('data-collapsed')).toBe(false);
+    expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });

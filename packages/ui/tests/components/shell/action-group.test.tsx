@@ -141,6 +141,19 @@ describe('ActionGroup', () => {
     expect(rowNames()).not.toContain('auth');
   });
 
+  it('As a phone user, the account ends the bar after the More button and never moves into More', async () => {
+    // When
+    await renderTopbar(() => <Items />, room(2), { end: () => <Item name="account" priority={PINNED} /> });
+
+    // Then
+    const account = byId('account-button');
+    expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(inline('account')).toBe(true);
+    expect(rowNames()).not.toContain('account');
+  });
+
   it('As a user widening the window, collapsed items come back and an open More menu closes with its last row', async () => {
     // Given
     const layout = await renderTopbar(() => <Items />, room(5));
