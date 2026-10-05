@@ -1,8 +1,10 @@
+import 'fake-indexeddb/auto';
 import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createSubmitRateLimiter } from '../src/host-callbacks/rate-limit.js';
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
+import { registerProductNotificationTarget, setNotificationAccount } from '../src/notification-activation.js';
 
 const PRODUCT: ProductContext = {
   productId: 'myapp.paseo',
@@ -154,20 +156,41 @@ describe('prompt rate limiting across host callbacks', () => {
       },
     });
     onTestFinished(unregister);
+    setNotificationAccount('myapp', '11'.repeat(32));
+    const disposeTarget = registerProductNotificationTarget('myapp', {
+      artifact: 'verified-artifact',
+      entryUrl: 'https://myapp.paseo.fyi/',
+      isActive: () => true,
+      focus: () => undefined,
+    });
+    onTestFinished(() => {
+      disposeTarget();
+      setNotificationAccount('myapp', undefined);
+    });
+    let notificationId = 0;
+    mocks.scheduleNotification.mockImplementation(() =>
+      Promise.resolve({
+        ok: true,
+        id: ++notificationId,
+        immediate: false,
+      }),
+    );
     const { permissions, notifications } = createHostCallbacks({
       label: 'myapp',
     });
+    // More deliveries than the prompt budget leave the whole budget available.
+    for (let i = 0; i <= MAX_PER_WINDOW; i += 1) {
+      await notifications.pushNotification({ text: 'hello' });
+    }
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
       status = 'NotDetermined';
       await permissions.devicePermission(PRODUCT, 'Camera');
     }
 
-    // When
-    const delivered = notifications.pushNotification({
-      text: 'hello',
-    });
-
-    // Then
-    await expect(delivered).resolves.toEqual({ id: 7 });
+    expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(MAX_PER_WINDOW);
+    status = 'NotDetermined';
+    await expect(permissions.devicePermission(PRODUCT, 'Notifications')).rejects.toThrow(
+      'Permission prompt rate limited',
+    );
   });
 });

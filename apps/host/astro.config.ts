@@ -23,6 +23,7 @@ import { appBuildOptions, rolldownOptions } from '@config/vite/build-options';
 import { runtimeNetworkConfigScript } from '@config/vite/runtime-network-config';
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
+import { notificationWorker } from './notification-build.js';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -286,6 +287,8 @@ export default defineConfig({
     astroSolid(),
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
+    // Build the classic notification handler before Workbox imports it.
+    notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. `registerType:
@@ -319,7 +322,9 @@ export default defineConfig({
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
-        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm'],
+        // Imported service-worker code must bypass the shell precache.
+        globIgnores: ['**/truapi_provider_bg*.wasm', '**/truapi_verifiable_bg*.wasm', '**/host-notifications.js'],
+        importScripts: ['host-notifications.js'],
         cleanupOutdatedCaches: true,
         // skipWaiting/clientsClaim stay false: prompt-style updates require
         // the waiting SW to sit idle until the user opts in.

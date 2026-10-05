@@ -2,26 +2,27 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/chat-v2-product-authority",
-  "upstreamRevision": "901a3e754d86d9bc64bf647f103e9ea0a18de470",
+  "upstreamRevision": "a78944c2375f212e86cb57bfff3be92923ee1793",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/709",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "df7b537877be29d79561bc4a3d6bf4d6edb1b1d037acbcd56a9eba336a8aa3e9",
-      "clientSha256": "81022e6ad71842cec42396dac1ec3ed72e39e906e3867dc57d65f1142b402b69"
+      "sourceArchiveSha256": "58a3e0046158333db64a4127792a36dec820c55a6d5a0d19c9ef20012d4dcd7b",
+      "clientSha256": "a4d20f9f42bdab07324ccb939a799d6d5f6b6f762eadffff5935f87d50eb0fd6"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "67b2ea10da5d36cf07fb7c629b6231f690226c8ade1da4485e1e215f056a056a",
+      "sourceArchiveSha256": "899546ae63534bf80602a4c9b8afb692fece4779e256e762a57ed1b44a5d35d2",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "90b586ec9a2ee0aea25477430f75be6b3c3911df69ae92006b3e00f5724ce4e7",
-      "testingWasmSha256": "1a1187ac05737c8e1098f7d0791d6ac99e080fc20c45d93a3402da30c9ae9a54",
+      "wasmSha256": "eef49d4c14d23ffce5e9d1ee4b84b08bd991f100f8493184f07f96f8c75102e4",
+      "testingWasmSha256": "bb20d11db444e1d48f88c2979414cf26acc7057136442529c705cabdcb167946",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "901a3e754d86d9bc64bf647f103e9ea0a18de470"
+  "wasmUpstreamRevision": "a78944c2375f212e86cb57bfff3be92923ee1793",
+  "publication": "Approved notification activation and readiness rollout; SDK packages are vendored, not npm-published."
 }

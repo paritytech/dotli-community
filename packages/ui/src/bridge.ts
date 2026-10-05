@@ -92,6 +92,7 @@ import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
 import { showNotification } from './notification.js';
+import { registerProductNotificationTarget } from './notification-activation.js';
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
 import { mountViolationPanel } from './components/sandbox-checker/mount.js';
@@ -1534,6 +1535,7 @@ async function createHost(args: {
     // bytes have no codec marker and must never reach the codec-2 decoder.
     // Only the modern SDK's transferred MessagePort is supported.
     let probeMode: 'pending' | 'modern' = 'pending';
+    let probeConnectionId: string | null = null;
     let warnedLegacyTransport = false;
     const onProbe = (event: MessageEvent): void => {
       const targetWindow = host.iframe.contentWindow;
@@ -1541,6 +1543,13 @@ async function createHost(args: {
         return;
       }
       if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
+        const connectionId = (event.data as { connectionId?: unknown }).connectionId;
+        // Ready is retried while the first port transfer is in flight. Replacing
+        // that port strands the client, which accepts only the first transfer.
+        if (typeof connectionId === 'string' && connectionId === probeConnectionId) {
+          return;
+        }
+        probeConnectionId = typeof connectionId === 'string' ? connectionId : null;
         if (probeMode === 'modern') {
           const channel = new MessageChannel();
           connectProductPort(channel.port1);
@@ -1904,6 +1913,24 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
     stray.remove();
   }
   currentHost = host;
+  const product = currentProduct;
+  if (product?.mode === 'subdomain') {
+    const generation = renderGeneration;
+    const unregister = registerProductNotificationTarget(product.label, {
+      artifact: product.cid,
+      entryUrl: new URL('/', window.location.origin).href,
+      isActive: () => currentHost === host && renderGeneration === generation,
+      focus: () => {
+        window.focus();
+        host.iframe.contentWindow?.focus();
+      },
+    });
+    const dispose = host.dispose;
+    host.dispose = () => {
+      unregister();
+      dispose();
+    };
+  }
 }
 
 function newFlowId(prefix: string): string {

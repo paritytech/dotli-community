@@ -4498,6 +4498,58 @@ export const types = [
         ],
     },
     {
+        id: "notification-activation",
+        name: "NotificationActivation",
+        category: "notifications",
+        definition: "export interface NotificationActivation {\n  sequence: bigint;\n  notificationId: number;\n  route: string;\n}",
+        description: "A host-admitted notification activation for the authenticated product,\naccount and environment bound to this runtime.",
+        fields: [
+            {
+                name: "sequence",
+                type: "bigint",
+                description: "Host-assigned sequence, unique within the bound activation queue.",
+            },
+            {
+                name: "notification_id",
+                type: "number",
+                description: "Identifier of the activated notification.",
+            },
+            {
+                name: "route",
+                type: "string",
+                description: "Validated product-relative route beginning with exactly one slash.",
+            },
+        ],
+    },
+    {
+        id: "notification-activation-acknowledge-request",
+        name: "NotificationActivationAcknowledgeRequest",
+        category: "notifications",
+        definition: "export interface NotificationActivationAcknowledgeRequest {\n  sequence: bigint;\n}",
+        description: "Acknowledge one handled activation in the runtime's bound queue.",
+        fields: [
+            {
+                name: "sequence",
+                type: "bigint",
+                description: "Exact sequence to acknowledge; never a cumulative watermark.",
+            },
+        ],
+    },
+    {
+        id: "notification-activations",
+        name: "NotificationActivations",
+        category: "notifications",
+        definition: "export interface NotificationActivations {\n  events: Array<NotificationActivation>;\n}",
+        description: "Pending activations, retained until individually acknowledged. Hosts return\nat most 32 events in sequence order, without consuming them on retrieval.",
+        fields: [
+            {
+                name: "events",
+                type: "Array<NotificationActivation>",
+                description: "Pending events in ascending sequence order.",
+            },
+        ],
+    },
+    {
         id: "operation-started-result",
         name: "OperationStartedResult",
         category: "chain",

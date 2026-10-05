@@ -345,6 +345,8 @@ function createWasmRawCallbacks(callbacks) {
     navigateTo: async (url) => await callbacks.navigation.navigateTo(url),
     pushNotification: async (notification) => import_truapi2.HostPushNotificationResponse.enc(await callbacks.notifications.pushNotification(import_truapi2.HostPushNotificationRequest.dec(notification))),
     cancelNotification: async (id) => await callbacks.notifications.cancelNotification(id),
+    activationEvents: async () => import_truapi2.NotificationActivations.enc(await callbacks.notifications.activationEvents()),
+    acknowledgeActivation: async (request) => await callbacks.notifications.acknowledgeActivation(import_truapi2.NotificationActivationAcknowledgeRequest.dec(request)),
     ...permissionStatus ? {
       devicePermissionStatus: async (request) => DevicePermissionStatus.enc(await permissionStatus.devicePermissionStatus(import_truapi2.HostDevicePermissionRequest.dec(request)))
     } : {},
@@ -4546,6 +4548,12 @@ function createMockHost(config = {}) {
         const entry = pushedNotifications.find((n) => n.id === id);
         if (entry)
           entry.cancelled = true;
+      },
+      async activationEvents() {
+        throw new Error("notification activation is unsupported");
+      },
+      async acknowledgeActivation() {
+        throw new Error("notification activation is unsupported");
       }
     },
     permissions: {

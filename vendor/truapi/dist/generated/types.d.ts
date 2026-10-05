@@ -2435,6 +2435,76 @@ export type Modifier =
     value: BlendingMode;
 };
 export declare const Modifier: S.Codec<Modifier>;
+/**
+ * A host-admitted notification activation for the authenticated product,
+ * account and environment bound to this runtime.
+ */
+export interface NotificationActivation {
+    /** Host-assigned sequence, unique within the bound activation queue. */
+    sequence: bigint;
+    /** Identifier of the activated notification. */
+    notificationId: number;
+    /** Validated product-relative route beginning with exactly one slash. */
+    route: string;
+}
+export declare const NotificationActivation: S.Codec<NotificationActivation>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeError`]. */
+export type VersionedNotificationActivationAcknowledgeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedNotificationActivationAcknowledgeError: S.Codec<VersionedNotificationActivationAcknowledgeError>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeRequest`]. */
+export type VersionedNotificationActivationAcknowledgeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivationAcknowledgeRequest;
+};
+export declare const VersionedNotificationActivationAcknowledgeRequest: S.Codec<VersionedNotificationActivationAcknowledgeRequest>;
+/** Versioned envelope for [`NotificationActivationAcknowledgeResponse`]. */
+export type VersionedNotificationActivationAcknowledgeResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedNotificationActivationAcknowledgeResponse: S.Codec<VersionedNotificationActivationAcknowledgeResponse>;
+/** Versioned envelope for [`NotificationActivationEventsError`]. */
+export type VersionedNotificationActivationEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export declare const VersionedNotificationActivationEventsError: S.Codec<VersionedNotificationActivationEventsError>;
+/** Versioned envelope for [`NotificationActivationEventsRequest`]. */
+export type VersionedNotificationActivationEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedNotificationActivationEventsRequest: S.Codec<VersionedNotificationActivationEventsRequest>;
+/** Versioned envelope for [`NotificationActivationEventsResponse`]. */
+export type VersionedNotificationActivationEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivations;
+};
+export declare const VersionedNotificationActivationEventsResponse: S.Codec<VersionedNotificationActivationEventsResponse>;
+/**
+ * Pending activations, retained until individually acknowledged. Hosts return
+ * at most 32 events in sequence order, without consuming them on retrieval.
+ */
+export interface NotificationActivations {
+    /** Pending events in ascending sequence order. */
+    events: Array<NotificationActivation>;
+}
+export declare const NotificationActivations: S.Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -4759,6 +4829,12 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export declare const HostWorkerEndOperationRequest: S.Codec<HostWorkerEndOperationRequest>;
+/** Acknowledge one handled activation in the runtime's bound queue. */
+export interface NotificationActivationAcknowledgeRequest {
+    /** Exact sequence to acknowledge; never a cumulative watermark. */
+    sequence: bigint;
+}
+export declare const NotificationActivationAcknowledgeRequest: S.Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */

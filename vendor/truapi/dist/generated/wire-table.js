@@ -269,6 +269,16 @@ export const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION = {
     method: 1,
     kind: "request",
 };
+export const NOTIFICATIONS_ACTIVATION_EVENTS = {
+    trait: 8,
+    method: 8,
+    kind: "request",
+};
+export const NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION = {
+    trait: 8,
+    method: 9,
+    kind: "request",
+};
 export const PAYMENT_BALANCE_SUBSCRIBE = {
     trait: 9,
     method: 0,

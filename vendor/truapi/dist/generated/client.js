@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 2;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "f7be28c22289b365";
+export const TRUAPI_WIRE_SCHEMA_HASH = "3c7318d3d065630c";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -881,6 +881,38 @@ export class NotificationsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Retrieve up to 32 pending activations for this runtime's authenticated
+     * product, account and environment. Retrieval does not consume events,
+     * prompt for permissions or enroll a background receiver.
+     */
+    activationEvents(options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACTIVATION_EVENTS,
+            payload: T.VersionedNotificationActivationEventsRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Acknowledge exactly one activation after the product router handles it.
+     * Unknown or already acknowledged sequences are idempotent, and can never
+     * remove an activation from another product, account or environment.
+     */
+    acknowledgeActivation(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION,
+            payload: T.VersionedNotificationActivationAcknowledgeRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedNotificationActivationAcknowledgeResponse, S.CallError(T.VersionedNotificationActivationAcknowledgeError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });

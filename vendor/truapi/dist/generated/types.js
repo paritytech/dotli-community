@@ -256,6 +256,14 @@ export const ImageSource = S.lazy(() => S.TaggedUnion({ Bulletin: S.str, Archive
 export const LegacyAccount = S.lazy(() => S.Struct({ publicKey: S.Hex(), name: S.Option(S.str) }));
 export const LegacyAccountTxPayload = S.lazy(() => S.Struct({ signer: S.Hex(32), genesisHash: S.Hex(32), callData: S.Hex(), extensions: S.Vector(TxPayloadExtension), txExtVersion: S.u8 }));
 export const Modifier = S.lazy(() => S.TaggedUnion({ Margin: Dimensions, Padding: Dimensions, Background: Background, Border: BorderStyle, Height: Size, Width: Size, MinWidth: Size, MinHeight: Size, FillWidth: S.bool, FillHeight: S.bool, Opacity: S.u8, BlendingMode: BlendingMode }));
+export const NotificationActivation = S.lazy(() => S.Struct({ sequence: S.u64, notificationId: S.u32, route: S.str }));
+export const VersionedNotificationActivationAcknowledgeError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
+export const VersionedNotificationActivationAcknowledgeRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, NotificationActivationAcknowledgeRequest] }));
+export const VersionedNotificationActivationAcknowledgeResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const VersionedNotificationActivationEventsError = S.lazy(() => S.indexedTaggedUnion({ V1: [0, GenericError] }));
+export const VersionedNotificationActivationEventsRequest = S.lazy(() => S.indexedTaggedUnion({ V1: [0, S._void] }));
+export const VersionedNotificationActivationEventsResponse = S.lazy(() => S.indexedTaggedUnion({ V1: [0, NotificationActivations] }));
+export const NotificationActivations = S.lazy(() => S.Struct({ events: S.Vector(NotificationActivation) }));
 export const OperationStartedResult = S.lazy(() => S.TaggedUnion({ Started: S.Struct({ operationId: S.str }), LimitReached: S._void }));
 export const PaymentTopUpSource = S.lazy(() => S.TaggedUnion({ ProductAccount: S.Struct({ derivationIndex: DerivationIndex }), PrivateKey: S.Struct({ sr25519SecretKey: S.Hex(64) }), Coins: S.Struct({ sr25519SecretKeys: S.Vector(S.Hex(64)) }) }));
 export const PocketCard = S.lazy(() => S.Struct({ cardId: S.str, privileged: S.bool }));
@@ -462,6 +470,7 @@ export const HostThemeSubscribeItem = S.lazy(() => S.Struct({ name: ThemeName, v
 export const HostWorkerBeginOperationRequest = S.lazy(() => S.Struct({ label: S.Option(S.str) }));
 export const HostWorkerBeginOperationResponse = S.lazy(() => S.Struct({ id: S.u32 }));
 export const HostWorkerEndOperationRequest = S.lazy(() => S.Struct({ id: S.u32 }));
+export const NotificationActivationAcknowledgeRequest = S.lazy(() => S.Struct({ sequence: S.u64 }));
 export const ProductRendererRenderRequest = S.lazy(() => S.Struct({ context: RenderContext, payload: S.Hex() }));
 export const RemoteChainHeadBodyRequest = S.lazy(() => S.Struct({ genesisHash: S.Hex(), followSubscriptionId: S.str, hash: S.Hex() }));
 export const RemoteChainHeadBodyResponse = S.lazy(() => S.Struct({ operation: OperationStartedResult }));
