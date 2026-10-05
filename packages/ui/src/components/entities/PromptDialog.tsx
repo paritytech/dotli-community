@@ -5,12 +5,11 @@ import { createSignal, For, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { settleModal, type ModalButton, type ModalButtonVariant, type ModalEntry } from '../../state/modals.js';
 import { Button, type ButtonVariant } from '../primitives/Button.js';
+import { Dialog, DialogActions, DialogBody, DialogHead } from '../primitives/Dialog.js';
 import { Field } from '../primitives/Field.js';
-import { IconTile } from '../primitives/IconTile.js';
 import { ReloadIcon } from '../primitives/Surface.js';
 import { Callout, Well } from '../primitives/Well.js';
-import { Dialog } from './Dialog.js';
-import s from './SigningDialog.module.css';
+import s from './PromptDialog.module.css';
 
 const BUTTON_VARIANT: Record<ModalButtonVariant, ButtonVariant> = {
   danger: 'danger',
@@ -28,15 +27,13 @@ const BUTTON_TEST_ID: Record<ModalButtonVariant, string> = {
 };
 
 /**
- * One queued prompt as the board's modal: the icon tile over the centred
- * title, a well of fields, the notice, the password input, and a row of
- * equal-width answers. At 560 px and below the dialog is a bottom sheet led
- * by the sheets' head with the title and a close button, the icon tile and
- * the centred title gone, and the answers stacked (SigningDialog.module.css).
+ * Every queued app prompt (a permission request, the password prompt, a
+ * preimage submit, a transaction or message to sign) drawn as a Dialog: its
+ * head, a well of fields, the notice, the password input, and the answers.
  * The close button (or a swipe) answers as the scrim does, and on a prompt
  * the scrim cannot dismiss, as its Cancel (or else its danger reject) does.
  */
-export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
+export function PromptDialog(props: { entry: ModalEntry }): JSX.Element {
   // The outlet re-creates this component per entry (keyed), so reading once is intended.
   // eslint-disable-next-line solid/reactivity -- keyed entry, read once
   const { id, view } = props.entry;
@@ -93,13 +90,8 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
       onClose={close}
       testId="signing-modal"
     >
-      <div class={s['head']}>
-        <Show when={view.icon}>{icon => <IconTile markup={icon()} testId="permission-modal-icon" />}</Show>
-        <h2 class={s['title']} id={titleId}>
-          {view.title}
-        </h2>
-      </div>
-      <div class={s['body']}>
+      <DialogHead titleId={titleId} title={view.title} icon={view.icon} iconTestId="permission-modal-icon" />
+      <DialogBody>
         <Show when={view.fields.length > 0}>
           <Well layout="list">
             <For each={view.fields}>
@@ -163,14 +155,13 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
             </>
           )}
         </Show>
-      </div>
-      <div class={s['actions']} data-testid="signing-modal-footer">
+      </DialogBody>
+      <DialogActions testId="signing-modal-footer">
         <For each={view.buttons}>
           {button => (
             <Button
               variant={BUTTON_VARIANT[button.variant]}
               block
-              class={s['action']}
               testId={BUTTON_TEST_ID[button.variant]}
               disabled={needsPassword(button) && password() === ''}
               onClick={() => {
@@ -181,7 +172,7 @@ export function SigningDialog(props: { entry: ModalEntry }): JSX.Element {
             </Button>
           )}
         </For>
-      </div>
+      </DialogActions>
     </Dialog>
   );
 }

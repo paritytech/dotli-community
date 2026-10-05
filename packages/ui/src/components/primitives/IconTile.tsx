@@ -16,7 +16,7 @@ import s from './IconTile.module.css';
 export function IconTile(props: {
   markup?: string | undefined;
   class?: string | undefined;
-  testId?: string;
+  testId?: string | undefined;
   children?: JSX.Element;
 }): JSX.Element {
   return (

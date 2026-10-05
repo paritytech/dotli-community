@@ -5,7 +5,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { isPhoneViewport } from '../../phone-viewport.js';
 import { Button } from '../primitives/Button.js';
-import { Dialog } from './Dialog.js';
+import { Dialog } from '../primitives/Dialog.js';
 
 const meta = {
   title: 'Overlays/Dialog',

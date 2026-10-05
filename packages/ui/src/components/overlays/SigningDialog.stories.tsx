@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
 import { PERMISSION_ICONS } from '../../permission-modal.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
-import { SigningDialog } from './SigningDialog.js';
+import { PromptDialog } from '../entities/PromptDialog.js';
 
 // Ids outside the store, so a pressed button settles nothing.
 let nextId = 1000;
@@ -19,7 +19,7 @@ const LOCK_SVG =
 
 const meta = {
   title: 'Overlays/SigningDialog',
-  component: SigningDialog,
+  component: PromptDialog,
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
   parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '640px' } } },
   args: {
@@ -45,9 +45,9 @@ const meta = {
   // so it gets a plain copy of the args store's, read outside tracking.
   render: args => {
     const entry = untrack(() => snapshot(args.entry));
-    return <SigningDialog entry={entry} />;
+    return <PromptDialog entry={entry} />;
   },
-} satisfies Meta<typeof SigningDialog>;
+} satisfies Meta<typeof PromptDialog>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

@@ -7,7 +7,10 @@
    with the board's keyframes. Nothing animates out: the outlet unmounts an
    answered dialog in the update that mounts the next queued one. Desktop
    draws the card at 360 px with 20 px padding, a 16 px gap and 24 px
-   corners. The boards' card is 400 / 24 / 20 / 28. */
+   corners. The boards' card is 400 / 24 / 20 / 28. The layout parts below
+   (.head, .title, .body, .actions) are the board's .modal-head, .modal-title
+   and .modal-actions, desktop sizes by default and the boards' in the phone
+   block. */
 
 .backdrop {
   position: fixed;
@@ -59,10 +62,57 @@
 .dialog .sheet-head {
   display: none;
 }
-/* The prompt's parts sit in the card on wide screens, and scroll under the
+/* The dialog's parts sit in the card on wide screens, and scroll under the
    head in the sheet. */
-.body {
+.content {
   display: contents;
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+}
+.title {
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
+}
+
+/* Between the head and the answers, and the part that scrolls when a review
+   is taller than the window, so the title and the answers stay in view. The
+   2 px padding, given back by the margin, keeps an input's focus ring inside
+   the scroll's clip. */
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  min-height: 0;
+  margin: calc(-1 * var(--sp-hair));
+  padding: var(--sp-hair);
+  overflow-y: auto;
+}
+
+.actions {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+}
+/* Three answers take a third of the row each. 10 px sides (12 on phones),
+   not the board's 20, let the app's "Always allow" fit where the board says
+   "Allow". */
+.actions > * {
+  padding: 0 10px;
 }
 
 @keyframes fade-in {
@@ -115,7 +165,7 @@
      top and 16 px sides and bottom, the scroll's 24 px, then the home
      indicator. A column, so a tall review still scrolls in the prompt's own
      body with the answers in view. */
-  .body {
+  .content {
     display: flex;
     flex: 1;
     flex-direction: column;
@@ -123,6 +173,21 @@
     min-height: 0;
     overflow: auto;
     padding: var(--sp-1) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
+  }
+  /* The board's .modal.is-sheet drops the modal's own head, as the sheet
+     head carries the title, and stacks the answers. */
+  .head {
+    display: none;
+  }
+  .body {
+    gap: var(--sp-5);
+  }
+  .actions {
+    grid-auto-flow: row;
+    gap: var(--sp-2);
+  }
+  .actions > * {
+    padding: 0 var(--sp-3);
   }
 }
 

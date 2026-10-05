@@ -18,7 +18,7 @@ import type { ModalButton } from './state/modals.js';
 // dismissing the dialog without storing a denial. With `allowOnce`, the prompt
 // also offers a one-time grant and highlights it over "Always allow".
 //
-// Rendered by the overlays root (components/overlays/SigningDialog.tsx).
+// Rendered by the overlays root (components/entities/PromptDialog.tsx).
 
 export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
   Notifications: 'Show in-app and system notifications',

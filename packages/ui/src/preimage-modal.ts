@@ -7,7 +7,7 @@
 // preimage data on the Bulletin chain. Returns a Promise that
 // resolves on "Allow" and rejects on "Cancel".
 //
-// Rendered by the overlays root (components/overlays/SigningDialog.tsx).
+// Rendered by the overlays root (components/entities/PromptDialog.tsx).
 
 import { ERRORS } from './errors.js';
 import { presentModal } from './overlays/load.js';

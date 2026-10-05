@@ -3,13 +3,15 @@
 
 // Shared dialog shell: the scrim and the glass card (a bottom sheet at 560 px
 // and below, led by the sheets' head), dialog semantics, initial focus, a Tab
-// trap, Escape, and focus restored on close.
+// trap, Escape, and focus restored on close. Its layout parts (DialogHead,
+// DialogBody, DialogActions) draw the board's modal inside it.
 
-import { onCleanup, onSettled } from 'solid-js';
+import { onCleanup, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab } from '../focus.js';
 import { SheetHead } from '../sheet/SheetHead.js';
+import { IconTile } from './IconTile.js';
 import s from './Dialog.module.css';
 
 export interface DialogProps {
@@ -153,8 +155,44 @@ export function Dialog(props: DialogProps): JSX.Element {
           titleTestId={`${props.testId}-sheet-title`}
           closeTestId={`${props.testId}-sheet-close`}
         />
-        <div class={s['body']}>{props.children}</div>
+        <div class={s['content']}>{props.children}</div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * The icon tile over the centred title. Phones drop it, as the sheet head
+ * carries the title there.
+ */
+export function DialogHead(props: {
+  /** The dialog's `titleId`, which labels it. */
+  titleId: string;
+  title: string;
+  /** Trusted SVG markup for the IconTile. */
+  icon?: string | undefined;
+  iconTestId?: string;
+}): JSX.Element {
+  return (
+    <div class={s['head']}>
+      <Show when={props.icon}>{icon => <IconTile markup={icon()} testId={props.iconTestId} />}</Show>
+      <h2 class={s['title']} id={props.titleId}>
+        {props.title}
+      </h2>
+    </div>
+  );
+}
+
+/** Between the head and the answers, the part that scrolls when it outgrows the window. */
+export function DialogBody(props: { children: JSX.Element }): JSX.Element {
+  return <div class={s['body']}>{props.children}</div>;
+}
+
+/** The row of equal-width answers, stacked on phones. Each child is one answer. */
+export function DialogActions(props: { testId?: string; children: JSX.Element }): JSX.Element {
+  return (
+    <div class={s['actions']} data-testid={props.testId}>
+      {props.children}
     </div>
   );
 }

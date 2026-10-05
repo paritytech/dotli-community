@@ -8,7 +8,7 @@
    surface and `.body` on what follows it, the part that scrolls (the board's
    .sheet-scroll). The rules key on two attributes, so the frame's place and
    width outrank a consumer's own class. The sign-in (AuthModal.module.css)
-   and the dialogs (overlays/Dialog.module.css) keep media-query twins of
+   and the dialogs (primitives/Dialog.module.css) keep media-query twins of
    this frame: keep the three in step. */
 
 /* The fading scrim still takes the tap's trailing click, so it never reaches
