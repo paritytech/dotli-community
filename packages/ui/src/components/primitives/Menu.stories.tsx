@@ -67,9 +67,7 @@ const MonitorGlyph = () => (
   </svg>
 );
 
-const onRow = fn((_row: string): void => {
-  /* spy only */
-});
+const onRow = fn<(row: string) => void>().mockName('onRow');
 
 // Menu calls its `ref` once while rendering. A ref reaching it through a spread
 // is a reactive read there, so it is a static prop and the rest are explicit.
