@@ -320,8 +320,11 @@ describe('getGrantedDevicePermissions', () => {
 });
 
 describe('buildAllowAttribute', () => {
-  it('As a product, my iframe always receives clipboard-write access', async () => {
-    expect(await buildAllowAttribute('myapp')).toBe('clipboard-write');
+  it('As a product, I can request browser-mediated screen capture without a stored device grant', async () => {
+    expect((await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort()).toEqual([
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+    ]);
   });
 
   it('As a product, my granted device permissions appear in iframe policy', async () => {
@@ -331,10 +334,15 @@ describe('buildAllowAttribute', () => {
 
     // When
     // Order follows JSON insertion order, so assert on the directive set.
-    const directives = (await buildAllowAttribute('myapp')).split('; ').sort();
+    const directives = (await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort();
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'microphone']);
+    expect(directives).toEqual([
+      'camera',
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+      'microphone',
+    ]);
   });
 
   it('As a product, denied and submit permissions stay out of iframe policy', async () => {
@@ -343,10 +351,29 @@ describe('buildAllowAttribute', () => {
     await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
 
     // When
-    const allow = await buildAllowAttribute('myapp');
+    const allow = await buildAllowAttribute('myapp', 'https://myapp.sandbox.example');
 
     // Then
-    expect(allow).toBe('clipboard-write');
+    expect(allow.split('; ').sort()).toEqual(['clipboard-write', 'display-capture https://myapp.sandbox.example']);
+  });
+
+  it('As a host, I scope capture to the verified target origin rather than deriving authority from a label', async () => {
+    const first = await buildAllowAttribute('myapp', 'https://first.app.example');
+    const second = await buildAllowAttribute('myapp', 'https://second.app.example:8443');
+
+    expect(first).toBe('clipboard-write; display-capture https://first.app.example');
+    expect(second).toBe('clipboard-write; display-capture https://second.app.example:8443');
+  });
+
+  it('As a product user, revoking camera and resetting microphone removes their delegation', async () => {
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    await setPermissionStatus('myapp', 'Microphone', 'granted');
+    await setPermissionStatus('myapp', 'Camera', 'denied');
+    await resetPermission('myapp', 'Microphone');
+
+    expect(await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).toBe(
+      'clipboard-write; display-capture https://myapp.sandbox.example',
+    );
   });
 });
 

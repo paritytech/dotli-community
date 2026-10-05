@@ -69,7 +69,7 @@ export function ToastStack(): JSX.Element {
 
   const onStackClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
-    if (!expanded() && many() && target.closest('.notif-cards') !== null && target.closest('a') === null) {
+    if (!expanded() && many() && target.closest('.notif-cards') !== null && target.closest('button') === null) {
       setToastsExpanded(true);
     }
   };

@@ -13,6 +13,7 @@ import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createHostCallbacks } from './host-callbacks/handlers.js';
 import { onStoredSessionChanged } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { setNotificationAccount } from './notification-activation.js';
 
 export interface PageProduct {
   /** The label the core's prompts, notifications and permissions go under. */
@@ -152,6 +153,8 @@ function createCore(product: PageProduct): Core {
       // Another tab logging in or out lands in the shared session store; the
       // core reads it again. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
+        // Fence both local and cross-tab changes before the worker reloads auth.
+        setNotificationAccount(product.label, undefined);
         booted.notifySessionStoreChanged();
       });
       queueMicrotask(() => {
