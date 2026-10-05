@@ -36,17 +36,19 @@
 .pill:hover {
   background: var(--chrome-well-strong);
 }
-/* The board's address keeps the name's head and ellipsizes its end. */
+/* The board's address keeps the name's head and ellipsizes its end. Its
+   clip is the line box, so the line is tall enough for the descenders the
+   pill's `line-height: 1` would cut. */
 .text {
   min-width: 0;
   overflow: hidden;
+  line-height: 20px;
   white-space: nowrap;
   text-overflow: ellipsis;
 }
 .domain {
   color: var(--chrome-text);
   font-weight: var(--fw-semibold);
-  line-height: 2;
 }
 .tld {
   color: var(--chrome-text-muted);

@@ -45,8 +45,8 @@
   flex: none;
   place-items: center;
   box-sizing: border-box;
-  width: 56px;
-  height: 56px;
+  width: var(--sp-14);
+  height: var(--sp-14);
   margin: 0;
   padding: 0;
   border-radius: var(--r-full);
@@ -68,9 +68,9 @@
 .title {
   margin: var(--sp-6) 0 0;
   padding: 0;
-  font-size: 24px;
+  font-size: var(--fs-h1);
   font-weight: var(--fw-semibold);
-  letter-spacing: -0.01em;
+  letter-spacing: var(--ls-tight);
   line-height: var(--lh-tight);
   color: var(--text-strong);
 }

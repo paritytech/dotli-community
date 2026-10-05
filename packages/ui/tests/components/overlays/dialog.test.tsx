@@ -142,6 +142,24 @@ describe('signing dialog', () => {
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
+  it('As a phone user, the page under a prompt does not scroll, and scrolls again once it is answered', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const outcome = openModal(permissionLike());
+    await mountOutlet();
+
+    // Then
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-secondary', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'allow' });
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
+  });
+
   it('As a dotli user, the backdrop and Escape dismiss a dialog that allows it, and a click inside does not', async () => {
     // Given
     const first = openModal(permissionLike());

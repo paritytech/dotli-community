@@ -180,6 +180,7 @@
   --fs-pop-title: 14px;
   --fs-title-lg: 17px;
   --fs-h2: 20px;
+  --fs-h1: 24px;
   --fs-display: 32px;
   --fw-regular: 400;
   --fw-medium: 500;
@@ -187,6 +188,7 @@
   --lh-tight: 1.3;
   --lh-body: 1.5;
   --ls-caps: 0.08em;
+  --ls-tight: -0.01em;
   --ls-display: -0.02em;
 
   --sp-hair: 2px;
@@ -198,6 +200,7 @@
   --sp-6: 24px;
   --sp-8: 32px;
   --sp-10: 40px;
+  --sp-14: 56px;
 
   --r-hair: 2px;
   --r-xs: 8px;

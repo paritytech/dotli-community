@@ -11,7 +11,7 @@ import { createSignal, onCleanup, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isPhoneViewport, watchPhoneViewport } from '../../phone-viewport.js';
 import { currentProductFrame } from '../../product-frame-layout.js';
-import { containTab } from '../focus.js';
+import { containTab, lockScroll } from '../focus.js';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
 import { IconTile } from './IconTile.js';
@@ -120,8 +120,12 @@ export function Dialog(props: DialogProps): JSX.Element {
     (props.initialFocus?.() ?? dialog).focus();
   });
   document.addEventListener('keydown', onKeyDown, true);
+  // The page stays put under the scrim, as under createPopover's dialogs. A
+  // queued follow-up takes its lock before this one lets go, so it holds.
+  const unlockScroll = lockScroll();
   onCleanup(() => {
     document.removeEventListener('keydown', onKeyDown, true);
+    unlockScroll();
     restoreFocus(previouslyFocused);
   });
 
