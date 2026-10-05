@@ -46,6 +46,7 @@
 .domain {
   color: var(--chrome-text);
   font-weight: var(--fw-semibold);
+  line-height: 2;
 }
 .tld {
   color: var(--chrome-text-muted);
