@@ -292,7 +292,7 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.locator('#topbar #theme-toggle').click();
     await expect(page.locator('#theme-popover')).toBeVisible();
-    await page.locator('[data-theme-option="dark"]').click();
+    await page.getByTestId('theme-option-dark').click();
 
     // Then
     const html = page.locator('html');

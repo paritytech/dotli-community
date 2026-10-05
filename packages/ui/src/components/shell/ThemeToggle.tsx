@@ -94,9 +94,22 @@ function ThemeIcons(): JSX.Element {
 }
 
 /** One tile of the menu: its glyph over its label. */
-function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element }): JSX.Element {
+function Tile(props: {
+  pref: ThemePref;
+  checked: boolean;
+  choose: (pref: ThemePref) => void;
+  children: JSX.Element;
+}): JSX.Element {
   return (
-    <MenuRow class={s['tile']} role="menuitemradio" checked={props.checked} data-theme-option={props.pref}>
+    <MenuRow
+      class={s['tile']}
+      role="menuitemradio"
+      checked={props.checked}
+      onClick={() => {
+        props.choose(props.pref);
+      }}
+      testId={`theme-option-${props.pref}`}
+    >
       {props.children}
       <span>{THEME_LABEL[props.pref]}</span>
     </MenuRow>
@@ -108,8 +121,7 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
  * (`#theme-popover`, rendered into the body), an item of the topbar's action
  * group island (see src/islands/): rendered with the host page from the theme
  * store's default ("Appearance: System"), then hydrated, which brings the
- * stored preference. The landing page (components/landing/) renders it too,
- * in its corner.
+ * stored preference.
  *
  * The menu is the board's Appearance popover: a title over three tiles
  * (Light, Dark, System). On a phone it opens as a bottom sheet whose head
@@ -135,12 +147,8 @@ function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element 
  * The More menu's Appearance row opens this menu with the row click: a
  * keyboard choice (`detail` 0) opens it as a keyboard opening, on the first
  * tile.
- *
- * `idPrefix` sets another instance's ids apart (the landing page's, whose
- * page also holds the topbar's build-time markup).
  */
-export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
-  const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
+export function ThemeToggle(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const theme = useStore(themeStore);
@@ -154,13 +162,9 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
     surface: () => popover,
   });
 
-  const onClick = (e: MouseEvent): void => {
-    const option = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-option]');
-    const next = option?.dataset['themeOption'];
-    if (next === 'light' || next === 'dark' || next === 'system') {
-      selectThemePref(next);
-      menu.onItemChosen();
-    }
+  const choose = (next: ThemePref): void => {
+    selectThemePref(next);
+    menu.onItemChosen();
   };
 
   return (
@@ -177,12 +181,12 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             button = el;
           }}
           onClick={menu.toggle}
-          id={id('theme-toggle')}
+          id="theme-toggle"
           title={title()}
           aria-label={title()}
           aria-haspopup="menu"
           aria-expanded={menu.open() ? 'true' : 'false'}
-          aria-controls={id('theme-popover')}
+          aria-controls="theme-popover"
         >
           <ThemeIcons />
         </IconButton>
@@ -192,9 +196,8 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           ref={el => {
             popover = el;
           }}
-          onClick={onClick}
           class={s['menu']}
-          id={id('theme-popover')}
+          id="theme-popover"
           popover={menu}
           label="Appearance"
           orientation="horizontal"
@@ -203,13 +206,13 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             Appearance
           </div>
           <div class={s['tiles']} role="group">
-            <Tile pref="light" checked={pref() === 'light'}>
+            <Tile pref="light" checked={pref() === 'light'} choose={choose}>
               <SunGlyph />
             </Tile>
-            <Tile pref="dark" checked={pref() === 'dark'}>
+            <Tile pref="dark" checked={pref() === 'dark'} choose={choose}>
               <MoonGlyph />
             </Tile>
-            <Tile pref="system" checked={pref() === 'system'}>
+            <Tile pref="system" checked={pref() === 'system'} choose={choose}>
               <MonitorGlyph />
             </Tile>
           </div>

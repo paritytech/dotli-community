@@ -28,7 +28,7 @@
   margin: 0;
   padding: var(--sp-hair) var(--sp-1) 0;
   color: var(--chrome-text);
-  font-size: 14px;
+  font-size: var(--fs-pop-title);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
@@ -90,9 +90,6 @@
   .menu {
     gap: var(--sp-3);
     padding: var(--sp-4);
-  }
-  .head {
-    font-size: var(--fs-title);
   }
   .tiles {
     border-radius: var(--r-md);

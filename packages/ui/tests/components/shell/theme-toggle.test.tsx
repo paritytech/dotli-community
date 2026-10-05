@@ -24,21 +24,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/** The button and menu of the instance whose ids start with `prefix`. */
-function themeButton(prefix = ''): HTMLButtonElement {
-  return byId(`${prefix}theme-toggle`, HTMLButtonElement);
+function themeButton(): HTMLButtonElement {
+  return byId('theme-toggle', HTMLButtonElement);
 }
 
-function themePopover(prefix = ''): HTMLElement {
-  return byId(`${prefix}theme-popover`);
+function themePopover(): HTMLElement {
+  return byId('theme-popover');
 }
 
 function themeOption(pref: string): HTMLButtonElement | null {
-  return document.querySelector<HTMLButtonElement>(`[data-theme-option="${pref}"]`);
+  return document.querySelector<HTMLButtonElement>(`[data-testid="theme-option-${pref}"]`);
 }
 
-function isOpen(prefix = ''): boolean {
-  return themePopover(prefix).hasAttribute('data-open');
+function isOpen(): boolean {
+  return themePopover().hasAttribute('data-open');
 }
 
 /** The toggle, plus a button outside it, with a known stored theme and OS. */
@@ -128,8 +127,12 @@ describe('ThemeToggle', () => {
     expect(popover.getAttribute('aria-label')).toBe('Appearance');
     expect(popover.getAttribute('aria-orientation')).toBe('horizontal');
     expect(popover.getAttribute('tabindex')).toBe('-1');
-    const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('[data-theme-option]'));
-    expect(options.map(o => o.dataset['themeOption'])).toEqual(['light', 'dark', 'system']);
+    const options = Array.from(popover.querySelectorAll<HTMLButtonElement>('[data-testid^="theme-option-"]'));
+    expect(options.map(o => o.dataset['testid'])).toEqual([
+      'theme-option-light',
+      'theme-option-dark',
+      'theme-option-system',
+    ]);
     expect(options.map(o => o.textContent)).toEqual(['Light', 'Dark', 'System']);
     for (const option of options) {
       expect(option.getAttribute('role')).toBe('menuitemradio');

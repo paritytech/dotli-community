@@ -176,6 +176,8 @@
   --fs-small: 13px;
   --fs-body: 14px;
   --fs-title: 15px;
+  /* A popover's or prompt's title, the title size on phones. */
+  --fs-pop-title: 14px;
   --fs-title-lg: 17px;
   --fs-h2: 20px;
   --fs-display: 32px;
@@ -264,6 +266,7 @@
     --w-pop-xl: 760px;
     --pop-gap: 12px;
     --r-pop: var(--r-lg);
+    --fs-pop-title: var(--fs-title);
   }
   [data-chrome] {
     --fs-small: 13px;

@@ -24,7 +24,6 @@ export interface MenuProps {
   label: string;
   /** `horizontal` for a row of items (the Appearance tiles): Left and Right move between them too. */
   orientation?: 'horizontal' | undefined;
-  onClick?: (ev: MouseEvent) => void;
   class?: string | undefined;
   children: JSX.Element;
 }
@@ -61,7 +60,6 @@ export function Menu(props: MenuProps): JSX.Element {
           surface = el;
           props.ref(el);
         }}
-        onClick={ev => props.onClick?.(ev)}
         class={[frame['anchored'], s['menu'], frame['sheet'], props.class]}
         id={props.id}
         role={sheet() ? undefined : 'menu'}
@@ -108,7 +106,6 @@ export function Menu(props: MenuProps): JSX.Element {
 export interface MenuRowProps {
   onClick?: (ev: MouseEvent) => void;
   'data-item'?: string;
-  'data-theme-option'?: string;
   children?: JSX.Element;
   /** `menuitemradio` for one of a set of choices, with `checked`. */
   role?: 'menuitem' | 'menuitemradio';
@@ -124,7 +121,6 @@ export function MenuRow(props: MenuRowProps): JSX.Element {
         props.onClick?.(ev);
       }}
       data-item={props['data-item']}
-      data-theme-option={props['data-theme-option']}
       class={[s['row'], props.class]}
       role={props.role ?? 'menuitem'}
       aria-checked={props.role === 'menuitemradio' ? (props.checked === true ? 'true' : 'false') : undefined}

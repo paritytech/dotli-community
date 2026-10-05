@@ -38,7 +38,7 @@
 }
 .title {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--fs-pop-title);
   font-weight: var(--fw-semibold);
   line-height: var(--lh-tight);
 }
@@ -73,9 +73,6 @@
   }
   .head {
     gap: var(--sp-3);
-  }
-  .title {
-    font-size: var(--fs-title);
   }
   .foot {
     gap: var(--sp-3);
