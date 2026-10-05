@@ -24,6 +24,24 @@ async function polkavmCar(): Promise<TestCar> {
   ]);
 }
 
+// The runtime's file-input conformance guest: during `init` it walks the
+// `descriptors` asset (`[tag u32][length u32][payload]` records, tag 1 =
+// `host_file_register`, tag 0 = end) instead of declaring handlers in the manifest.
+function fileDescriptorsAsset(descriptors: readonly string[]): Uint8Array {
+  const encoder = new TextEncoder();
+  const payloads = descriptors.map(descriptor => encoder.encode(descriptor));
+  const bytes = new Uint8Array(payloads.reduce((length, payload) => length + 8 + payload.byteLength, 8));
+  const view = new DataView(bytes.buffer);
+  let offset = 0;
+  for (const payload of payloads) {
+    view.setUint32(offset, 1, true);
+    view.setUint32(offset + 4, payload.byteLength, true);
+    bytes.set(payload, offset + 8);
+    offset += 8 + payload.byteLength;
+  }
+  return bytes;
+}
+
 async function fileInputCar(): Promise<TestCar & { manifest: string }> {
   const fixture = join(import.meta.dirname, 'fixtures/polkavm');
   const manifest = JSON.stringify({
@@ -41,23 +59,17 @@ async function fileInputCar(): Promise<TestCar & { manifest: string }> {
         profile: 'framebuffer',
         requiredFeatures: [],
       },
-      fileInput: {
-        abiVersion: 1,
-        handlers: [
-          {
-            id: 'snes-rom',
-            label: 'SNES cartridge image',
-            extensions: ['.sfc'],
-            maxBytes: 1024,
-            mountPath: 'game/cartridge.sfc',
-          },
-        ],
-      },
     },
   });
   const car = await archiveCar([
     ['manifest.json', new TextEncoder().encode(manifest)],
-    ['app.polkavm', new Uint8Array(await readFile(join(fixture, 'framebuffer-test.polkavm')))],
+    ['app.polkavm', new Uint8Array(await readFile(join(fixture, 'file-input.polkavm')))],
+    [
+      'descriptors',
+      fileDescriptorsAsset([
+        '{"id":"rom","label":"Cartridge","extensions":[".bin"],"delivery":"relaunch","maxBytes":1024,"mountPath":"game/cartridge.bin"}',
+      ]),
+    ],
   ]);
   return { ...car, manifest };
 }
@@ -772,7 +784,7 @@ test('touch and wheel gestures reach the guest without scrolling the host page',
   ).toEqual({ overflow: 'hidden', overscroll: 'none' });
 });
 
-test('a consented file restarts the same PolkaVM iframe', async ({ page }) => {
+test('a consented runtime-registered file restarts the same PolkaVM iframe', async ({ page }) => {
   test.setTimeout(120_000);
   const fixture = await fileInputCar();
   const port = process.env['DOTLI_TEST_PORT'] ?? '5173';
@@ -815,26 +827,32 @@ test('a consented file restarts the same PolkaVM iframe', async ({ page }) => {
   await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true', {
     timeout: 30_000,
   });
-  await expect.poll(async () => Number(await canvas.getAttribute('data-polkavm-frames'))).toBeGreaterThan(2);
+  // The manifest declares no handlers: Open file appears only once the guest's
+  // `host_file_register` registration reaches the host.
+  const openFile = product.locator('#dotli-polkavm-file-open');
+  await product.locator('#dotli-polkavm-menu-open').click();
+  await expect(openFile).toBeVisible();
+  const picker = product.locator('input[type="file"]');
+  await expect(picker).toHaveAttribute('accept', '.bin');
 
   const originalCanvas = await canvas.elementHandle();
   const originalIframe = await page.locator('#polkavm-file-product').elementHandle();
-  await product.locator('input[type="file"]').setInputFiles({
-    name: 'game.sfc',
+  await picker.setInputFiles({
+    name: 'game.bin',
     mimeType: 'application/octet-stream',
     buffer: Buffer.alloc(64, 0xa5),
   });
   const consent = product.locator('.dotli-file-consent-backdrop .dotli-file-consent');
-  await expect(consent).toContainText('game.sfc · 0.1 KiB');
-  await expect(consent).toContainText('SNES cartridge image');
+  await expect(consent).toContainText('game.bin · 0.1 KiB');
+  await expect(consent).toContainText('Cartridge');
   await consent.locator('.dotli-file-consent-approve').click();
 
+  // Only the runtime's `file-input-delivery` relaunch outcome restarts the execution.
   await expect.poll(() => originalCanvas.evaluate(element => element.isConnected)).toBe(false);
   expect(await originalIframe.evaluate(element => element.isConnected)).toBe(true);
   await expect(canvas).toHaveAttribute('data-polkavm-ready', 'true', {
     timeout: 30_000,
   });
-  await expect.poll(async () => Number(await canvas.getAttribute('data-polkavm-frames'))).toBeGreaterThan(2);
   await product.locator('#dotli-polkavm-menu-open').click();
-  await expect(product.locator('#dotli-polkavm-file-open')).toBeEnabled();
+  await expect(openFile).toBeEnabled();
 });

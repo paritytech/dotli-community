@@ -37,6 +37,7 @@
   "devDependencies": {
     "@config/eslint": "*",
     "@config/vite": "*",
+    "@parity/polkavm-browser-runtime": "https://github.com/paritytech/polkavm-host-runtime/releases/download/v0.3.2-rc.2/parity-polkavm-browser-runtime-0.3.2-rc.2.tgz",
     "@types/node": "^26.6.3",
     "esbuild": "^0.28.2",
     "eslint": "^10.11.0",
