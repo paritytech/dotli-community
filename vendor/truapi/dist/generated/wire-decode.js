@@ -234,6 +234,30 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostPushNotificationCancelRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload),
     },
+    [W.NOTIFICATIONS_RECEIVER_STATUS.trait * 256 + W.NOTIFICATIONS_RECEIVER_STATUS.method]: {
+        0: (payload) => T.VersionedHostNotificationReceiverStatusRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReceiverStatusResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_REPLACE_RECEIVER.trait * 256 + W.NOTIFICATIONS_REPLACE_RECEIVER.method]: {
+        0: (payload) => T.VersionedHostNotificationReplaceReceiverRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReplaceReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_DISABLE_RECEIVER.trait * 256 + W.NOTIFICATIONS_DISABLE_RECEIVER.method]: {
+        0: (payload) => T.VersionedHostNotificationDisableReceiverRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationDisableReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_RECORD_RECEIPT.trait * 256 + W.NOTIFICATIONS_RECORD_RECEIPT.method]: {
+        0: (payload) => T.VersionedHostNotificationRecordReceiptRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationRecordReceiptResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_RECEIVER_EVENTS.trait * 256 + W.NOTIFICATIONS_RECEIVER_EVENTS.method]: {
+        0: (payload) => T.VersionedHostNotificationReceiverEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationReceiverEventsResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT.trait * 256 + W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT.method]: {
+        0: (payload) => T.VersionedHostNotificationAcknowledgeReceiverEventRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedHostNotificationAcknowledgeReceiverEventResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload),
+    },
     [W.PAYMENT_BALANCE_SUBSCRIBE.trait * 256 + W.PAYMENT_BALANCE_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedHostPaymentBalanceSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostPaymentBalanceSubscribeItem.dec(payload),

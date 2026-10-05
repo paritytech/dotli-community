@@ -258,6 +258,36 @@ export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
     readonly method: 1;
     readonly kind: "request";
 };
+export declare const NOTIFICATIONS_RECEIVER_STATUS: {
+    readonly trait: 8;
+    readonly method: 2;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_REPLACE_RECEIVER: {
+    readonly trait: 8;
+    readonly method: 3;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_DISABLE_RECEIVER: {
+    readonly trait: 8;
+    readonly method: 4;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_RECORD_RECEIPT: {
+    readonly trait: 8;
+    readonly method: 5;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_RECEIVER_EVENTS: {
+    readonly trait: 8;
+    readonly method: 6;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT: {
+    readonly trait: 8;
+    readonly method: 7;
+    readonly kind: "request";
+};
 export declare const PAYMENT_BALANCE_SUBSCRIBE: {
     readonly trait: 9;
     readonly method: 0;

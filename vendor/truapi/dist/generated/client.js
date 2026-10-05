@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "4dda7fbab9d6f435";
+export const TRUAPI_WIRE_SCHEMA_HASH = "7cf5d7f894407ead";
 function toSubscriptionError(error) {
     if (error instanceof SubscriptionError)
         return error;
@@ -981,7 +981,7 @@ export class LocaleClient {
         });
     }
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export class NotificationsClient {
     #transport;
     constructor(transport) {
@@ -1024,6 +1024,81 @@ export class NotificationsClient {
             signal: options?.signal,
             decodeResponse: (payload) => {
                 const result = S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECEIVER_STATUS,
+            payload: T.VersionedHostNotificationReceiverStatusRequest.enc({ tag: "V1", value: undefined }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReceiverStatusResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_REPLACE_RECEIVER,
+            payload: T.VersionedHostNotificationReplaceReceiverRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReplaceReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_DISABLE_RECEIVER,
+            payload: T.VersionedHostNotificationDisableReceiverRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationDisableReceiverResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECORD_RECEIPT,
+            payload: T.VersionedHostNotificationRecordReceiptRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationRecordReceiptResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_RECEIVER_EVENTS,
+            payload: T.VersionedHostNotificationReceiverEventsRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationReceiverEventsResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
+                return result.success ? { success: true, value: result.value.value } : result;
+            },
+        });
+    }
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request, options) {
+        return this.#transport.request({
+            ids: W.NOTIFICATIONS_ACKNOWLEDGE_RECEIVER_EVENT,
+            payload: T.VersionedHostNotificationAcknowledgeReceiverEventRequest.enc({ tag: "V1", value: request }),
+            signal: options?.signal,
+            decodeResponse: (payload) => {
+                const result = S.Result(T.VersionedHostNotificationAcknowledgeReceiverEventResponse, S.CallError(T.VersionedHostNotificationReceivingError)).dec(payload);
                 return result.success ? { success: true, value: result.value.value } : result;
             },
         });

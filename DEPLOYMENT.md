@@ -224,16 +224,20 @@ or provider credential:
 
 ```dotenv
 VITE_RECEIVING_RELAY_URL=https://relay.example.org
-VITE_RECEIVING_PUSH_ORIGIN=https://host.example.org
+VITE_RECEIVING_PUSH_ORIGIN=https://browser-smoke.receiving.test
 VITE_RECEIVING_VAPID_PUBLIC_KEY=
 ```
 
 These are illustrative addresses, not deployed services. Use the approved relay
-and host origins. Set both variables for the host build (or leave both empty).
-URLs must use HTTPS without credentials, query strings, or fragments. The push
-origin must be the exact host origin, without a trailing slash, and equal the
-relay's `PUSH_ORIGIN`. The relay must allow that origin through CORS and expose
-the canonical receiving transport endpoints. Set
+and product-subdomain host origins. Set both variables for the host build (or
+leave both empty). URLs must use HTTPS without credentials, query strings, or
+fragments. The push origin must equal the actual product host's `location.origin`,
+without a trailing slash, and the relay's `PUSH_ORIGIN`. For the local HTTPS
+qualification route this is exactly `https://browser-smoke.receiving.test`, not
+the root landing page `https://receiving.test`, the protocol iframe origin, or a
+`/product` path. The root landing page does not expose the product host Settings.
+Configure the relay's allowed origin/product for that same route. The relay must
+allow that origin through CORS and expose the canonical receiving transport endpoints. Set
 `VITE_RECEIVING_VAPID_PUBLIC_KEY` to the relay operator's public base64url VAPID
 application-server key to enable user-click Web Push enrollment. When omitted,
 enrollment reports an unsupported configuration; the key is not guessed or
@@ -242,11 +246,33 @@ Keep VAPID private keys and provider credentials on the relay; never put them in
 `VITE_*`, product frames, or a notification payload. Existing build/deployment
 environments do not acquire these settings automatically.
 
+For GitHub deployments, set the environment-scoped `RECEIVING_RELAY_URL`,
+`RECEIVING_PUSH_ORIGIN`, and `RECEIVING_VAPID_PUBLIC_KEY`; the workflow passes
+them to the corresponding `VITE_*` build settings. Enable `DEPLOY_NGINX` so
+the same deployment installs the generated worker CSP into its site-isolated
+snippet directory. Dist-only upload does not update nginx policy.
+
+For a loopback relay exposed at the configured product origin's `/__receiving`,
+also set `RECEIVING_PROXY_PORT` to its listening port. The nginx deployment
+requires the matching generated CSP and an HTTPS product subdomain of the
+deployment site. Only that exact hostname can reach the relay; other product
+hosts receive 404. The relay owns CORS, and receiving request paths are excluded
+from nginx access logs. With no proxy port, `/__receiving/` returns 404.
+The relay and its persistent private keys/database must already be provisioned;
+the frontend workflow never creates or rotates provider credentials.
+
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must
-come from the same receiving-enabled revision. Required exports are
-`browser-receiving-worker` and `WasmNotificationReceiver` from `wasm/web`.
-Regenerate/vendor that complete SDK before building; an older SDK is not a
-supported fallback. The build bundles `host-receiving.js` as a standalone classic
+have compatible receiving-enabled contracts and exact recorded source provenance.
+Required exports are `browser-receiving-worker` and `WasmNotificationReceiver`
+from `wasm/web`. This top integration vendors both SDK archives and both WASM
+bundles from native #1011 receiving candidate
+`75796176b248c8e17e5996e4975d4a4ee2c642e9`, based on
+`f7ac212cf0e19d6860c4d60298d4d1cf442e1c55`. Archive and generated client/WASM
+checksums are recorded in `vendor/truapi-host.lock.json`; the only package
+override is the host SDK's local `@parity/truapi` dependency.
+A clean #185-based receiving distribution needs its own SDK without
+Chat/Seity/Jam; never reuse this top integration artifact downward.
+The build bundles `host-receiving.js` as a standalone classic
 IIFE and copies that SDK's WASM to a content-hashed, same-origin
 `assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker
 registration are used. The canonical installer owns callback SCALE adaptation.
@@ -255,9 +281,11 @@ rules and prompted update behavior, and precaches the matching WASM. Deploy the
 complete host output together, not a worker or WASM file in isolation.
 
 For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`, an nginx
-`add_header` directive with the exact relay origin. Include this generated file
-from the `/host-sw.js` location in the deployed host's nginx configuration (using
-that deployment's absolute host-output path), alongside its existing headers.
+`add_header` directive with the exact relay origin. `deploy-nginx` installs this
+file as the site-specific `dotli-receiving-csp.conf` when `RECEIVING_CSP_FILE`
+is set; `/host-sw.js` includes it alongside its existing headers. The CI workflow
+sets this path from the matching configured host build. An unconfigured nginx
+deployment reinstalls the empty policy rather than retaining an old relay.
 It permits only same-origin scripts, WASM compilation (`'wasm-unsafe-eval'`), and
 connections to self/the configured relay. Install the matching policy whenever
 the relay changes; do not copy a policy between environments. If an existing
@@ -284,6 +312,17 @@ same local-first fence. A full reset retains the receiver's durable revocation
 ledger so pending remote deletions are not lost; ordinary product close, page
 close, and suspension do not erase consent or enrollments.
 
+Local Chromium qualification exercised the built host at
+`https://browser-smoke.receiving.test`: Settings enabled a real provider
+subscription through the button, with exactly one root-scoped `/host-sw.js`;
+the receiving UI reported enabled and the revoke control completed without
+browser errors. Notification permission was supplied through the isolated
+browser's automation grant. This was host transport setup, not a verified
+product enrollment—the smoke product name was intentionally not published.
+UI typechecking, 43 notification/session-storage tests and 45 host tests pass.
+Physical mobile delivery and end-to-end activation in a deployed product remain
+separate qualification gates.
+
 Only the native core's authenticated `identityAccountId` can select an account.
 The host independently runs the existing CID content verifier, off the ordinary
 startup and messaging path, before using a validated SHA-256 root multihash as
@@ -298,6 +337,24 @@ product descriptor in the already selected unlocked account. It never unlocks,
 switches accounts, or follows a sender route as a URL. Once that execution is
 ready, the shared worker queues the canonical notification Activation event for
 the product to consume.
+
+### Publication and qualification gates
+
+This is local source work, not a published SDK or an approved rollout. Before
+publication, record accessible source revisions, archive hashes, and separate
+WASM provenance in the vendor lock; preserve the clean feature/integration
+boundaries. Obtain explicit approval for the exact publication and deployment
+environment; a local successful build does not authorize either.
+
+After matching artifacts are available, run UI typechecks and receiving tests,
+then build with the exact product-subdomain origin, relay URL, and public VAPID
+key. Qualify Settings enable/permission denial/revoke, explicit product consent,
+authenticated account/artifact binding, account replacement fences, and the
+root-scoped `/host-sw.js` on that origin. Demonstrate actual provider delivery
+with no open host page, deduplication, and safe activation after readiness.
+Provider acceptance alone is not notification display; unsupported/unconfigured
+states and local-first revocation during relay failure must remain visible.
+Do not infer mobile or fully-quit browser delivery from a worker smoke test.
 
 
 ## Checking what is deployed

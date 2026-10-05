@@ -41,5 +41,15 @@ export function createNotificationAdapters(label: string): Required<Notification
     await cancelNotification(label, id);
   };
 
-  return { pushNotification, cancelNotification: cancelPushNotification };
+  return {
+    pushNotification,
+    cancelNotification: cancelPushNotification,
+    // Browser enrollment belongs to the service-worker receiver, never this
+    // resident wallet core. Each verified product connection installs its
+    // immutable execution bridge in receiverCommand before opening a provider.
+    receiverAuthority: async () => undefined,
+    receiverConsent: async () => { throw new Error('Browser receiving consent requires the service-worker receiver'); },
+    receiverChanged: async () => { throw new Error('Browser receiving state belongs to the service-worker receiver'); },
+    receiverCommand: async () => undefined,
+  };
 }

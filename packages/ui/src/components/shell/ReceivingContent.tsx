@@ -92,7 +92,7 @@ export function ReceivingContent(): JSX.Element {
         These controls apply immediately to this host, not only the selected product. Revoke all receiving removes all
         locally known receiving registrations. It does not reset browser or operating-system notification permission.
       </p>
-      <div role="status" aria-live="polite" aria-busy={loading() || pending() !== null}>
+      <div role="status" aria-live="polite" aria-busy={loading() || pending() !== null ? 'true' : 'false'}>
         <p class="mode-cache-label">
           {loading()
             ? 'Checking receiving status…'
