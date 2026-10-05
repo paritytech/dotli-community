@@ -806,18 +806,46 @@ export class ChainBroker {
 
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
-      this.cacheSharedFollowEvent(sharedFollow, message.params?.result);
-      for (const localToken of sharedFollow.localTokens) {
+      const eventResult = message.params?.result;
+      const stopped = isJsonRpcObject(eventResult) && eventResult['event'] === 'stop';
+      // The followers as they are now. papi re-follows from inside the
+      // delivery of a `stop`, and that follow must not hear this event too.
+      const recipients = [...sharedFollow.localTokens];
+      if (stopped) {
+        // Retired before any session hears the `stop`, so a re-follow takes
+        // the fresh-follow path. Bound to the dead token, it would be replayed
+        // the stopped snapshot and stopped again, without end.
+        brokerLog(
+          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+        );
+        this.upstreamFollowTokens.delete(upstreamToken);
+        sharedFollow.upstreamToken = null;
+        sharedFollow.requestInFlight = false;
+        sharedFollow.finalizedBlockHashes = [];
+        sharedFollow.finalizedBlockRuntime = null;
+        sharedFollow.bestBlockHash = null;
+        sharedFollow.blocks.clear();
+        sharedFollow.localTokens.clear();
+      } else {
+        this.cacheSharedFollowEvent(sharedFollow, eventResult);
+      }
+      for (const localToken of recipients) {
         const local = this.localFollowTokens.get(localToken);
         if (!local) {
           continue;
         }
         const session = this.sessions.get(local.sessionId);
+        if (stopped) {
+          // A stopped follow is over: the session never unfollows it.
+          this.localFollowTokens.delete(localToken);
+          session?.ownedTokens.delete(localToken);
+        }
         if (session?.connected !== true) {
           continue;
         }
-        const eventResult = message.params?.result;
-        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+        if (!stopped) {
+          this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
+        }
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult['event'] === 'string'
             ? eventResult['event']
@@ -831,25 +859,6 @@ export class ChainBroker {
             subscription: localToken,
           },
         });
-      }
-
-      // A `stop` kills this shared follow. Clear its dead upstream token and
-      // snapshot so a session's re-follow takes the fresh-follow path instead
-      // of binding to the dead token (which reads null and hangs). The `stop`
-      // already reached every session above, which papi needs before it
-      // re-issues `chainHead_v1_follow`.
-      const eventResult = message.params?.result;
-      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
-        brokerLog(
-          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
-        );
-        this.upstreamFollowTokens.delete(upstreamToken);
-        sharedFollow.upstreamToken = null;
-        sharedFollow.requestInFlight = false;
-        sharedFollow.finalizedBlockHashes = [];
-        sharedFollow.finalizedBlockRuntime = null;
-        sharedFollow.bestBlockHash = null;
-        sharedFollow.blocks.clear();
       }
       return;
     }

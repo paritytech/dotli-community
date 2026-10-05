@@ -1083,3 +1083,95 @@ describe('ChainBroker.halt', () => {
     ]);
   });
 });
+
+describe('upstream follow stop', () => {
+  interface Event {
+    method?: string;
+    id?: unknown;
+    result?: unknown;
+    params?: { subscription?: string; result?: { event?: string } };
+  }
+
+  /**
+   * A session that re-follows from inside the delivery of a `stop`, as papi's
+   * chainHead client does. It gives up after 20 stops, so a broker that keeps
+   * answering the re-follow with another stop ends instead of hanging.
+   */
+  function refollowingSession(broker: ChainBroker): { messages: Event[]; stops: () => number } {
+    const messages: Event[] = [];
+    let stops = 0;
+    let nextId = 2;
+    const connection = broker.connect(
+      'a',
+      message => {
+        const event = message as Event;
+        messages.push(event);
+        if (event.params?.result?.event === 'stop' && stops < 20) {
+          stops += 1;
+          connection.send({ jsonrpc: '2.0', id: nextId, method: 'chainHead_v1_follow', params: [true] });
+          nextId += 1;
+        }
+      },
+      'object',
+      () => undefined,
+    );
+    connection.send({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] });
+    return { messages, stops: () => stops };
+  }
+
+  it('As a dApp user, a follow the node stops is followed afresh once, not looped on the dead one', () => {
+    // Given: a session following through the broker, with a snapshot cached.
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider, () => undefined);
+    const session = refollowingSession(broker);
+    const first = harness.sent[0] as { id: string };
+    harness.emit({ jsonrpc: '2.0', id: first.id, result: 'up-1' });
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'initialized', finalizedBlockHashes: ['0xaa'] } },
+    });
+
+    // When: the node stops the follow, and the session re-follows at once.
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'stop' } },
+    });
+
+    // Then: one stop, and the re-follow goes upstream as a fresh follow.
+    expect(session.stops()).toBe(1);
+    const follows = harness.sent.filter(m => m.method === 'chainHead_v1_follow');
+    expect(follows).toHaveLength(2);
+  });
+
+  it('As a dApp user, the fresh follow carries on under its own token and the stopped one hears nothing more', () => {
+    // Given
+    const harness = createProviderHarness();
+    const broker = new ChainBroker(harness.provider, () => undefined);
+    const session = refollowingSession(broker);
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-1' });
+    const oldToken = (session.messages[0] as { result: string }).result;
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-1', result: { event: 'stop' } },
+    });
+    const refollow = harness.sent.filter(m => m.method === 'chainHead_v1_follow')[1] as { id: string };
+
+    // When
+    harness.emit({ jsonrpc: '2.0', id: refollow.id, result: 'up-2' });
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: { subscription: 'up-2', result: { event: 'bestBlockChanged', bestBlockHash: '0xbb' } },
+    });
+
+    // Then
+    const ack = session.messages.find(m => m.id === 2) as { result: string } | undefined;
+    expect(ack?.result).toEqual(expect.any(String));
+    expect(ack?.result).not.toBe(oldToken);
+    const best = session.messages.filter(m => m.params?.result?.event === 'bestBlockChanged');
+    expect(best.map(m => m.params?.subscription)).toEqual([ack?.result]);
+  });
+});
