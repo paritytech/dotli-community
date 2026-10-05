@@ -3,6 +3,8 @@
 
 import 'fake-indexeddb/auto';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Mock } from 'vitest';
+import type { NotificationRecord } from '@dotli/storage/notification-activations';
 import {
   acknowledgeNotificationActivation,
   activateNotification,
@@ -15,17 +17,35 @@ import {
 const origin = 'https://host.example';
 let click: (event: NotificationEvent) => void;
 const windows: WindowClient[] = [];
-const matchAll = vi.fn(async () => windows);
-const openWindow = vi.fn(async (_url: string) => null);
+const matchAll = vi.fn(() => Promise.resolve(windows));
+const openWindow = vi.fn<(url: string) => Promise<WindowClient | null>>().mockResolvedValue(null);
 
-function windowClient(url: string, focused = false, frameType: FrameType = 'top-level') {
+interface TestWindowClient {
+  url: string;
+  focused: boolean;
+  frameType: FrameType;
+  postMessage: Mock;
+  focus: Mock<() => Promise<WindowClient>>;
+}
+
+interface TestNotificationClick {
+  notification: { data: unknown; close: Mock };
+  waitUntil: Mock<(promise: Promise<unknown>) => void>;
+  preventDefault: Mock;
+  stopImmediatePropagation: Mock;
+}
+
+function windowClient(url: string, focused = false, frameType: FrameType = 'top-level'): TestWindowClient {
   const postMessage = vi.fn();
   const client = { url, focused, frameType, postMessage, focus: vi.fn<() => Promise<WindowClient>>() };
   client.focus.mockResolvedValue(client as unknown as WindowClient);
   return client;
 }
 
-async function retain(entryUrl = `${origin}/?product=notes`, expiresAt = Date.now() + 60_000) {
+async function retain(
+  entryUrl = `${origin}/?product=notes`,
+  expiresAt = Date.now() + 60_000,
+): Promise<NotificationRecord> {
   return retainNotification({
     scope: { product: crypto.randomUUID(), account: 'alice', network: 'paseo', artifact: 'cid' },
     notificationId: 1,
@@ -35,7 +55,7 @@ async function retain(entryUrl = `${origin}/?product=notes`, expiresAt = Date.no
   });
 }
 
-async function dispatch(data: unknown) {
+async function dispatch(data: unknown): Promise<TestNotificationClick> {
   const pending: Promise<unknown>[] = [];
   const event = {
     notification: { data, close: vi.fn() },
@@ -55,8 +75,9 @@ beforeAll(async () => {
     location: { origin },
     clients: { matchAll, openWindow },
     addEventListener: (type: string, listener: (event: NotificationEvent) => void) => {
-      expect(type).toBe('notificationclick');
-      click = listener;
+      if (type === 'notificationclick') {
+        click = listener;
+      }
     },
   });
   // This entry registers on import, so the test worker global must exist first.
@@ -139,7 +160,9 @@ describe('ordinary notification service worker activation', () => {
     'does not wake a host for a %s activation',
     async state => {
       const record = await retain(undefined, state === 'expired' ? Date.now() - 1 : undefined);
-      if (state === 'cancelled') await cancelNotificationActivation(record.scope.product, record.notificationId);
+      if (state === 'cancelled') {
+        await cancelNotificationActivation(record.scope.product, record.notificationId);
+      }
       if (state === 'acknowledged') {
         await activateNotification(record.token);
         await acknowledgeNotificationActivation(record.scope, record.sequence);

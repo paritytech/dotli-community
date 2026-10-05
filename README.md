@@ -293,6 +293,25 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
 
+### Ordinary notification activation
+
+Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
+host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
+notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
+the host entry page. It does not navigate the product's route.
+
+The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
+`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
+consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
+product, account, network or artifact cannot read or acknowledge the retained activation.
+
+Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
+opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
+In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
+window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
+supply one.
+
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
@@ -326,6 +345,11 @@ recreate the native Wallet or reset its signing watermark.
 
 The app context uses `document.write()` to eliminate extra iframe nesting: when loaded inside a host iframe, the app
 replaces its own document with the dApp content so the dApp occupies the iframe directly.
+
+Screen capture is delegated to the verified product iframe origin with `display-capture`; the browser still owns the
+screen-selection prompt and capture consent. Camera and microphone delegation remain conditional on the host's
+individual grants. Granting or revoking either replaces the iframe so the browser applies the new Permissions Policy;
+revoking them does not remove screen-capture delegation. Products continue to use the browser media APIs.
 
 ## Development
 

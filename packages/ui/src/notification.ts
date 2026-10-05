@@ -44,7 +44,9 @@ function sanitizeText(raw: string): string {
 }
 
 function notificationActivation(params: NotificationParams): (() => void) | undefined {
-  if (params.onActivate) return params.onActivate;
+  if (params.onActivate) {
+    return params.onActivate;
+  }
   let url: URL | undefined;
   if (params.deeplink !== undefined && params.deeplink.trim() !== '') {
     try {
@@ -61,7 +63,9 @@ function notificationActivation(params: NotificationParams): (() => void) | unde
   }
   return () => {
     window.focus();
-    if (url !== undefined) window.open(url.href, '_blank', 'noopener');
+    if (url !== undefined) {
+      window.open(url.href, '_blank', 'noopener');
+    }
   };
 }
 

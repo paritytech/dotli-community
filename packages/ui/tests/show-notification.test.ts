@@ -88,7 +88,7 @@ describe('showNotification', () => {
       }
       vi.stubGlobal('Notification', FakeNotification);
       setVisibility(visibility);
-      vi.mocked(document.hasFocus).mockReturnValue(focused);
+      vi.spyOn(document, 'hasFocus').mockReturnValue(focused);
 
       try {
         // When

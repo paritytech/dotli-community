@@ -240,7 +240,9 @@ async function tryFire(rec: ScheduledNotificationRecord, source: 'realtime' | 'r
   try {
     const claimAndFire = async (): Promise<void> => {
       const binding = await findNotification(rec.productId, rec.perProductId);
-      if (!binding || !notificationContextIsCurrent(binding.scope)) return;
+      if (!binding || !notificationContextIsCurrent(binding.scope)) {
+        return;
+      }
       const removed = await removeById(rec.hostId);
       if (!removed) {
         // Sibling tab won the race.

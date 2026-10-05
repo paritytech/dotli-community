@@ -372,7 +372,9 @@ describe('bridge render lifecycle', () => {
         ),
     );
     nth(mocks.coreProviderDefers, 1).resolve(grantedProvider);
-    await vi.waitFor(() => expect(initial.dispose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => {
+      expect(initial.dispose).toHaveBeenCalledTimes(1);
+    });
     const granted = nth(mocks.iframeHosts, 1);
     expect(granted.iframe.allow.split('; ')).toEqual([
       'clipboard-write',
@@ -389,7 +391,9 @@ describe('bridge render lifecycle', () => {
       Promise.resolve(requests.map(() => 'Denied')),
     );
     nth(mocks.coreProviderDefers, 2).resolve(revokedProvider);
-    await vi.waitFor(() => expect(granted.dispose).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => {
+      expect(granted.dispose).toHaveBeenCalledTimes(1);
+    });
     const revoked = nth(mocks.iframeHosts, 2);
     expect(revoked.iframe.allow).toBe(initial.iframe.allow);
     expect(new URL(revoked.iframeUrl).origin).toBe(origin);

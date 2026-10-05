@@ -28,7 +28,9 @@ export function notificationWorker(): AstroIntegration {
           throw new Error('Notification service worker must not contain external or dynamic imports');
         }
         const script = result.outputFiles[0];
-        if (!script) throw new Error('Notification service worker bundle was not emitted');
+        if (!script) {
+          throw new Error('Notification service worker bundle was not emitted');
+        }
         await writeFile(resolve(fileURLToPath(dir), 'host-notifications.js'), script.contents);
       },
     },

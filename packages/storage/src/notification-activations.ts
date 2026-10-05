@@ -43,7 +43,7 @@ function open(): Promise<IDBDatabase> {
     };
     request.onerror = () => {
       database = undefined;
-      reject(request.error);
+      reject(request.error ?? new Error('Notification storage open failed'));
     };
     request.onblocked = () => {
       database = undefined;
@@ -57,13 +57,36 @@ export function sameNotificationScope(a: NotificationScope, b: NotificationScope
   return a.product === b.product && a.account === b.account && a.network === b.network && a.artifact === b.artifact;
 }
 
-/** Relative routes are data for the product, never navigation authority. */
+function containsRouteControls(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code < 0x20 || code === 0x7f) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Destinations remain opaque product data; the host never navigates to them. */
 export function validNotificationRoute(route: string): boolean {
-  if (!route.startsWith('/') || route.startsWith('//') || route.length > 2048 || /[\\\u0000-\u0020\u007f]/.test(route))
+  if (route.length > 2048 || route.includes('\\') || route.includes(' ') || containsRouteControls(route)) {
     return false;
+  }
   try {
     const decoded = decodeURIComponent(route);
-    return !decoded.startsWith('//') && !/[\\\u0000-\u001f\u007f]/.test(decoded);
+    if (decoded.includes('\\') || containsRouteControls(decoded)) {
+      return false;
+    }
+    if (route.startsWith('/')) {
+      return !decoded.startsWith('//');
+    }
+    const url = new URL(route);
+    return (
+      ['http:', 'https:', 'polkadot:'].includes(url.protocol) &&
+      url.hostname !== '' &&
+      url.username === '' &&
+      url.password === ''
+    );
   } catch {
     return false;
   }
@@ -77,9 +100,15 @@ async function transaction<T>(
   return new Promise<T>((resolve, reject) => {
     const tx = db.transaction(STORE, mode);
     let value: T;
-    tx.oncomplete = () => resolve(value);
-    tx.onerror = () => reject(tx.error ?? new Error('Notification storage failed'));
-    tx.onabort = () => reject(tx.error ?? new Error('Notification storage aborted'));
+    tx.oncomplete = () => {
+      resolve(value);
+    };
+    tx.onerror = () => {
+      reject(tx.error ?? new Error('Notification storage failed'));
+    };
+    tx.onabort = () => {
+      reject(tx.error ?? new Error('Notification storage aborted'));
+    };
     run(tx.objectStore(STORE), result => {
       value = result;
     });
@@ -89,8 +118,9 @@ async function transaction<T>(
 export async function retainNotification(
   input: Omit<NotificationRecord, 'sequence' | 'activated' | 'acknowledged' | 'token'>,
 ): Promise<NotificationRecord> {
-  if (input.route !== null && !validNotificationRoute(input.route))
-    throw new Error('Notification destination must be product-relative');
+  if (input.route !== null && !validNotificationRoute(input.route)) {
+    throw new Error('Invalid notification destination');
+  }
   const token = crypto.randomUUID();
   return transaction('readwrite', (store, result) => {
     const all = store.getAll();
@@ -114,7 +144,9 @@ export async function retainNotification(
       }
       const record = { ...input, token, activated: false, acknowledged: false };
       const added = store.add(record);
-      added.onsuccess = () => result({ ...record, sequence: added.result as number });
+      added.onsuccess = () => {
+        result({ ...record, sequence: added.result as number });
+      };
     };
   });
 }
@@ -125,7 +157,9 @@ export async function findNotification(
 ): Promise<NotificationRecord | undefined> {
   return transaction('readonly', (store, result) => {
     const request = store.index('notification').get([product, notificationId]);
-    request.onsuccess = () => result(request.result as NotificationRecord | undefined);
+    request.onsuccess = () => {
+      result(request.result as NotificationRecord | undefined);
+    };
   });
 }
 
@@ -151,7 +185,7 @@ export async function activateNotification(token: string): Promise<NotificationR
 export async function pendingNotificationActivations(scope: NotificationScope): Promise<NotificationRecord[]> {
   return transaction('readonly', (store, result) => {
     const request = store.getAll();
-    request.onsuccess = () =>
+    request.onsuccess = () => {
       result(
         (request.result as NotificationRecord[])
           .filter(
@@ -164,11 +198,12 @@ export async function pendingNotificationActivations(scope: NotificationScope): 
           )
           .slice(0, 32),
       );
+    };
   });
 }
 
 export async function acknowledgeNotificationActivation(scope: NotificationScope, sequence: number): Promise<void> {
-  await transaction<void>('readwrite', (store, result) => {
+  await transaction<undefined>('readwrite', (store, result) => {
     const request = store.get(sequence);
     request.onsuccess = () => {
       const record = request.result as NotificationRecord | undefined;
@@ -182,11 +217,13 @@ export async function acknowledgeNotificationActivation(scope: NotificationScope
 }
 
 export async function cancelNotificationActivation(product: string, notificationId: number): Promise<void> {
-  await transaction<void>('readwrite', (store, result) => {
+  await transaction<undefined>('readwrite', (store, result) => {
     const request = store.index('notification').get([product, notificationId]);
     request.onsuccess = () => {
       const record = request.result as NotificationRecord | undefined;
-      if (record) store.delete(record.sequence);
+      if (record) {
+        store.delete(record.sequence);
+      }
       result(undefined);
     };
   });

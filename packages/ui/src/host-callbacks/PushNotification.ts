@@ -7,6 +7,7 @@
 // gone and prompt the user again.
 
 import type { Notifications } from '@parity/truapi-host';
+import type { NotificationActivation } from '@parity/truapi';
 import {
   retainNotification,
   findNotification,
@@ -27,7 +28,7 @@ export function createNotificationAdapters(label: string): Required<Notification
   const pushNotification: Required<Notifications>['pushNotification'] = async ({ text, deeplink, scheduledAt }) => {
     const context = notificationContext(label);
     if (deeplink !== undefined && !validNotificationRoute(deeplink)) {
-      throw new Error('Notification destination must be product-relative');
+      throw new Error('Invalid notification destination');
     }
 
     const result = await scheduleNotification({
@@ -49,8 +50,12 @@ export function createNotificationAdapters(label: string): Required<Notification
         route: deeplink ?? null,
         expiresAt: Math.max(Date.now(), Number(scheduledAt ?? 0)) + 7 * 24 * 60 * 60 * 1000,
       });
-      if (!notificationContextIsCurrent(context.scope)) throw new Error('Notification account changed');
-      if (result.immediate) await presentProductNotification({ text, label, product: label, id: result.id });
+      if (!notificationContextIsCurrent(context.scope)) {
+        throw new Error('Notification account changed');
+      }
+      if (result.immediate) {
+        await presentProductNotification({ text, label, product: label, id: result.id });
+      }
     } catch (error) {
       await cancelNotification(label, result.id);
       await cancelNotificationActivation(label, result.id);
@@ -62,12 +67,16 @@ export function createNotificationAdapters(label: string): Required<Notification
   const cancelPushNotification: Required<Notifications>['cancelNotification'] = async id => {
     const context = notificationContext(label);
     const record = await findNotification(label, id);
-    if (!record || !notificationContextIsCurrent(record.scope) || !notificationContextIsCurrent(context.scope)) return;
+    if (!record || !notificationContextIsCurrent(record.scope) || !notificationContextIsCurrent(context.scope)) {
+      return;
+    }
     await cancelNotificationActivation(label, id);
     await cancelNotification(label, id);
-    const registration = await navigator.serviceWorker?.getRegistration('/');
+    const registration = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistration('/') : undefined;
     const notifications = await registration?.getNotifications({ tag: `dotli:${record.token}` });
-    for (const notification of notifications ?? []) notification.close();
+    for (const notification of notifications ?? []) {
+      notification.close();
+    }
   };
 
   return {
@@ -82,20 +91,30 @@ export function createNotificationAdapters(label: string): Required<Notification
     receiverCommand: () => Promise.resolve(undefined),
     activationEvents: async () => {
       // A click focuses one tab; background siblings must not route the same event.
-      if (document.visibilityState !== 'visible' || !document.hasFocus()) return { events: [] };
+      if (document.visibilityState !== 'visible' || !document.hasFocus()) {
+        return { events: [] };
+      }
       const { scope } = notificationContext(label);
-      const events = await pendingNotificationActivations(scope);
-      if (!notificationContextIsCurrent(scope)) return { events: [] };
-      return {
-        events: events.map(event => ({
-          sequence: BigInt(event.sequence),
-          notificationId: event.notificationId,
-          route: event.route!,
-        })),
-      };
+      const records = await pendingNotificationActivations(scope);
+      if (!notificationContextIsCurrent(scope)) {
+        return { events: [] };
+      }
+      const events: NotificationActivation[] = [];
+      for (const record of records) {
+        if (record.route !== null) {
+          events.push({
+            sequence: BigInt(record.sequence),
+            notificationId: record.notificationId,
+            route: record.route,
+          });
+        }
+      }
+      return { events };
     },
     acknowledgeActivation: async ({ sequence }) => {
-      if (sequence < 0n || sequence > BigInt(Number.MAX_SAFE_INTEGER)) throw new Error('Invalid activation sequence');
+      if (sequence < 0n || sequence > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error('Invalid activation sequence');
+      }
       const { scope } = notificationContext(label);
       await acknowledgeNotificationActivation(scope, Number(sequence));
     },

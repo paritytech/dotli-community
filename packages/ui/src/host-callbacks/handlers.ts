@@ -85,7 +85,7 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     auth: {
       authStateChanged: state => {
         setNotificationAccount(label, state.tag === 'Connected' ? state.value.identityAccountId : undefined);
-        return presentAuth(state);
+        presentAuth(state);
       },
     },
     userConfirmation: createUserConfirmationAdapters(label, blockingModalScope),

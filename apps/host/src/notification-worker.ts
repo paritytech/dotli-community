@@ -29,13 +29,18 @@ async function activate(token: string): Promise<void> {
   // The transaction commits before a page is focused or opened. Reloads and
   // account changes can then recover the activation through authenticated polling.
   const record = await activateNotification(token);
-  if (!record) return;
+  if (!record) {
+    return;
+  }
   const entry = hostUrl(record.entryUrl);
-  if (!entry) return;
+  if (!entry) {
+    return;
+  }
 
   const windows = await scope.clients.matchAll({ type: 'window', includeUncontrolled: true });
   const hosts = windows.filter(
-    client => (client.frameType === 'top-level' || client.frameType === 'auxiliary') && hostUrl(client.url),
+    client =>
+      (client.frameType === 'top-level' || client.frameType === 'auxiliary') && hostUrl(client.url) !== undefined,
   );
   const target = hosts.find(client => client.focused) ?? hosts[0];
   if (target) {
@@ -60,8 +65,9 @@ scope.addEventListener('notificationclick', event => {
     Object.keys(data).length !== 1 ||
     typeof data.dotliActivation !== 'string' ||
     data.dotliActivation.length === 0
-  )
+  ) {
     return;
+  }
 
   event.notification.close();
   event.waitUntil(

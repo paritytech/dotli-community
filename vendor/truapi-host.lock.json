@@ -1,29 +1,29 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "75796176b248c8e17e5996e4975d4a4ee2c642e9",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
-  "baseRevision": "f7ac212cf0e19d6860c4d60298d4d1cf442e1c55",
-  "publication": "Approved receiving integration candidate for #1011; SDK packages are vendored, not npm-published.",
+  "upstreamBranch": "work/paseo-tommy-blockers",
+  "upstreamRevision": "a618fbaf9021cb5da6ac8e57ddbebf7e16a2c193",
+  "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
+  "baseRevision": "75796176b248c8e17e5996e4975d4a4ee2c642e9",
+  "publication": "Local blocker candidate; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "19fa971d61fe43483964927372439cd160e5d0a26a24b98bfeb4da65146e4f9a",
-      "clientSha256": "c662069ede1dce99dada42de63321bd43b4def0acf35f352a04c4c45f5f28c58"
+      "sourceArchiveSha256": "7efcd0cc797b0b48a666feaab12e1f7d81989eff16eec85cdff49ab2aa11cd6c",
+      "clientSha256": "f327dda7b159e40218e306fbcfc3823c861be08de2bcf40942523adb3d2d6a6e"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "9fa0ef6219a50ec92585d7e46be25228ab490c5de709bccac2f5dfee81e1bdee",
+      "sourceArchiveSha256": "981d38c837cd042e2d2ca63dc4930a98995578545cc5d0d3f911234c634421b2",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "fe41cab7f6a8be6b5865a7d43867d792c8fe7dc8971c34cd28cec05c3e9d285b",
-      "testingWasmSha256": "0c966667ec953f902561145ea5242b4f6427ba600e16e263a95f990d81d3439a",
+      "wasmSha256": "72f5742343ba8b06fcfdc5145d07a4d4d421fab2578f76ce26c1d1b9b18c01bb",
+      "testingWasmSha256": "c5aa53c36e2465896227f523493af1257c0e1edc4c7f41e9408ba43fcf564a3a",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "75796176b248c8e17e5996e4975d4a4ee2c642e9"
+  "wasmUpstreamRevision": "a618fbaf9021cb5da6ac8e57ddbebf7e16a2c193"
 }

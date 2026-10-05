@@ -1,5 +1,5 @@
 import 'fake-indexeddb/auto';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   activateNotification,
   findNotification,
@@ -29,7 +29,7 @@ const account = '11'.repeat(32);
 const focus = vi.fn();
 
 beforeEach(() => {
-  label = `notification-test-${++count}`;
+  label = `notification-test-${String(++count)}`;
   environment.network = 'paseo-next-v2';
   focus.mockClear();
   vi.spyOn(document, 'hasFocus').mockReturnValue(true);
@@ -54,24 +54,27 @@ describe('bound notification activation', () => {
   it('retains an in-page click until exact acknowledgement without navigating/reloading the product', async () => {
     const api = createNotificationAdapters(label);
     const pushed = await api.pushNotification({ text: 'Open conversation', deeplink: '/dm/alice' });
+    const record = await findNotification(label, pushed.id);
+    assert.isDefined(record);
     await overlaysReady();
     const body = document.querySelector<HTMLButtonElement>('.notif-body');
     expect(body?.textContent).toBe('Open conversation');
     body?.click();
-    await vi.waitFor(async () =>
+    await vi.waitFor(async () => {
       expect((await api.activationEvents()).events).toEqual([
-        { sequence: expect.any(BigInt), notificationId: pushed.id, route: '/dm/alice' },
-      ]),
-    );
+        { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },
+      ]);
+    });
     const { events } = await api.activationEvents();
+    const first = events[0];
+    assert.isDefined(first);
     expect((await api.activationEvents()).events).toEqual(events);
     expect(focus).toHaveBeenCalledOnce();
-    await api.acknowledgeActivation({ sequence: events[0]!.sequence + 999n });
+    await api.acknowledgeActivation({ sequence: first.sequence + 999n });
     expect((await api.activationEvents()).events).toEqual(events);
-    await api.acknowledgeActivation({ sequence: events[0]!.sequence });
+    await api.acknowledgeActivation({ sequence: first.sequence });
     expect((await api.activationEvents()).events).toEqual([]);
-    const record = await findNotification(label, pushed.id);
-    expect(await activateNotification(record!.token)).toBeUndefined();
+    expect(await activateNotification(record.token)).toBeUndefined();
   });
 
   it.each(['account', 'network', 'artifact', 'product'] as const)(
@@ -79,10 +82,15 @@ describe('bound notification activation', () => {
     async field => {
       const api = createNotificationAdapters(label);
       const pushed = await api.pushNotification({ text: 'Private', deeplink: '/dm/alice' });
-      const record = (await findNotification(label, pushed.id))!;
+      const record = await findNotification(label, pushed.id);
+      assert.isDefined(record);
       await activateNotification(record.token);
-      if (field === 'account') setNotificationAccount(label, '22'.repeat(32));
-      if (field === 'network') environment.network = 'other-environment';
+      if (field === 'account') {
+        setNotificationAccount(label, '22'.repeat(32));
+      }
+      if (field === 'network') {
+        environment.network = 'other-environment';
+      }
       if (field === 'artifact') {
         dispose();
         dispose = registerProductNotificationTarget(label, {
@@ -120,7 +128,8 @@ describe('bound notification activation', () => {
     activate?.();
     await expect(api.activationEvents()).rejects.toThrow('authenticated account');
     expect(focus).not.toHaveBeenCalled();
-    const record = (await findNotification(label, pushed.id))!;
+    const record = await findNotification(label, pushed.id);
+    assert.isDefined(record);
     await activateNotification(record.token); // An OS click while the page is logged out.
     setNotificationAccount(label, account);
     expect((await api.activationEvents()).events).toEqual([
@@ -131,7 +140,8 @@ describe('bound notification activation', () => {
   it('makes cancelled and expired notification tokens inert', async () => {
     const api = createNotificationAdapters(label);
     const pushed = await api.pushNotification({ text: 'Cancelled', deeplink: '/dm/alice' });
-    const record = (await findNotification(label, pushed.id))!;
+    const record = await findNotification(label, pushed.id);
+    assert.isDefined(record);
     await api.cancelNotification(pushed.id);
     expect(await activateNotification(record.token)).toBeUndefined();
     const expired = await retainNotification({
@@ -148,25 +158,25 @@ describe('bound notification activation', () => {
   it.each(['permission rejected', 'worker installing'])(
     'keeps the toast actionable when OS delivery is unavailable: %s',
     async failure => {
-      vi.mocked(document.hasFocus).mockReturnValue(false);
+      vi.spyOn(document, 'hasFocus').mockReturnValue(false);
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.stubGlobal('Notification', {
         permission: failure === 'permission rejected' ? 'default' : 'granted',
-        requestPermission: async () => {
-          throw new Error('User activation required');
-        },
+        requestPermission: () => Promise.reject(new Error('User activation required')),
       });
-      vi.stubGlobal('navigator', { serviceWorker: { getRegistration: async () => ({ active: null }) } });
+      vi.stubGlobal('navigator', { serviceWorker: { getRegistration: () => Promise.resolve({ active: null }) } });
       const api = createNotificationAdapters(label);
       const pushed = await api.pushNotification({ text: 'Still actionable', deeplink: '/dm/alice' });
+      const record = await findNotification(label, pushed.id);
+      assert.isDefined(record);
       await overlaysReady();
-      vi.mocked(document.hasFocus).mockReturnValue(true);
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
       document.querySelector<HTMLButtonElement>('.notif-body')?.click();
-      await vi.waitFor(async () =>
+      await vi.waitFor(async () => {
         expect((await api.activationEvents()).events).toEqual([
-          { sequence: expect.any(BigInt), notificationId: pushed.id, route: '/dm/alice' },
-        ]),
-      );
+          { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/dm/alice' },
+        ]);
+      });
     },
   );
 
@@ -176,7 +186,9 @@ describe('bound notification activation', () => {
     const pending = await retainNotification({ ...request, notificationId: 1000 });
     await activateNotification(pending.token);
     const oldest = await retainNotification({ ...request, notificationId: 1001 });
-    for (let id = 1002; id <= 1258; id++) await retainNotification({ ...request, notificationId: id });
+    for (let id = 1002; id <= 1258; id++) {
+      await retainNotification({ ...request, notificationId: id });
+    }
     expect(await activateNotification(oldest.token)).toBeUndefined();
     expect(await pendingNotificationActivations(scope)).toEqual([expect.objectContaining({ token: pending.token })]);
     const api = createNotificationAdapters(label);
@@ -188,7 +200,9 @@ describe('bound notification activation', () => {
 
   it.each([
     '//attacker.test',
-    'https://attacker.test/dm/a',
+    'javascript:alert(1)',
+    'data:text/html,unsafe',
+    'https://user:password@attacker.test/dm/a',
     '/\\attacker.test',
     '/%2fattacker.test',
     '/dm/%0a',
@@ -197,6 +211,6 @@ describe('bound notification activation', () => {
     expect(validNotificationRoute(route)).toBe(false);
     await expect(
       createNotificationAdapters(label).pushNotification({ text: 'Unsafe', deeplink: route }),
-    ).rejects.toThrow('product-relative');
+    ).rejects.toThrow();
   });
 });
