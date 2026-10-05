@@ -76,10 +76,12 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
 /**
  * On desktop the pill and the capsule float over a full-height frame, as the
  * board draws them, so the product never relayouts on a fold or a reveal.
- * The phone header sits in the page flow, with the frame below it.
+ * The phone header sits in the page flow, with the frame below it, and so
+ * does a touch device's bar, which never folds (armTopbarAutoHide) and would
+ * otherwise cover the app's top for good.
  */
 function syncFrameLayout(): void {
-  setTopbarLayout({ offset: isPhoneViewport() });
+  setTopbarLayout({ offset: isPhoneViewport() || isMobileDevice() });
 }
 
 function setVisible(next: boolean): void {
@@ -296,23 +298,6 @@ export function armTopbarAutoHide(): void {
   scheduleTopbarHide();
 }
 
-/** Pin the bar on screen and stop auto-hiding. */
-export function pinTopbarVisible(): void {
-  setTopbarAutoHide(false);
-  cancelHide();
-  // A focus check queued by focusout must not run against a pinned or
-  // disposed bar.
-  if (focusoutTimer !== null) {
-    clearTimeout(focusoutTimer);
-    focusoutTimer = null;
-  }
-  if (blurTimer !== null) {
-    clearTimeout(blurTimer);
-    blurTimer = null;
-  }
-  setVisible(true);
-}
-
 /**
  * Report whether the product's content is on screen: once the sandbox has
  * loaded it, or a local or preview frame has rendered. The bar folds only
@@ -332,7 +317,18 @@ export function setProductContentShown(shown: boolean): void {
  * never needs this, tests do.
  */
 export function disposeTopbarAutoHide(): void {
-  pinTopbarVisible();
+  setTopbarAutoHide(false);
+  cancelHide();
+  // A focus check queued by focusout must not run against a disposed bar.
+  if (focusoutTimer !== null) {
+    clearTimeout(focusoutTimer);
+    focusoutTimer = null;
+  }
+  if (blurTimer !== null) {
+    clearTimeout(blurTimer);
+    blurTimer = null;
+  }
+  setVisible(true);
   listeners?.abort();
   listeners = null;
   contentShown = false;

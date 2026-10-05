@@ -19,6 +19,12 @@ vi.mock('../src/product-iframe-box.js', () => ({
       : { top: '0px', left: '0px', width: '100%', height: '100vh' },
 }));
 
+const device = vi.hoisted(() => ({ mobile: false }));
+
+vi.mock('../../shared/src/device.js', () => ({
+  isMobileDevice: () => device.mobile,
+}));
+
 const HIDE_DELAY_MS = 2500;
 
 const SHORTCUT = { code: 'KeyT', altKey: true, shiftKey: true, bubbles: true };
@@ -137,6 +143,7 @@ async function loadAutoHide(loggedIn = true, contentShown = true): Promise<typeo
 }
 
 beforeEach(() => {
+  device.mobile = false;
   vi.resetModules();
   vi.unstubAllGlobals();
   viewport = stubPhoneViewport(false);
@@ -300,9 +307,9 @@ describe('topbar auto-hide reveal', () => {
     expect(isHidden()).toBe(false);
   });
 
-  it('As a dotli integrator, pinning the bar drops a queued focus check', async () => {
+  it('As a dotli integrator, disposing the auto-hide drops a queued focus check', async () => {
     // Given a focusout has queued its next-tick focus check
-    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
+    const { armTopbarAutoHide, disposeTopbarAutoHide } = await loadAutoHide();
     armTopbarAutoHide();
     flushUi();
     // Armed: the hide timer is pending, alongside timers owned by other modules.
@@ -311,7 +318,7 @@ describe('topbar auto-hide reveal', () => {
     expect(vi.getTimerCount()).toBe(armedTimers + 1);
 
     // When
-    pinTopbarVisible();
+    disposeTopbarAutoHide();
 
     // Then both the hide timer and the queued focus check are gone
     expect(vi.getTimerCount()).toBe(armedTimers - 1);
@@ -373,7 +380,7 @@ describe('topbar auto-hide reveal', () => {
 
   it('As a dotli integrator, the reveal button shows only while the bar auto-hides', async () => {
     // Given
-    const { armTopbarAutoHide, pinTopbarVisible, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
+    const { armTopbarAutoHide, disposeTopbarAutoHide, TOPBAR_REVEAL_BUTTON_ID } = await loadAutoHide();
 
     // When
     armTopbarAutoHide();
@@ -383,7 +390,7 @@ describe('topbar auto-hide reveal', () => {
     expect(byId(TOPBAR_REVEAL_BUTTON_ID).hidden).toBe(false);
 
     // When
-    pinTopbarVisible();
+    disposeTopbarAutoHide();
     flushUi();
 
     // Then
@@ -455,24 +462,6 @@ describe('topbar auto-hide layout', () => {
   it('As a dApp user, the app takes the full height under the pill before the bar first folds', async () => {
     // Given: the bar is up and not armed yet (the shield still settling)
     await loadAutoHide();
-
-    // Then
-    expect(isHidden()).toBe(false);
-    expect(appFrame().style.top).toBe('0px');
-    expect(appFrame().style.height).toBe('100vh');
-  });
-
-  it('As a dotli integrator, pinning the bar keeps it up over the full-height app', async () => {
-    // Given
-    const { armTopbarAutoHide, pinTopbarVisible } = await loadAutoHide();
-    armTopbarAutoHide();
-    flushUi();
-    advance(HIDE_DELAY_MS);
-
-    // When
-    pinTopbarVisible();
-    flushUi();
-    advance(HIDE_DELAY_MS * 2);
 
     // Then
     expect(isHidden()).toBe(false);
@@ -619,6 +608,21 @@ describe('topbar auto-hide on use of the app', () => {
 });
 
 describe('topbar auto-hide on a phone', () => {
+  it('As a tablet user, the bar never folds and the app starts below it, so the bar never covers the app', async () => {
+    // Given: a touch device at a desktop width, where auto-hide never arms
+    device.mobile = true;
+    const { armTopbarAutoHide } = await loadAutoHide();
+
+    // When
+    armTopbarAutoHide();
+    flushUi();
+    advance(HIDE_DELAY_MS * 2);
+
+    // Then
+    expect(isHidden()).toBe(false);
+    expect(appFrame().style.top).toBe('56px');
+  });
+
   it('As a phone user, the header never folds away, and the app starts below it', async () => {
     // Given
     viewport.set(true);

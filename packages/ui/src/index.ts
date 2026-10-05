@@ -36,7 +36,6 @@ export { bindUrlPill } from './url-pill.js';
 export { bindTopbarStatus } from './topbar-status.js';
 export {
   armTopbarAutoHide,
-  pinTopbarVisible,
   setProductContentShown,
   registerTopbarElement,
   revealTopbar,
