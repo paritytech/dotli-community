@@ -25,6 +25,6 @@ describe('bindTopbarStatus, before the rest of the shell boots', () => {
     window.dispatchEvent(new Event('offline'));
 
     // Then
-    expect(bar.dataset['health']).toBe('offline');
+    expect(bar.dataset['tone']).toBe('err');
   });
 });

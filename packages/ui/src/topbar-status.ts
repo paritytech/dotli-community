@@ -1,10 +1,10 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The bar's status as attributes its module styles: `data-health` colours the
-// collapsed capsule's bar, `data-action` shows its pulsing action dot. It also
-// publishes the pill's box, because the popovers that drop from it are
-// portalled to <body> and cannot see it.
+// The bar's status as attributes its module styles: `data-tone`, the network
+// health, colours the collapsed capsule's bar, `data-action` shows its
+// pulsing action dot. It also publishes the pill's box, because the popovers
+// that drop from it are portalled to <body> and cannot see it.
 
 import { layoutParent } from './components/shell/topbar/fit.js';
 import { isPhoneViewport } from './phone-viewport.js';
@@ -32,7 +32,7 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
   // idempotent, so unbinding the bar leaves it running.
   initNetworkHealth();
   const render = (): void => {
-    bar.dataset['health'] = networkHealthStore.get();
+    bar.dataset['tone'] = networkHealthStore.get();
     bar.toggleAttribute('data-action', needsAction(topbarStore.get(), totalChatUnread(chatPanelStore.get())));
   };
   const place = (): void => {

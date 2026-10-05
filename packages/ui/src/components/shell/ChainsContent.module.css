@@ -10,12 +10,6 @@
   align-items: center;
   gap: 10px;
 }
-/* The status dot, 8 px in a 3 px halo on desktop. */
-.status-dot {
-  width: var(--sp-2);
-  height: var(--sp-2);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
-}
 .status-text {
   display: flex;
   flex-direction: column;
@@ -214,16 +208,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Phones: the boards' sizes. The dot restores StatusDot's own 10 px and
-   4 px halo. */
+/* Phones: the boards' sizes. */
 @media (max-width: 560px) {
   .status {
     gap: var(--sp-3);
-  }
-  .status-dot {
-    width: 10px;
-    height: 10px;
-    box-shadow: 0 0 0 var(--sp-1) color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
   }
   .group,
   .group-label {

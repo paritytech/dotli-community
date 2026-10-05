@@ -4,7 +4,7 @@
 import { lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
-import { healthTone, healthWord } from '../../network-health.js';
+import { healthWord } from '../../network-health.js';
 import { topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
@@ -72,13 +72,11 @@ export function ChainsPopover(): JSX.Element {
           label="Network"
           icon={() => <GlobeIcon size={14} />}
           alert={
-            health() === 'ok'
-              ? undefined
-              : { tone: healthTone(health()), label: `network ${healthWord(health()).toLowerCase()}` }
+            health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
           }
           aside={() => (
             <>
-              <StatusDot tone={healthTone(health())} size="sm" pulse={health() === 'syncing'} />
+              <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
               <span>{healthWord(health())}</span>
             </>
           )}
@@ -86,14 +84,7 @@ export function ChainsPopover(): JSX.Element {
           visible={topbar().chainsButtonVisible}
           activate={t.onClick}
         >
-          <IconButton
-            {...t}
-            id="chains-button"
-            title="Network"
-            aria-label="Network"
-            badge
-            badgeTone={healthTone(health())}
-          >
+          <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
             <GlobeIcon size={20} stroke={1.75} />
           </IconButton>
         </TopbarItem>

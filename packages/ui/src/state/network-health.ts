@@ -12,7 +12,7 @@ import { createSyncStore, registerStoreStateReset, type ReadableStore } from './
 
 const RECHECK_MS = 1000;
 
-const health = createSyncStore<NetworkHealth>('network-health', 'syncing');
+const health = createSyncStore<NetworkHealth>('network-health', 'idle');
 
 export const networkHealthStore: ReadableStore<NetworkHealth> = health;
 
@@ -67,5 +67,5 @@ registerStoreStateReset(() => {
   stopInit?.();
   // A watch can be held without init (setChainsButtonVisible alone).
   setNetworkHealthWatched(false);
-  health.set('syncing');
+  health.set('idle');
 });

@@ -146,6 +146,25 @@
   }
 }
 
+/* A status mark's colour, from its data-tone (StatusTone). A mark that may
+   go without the attribute sets its own default --tone on itself, so it never
+   takes an ancestor's. */
+[data-tone='ok'] {
+  --tone: var(--chrome-ok);
+}
+[data-tone='warn'] {
+  --tone: var(--chrome-warn);
+}
+[data-tone='err'] {
+  --tone: var(--chrome-err);
+}
+[data-tone='info'] {
+  --tone: var(--chrome-info);
+}
+[data-tone='idle'] {
+  --tone: var(--chrome-idle);
+}
+
 /* Layout scales shared by the chrome: a 4 px spacing grid with a 2 px
    hairline step, radii, control sizes (44 px is the touch minimum), popover
    widths, type and motion. */

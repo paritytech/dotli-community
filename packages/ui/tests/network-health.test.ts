@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import type { ChainStatus } from '../src/network-monitor.js';
-import { healthTone, healthWord, judgeNetworkHealth } from '../src/network-health.js';
+import { healthWord, judgeNetworkHealth } from '../src/network-health.js';
 
 function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
   return {
@@ -22,7 +22,7 @@ function chain(overrides: Partial<ChainStatus> = {}): ChainStatus {
 
 describe('The network health verdict', () => {
   it('As a user offline, I see offline whatever the chains last reported', () => {
-    expect(judgeNetworkHealth([chain()], false)).toBe('offline');
+    expect(judgeNetworkHealth([chain()], false)).toBe('err');
   });
 
   it('As a user whose chains all produce blocks on time, I see ok', () => {
@@ -30,28 +30,21 @@ describe('The network health verdict', () => {
   });
 
   it('As a user while the chains start or connect, I see syncing', () => {
-    expect(judgeNetworkHealth([], true)).toBe('syncing');
-    expect(judgeNetworkHealth([chain({ latest: null, sinceLast: null })], true)).toBe('syncing');
+    expect(judgeNetworkHealth([], true)).toBe('idle');
+    expect(judgeNetworkHealth([chain({ latest: null, sinceLast: null })], true)).toBe('idle');
     expect(
       judgeNetworkHealth([chain(), chain({ role: 'assethub', label: 'Hub', latest: null, sinceLast: null })], true),
-    ).toBe('syncing');
+    ).toBe('idle');
   });
 
   it('As a user whose chain is past three block times without a block, I see degraded', () => {
-    expect(judgeNetworkHealth([chain({ sinceLast: 18_001 })], true)).toBe('degraded');
-  });
-
-  it('As the capsule, I colour each verdict with its status tone', () => {
-    expect(healthTone('ok')).toBe('ok');
-    expect(healthTone('syncing')).toBe('idle');
-    expect(healthTone('degraded')).toBe('warn');
-    expect(healthTone('offline')).toBe('err');
+    expect(judgeNetworkHealth([chain({ sinceLast: 18_001 })], true)).toBe('warn');
   });
 
   it('As the More menu, I name each verdict in one word', () => {
     expect(healthWord('ok')).toBe('Connected');
-    expect(healthWord('syncing')).toBe('Syncing');
-    expect(healthWord('degraded')).toBe('Unstable');
-    expect(healthWord('offline')).toBe('Offline');
+    expect(healthWord('idle')).toBe('Syncing');
+    expect(healthWord('warn')).toBe('Unstable');
+    expect(healthWord('err')).toBe('Offline');
   });
 });

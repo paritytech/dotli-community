@@ -7,12 +7,12 @@ import { resetStores } from './helpers/solid.js';
 import { byId } from './support.js';
 import { stubPhoneViewport } from './helpers/viewport.js';
 
-const health = vi.hoisted(() => ({ value: 'syncing', listeners: new Set<() => void>() }));
+const health = vi.hoisted(() => ({ value: 'idle', listeners: new Set<() => void>() }));
 vi.mock('../src/state/network-health.js', () => ({
   initNetworkHealth: () => () => {},
   networkHealthStore: {
     get: () => health.value,
-    initial: 'syncing',
+    initial: 'idle',
     subscribe: (listener: () => void) => {
       health.listeners.add(listener);
       return () => health.listeners.delete(listener);
@@ -46,13 +46,13 @@ describe('bindTopbarStatus', () => {
     unbind = bindTopbarStatus(bar);
 
     // Then
-    expect(bar.dataset['health']).toBe('syncing');
+    expect(bar.dataset['tone']).toBe('idle');
 
     // When
-    setHealth('offline');
+    setHealth('err');
 
     // Then
-    expect(bar.dataset['health']).toBe('offline');
+    expect(bar.dataset['tone']).toBe('err');
   });
 
   it('As a user with a prompt waiting, the capsule leads with the action dot', async () => {

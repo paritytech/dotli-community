@@ -55,7 +55,7 @@ describe('The network health store', () => {
     setNetworkHealthWatched(true);
 
     // Then
-    expect(networkHealthStore.get()).toBe('syncing');
+    expect(networkHealthStore.get()).toBe('idle');
 
     // When
     fake.emitAll(100);
@@ -77,7 +77,7 @@ describe('The network health store', () => {
     vi.advanceTimersByTime(slowest * 3 + 2000);
 
     // Then
-    expect(networkHealthStore.get()).toBe('degraded');
+    expect(networkHealthStore.get()).toBe('warn');
   });
 
   it('As a user going offline and back, I see it at once, even before any chain exists', () => {
@@ -89,14 +89,14 @@ describe('The network health store', () => {
     window.dispatchEvent(new Event('offline'));
 
     // Then
-    expect(networkHealthStore.get()).toBe('offline');
+    expect(networkHealthStore.get()).toBe('err');
 
     // When
     onLine.mockReturnValue(true);
     window.dispatchEvent(new Event('online'));
 
     // Then
-    expect(networkHealthStore.get()).toBe('syncing');
+    expect(networkHealthStore.get()).toBe('idle');
   });
 
   it('As a user leaving the product, the health watch stops holding the chains', () => {

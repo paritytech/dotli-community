@@ -223,7 +223,7 @@ describe('Topbar actions island', () => {
     const more = byId('more-button');
     expect(moreRowNames()[0]).toBe('network');
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
-    expect(more.getAttribute('data-badge-tone')).toBe('idle');
+    expect(more.getAttribute('data-tone')).toBe('idle');
     expect(more.getAttribute('aria-label')).toBe('More, network syncing');
 
     // When
@@ -234,7 +234,7 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Offline');
-    expect(more.getAttribute('data-badge-tone')).toBe('err');
+    expect(more.getAttribute('data-tone')).toBe('err');
     expect(more.getAttribute('aria-label')).toBe('More, network offline');
   });
 
@@ -312,7 +312,7 @@ describe('Topbar actions island', () => {
       const more = byId('more-button');
       expect(moreRowNames()).toContain('chat');
       expect(more.hasAttribute('data-badge')).toBe(true);
-      expect(more.getAttribute('data-badge-tone')).toBe('info');
+      expect(more.getAttribute('data-tone')).toBe('info');
       expect(more.getAttribute('aria-label')).toBe('More, chat has unread messages');
       expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('2');
     } finally {

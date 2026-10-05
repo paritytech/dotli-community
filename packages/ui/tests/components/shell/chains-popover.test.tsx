@@ -330,7 +330,7 @@ describe('The network popover island', () => {
     // Then: the health starts at syncing, whose tone is idle
     const button = byId('chains-button');
     expect(button.hasAttribute('data-badge')).toBe(true);
-    expect(button.dataset['badgeTone']).toBe('idle');
+    expect(button.dataset['tone']).toBe('idle');
   });
 
   const statuses: {

@@ -332,13 +332,13 @@ test.describe('Shell UI smoke', () => {
     await context.setOffline(true);
 
     // Then
-    await expect(bar).toHaveAttribute('data-health', 'offline');
+    await expect(bar).toHaveAttribute('data-tone', 'err');
 
     // When
     await context.setOffline(false);
 
     // Then
-    await expect(bar).not.toHaveAttribute('data-health', 'offline');
+    await expect(bar).not.toHaveAttribute('data-tone', 'err');
   });
 
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {

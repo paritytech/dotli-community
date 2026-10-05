@@ -48,7 +48,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       class={[s['button'], props.class]}
       data-active={props.active === true ? '' : undefined}
       data-badge={props.badge === true ? '' : undefined}
-      data-badge-tone={props.badgeTone}
+      data-tone={props.badgeTone}
       data-size={props.size}
       data-testid={props.testId}
     >

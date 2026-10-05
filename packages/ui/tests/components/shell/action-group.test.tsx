@@ -398,7 +398,7 @@ describe('ActionGroup', () => {
     const more = byId('more-button');
     expect(rowNames()).toEqual(['network', 'settings']);
     expect(more.hasAttribute('data-badge')).toBe(true);
-    expect(more.getAttribute('data-badge-tone')).toBe('warn');
+    expect(more.getAttribute('data-tone')).toBe('warn');
     expect(more.getAttribute('aria-label')).toBe('More, network unstable');
     expect(byId('more-popover').getAttribute('aria-label')).toBe('More');
 
@@ -446,7 +446,7 @@ describe('ActionGroup', () => {
 
     // Then
     const more = byId('more-button');
-    expect(more.getAttribute('data-badge-tone')).toBe('info');
+    expect(more.getAttribute('data-tone')).toBe('info');
     expect(more.getAttribute('aria-label')).toBe('More, network syncing, chat has unread messages');
     expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('3');
     expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')).toBeNull();
@@ -456,7 +456,7 @@ describe('ActionGroup', () => {
     await settle();
 
     // Then
-    expect(more.getAttribute('data-badge-tone')).toBe('err');
+    expect(more.getAttribute('data-tone')).toBe('err');
     expect(more.getAttribute('aria-label')).toBe('More, network offline, chat has unread messages');
   });
 

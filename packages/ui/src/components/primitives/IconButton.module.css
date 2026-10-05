@@ -7,6 +7,8 @@
    in. */
 
 :where(.button) {
+  /* The badge's colour: white unless data-tone names one. */
+  --tone: var(--chrome-action);
   position: relative;
   display: flex;
   align-items: center;
@@ -63,23 +65,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--chrome-action);
+  background: var(--tone);
   box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
-}
-.button[data-badge-tone='ok']::after {
-  background: var(--chrome-ok);
-}
-.button[data-badge-tone='warn']::after {
-  background: var(--chrome-warn);
-}
-.button[data-badge-tone='err']::after {
-  background: var(--chrome-err);
-}
-.button[data-badge-tone='info']::after {
-  background: var(--chrome-info);
-}
-.button[data-badge-tone='idle']::after {
-  background: var(--chrome-idle);
 }
 /* The board's .icon-btn-sm, 28 px on desktop. */
 .button[data-size='sm'] {

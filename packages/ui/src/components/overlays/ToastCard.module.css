@@ -44,8 +44,10 @@
   display: none;
 }
 
-.icon {
+:where(.icon) {
   --tone: var(--chrome-info);
+}
+.icon {
   display: grid;
   flex: none;
   place-items: center;
@@ -57,18 +59,6 @@
   border-radius: 10px;
   background: color-mix(in srgb, var(--tone) var(--chrome-tint), transparent);
   color: var(--tone);
-}
-.icon[data-tone='ok'] {
-  --tone: var(--chrome-ok);
-}
-.icon[data-tone='warn'] {
-  --tone: var(--chrome-warn);
-}
-.icon[data-tone='err'] {
-  --tone: var(--chrome-err);
-}
-.icon[data-tone='idle'] {
-  --tone: var(--chrome-idle);
 }
 /* Host icons are SVG strings without a size. */
 .icon svg {
