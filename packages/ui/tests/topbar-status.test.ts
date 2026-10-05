@@ -83,6 +83,57 @@ describe('bindTopbarStatus', () => {
     expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('72px');
   });
 
+  it('As a popover dropping from the pill, I read its box at rest, not a frame of a fold or reveal', () => {
+    // Given
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1440);
+    const bar = document.createElement('header');
+    const rect = vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(340, 12, 760, 60));
+    unbind = bindTopbarStatus(bar);
+
+    // When: the bar folds, a frame of its morph, then the capsule at rest
+    bar.setAttribute('data-hidden', '');
+    bar.dispatchEvent(new Event('transitionrun'));
+    rect.mockReturnValue(new DOMRect(500, 8, 440, 30));
+    window.dispatchEvent(new Event('resize'));
+    rect.mockReturnValue(new DOMRect(660, 4, 120, 8));
+    bar.dispatchEvent(new Event('transitionend'));
+
+    // Then: the pill's box stays, the one it reveals to
+    expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('340px');
+
+    // When: it reveals wider
+    bar.removeAttribute('data-hidden');
+    bar.dispatchEvent(new Event('transitionrun'));
+    rect.mockReturnValue(new DOMRect(400, 10, 600, 50));
+    window.dispatchEvent(new Event('resize'));
+
+    // Then
+    expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('340px');
+
+    // When: the reveal ends
+    rect.mockReturnValue(new DOMRect(300, 12, 840, 60));
+    bar.dispatchEvent(new Event('transitionend'));
+
+    // Then
+    expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('300px');
+    expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('72px');
+  });
+
+  it('As the page, an unchanged pill box leaves the root style alone', () => {
+    // Given
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1440);
+    const bar = document.createElement('header');
+    vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(340, 12, 760, 60.4));
+    unbind = bindTopbarStatus(bar);
+    const write = vi.spyOn(document.documentElement.style, 'setProperty');
+
+    // When
+    window.dispatchEvent(new Event('resize'));
+
+    // Then
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('As a menu on the landing page, I keep my own place while the bar is hidden', () => {
     // Given: a hidden bar has no box
     document.documentElement.style.setProperty('--topbar-inline-end', '340px');

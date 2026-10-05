@@ -12,7 +12,7 @@ import { PermissionsPopover } from './PermissionsPopover.js';
 import { SettingsPopover } from './SettingsPopover.js';
 import { ThemeToggle } from './ThemeToggle.js';
 import { ActionGroup } from './topbar/ActionGroup.js';
-import { topbarActionRoom } from '../../topbar-status.js';
+import { topbarActionRoom, topbarMorph } from '../../topbar-status.js';
 
 /**
  * The topbar's action group with its items, in bar order: the actions the
@@ -28,7 +28,7 @@ export function TopbarActions(): JSX.Element {
   const landing = useStore(topbarStore, state => state.landing);
   return (
     <Show when={!landing()}>
-      <ActionGroup room={topbarActionRoom} end={<AuthButton variant="chip" />}>
+      <ActionGroup room={topbarActionRoom} morph={topbarMorph} end={<AuthButton variant="chip" />}>
         <ChainsPopover />
         <ChatButton />
         <PermissionsPopover />

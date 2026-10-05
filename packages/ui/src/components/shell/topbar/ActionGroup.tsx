@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { TopbarContext, type TopbarBar, type TopbarEntry } from './context.js';
 import { fitActions, layoutParent } from './fit.js';
 import { OverflowMenu } from './OverflowMenu.js';
+import type { TopbarMorph } from '../../../topbar-status.js';
 import s from './ActionGroup.module.css';
 
 function sameNames(a: ReadonlySet<string>, b: ReadonlySet<string>): boolean {
@@ -43,13 +44,17 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  */
 export function ActionGroup(props: {
   /** The group's room, when its container knows better than its own width (a content-sized pill). */
-  room?: ((group: HTMLElement) => number | undefined) | undefined;
+  room?: ((group: HTMLElement, row: HTMLElement | null) => number | undefined) | undefined;
+  /** The container's own morph, during which the group waits and measures once it ends. */
+  morph?: TopbarMorph | undefined;
   children: JSX.Element;
   /** The item that ends the bar after the More button (the account), one that never collapses. */
   end?: JSX.Element;
 }): JSX.Element {
   let group: HTMLDivElement | undefined;
   let more: HTMLButtonElement | undefined;
+  /** The box the group sits in, past the island's wrapper: fixed once mounted. */
+  let row: HTMLElement | null = null;
   /** In registration order; sorted by document order where it matters. */
   const [entries, setEntries] = createSignal<readonly TopbarEntry[]>([], { ownedWrite: true });
   const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set(), {
@@ -68,6 +73,11 @@ export function ActionGroup(props: {
     if (group === undefined || !group.isConnected || group.clientWidth === 0) {
       return;
     }
+    // Mid-morph the row stretches every frame while the room stays the same.
+    if (props.morph?.running() === true) {
+      return;
+    }
+    row ??= layoutParent(group);
     const present = untrack(entries)
       .filter(entry => entry.visible())
       .sort(inDocumentOrder);
@@ -76,7 +86,7 @@ export function ActionGroup(props: {
         width: entry.element()?.getBoundingClientRect().width ?? 0,
         priority: entry.priority,
       })),
-      props.room?.(group) ?? group.clientWidth,
+      props.room?.(group, row) ?? group.clientWidth,
       Number.parseFloat(getComputedStyle(group).columnGap) || 0,
       more?.getBoundingClientRect().width ?? 0,
     );
@@ -87,9 +97,11 @@ export function ActionGroup(props: {
   onCleanup(() => observer?.disconnect());
   // In a content-sized pill the group's own size says nothing about its
   // room, so the row (the address changing) and the window are heard too.
-  // Settled, so the build-time render, which has no window, skips it.
+  // The row alone would miss a widening window: a pill narrower than its max
+  // width keeps its size. Settled, so the build-time render, which has no
+  // window, skips it.
   onSettled(() => {
-    const row = group === undefined ? null : layoutParent(group);
+    row ??= group === undefined ? null : layoutParent(group);
     if (row !== null) {
       observer?.observe(row);
     }
@@ -97,8 +109,10 @@ export function ActionGroup(props: {
       measure();
     };
     window.addEventListener('resize', onResize);
+    const offMorph = props.morph?.onEnd(measure);
     return () => {
       window.removeEventListener('resize', onResize);
+      offMorph?.();
     };
   });
   const observe = (el: HTMLElement): void => {

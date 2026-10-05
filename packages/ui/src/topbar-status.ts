@@ -13,18 +13,29 @@ import { initNetworkHealth, networkHealthStore } from './state/network-health.js
 import { topbarStore } from './state/topbar.js';
 import { needsAction } from './state/topbar-signals.js';
 
-function publishBox(bar: HTMLElement): void {
-  const root = document.documentElement;
-  const box = bar.getBoundingClientRect();
-  // A hidden bar (the landing page) has no box: the menus keep their own place.
-  if (box.width === 0) {
-    root.style.removeProperty('--topbar-inline-end');
-    root.style.removeProperty('--topbar-bottom');
-    return;
-  }
-  root.style.setProperty('--topbar-inline-end', `${String(Math.max(0, root.clientWidth - box.right))}px`);
-  root.style.setProperty('--topbar-bottom', `${String(box.bottom)}px`);
+// A fold or a reveal morphs the bar's box every frame for --dur-morph. What
+// is laid out against that box (the published box, the action group's room)
+// is read at rest, once the morph ends: an open surface keeps the bar from
+// folding, so none drops from a morphing bar.
+let morphs = 0;
+const morphEnds = new Set<() => void>();
+
+/** The bar's fold and reveal morph, for what is laid out against its box. */
+export interface TopbarMorph {
+  running: () => boolean;
+  /** Calls `listener` each time a morph ends. Returns the unsubscribe. */
+  onEnd: (listener: () => void) => () => void;
 }
+
+export const topbarMorph: TopbarMorph = {
+  running: () => morphs > 0,
+  onEnd: listener => {
+    morphEnds.add(listener);
+    return () => {
+      morphEnds.delete(listener);
+    };
+  },
+};
 
 export function bindTopbarStatus(bar: HTMLElement): () => void {
   // The bar's script runs before initTopBar (which waits for the bridge), so
@@ -35,8 +46,57 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
     bar.dataset['tone'] = networkHealthStore.get();
     bar.toggleAttribute('data-action', needsAction(topbarStore.get(), totalChatUnread(chatPanelStore.get())));
   };
+  const root = document.documentElement;
+  // As last written, so an unchanged box leaves the root's style alone.
+  // Undefined until the first write, null once removed.
+  let inlineEnd: number | null | undefined;
+  let bottom: number | null | undefined;
   const place = (): void => {
-    publishBox(bar);
+    // Folded, the bar is not where a surface drops from, and the box it
+    // published open is the one it reveals to.
+    if (morphs > 0 || bar.hasAttribute('data-hidden')) {
+      return;
+    }
+    const box = bar.getBoundingClientRect();
+    // A hidden bar (the landing page) has no box: the menus keep their own place.
+    if (box.width === 0) {
+      if (inlineEnd !== null) {
+        root.style.removeProperty('--topbar-inline-end');
+        root.style.removeProperty('--topbar-bottom');
+        inlineEnd = null;
+        bottom = null;
+      }
+      return;
+    }
+    const nextEnd = Math.round(Math.max(0, root.clientWidth - box.right));
+    const nextBottom = Math.round(box.bottom);
+    if (nextEnd !== inlineEnd) {
+      root.style.setProperty('--topbar-inline-end', `${String(nextEnd)}px`);
+      inlineEnd = nextEnd;
+    }
+    if (nextBottom !== bottom) {
+      root.style.setProperty('--topbar-bottom', `${String(nextBottom)}px`);
+      bottom = nextBottom;
+    }
+  };
+  // Each of the bar's own transitions runs once and then ends or is
+  // cancelled. Its children's bubble up here and are not its box.
+  const onMorphRun = (event: Event): void => {
+    if (event.target === bar) {
+      morphs += 1;
+    }
+  };
+  const onMorphEnd = (event: Event): void => {
+    if (event.target !== bar || morphs === 0) {
+      return;
+    }
+    morphs -= 1;
+    if (morphs === 0) {
+      place();
+      for (const listener of [...morphEnds]) {
+        listener();
+      }
+    }
   };
   render();
   place();
@@ -46,12 +106,19 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);
+  bar.addEventListener('transitionrun', onMorphRun);
+  bar.addEventListener('transitionend', onMorphEnd);
+  bar.addEventListener('transitioncancel', onMorphEnd);
   return () => {
     offHealth();
     offTopbar();
     offChat();
     observer?.disconnect();
     window.removeEventListener('resize', place);
+    bar.removeEventListener('transitionrun', onMorphRun);
+    bar.removeEventListener('transitionend', onMorphEnd);
+    bar.removeEventListener('transitioncancel', onMorphEnd);
+    morphs = 0;
   };
 }
 
@@ -63,12 +130,11 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
  * On a phone the header holds only More and the account, so the actions get
  * none and all move into More.
  */
-export function topbarActionRoom(group: HTMLElement): number | undefined {
+export function topbarActionRoom(group: HTMLElement, row = layoutParent(group)): number | undefined {
   if (isPhoneViewport()) {
     return 0;
   }
   const bar = document.getElementById('topbar');
-  const row = layoutParent(group);
   if (bar === null || row === null) {
     return undefined;
   }

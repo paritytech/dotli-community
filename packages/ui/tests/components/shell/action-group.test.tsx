@@ -204,6 +204,39 @@ describe('ActionGroup', () => {
     }
   });
 
+  it('As a user watching the pill fold or reveal, the items stay put and fit again once it comes to rest', async () => {
+    // Given: room for all six, while the pill morphs
+    let morphing = true;
+    const ends = new Set<() => void>();
+    const layout = await renderTopbar(() => <Items />, room(6), {
+      morph: {
+        running: () => morphing,
+        onEnd: listener => {
+          ends.add(listener);
+          return () => ends.delete(listener);
+        },
+      },
+    });
+
+    // When: the room shrinks mid-morph
+    layout.setRoom(room(2));
+    await settle();
+
+    // Then
+    expect(inline('settings')).toBe(true);
+
+    // When: the morph ends
+    morphing = false;
+    for (const end of ends) {
+      end();
+    }
+    await settle();
+
+    // Then
+    expect(inline('settings')).toBe(false);
+    expect(inline('auth')).toBe(true);
+  });
+
   it('As a user, a hidden item shows neither in the bar nor in More, and takes its share of the room once it shows', async () => {
     // Given: room for all but chat.
     const [chat, setChat] = createSignal(false);
