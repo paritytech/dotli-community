@@ -12,10 +12,10 @@
   padding: 0;
 }
 
-/* The Spinner primitive's ring, kept here rather than shared: importing
-   Spinner.module.css from a page script alongside the AuthModal island makes
-   the page link that island's chunk sheet, a second render-blocking copy of CSS
-   that index.css already holds. */
+/* The Spinner primitive's ring in the page's colours, kept here rather than
+   shared: importing Spinner.module.css from a page script alongside the
+   AuthModal island makes the page link that island's chunk sheet, a second
+   render-blocking copy of CSS that index.css already holds. */
 .spinner {
   box-sizing: border-box;
   width: 24px;

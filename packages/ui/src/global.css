@@ -15,8 +15,6 @@
   --text-faint: rgba(255, 255, 255, 0.35);
   --bg-page: #0a0a0a;
   --surface: #161616;
-  --surface-2: #1f1f1f;
-  --surface-glass: rgba(22, 22, 22, 0.92);
   --fill-subtle: rgba(255, 255, 255, 0.04);
   --fill: rgba(255, 255, 255, 0.07);
   --fill-strong: rgba(255, 255, 255, 0.12);
@@ -27,18 +25,10 @@
   --inverse-bg: #fafafa;
   --inverse-bg-hover: #ffffff;
   --inverse-fg: #0a0a0a;
-  --backdrop: rgba(0, 0, 0, 0.6);
-  --shadow: rgba(0, 0, 0, 0.4);
   --danger: #f87171;
   --danger-strong: #d93b30;
-  --success: #4ade80;
-  --success-solid: #22c55e;
   --warning: #eab308;
-  --warning-bg: #b45309;
-  --caution: #f0c060;
-  --trusted: #ff8c00;
   --neutral-solid: #8f8f8f;
-  --knob: rgba(255, 255, 255, 0.7);
 
   /* A product's custom chat message names these colors (FgPrimary,
      BgSurfaceNested, ...) and chat/custom-styles.ts writes them into inline
@@ -148,6 +138,13 @@
   --qr-bg: #ffffff;
   --qr-ink: #141416;
 }
+/* Unblurred, the translucent glass would let the page show through: it is
+   solid instead, for every surface that draws it. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --chrome-glass: var(--chrome-solid);
+  }
+}
 
 /* Layout scales shared by the chrome: a 4 px spacing grid with a 2 px
    hairline step, radii, control sizes (44 px is the touch minimum), popover
@@ -169,7 +166,6 @@
   --lh-tight: 1.3;
   --lh-body: 1.5;
   --ls-caps: 0.08em;
-  --ls-tight: -0.01em;
   --ls-display: -0.02em;
 
   --sp-hair: 2px;
@@ -181,8 +177,6 @@
   --sp-6: 24px;
   --sp-8: 32px;
   --sp-10: 40px;
-  --sp-12: 48px;
-  --sp-14: 56px;
 
   --r-hair: 2px;
   --r-xs: 8px;
@@ -227,41 +221,14 @@
   --dur-morph: 0.46s;
   /* The pill's content waits for the morph. */
   --delay-content: 0.2s;
-  --delay-tip: 0.35s;
   /* Pulses. */
   --loop: 1.4s;
 }
 
 /* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
-   sign-in, the prompts and the toasts), the page tokens read as the dark
-   palette whatever the page theme, so content written with them stays
-   legible on the always-dark glass. */
+   sign-in, the prompts and the toasts), desktop type is a step under the
+   page's: desktop is not touch. */
 [data-chrome] {
-  --text-strong: var(--chrome-text);
-  --text: var(--chrome-text);
-  --text-secondary: var(--chrome-text-muted);
-  --text-muted: var(--chrome-text-muted);
-  --text-faint: var(--chrome-text-muted);
-  --surface: var(--chrome-solid);
-  --surface-2: var(--chrome-solid);
-  --surface-glass: var(--chrome-solid);
-  --fill-subtle: var(--chrome-fill);
-  --fill: var(--chrome-fill);
-  --fill-strong: var(--chrome-fill-strong);
-  --border-subtle: var(--chrome-line);
-  --border: var(--chrome-ring);
-  --border-strong: var(--chrome-ring-strong);
-  --border-focus: var(--chrome-ring-strong);
-  --inverse-bg: #fafafa;
-  --inverse-bg-hover: #ffffff;
-  --inverse-fg: #0a0a0a;
-  --shadow: rgba(0, 0, 0, 0.4);
-  --danger: var(--chrome-err-text);
-  --success: var(--chrome-ok);
-  --warning: var(--chrome-warn);
-  --caution: var(--chrome-warn-text);
-  --knob: var(--chrome-text);
-  /* Desktop chrome type, a step under the page's: desktop is not touch. */
   --fs-small: 12px;
   --fs-body: 13px;
 }
@@ -306,4 +273,9 @@ body[data-scroll-locked] {
 :focus-visible {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;
+}
+/* The chrome's own controls draw --chrome-focus-ring. Anything there that
+   does not gets the default ring in the chrome's muted text. */
+:where([data-chrome], [data-chrome] *):focus-visible {
+  outline-color: var(--chrome-text-muted);
 }

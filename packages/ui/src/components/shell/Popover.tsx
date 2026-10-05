@@ -19,6 +19,7 @@ import { captureException } from '@dotli/metrics';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
+import { Spinner } from '../primitives/Spinner.js';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
 import { createPopover } from './create-popover.js';
@@ -382,7 +383,13 @@ export function Popover(props: PopoverProps): JSX.Element {
               {(_opening: number) => (
                 <PopoverContext value={context}>
                   <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
-                    <Loading fallback={<div class={s['loading']} data-testid="popover-loading" aria-hidden="true" />}>
+                    <Loading
+                      fallback={
+                        <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
+                          <Spinner class={s['spinner']} />
+                        </div>
+                      }
+                    >
                       <Content />
                       <FocusWhenLoaded surface={() => surfaceEl} />
                     </Loading>

@@ -40,11 +40,6 @@
     backdrop-filter: var(--chrome-blur);
   }
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :where(.menu) {
-    background: var(--chrome-solid);
-  }
-}
 .menu[data-open] {
   display: flex;
   opacity: 1;

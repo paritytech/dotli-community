@@ -384,13 +384,13 @@ export function AuthModal(): JSX.Element {
             <Switch>
               <Match when={view()?.kind === 'authenticating'}>
                 <div class={s['progress']}>
-                  <Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />
+                  <Spinner class={s['spinner']} testId="auth-modal-spinner" />
                   <p class={s['progressText']}>Logging in...</p>
                 </div>
               </Match>
               <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
               <Match when={view() !== null}>
-                <Show when={qr()} fallback={<Spinner class={s['spinner'] ?? ''} testId="auth-modal-spinner" />}>
+                <Show when={qr()} fallback={<Spinner class={s['spinner']} testId="auth-modal-spinner" />}>
                   {drawnQr => (
                     <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
                       <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />

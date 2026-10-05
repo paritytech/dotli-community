@@ -49,11 +49,6 @@
   font-family: var(--font-sans);
   animation: modal-in var(--dur) var(--ease-spring) both;
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .dialog {
-    background: var(--chrome-solid);
-  }
-}
 /* Focused itself on open, so keyboard users start inside: no ring for that. */
 .dialog:focus-visible {
   outline: none;

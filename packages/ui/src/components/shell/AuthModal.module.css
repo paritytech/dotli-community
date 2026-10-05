@@ -142,8 +142,6 @@
 }
 .qr .spinner {
   margin: 0;
-  border-color: var(--chrome-ring);
-  border-top-color: var(--chrome-text);
 }
 .tile {
   position: relative;

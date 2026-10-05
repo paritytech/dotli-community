@@ -67,11 +67,6 @@
     backdrop-filter: var(--chrome-blur);
   }
 }
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :where(.surface) {
-    background: var(--chrome-solid);
-  }
-}
 /* The surface takes focus itself (tabindex -1) for a pointer opening, and
    shows no ring for it. */
 .surface:focus-visible {
@@ -94,19 +89,10 @@
   place-items: center;
   min-height: 80px;
 }
-.loading::after {
-  content: '';
-  width: 18px;
-  height: 18px;
-  border: 2px solid var(--chrome-ring);
-  border-top-color: var(--chrome-text);
-  border-radius: 50%;
-  animation: spin 0.8s linear infinite;
-}
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+.loading .spinner {
+  width: 22px;
+  height: 22px;
+  margin: 0;
 }
 
 /* Under its trigger (anchor="trigger"): the place is set inline. */
@@ -138,7 +124,7 @@
   .backdrop {
     transition: none !important;
   }
-  .loading::after {
+  .loading .spinner {
     animation: none;
   }
 }
