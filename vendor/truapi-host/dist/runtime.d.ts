@@ -1,4 +1,6 @@
 import type { HostChatActionSubscribeItem, HostRendererActionSubscribeItem, ProductRendererRenderRequest, RendererNode, WireProvider } from "@parity/truapi";
+import { ReceivingEvent, ReceivingWatch } from "@parity/truapi";
+import { ReceivingAuthority, ReceivingRegistration } from "./generated/host-callbacks.js";
 import type { CoreAdmin, CoreStorageKey, ProductExecutionKind } from "./generated/host-callbacks.js";
 export * from "./generated/host-callbacks.js";
 export type { JsonRpcConnection as PlatformJsonRpcConnection } from "./generated/host-callbacks.js";
@@ -26,6 +28,54 @@ export interface NativeChatContactsSnapshot {
  * awaits every return so an `async` impl also works.
  */
 export type Awaitable<T> = T | Promise<T>;
+/** Canonical SCALE results returned by resident receiving runtime hooks. */
+export declare const receivingRegistrationsCodec: import("scale-ts").Codec<ReceivingRegistration[]>;
+export declare const receivingEventsCodec: import("scale-ts").Codec<ReceivingEvent[]>;
+export declare const receivingEventCodec: import("scale-ts").Codec<ReceivingEvent | undefined>;
+/** Minimal host-owned callbacks for a wallet-free service-worker receiver. */
+export interface NotificationReceiverCallbacks {
+    /** Resolve current verified artifact/account state, never product message claims. */
+    receiverAuthority?(productId: string): Awaitable<ReceivingAuthority | undefined>;
+    /** Separate receiving consent, not an OS permission or relay acknowledgement. */
+    receiverConsent?(authority: ReceivingAuthority, watches: ReceivingWatch[]): Awaitable<boolean>;
+    /** Wake asynchronous transport work; never await remote synchronization. */
+    receiverChanged?(): Awaitable<void>;
+    readReceivingState(): Awaitable<Uint8Array | undefined>;
+    /** Atomically replace the private ledger. Only one receiver may write it. */
+    writeReceivingState(bytes: Uint8Array): Awaitable<void>;
+}
+/** Encode only the canonical domain records at the standalone WASM boundary. */
+export declare function createNotificationReceiverCallbacks(callbacks: NotificationReceiverCallbacks): {
+    receiverAuthority: (productId: string) => Promise<Uint8Array<ArrayBufferLike> | undefined>;
+    receiverConsent: (authority: Uint8Array, watches: Uint8Array) => Promise<boolean>;
+    receiverChanged: () => Promise<void>;
+    readReceivingState: () => Promise<Uint8Array<ArrayBufferLike> | undefined>;
+    writeReceivingState: (bytes: Uint8Array) => Promise<void>;
+};
+/** Raw host-only receiving hooks on both full resident and standalone WASM cores.
+ * Products must use Notifications actions, never these host-authority hooks.
+ */
+export interface RawReceivingRuntime {
+    receivingPending(): Promise<Uint8Array>;
+    receivingSynchronized(productId: string, revision: bigint): Promise<boolean>;
+    receivingIngest(productId: string, revision: bigint, watchId: string, actualGenesis: string, actualChannel: string, actualTopics: string[], frame: Uint8Array): Promise<Uint8Array>;
+    receivingIngestStatement(productId: string, revision: bigint, watchId: string, actualGenesis: string, statement: Uint8Array): Promise<Uint8Array>;
+    receivingPrepareDisplay(productId: string, revision: bigint, eventId: string): Promise<Uint8Array>;
+    receivingConfirmDisplay(productId: string, revision: bigint, eventId: string): Promise<void>;
+    /** Clear a reservation after explicit display failure, never after an unknown outcome. */
+    receivingCancelDisplay(productId: string, revision: bigint, eventId: string): Promise<void>;
+    receivingValidateActivation(productId: string, revision: bigint, eventId: string): Promise<Uint8Array>;
+    receivingActivate(productId: string, revision: bigint, eventId: string): Promise<Uint8Array>;
+    receivingRevoke(productId: string): Promise<void>;
+    receivingMarkTransportChanged(productId: string): Promise<void>;
+}
+/** Standalone commands carry the immutable authority captured by the trusted execution channel.
+ * Authority bytes encode ReceivingAuthority; response is Result<latest response,HostNotificationReceivingError>.
+ */
+export interface RawNotificationReceiver extends RawReceivingRuntime {
+    commandForExecution(authority: Uint8Array, action: number, payload: Uint8Array): Promise<Uint8Array>;
+    free(): void;
+}
 /**
  * Open a JSON-RPC connection for `genesisHash`. The wasm bridge passes
  * `onResponse` so the host can push JSON-RPC replies back asynchronously.

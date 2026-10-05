@@ -2591,6 +2591,139 @@ export type VersionedHostNavigateToResponse =
     value?: undefined;
 };
 export const VersionedHostNavigateToResponse: Codec<VersionedHostNavigateToResponse>;
+/** Versioned envelope for [\`HostNotificationAcknowledgeReceiverEventRequest\`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationAcknowledgeReceiverEventRequest;
+};
+export const VersionedHostNotificationAcknowledgeReceiverEventRequest: Codec<VersionedHostNotificationAcknowledgeReceiverEventRequest>;
+/** Versioned envelope for [\`HostNotificationAcknowledgeReceiverEventResponse\`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostNotificationAcknowledgeReceiverEventResponse: Codec<VersionedHostNotificationAcknowledgeReceiverEventResponse>;
+/** Versioned envelope for [\`HostNotificationDisableReceiverRequest\`]. */
+export type VersionedHostNotificationDisableReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationDisableReceiverRequest;
+};
+export const VersionedHostNotificationDisableReceiverRequest: Codec<VersionedHostNotificationDisableReceiverRequest>;
+/** Versioned envelope for [\`HostNotificationDisableReceiverResponse\`]. */
+export type VersionedHostNotificationDisableReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationDisableReceiverResponse: Codec<VersionedHostNotificationDisableReceiverResponse>;
+/** Actual display outcome after recording a receipt, distinct from enrollment ACKs. */
+export interface HostNotificationReceiptResult {
+    /** An OS display was positively confirmed by the host or product. */
+    displayed: boolean;
+    /**
+     * A display is reserved but unconfirmed; do not start a competing fallback.
+     * Explicit failure cancels the reservation; unknown outcomes remain pending until expiry.
+     */
+    displayPending: boolean;
+}
+export const HostNotificationReceiptResult: Codec<HostNotificationReceiptResult>;
+/** Versioned envelope for [\`HostNotificationReceiverEventsRequest\`]. */
+export type VersionedHostNotificationReceiverEventsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverEventsRequest;
+};
+export const VersionedHostNotificationReceiverEventsRequest: Codec<VersionedHostNotificationReceiverEventsRequest>;
+/** Versioned envelope for [\`HostNotificationReceiverEventsResponse\`]. */
+export type VersionedHostNotificationReceiverEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: Array<ReceivingEvent>;
+};
+export const VersionedHostNotificationReceiverEventsResponse: Codec<VersionedHostNotificationReceiverEventsResponse>;
+/** Receiving support, consent and durable synchronization state. */
+export interface HostNotificationReceiverStatus {
+    /** Whether this host supplies trusted receiving authority. */
+    supported: boolean;
+    /** Current OS permission for visible notifications. */
+    osPermission: boolean;
+    /** Whether current authority and watches have receiving consent. */
+    consent: boolean;
+    /** Whether receiving is locally enabled. */
+    enabled: boolean;
+    /** Compare-and-swap token for the durable registration. */
+    revision: bigint;
+    /** Whether the transport still needs to synchronize this revision. */
+    syncPending: boolean;
+    /** Whether the selected platform transport is ready. */
+    transportReady: boolean;
+}
+export const HostNotificationReceiverStatus: Codec<HostNotificationReceiverStatus>;
+/** Versioned envelope for [\`HostNotificationReceiverStatusRequest\`]. */
+export type VersionedHostNotificationReceiverStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedHostNotificationReceiverStatusRequest: Codec<VersionedHostNotificationReceiverStatusRequest>;
+/** Versioned envelope for [\`HostNotificationReceiverStatusResponse\`]. */
+export type VersionedHostNotificationReceiverStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationReceiverStatusResponse: Codec<VersionedHostNotificationReceiverStatusResponse>;
+/** Versioned envelope for [\`HostNotificationReceivingError\`]. */
+export type VersionedHostNotificationReceivingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceivingError;
+};
+export const VersionedHostNotificationReceivingError: Codec<VersionedHostNotificationReceivingError>;
+/** Versioned envelope for [\`HostNotificationRecordReceiptRequest\`]. */
+export type VersionedHostNotificationRecordReceiptRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationRecordReceiptRequest;
+};
+export const VersionedHostNotificationRecordReceiptRequest: Codec<VersionedHostNotificationRecordReceiptRequest>;
+/** Versioned envelope for [\`HostNotificationRecordReceiptResponse\`]. */
+export type VersionedHostNotificationRecordReceiptResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiptResult;
+};
+export const VersionedHostNotificationRecordReceiptResponse: Codec<VersionedHostNotificationRecordReceiptResponse>;
+/** Versioned envelope for [\`HostNotificationReplaceReceiverRequest\`]. */
+export type VersionedHostNotificationReplaceReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReplaceReceiverRequest;
+};
+export const VersionedHostNotificationReplaceReceiverRequest: Codec<VersionedHostNotificationReplaceReceiverRequest>;
+/** Versioned envelope for [\`HostNotificationReplaceReceiverResponse\`]. */
+export type VersionedHostNotificationReplaceReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export const VersionedHostNotificationReplaceReceiverResponse: Codec<VersionedHostNotificationReplaceReceiverResponse>;
 /** Versioned envelope for [\`HostPaymentBalanceSubscribeError\`]. */
 export type VersionedHostPaymentBalanceSubscribeError = 
 /** Version 1 payload. */
@@ -3652,6 +3785,50 @@ export type RawPayload =
     };
 };
 export const RawPayload: Codec<RawPayload>;
+/** A bounded durable event containing opaque identifiers, never plaintext. */
+export interface ReceivingEvent {
+    /** Durable sequence used for polling and acknowledgement. */
+    sequence: bigint;
+    /** Registration revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Delivery or user activation. */
+    kind: ReceivingEventKind;
+    /** Locally enrolled product-relative route. */
+    route: string;
+    /** Expiration in Unix milliseconds. */
+    expiresAt: bigint;
+}
+export const ReceivingEvent: Codec<ReceivingEvent>;
+/** Why an authenticated receiving event was queued. */
+export type ReceivingEventKind = "Delivery" | "Activation";
+export const ReceivingEventKind: Codec<ReceivingEventKind>;
+/** Confirmed application handling, independent of transport acknowledgement. */
+export type ReceivingReceiptKind = "Foreground" | "Read" | "Displayed";
+export const ReceivingReceiptKind: Codec<ReceivingReceiptKind>;
+/** An authenticated source filter enrolled under host-owned receiving consent. */
+export interface ReceivingWatch {
+    /** Product-local opaque watch identifier. */
+    id: string;
+    /** Canonical lowercase 32-byte chain genesis hash. */
+    genesis: string;
+    /** Exact source channel, encoded as a canonical lowercase 32-byte hash. */
+    channel: string;
+    /** One to four selected topics; every topic must occur in the signed header. */
+    topics: Array<string>;
+    /** Approved Ed25519 public keys in canonical lowercase hex. */
+    senders: Array<string>;
+    /** Expiration in Unix milliseconds, bounded to a JavaScript safe integer. */
+    expiresAt: bigint;
+    /** Unix milliseconds before which delivery is muted; \`u64::MAX\` means forever. */
+    mutedUntil: bigint;
+    /** Product-relative activation route, retained locally and never relayed. */
+    route: string;
+}
+export const ReceivingWatch: Codec<ReceivingWatch>;
 /** A registered ring-VRF key entry. */
 export interface RegisteredRingVrfKey {
     /** Stable public name of the key. */
@@ -5606,6 +5783,84 @@ export interface HostNavigateToRequest {
     url: string;
 }
 export const HostNavigateToRequest: Codec<HostNavigateToRequest>;
+/** Acknowledge a durable event after application handling. */
+export interface HostNotificationAcknowledgeReceiverEventRequest {
+    /** Durable event sequence. */
+    sequence: bigint;
+}
+export const HostNotificationAcknowledgeReceiverEventRequest: Codec<HostNotificationAcknowledgeReceiverEventRequest>;
+/** Disable locally without awaiting transport revocation. */
+export interface HostNotificationDisableReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+}
+export const HostNotificationDisableReceiverRequest: Codec<HostNotificationDisableReceiverRequest>;
+/** Poll durable events without creating a UI-lifetime subscription. */
+export interface HostNotificationReceiverEventsRequest {
+    /** Return only events after this sequence. */
+    afterSequence: bigint;
+}
+export const HostNotificationReceiverEventsRequest: Codec<HostNotificationReceiverEventsRequest>;
+/** Receiving policy, persistence or support failure. */
+export type HostNotificationReceivingError = 
+/** This host has no receiving adapter. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** Notification permission or scoped receiving consent was denied. */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** The request violates the receiving schema or authenticated policy. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** The registration revision or trusted authority changed. */
+ | {
+    tag: "Conflict";
+    value?: undefined;
+}
+/** The bounded receiving store or watch budget is full. */
+ | {
+    tag: "Capacity";
+    value?: undefined;
+}
+/** Durable persistence failed. */
+ | {
+    tag: "Storage";
+    value: {
+        reason: string;
+    };
+};
+export const HostNotificationReceivingError: Codec<HostNotificationReceivingError>;
+/** Record confirmed foreground handling or reading. */
+export interface HostNotificationRecordReceiptRequest {
+    /** Revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Confirmed handling kind. */
+    kind: ReceivingReceiptKind;
+}
+export const HostNotificationRecordReceiptRequest: Codec<HostNotificationRecordReceiptRequest>;
+/** Atomically replace the current authority's complete watch set. */
+export interface HostNotificationReplaceReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+    /**
+     * Complete replacement, at most 256 watches and 10,000 senders total.
+     * Each watch permits at most 1,000 senders.
+     */
+    watches: Array<ReceivingWatch>;
+}
+export const HostNotificationReplaceReceiverRequest: Codec<HostNotificationReplaceReceiverRequest>;
 /**
  * Error from [\`crate::api::Payment::balance_subscribe\`].
  *
@@ -7236,6 +7491,21 @@ export import HostNativeChatStatePage = T.HostNativeChatStatePage;
 export import VersionedHostNavigateToError = T.VersionedHostNavigateToError;
 export import VersionedHostNavigateToRequest = T.VersionedHostNavigateToRequest;
 export import VersionedHostNavigateToResponse = T.VersionedHostNavigateToResponse;
+export import VersionedHostNotificationAcknowledgeReceiverEventRequest = T.VersionedHostNotificationAcknowledgeReceiverEventRequest;
+export import VersionedHostNotificationAcknowledgeReceiverEventResponse = T.VersionedHostNotificationAcknowledgeReceiverEventResponse;
+export import VersionedHostNotificationDisableReceiverRequest = T.VersionedHostNotificationDisableReceiverRequest;
+export import VersionedHostNotificationDisableReceiverResponse = T.VersionedHostNotificationDisableReceiverResponse;
+export import HostNotificationReceiptResult = T.HostNotificationReceiptResult;
+export import VersionedHostNotificationReceiverEventsRequest = T.VersionedHostNotificationReceiverEventsRequest;
+export import VersionedHostNotificationReceiverEventsResponse = T.VersionedHostNotificationReceiverEventsResponse;
+export import HostNotificationReceiverStatus = T.HostNotificationReceiverStatus;
+export import VersionedHostNotificationReceiverStatusRequest = T.VersionedHostNotificationReceiverStatusRequest;
+export import VersionedHostNotificationReceiverStatusResponse = T.VersionedHostNotificationReceiverStatusResponse;
+export import VersionedHostNotificationReceivingError = T.VersionedHostNotificationReceivingError;
+export import VersionedHostNotificationRecordReceiptRequest = T.VersionedHostNotificationRecordReceiptRequest;
+export import VersionedHostNotificationRecordReceiptResponse = T.VersionedHostNotificationRecordReceiptResponse;
+export import VersionedHostNotificationReplaceReceiverRequest = T.VersionedHostNotificationReplaceReceiverRequest;
+export import VersionedHostNotificationReplaceReceiverResponse = T.VersionedHostNotificationReplaceReceiverResponse;
 export import VersionedHostPaymentBalanceSubscribeError = T.VersionedHostPaymentBalanceSubscribeError;
 export import VersionedHostPaymentBalanceSubscribeItem = T.VersionedHostPaymentBalanceSubscribeItem;
 export import VersionedHostPaymentBalanceSubscribeRequest = T.VersionedHostPaymentBalanceSubscribeRequest;
@@ -7339,6 +7609,10 @@ export import VersionedProductRendererRenderRequest = T.VersionedProductRenderer
 export import ProfileAudience = T.ProfileAudience;
 export import ProfileContact = T.ProfileContact;
 export import RawPayload = T.RawPayload;
+export import ReceivingEvent = T.ReceivingEvent;
+export import ReceivingEventKind = T.ReceivingEventKind;
+export import ReceivingReceiptKind = T.ReceivingReceiptKind;
+export import ReceivingWatch = T.ReceivingWatch;
 export import RegisteredRingVrfKey = T.RegisteredRingVrfKey;
 export import VersionedRemoteChainHeadBodyError = T.VersionedRemoteChainHeadBodyError;
 export import VersionedRemoteChainHeadBodyRequest = T.VersionedRemoteChainHeadBodyRequest;
@@ -7523,6 +7797,12 @@ export import HostLocalStorageWriteRequest = T.HostLocalStorageWriteRequest;
 export import V01HostLocaleSubscribeItem = T.V01HostLocaleSubscribeItem;
 export import HostNavigateToError = T.HostNavigateToError;
 export import HostNavigateToRequest = T.HostNavigateToRequest;
+export import HostNotificationAcknowledgeReceiverEventRequest = T.HostNotificationAcknowledgeReceiverEventRequest;
+export import HostNotificationDisableReceiverRequest = T.HostNotificationDisableReceiverRequest;
+export import HostNotificationReceiverEventsRequest = T.HostNotificationReceiverEventsRequest;
+export import HostNotificationReceivingError = T.HostNotificationReceivingError;
+export import HostNotificationRecordReceiptRequest = T.HostNotificationRecordReceiptRequest;
+export import HostNotificationReplaceReceiverRequest = T.HostNotificationReplaceReceiverRequest;
 export import HostPaymentBalanceSubscribeError = T.HostPaymentBalanceSubscribeError;
 export import HostPaymentBalanceSubscribeItem = T.HostPaymentBalanceSubscribeItem;
 export import HostPaymentBalanceSubscribeRequest = T.HostPaymentBalanceSubscribeRequest;
@@ -8076,7 +8356,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "4dda7fbab9d6f435";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7cf5d7f894407ead";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -8366,7 +8646,7 @@ export declare class LocaleClient {
     /** Localize a bounded batch of UTC instants in a host locale snapshot. */
     localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
     constructor(transport: TrUApiTransport);
@@ -8391,6 +8671,21 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request: T.HostNotificationReplaceReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request: T.HostNotificationDisableReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request: T.HostNotificationRecordReceiptRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiptResult, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request: T.HostNotificationReceiverEventsRequest, options?: CallOptions): ResultAsync<Array<T.ReceivingEvent>, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request: T.HostNotificationAcknowledgeReceiverEventRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {

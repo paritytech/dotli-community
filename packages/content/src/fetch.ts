@@ -168,7 +168,10 @@ async function readViaGateway(cidString: string, onStatus?: StatusCallback): Pro
   throw new Error(`Unsupported CID codec for gateway fetch: 0x${cid.code.toString(16)} (cid=${cidString})`);
 }
 
-export type FetchResult = { type: 'single'; content: Uint8Array } | { type: 'archive'; files: ArchiveFiles };
+export type FetchResult = ({ type: 'single'; content: Uint8Array } | { type: 'archive'; files: ArchiveFiles }) & {
+  /** SHA-256 root identity, attached only after the requested content passed verification. */
+  verifiedArtifact?: string;
+};
 
 /**
  * Fetch content by CID using the specified mode.
@@ -207,7 +210,10 @@ export async function fetchArchive(
     log.warn(`[dot.li fetch] Content fetched via ${method}`);
     measureContentSize(result);
     stopFetch();
-    return result;
+    const root = CID.parse(cidString).multihash;
+    return root.code === 0x12 && root.digest.byteLength === 32
+      ? { ...result, verifiedArtifact: Array.from(root.digest, byte => byte.toString(16).padStart(2, '0')).join('') }
+      : result;
   } catch (err) {
     performance.mark('dotli:fetch:end');
     stopFetch();

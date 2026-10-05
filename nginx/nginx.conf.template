@@ -176,6 +176,7 @@ server {
 
     include /etc/nginx/snippets/dotli-assets-host.conf;
     include /etc/nginx/snippets/dotli-sw-host.conf;
+    include /etc/nginx/snippets/dotli-receiving-proxy.conf;
 
     resolver 127.0.0.53 valid=300s ipv6=off;
     resolver_timeout 5s;

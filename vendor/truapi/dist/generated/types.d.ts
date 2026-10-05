@@ -2055,6 +2055,139 @@ export type VersionedHostNavigateToResponse =
     value?: undefined;
 };
 export declare const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse>;
+/** Versioned envelope for [`HostNotificationAcknowledgeReceiverEventRequest`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationAcknowledgeReceiverEventRequest;
+};
+export declare const VersionedHostNotificationAcknowledgeReceiverEventRequest: S.Codec<VersionedHostNotificationAcknowledgeReceiverEventRequest>;
+/** Versioned envelope for [`HostNotificationAcknowledgeReceiverEventResponse`]. */
+export type VersionedHostNotificationAcknowledgeReceiverEventResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostNotificationAcknowledgeReceiverEventResponse: S.Codec<VersionedHostNotificationAcknowledgeReceiverEventResponse>;
+/** Versioned envelope for [`HostNotificationDisableReceiverRequest`]. */
+export type VersionedHostNotificationDisableReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationDisableReceiverRequest;
+};
+export declare const VersionedHostNotificationDisableReceiverRequest: S.Codec<VersionedHostNotificationDisableReceiverRequest>;
+/** Versioned envelope for [`HostNotificationDisableReceiverResponse`]. */
+export type VersionedHostNotificationDisableReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationDisableReceiverResponse: S.Codec<VersionedHostNotificationDisableReceiverResponse>;
+/** Actual display outcome after recording a receipt, distinct from enrollment ACKs. */
+export interface HostNotificationReceiptResult {
+    /** An OS display was positively confirmed by the host or product. */
+    displayed: boolean;
+    /**
+     * A display is reserved but unconfirmed; do not start a competing fallback.
+     * Explicit failure cancels the reservation; unknown outcomes remain pending until expiry.
+     */
+    displayPending: boolean;
+}
+export declare const HostNotificationReceiptResult: S.Codec<HostNotificationReceiptResult>;
+/** Versioned envelope for [`HostNotificationReceiverEventsRequest`]. */
+export type VersionedHostNotificationReceiverEventsRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverEventsRequest;
+};
+export declare const VersionedHostNotificationReceiverEventsRequest: S.Codec<VersionedHostNotificationReceiverEventsRequest>;
+/** Versioned envelope for [`HostNotificationReceiverEventsResponse`]. */
+export type VersionedHostNotificationReceiverEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: Array<ReceivingEvent>;
+};
+export declare const VersionedHostNotificationReceiverEventsResponse: S.Codec<VersionedHostNotificationReceiverEventsResponse>;
+/** Receiving support, consent and durable synchronization state. */
+export interface HostNotificationReceiverStatus {
+    /** Whether this host supplies trusted receiving authority. */
+    supported: boolean;
+    /** Current OS permission for visible notifications. */
+    osPermission: boolean;
+    /** Whether current authority and watches have receiving consent. */
+    consent: boolean;
+    /** Whether receiving is locally enabled. */
+    enabled: boolean;
+    /** Compare-and-swap token for the durable registration. */
+    revision: bigint;
+    /** Whether the transport still needs to synchronize this revision. */
+    syncPending: boolean;
+    /** Whether the selected platform transport is ready. */
+    transportReady: boolean;
+}
+export declare const HostNotificationReceiverStatus: S.Codec<HostNotificationReceiverStatus>;
+/** Versioned envelope for [`HostNotificationReceiverStatusRequest`]. */
+export type VersionedHostNotificationReceiverStatusRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export declare const VersionedHostNotificationReceiverStatusRequest: S.Codec<VersionedHostNotificationReceiverStatusRequest>;
+/** Versioned envelope for [`HostNotificationReceiverStatusResponse`]. */
+export type VersionedHostNotificationReceiverStatusResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationReceiverStatusResponse: S.Codec<VersionedHostNotificationReceiverStatusResponse>;
+/** Versioned envelope for [`HostNotificationReceivingError`]. */
+export type VersionedHostNotificationReceivingError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceivingError;
+};
+export declare const VersionedHostNotificationReceivingError: S.Codec<VersionedHostNotificationReceivingError>;
+/** Versioned envelope for [`HostNotificationRecordReceiptRequest`]. */
+export type VersionedHostNotificationRecordReceiptRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationRecordReceiptRequest;
+};
+export declare const VersionedHostNotificationRecordReceiptRequest: S.Codec<VersionedHostNotificationRecordReceiptRequest>;
+/** Versioned envelope for [`HostNotificationRecordReceiptResponse`]. */
+export type VersionedHostNotificationRecordReceiptResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiptResult;
+};
+export declare const VersionedHostNotificationRecordReceiptResponse: S.Codec<VersionedHostNotificationRecordReceiptResponse>;
+/** Versioned envelope for [`HostNotificationReplaceReceiverRequest`]. */
+export type VersionedHostNotificationReplaceReceiverRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReplaceReceiverRequest;
+};
+export declare const VersionedHostNotificationReplaceReceiverRequest: S.Codec<VersionedHostNotificationReplaceReceiverRequest>;
+/** Versioned envelope for [`HostNotificationReplaceReceiverResponse`]. */
+export type VersionedHostNotificationReplaceReceiverResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: HostNotificationReceiverStatus;
+};
+export declare const VersionedHostNotificationReplaceReceiverResponse: S.Codec<VersionedHostNotificationReplaceReceiverResponse>;
 /** Versioned envelope for [`HostPaymentBalanceSubscribeError`]. */
 export type VersionedHostPaymentBalanceSubscribeError = 
 /** Version 1 payload. */
@@ -3116,6 +3249,50 @@ export type RawPayload =
     };
 };
 export declare const RawPayload: S.Codec<RawPayload>;
+/** A bounded durable event containing opaque identifiers, never plaintext. */
+export interface ReceivingEvent {
+    /** Durable sequence used for polling and acknowledgement. */
+    sequence: bigint;
+    /** Registration revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Delivery or user activation. */
+    kind: ReceivingEventKind;
+    /** Locally enrolled product-relative route. */
+    route: string;
+    /** Expiration in Unix milliseconds. */
+    expiresAt: bigint;
+}
+export declare const ReceivingEvent: S.Codec<ReceivingEvent>;
+/** Why an authenticated receiving event was queued. */
+export type ReceivingEventKind = "Delivery" | "Activation";
+export declare const ReceivingEventKind: S.Codec<ReceivingEventKind>;
+/** Confirmed application handling, independent of transport acknowledgement. */
+export type ReceivingReceiptKind = "Foreground" | "Read" | "Displayed";
+export declare const ReceivingReceiptKind: S.Codec<ReceivingReceiptKind>;
+/** An authenticated source filter enrolled under host-owned receiving consent. */
+export interface ReceivingWatch {
+    /** Product-local opaque watch identifier. */
+    id: string;
+    /** Canonical lowercase 32-byte chain genesis hash. */
+    genesis: string;
+    /** Exact source channel, encoded as a canonical lowercase 32-byte hash. */
+    channel: string;
+    /** One to four selected topics; every topic must occur in the signed header. */
+    topics: Array<string>;
+    /** Approved Ed25519 public keys in canonical lowercase hex. */
+    senders: Array<string>;
+    /** Expiration in Unix milliseconds, bounded to a JavaScript safe integer. */
+    expiresAt: bigint;
+    /** Unix milliseconds before which delivery is muted; `u64::MAX` means forever. */
+    mutedUntil: bigint;
+    /** Product-relative activation route, retained locally and never relayed. */
+    route: string;
+}
+export declare const ReceivingWatch: S.Codec<ReceivingWatch>;
 /** A registered ring-VRF key entry. */
 export interface RegisteredRingVrfKey {
     /** Stable public name of the key. */
@@ -5070,6 +5247,84 @@ export interface HostNavigateToRequest {
     url: string;
 }
 export declare const HostNavigateToRequest: S.Codec<HostNavigateToRequest>;
+/** Acknowledge a durable event after application handling. */
+export interface HostNotificationAcknowledgeReceiverEventRequest {
+    /** Durable event sequence. */
+    sequence: bigint;
+}
+export declare const HostNotificationAcknowledgeReceiverEventRequest: S.Codec<HostNotificationAcknowledgeReceiverEventRequest>;
+/** Disable locally without awaiting transport revocation. */
+export interface HostNotificationDisableReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+}
+export declare const HostNotificationDisableReceiverRequest: S.Codec<HostNotificationDisableReceiverRequest>;
+/** Poll durable events without creating a UI-lifetime subscription. */
+export interface HostNotificationReceiverEventsRequest {
+    /** Return only events after this sequence. */
+    afterSequence: bigint;
+}
+export declare const HostNotificationReceiverEventsRequest: S.Codec<HostNotificationReceiverEventsRequest>;
+/** Receiving policy, persistence or support failure. */
+export type HostNotificationReceivingError = 
+/** This host has no receiving adapter. */
+{
+    tag: "Unsupported";
+    value?: undefined;
+}
+/** Notification permission or scoped receiving consent was denied. */
+ | {
+    tag: "PermissionDenied";
+    value?: undefined;
+}
+/** The request violates the receiving schema or authenticated policy. */
+ | {
+    tag: "InvalidRequest";
+    value: {
+        reason: string;
+    };
+}
+/** The registration revision or trusted authority changed. */
+ | {
+    tag: "Conflict";
+    value?: undefined;
+}
+/** The bounded receiving store or watch budget is full. */
+ | {
+    tag: "Capacity";
+    value?: undefined;
+}
+/** Durable persistence failed. */
+ | {
+    tag: "Storage";
+    value: {
+        reason: string;
+    };
+};
+export declare const HostNotificationReceivingError: S.Codec<HostNotificationReceivingError>;
+/** Record confirmed foreground handling or reading. */
+export interface HostNotificationRecordReceiptRequest {
+    /** Revision that accepted the event. */
+    revision: bigint;
+    /** Product-local watch identifier. */
+    watchId: string;
+    /** Authenticated event identifier. */
+    eventId: string;
+    /** Confirmed handling kind. */
+    kind: ReceivingReceiptKind;
+}
+export declare const HostNotificationRecordReceiptRequest: S.Codec<HostNotificationRecordReceiptRequest>;
+/** Atomically replace the current authority's complete watch set. */
+export interface HostNotificationReplaceReceiverRequest {
+    /** Revision observed by the caller. */
+    expectedRevision: bigint;
+    /**
+     * Complete replacement, at most 256 watches and 10,000 senders total.
+     * Each watch permits at most 1,000 senders.
+     */
+    watches: Array<ReceivingWatch>;
+}
+export declare const HostNotificationReplaceReceiverRequest: S.Codec<HostNotificationReplaceReceiverRequest>;
 /**
  * Error from [`crate::api::Payment::balance_subscribe`].
  *

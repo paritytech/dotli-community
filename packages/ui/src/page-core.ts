@@ -51,10 +51,14 @@ import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js
 import { showNotification } from './notification.js';
 import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
 import type { ContactLabelOverlay } from './contacts/label-overlay.js';
+import { setReceivingAccount } from './receiving.js';
+import { createReceivingExecution, type ReceivingExecution } from './receiving-execution.js';
 
 export interface CoreConnectionOptions {
   contactAvatars?: ContactAvatarOverlay;
   contactLabels?: ContactLabelOverlay;
+  archiveCid?: string | undefined;
+  isCurrentExecution?: () => boolean;
 }
 
 export interface PageProduct {
@@ -78,6 +82,7 @@ export interface CoreConnection {
   provider: TrUApiProductProvider;
   productId: string;
   wallet: LiveLocalWallet | undefined;
+  receiving: ReceivingExecution;
   close(): void;
 }
 
@@ -358,7 +363,13 @@ function createCore(product: PageProduct): Core {
       });
       callbacks.nativeChatFiles = nativeChatFiles;
     }
-    const forwardAuthState = callbacks.auth.authStateChanged;
+    const presentAuthState = callbacks.auth.authStateChanged;
+    const forwardAuthState = (state: AuthState): void => {
+      if (isPageProduct(core) && state.tag === 'Connected') {
+        setReceivingAccount(state.value.identityAccountId);
+      }
+      presentAuthState(state);
+    };
     callbacks.auth.authStateChanged = state => {
       if (disposed || (context === undefined ? isExperimentalWalletActive() : !isCurrentLocalWallet(context))) {
         return;
@@ -634,21 +645,27 @@ async function connect(
   }
   const productId = productIdOf(core.product);
   const callbacks = core.openCallbacks(options);
+  const receiving = createReceivingExecution(productId, options.archiveCid, options.isCurrentExecution);
+  callbacks.callbacks.notifications.receiverCommand = (product, action, payload) =>
+    receiving.command(product, action, payload);
   let provider: TrUApiProductProvider;
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
   } catch (error) {
+    receiving.close();
     callbacks.dispose();
     core.faulted = true;
     throw error;
   }
   if (!cores.has(core)) {
+    receiving.close();
     callbacks.dispose();
     provider.dispose();
     throw new Error('Page core closed while connecting the product');
   }
   let closing = false;
   provider.subscribeClose?.(() => {
+    receiving.close();
     callbacks.dispose();
     if (!closing) {
       core.faulted = true;
@@ -658,11 +675,13 @@ async function connect(
     provider,
     productId,
     wallet: core.wallet,
+    receiving,
     close() {
       if (closing) {
         return;
       }
       closing = true;
+      receiving.close();
       callbacks.dispose();
       provider.dispose();
     },

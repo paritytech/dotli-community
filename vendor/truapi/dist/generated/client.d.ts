@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "4dda7fbab9d6f435";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "7cf5d7f894407ead";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -298,7 +298,7 @@ export declare class LocaleClient {
     /** Localize a bounded batch of UTC instants in a host locale snapshot. */
     localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
 }
-/** Notification methods for locally-rendered push notifications. */
+/** Local notification scheduling and consent-scoped background receiving. */
 export declare class NotificationsClient {
     #private;
     constructor(transport: TrUApiTransport);
@@ -323,6 +323,21 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /** Inspect current host support, consent and durable registration state. */
+    receiverStatus(options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Atomically replace watches under explicit receiving consent. */
+    replaceReceiver(request: T.HostNotificationReplaceReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Disable locally and queue transport revocation without waiting for it. */
+    disableReceiver(request: T.HostNotificationDisableReceiverRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiverStatus, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /**
+     * Record foreground handling, reading or actual OS display, and return the
+     * confirmed/pending display outcome. A reservation is not proof of display.
+     */
+    recordReceipt(request: T.HostNotificationRecordReceiptRequest, options?: CallOptions): ResultAsync<T.HostNotificationReceiptResult, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Poll bounded durable delivery and activation events. */
+    receiverEvents(request: T.HostNotificationReceiverEventsRequest, options?: CallOptions): ResultAsync<Array<T.ReceivingEvent>, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /** Acknowledge an event after application handling. */
+    acknowledgeReceiverEvent(request: T.HostNotificationAcknowledgeReceiverEventRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {
