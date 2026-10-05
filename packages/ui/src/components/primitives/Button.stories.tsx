@@ -85,8 +85,8 @@ export const Light: Story = {
 export const Theme: Story = {
   globals: { theme: 'dark' },
   play: async ({ step }) => {
-    await step('Then a dark story leaves no light theme on the page', async () => {
-      await expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+    await step('Then a dark story puts the page back in the dark theme', async () => {
+      await expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     });
   },
 };

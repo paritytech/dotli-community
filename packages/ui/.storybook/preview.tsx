@@ -1,8 +1,8 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { merge } from 'solid-js';
-import type { Preview } from 'storybook-solidjs-vite';
+import { createRenderEffect, merge } from 'solid-js';
+import { createJSXDecorator, type Preview } from 'storybook-solidjs-vite';
 import '../src/global.css';
 
 const preview: Preview = {
@@ -47,20 +47,26 @@ const preview: Preview = {
     return <Component {...props} />;
   },
   decorators: [
-    (Story, context) => {
-      // As theme-controller.ts does: dark is the default, light is opted into on <html>.
-      if (context.globals['theme'] === 'light') {
-        document.documentElement.setAttribute('data-theme', 'light');
-      } else {
-        document.documentElement.removeAttribute('data-theme');
-      }
+    // A plain decorator re-runs on every globals change, and a globals read
+    // in its body makes the framework's story memo re-run it too, after which
+    // the framework declines to render the story twice and the canvas
+    // empties. So this one runs once per mount and reads the theme only in
+    // its own effect.
+    createJSXDecorator((Story, context) => {
+      createRenderEffect(
+        () => (context.globals['theme'] === 'light' ? 'light' : 'dark'),
+        theme => {
+          // As theme-controller.ts does, on <html> for both themes.
+          document.documentElement.setAttribute('data-theme', theme);
+        },
+      );
       document.body.style.background = 'var(--bg-page)';
       return (
         <div data-chrome="" data-testid="story-root">
           <Story />
         </div>
       );
-    },
+    }),
   ],
 };
 
