@@ -10,6 +10,16 @@ import {
 } from '@parity/truapi/jam-peer-transport';
 import { JAM_PEER_TRANSPORT_DIAL, SYSTEM_HANDSHAKE } from '@parity/truapi/wire-table';
 import { jamPeersGrantText, JamPeersPermissionRequester, wireFrameTraitId } from './polkavm-peer-permission.js';
+import {
+  deliverFileInput,
+  filePickerAccept,
+  type FileInputCandidate,
+  type FileInputDescriptor,
+  type FileInputProduct,
+  type FileInputRegistration,
+  type FileInputRuntimeMessage,
+} from '@parity/polkavm-browser-runtime/file-input-router';
+import type { FileRelaunch } from '@parity/polkavm-browser-runtime';
 import { POLKAVM_RUNTIME_SOURCE, polkaVmRuntimeAssetUrl } from './polkavm-runtime-assets.js';
 import { Tri2dRenderer } from './tri2d-renderer.js';
 import { installPolkaVmMenu, type PolkaVmMenu } from './polkavm-menu.js';
@@ -18,7 +28,6 @@ import { WebGpuBridge, observeSurfaceDimensions, type WebGpuRequirements } from 
 
 const MAX_PROGRAM_BYTES = 128 * 1024 * 1024;
 const MAX_ASSET_FILES = 2_048;
-const MAX_ASSET_NAME_BYTES = 1_024;
 const MAX_ASSET_FILE_BYTES = 128 * 1024 * 1024;
 const MAX_ASSET_BYTES = 256 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 48_000 * 2 * 2;
@@ -96,15 +105,6 @@ declare global {
   }
 }
 
-export interface PolkaVmFileInputHandler {
-  id: string;
-  label: string;
-  extensions: string[];
-  mediaTypes: string[];
-  maxBytes: number;
-  mountPath: string;
-}
-
 interface PolkaVmDescriptor {
   programPath: string;
   graphicsProfile: GraphicsProfile;
@@ -114,7 +114,6 @@ interface PolkaVmDescriptor {
   inputFeatures: string[];
   audioEnabled: boolean;
   requiredAssets: string[];
-  fileInputHandlers: PolkaVmFileInputHandler[];
   manifestVersion: number | null;
 }
 
@@ -528,94 +527,6 @@ function cleanPath(value: unknown): string | null {
   return parts.some(part => part === '' || part === '.' || part === '..') ? null : path;
 }
 
-export function validatedFileInputHandlers(value: unknown, programPath: string): PolkaVmFileInputHandler[] {
-  if (value === undefined) {
-    return [];
-  }
-  const capability = object(value);
-  if (
-    capability?.['abiVersion'] !== 1 ||
-    !isUnknownArray(capability['handlers']) ||
-    capability['handlers'].length === 0 ||
-    capability['handlers'].length > 16 ||
-    Object.keys(capability).some(key => !['abiVersion', 'handlers'].includes(key))
-  ) {
-    throw new Error('PolkaVM App v2 has an invalid fileInput capability');
-  }
-  const ids = new Set<string>();
-  const mountPaths = new Set<string>();
-  return capability['handlers'].map(handlerValue => {
-    const handler = object(handlerValue);
-    const extensions = handler?.['extensions'] ?? [];
-    const mediaTypes = handler?.['mediaTypes'] ?? [];
-    const mountPath =
-      typeof handler?.['mountPath'] === 'string' && !handler['mountPath'].startsWith('/')
-        ? cleanPath(handler['mountPath'])
-        : null;
-    if (
-      handler === null ||
-      Object.keys(handler).some(
-        key => !['id', 'label', 'extensions', 'mediaTypes', 'maxBytes', 'mountPath'].includes(key),
-      ) ||
-      typeof handler['id'] !== 'string' ||
-      !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(handler['id']) ||
-      ids.has(handler['id']) ||
-      typeof handler['label'] !== 'string' ||
-      handler['label'].trim() === '' ||
-      encoder.encode(handler['label']).byteLength > 80 ||
-      !isUnknownArray(extensions) ||
-      !isUnknownArray(mediaTypes) ||
-      (extensions.length === 0 && mediaTypes.length === 0) ||
-      new Set(extensions).size !== extensions.length ||
-      extensions.some(extension => typeof extension !== 'string' || !/^\.[a-z0-9]{1,16}$/.test(extension)) ||
-      new Set(mediaTypes).size !== mediaTypes.length ||
-      mediaTypes.some(
-        mediaType =>
-          typeof mediaType !== 'string' ||
-          mediaType.length > 127 ||
-          !/^[a-z0-9!#$&^_.+-]+\/[a-z0-9!#$&^_.+-]+$/.test(mediaType),
-      ) ||
-      !Number.isSafeInteger(handler['maxBytes']) ||
-      (handler['maxBytes'] as number) < 1 ||
-      (handler['maxBytes'] as number) > MAX_ASSET_FILE_BYTES ||
-      mountPath === null ||
-      encoder.encode(mountPath).byteLength > MAX_ASSET_NAME_BYTES ||
-      mountPath === programPath ||
-      mountPaths.has(mountPath)
-    ) {
-      throw new Error('PolkaVM App v2 has an invalid fileInput handler');
-    }
-    ids.add(handler['id']);
-    mountPaths.add(mountPath);
-    return {
-      id: handler['id'],
-      label: handler['label'],
-      extensions: [...(extensions as string[])],
-      mediaTypes: [...(mediaTypes as string[])],
-      maxBytes: handler['maxBytes'] as number,
-      mountPath,
-    };
-  });
-}
-
-export function matchingFileInputHandlers(
-  handlers: readonly PolkaVmFileInputHandler[],
-  file: Readonly<Pick<File, 'name' | 'size' | 'type'>>,
-): PolkaVmFileInputHandler[] {
-  if (!Number.isSafeInteger(file.size) || file.size < 0) {
-    return [];
-  }
-  const name = file.name.split(/[\\/]/).at(-1) ?? '';
-  const dot = name.lastIndexOf('.');
-  const extension = dot < 0 ? '' : name.slice(dot).toLowerCase();
-  const mediaType = file.type.toLowerCase();
-  return handlers.filter(
-    handler =>
-      file.size <= handler.maxBytes &&
-      (handler.extensions.includes(extension) || (mediaType !== '' && handler.mediaTypes.includes(mediaType))),
-  );
-}
-
 function assertExternalManifest(embedded: Uint8Array, externalManifest: string | null): void {
   if (externalManifest === null) {
     throw new Error('external App manifest is required for App manifest v2');
@@ -659,7 +570,6 @@ function parseManifest(
   let audioEnabled: boolean;
   let manifestVersion: number | null = null;
   let webFallbackPath: string | null = null;
-  let fileInputHandlers: PolkaVmFileInputHandler[] = [];
   if (manifest?.['$v'] === 2 && manifest['kind'] === 'app') {
     // `$v: 2` versions the manifest, not the guest boundary. Every published
     // App selects PolkaVM application runtime ABI v1, the only version the
@@ -780,7 +690,6 @@ function parseManifest(
       inputFeatures.push('camera-ur');
     }
     audioEnabled = audio !== null;
-    fileInputHandlers = validatedFileInputHandlers(capabilities?.['fileInput'], programPath);
     manifestVersion = 2;
     if (enforceExternal) {
       assertExternalManifest(bytes, externalManifest);
@@ -839,7 +748,6 @@ function parseManifest(
     inputFeatures,
     audioEnabled,
     requiredAssets,
-    fileInputHandlers,
     manifestVersion,
   };
 }
@@ -1558,30 +1466,17 @@ function createShell(): {
   return { surface, canvas, status };
 }
 
-function filePickerAccept(handlers: readonly PolkaVmFileInputHandler[]): string {
-  const values = new Set<string>();
-  for (const handler of handlers) {
-    for (const extension of handler.extensions) {
-      values.add(extension);
-    }
-    for (const mediaType of handler.mediaTypes) {
-      values.add(mediaType);
-    }
-  }
-  return [...values].join(',');
-}
-
 function formatFileBytes(bytes: number): string {
   return bytes >= 1024 * 1024 ? `${(bytes / (1024 * 1024)).toFixed(1)} MiB` : `${(bytes / 1024).toFixed(1)} KiB`;
 }
 
 function askFileInputConsent(
-  file: File,
-  handlers: readonly PolkaVmFileInputHandler[],
+  file: Readonly<Pick<File, 'name' | 'size'>>,
+  handlers: readonly Readonly<FileInputDescriptor>[],
   signal: AbortSignal,
-): Promise<PolkaVmFileInputHandler | null> {
+): Promise<Readonly<FileInputDescriptor> | null> {
   const firstHandler = handlers[0];
-  if (firstHandler === undefined) {
+  if (firstHandler === undefined || signal.aborted) {
     return Promise.resolve(null);
   }
   return new Promise(resolve => {
@@ -1594,7 +1489,7 @@ function askFileInputConsent(
     backdrop.setAttribute('aria-labelledby', heading.id);
     heading.textContent = 'Give this file to the app?';
     const explanation = document.createElement('p');
-    explanation.textContent = 'The app will receive the file and restart to load it.';
+    explanation.textContent = 'The app will receive this local file. It is not uploaded by the host.';
     const detail = document.createElement('div');
     detail.className = 'dotli-file-consent-detail';
     detail.textContent = `${file.name} · ${formatFileBytes(file.size)}\n${firstHandler.label}`;
@@ -1633,7 +1528,7 @@ function askFileInputConsent(
     const previousFocus = document.activeElement;
     backdrop.showModal();
     let settled = false;
-    const finish = (handler: PolkaVmFileInputHandler | null): void => {
+    const finish = (handler: Readonly<FileInputDescriptor> | null): void => {
       if (settled) {
         return;
       }
@@ -1678,71 +1573,146 @@ function askFileInputConsent(
   });
 }
 
-function installFileInputControls(
+/** Host-side controls for runtime-registered local file input. */
+export interface LocalFileInputControls {
+  update: (registrations: FileInputRegistration[]) => void;
+  ready: () => void;
+  request: (handle: number) => void;
+  cancel: (handle: number) => void;
+  cleanup: () => void;
+}
+
+export function installFileInputControls(
   surface: HTMLElement,
   status: HTMLElement,
-  handlers: readonly PolkaVmFileInputHandler[],
-  deliver: (handler: PolkaVmFileInputHandler, bytes: Uint8Array, file: File) => Promise<void>,
+  product: FileInputProduct,
+  send: (
+    message:
+      | FileInputRuntimeMessage
+      | {
+          type: 'mediated-input-result';
+          handle: number;
+          status: 3;
+          bytes: Uint8Array;
+        },
+  ) => void,
   menu: PolkaVmMenu,
-): () => void {
+): LocalFileInputControls {
   const open = menu.changeFile;
-  if (open === null) {
-    return () => undefined;
-  }
   const picker = document.createElement('input');
   picker.type = 'file';
-  picker.accept = filePickerAccept(handlers);
   picker.hidden = true;
   open.after(picker);
   let busy = false;
-  const cancellation = new AbortController();
-  const process = async (file: File): Promise<void> => {
-    if (busy || cancellation.signal.aborted) {
+  let disposed = false;
+  let ready = false;
+  let requestedHandle: number | undefined;
+  let cancellation = new AbortController();
+  // Predicates, not narrowed locals: TypeScript keeps `disposed` narrowed across `await`.
+  const live = (): boolean => !disposed;
+  const cancelRequest = (): void => {
+    const handle = requestedHandle;
+    requestedHandle = undefined;
+    if (handle !== undefined && live()) {
+      send({ type: 'mediated-input-result', handle, status: 3, bytes: new Uint8Array() });
+    }
+  };
+  const showRequest = (): void => {
+    if (!ready || requestedHandle === undefined || !live()) {
       return;
     }
     menu.open();
-    if (file.size === 0) {
-      status.textContent = 'This file is empty. Choose another file.';
+    status.textContent = 'The app requested a local file. Select Open file to choose it.';
+    // Worker requests have no browser user activation; Open file supplies it.
+    open.focus();
+  };
+  const process = async (file: File): Promise<void> => {
+    if (!ready || busy || !live() || product.registrations.length === 0) {
       return;
     }
-    const candidates = matchingFileInputHandlers(handlers, file);
-    if (candidates.length === 0) {
-      status.textContent = 'This app does not accept that file type or size. Choose another file.';
-      return;
-    }
+    menu.open();
     busy = true;
     menu.setBusy(true);
-    const handler = await askFileInputConsent(file, candidates, cancellation.signal);
-    if (handler === null) {
-      busy = false;
-      menu.setBusy(false);
-      if (open.isConnected) {
-        open.focus();
-      }
-      return;
-    }
-    status.textContent = `Reading ${file.name}…`;
+    const signal = cancellation.signal;
+    const cancelled = (): boolean => signal.aborted || !live();
+    const handle = requestedHandle;
+    const selectionProduct: FileInputProduct = {
+      ...product,
+      get registrations() {
+        return signal.aborted
+          ? []
+          : product.registrations.filter(registration => handle === undefined || registration.handle === handle);
+      },
+    };
+    let approved: FileInputCandidate | undefined;
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      cancellation.signal.throwIfAborted();
-      if (bytes.byteLength !== file.size || bytes.byteLength > handler.maxBytes) {
-        throw new Error('File size changed while it was being read.');
+      const result = await deliverFileInput({
+        products: [selectionProduct],
+        file,
+        chooseCandidate: async ({ candidates }) => {
+          const handler = await askFileInputConsent(
+            file,
+            candidates.map(candidate => candidate.handler),
+            signal,
+          );
+          approved = candidates.find(candidate => candidate.handler === handler);
+          return approved;
+        },
+        confirmDelivery: async candidate => {
+          if (cancelled()) {
+            return false;
+          }
+          const accepted =
+            approved !== undefined || (await askFileInputConsent(file, [candidate.handler], signal)) !== null;
+          if (accepted && !cancelled()) {
+            status.textContent = `Loading ${file.name}…`;
+          }
+          return accepted && !cancelled();
+        },
+        sendToRuntime: ({ message }) => {
+          if (cancelled()) {
+            throw new DOMException('File selection cancelled', 'AbortError');
+          }
+          send(message);
+        },
+      });
+      if (cancelled()) {
+        return;
       }
-      status.textContent = `Loading ${file.name}…`;
-      await deliver(handler, bytes, file);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'File delivery failed.';
-      status.textContent = `${message} Choose another file or return to the launcher.`;
+      if (result.status === 'delivered') {
+        requestedHandle = undefined;
+      } else {
+        cancelRequest();
+        status.textContent =
+          result.status === 'rejected'
+            ? `${result.error instanceof Error ? result.error.message : 'File delivery failed.'} Choose another file.`
+            : result.status === 'unhandled'
+              ? 'This app does not accept that file type or size. Choose another file.'
+              : 'File selection cancelled.';
+      }
     } finally {
       busy = false;
-      menu.setBusy(false);
-      if (open.isConnected) {
-        open.focus();
+      if (live()) {
+        menu.setBusy(false);
+        if (open.isConnected) {
+          open.focus();
+        }
       }
     }
   };
   const click = (): void => {
+    if (!ready || disposed || busy || product.registrations.length === 0) {
+      return;
+    }
     menu.open();
+    picker.accept = filePickerAccept([
+      {
+        ...product,
+        registrations: product.registrations.filter(
+          registration => requestedHandle === undefined || registration.handle === requestedHandle,
+        ),
+      },
+    ]);
     picker.click();
   };
   const change = (): void => {
@@ -1750,10 +1720,17 @@ function installFileInputControls(
     picker.value = '';
     if (file !== undefined) {
       void process(file);
+    } else {
+      cancelRequest();
     }
   };
   const dragover = (event: DragEvent): void => {
-    if (!busy && [...(event.dataTransfer?.items ?? [])].some(item => item.kind === 'file')) {
+    if (
+      ready &&
+      !busy &&
+      product.registrations.length > 0 &&
+      [...(event.dataTransfer?.items ?? [])].some(item => item.kind === 'file')
+    ) {
       event.preventDefault();
       if (event.dataTransfer !== null) {
         event.dataTransfer.dropEffect = 'copy';
@@ -1768,7 +1745,7 @@ function installFileInputControls(
   };
   const drop = (event: DragEvent): void => {
     const file = event.dataTransfer?.files[0];
-    if (file === undefined) {
+    if (file === undefined || product.registrations.length === 0) {
       return;
     }
     event.preventDefault();
@@ -1777,17 +1754,58 @@ function installFileInputControls(
   };
   open.addEventListener('click', click);
   picker.addEventListener('change', change);
+  picker.addEventListener('cancel', cancelRequest);
   surface.addEventListener('dragover', dragover);
   surface.addEventListener('dragleave', dragleave);
   surface.addEventListener('drop', drop);
-  return () => {
-    cancellation.abort();
-    open.removeEventListener('click', click);
-    picker.removeEventListener('change', change);
-    surface.removeEventListener('dragover', dragover);
-    surface.removeEventListener('dragleave', dragleave);
-    surface.removeEventListener('drop', drop);
-    picker.remove();
+  return {
+    update: registrations => {
+      // Validate the runtime's complete snapshot using the canonical router.
+      const accept = filePickerAccept([{ ...product, registrations }]);
+      product.registrations = registrations;
+      picker.accept = accept;
+      menu.setFileInputAvailable(ready && registrations.length > 0);
+      cancellation.abort();
+      cancellation = new AbortController();
+      if (requestedHandle !== undefined && !registrations.some(item => item.handle === requestedHandle)) {
+        requestedHandle = undefined;
+      }
+    },
+    ready: () => {
+      ready = true;
+      menu.setFileInputAvailable(product.registrations.length > 0);
+      showRequest();
+    },
+    request: handle => {
+      if (disposed || !product.registrations.some(item => item.handle === handle)) {
+        return;
+      }
+      cancellation.abort();
+      cancellation = new AbortController();
+      cancelRequest();
+      requestedHandle = handle;
+      showRequest();
+    },
+    cancel: handle => {
+      if (requestedHandle === handle) {
+        requestedHandle = undefined;
+      }
+      cancellation.abort();
+      cancellation = new AbortController();
+    },
+    cleanup: () => {
+      disposed = true;
+      product.registrations = [];
+      cancellation.abort();
+      open.removeEventListener('click', click);
+      picker.removeEventListener('change', change);
+      picker.removeEventListener('cancel', cancelRequest);
+      surface.removeEventListener('dragover', dragover);
+      surface.removeEventListener('dragleave', dragleave);
+      surface.removeEventListener('drop', drop);
+      surface.classList.remove('dotli-file-drag');
+      picker.remove();
+    },
   };
 }
 
@@ -2633,6 +2651,53 @@ function installInput(
   };
 }
 
+/** Wait for runtime-owned private-cache cleanup before killing the worker. */
+export function installWorkerShutdown(
+  worker: Pick<Worker, 'postMessage' | 'terminate' | 'addEventListener' | 'removeEventListener'>,
+  report: (message: string) => void,
+): () => Promise<void> {
+  const { promise, resolve } = Promise.withResolvers<undefined>();
+  let finished = false;
+  let stopping = false;
+  let cancelTimer = (): void => undefined;
+  const finish = (cleanupFailed: boolean): void => {
+    if (finished) {
+      return;
+    }
+    finished = true;
+    cancelTimer();
+    worker.removeEventListener('message', receive);
+    worker.terminate();
+    if (cleanupFailed) {
+      report('PolkaVM private file-cache cleanup could not be confirmed.');
+    }
+    resolve(undefined);
+  };
+  const receive = (event: MessageEvent<unknown>): void => {
+    const message = object(event.data);
+    if (message?.['type'] === 'terminated') {
+      finish(message['cleanupFailed'] === true);
+    } else if (stopping && message?.['type'] === 'error' && message['fatal'] === false) {
+      report(String(message['message']));
+    }
+  };
+  worker.addEventListener('message', receive);
+  return () => {
+    if (!finished && !stopping) {
+      stopping = true;
+      // Match the public session API's bounded shutdown for an unresponsive worker.
+      const timer = setTimeout(() => {
+        finish(true);
+      }, 1_000);
+      cancelTimer = () => {
+        clearTimeout(timer);
+      };
+      worker.postMessage({ type: 'stop' });
+    }
+    return promise;
+  };
+}
+
 export async function runPolkaVmApplication(
   files: ArchiveFiles,
   cid: string,
@@ -2644,7 +2709,7 @@ export async function runPolkaVmApplication(
   }
   validateFiles(files, descriptor);
   let cleanupRecovery = (): void => undefined;
-  const launch = async (nextFiles: ArchiveFiles): Promise<void> => {
+  const launch = async (fileRelaunch?: FileRelaunch): Promise<void> => {
     cleanupRecovery();
     cleanupRecovery = () => undefined;
     const recover = (error: unknown): void => {
@@ -2652,45 +2717,34 @@ export async function runPolkaVmApplication(
       status.textContent = '';
       const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
         pause: () => undefined,
-        hasFileInput: descriptor.fileInputHandlers.length > 0,
+        hasFileInput: false,
+        hasLauncher: fileRelaunch !== undefined,
         grants: () => [],
         error: error instanceof Error ? error.message : 'Application startup failed.',
         retry: () => {
-          void launch(nextFiles);
+          void launch(fileRelaunch);
         },
         launcher: () => {
-          void launch(files);
+          void launch();
         },
       });
-      const cleanupFiles = installFileInputControls(
-        surface,
-        menu.status,
-        descriptor.fileInputHandlers,
-        async (handler, bytes) => {
-          await launch({ ...nextFiles, [handler.mountPath]: bytes });
-        },
-        menu,
-      );
-      cleanupRecovery = () => {
-        cleanupFiles();
-        menu.cleanup();
-      };
+      cleanupRecovery = menu.cleanup;
     };
     try {
-      await startPolkaVmApplication(nextFiles, cid, descriptor, launch, () => launch(files), recover);
+      await startPolkaVmApplication(files, cid, descriptor, fileRelaunch, launch, recover);
     } catch (error) {
       recover(error);
     }
   };
-  await launch(files);
+  await launch();
 }
 
 async function startPolkaVmApplication(
   files: ArchiveFiles,
   cid: string,
   descriptor: PolkaVmDescriptor,
-  launch: (files: ArchiveFiles) => Promise<void>,
-  launcher: () => Promise<void>,
+  fileRelaunch: FileRelaunch | undefined,
+  launch: (fileRelaunch?: FileRelaunch) => Promise<void>,
   recover: (error: unknown) => void,
 ): Promise<void> {
   const programBytes = validateFiles(files, descriptor);
@@ -2722,15 +2776,18 @@ async function startPolkaVmApplication(
   const compiledBytes = !forceInterpreter && compiledProgram === undefined ? await loadTranslation(cacheKey) : null;
   let saveIdentity = cid;
   const saveIdentityPaths = new Set(descriptor.requiredAssets);
-  for (const handler of descriptor.fileInputHandlers) {
-    if (Object.hasOwn(files, handler.mountPath)) {
-      saveIdentityPaths.add(handler.mountPath);
-    }
+  if (fileRelaunch !== undefined) {
+    saveIdentityPaths.add(fileRelaunch.mountPath);
   }
   if (saveIdentityPaths.size > 0) {
     const fingerprints: string[] = [];
     for (const path of [...saveIdentityPaths].sort()) {
-      const bytes = files[path];
+      const bytes =
+        path === fileRelaunch?.mountPath
+          ? fileRelaunch.bytes instanceof Uint8Array
+            ? fileRelaunch.bytes
+            : new Uint8Array(fileRelaunch.bytes)
+          : files[path];
       if (bytes === undefined) {
         throw new Error(`PolkaVM package is missing required content mount ${path}`);
       }
@@ -2767,6 +2824,9 @@ async function startPolkaVmApplication(
     authorize: jamPeersPermission.authorize,
   });
   const worker = new Worker(polkaVmRuntimeAssetUrl('polkavm-worker.js'));
+  const stopWorker = installWorkerShutdown(worker, message => {
+    console.warn(message);
+  });
   const closeHostFramePort = (): void => {
     hostFramePort.onmessage = null;
     hostFramePort.onmessageerror = null;
@@ -2782,8 +2842,7 @@ async function startPolkaVmApplication(
     rejectStarted(error);
     jamPeersPermission.close();
     peerSession.close();
-    worker.postMessage({ type: 'stop' });
-    worker.terminate();
+    void stopWorker();
     closeHostFramePort();
   };
   const failHostFrame = (error: Error): void => {
@@ -3208,8 +3267,7 @@ async function startPolkaVmApplication(
     window.removeEventListener('message', onParentViewInsets);
     canvas.removeEventListener('webglcontextlost', onTri2dContextLost);
     tri2d?.dispose();
-    worker.postMessage({ type: 'stop' });
-    worker.terminate();
+    void stopWorker();
     webGpu?.dispose();
     void audioContext?.close();
     jamPeersPermission.close();
@@ -3225,7 +3283,9 @@ async function startPolkaVmApplication(
     stop();
     rejectStarted(error);
     if (firstFrame) {
-      recover(error);
+      void stopWorker().then(() => {
+        recover(error);
+      });
     }
   };
   const recoverTri2d = (error: Error): void => {
@@ -3235,7 +3295,9 @@ async function startPolkaVmApplication(
     status.textContent = `${error.message}; restoring app…`;
     stop();
     rejectStarted(error);
-    window.parent.postMessage({ type: 'dotli:sandbox-recover' }, parentOrigin);
+    void stopWorker().then(() => {
+      window.parent.postMessage({ type: 'dotli:sandbox-recover' }, parentOrigin);
+    });
   };
   if (tri2d !== null) {
     canvas.addEventListener('webglcontextlost', onTri2dContextLost);
@@ -3293,19 +3355,30 @@ async function startPolkaVmApplication(
       menuPaused = value;
       syncPause();
     },
-    hasFileInput: descriptor.fileInputHandlers.length > 0,
+    hasFileInput: false,
+    hasLauncher: fileRelaunch !== undefined,
     grants: () => jamPeersGrantText(jamPeersPermission.granted()),
     retry: () => {
       resolveStarted(undefined);
       stop();
-      void launch(files);
+      void stopWorker().then(() => launch(fileRelaunch));
     },
     launcher: () => {
       resolveStarted(undefined);
       stop();
-      void launcher();
+      void stopWorker().then(() => launch());
     },
   });
+  const fileControls = installFileInputControls(
+    surface,
+    menu.status,
+    { id: location.hostname, entrypoint: descriptor.programPath, registrations: [] },
+    message => {
+      worker.postMessage(message);
+    },
+    menu,
+  );
+  cleanupFileInputControls = fileControls.cleanup;
   document.addEventListener('visibilitychange', visibilityChanged);
 
   const handleWorkerMessage = (data: unknown): void => {
@@ -3317,6 +3390,39 @@ async function startPolkaVmApplication(
       return;
     }
     switch (message?.['type']) {
+      case 'file-registrations': {
+        try {
+          fileControls.update(message['registrations'] as FileInputRegistration[]);
+        } catch (error) {
+          failRuntime(error instanceof Error ? error : new Error('Invalid file registrations'));
+        }
+        break;
+      }
+      case 'file-input-request': {
+        fileControls.request(Number(message['handle']));
+        break;
+      }
+      case 'file-input-delivery': {
+        if (message['outcome'] === 'relaunch') {
+          // Only the runtime may authorize a mount/relaunch. Retain its bytes
+          // for Retry; the start message clones them rather than detaching them.
+          const relaunch = message['relaunch'] as FileRelaunch;
+          resolveStarted(undefined);
+          stop();
+          void stopWorker().then(() => launch(relaunch));
+        } else {
+          menu.status.textContent =
+            message['outcome'] === 'ready'
+              ? 'File delivered. Resume to return to the app.'
+              : 'The app could not accept this file. Choose another file or resume.';
+        }
+        break;
+      }
+      case 'terminated': {
+        resolveStarted(undefined);
+        stop();
+        break;
+      }
       case 'background-state': {
         if (message['seq'] !== backgroundSequence || message['backgrounded'] !== paused) {
           break;
@@ -3424,6 +3530,7 @@ async function startPolkaVmApplication(
         canvas.dataset['polkavmReady'] = 'true';
         updateMetrics();
         workerReady = true;
+        fileControls.ready();
         postViewInsets(INPUT_SAFE_AREA_INSETS, {
           left: 0,
           top: 0,
@@ -3511,8 +3618,10 @@ async function startPolkaVmApplication(
       case 'mediated-input-cancel': {
         const handle = Number(message['handle']);
         if (activeMediatedInput?.handle !== handle) {
-          rejectStarted(new Error('PolkaVM guest emitted an invalid mediated input cancellation'));
-          return;
+          // File requests and released streams share cancellation records with
+          // camera input. Only an active camera handle belongs to the parent.
+          fileControls.cancel(handle);
+          break;
         }
         activeMediatedInput = undefined;
         window.parent.postMessage({ type: 'dotli:polkavm-mediated-input-cancel', handle }, parentOrigin);
@@ -3688,7 +3797,12 @@ async function startPolkaVmApplication(
       }
       case 'error': {
         const text = typeof message['message'] === 'string' ? message['message'] : 'PolkaVM runtime failed';
-        failRuntime(new Error(text));
+        if (message['fatal'] === false) {
+          console.warn(text);
+          menu.status.textContent = text;
+        } else {
+          failRuntime(new Error(text));
+        }
         break;
       }
     }
@@ -3725,6 +3839,9 @@ async function startPolkaVmApplication(
       graphicsProfile: descriptor.graphicsProfile,
       gpuCapabilities: gpuCapabilitiesBuffer,
       mediatedInputKinds: descriptor.inputFeatures.filter(feature => feature === 'camera-ur'),
+      fileInput: { inline: true, relaunch: true, stream: true, entrypoint: descriptor.programPath },
+      fileCache: true,
+      fileRelaunch,
       motionAvailability: typeof PointerEvent !== 'undefined' || typeof DeviceMotionEvent !== 'undefined' ? 1 : 0,
       forceInterpreter,
     },
@@ -3732,29 +3849,15 @@ async function startPolkaVmApplication(
   );
 
   syncPause();
-  cleanupFileInputControls = installFileInputControls(
-    surface,
-    menu.status,
-    descriptor.fileInputHandlers,
-    async (handler, bytes) => {
-      const relaunchedFiles: ArchiveFiles = {
-        ...files,
-        [handler.mountPath]: bytes,
-      };
-      resolveStarted(undefined);
-      stop();
-      await launch(relaunchedFiles);
-    },
-    menu,
-  );
   await startedPromise.then(
     () => {
       if (!stopped && !menuPaused && !paused) {
         canvas.focus({ preventScroll: true });
       }
     },
-    (error: unknown) => {
+    async (error: unknown) => {
       stop();
+      await stopWorker();
       throw error;
     },
   );

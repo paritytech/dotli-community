@@ -2,10 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 export interface PolkaVmMenu {
-  changeFile: HTMLButtonElement | null;
+  changeFile: HTMLButtonElement;
   status: HTMLElement;
   open: () => void;
   setBusy: (busy: boolean) => void;
+  setFileInputAvailable: (available: boolean) => void;
   cleanup: () => void;
 }
 
@@ -18,6 +19,7 @@ export function installPolkaVmMenu(
     hasFileInput: boolean;
     /** Lines describing network access the host granted this execution; read on every open. */
     grants: () => readonly string[];
+    hasLauncher?: boolean;
     retry: () => void;
     launcher: () => void;
     error?: string;
@@ -80,18 +82,15 @@ export function installPolkaVmMenu(
     );
   };
   renderGrants();
-  const changeFile = options.hasFileInput ? button('Change Game / Choose file') : null;
-  if (changeFile !== null) {
-    changeFile.id = 'dotli-polkavm-file-open';
-  }
+  const changeFile = button('Open file');
+  changeFile.id = 'dotli-polkavm-file-open';
+  changeFile.hidden = !options.hasFileInput;
   const retry = button('Retry');
   retry.hidden = options.error === undefined;
   const launcher = button('Return to launcher');
-  launcher.hidden = !options.hasFileInput;
+  launcher.hidden = !options.hasFileInput && options.hasLauncher !== true;
   dialog.append(heading, message, resume, help, network);
-  if (changeFile !== null) {
-    dialog.append(changeFile);
-  }
+  dialog.append(changeFile);
   dialog.append(retry, launcher);
   surface.append(toggle, dialog);
   let busy = false;
@@ -175,9 +174,11 @@ export function installPolkaVmMenu(
       resume.disabled = value;
       retry.disabled = value;
       launcher.disabled = value;
-      if (changeFile !== null) {
-        changeFile.disabled = value;
-      }
+      changeFile.disabled = value;
+    },
+    setFileInputAvailable: available => {
+      changeFile.hidden = !available;
+      launcher.hidden = !available && options.hasLauncher !== true;
     },
     cleanup: () => {
       window.removeEventListener('keydown', keydown, true);

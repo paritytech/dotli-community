@@ -11,8 +11,8 @@ const mocks = vi.hoisted(() => ({
   isSandboxOrigin: vi.fn(() => true),
 }));
 
-vi.mock(import('@dotli/protocol'), async importOriginal => ({
-  ...(await importOriginal()),
+vi.mock(import('@dotli/protocol'), async () => ({
+  ...(await import('../../protocol/src/chain-halted.js')),
   createRemoteChainProvider: mocks.createRemoteChainProvider,
   isRemoteChainSupported: mocks.isRemoteChainSupported,
 }));
@@ -34,12 +34,12 @@ beforeEach(async () => {
     bulletin: { genesis: '0xbull' },
   });
   mocks.isSandboxOrigin.mockReturnValue(true);
-  vi.useFakeTimers();
   // Finish loading a fresh module before a test installs its chain fixture.
   // An import inside a timed-out test can resume against the next test's mock.
   // Static imports would share connection and pending-request state across cases.
   vi.resetModules();
   ({ bitswapGet, listenForSandboxBitswap } = await import('../src/bitswap.js'));
+  vi.useFakeTimers();
 });
 
 afterEach(() => {

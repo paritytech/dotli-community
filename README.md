@@ -183,11 +183,25 @@ focus loss, backgrounding, resizing, and disabling controls release all held vir
 keyboard/mouse input remains independent of virtual holds. The overlay respects safe-area insets and is absent on
 desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
 
-An App may declare `capabilities.fileInput` ABI 1 with bounded handlers for file extensions or media types. The sandbox
-exposes **Open file** and drag/drop only after the runtime is ready, asks for explicit consent before reading the
-selected file, mounts the bytes at the handler's declared relative path, and restarts the guest in the same iframe. The
-file remains local to that product origin; it is not uploaded. Save storage is keyed by the mounted file digest so two
-cartridges do not share save data.
+Apps register file handlers at runtime through `host_file_register`; manifest declarations do not authorize file
+delivery. The sandbox follows the current execution's `file-registrations` and exposes **Open file** and drag/drop only
+when ready. Packaged content starts normally without selecting a file. A guest `file-input-request` opens the app menu;
+the user clicks **Open file** to supply the browser activation required for the native picker. The host asks for
+explicit consent and routes the file to that execution's current registration, not to another product or a stale
+handler.
+
+Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
+whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
+cleanup errors are recoverable and reported separately from fatal runtime errors. Stopping cancels pending selection,
+waits for the runtime's cleanup acknowledgement, and only then terminates its worker; an unresponsive worker is forcibly
+terminated after one second with an explicit warning that cache cleanup could not be confirmed. Browser process death or
+abrupt document destruction cannot guarantee a cleanup acknowledgement.
+
+Only a runtime `file-input-delivery` with outcome `relaunch` authorizes restarting with its session-only mount. Retry
+preserves that selection; **Return to launcher** restores the original package. Save storage remains isolated by product
+origin and, for mounted/relaunch content, the file digest, so different cartridges do not share save data. Stream/inline
+selection does not change the save namespace. Picker cancellation and released file streams do not cancel or invalidate
+an unrelated camera request.
 
 While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`, where
 supported by the browser) deliver plain text through bounded text-input records. They do not also invoke the guest's
@@ -203,6 +217,12 @@ the pinned translator revision. The credentialless sandbox's translation cache a
 top-level document's ephemeral storage partition; they are not durable across host-page reloads. In-page restarts can
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
+
+The current pin is the `0.3.2-rc.2` release candidate, including runtime-registered streamed file input and private
+caches; this update retains the separately pinned TrUAPI host SDK. Synchronization verifies the package's complete
+checksum inventory, including its session API and type declarations, but serves only the host's selected runtime
+artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those
+artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
@@ -331,8 +351,9 @@ small explicit capacity; large timeline workloads have separate work-bound tests
 Settings browser checks await address-bar canonicalization with Playwright's URL assertions: persisted settings can be
 ready before boot finishes rewriting the URL.
 
-Bitswap unit fixtures load a fresh module before installing each case's provider and attach result assertions before
-advancing the fake clock. Cold module loading cannot resume a timed-out case against the next case's provider.
+Bitswap unit fixtures load a fresh module before installing each case's provider, relay, or fake clock. Relay
+installation is synchronous, so a timed-out import cannot install a listener after teardown. Protocol fixtures use the
+real halt-error definitions without loading the browser transport implementation.
 
 Local development uses wildcard subdomains:
 
@@ -360,6 +381,60 @@ VITE_METRICS=true npm run --workspace apps/host test:functional
 ```
 
 Both metric settings are required: without them the transport ownership cases either skip or collect no samples.
+
+Functional CI retains JSON results and failure screenshots/traces in `functional-results-<attempt>` for three days. Open
+a failed test's `trace.zip` with `npx playwright show-trace` to distinguish RPC/manifest resolution, gateway delivery,
+and sandbox startup failures. The suite still resolves and loads the real published playground.
+
+Gateway CAR requests select their representation with `?format=car`, leaving the browser's default Accept header intact.
+A media-specific Accept header bypasses the Paseo gateway's immutable-content cache despite returning the same archive.
+URL-based format selection follows [IPIP-0523](https://specs.ipfs.tech/ipips/ipip-0523/); requested-CID and CAR-block
+verification remain unchanged.
+
+### Qualifying a PolkaVM runtime update locally
+
+Keep `vendor/truapi-host.lock.json` and the vendored host SDK unchanged when qualifying a runtime-only update. The
+qualification suite uses the real host bridge and SDK; only name resolution and content-addressed CAR delivery are local
+fixtures. Nothing is published, signed, or deployed.
+
+```bash
+npm ci
+npx playwright install chromium
+npm run prepare:polkavm-qualification
+VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build
+npm run test:polkavm-qualification
+```
+
+Preparation archives the exact app-kit commit in `apps/host/tests/functional/fixtures/polkavm/qualification.lock.json`
+into an isolated build directory under ignored `dist/polkavm-qualification/`. It does not use an arbitrary existing app
+bundle. Install the recorded Rust nightlies with `rust-src`, `polkatool`, Clang, and LLVM tools first; the lock records
+the producer's Node/npm/compiler versions. `PVM_CLANG`, `PVM_LLVM_AR`, and `PVM_LLVM_RANLIB` can select the
+corresponding executables. `--source <clean-checkout>` avoids fetching app-kit, but still requires the exact pinned
+revision and copies it into the isolated build. Dependencies remain locked and sccache is disabled.
+
+The source pin uses the migrated `host_frame_*` guest SDK. Each fixture records the guest SDK revision, CAR CID, and
+CAR/manifest/program SHA-256 hashes. Freedoom Phase 1 mounts only `game/freedoom1.wad`; Phase 2 mounts only
+`game/freedoom2.wad`. The same engine selects its campaign by filename, not by examining replacement WAD bytes. Both
+CARs include the campaign's licenses.
+
+An intentional source/toolchain refresh uses `npm run prepare:polkavm-qualification -- --record-artifacts`. Review the
+changed lock, then rerun preparation without that flag: ordinary preparation fails on toolchain or artifact mismatches.
+This verifies repeat builds with the recorded toolchain, not cross-platform reproducibility; the pinned Doom build
+enumerates C sources in filesystem order. Verified prepared fixtures can be copied to another browser test machine
+without rebuilding them.
+
+The suite covers handshake and private-storage write/read/clear through the unchanged SDK, both campaigns'
+rendering/input/audio, file-consent cancellation and approval, warm compiler-cache restart, real tab background/resume,
+and worker teardown. It runs headed to exercise actual visibility changes; use
+`xvfb-run -a npm run test:polkavm-qualification` on a display-less Linux runner. Playwright results attach
+fixture/runtime/SDK provenance, screenshots, passive worker observations, browser logs, and teardown evidence. Each
+story gets a fresh Chromium profile, connected with Playwright's `noDefaults: true` so its usual focus emulation cannot
+force background tabs to remain visible. Visibility is observed from the browser, never synthesized. Guest input waits
+for the host loading overlay to disappear and uses canvas-relative, actionability-checked clicks. Use Playwright's
+matching Chromium build; a system-browser override is not equivalent qualification evidence.
+
+These fixtures do **not** qualify cartridge-save isolation: that needs a save-capable cartridge guest and two distinct
+cartridge contents. Wallet signing and native hosts are also outside this suite.
 
 ### Running the host-playground E2E locally
 
@@ -448,6 +523,11 @@ process that auto-signs for the rest of the run, and runs the same host-product 
 The deployment smoke suites load published products through the deployed host, not the localhost fixture. The TrUAPI
 suite exercises 19 wallet-free capabilities without pairing a signer or writing to the chain; it does not replace paired
 E2E.
+
+The PolkaVM playground smoke passively verifies a canonical handshake request and its correlated `Result::Ok` reply, not
+merely increasing request/response counters. Input waits for a rendered frame and host loader dismissal, then uses an
+actionability-checked canvas click. Wire/provenance attachments retain raw and decoded frames and executed-program
+hashes on success and failure. A passing local fixture does not qualify a different published guest binary.
 
 The Duke and Quake gameplay checks require actual browser Pointer Lock, not just a capture request. Duke starts directly
 in a level, so its smoke does not send menu-navigation keys. The initial canvas click may already capture the pointer
