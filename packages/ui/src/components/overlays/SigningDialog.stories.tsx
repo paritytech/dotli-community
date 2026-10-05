@@ -132,4 +132,25 @@ export const SignTransaction: Story = {
   },
 };
 
+export const SignRaw: Story = {
+  args: {
+    entry: entry({
+      title: 'Sign Message',
+      fields: [
+        { label: 'App', value: 'playground.dot' },
+        { label: 'Signer', value: '5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY' },
+        { label: 'Message', value: `0x${'48656c6c6f'.repeat(4)}`, mono: true },
+        { label: 'Warning', value: 'Unprotected signature: may authorize transactions', warning: true },
+      ],
+      buttons: [
+        { label: 'Reject', variant: 'danger', result: 'rejected' },
+        { label: 'Sign', variant: 'primary', result: 'accepted' },
+      ],
+      dismissOnBackdrop: true,
+      dismissResult: 'dismissed',
+      fallbackResult: 'dismissed',
+    }),
+  },
+};
+
 export const Phone: Story = { globals: { viewport: { value: 'phone', isRotated: false } } };

@@ -43,14 +43,15 @@ export const Desktop: Story = {
     await step('Given focus starts inside the dialog', async () => {
       await expect(dialog.contains(document.activeElement)).toBe(true);
     });
-    await step('When I Tab past the last button', async () => {
+    await step('When I Tab through both buttons and once more', async () => {
       await userEvent.tab();
+      await expect(canvas.getByRole('button', { name: 'Deny' })).toHaveFocus();
       await userEvent.tab();
-      await userEvent.tab();
+      await expect(canvas.getByRole('button', { name: 'Allow' })).toHaveFocus();
       await userEvent.tab();
     });
-    await step('Then focus is still inside', async () => {
-      await expect(dialog.contains(document.activeElement)).toBe(true);
+    await step('Then focus wrapped to the first button', async () => {
+      await expect(canvas.getByRole('button', { name: 'Deny' })).toHaveFocus();
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');
