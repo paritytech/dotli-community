@@ -126,11 +126,4 @@ async function readManifestText<T>(
   return result;
 }
 
-export type {
-  ExecutableKind,
-  ExecutableManifest,
-  ManifestRecordResult,
-  ManifestResult,
-  RootManifest,
-} from './manifest-types.js';
-export { toExecutableManifestResult, toRootManifestResult } from './manifest-types.js';
+export type { ExecutableKind, ExecutableManifest, ManifestResult, RootManifest } from './manifest-types.js';

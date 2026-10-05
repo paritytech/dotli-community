@@ -14,7 +14,6 @@ import {
   firstNewIndex,
   type StoredEvent,
   OpenCallTracker,
-  openCalls,
   createResolutionRecorder,
 } from '@dotli/truapi-debug';
 
@@ -132,8 +131,29 @@ describe('firstNewIndex()', () => {
   });
 });
 
+/** The tracker's spec, recomputed from the whole snapshot. */
+function openCalls(events: readonly StoredEvent[]): Map<string, number> {
+  const requestedAt = new Map<string, number>();
+  const answered = new Set<string>();
+  for (const ev of events) {
+    if (ev.kind !== 'truapi') {
+      continue;
+    }
+    const key = `${ev.productId ?? 'dotli'}::${ev.requestId}`;
+    if (ev.tag.endsWith('_response')) {
+      answered.add(key);
+    } else if (!requestedAt.has(key)) {
+      requestedAt.set(key, ev.receivedAt);
+    }
+  }
+  for (const key of answered) {
+    requestedAt.delete(key);
+  }
+  return requestedAt;
+}
+
 describe('OpenCallTracker', () => {
-  it('matches openCalls over a ring buffer, frame by frame, including clears', () => {
+  it('matches a full recompute over a ring buffer, frame by frame, including clears', () => {
     const store = new EventStore({ capacity: 25 });
     const tracker = new OpenCallTracker();
     // A fixed pseudo-random walk: requests, replies, noise and repeats.

@@ -62,8 +62,6 @@ export const SANDBOX_CONTRACT_PARAMS = {
   v: 'v',
 } as const;
 
-export type SandboxContractParam = (typeof SANDBOX_CONTRACT_PARAMS)[keyof typeof SANDBOX_CONTRACT_PARAMS];
-
 export interface SandboxParams {
   cid: string;
   chainBackend: 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway';

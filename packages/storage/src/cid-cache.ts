@@ -154,28 +154,6 @@ export function getRecentLabels(): string[] {
   }
 }
 
-/**
- * Record a label as recently visited in this origin's mirror.
- *
- * Call this only once a label has actually resolved. Writing on navigation
- * intent persisted typos as pills that reproduce "can't be reached" forever.
- */
-export function addRecentLabel(label: string): void {
-  if (!isValidDotLabel(label)) {
-    return;
-  }
-  writeRecentLabels(withRecentLabel(getRecentLabels(), label));
-}
-
-/** Drop a label from the recent list. Used by the pill's remove affordance. */
-export function removeRecentLabel(label: string): void {
-  const recent = getRecentLabels();
-  if (!recent.includes(label)) {
-    return;
-  }
-  writeRecentLabels(recent.filter(l => l !== label));
-}
-
 export function writeRecentLabels(labels: string[]): void {
   try {
     localStorage.setItem(RECENT_KEY, serializeRecentLabels(labels));

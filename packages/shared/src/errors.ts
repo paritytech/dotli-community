@@ -20,14 +20,12 @@
 // - Do not truncate AggregateError branches. Racing across providers is
 //   forbidden in this codebase, so `errors[]` should be rare. When one
 //   fires we want every branch.
-// - Read `Error.stack` when explicitly requested via `serializeErrorDetail`.
 // - Never collapse to a generic `"Unknown error"` without tagging which
 //   branch produced it (so operators can spot the exact code path).
 //
-// Three public surfaces:
-//   `serializeError(value)`        terse one-line string for log/UI
-//   `serializeErrorDetail(value)`  multi-line string with stack frames
-//   `fullErrorChain(value)`        structured object for Sentry and tests
+// Two public surfaces:
+//   `serializeError(value)`  terse one-line string for log/UI
+//   `fullErrorChain(value)`  structured object for Sentry and tests
 
 const UNKNOWN_PREFIX = '[serializeError:';
 
@@ -259,28 +257,4 @@ function serialize(value: unknown, onStack: WeakSet<object>): string {
   } finally {
     onStack.delete(value);
   }
-}
-
-/**
- * Like `serializeError` but appends each Error frame's stack when
- * present, across the full `.cause` and `errors[]` chain. Use for dev
- * tooling and console logs. Sentry should receive `fullErrorChain`
- * instead so the structured chain is preserved.
- */
-export function serializeErrorDetail(value: unknown): string {
-  const root = fullErrorChain(value);
-  return renderChainDetail(root);
-}
-
-function renderChainDetail(node: ErrorChainNode): string {
-  const headline =
-    node.message.length > 0 ? (node.name === 'Error' ? node.message : `${node.name}: ${node.message}`) : node.name;
-  let out = headline;
-  if (node.stack !== undefined && node.stack !== '') {
-    out += `\n${node.stack}`;
-  }
-  for (const cause of node.causes) {
-    out += `\n  caused by: ${renderChainDetail(cause).replace(/\n/g, '\n  ')}`;
-  }
-  return out;
 }

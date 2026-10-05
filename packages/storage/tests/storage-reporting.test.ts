@@ -3,7 +3,7 @@
 
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { NetworkName } from '@dotli/config';
+import { NetworkName } from '../../config/src/network.js';
 import type * as Metrics from '@dotli/metrics';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));

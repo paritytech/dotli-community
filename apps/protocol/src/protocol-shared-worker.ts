@@ -91,7 +91,6 @@ export interface SWError {
   message: string;
 }
 
-export type SWInbound = SWRelayRequest;
 export type SWOutbound = SWRelayResponse | SWReady | SWError;
 
 const TAG = '[dot.li SW]';

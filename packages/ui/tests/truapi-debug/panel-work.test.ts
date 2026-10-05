@@ -27,7 +27,6 @@ vi.setConfig({ testTimeout: 20_000 });
 
 const calls = vi.hoisted(() => ({
   matches: 0,
-  openCalls: 0,
   formatPending: 0,
   rowSelection: 0,
   buildTimeline: 0,
@@ -54,10 +53,6 @@ vi.mock('../../../truapi-debug/src/pending.js', async importOriginal => {
   const real = await importOriginal<typeof PendingModule>();
   return {
     ...real,
-    openCalls: (...args: Parameters<typeof real.openCalls>) => {
-      calls.openCalls++;
-      return real.openCalls(...args);
-    },
     formatPending: (...args: Parameters<typeof real.formatPending>) => {
       calls.formatPending++;
       return real.formatPending(...args);
@@ -279,7 +274,6 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
 
     // Then only the new events are matched, for the header count
     expect(calls.matches).toBe(10);
-    expect(calls.openCalls).toBe(0);
     expect(calls.formatPending).toBe(0);
     expect(rows()).toHaveLength(0);
     expect(q('[data-testid="td-counts"]').textContent).toBe('2000 events (+10 dropped)');
@@ -343,7 +337,6 @@ describe('truapi debug panel work: collapsed and hidden views', () => {
     }
 
     // Then
-    expect(calls.openCalls).toBe(0);
     expect(calls.formatPending).toBe(0);
     expect(calls.buildResolution).toBe(0);
     expect(q('[data-testid="td-counts"]').textContent).toBe('2000 events (+10 dropped)');

@@ -10,10 +10,8 @@ export {
   enableSyncReporting,
   onChainDetail,
   onChainSync,
-  type ChainDetail,
   type ChainKey,
   type ChainPeer,
-  type ChainSyncEvent,
   type ChainSyncKind,
 } from './chain-sync.js';
 export { type ResolverErrorName } from './errors.js';
@@ -24,7 +22,6 @@ export {
   toExecutableManifestResult,
   toRootManifestResult,
   type ExecutableManifest,
-  type ManifestRecordResult,
   type ManifestResult,
   type RootManifest,
 } from './manifest-types.js';
@@ -40,13 +37,6 @@ export {
   waitForPeopleFinalized,
   type ResolveOptions,
 } from './resolve.js';
-export { createCoreRpcChainProvider, getConnectedRpcEndpoint, isCoreRpcChainSupported } from './rpc-chain.js';
+export { createCoreRpcChainProvider, isCoreRpcChainSupported } from './rpc-chain.js';
 export { type ChainTransportHooks, type ConnectionStatus } from './transport-hooks.js';
-export {
-  loadProvider,
-  loadResolve,
-  loadRpcResolve,
-  type ProviderModule,
-  type ResolveModule,
-  type RpcResolveModule,
-} from './lazy.js';
+export { loadProvider, loadResolve, loadRpcResolve, type RpcResolveModule } from './lazy.js';

@@ -23,7 +23,7 @@ export {
   haltReasonOf,
   type RemoteChainHalt,
 } from './chain-halted.js';
-export { createChainPool, type ChainPool, type ChainPoolOptions, type LeaseProvider } from './chain-pool.js';
+export { createChainPool, type ChainPool, type LeaseProvider } from './chain-pool.js';
 export {
   clearSharedAuthStorage,
   clearSharedModeStorage,
@@ -52,7 +52,7 @@ export {
   writeSharedAuthStorage,
   writeSharedModeStorage,
 } from './client.js';
-export { ProtocolFatalError, ProtocolInitFailedError, ProtocolRequestError } from './errors.js';
+export { ProtocolFatalError, ProtocolInitFailedError } from './errors.js';
 export {
   getRequestSyncTimeoutMs,
   isProtocolEnvelope,
@@ -62,4 +62,3 @@ export {
   type SmoldotDbChain,
   type SmoldotDbOutcome,
 } from './messages.js';
-export { METHOD_TIMEOUTS } from './method-timeouts.js';
