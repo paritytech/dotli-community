@@ -80,6 +80,57 @@ describe('The network health store', () => {
     expect(networkHealthStore.get()).toBe('warn');
   });
 
+  it('As a user, the health rechecks once, when the first chain would be overdue, and a block moves that one recheck', () => {
+    // Given
+    const fake = fakeSource();
+    setBlockSource(fake.source);
+    stop = initNetworkHealth();
+    setNetworkHealthWatched(true);
+
+    // Then: before any block nothing can fall overdue
+    expect(vi.getTimerCount()).toBe(0);
+
+    // When
+    fake.emitAll(100);
+
+    // Then
+    expect(vi.getTimerCount()).toBe(1);
+
+    // When
+    vi.advanceTimersByTime(1000);
+    fake.emitAll(101);
+
+    // Then
+    expect(vi.getTimerCount()).toBe(1);
+    expect(networkHealthStore.get()).toBe('ok');
+  });
+
+  it('As a user in another tab, the health is not rechecked until the tab shows again', () => {
+    // Given
+    const fake = fakeSource();
+    setBlockSource(fake.source);
+    stop = initNetworkHealth();
+    setNetworkHealthWatched(true);
+    fake.emitAll(100);
+    const slowest = Math.max(...getActiveChainRoles().map(role => role.blockTimeMs));
+    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+
+    // When
+    document.dispatchEvent(new Event('visibilitychange'));
+    vi.advanceTimersByTime(slowest * 3 + 2000);
+
+    // Then
+    expect(vi.getTimerCount()).toBe(0);
+    expect(networkHealthStore.get()).toBe('ok');
+
+    // When
+    hidden.mockReturnValue(false);
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    // Then
+    expect(networkHealthStore.get()).toBe('warn');
+  });
+
   it('As a user going offline and back, I see it at once, even before any chain exists', () => {
     // Given
     stop = initNetworkHealth();

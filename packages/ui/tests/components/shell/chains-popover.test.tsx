@@ -62,6 +62,7 @@ vi.mock('../../../src/network-monitor.js', () => ({
     return () => monitor.listeners.delete(l);
   },
   getNetworkStatus: () => monitor.status,
+  getChainClocks: () => monitor.status,
   getTransfer: () => monitor.transfer,
   startNetworkWatch: () => {
     monitor.startNetworkWatch();

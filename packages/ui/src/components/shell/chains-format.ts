@@ -8,7 +8,7 @@
 
 import type { Backend } from '@dotli/config';
 
-import type { ChainStatus } from '../../network-monitor.js';
+import type { ChainClock } from '../../network-monitor.js';
 import type { StatusTone } from '../primitives/StatusDot.js';
 
 /**
@@ -65,7 +65,7 @@ export interface LiveVerdict {
  * verdict built from those latches at whatever the last chain to bootstrap
  * reported and keeps saying it after the connection dies.
  */
-export function describeLiveNetwork(status: readonly ChainStatus[]): LiveVerdict {
+export function describeLiveNetwork(status: readonly ChainClock[]): LiveVerdict {
   const chains = status.filter(c => c.reachable);
   if (chains.length === 0) {
     return { text: 'Starting', tone: 'idle' };
