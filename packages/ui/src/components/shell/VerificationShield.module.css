@@ -60,16 +60,10 @@
   }
 }
 
-/* The explainer, over the topbar's other popovers, as wide as the menus.
-   Popover writes the shield's bottom edge inline as the top. The explainer
-   drops from the pill instead, 10 px below it like every other menu. An
-   inline style beats any selector, so only !important overrides it. */
+/* The explainer, over the topbar's other popovers, as wide as the menus. */
 .tooltip {
   z-index: 1600;
   width: var(--w-pop-md);
-}
-.tooltip[data-anchor='trigger'] {
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap)) !important;
 }
 
 /* Phones: the whole address is the button (the board's button.address), so

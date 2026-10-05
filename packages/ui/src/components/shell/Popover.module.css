@@ -56,7 +56,8 @@
   margin: 0;
 }
 
-/* Under its trigger (anchor="trigger"): the place is set inline. */
+/* At its trigger's left edge (anchor="trigger"), set inline, under the
+   topbar as every surface is. */
 .surface[data-anchor='trigger'] {
   right: auto;
   transform-origin: top left;

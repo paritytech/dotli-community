@@ -62,7 +62,10 @@ export interface PopoverProps {
   class?: string | undefined;
   /** Dim the page under the anchored surface; a press on it closes. */
   backdrop?: boolean;
-  /** `end`: under the topbar at its right edge. `trigger`: under the trigger. */
+  /**
+   * Under the topbar, `end` at its right edge, `trigger` at the trigger's
+   * left edge.
+   */
   anchor?: 'end' | 'trigger';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
@@ -129,7 +132,11 @@ export function Popover(props: PopoverProps): JSX.Element {
   let triggerEl: HTMLElement | undefined;
   let surfaceEl: HTMLDivElement | undefined;
   const Content = untrack(() => props.content);
-  /** Whether the current (or last) opening is a sheet. */
+  /**
+   * Whether the current (or last) opening or peek is a sheet. Not
+   * createPopover's `sheet()`: a peek never opens it, so that one still
+   * holds the last opening's form while a peek shows anchored.
+   */
   const [sheet, setSheet] = createSignal(false);
   /** The content is in the surface: from an opening to the end of its close. */
   const [mounted, setMounted] = createSignal(false);
@@ -137,11 +144,10 @@ export function Popover(props: PopoverProps): JSX.Element {
   const [opening, setOpening] = createSignal(0);
   /** Shown while a mouse rests on the trigger (`openOnHover`), not opened. */
   const [peek, setPeek] = createSignal(false);
-  /** The anchored surface's place under its trigger (`anchor="trigger"`). */
-  const [place, setPlace] = createSignal<{ top: number; left: number } | null>(null);
+  /** The trigger's left edge, the anchored surface's (`anchor="trigger"`). */
+  const [left, setLeft] = createSignal<number | null>(null);
   const measure = (): void => {
-    const rect = triggerEl?.getBoundingClientRect();
-    setPlace(rect === undefined ? null : { top: rect.bottom + 6, left: rect.left });
+    setLeft(triggerEl?.getBoundingClientRect().left ?? null);
   };
   const anchoredToTrigger = (): boolean => props.anchor === 'trigger' && !sheet();
   /** A disclosure shown anchored: plain content, not a dialog. */
@@ -165,18 +171,32 @@ export function Popover(props: PopoverProps): JSX.Element {
     },
   });
 
-  const openNow = (): void => {
+  /**
+   * Mount the content for an opening or a peek about to show, as a sheet or
+   * anchored, and `afresh` as a new opening's.
+   */
+  const show = (asSheet: boolean, afresh: boolean): void => {
     clearTimeout(unmountTimer);
-    setSheet(isPhoneViewport());
+    setSheet(asSheet);
     if (props.anchor === 'trigger') {
       measure();
     }
-    // A peek's content is this opening's: a click on a peeking explainer
-    // keeps it.
-    if (!untrack(peek)) {
+    if (afresh) {
       setOpening(n => n + 1);
     }
     setMounted(true);
+  };
+  /** Unmount the content once the surface's exit, `ms` long, has played. */
+  const scheduleUnmount = (ms: number): void => {
+    clearTimeout(unmountTimer);
+    unmountTimer = setTimeout(() => {
+      setMounted(false);
+    }, ms);
+  };
+  const openNow = (): void => {
+    // A peek's content is this opening's: a click on a peeking explainer
+    // keeps it.
+    show(isPhoneViewport(), !untrack(peek));
     popover.setOpen(true);
   };
   const close = (): void => {
@@ -218,13 +238,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     if (open || !untrack(mounted)) {
       return;
     }
-    clearTimeout(unmountTimer);
-    unmountTimer = setTimeout(
-      () => {
-        setMounted(false);
-      },
-      untrack(sheet) ? SHEET_EXIT_MS : EXIT_MS,
-    );
+    scheduleUnmount(untrack(sheet) ? SHEET_EXIT_MS : EXIT_MS);
   });
   onCleanup(() => {
     clearTimeout(unmountTimer);
@@ -255,15 +269,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       if (!untrack(popover.open)) {
-        clearTimeout(unmountTimer);
-        setSheet(false);
-        if (props.anchor === 'trigger') {
-          measure();
-        }
-        if (!untrack(mounted)) {
-          setOpening(n => n + 1);
-        }
-        setMounted(true);
+        show(false, !untrack(mounted));
         setPeek(true);
       }
     }, HOVER_SHOW_MS);
@@ -281,10 +287,7 @@ export function Popover(props: PopoverProps): JSX.Element {
       }
       setPeek(false);
       if (!untrack(popover.open)) {
-        clearTimeout(unmountTimer);
-        unmountTimer = setTimeout(() => {
-          setMounted(false);
-        }, EXIT_MS);
+        scheduleUnmount(EXIT_MS);
       }
     }, HOVER_HIDE_MS);
   };
@@ -352,11 +355,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           data-handoff={popover.handedOff() ? '' : undefined}
           data-peek={peek() ? '' : undefined}
           data-anchor={anchoredToTrigger() ? 'trigger' : undefined}
-          style={
-            anchoredToTrigger() && place() !== null
-              ? { top: `${String(place()?.top)}px`, left: `${String(place()?.left)}px` }
-              : undefined
-          }
+          style={anchoredToTrigger() && left() !== null ? { left: `${String(left())}px` } : undefined}
           onPointerEnter={() => {
             clearTimeout(hoverTimer);
           }}

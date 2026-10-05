@@ -655,7 +655,7 @@ describe('Popover', () => {
     expect(trigger().getAttribute('aria-haspopup')).toBe('dialog');
   });
 
-  it('As a user, a popover anchored to its trigger opens under it', async () => {
+  it('As a user, a popover anchored to its trigger opens at its left edge, under the topbar as every popover does', async () => {
     // Given
     const { Content, release } = chunk(Body);
     release();
@@ -669,7 +669,7 @@ describe('Popover', () => {
 
     // Then
     expect(surface().getAttribute('data-anchor')).toBe('trigger');
-    expect(surface().style.top).toBe('36px');
+    expect(surface().style.top).toBe('');
     expect(surface().style.left).toBe('40px');
   });
 
