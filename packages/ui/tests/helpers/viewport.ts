@@ -1,8 +1,14 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { vi } from 'vitest';
-import { PHONE_QUERY } from '../../src/phone-viewport.js';
+import { afterEach, vi } from 'vitest';
+import { PHONE_QUERY, resetPhoneViewport } from '../../src/phone-viewport.js';
+
+// phone-viewport.ts keeps one MediaQueryList, so a stub dropped by
+// `vi.unstubAllGlobals()` must not outlive its test.
+afterEach(() => {
+  resetPhoneViewport();
+});
 
 /**
  * A viewport as narrow as a phone's (`phone` true) or as wide as a desktop's,
@@ -33,6 +39,7 @@ export function stubPhoneViewport(initial: boolean): { set: (phone: boolean) => 
       },
     };
   });
+  resetPhoneViewport();
   return {
     set: next => {
       phone = next;

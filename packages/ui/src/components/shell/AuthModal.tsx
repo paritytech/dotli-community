@@ -6,7 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
-import { isPhoneViewport, PHONE_QUERY, watchPhoneViewport } from '../../phone-viewport.js';
+import { isPhoneViewport, watchPhoneViewport } from '../../phone-viewport.js';
 import { revealTopbar } from '../../topbar-autohide.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
@@ -260,11 +260,10 @@ export function AuthModal(): JSX.Element {
     draw();
     // A window crossing the phone width (a phone turned, a desktop narrowed)
     // moves `--qr-size` to the other layout's: redraw to fill the new tile.
-    const phone = window.matchMedia(PHONE_QUERY);
-    phone.addEventListener('change', draw);
+    const unwatch = watchPhoneViewport(draw);
     return () => {
       current = false;
-      phone.removeEventListener('change', draw);
+      unwatch();
     };
   });
   const qr = (): DrawnQr | undefined => {

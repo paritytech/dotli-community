@@ -22,7 +22,7 @@
 import { isMobileDevice } from '@dotli/shared';
 import { focusables } from './components/focus.js';
 import { currentProductFrame, setTopbarLayout } from './product-frame-layout.js';
-import { isPhoneViewport, PHONE_QUERY } from './phone-viewport.js';
+import { isPhoneViewport, watchPhoneViewport } from './phone-viewport.js';
 import { productStore } from './state/product.js';
 import { getTopbarState, setTopbarAutoHide, setTopbarVisible } from './state/topbar.js';
 import { anyTopbarSurfaceOpen, topbarSurfaceContains } from './state/topbar-surfaces.js';
@@ -54,10 +54,9 @@ let revealButton: HTMLElement | undefined;
 export function registerTopbarElement(el: HTMLElement): () => void {
   bar = el;
   syncFrameLayout();
-  const phone = window.matchMedia(PHONE_QUERY);
-  phone.addEventListener('change', syncFrameLayout);
+  const unwatch = watchPhoneViewport(syncFrameLayout);
   return () => {
-    phone.removeEventListener('change', syncFrameLayout);
+    unwatch();
     if (bar === el) {
       bar = undefined;
     }
@@ -280,7 +279,7 @@ function bindListeners(): void {
     },
     { signal },
   );
-  window.matchMedia(PHONE_QUERY).addEventListener('change', onViewportChange, { signal });
+  signal.addEventListener('abort', watchPhoneViewport(onViewportChange));
 }
 
 /**
