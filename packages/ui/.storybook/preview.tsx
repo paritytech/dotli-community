@@ -24,7 +24,7 @@ const preview: Preview = {
   initialGlobals: { theme: 'dark' },
   parameters: {
     layout: 'padded',
-    // Every story is an a11y test in the stories lane.
+    // The addon's default, 'todo', only warns, so a violation would pass CI.
     a11y: { test: 'error' },
     viewport: {
       options: {
