@@ -234,6 +234,14 @@ export const WIRE_DECODE_TABLE = {
         0: (payload) => T.VersionedHostPushNotificationCancelRequest.dec(payload),
         1: (payload) => S.Result(T.VersionedHostPushNotificationCancelResponse, S.CallError(T.VersionedHostPushNotificationCancelError)).dec(payload),
     },
+    [W.NOTIFICATIONS_ACTIVATION_EVENTS.trait * 256 + W.NOTIFICATIONS_ACTIVATION_EVENTS.method]: {
+        0: (payload) => T.VersionedNotificationActivationEventsRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedNotificationActivationEventsResponse, S.CallError(T.VersionedNotificationActivationEventsError)).dec(payload),
+    },
+    [W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION.trait * 256 + W.NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION.method]: {
+        0: (payload) => T.VersionedNotificationActivationAcknowledgeRequest.dec(payload),
+        1: (payload) => S.Result(T.VersionedNotificationActivationAcknowledgeResponse, S.CallError(T.VersionedNotificationActivationAcknowledgeError)).dec(payload),
+    },
     [W.PAYMENT_BALANCE_SUBSCRIBE.trait * 256 + W.PAYMENT_BALANCE_SUBSCRIBE.method]: {
         0: (payload) => T.VersionedHostPaymentBalanceSubscribeRequest.dec(payload),
         1: (payload) => T.VersionedHostPaymentBalanceSubscribeItem.dec(payload),

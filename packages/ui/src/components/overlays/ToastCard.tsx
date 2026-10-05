@@ -56,11 +56,18 @@ export function ToastCard(props: { entry: ToastEntry; hidden: boolean; depth: nu
       />
       <div class="notif-text">
         <span class="notif-title">{props.entry.label}</span>
-        <Show when={props.entry.deeplink} fallback={<span class="notif-body">{props.entry.text}</span>}>
-          {href => (
-            <a class="notif-body" href={href()} target="_blank" rel="noopener">
+        <Show when={props.entry.onActivate} fallback={<span class="notif-body">{props.entry.text}</span>}>
+          {activate => (
+            <button
+              type="button"
+              class="notif-body"
+              onClick={event => {
+                event.stopPropagation();
+                activate()();
+              }}
+            >
               {props.entry.text}
-            </a>
+            </button>
           )}
         </Show>
       </div>

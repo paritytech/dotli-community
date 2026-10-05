@@ -629,6 +629,12 @@ export function createMockHost(config = {}) {
                 if (entry)
                     entry.cancelled = true;
             },
+            async activationEvents() {
+                throw new Error("notification activation is unsupported");
+            },
+            async acknowledgeActivation() {
+                throw new Error("notification activation is unsupported");
+            },
         },
         permissions: {
             async devicePermission(_product, request) {

@@ -1,6 +1,6 @@
 import * as S from "@parity/truapi/scale";
 import { AllocatableResource, AvatarRect, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation } from "@parity/truapi";
-import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, Result } from "@parity/truapi";
+import type { GenericError, HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostProfilePresentRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, Result } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -2055,6 +2055,21 @@ export interface Notifications {
      * unknown id still returns `success`.
      */
     cancelNotification?(id: number): Promise<void>;
+    /**
+     * Return at most 32 pending activations, ordered by sequence, without
+     * consuming them. The embedding host binds this platform to the verified
+     * product, authenticated account and environment; none is caller input.
+     * Admit only routes starting with exactly one slash, with no backslashes
+     * or control characters. Polling must not request permissions or enroll
+     * a background receiver. A missing implementation is an error.
+     */
+    activationEvents?(): Promise<NotificationActivations>;
+    /**
+     * Remove exactly this sequence from the bound activation queue after
+     * successful product routing. Unknown sequences are idempotent; never
+     * acknowledge another product/account/environment or a sequence range.
+     */
+    acknowledgeActivation?(request: NotificationActivationAcknowledgeRequest): Promise<void>;
 }
 /**
  * Pairing-host-only administration API exposed to host UI.
