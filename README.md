@@ -241,6 +241,11 @@ current page was loaded:
 If a background re-resolution finds the on-chain CID has changed, dotli shows a **New version available** notification
 with a **Reload** action rather than swapping content silently.
 
+Failed host-worker update checks are handled and logged as warnings, leaving the active worker, current page, and
+persistent storage intact. The existing 15-minute and visible-tab checks can retry later; failures do not start an
+additional retry loop or bypass reload consent. A required sandbox-contract update remains pending after a failed check
+and still activates automatically once a compatible replacement finishes installing.
+
 ## TrUAPI bridge
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:

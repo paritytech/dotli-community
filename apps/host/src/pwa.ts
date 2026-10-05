@@ -19,6 +19,12 @@ import { log } from '@dotli/shared';
 
 const UPDATE_INTERVAL_MS = 15 * 60 * 1000;
 
+function checkForUpdate(registration: ServiceWorkerRegistration): void {
+  void registration.update().catch((err: unknown) => {
+    log.warn(`[dot.li] SW update check failed: ${String(err)}`);
+  });
+}
+
 if ('serviceWorker' in navigator) {
   const wb = new Workbox('/host-sw.js');
   let hostUpdateRequired = false;
@@ -59,12 +65,12 @@ if ('serviceWorker' in navigator) {
       }
       setInterval(() => {
         if (navigator.onLine) {
-          void registration.update();
+          checkForUpdate(registration);
         }
       }, UPDATE_INTERVAL_MS);
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && navigator.onLine) {
-          void registration.update();
+          checkForUpdate(registration);
         }
       });
       return registration;
@@ -87,7 +93,7 @@ if ('serviceWorker' in navigator) {
         applyWaitingUpdate();
         return;
       }
-      void registration.update();
+      checkForUpdate(registration);
     });
   });
 }

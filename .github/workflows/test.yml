@@ -87,6 +87,13 @@ jobs:
             echo "::error::PolkaVM functional specs must have 0 failures"
             exit 1
           fi
+          PWA_EXECUTED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts") | select(any(.tests[]?.results[]?; .status != "skipped"))] | length' tests/functional/results.json)
+          PWA_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "pwa-update.spec.ts" and .ok == false)] | length' tests/functional/results.json)
+          echo "Executed service-worker recovery specs: $PWA_EXECUTED (failed: $PWA_FAILED)"
+          if [ "$PWA_EXECUTED" -lt 3 ] || [ "$PWA_FAILED" -gt 0 ]; then
+            echo "::error::all three service-worker update recovery paths must execute with 0 failures"
+            exit 1
+          fi
           LOADING_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "loading.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           RESOLUTION_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "resolution.spec.ts" and .ok == false)] | length' tests/functional/results.json)
           TRANSPORT_FAILED=$(jq '[.suites[] | recurse(.suites[]?) | .specs[]? | select(.file == "network-transport.spec.ts" and .ok == false)] | length' tests/functional/results.json)
