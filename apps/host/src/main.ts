@@ -23,6 +23,7 @@ import '@dotli/ui/styles.css';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
+  RELOAD_GLYPH,
   openSettings,
   showError,
   showErrorPage,
@@ -2116,6 +2117,7 @@ async function main(): Promise<void> {
         error.message,
         {
           label: RELOAD_BTN_LABEL,
+          icon: RELOAD_GLYPH,
           onClick: () => {
             markContinuation('reload_button');
             window.location.reload();
@@ -2208,6 +2210,7 @@ async function main(): Promise<void> {
         actions: [
           {
             label: RELOAD_BTN_LABEL,
+            icon: RELOAD_GLYPH,
             primary: !failoverIsPrimary,
             onClick: reloadForRecovery,
           },
@@ -2236,6 +2239,7 @@ main().catch((err: unknown) => {
   const error = describeError(err, getBackend() !== 'rpc-gateway');
   showError(error.title, error.message, {
     label: RELOAD_BTN_LABEL,
+    icon: RELOAD_GLYPH,
     onClick: () => {
       markContinuation('reload_button');
       window.location.reload();

@@ -8,6 +8,7 @@
 // parsed as markup.
 
 import { getActiveTldSuffix } from '@dotli/config';
+import { RELOAD_GLYPH } from './reload-glyph.js';
 import s from './ErrorPage.module.css';
 import retry from './RetryScreen.module.css';
 import { PETAL_PATHS } from './petal-mark.js';
@@ -224,6 +225,7 @@ export function showError(
 export function showBrokenPage(): void {
   showError('Something went wrong on our side', "This page didn't load properly. Reloading usually fixes it.", {
     label: 'Reload',
+    icon: RELOAD_GLYPH,
     onClick: () => {
       window.location.reload();
     },

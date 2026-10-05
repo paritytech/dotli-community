@@ -75,6 +75,12 @@
   color: var(--text-strong);
 }
 
+/* Focused by script to name the new screen, never by Tab, so a ring there
+   would mark nothing the user can act on. */
+.title:focus {
+  outline: none;
+}
+
 .detail {
   margin: var(--sp-2) 0 0;
   padding: 0;
@@ -196,16 +202,19 @@
 }
 
 .domain {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
   box-sizing: border-box;
-  height: var(--h-row-sm);
-  padding: 0 var(--sp-3);
-  border-radius: var(--r-full);
+  max-width: 100%;
+  min-height: var(--h-row-sm);
+  padding: 6px var(--sp-3);
+  border-radius: 16px;
   background: var(--surface);
   box-shadow: inset 0 0 0 1px var(--border-subtle);
   font-size: var(--fs-small);
-  white-space: nowrap;
+  line-height: 20px;
+  /* A name runs up to 63 characters, so a long one wraps rather than
+     overflow a phone. The whole name stays readable for spotting a typo. */
+  overflow-wrap: anywhere;
 }
 
 .domain-host {

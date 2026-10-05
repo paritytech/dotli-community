@@ -45,6 +45,7 @@ export {
 } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
 export { SETTINGS_GLYPH } from './settings-glyph.js';
+export { RELOAD_GLYPH } from './reload-glyph.js';
 export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
 export { type ShieldState } from './verification-shield.js';
 export {
