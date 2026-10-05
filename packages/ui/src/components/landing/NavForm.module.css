@@ -23,21 +23,21 @@
   padding: 0 var(--sp-2) 0 var(--sp-5);
   border: 0;
   border-radius: var(--r-full);
-  background: var(--page-panel);
-  box-shadow: inset 0 0 0 1px var(--page-line);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   transition: box-shadow var(--dur-fast);
 }
 
 .bar:focus-within {
   box-shadow:
-    inset 0 0 0 1px var(--page-line),
-    0 0 0 2px var(--page-focus);
+    inset 0 0 0 1px var(--border-subtle),
+    0 0 0 2px var(--border-focus);
 }
 
 /* After the focus rule, so an invalid name stays red while the input has focus. */
 .bar[data-invalid],
 .bar[data-invalid]:focus-within {
-  box-shadow: inset 0 0 0 1px var(--page-err);
+  box-shadow: inset 0 0 0 1px var(--danger);
 }
 
 .input {
@@ -50,19 +50,19 @@
   border: 0;
   outline: none;
   background: transparent;
-  color: var(--page-text);
+  color: var(--text-strong);
   font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
 }
 
 .input::placeholder {
-  color: var(--page-muted);
+  color: var(--text-secondary);
 }
 
 .suffix {
   flex: none;
   font-size: var(--fs-title-lg);
   white-space: nowrap;
-  color: var(--page-muted);
+  color: var(--text-secondary);
   user-select: none;
 }
 
@@ -77,8 +77,8 @@
   padding: 0;
   border: 0;
   border-radius: var(--r-full);
-  background: var(--page-hover);
-  color: var(--page-muted);
+  background: var(--fill);
+  color: var(--text-secondary);
   cursor: pointer;
   transition:
     color var(--dur-fast),
@@ -86,8 +86,8 @@
 }
 
 .input:not(:placeholder-shown) ~ .go {
-  background: var(--page-text);
-  color: var(--page-bg);
+  background: var(--text-strong);
+  color: var(--bg-page);
 }
 
 .error {
@@ -96,5 +96,5 @@
   font-size: var(--fs-small);
   font-weight: var(--fw-medium);
   text-align: center;
-  color: var(--page-err);
+  color: var(--danger);
 }

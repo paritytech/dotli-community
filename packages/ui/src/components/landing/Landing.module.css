@@ -1,26 +1,10 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The landing is always dark, whatever the theme preference, so its page
-   tokens live on the root: html and body show them too, under overscroll and
-   behind the scrollbar. */
+/* The landing is always dark, whatever the theme preference: global.css
+   keeps the light palette off while it shows. */
 :global(:root:has(body[data-landing])) {
-  --page-bg: #0e0e10;
-  --page-panel: #161619;
-  --page-line: #2a2a30;
-  --page-text: #f4f4f5;
-  --page-muted: #b4b4bc;
-  --page-active: #232328;
-  --page-focus: #2f5bd3;
-  --page-hover: color-mix(in srgb, var(--page-text) 5%, transparent);
-  /* A red legible on the dark page, 7.6:1. */
-  --page-err: #ff8a8e;
-  background: var(--page-bg);
   color-scheme: dark;
-}
-
-:global(body[data-landing]) {
-  background: var(--page-bg);
 }
 
 .landing {
@@ -32,8 +16,8 @@
   margin: 0;
   padding: calc(32px + var(--safe-top)) calc(32px + var(--safe-right)) calc(32px + var(--safe-bottom))
     calc(32px + var(--safe-left));
-  background: var(--page-bg);
-  color: var(--page-text);
+  background: var(--bg-page);
+  color: var(--text-strong);
   font-family: var(--font-sans);
 }
 
@@ -56,17 +40,17 @@
 .corner button:not([data-variant]) {
   background: transparent;
   box-shadow: none;
-  color: var(--page-text);
+  color: var(--text-strong);
 }
 .corner button:not([data-variant]):hover {
-  background: var(--page-hover);
-  color: var(--page-text);
+  background: var(--fill);
+  color: var(--text-strong);
 }
 .corner button:not([data-variant]):active,
 .corner button:not([data-variant])[aria-expanded='true'] {
-  background: var(--page-active);
+  background: var(--fill-strong);
   box-shadow: none;
-  color: var(--page-text);
+  color: var(--text-strong);
 }
 
 .center {
@@ -113,7 +97,7 @@
   padding: 0;
   font-size: var(--fs-title-lg);
   line-height: var(--lh-body);
-  color: var(--page-muted);
+  color: var(--text-secondary);
 }
 
 @media (max-width: 560px) {

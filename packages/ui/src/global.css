@@ -76,7 +76,8 @@
   }
 }
 
-:root[data-theme='light'] {
+/* Not on the landing page, which is always dark. */
+:root[data-theme='light']:not(:has(body[data-landing])) {
   --text-strong: rgba(0, 0, 0, 0.92);
   --text: rgba(0, 0, 0, 0.82);
   --text-secondary: rgba(0, 0, 0, 0.65);

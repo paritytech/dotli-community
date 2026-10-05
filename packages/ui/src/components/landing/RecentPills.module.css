@@ -14,7 +14,7 @@
   font-weight: var(--fw-semibold);
   letter-spacing: var(--ls-caps);
   text-transform: uppercase;
-  color: var(--page-muted);
+  color: var(--text-secondary);
 }
 
 .list {
@@ -39,19 +39,19 @@
   height: var(--h-row-sm);
   padding: 0 var(--sp-3);
   border-radius: var(--r-full);
-  background: var(--page-panel);
-  box-shadow: inset 0 0 0 1px var(--page-line);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   font-size: var(--fs-small);
   white-space: nowrap;
   text-decoration: none;
-  color: var(--page-text);
+  color: var(--text-strong);
   -webkit-touch-callout: none;
   user-select: none;
   transition: background var(--dur-fast);
 }
 
 .pill:hover {
-  background: var(--page-active);
+  background: var(--fill-strong);
 }
 
 .label {
@@ -60,7 +60,7 @@
 
 .tld {
   font-weight: var(--fw-regular);
-  color: var(--page-muted);
+  color: var(--text-secondary);
 }
 
 .remove {
@@ -74,10 +74,10 @@
   height: var(--sp-5);
   margin: 0;
   padding: 0;
-  border: 2px solid var(--page-bg);
+  border: 2px solid var(--bg-page);
   border-radius: var(--r-full);
-  background: var(--page-active);
-  color: var(--page-text);
+  background: var(--fill-strong);
+  color: var(--text-strong);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
@@ -101,5 +101,5 @@
 }
 
 .remove:hover {
-  background: var(--page-line);
+  background: var(--border-subtle);
 }
