@@ -110,7 +110,7 @@ export interface ErrorDescription {
   title: string;
   message: string;
   recovery: Recovery;
-  /** What the visitor can check themselves, listed under "Try:". */
+  /** What the visitor can check themselves, listed under "Try". */
   tips: readonly string[];
   /**
    * Whether reloading should also make the protocol iframe purge its worker

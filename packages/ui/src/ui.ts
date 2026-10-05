@@ -10,6 +10,7 @@
 import { getActiveTldSuffix } from '@dotli/config';
 import s from './ErrorPage.module.css';
 import retry from './RetryScreen.module.css';
+import { PETAL_PATHS } from './petal-mark.js';
 import { setProductError } from './state/product.js';
 import { setLandingPage } from './state/topbar.js';
 import { disposeAppRoots } from './mount/app-roots.js';
@@ -51,9 +52,11 @@ export interface ErrorAction {
   icon?: string;
 }
 
-const WARNING_GLYPH = `<svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><path d="M10.3 3.2 1.8 17.5A2 2 0 0 0 3.5 20.5h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z"></path><path fill="#fff" d="M11 8.5h2v5h-2zM11 15.5h2v2h-2z"></path></svg>`;
+const CLOUD_OFF_GLYPH = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m2 2 20 20"></path><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193"></path><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07"></path></svg>`;
 
-const GLOBE_GLYPH = `<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"></circle><path d="M3.5 12h17"></path><path d="M12 2.5c2.5 3 3.75 6.2 3.75 9.5s-1.25 6.5-3.75 9.5"></path><path d="M12 2.5c-2.5 3-3.75 6.2-3.75 9.5s1.25 6.5 3.75 9.5"></path></svg>`;
+const SHIELD_ALERT_GLYPH = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>`;
+
+const GLOBE_GLYPH = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M2 12h20"></path><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>`;
 
 /**
  * A sentence, optionally with parts picked out in bold. Spelled as segments
@@ -100,14 +103,14 @@ export interface ErrorPage {
   title: string;
   /** Paragraph below the title. Omit for a title-only screen. */
   detail?: ErrorText | undefined;
-  /** Things worth checking before retrying, listed under a "Try:" heading. */
+  /** Things worth checking before retrying, listed under a "Try" heading. */
   tips?: readonly string[];
   /**
    * One button per entry. The first keeps `#error-retry-btn` regardless of
    * which one is `primary`.
    */
   actions?: readonly ErrorAction[];
-  /** Leading glyph. Only the warning interstitial carries one today. */
+  /** The warning interstitial's amber shield, in place of the generic glyph. */
   glyph?: 'warning';
 }
 
@@ -148,9 +151,7 @@ export function showErrorPage(page: ErrorPage): void {
     .sort((x, y) => Number(x.i === primaryIndex) - Number(y.i === primaryIndex));
 
   const inner = el('div', s['inner']);
-  if (glyph === 'warning') {
-    inner.append(glyphElement(WARNING_GLYPH, true));
-  }
+  inner.append(glyph === 'warning' ? glyphElement(SHIELD_ALERT_GLYPH, true) : glyphElement(CLOUD_OFF_GLYPH, false));
   const heading = el('h1', s['title']);
   heading.dataset['testid'] = 'error-page-title';
   heading.tabIndex = -1;
@@ -166,7 +167,7 @@ export function showErrorPage(page: ErrorPage): void {
     const box = el('div', s['tips']);
     box.dataset['testid'] = 'error-page-tips';
     const label = el('p', s['tipsLabel']);
-    label.textContent = 'Try:';
+    label.textContent = 'Try';
     const list = el('ul', s['tipsList']);
     list.dataset['testid'] = 'error-page-tips-list';
     for (const tip of tips) {
@@ -231,8 +232,8 @@ export function showBrokenPage(): void {
 
 /**
  * Show the "no content set" error in a Chrome-style "site can't be reached"
- * layout. The domain is highlighted so the user can immediately scan for a
- * typo, and a secondary hint explains the network reason without burying it.
+ * layout. The domain sits on its own chip so the user can immediately scan
+ * it for a typo.
  */
 export function showNoContentError(label: string): void {
   // Replaces the loading screen mid-load.
@@ -243,27 +244,52 @@ export function showNoContentError(label: string): void {
   heading.textContent = "This app can't be reached";
   const domain = el('span', s['domain']);
   domain.dataset['testid'] = 'error-page-domain';
+  const host = el('span', s['domainHost']);
+  host.textContent = label;
   const tld = el('span', s['domainTld']);
   tld.textContent = getActiveTldSuffix();
-  domain.append(label, tld);
+  domain.append(host, tld);
+  // The chip stays inside the sentence, so a screen reader hears it as one.
   const line = el('p', s['detail']);
   line.dataset['testid'] = 'error-page-detail';
-  line.append('Check if there is a typo in ', domain, '.');
+  line.append('Check if there is a typo in ', domain);
   inner.append(glyphElement(GLOBE_GLYPH, false), heading, line);
   mountErrorPage(inner);
 
   setProductError();
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** The loading screen's petal mark, pulsing, built here so the sandbox never loads the island. */
+function petalMark(): SVGSVGElement {
+  const mark = document.createElementNS(SVG_NS, 'svg');
+  mark.setAttribute('width', '56');
+  mark.setAttribute('height', '56');
+  mark.setAttribute('viewBox', '0 0 256 256');
+  mark.setAttribute('fill', 'none');
+  mark.setAttribute('aria-hidden', 'true');
+  mark.setAttribute('class', retry['mark'] ?? '');
+  for (const d of PETAL_PATHS) {
+    const petal = document.createElementNS(SVG_NS, 'path');
+    petal.setAttribute('d', d);
+    petal.setAttribute('class', retry['petal'] ?? '');
+    mark.append(petal);
+  }
+  return mark;
+}
+
 export function showRetryScreen(): void {
   const app = appElement();
-  const screen = el('div', app === document.body ? retry['standalone'] : undefined);
+  const screen = el('div', retry['screen'], app === document.body ? retry['standalone'] : undefined);
   screen.dataset['testid'] = 'retry-screen';
-  const title = el('h1', retry['title']);
-  title.textContent = 'dot.li';
-  const status = el('p', retry['status']);
+  const column = el('div', retry['column']);
+  const status = el('p', retry['step']);
   status.id = 'status';
-  status.textContent = 'Retrying...';
-  screen.append(title, el('div', retry['spinner']), status);
+  status.textContent = 'Retrying…';
+  const line = el('p', retry['line']);
+  line.textContent = "The app's connection dropped, so it is starting again";
+  column.append(petalMark(), status, line);
+  screen.append(column);
   app.replaceChildren(screen);
 }

@@ -1,14 +1,15 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* A left-aligned block of fixed width, like the browser's own network-error
-   page, so the failure reads as the page itself failing and not as a dialog. */
+/* A centred column, lifted above the middle like the loading screen's, so a
+   failed load swaps one for the other in place. */
 
 .page {
   /* `#app` is a centring flex container, so claim the full row and stretch
      instead of collapsing to the width of the longest line. */
   display: flex;
   flex: 1;
+  flex-direction: column;
   align-self: stretch;
   align-items: center;
   justify-content: center;
@@ -16,115 +17,154 @@
   width: 100%;
   min-height: var(--content-height);
   margin: 0;
-  /* Uneven padding lifts the block above the exact centre, so it lands where
-     the loading screen's logo and progress bar were. */
-  padding: 48px 24px 152px;
-  font-family: system-ui, sans-serif;
+  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  text-align: center;
 }
 
 /* The sandbox has no `#app`, so the page fills its transparent body itself. */
 .standalone {
-  height: 100dvh;
+  min-height: 100dvh;
   background: var(--bg-page);
 }
 
 .inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   box-sizing: border-box;
   width: 100%;
-  /* One measure for prose and buttons alike, so every right edge lines up. */
-  max-width: 520px;
+  max-width: 440px;
   margin: 0;
   padding: 0;
-  text-align: left;
+}
+
+.glyph {
+  display: grid;
+  flex: none;
+  place-items: center;
+  box-sizing: border-box;
+  width: 56px;
+  height: 56px;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  color: var(--text-secondary);
+}
+
+.glyph[data-warning] {
+  background: color-mix(in srgb, var(--chrome-warn) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-warn) 30%, transparent);
+  color: var(--chrome-warn);
+}
+
+.glyph svg {
+  display: block;
 }
 
 .title {
-  margin: 0 0 0.75rem;
+  margin: var(--sp-6) 0 0;
   padding: 0;
-  font-size: 1.5rem;
-  font-weight: 500;
+  font-size: 24px;
+  font-weight: var(--fw-semibold);
   letter-spacing: -0.01em;
+  line-height: var(--lh-tight);
   color: var(--text-strong);
 }
 
 .detail {
-  margin: 0;
+  margin: var(--sp-2) 0 0;
   padding: 0;
-  line-height: 1.6;
-  color: var(--neutral-solid);
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+.detail strong {
+  font-weight: var(--fw-semibold);
+  color: var(--text-strong);
 }
 
 .tips {
   box-sizing: border-box;
-  margin: 1.25rem 0 0;
-  padding: 0;
-  font-size: 1rem;
-  line-height: 1.6;
-  color: var(--neutral-solid);
+  width: 100%;
+  margin: var(--sp-6) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  text-align: left;
 }
 
 .tips-label {
   margin: 0;
   padding: 0;
+  font-size: var(--fs-label);
+  font-weight: var(--fw-semibold);
+  letter-spacing: var(--ls-caps);
+  text-transform: uppercase;
+  color: var(--text-secondary);
 }
 
 .tips-list {
-  margin: 0.25rem 0 0;
-  padding: 0 0 0 1.4em;
+  margin: var(--sp-2) 0 0;
+  padding: 0 0 0 20px;
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  color: var(--text-strong);
 }
 
 .actions {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
+  gap: var(--sp-2);
+  align-items: stretch;
+  justify-content: center;
   box-sizing: border-box;
-  margin: 2rem 0 0;
+  margin: var(--sp-8) 0 0;
   padding: 0;
 }
 
 .retry {
-  display: flex;
-  gap: 8px;
+  display: inline-flex;
+  gap: var(--sp-2);
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  height: var(--h-control);
   margin: 0;
-  padding: 11px 24px;
-  border: 1px solid var(--border-strong);
-  border-radius: 999px;
+  padding: 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-full);
   background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
   color: var(--text-strong);
-  font-family: system-ui, sans-serif;
-  font-size: 0.9rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font: var(--fw-semibold) var(--fs-title) / 1 var(--font-sans);
+  white-space: nowrap;
   cursor: pointer;
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    transform 0.15s ease;
+  transition: background var(--dur-fast);
 }
 
 .retry:hover {
-  border-color: var(--border-focus);
   background: var(--fill);
 }
 
-.retry:active {
-  transform: translateY(1px);
+.retry:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
 /* After the hover rule, so it keeps its fill under the pointer. */
 .retry[data-primary] {
-  border-color: var(--inverse-bg);
   background: var(--inverse-bg);
+  box-shadow: none;
   color: var(--inverse-fg);
 }
 
 .retry[data-primary]:hover {
-  border-color: var(--inverse-bg-hover);
   background: var(--inverse-bg-hover);
 }
 
@@ -136,50 +176,55 @@
 
 .retry-icon {
   display: inline-flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
+  flex: none;
 }
 
+/* A caller's icon may carry its own size. */
 .retry-icon svg {
   display: block;
+  width: 16px;
+  height: 16px;
 }
 
-.glyph {
-  display: flex;
-  box-sizing: border-box;
-  margin: 0 0 1.5rem;
-  padding: 0;
-  color: var(--border-strong);
-}
-
-.glyph[data-warning] {
-  margin-bottom: 1.25rem;
-  color: var(--danger-strong);
-}
-
-.unreached .title {
-  margin-bottom: 0.875rem;
-  font-size: 1.75rem;
-}
-
+/* The domain chip sits in the sentence for screen readers, on its own row for the eye. */
 .unreached .detail {
-  margin-bottom: 0.5rem;
-  font-size: 1rem;
-  color: var(--text-secondary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  align-items: center;
+  margin-top: var(--sp-3);
 }
 
 .domain {
-  padding: 0.1em 0.45em;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--fill);
-  color: var(--text-strong);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 0.95em;
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: var(--h-row-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  font-size: var(--fs-small);
   white-space: nowrap;
 }
 
+.domain-host {
+  font-weight: var(--fw-medium);
+  color: var(--text-strong);
+}
+
 .domain-tld {
-  color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+/* Phones put the recommended button on top, full width, under the thumb. */
+@media (max-width: 560px) {
+  .page {
+    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+  }
+
+  .actions {
+    flex-direction: column-reverse;
+    width: 100%;
+  }
 }
