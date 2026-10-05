@@ -5,10 +5,6 @@
 // the dialogs (primitives/Dialog.tsx) and the topbar's auto-hide
 // (topbar-autohide.ts). Solid-free.
 
-/** What a browser can focus (hidden and inert elements aside). */
-export const FOCUSABLE =
-  'a[href],area[href],button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),iframe,summary,[tabindex],[contenteditable]';
-
 const TABBABLE = [
   'button:not([disabled])',
   'input:not([disabled])',

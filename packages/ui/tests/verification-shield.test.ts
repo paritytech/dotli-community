@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
-import { showProductPill } from '../src/state/url-pill.js';
+import { setVerificationShieldState, showProductPill } from '../src/state/url-pill.js';
 import { setBlockingModalActive } from '../src/state/topbar.js';
-import {
-  setVerificationShieldState,
-  VERIFICATION_SHIELD_ID,
-  VERIFICATION_TOOLTIP_ID,
-} from '../src/verification-shield.js';
+import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from '../src/verification-shield.js';
 import {
   pointerPress,
   pointerPressUnfocusable,

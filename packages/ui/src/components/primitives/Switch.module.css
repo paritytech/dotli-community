@@ -45,10 +45,6 @@
   outline: var(--chrome-focus-ring);
   outline-offset: 2px;
 }
-.switch:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
 @media (max-width: 560px) {
   :where(.switch) {
     width: 44px;

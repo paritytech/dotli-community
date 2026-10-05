@@ -27,7 +27,7 @@ const Frame = (props: { sheet?: boolean; children: JSX.Element }) => (
 type SurfaceArgs = Parameters<typeof Surface>[0];
 const settings = (args: SurfaceArgs) => (
   <Surface {...args}>
-    <SurfaceHead title="Settings" aside={<Chip tone="outline">Paseo</Chip>} />
+    <SurfaceHead title="Settings" aside={<Chip tone="mono">Paseo</Chip>} />
     <Well>
       <Callout icon={<InfoIcon />}>Surfaces hold a popover's content.</Callout>
     </Well>
@@ -44,7 +44,7 @@ const meta = {
   component: Surface,
   // Own docs iframes, since the frame is fixed to the top right of its page.
   parameters: { chrome: true, docs: { story: { inline: false, height: '320px' } } },
-  args: { width: 'md', label: 'Settings', children: <></> },
+  args: { width: 'md', children: <></> },
   argTypes: { width: { control: 'inline-radio', options: ['sm', 'md', 'lg', 'xl'] } },
   render: args => <Frame>{settings(args)}</Frame>,
 } satisfies Meta<typeof Surface>;

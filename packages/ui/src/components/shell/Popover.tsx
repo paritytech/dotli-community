@@ -63,10 +63,10 @@ export interface PopoverProps {
   /** Dim the page under the anchored surface; a press on it closes. */
   backdrop?: boolean;
   /**
-   * Under the topbar, `end` at its right edge, `trigger` at the trigger's
+   * Under the topbar at its right edge, or with `trigger` at the trigger's
    * left edge.
    */
-  anchor?: 'end' | 'trigger';
+  anchor?: 'trigger';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   closeOnBlur?: boolean;

@@ -13,22 +13,11 @@ export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
  * in draws the glass. In a bottom sheet the sheet's head carries the title,
  * so SurfaceHead draws none.
  */
-export function Surface(props: {
-  width?: SurfaceWidth;
-  label?: string;
-  class?: string | undefined;
-  testId?: string;
-  ref?: (el: HTMLElement) => void;
-  children: JSX.Element;
-}): JSX.Element {
+export function Surface(props: { width?: SurfaceWidth; testId?: string; children: JSX.Element }): JSX.Element {
   const inSheet = useContext(InSheet);
   return (
     <section
-      ref={el => {
-        props.ref?.(el);
-      }}
-      class={[s['surface'], props.class]}
-      aria-label={props.label}
+      class={s['surface']}
       data-width={props.width ?? 'md'}
       data-sheet={inSheet() ? '' : undefined}
       data-testid={props.testId}
@@ -42,16 +31,13 @@ export function SurfaceHead(props: {
   title: string;
   /** A chip or caption on the right, such as the network or the app host. */
   aside?: JSX.Element;
-  titleId?: string;
   testId?: string;
 }): JSX.Element {
   const inSheet = useContext(InSheet);
   return (
     <Show when={!inSheet()}>
       <div class={s['head']} data-testid={props.testId}>
-        <h2 class={s['title']} id={props.titleId}>
-          {props.title}
-        </h2>
+        <h2 class={s['title']}>{props.title}</h2>
         {props.aside}
       </div>
     </Show>

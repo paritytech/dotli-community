@@ -20,14 +20,11 @@
   --fill-strong: rgba(255, 255, 255, 0.12);
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.28);
   --border-focus: rgba(255, 255, 255, 0.5);
   --inverse-bg: #fafafa;
   --inverse-bg-hover: #ffffff;
   --inverse-fg: #0a0a0a;
   --danger: #f87171;
-  --danger-strong: #d93b30;
-  --warning: #eab308;
   --neutral-solid: #8f8f8f;
 
   /* A product's custom chat message names these colors (FgPrimary,

@@ -21,11 +21,6 @@
   background: color-mix(in srgb, var(--chrome-ok) var(--chrome-tint), transparent);
   color: var(--chrome-ok-text);
 }
-.chip[data-tone='outline'] {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--chrome-ring);
-  color: var(--chrome-text-muted);
-}
 .chip[data-tone='mono'] {
   min-width: 0;
   overflow: hidden;

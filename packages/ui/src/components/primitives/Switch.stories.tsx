@@ -18,7 +18,6 @@ type Story = StoryObj<typeof meta>;
 
 export const Off: Story = {};
 export const On: Story = { args: { checked: true } };
-export const Disabled: Story = { args: { disabled: true } };
 
 // The switch shows `checked` until its owner updates it, so this owner does.
 export const Interactive: Story = {

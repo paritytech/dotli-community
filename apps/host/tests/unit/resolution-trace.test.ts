@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { m } from '@dotli/metrics';
 import { markContinuation } from '@dotli/shared';
-import { updateLoading } from '@dotli/ui';
+import { updateLoading } from '../../../../packages/ui/src/state/loading.js';
 import { startResolutionTrace } from '../../src/resolution-trace.js';
 
 /**

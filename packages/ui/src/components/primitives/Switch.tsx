@@ -10,7 +10,6 @@ export interface SwitchProps {
   onChange: (checked: boolean) => void;
   /** The accessible name, since the visible label is the row beside it. */
   label: string;
-  disabled?: boolean;
   class?: string | undefined;
   testId?: string;
 }
@@ -22,7 +21,6 @@ export function Switch(props: SwitchProps): JSX.Element {
       role="switch"
       aria-checked={props.checked ? 'true' : 'false'}
       aria-label={props.label}
-      disabled={props.disabled}
       onClick={() => {
         props.onChange(!props.checked);
       }}
