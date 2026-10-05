@@ -64,7 +64,7 @@ export const KeyValues: Story = {
     return (
       <Well layout="kv">
         <KeyValue k="Transport" v="Light client per tab" />
-        <KeyValue k="Version" v="0.6.0" monoKey={false} />
+        <KeyValue k="Version" v="0.6.0" />
         <KeyValue
           k="Commit"
           v="4a879e54"
@@ -129,7 +129,7 @@ export const Flush: Story = {
           hidden={!open()}
           style={{ padding: '0 12px 10px', 'border-top': '1px solid var(--chrome-line)' }}
         >
-          <For each={PACKAGES}>{([name, version]) => <KeyValue k={name} v={version} dense monoKey />}</For>
+          <For each={PACKAGES}>{([name, version]) => <KeyValue k={name} v={version} dense />}</For>
         </div>
       </Well>
     );

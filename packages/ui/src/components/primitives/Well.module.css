@@ -65,7 +65,7 @@
 }
 /* A package name gives way before its version: the longest names outgrow
    the desktop Settings column. */
-.kv[data-mono-key] .key {
+.kv[data-dense] .key {
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -74,7 +74,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.kv[data-mono-key] .value {
+.kv[data-dense] .value {
   flex: none;
 }
 .value {

@@ -50,9 +50,7 @@ export function Row(props: {
 export function KeyValue(props: {
   k: string;
   v: JSX.Element;
-  /** Package names and other code keys. */
-  monoKey?: boolean;
-  /** 24 px rows, for long lists such as packages. */
+  /** 24 px rows keyed by code, for long lists such as packages. */
   dense?: boolean;
   copyable?: boolean;
   title?: string | undefined;
@@ -71,7 +69,6 @@ export function KeyValue(props: {
       title={props.title}
       class={[s['kv'], props.class]}
       data-copyable={props.copyable === true ? '' : undefined}
-      data-mono-key={props.monoKey === true ? '' : undefined}
       data-dense={props.dense === true ? '' : undefined}
       data-testid={props.testId}
     >
