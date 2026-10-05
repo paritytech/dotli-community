@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
 import { PERMISSION_ICONS } from '../../permission-modal.js';
@@ -38,6 +39,12 @@ const meta = {
       dismissResult: 'dismissed',
       fallbackResult: 'dismissed',
     }),
+  },
+  // The dialog reads its entry once, as the outlet re-creates it per entry,
+  // so it gets a plain copy of the args store's, read outside tracking.
+  render: args => {
+    const entry = untrack(() => snapshot(args.entry));
+    return <SigningDialog entry={entry} />;
   },
 } satisfies Meta<typeof SigningDialog>;
 
