@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { NetworkName, getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
+import { getActiveServicesConfig, setNetworkOverride } from '@dotli/config';
+import { NetworkName } from '../../config/src/network.js';
 import { createTruapiRuntimeConfig, labelToProductId } from '../src/runtime-config.js';
 
 describe('labelToProductId', () => {

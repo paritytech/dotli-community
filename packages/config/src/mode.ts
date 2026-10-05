@@ -21,9 +21,9 @@ export type Backend = 'smoldot-direct' | 'smoldot-shared-worker' | 'rpc-gateway'
  * tip naming a control that does not exist is worse than no tip.
  */
 export const BACKEND_LABELS: Record<Backend, string> = {
-  'smoldot-direct': 'Light Client Per-Tab',
-  'smoldot-shared-worker': 'Light Client Shared',
-  'rpc-gateway': 'Trusted Providers',
+  'smoldot-direct': 'Light client per tab',
+  'smoldot-shared-worker': 'Light client shared',
+  'rpc-gateway': 'Trusted providers',
 };
 
 export interface CacheSettings {

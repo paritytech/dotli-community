@@ -32,13 +32,12 @@ export {
   type StoredEvent,
   type StoredSystemEvent,
   type StoredTruapiEvent,
-  type TruapiDebugMessageEvent,
 } from './event-store.js';
 export { buildExport, exportFilename, type ExportMeta } from './export.js';
 export { formatPayloadDetail } from './format.js';
 export { compileQuery, initialFilterState, matches, type DirectionFilter, type FilterState } from './filters.js';
 export { panelDockInset } from './iframe-layout.js';
-export { OpenCallTracker, SLOW_AFTER_MS, formatPending, openCalls, pendingKeyOf } from './pending.js';
+export { OpenCallTracker, SLOW_AFTER_MS, formatPending, pendingKeyOf } from './pending.js';
 export {
   buildResolution,
   createResolutionRecorder,
@@ -52,4 +51,4 @@ export {
 export { ridColor, rowSelection, systemRowData, tagKind, truapiRowData } from './row-format.js';
 export { summariseSystemEvent } from './system-summary.js';
 export { buildTimeline, type TimelineLane } from './timeline.js';
-export { loadDotliDebugBus, type DotliDebugBusModule } from './lazy.js';
+export { loadDotliDebugBus } from './lazy.js';

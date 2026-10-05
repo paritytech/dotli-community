@@ -26,15 +26,6 @@ export const HOST_ERRORS = {
 } as const;
 
 /**
- * Detail line for a host shell that shipped broken.
- *
- * The visitor cannot act on the missing node itself, and the site they asked
- * for is fine, so the copy points at us. Sentry gets the real reason from the
- * thrown error.
- */
-export const HOST_UNAVAILABLE_DETAIL = "This page didn't load properly. Reloading usually fixes it.";
-
-/**
  * Headlines for the full-page error surface.
  *
  * The title says which layer gave up, the detail below it says why, so these

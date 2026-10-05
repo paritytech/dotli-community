@@ -6,7 +6,7 @@
 // with stand-in items in action-group.test.tsx, and each item on its own in
 // its own test.
 
-import { cleanup } from '@solidjs/testing-library';
+import { cleanup, within } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TopbarActions } from '../../../src/components/shell/TopbarActions.js';
 import { resetAllStoresForTests } from '../../../src/state/create-store.js';
@@ -14,10 +14,18 @@ import { initSettingsStore } from '../../../src/state/settings.js';
 import { registerPermissionAuthorizationProvider } from '../../../src/permissions.js';
 import { setChainsButtonVisible } from '../../../src/topbar.js';
 import { setProductLoaded } from '../../../src/state/product.js';
+import { initNetworkHealth } from '../../../src/state/network-health.js';
 import { setLandingPage } from '../../../src/state/topbar.js';
+import { initChatPanelState } from '../../../src/state/chat-panel.js';
+import { setLoggedIn } from '../../../src/state/auth.js';
+import { CHAT_MESSAGE_EVENT } from '../../../src/chat/service.js';
+import { labelToProductId } from '../../../src/runtime-config.js';
+import { setChatCapability } from '@dotli/shared';
+import { BACKEND_KEY } from '@dotli/config';
 import { stubColorScheme } from '../../helpers/color-scheme.js';
-import { pointerPress, renderComponent, settle, waitForContent } from '../../helpers/solid.js';
-import { byId } from '../../support.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { mouseClick, pointerPress, renderComponent, settle, tabTo, waitForContent } from '../../helpers/solid.js';
+import { byId, byTestId, must, query } from '../../support.js';
 import { ITEM_WIDTH, moreRow, stubTopbarLayout, tapMoreRow } from './topbar-harness.js';
 
 vi.mock('../../../src/recent-labels.js', () => ({
@@ -27,6 +35,13 @@ vi.mock('../../../src/recent-labels.js', () => ({
 
 /** Room for the More button only: every item is in the More menu. */
 const MORE_ONLY = ITEM_WIDTH;
+
+/** The items in the More menu, in its order. */
+function moreRowNames(): string[] {
+  return [...document.querySelectorAll<HTMLElement>('#more-popover [role="menuitem"]')].map(
+    el => el.dataset['item'] ?? '',
+  );
+}
 
 async function renderIsland(): Promise<void> {
   const container = document.createElement('div');
@@ -84,13 +99,17 @@ describe('Topbar actions island', () => {
       // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
-      expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
+      const camera = must(
+        byId('permissions-popover-name-Camera').closest('[data-testid="permissions-popover-row"]'),
+        'the Camera row',
+      );
+      expect(byTestId('permissions-popover-segment-granted', camera).getAttribute('aria-pressed')).toBe('true');
     } finally {
       unregister();
     }
   });
 
-  it("As a mobile user, the More menu's Theme and Settings rows open the theme menu and the settings popover", async () => {
+  it("As a mobile user, the More menu's Appearance and Settings rows open the Appearance menu and the settings popover", async () => {
     // Given
     initSettingsStore();
     stubTopbarLayout(MORE_ONLY);
@@ -132,7 +151,8 @@ describe('Topbar actions island', () => {
     await settle();
 
     // Then
-    expect(moreRow('network').textContent).toBe('Network');
+    expect(moreRow('network').querySelector('[data-testid="more-row-aside"]')?.textContent).toBe('Syncing');
+    expect(moreRow('network').textContent).toBe('NetworkSyncing');
 
     // When
     await tapMoreRow('network');
@@ -155,7 +175,7 @@ describe('Topbar actions island', () => {
     expect(byId('topbar-actions').hasAttribute('data-collapsible')).toBe(true);
   });
 
-  it("As a visitor on the landing page, the group renders nothing, so the page's own account and theme buttons are the only ones", async () => {
+  it("As a visitor on the landing page, the group renders nothing, so the page's own account and appearance buttons are the only ones", async () => {
     // Given
     stubTopbarLayout(6 * ITEM_WIDTH);
     await renderIsland();
@@ -169,5 +189,279 @@ describe('Topbar actions island', () => {
     expect(document.getElementById('topbar-actions')).toBeNull();
     expect(document.getElementById('auth-button')).toBeNull();
     expect(document.getElementById('theme-toggle')).toBeNull();
+  });
+
+  it('As a phone user, the header keeps only More and then the account, however much room it measures: every action is in More', async () => {
+    // Given: a phone, though the stand-in layout has room for every item
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+
+    // When
+    await renderIsland();
+    setChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    expect(moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
+    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(false);
+    const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
+    expect(account.hasAttribute('data-parked')).toBe(false);
+    expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+
+  it('As a phone user, the Network row leads the More menu with its status dot and verdict word, and More carries the health badge', async () => {
+    // Given: the chains are still starting
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    await renderIsland();
+    setChainsButtonVisible(true);
+    await settle();
+
+    // Then
+    const more = byId('more-button');
+    expect(moreRowNames()[0]).toBe('network');
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Syncing');
+    expect(more.getAttribute('data-tone')).toBe('idle');
+    expect(more.getAttribute('aria-label')).toBe('More, network syncing');
+
+    // When
+    initNetworkHealth();
+    vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+    await settle();
+
+    // Then
+    expect(byTestId('more-row-aside', moreRow('network')).textContent).toBe('Offline');
+    expect(more.getAttribute('data-tone')).toBe('err');
+    expect(more.getAttribute('aria-label')).toBe('More, network offline');
+  });
+
+  it('As a phone user with a grant and an unverified session, I see the Permissions and Settings rows keep their badges, and More raise none', async () => {
+    // Given: the trusted gateway backend, which is not a verified session
+    localStorage.setItem(BACKEND_KEY, 'rpc-gateway');
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    const unregister = registerPermissionAuthorizationProvider('app.dot', {
+      getPermissionAuthorizationStatuses: requests =>
+        Promise.resolve(requests.map(request => (request.tag === 'Device' ? 'Authorized' : 'NotDetermined'))),
+      setPermissionAuthorizationStatus: async () => {},
+    });
+    setProductLoaded('app.dot', 'app.dot');
+
+    try {
+      // When
+      await renderIsland();
+      await settle();
+      pointerPress(byId('more-button'));
+      await settle();
+
+      // Then
+      expect(byTestId('more-row-aside', moreRow('permissions'))).toBeTruthy();
+      expect(byTestId('more-row-aside', moreRow('settings'))).toBeTruthy();
+      expect(within(moreRow('permissions')).getByRole('img').getAttribute('aria-label')).toBe('Has permissions');
+      expect(within(moreRow('settings')).getByRole('img').getAttribute('aria-label')).toBe('Unverified session');
+      expect(byId('more-button').getAttribute('aria-label')).toBe('More');
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a phone user with no grants and a verified session, I see the Permissions and Settings rows without badges', async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    setProductLoaded('app.dot', 'app.dot');
+
+    // When
+    await renderIsland();
+    await settle();
+    pointerPress(byId('more-button'));
+    await settle();
+
+    // Then
+    expect(moreRow('permissions').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+    expect(moreRow('settings').querySelector('[data-testid="more-row-aside"]')).toBeNull();
+  });
+
+  // Off with the chat button (TopbarActions.tsx) until it is redone.
+  it.skip('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {
+    // Given: a chat-capable product, a session, and two messages while the panel is closed
+    stubTopbarLayout(6 * ITEM_WIDTH);
+    stubPhoneViewport(true);
+    const stopChat = initChatPanelState();
+    try {
+      await renderIsland();
+      window.dispatchEvent(new CustomEvent('dotli:product-loaded', { detail: { label: 'chatty' } }));
+      setChatCapability('chatty', true);
+      setLoggedIn(true);
+
+      // When
+      for (const _ of [1, 2]) {
+        window.dispatchEvent(
+          new CustomEvent(CHAT_MESSAGE_EVENT, {
+            detail: { productId: labelToProductId('chatty'), roomId: 'support', author: 'product' },
+          }),
+        );
+      }
+      await settle();
+
+      // Then
+      const more = byId('more-button');
+      expect(moreRowNames()).toContain('chat');
+      expect(more.hasAttribute('data-badge')).toBe(true);
+      expect(more.getAttribute('data-tone')).toBe('info');
+      expect(more.getAttribute('aria-label')).toBe('More, chat has unread messages');
+      expect(byTestId('more-row-aside', moreRow('chat')).textContent).toBe('2');
+    } finally {
+      stopChat();
+    }
+  });
+
+  it('As a phone keyboard user, Tab in the More sheet reaches its Close button, which closes it and hands focus back to More', async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    const button = byId('more-button');
+    button.focus();
+    button.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await settle();
+    const sheet = byId('more-popover');
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+
+    // When
+    const tab = tabTo(document.body);
+
+    // Then: focus stays in the sheet, on its head's close button.
+    const close = within(sheet).getByRole('button', { name: 'Close' });
+    expect(tab.defaultPrevented).toBe(true);
+    expect(document.activeElement).toBe(close);
+
+    // When
+    close.click();
+    await settle();
+
+    // Then
+    expect(sheet.hasAttribute('data-open')).toBe(false);
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("As a phone user choosing Appearance in More, the Appearance sheet takes More's place without sliding", async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+
+    // When
+    await tapMoreRow('theme');
+
+    // Then: More goes and Appearance comes at rest, over a scrim that stays.
+    const more = byId('more-popover');
+    expect(more.hasAttribute('data-open')).toBe(false);
+    expect(more.hasAttribute('data-handoff')).toBe(true);
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(sheet.hasAttribute('data-handoff')).toBe(true);
+    expect(sheet.contains(document.activeElement)).toBe(true);
+    const scrims = [...document.querySelectorAll('[data-testid="menu-scrim"]')];
+    expect(scrims).toHaveLength(2);
+    expect(scrims.every(scrim => scrim.hasAttribute('data-handoff'))).toBe(true);
+  });
+
+  it("As a phone user choosing Settings in More, the settings sheet takes More's place without sliding", async () => {
+    // Given
+    initSettingsStore();
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+
+    // When
+    await tapMoreRow('settings');
+
+    // Then
+    expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
+    const sheet = byId('mode-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(sheet.hasAttribute('data-sheet')).toBe(true);
+    expect(sheet.hasAttribute('data-handoff')).toBe(true);
+    expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
+  });
+
+  it('As a phone keyboard user choosing Appearance in More, the Appearance sheet opens on its first item', async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    pointerPress(byId('more-button'));
+    await settle();
+
+    // When: Enter on a row is a click with no pointer behind it
+    moreRow('theme').click();
+    await settle();
+
+    // Then
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(true);
+    expect(document.activeElement).toBe(query(sheet, '[role="menuitemradio"]'));
+  });
+
+  it("As a phone user closing a sheet that took More's place, it slides out", async () => {
+    // Given
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    await renderIsland();
+    await tapMoreRow('theme');
+
+    // When
+    document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settle();
+
+    // Then
+    const sheet = byId('theme-popover');
+    expect(sheet.hasAttribute('data-open')).toBe(false);
+    expect(sheet.hasAttribute('data-handoff')).toBe(false);
+    const scrim = sheet.previousElementSibling;
+    expect(scrim?.getAttribute('data-testid')).toBe('menu-scrim');
+    expect(scrim?.hasAttribute('data-handoff')).toBe(false);
+  });
+
+  // Off with the chat button (TopbarActions.tsx) until it is redone.
+  it.skip('As a phone user choosing Chat in More, More closes as usual', async () => {
+    // Given: a chat-capable product and a session, with nothing unread
+    stubTopbarLayout(MORE_ONLY);
+    stubPhoneViewport(true);
+    const stopChat = initChatPanelState();
+    try {
+      await renderIsland();
+      window.dispatchEvent(new CustomEvent('dotli:product-loaded', { detail: { label: 'chatty' } }));
+      setChatCapability('chatty', true);
+      setLoggedIn(true);
+      await settle();
+
+      // When
+      await tapMoreRow('chat');
+
+      // Then
+      const more = byId('more-popover');
+      expect(more.hasAttribute('data-open')).toBe(false);
+      expect(more.hasAttribute('data-handoff')).toBe(false);
+
+      // When: Appearance opens from its own button, not from More
+      mouseClick(byId('theme-toggle'));
+      await settle();
+
+      // Then: the Chat choice left no hand-off waiting for this sheet
+      const theme = byId('theme-popover');
+      expect(theme.hasAttribute('data-open')).toBe(true);
+      expect(theme.hasAttribute('data-sheet')).toBe(true);
+      expect(theme.hasAttribute('data-handoff')).toBe(false);
+    } finally {
+      stopChat();
+    }
   });
 });

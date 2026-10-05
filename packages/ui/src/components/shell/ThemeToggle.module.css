@@ -1,39 +1,112 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The icon follows <html data-theme-pref>, which the inline bootstrap script sets
-   before the island hydrates, so the build-time button already shows the stored
-   choice. */
+/* The icon follows <html data-theme>, the theme in effect, which the inline
+   bootstrap script sets before the island hydrates, so the build-time button
+   already shows it. */
 
-.sun,
-.system {
+.sun {
   display: none;
 }
-:global([data-theme-pref='light']) .sun {
+:global([data-theme='light']) .sun {
   display: block;
 }
-:global([data-theme-pref='light']) .moon,
-:global([data-theme-pref='system']) .moon {
+:global([data-theme='light']) .moon {
   display: none;
 }
-:global([data-theme-pref='system']) .system {
-  display: block;
-}
 
+/* The board's Appearance popover (MenuTheme): a small glass holding its
+   title over three tiles in a well. The Menu primitive draws the glass. */
 .menu {
-  min-width: 150px;
+  gap: 10px;
+  width: var(--w-pop-sm);
+  min-width: 0;
+  max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
+  padding: var(--sp-3);
 }
-.check {
-  margin-left: auto;
-  visibility: hidden;
+.head {
+  margin: 0;
+  padding: var(--sp-hair) var(--sp-1) 0;
+  color: var(--chrome-text);
+  font-size: var(--fs-pop-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
 }
-.option[aria-checked='true'] {
-  color: var(--text-strong);
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--sp-1);
+  margin: 0;
+  padding: var(--sp-1);
+  border-radius: var(--r-sm);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
 }
-.option[aria-checked='true'] .check {
-  visibility: visible;
+/* Menu rows turned into the board's .seg-tiles buttons. Each selector carries
+   the group's class, so it wins over the row's own hover and checked rules
+   whatever order the stylesheets load in. */
+.tiles .tile {
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  height: 60px;
+  min-height: 0;
+  padding: 0 10px;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--chrome-text-muted);
+  font: var(--fw-medium) var(--fs-small) / 1 var(--font-sans);
+  transition:
+    background var(--dur-fast),
+    color var(--dur-fast),
+    box-shadow var(--dur-fast);
 }
-.option:focus-visible {
-  outline: 2px solid var(--text-faint);
-  outline-offset: -2px;
+.tiles .tile:hover {
+  background: transparent;
+  color: var(--chrome-text);
+}
+.tiles .tile[aria-checked='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+.tiles .tile > svg {
+  width: 16px;
+  height: 16px;
+  color: inherit;
+}
+.tiles .tile:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tiles .tile {
+    transition: none;
+  }
+}
+
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  .tiles {
+    border-radius: var(--r-md);
+  }
+  .tiles .tile {
+    gap: var(--sp-2);
+    height: var(--h-tile);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .tiles .tile > svg {
+    width: 20px;
+    height: 20px;
+  }
+}
+
+/* Phones: the sheet's head carries the title, and the tiles sit inset
+   under it (the board's .popover.is-sheet). */
+.menu[data-sheet] .head {
+  display: none;
+}
+.menu[data-sheet] .tiles {
+  margin: var(--sp-1) var(--sp-4) 0;
 }

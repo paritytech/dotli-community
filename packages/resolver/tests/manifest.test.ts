@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { DotnsContracts } from '@dotli/config';
 import { log } from '@dotli/shared';
 import type { Api } from '../src/api.js';
-import { readRootManifest, toExecutableManifestResult, toRootManifestResult } from '../src/manifest.js';
+import { readRootManifest } from '../src/manifest.js';
+import { toExecutableManifestResult, toRootManifestResult } from '../src/manifest-types.js';
 
 const storage = vi.hoisted(() => ({
   readNestedMappingString: vi.fn<() => Promise<string | null>>(),

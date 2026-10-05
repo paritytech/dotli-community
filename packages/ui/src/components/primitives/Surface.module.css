@@ -1,0 +1,88 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The mockup's .popover: one padding and one gap for every popover, 12 and
+   10 on desktop, the boards' 16 and 12 on phones. The frame around it draws
+   the glass. */
+
+:where(.surface) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: var(--w-pop-md);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--sp-3);
+}
+.surface[data-width='sm'] {
+  width: var(--w-pop-sm);
+}
+.surface[data-width='lg'] {
+  width: var(--w-pop-lg);
+}
+.surface[data-width='xl'] {
+  width: var(--w-pop-xl);
+}
+.surface[data-sheet] {
+  width: 100%;
+  padding: var(--sp-1) var(--sp-4) var(--sp-4);
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: var(--sp-hair) var(--sp-1) 0;
+}
+.title {
+  margin: 0;
+  font-size: var(--fs-pop-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px var(--sp-1) 0;
+  border-top: 1px solid var(--chrome-line);
+}
+.hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.hint > svg {
+  flex: none;
+  width: 14px;
+  height: 14px;
+}
+
+/* Phones: the boards' sizes. */
+@media (max-width: 560px) {
+  :where(.surface) {
+    gap: var(--sp-3);
+    padding: var(--sp-4);
+  }
+  .head {
+    gap: var(--sp-3);
+  }
+  .foot {
+    gap: var(--sp-3);
+    padding-top: var(--sp-3);
+  }
+  .hint {
+    gap: var(--sp-2);
+  }
+  .hint > svg {
+    width: 16px;
+    height: 16px;
+  }
+}

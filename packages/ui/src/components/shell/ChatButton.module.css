@@ -1,10 +1,12 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* On the 36 px button's icon corner, as the badge dot sits. Desktop only: on
+   a phone the chat button is always in More, whose row carries the count. */
 .unread {
   position: absolute;
-  top: 6px;
-  right: 7px;
+  top: 4px;
+  right: 5px;
   box-sizing: border-box;
   min-width: 14px;
   height: 14px;
@@ -12,7 +14,7 @@
   border-radius: 7px;
   background: var(--inverse-bg);
   color: var(--inverse-fg);
-  font-size: 0.6rem;
+  font-size: 10px;
   font-weight: 600;
   line-height: 14px;
   text-align: center;

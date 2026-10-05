@@ -35,13 +35,23 @@ import {
 import type * as SettingsActionsModule from '../../../src/settings-actions.js';
 import type * as NetworkModule from '../../../../config/src/network.js';
 import { byId, byTestId, must, query } from '../../support.js';
+import { focusables } from '../../../src/components/focus.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
-const actions = vi.hoisted(() => ({ applyAndReset: vi.fn() }));
-vi.mock('../../../src/settings-actions.js', async importOriginal => ({
-  ...(await importOriginal<typeof SettingsActionsModule>()),
-  applyAndReset: actions.applyAndReset,
+const actions = vi.hoisted(() => ({
+  applyAndReset: vi.fn(),
+  extraRows: [] as [label: string, value: string][],
 }));
+vi.mock('../../../src/settings-actions.js', async importOriginal => {
+  const actual = await importOriginal<typeof SettingsActionsModule>();
+  return {
+    ...actual,
+    applyAndReset: actions.applyAndReset,
+    // Lets a test add a row the default backend does not produce, such as a node reading "n/a".
+    buildBaseDiagnosticsRows: () => [...actual.buildBaseDiagnosticsRows(), ...actions.extraRows],
+  };
+});
 
 // No chain answers here: the share report's block heights read "n/a".
 vi.mock('../../../../protocol/src/client.js', () => ({
@@ -83,6 +93,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   actions.applyAndReset.mockReset();
+  actions.extraRows = [];
   actions.applyAndReset.mockResolvedValue(undefined);
   rpc.live = null;
   networks.enabled = null;
@@ -163,24 +174,6 @@ function infoRow(label: string): HTMLElement {
   return found;
 }
 
-/**
- * The viewport width against the CSS breakpoint where the popover becomes a
- * full-screen sheet, `(max-width: 560px)`: happy-dom cannot evaluate it.
- * Flip `narrow` to resize.
- */
-function stubViewport(narrow: boolean): { narrow: boolean } {
-  const viewport = { narrow };
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    get matches() {
-      return query === '(max-width: 560px)' && viewport.narrow;
-    },
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
-  return viewport;
-}
-
 /** The popover's controls that Tab reaches, in order. */
 function tabbables(): HTMLElement[] {
   return Array.from(
@@ -239,25 +232,6 @@ function expectHeader(el: Element | undefined, text: string): void {
   expect(el?.textContent).toBe(text);
 }
 
-/** A radio row: label, radio input (name, value, checked, disabled), the text and its description. */
-function expectRadioRow(
-  row: Element | undefined,
-  name: string,
-  opts: { value: string; label: string; description: string; selected: boolean; disabled?: boolean },
-): void {
-  expect(row?.tagName).toBe('LABEL');
-  const input = query(must(row, 'a radio row'), 'input', HTMLInputElement);
-  expect(input.type).toBe('radio');
-  expect(input.name).toBe(name);
-  expect(input.value).toBe(opts.value);
-  expect(input.checked).toBe(opts.selected);
-  expect(input.disabled).toBe(opts.disabled === true);
-  expect(row?.hasAttribute('data-selected')).toBe(opts.selected);
-  expect(row?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
-  const texts = Array.from(row?.querySelectorAll('span > span') ?? []).map(span => span.textContent);
-  expect(texts).toEqual([opts.label, opts.description]);
-}
-
 /** A cache row: its label and a switch of the same name. */
 function expectCacheRow(row: Element | undefined, label: string, checked: boolean): void {
   expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'BUTTON']);
@@ -268,28 +242,68 @@ function expectCacheRow(row: Element | undefined, label: string, checked: boolea
   expect(toggle.getAttribute('aria-checked')).toBe(String(checked));
 }
 
-/** A diagnostics row: label and value, and the copy hint on the copyable ones. */
-function expectInfoRow(row: Element | undefined, label: string, value: string, copyable = false): void {
-  expect(tags(must(row, 'a row'))).toEqual(['SPAN', 'CODE']);
+/**
+ * A diagnostics row: label and value, the copy hint on the copyable ones,
+ * dense in the package list with the full name as its tooltip.
+ */
+function expectInfoRow(
+  row: Element | undefined,
+  label: string,
+  value: string,
+  opts: { copyable?: boolean; dense?: boolean } = {},
+): void {
+  expect(tags(must(row, 'a row'))).toEqual(opts.copyable === true ? ['SPAN', 'BUTTON', 'SPAN'] : ['SPAN', 'CODE']);
   expect(row?.children[0]?.textContent).toBe(label);
   expect(row?.children[1]?.textContent).toBe(value);
-  expect(row?.hasAttribute('data-copyable')).toBe(copyable);
-  expect(row?.getAttribute('title')).toBe(copyable ? `Click to copy ${label}` : null);
+  expect(row?.hasAttribute('data-copyable')).toBe(opts.copyable === true);
+  expect(row?.hasAttribute('data-dense')).toBe(opts.dense === true);
+  let title: string | null = null;
+  if (opts.copyable === true) {
+    title = `Click to copy ${label}`;
+  } else if (opts.dense === true) {
+    title = label;
+  }
+  expect(row?.getAttribute('title')).toBe(title);
+}
+
+/** A radio card: a label holding the radio (name, value, checked, disabled), its title, its chip and its description. */
+function expectChoice(
+  card: Element | undefined,
+  name: string,
+  opts: { value: string; label: string; description: string; selected: boolean; disabled?: boolean; chip?: string },
+): void {
+  expect(card?.tagName).toBe('LABEL');
+  const input = query(must(card, 'a choice'), 'input', HTMLInputElement);
+  expect(input.type).toBe('radio');
+  expect(input.name).toBe(name);
+  expect(input.value).toBe(opts.value);
+  expect(input.checked).toBe(opts.selected);
+  expect(input.disabled).toBe(opts.disabled === true);
+  expect(card?.hasAttribute('data-selected')).toBe(opts.selected);
+  expect(card?.hasAttribute('data-disabled')).toBe(opts.disabled === true);
+  expect(card?.textContent).toBe(`${opts.label}${opts.chip ?? ''}${opts.description}`);
+}
+
+/** A labelled radio group: its caps label over the group of cards. Returns the group. */
+function expectRadioGroup(section: Element, label: string): Element {
+  expect(tags(section)).toEqual(['DIV', 'DIV']);
+  expectHeader(section.children[0], label);
+  const group = nth(section.children, 1);
+  expect(group.getAttribute('role')).toBe('radiogroup');
+  expect(group.getAttribute('aria-label')).toBe(label);
+  return group;
 }
 
 /** The left column: network, transport and cache settings. */
 function expectSettingsColumn(left: Element, settings: Settings): void {
-  const items = Array.from(left.children);
+  const sections = Array.from(left.children);
   let at = 0;
   if (settings.enabledNetworks.length > 1) {
-    expectHeader(items[at++], 'Network');
-    const group = nth(items, at++);
-    expect(group.getAttribute('role')).toBe('radiogroup');
-    expect(group.getAttribute('aria-label')).toBe('Network');
+    const group = expectRadioGroup(nth(sections, at++), 'Network');
     expect(group.childElementCount).toBe(settings.enabledNetworks.length);
     settings.enabledNetworks.forEach((n, i) => {
       const cfg = NETWORK_NAME_TO_SERVICES_CONFIG[n];
-      expectRadioRow(group.children[i], 'dotli-network', {
+      expectChoice(group.children[i], 'dotli-network', {
         value: n,
         label: cfg.label,
         description: cfg.description,
@@ -298,86 +312,107 @@ function expectSettingsColumn(left: Element, settings: Settings): void {
     });
   }
 
-  expectHeader(items[at++], 'Network Transport');
-  const chainGroup = nth(items, at++);
-  expect(chainGroup.getAttribute('role')).toBe('radiogroup');
-  expect(chainGroup.getAttribute('aria-label')).toBe('Network Transport');
+  const transports = expectRadioGroup(nth(sections, at++), 'Network transport');
   const choices: [Backend, string][] = [
-    ['smoldot-direct', 'Verified in your browser, separate per tab (recommended)'],
+    ['smoldot-direct', 'Verified in your browser, separate for each tab'],
     ['smoldot-shared-worker', 'Verified in your browser, shared across tabs'],
-    ['rpc-gateway', 'Fetched from trusted servers, fastest but less private'],
+    ['rpc-gateway', 'Fetched from trusted servers. Fastest, but less private'],
   ];
-  expect(chainGroup.childElementCount).toBe(choices.length);
+  expect(transports.childElementCount).toBe(choices.length);
   choices.forEach(([value, description], i) => {
     const disabled = value === 'smoldot-shared-worker' && !settings.sharedWorkerSupported;
-    expectRadioRow(chainGroup.children[i], 'dotli-backend', {
+    expectChoice(transports.children[i], 'dotli-backend', {
       value,
       label: BACKEND_LABELS[value],
       description: disabled ? 'Unavailable in this browser or private window' : description,
       selected: value === settings.chain,
       disabled,
+      ...(value === 'smoldot-direct' ? { chip: 'Recommended' } : {}),
     });
   });
 
-  expectHeader(items[at++], 'Cache');
-  expectCacheRow(items[at++], 'dotNS cache', !settings.cache.skipCidCache);
-  expectCacheRow(items[at++], 'Archive cache', !settings.cache.skipArchiveCache);
-  expectCacheRow(items[at++], 'Worker cache', !settings.cache.skipWorkerCache);
-  const clearRow = nth(items, at++);
+  const cache = nth(sections, at++);
+  expect(tags(cache)).toEqual(['DIV', 'DIV', 'DIV']);
+  expectHeader(cache.children[0], 'Cache');
+  const well = nth(cache.children, 1);
+  expect(well.getAttribute('data-testid')).toBe('mode-cache');
+  expect(well.childElementCount).toBe(3);
+  expectCacheRow(well.children[0], 'dotNS cache', !settings.cache.skipCidCache);
+  expectCacheRow(well.children[1], 'Archive cache', !settings.cache.skipArchiveCache);
+  expectCacheRow(well.children[2], 'Worker cache', !settings.cache.skipWorkerCache);
+  const clearRow = nth(cache.children, 2);
+  expect(clearRow.getAttribute('data-testid')).toBe('mode-clear-all-row');
   expect(tags(clearRow)).toEqual(['BUTTON']);
   expect(clearRow.children[0]?.textContent).toBe('Clear all caches');
   expect(clearRow.children[0]?.getAttribute('title')).toBe(
     'Wipe every cache, database, and worker across all origins. The app will reload from a clean baseline.',
   );
-  expect(items).toHaveLength(at);
+  expect(sections).toHaveLength(at);
 }
 
-/** The right column: diagnostics, versions and the share and debug buttons. */
+/** The right column: the diagnostics well, the closed Packages disclosure and the share and debug buttons. */
 function expectDiagnosticsColumn(right: Element, debugOn: boolean): void {
-  const items = Array.from(right.children);
-  let at = 0;
-  expectHeader(items[at++], 'Diagnostics');
+  expect(tags(right)).toEqual(['DIV', 'DIV', 'DIV', 'DIV']);
+  const [header, diagnostics, packages, actions] = Array.from(right.children) as [Element, Element, Element, Element];
+  expectHeader(header, 'Diagnostics');
+
+  expect(diagnostics.getAttribute('data-testid')).toBe('mode-diagnostics');
   const copyable = new Set(['Site', 'Relay node', 'AssetHub node', 'Bulletin Node']);
-  for (const [label, value] of buildBaseDiagnosticsRows()) {
-    expectInfoRow(items[at++], label, value, copyable.has(label));
-  }
-  expectHeader(items[at++], 'Light client');
-  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel());
+  const base = buildBaseDiagnosticsRows();
+  expect(diagnostics.childElementCount).toBe(base.length);
+  base.forEach(([label, value], i) => {
+    expectInfoRow(diagnostics.children[i], label, value, { copyable: copyable.has(label) });
+  });
+
+  expect(packages.getAttribute('data-testid')).toBe('mode-packages-well');
   const { polkadotApi, parityTruapi } = packageVersions();
+  const toggle = byTestId('mode-packages-toggle', packages, HTMLButtonElement);
+  expect(toggle.type).toBe('button');
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  expect(toggle.getAttribute('aria-controls')).toBe('mode-packages');
+  expect(toggle.textContent).toBe(`Packages${String(1 + polkadotApi.length + parityTruapi.length)}`);
+  const list = byId('mode-packages');
+  expect(list.parentElement).toBe(packages);
+  expect(list.hidden).toBe(true);
+  const items = Array.from(list.children);
+  let at = 0;
+  expectHeader(items[at++], 'Light client');
+  expectInfoRow(items[at++], '@parity/truapi-provider', buildLightClientVersionLabel(), { dense: true });
   if (polkadotApi.length > 0) {
     expectHeader(items[at++], '@polkadot-api');
     for (const pkg of polkadotApi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version);
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
     }
   }
   if (parityTruapi.length > 0) {
     expectHeader(items[at++], '@parity/truapi');
     for (const pkg of parityTruapi) {
-      expectInfoRow(items[at++], pkg.name, pkg.version);
+      expectInfoRow(items[at++], pkg.name, pkg.version, { dense: true });
     }
   }
-  const actions = nth(items, at++);
+  expect(items).toHaveLength(at);
+
+  expect(actions.getAttribute('data-testid')).toBe('mode-diagnostic-actions');
   expect(tags(actions)).toEqual(['BUTTON', 'BUTTON']);
   const [share, debug] = Array.from(actions.children) as [HTMLButtonElement, HTMLButtonElement];
   expect(share.type).toBe('button');
   expect(share.textContent).toBe('Share diagnostic');
   expect(share.title).toBe('Open a new issue on paritytech/dotli pre-filled with these diagnostics');
   expect(debug.type).toBe('button');
-  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Open in debug mode');
+  expect(debug.textContent).toBe(debugOn ? 'Exit debug mode' : 'Debug mode');
   expect(debug.title).toBe(
     debugOn
       ? 'Reload this tab with the TrUAPI debug panel disabled'
       : 'Reload this tab with the TrUAPI debug panel enabled (off again on tab close)',
   );
-  expect(items).toHaveLength(at);
 }
 
 /**
  * The open popover: the shared Popover's surface, whose body holds the
- * settings, with their ids, labels and ARIA state. Their sheet header is the Popover's now, and
- * only a sheet's.
+ * settings panel (its title, the two columns and the footer), with their
+ * ids, labels and ARIA state. A sheet leaves its title to the sheet header.
  */
-function expectPopoverMatches(settings: Settings): void {
+function expectPopoverMatches(settings: Settings, sheet = false): void {
   const popover = byId('mode-popover');
   expect(popover.getAttribute('role')).toBe('dialog');
   expect(popover.getAttribute('aria-label')).toBe('Settings');
@@ -386,20 +421,29 @@ function expectPopoverMatches(settings: Settings): void {
   expect(tags(body)).toEqual(['DIV']);
   const content = nth(body.children, 0);
   expect(content.id).toBe('mode-popover-content');
-  expect(tags(content)).toEqual(['DIV', 'DIV']);
-  const [columns, footer] = Array.from(content.children) as [Element, Element];
+  expect(tags(content)).toEqual(['SECTION']);
+  const panel = nth(content.children, 0);
+  expect(tags(panel)).toEqual(sheet ? ['DIV', 'DIV'] : ['DIV', 'DIV', 'DIV']);
+  const [head, columns, footer] = (sheet ? [undefined, ...panel.children] : Array.from(panel.children)) as [
+    Element | undefined,
+    Element,
+    Element,
+  ];
+  expect(head?.querySelector('h2')?.textContent).toBe(sheet ? undefined : 'Settings');
+  expect(columns.getAttribute('data-testid')).toBe('mode-popover-columns');
   expect(tags(columns)).toEqual(['DIV', 'DIV']);
   expectSettingsColumn(nth(columns.children, 0), settings);
   expectDiagnosticsColumn(nth(columns.children, 1), settings.debugOn);
 
-  expect(tags(footer)).toEqual(['DIV', 'DIV', 'P']);
-  expect(footer.children[0]?.childElementCount).toBe(0);
-  const apply = footer.children[1]?.children[0] as HTMLButtonElement;
-  expect(footer.children[1]?.childElementCount).toBe(1);
-  expect(apply.tagName).toBe('BUTTON');
+  expect(footer.contains(byTestId('mode-apply-row'))).toBe(true);
+  expect(byTestId('mode-apply-row').childElementCount).toBe(1);
+  const apply = applyButton();
   expect(apply.disabled).toBe(true);
-  expect(apply.textContent).toBe('Save & Apply');
-  expect(footer.children[2]?.textContent).toBe('Applying reloads the app. Caches you turn off are cleared.');
+  expect(apply.dataset['variant']).toBe('primary');
+  expect(apply.textContent).toBe('Save and apply');
+  const hint = byTestId('mode-apply-warning');
+  expect(footer.contains(hint)).toBe(true);
+  expect(hint.textContent).toBe('Transport and cache changes reload the app');
 
   const checked = Array.from(document.querySelectorAll<HTMLInputElement>('input[type="radio"]'))
     .filter(input => input.checked)
@@ -472,7 +516,7 @@ describe('The settings popover island', () => {
 
   it('As a mobile user opening it before the settings store is seeded, the sheet can be closed every way and fills in once the store is seeded', async () => {
     // Given: the islands mounted before the host seeded the settings.
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover({ seed: false });
 
     // When
@@ -515,14 +559,17 @@ describe('The settings popover island', () => {
 
     // Then: the content appears without reopening.
     expect(isOpen()).toBe(true);
-    expectPopoverMatches({
-      chain: 'smoldot-direct',
-      network: 'previewnet',
-      cache: DEFAULT_CACHE,
-      enabledNetworks: ['paseo-next-v2', 'previewnet'],
-      sharedWorkerSupported: typeof SharedWorker !== 'undefined',
-      debugOn: false,
-    });
+    expectPopoverMatches(
+      {
+        chain: 'smoldot-direct',
+        network: 'previewnet',
+        cache: DEFAULT_CACHE,
+        enabledNetworks: ['paseo-next-v2', 'previewnet'],
+        sharedWorkerSupported: typeof SharedWorker !== 'undefined',
+        debugOn: false,
+      },
+      true,
+    );
   });
 
   it('As a dotli user opening it with several networks, it shows its ids, labels and ARIA state', async () => {
@@ -573,7 +620,7 @@ describe('The settings popover island', () => {
     });
   });
 
-  it('As a dotli user, a change enables Save & Apply, undoing it disables it again, and Save & Apply applies the draft', async () => {
+  it('As a dotli user, a change enables Save and apply, undoing it disables it again, and Save and apply applies the draft', async () => {
     // Given
     await renderPopover();
     await openPopover();
@@ -586,8 +633,6 @@ describe('The settings popover island', () => {
     // Then
     expect(toggle('dotNS cache').getAttribute('aria-checked')).toBe('false');
     expect(applyButton().disabled).toBe(false);
-    expect(applyButton().hasAttribute('data-primary')).toBe(true);
-    expect(byTestId('mode-apply-warning').hasAttribute('data-visible')).toBe(true);
 
     // When
     toggle('dotNS cache').click();
@@ -595,8 +640,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(applyButton().disabled).toBe(true);
-    expect(applyButton().hasAttribute('data-primary')).toBe(false);
-    expect(byTestId('mode-apply-warning').hasAttribute('data-visible')).toBe(false);
 
     // When
     radio('dotli-network', 'previewnet').click();
@@ -635,7 +678,7 @@ describe('The settings popover island', () => {
 
     // Then
     const checked = document.querySelector<HTMLInputElement>(
-      '[role="radiogroup"][aria-label="Network Transport"] input:checked',
+      '[role="radiogroup"][aria-label="Network transport"] input:checked',
     );
     expect(checked?.value).toBe('rpc-gateway');
     expect(document.activeElement).toBe(checked);
@@ -715,7 +758,6 @@ describe('The settings popover island', () => {
     // Then
     expect(writeText).toHaveBeenCalledWith(window.location.host);
     expect(value.textContent).toBe('Copied');
-    expect(site.hasAttribute('data-copied')).toBe(true);
 
     // When
     vi.advanceTimersByTime(1000);
@@ -723,7 +765,6 @@ describe('The settings popover island', () => {
 
     // Then
     expect(value.textContent).toBe(window.location.host);
-    expect(site.hasAttribute('data-copied')).toBe(false);
 
     // When: a row that is not copyable.
     infoRow('Build').click();
@@ -731,6 +772,92 @@ describe('The settings popover island', () => {
 
     // Then
     expect(writeText).toHaveBeenCalledTimes(1);
+  });
+
+  it('As a keyboard user, a copyable diagnostics row is a focusable Copy Site button, and activating it copies and announces', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    await renderPopover();
+    await openPopover();
+    const site = infoRow('Site');
+    const button = query(site, 'button', HTMLButtonElement);
+    const status = query(site, '[role="status"]');
+    expect(button.getAttribute('aria-label')).toBe('Copy Site');
+    expect(byId(button.getAttribute('aria-describedby') ?? '').textContent).toBe(window.location.host);
+    expect(focusables(byId('mode-popover'))).toContain(button);
+    expect(infoRow('Build').querySelector('button')).toBeNull();
+
+    // When
+    button.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    flush();
+
+    // Then
+    expect(writeText).toHaveBeenCalledWith(window.location.host);
+    expect(status.textContent).toBe('Copied');
+  });
+
+  it('As a dotli user, clicking a copyable row that reads n/a copies nothing', async () => {
+    // Given
+    const writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    actions.extraRows = [['Relay node', 'n/a']];
+    await renderPopover();
+    await openPopover();
+    const row = infoRow('Relay node');
+    const button = query(row, 'button', HTMLButtonElement);
+    expect(query(row, 'code').textContent).toBe('n/a');
+
+    // When
+    button.click();
+    await Promise.resolve();
+
+    // Then
+    expect(writeText).not.toHaveBeenCalled();
+  });
+
+  it('As a dotli user, I open Packages to read the package versions and close it again', async () => {
+    // Given
+    vi.stubGlobal('__POLKADOT_API_VERSIONS__', [{ name: '@polkadot-api/ws-provider', version: '0.4.0' }]);
+    await renderPopover();
+    await openPopover();
+    const toggle = byTestId('mode-packages-toggle');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(byId('mode-packages').hidden).toBe(false);
+    expect(infoRow('@polkadot-api/ws-provider').children[1]?.textContent).toBe('0.4.0');
+
+    // When
+    toggle.click();
+    await settle();
+
+    // Then
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
+
+    // When: opened again, then the popover closed and reopened.
+    toggle.click();
+    await settle();
+    byId('mode-popover-backdrop').click();
+    await settle();
+    await openPopover();
+
+    // Then
+    expect(byTestId('mode-packages-toggle').getAttribute('aria-expanded')).toBe('false');
+    expect(byId('mode-packages').hidden).toBe(true);
   });
 
   it('As a dotli user on trusted providers, the AssetHub row shows the node the client is connected to, in the popover and the shared report', async () => {
@@ -783,7 +910,7 @@ describe('The settings popover island', () => {
         `Site: ${window.location.host}`,
         'Build: 0.0.0 (dev)',
         'Network: ' + (infoRow('Network').querySelector('code')?.textContent ?? ''),
-        'Network Transport: Light Client Per-Tab',
+        'Transport: Light client per tab',
         `Browser: ${infoRow('Browser').querySelector('code')?.textContent ?? ''}`,
         '',
         'Cache:',
@@ -809,7 +936,7 @@ describe('The settings popover island', () => {
     await openPopover();
 
     // When
-    button('Open in debug mode').click();
+    button('Debug mode').click();
 
     // Then
     expect(assign).toHaveBeenCalledWith('https://app.dot.li/path?x=1&debug=true');
@@ -921,7 +1048,7 @@ describe('The settings popover island', () => {
   it('As a mobile user who opened it from the More menu, closing the sheet hands focus to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.
@@ -983,7 +1110,7 @@ describe('The settings popover island', () => {
 
   it('As a mobile user, the full-screen settings sheet is a modal dialog: it traps Tab, keeps focus, locks the page scroll and says it is modal', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     document.body.style.overflow = '';
     await renderPopover();
     byId('mode-button').focus();
@@ -1026,7 +1153,7 @@ describe('The settings popover island', () => {
 
   it('As a phone user, the Settings sheet going away while open unlocks the page', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     await renderPopover();
     await openPopover();
     expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
@@ -1044,7 +1171,7 @@ describe('The settings popover island', () => {
 
   it('As a desktop user, the settings popover is not modal: no aria-modal and no scroll lock, though Tab loops inside', async () => {
     // Given
-    stubViewport(false);
+    stubPhoneViewport(false);
     document.body.style.overflow = '';
     await renderPopover();
 
@@ -1062,7 +1189,7 @@ describe('The settings popover island', () => {
 
   it('As a user who resized the window, the settings open as a sheet or a popover by the width at each opening', async () => {
     // Given: opened wide, then closed.
-    const viewport = stubViewport(false);
+    const viewport = stubPhoneViewport(false);
     await renderPopover();
     await openPopover();
     expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
@@ -1070,7 +1197,7 @@ describe('The settings popover island', () => {
     await settle();
 
     // When: narrowed, then opened again.
-    viewport.narrow = true;
+    viewport.set(true);
     await openPopover();
 
     // Then
@@ -1080,7 +1207,7 @@ describe('The settings popover island', () => {
     expect(press('Tab').defaultPrevented).toBe(true);
 
     // When: widened while open, then closed and opened.
-    viewport.narrow = false;
+    viewport.set(false);
     press('Escape');
     await settle();
     await openPopover();
@@ -1089,10 +1216,24 @@ describe('The settings popover island', () => {
     expect(byId('mode-popover').hasAttribute('aria-modal')).toBe(false);
   });
 
+  it('As a phone user, the settings sheet leaves its title to the sheet header and Save and apply spans the sheet', async () => {
+    // Given
+    stubPhoneViewport(true);
+    await renderPopover();
+
+    // When
+    await openPopover();
+
+    // Then
+    expect(byTestId('popover-sheet-title').textContent).toBe('Settings');
+    expect(byId('mode-popover-content').querySelector('h2')).toBeNull();
+    expect(applyButton().hasAttribute('data-block')).toBe(true);
+  });
+
   it('As a mobile user, the settings sheet I opened from the More menu takes focus, and closing it hands focus back to the More button', async () => {
     // Given: the bar has collapsed the settings button, which CSS hides, so
     // it cannot take focus; the sheet is reached through the More menu.
-    stubViewport(true);
+    stubPhoneViewport(true);
     initSettingsStore();
     await renderTopbar(() => <SettingsPopover />, 1);
     // Unmounted before the body is cleared, which its portals would not survive.

@@ -57,8 +57,6 @@ const TRAILED_METHODS: ReadonlySet<ProtocolRequestMethod> = new Set<ProtocolRequ
   'resolveRootManifest',
 ]);
 
-export type { RemoteChainHalt } from './chain-halted.js';
-
 interface RemoteChainConnection {
   onMessage: (message: JsonRpcMessage) => void;
   /** Told once when the chain behind this connection halts. */

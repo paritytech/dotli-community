@@ -18,5 +18,4 @@ interface ImportMetaEnv {
   readonly VITE_RUNTIME_NETWORK_CONFIG?: string;
   readonly VITE_SANDBOX_CHECKER?: string;
   readonly VITE_SENTRY_DSN?: string;
-  readonly VITE_SS_RELAY_CHAIN?: string;
 }

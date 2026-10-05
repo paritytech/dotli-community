@@ -3,9 +3,11 @@
 
 import { lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
@@ -15,24 +17,18 @@ import s from './SettingsPopover.module.css';
 /** The popover's body, its own chunk. */
 const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
 
-const SETTINGS_ICON_PATH =
-  'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z';
-
-/** The settings gear, on the button and the More menu row. */
-function GearIcon(props: { size: number }): JSX.Element {
+/** The board's settings sliders, on the button and the More menu row. */
+function SlidersIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <circle cx="12" cy="12" r="3" />
-      <path d={SETTINGS_ICON_PATH} />
+      <path d={SLIDERS_PATH} />
     </svg>
   );
 }
@@ -45,7 +41,7 @@ function GearIcon(props: { size: number }): JSX.Element {
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
  * transport choices, the cache switches, "Clear all caches" and the
- * diagnostics. Changes stay a draft until Save & Apply, which saves them and
+ * diagnostics. Changes stay a draft until Save and apply, which saves them and
  * reloads (settings-actions.ts); each opening starts from the saved
  * settings. The button carries its badge (`data-badge`) while the session is
  * not verified (trusted providers).
@@ -86,7 +82,12 @@ export function SettingsPopover(): JSX.Element {
         <TopbarItem
           name="settings"
           label="Settings"
-          icon={() => <GearIcon size={14} />}
+          icon={SlidersIcon}
+          aside={
+            settings()?.verified === false
+              ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
+              : undefined
+          }
           priority={TOPBAR_PRIORITY.settings}
           activate={t.onClick}
         >
@@ -97,7 +98,7 @@ export function SettingsPopover(): JSX.Element {
             title="Settings"
             aria-label="Settings"
           >
-            <GearIcon size={12} />
+            <SlidersIcon />
           </IconButton>
         </TopbarItem>
       )}

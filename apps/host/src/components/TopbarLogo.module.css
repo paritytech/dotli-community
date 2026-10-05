@@ -1,48 +1,101 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The mark sits where an icon would in a bar button, so it is inset like the
+   icons on the right (8 px plus the row's 6 px). */
 .home {
-  grid-column: 1;
+  position: relative;
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   box-sizing: border-box;
-  width: fit-content;
-  margin-left: -14px;
-  padding: 11px 14px;
+  height: var(--h-bar-control);
+  margin: 0;
+  padding: 0 8px;
+  border-radius: var(--r-full);
+  color: var(--chrome-text);
   text-decoration: none;
+}
+.home:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 .mark {
   display: block;
-  width: 22px;
-  height: 22px;
-  overflow: visible;
+  flex: none;
+  width: 18px;
+  height: 20px;
 }
-.mark path {
-  fill: var(--text-strong);
-}
+/* 72 x 13 holds the logotype's own proportions in whole pixels. */
 .brand {
   display: block;
-  width: auto;
+  flex: none;
+  width: 72px;
   height: 13px;
-  color: var(--text-strong);
 }
+/* Out of the flow, over the wordmark's end, so the bar is laid out as it
+   will be once the tag goes. */
 .beta {
-  align-self: center;
-  padding: 2px 6px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  background: var(--fill);
-  color: var(--text-muted);
-  font-size: 0.55rem;
-  font-weight: 600;
-  line-height: 1;
-  letter-spacing: 0.08em;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: inline-flex;
+  align-items: center;
+  height: 12px;
+  padding: 0 4px;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill-strong);
+  color: var(--chrome-text-muted);
+  font: var(--fw-semibold) 8px / 1 var(--font-sans);
+  letter-spacing: var(--ls-caps);
   text-transform: uppercase;
+  pointer-events: none;
 }
-@media (max-width: 560px) {
-  .brand,
+.sign {
+  display: none;
+}
+/* Narrow pills: the mark alone, so the wordmark doesn't squeeze the address
+   and push actions into More. The tag shrinks to β in the corner, with room
+   kept on the right so it clears the mark. */
+@media (max-width: 620px) {
+  .home {
+    padding-right: 12px;
+  }
+  /* Out of sight but still the link's accessible name. */
+  .brand {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
   .beta {
+    right: 0;
+    justify-content: center;
+    width: 12px;
+    padding: 0;
+    /* Uppercase would turn β into a capital that reads as a B. */
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .word {
     display: none;
+  }
+  .sign {
+    display: inline;
+  }
+}
+/* Phones: the mark alone, centred in a 44 px box like an icon (the board's
+   .tb-logo). */
+@media (max-width: 560px) {
+  .home {
+    justify-content: center;
+    width: var(--h-control);
+    padding: 0;
+  }
+  .mark {
+    width: 22px;
+    height: 24px;
   }
 }

@@ -31,13 +31,23 @@ if ('serviceWorker' in navigator) {
       action: {
         label: 'Reload',
         onClick: () => {
-          // Reload once the new SW is in control to avoid serving a mix of
-          // old and new chunks during the swap.
-          wb.addEventListener('controlling', () => {
+          const reload = (): void => {
             markContinuation('app_update');
             window.location.reload();
+          };
+          void navigator.serviceWorker.getRegistration().then(registration => {
+            // Another tab's Reload may have applied the update already. Its
+            // activation took this page over too, so nothing waits now and no
+            // `controlling` would ever come.
+            if ((registration?.waiting ?? null) === null) {
+              reload();
+              return;
+            }
+            // Reload once the new SW is in control to avoid serving a mix of
+            // old and new chunks during the swap.
+            wb.addEventListener('controlling', reload);
+            wb.messageSkipWaiting();
           });
-          wb.messageSkipWaiting();
         },
       },
     });

@@ -9,17 +9,25 @@ import { createSyncStore, shallowEqual, type ReadableStore } from './create-stor
  */
 export type LoadingScreenPhase = 'active' | 'dismissing' | 'gone';
 
+/**
+ * A piece of the step line: plain text, or the name being loaded, which the
+ * screen draws with its TLD dimmed.
+ */
+export type StepPart = string | { host: string; tld: string };
+
 /** What the loading screen shows. Written only by `loading-controller.ts`. */
 export interface LoadingState {
   /** The bar, 0 to 100. Fractional: the shown number is rounded. */
   progress: number;
-  /** The headline as it stands this frame, part-typed while it turns over. */
-  statusText: string;
-  /** The headline dims while it turns over and is 1 otherwise. */
-  statusOpacity: number;
+  /** The step line, the running stage's opening sentence. */
+  step: readonly StepPart[];
+  /** The explanation line as it stands this frame, part-typed while it turns over. */
+  explanation: string;
+  /** The explanation dims while it turns over and is 1 otherwise. */
+  explanationOpacity: number;
   /** The whole sentence for screen readers, set once per line. */
   srText: string;
-  /** The stall warning under the headline, or null when hidden. */
+  /** The stall warning under the bar, or null when hidden. */
   warning: string | null;
   phase: LoadingScreenPhase;
 }
@@ -30,13 +38,14 @@ const loading = createSyncStore<LoadingState>(
   'loading',
   {
     progress: 0,
-    statusText: 'Reaching out',
-    statusOpacity: 1,
+    step: ['Reaching out'],
+    explanation: '',
+    explanationOpacity: 1,
     srText: '',
     warning: null,
     phase: 'active',
   },
-  // The typing loop writes every frame; an unchanged frame notifies nobody.
+  // The typing loop writes every frame, and an unchanged frame notifies nobody.
   { equals: shallowEqual },
 );
 

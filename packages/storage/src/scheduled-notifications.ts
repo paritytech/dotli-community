@@ -254,10 +254,6 @@ export function listAll(): Promise<ScheduledNotificationRecord[]> {
   return collect('listAll', store => store.openCursor());
 }
 
-export function listForProduct(productId: string): Promise<ScheduledNotificationRecord[]> {
-  return collect('listForProduct', store => store.index(BY_PRODUCT_ID).openCursor(IDBKeyRange.only(productId)));
-}
-
 /**
  * Delete every record whose `scheduledAt` is older than `now - maxAgeMs`.
  * Returns the number of records removed.

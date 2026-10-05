@@ -75,6 +75,7 @@
   box-sizing: border-box;
   background: var(--td-bg);
   color: var(--td-fg);
+  color-scheme: dark;
   border-top: 1px solid var(--td-line);
   z-index: 950;
   font-family: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;

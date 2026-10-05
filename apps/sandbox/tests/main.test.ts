@@ -9,11 +9,12 @@ import type * as ContentModule from '@dotli/content';
 const mocks = vi.hoisted(() => ({
   captureException: vi.fn(),
   fetchArchive: vi.fn(),
+  showNotification: vi.fn(),
 }));
 
 vi.mock('@dotli/ui/styles.css', () => ({}));
 vi.mock('@dotli/ui', () => ({
-  showNotification: vi.fn(),
+  showNotification: mocks.showNotification,
   prefetchOverlays: vi.fn(),
   showError: vi.fn(),
   showPasswordPrompt: vi.fn(),
@@ -131,5 +132,31 @@ describe('sandbox load failure reporting', () => {
       expect.objectContaining({ flow: 'content', step: 'contract_params' }),
     );
     expect(mocks.fetchArchive).not.toHaveBeenCalled();
+  });
+});
+
+describe('sandbox reload prompts', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('As a sandbox user, a part of the app that fails to load offers a reload in an error toast', async () => {
+    // Given
+    const posted = await bootSandbox({ ...validContract, [SANDBOX_CONTRACT_PARAMS.v]: '999' });
+    await vi.waitFor(() => {
+      expect(doneMessage(posted)).toBeDefined();
+    });
+
+    // When
+    window.dispatchEvent(new Event('vite:preloadError'));
+
+    // Then
+    expect(mocks.showNotification).toHaveBeenCalledWith(
+      expect.objectContaining({ label: 'Asset failed to load', tone: 'err', dismissMs: 0 }),
+    );
   });
 });

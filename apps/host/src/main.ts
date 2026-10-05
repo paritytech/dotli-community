@@ -23,6 +23,7 @@ import '@dotli/ui/styles.css';
 import { captureException, m, recordExpected, setResolutionId, spans as S } from '@dotli/metrics';
 import {
   SETTINGS_GLYPH,
+  RELOAD_GLYPH,
   openSettings,
   showError,
   showErrorPage,
@@ -48,7 +49,7 @@ import {
   setChainsButtonVisible,
   wipeOriginState,
   armTopbarAutoHide,
-  pinTopbarVisible,
+  setProductContentShown,
   setVerificationShieldState,
   showLocalhostPill,
   showProductPill,
@@ -179,6 +180,7 @@ window.addEventListener('vite:preloadError', event => {
   showNotification({
     label: 'Asset failed to load',
     text: 'A new version may have been deployed. Reload to get the latest.',
+    tone: 'err',
     dismissMs: 0,
     action: {
       label: 'Reload',
@@ -204,11 +206,10 @@ if (!isMobileDevice()) {
       text: 'Full experience with native performance',
       deeplink: import.meta.env.VITE_DESKTOP_DOWNLOAD_URL ?? 'https://polkadot.com/get-started/polkadot-for-desktop',
       icon:
-        '<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
         '<rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>' +
         '<line x1="8" y1="21" x2="16" y2="21"/>' +
         '<line x1="12" y1="17" x2="12" y2="21"/></svg>',
-      iconBackground: '#000',
       dismissMs: 0,
       browserNotification: false,
       onDismiss: () => {
@@ -352,16 +353,14 @@ function parseDotLabel(): string | null {
 // arms the topbar auto-hide only after that point.
 let shieldVerified = false;
 
-// Wire auth-state changes to topbar auto-hide. Login starts the hide timer
-// once the shield is verified, logout pins the topbar visible.
+// A login restarts the hide timer once the shield is verified, so the bar
+// folds a moment after sign-in closes. Signed out, the bar folds all the
+// same, as the board's does: sign-in stays one reveal away.
 function bindTopbarAutoHide(): void {
   window.addEventListener('dotli:authenticated', () => {
     if (shieldVerified) {
       armTopbarAutoHide();
     }
-  });
-  window.addEventListener('dotli:logged-out', () => {
-    pinTopbarVisible();
   });
 }
 
@@ -793,8 +792,9 @@ async function applyUrlSettings(): Promise<void> {
 
   if (sharedWorkerFallback) {
     showNotification({
-      label: 'Light Client Shared unavailable',
-      text: "This browser doesn't support Light Client Shared. Falling back to Light Client Per-Tab.",
+      label: 'Light client shared unavailable',
+      text: "This browser doesn't support Light client shared. Falling back to Light client per tab.",
+      tone: 'warn',
       dismissMs: 5_000,
     });
   }
@@ -1105,6 +1105,7 @@ async function main(): Promise<void> {
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(previewTargetUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    setProductContentShown(true);
     const nextSearch = new URLSearchParams({
       url: previewTargetUrl,
     });
@@ -1142,6 +1143,7 @@ async function main(): Promise<void> {
     setChatCapability(host, true);
     const { renderIframe } = await bridgeModulePromise;
     await renderIframe(localhostUrl, host, productIdOverride !== undefined ? { productId: productIdOverride } : {});
+    setProductContentShown(true);
 
     shieldVerified = true;
     bindTopbarAutoHide();
@@ -1805,6 +1807,7 @@ async function main(): Promise<void> {
       if (resolveFailed) {
         return;
       }
+      setProductContentShown(outcome === 'loaded');
       if (outcome === 'loaded') {
         log.event('Content loaded', { flow: 'content' });
         endJourney();
@@ -2114,6 +2117,7 @@ async function main(): Promise<void> {
         error.message,
         {
           label: RELOAD_BTN_LABEL,
+          icon: RELOAD_GLYPH,
           onClick: () => {
             markContinuation('reload_button');
             window.location.reload();
@@ -2206,6 +2210,7 @@ async function main(): Promise<void> {
         actions: [
           {
             label: RELOAD_BTN_LABEL,
+            icon: RELOAD_GLYPH,
             primary: !failoverIsPrimary,
             onClick: reloadForRecovery,
           },
@@ -2234,6 +2239,7 @@ main().catch((err: unknown) => {
   const error = describeError(err, getBackend() !== 'rpc-gateway');
   showError(error.title, error.message, {
     label: RELOAD_BTN_LABEL,
+    icon: RELOAD_GLYPH,
     onClick: () => {
       markContinuation('reload_button');
       window.location.reload();

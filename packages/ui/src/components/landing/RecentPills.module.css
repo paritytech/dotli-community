@@ -3,16 +3,23 @@
 
 .recent {
   box-sizing: border-box;
-  margin: 0 0 2rem;
+  margin: var(--sp-10) 0 0;
   padding: 0;
+}
+
+/* SectionLabel in the page's colours, flush with the pills. */
+.heading {
+  padding: 0;
+  color: var(--text-secondary);
 }
 
 .list {
   display: flex;
   flex-wrap: wrap;
+  gap: var(--sp-2);
   justify-content: center;
   box-sizing: border-box;
-  margin: -8px 0;
+  margin: var(--sp-3) 0 0;
   padding: 0;
 }
 
@@ -25,69 +32,68 @@
   display: inline-flex;
   align-items: center;
   box-sizing: border-box;
-  padding: 8px 4px;
+  height: var(--h-row-sm);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-full);
+  background: var(--surface);
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  font-size: var(--fs-small);
+  white-space: nowrap;
   text-decoration: none;
+  color: var(--text-strong);
   -webkit-touch-callout: none;
   user-select: none;
+  transition: background var(--dur-fast);
+}
+
+.pill:hover {
+  background: var(--fill-strong);
 }
 
 .label {
-  box-sizing: border-box;
-  padding: 6px 14px;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  background: var(--surface);
-  font-size: 0.75rem;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  transition:
-    border-color 0.15s,
-    background 0.15s;
-}
-
-.pill:hover .label {
-  border-color: var(--border-strong);
-  background: var(--fill);
+  font-weight: var(--fw-medium);
 }
 
 .tld {
-  color: var(--text-faint);
+  font-weight: var(--fw-regular);
+  color: var(--text-secondary);
 }
 
 .remove {
   position: absolute;
-  top: -5px;
-  right: -9px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  top: calc(-1 * var(--sp-2));
+  right: calc(-1 * var(--sp-2));
+  display: grid;
+  place-items: center;
   box-sizing: border-box;
-  width: 32px;
-  height: 32px;
+  width: var(--sp-5);
+  height: var(--sp-5);
   margin: 0;
   padding: 0;
-  border: 0;
-  background: none;
-  color: var(--text-secondary);
+  border: 2px solid var(--bg-page);
+  border-radius: var(--r-full);
+  background: var(--fill-strong);
+  color: var(--text-strong);
   cursor: pointer;
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s;
+  transition:
+    opacity var(--dur-fast),
+    background var(--dur-fast);
 }
 
-/* Opaque and ringed in the page color, because it overlaps the pill's corner. */
-.remove::before {
+/* CloseIcon at 10 px, its stroke heavier so it holds at that size. */
+.remove svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
+}
+
+/* The disc is small, so the touch target reaches 32 px around it. */
+.remove::after {
   content: '';
   position: absolute;
-  inset: 8px;
-  border: 1px solid var(--bg-page);
-  border-radius: 50%;
-  background: var(--surface-2);
-  transition: background 0.15s;
-}
-
-.remove-icon {
-  position: relative;
+  inset: -8px;
 }
 
 .item:hover .remove,
@@ -98,16 +104,5 @@
 }
 
 .remove:hover {
-  color: var(--text-strong);
-}
-
-/* No opaque token is this shade, so the disc mixes toward the text color. */
-.remove:hover::before {
-  background: color-mix(in srgb, var(--surface-2) 85%, var(--text-strong));
-}
-
-@media (hover: none) {
-  .remove::before {
-    inset: 6px;
-  }
+  background: var(--border-subtle);
 }

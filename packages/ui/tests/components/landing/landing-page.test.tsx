@@ -134,12 +134,12 @@ describe('landing page island', () => {
     // Then the loading screen is gone
     expect(loading.getLoadingState().phase).toBe('gone');
     expect(must(byId('landing-slot'), 'slot').firstElementChild?.getAttribute('data-testid')).toBe('landing');
-    // The page renders its own auth and theme buttons, whose menus it
-    // portals into the body, so every id is there once.
+    // The page renders its own auth button, whose menu it portals into the
+    // body, so every id is there once.
     expect(
       [...must(byId('landing-auth'), '#landing-auth').children].map(el => (el as HTMLElement).dataset['item']),
-    ).toEqual(['auth', 'theme']);
-    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
+    ).toEqual(['auth']);
+    for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
     expect(sentry.captureException).not.toHaveBeenCalled();
@@ -172,7 +172,7 @@ describe('landing page island', () => {
 
     // Then
     expect(document.querySelector('[data-testid="landing"]')).not.toBeNull();
-    for (const id of ['auth-button', 'theme-toggle', 'landing-auth-button', 'landing-theme-toggle']) {
+    for (const id of ['auth-button', 'theme-toggle', 'landing-auth-button']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
   });

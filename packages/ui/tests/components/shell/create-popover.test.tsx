@@ -6,6 +6,7 @@ import { createPopover, type PopoverMode, type PopoverOptions } from '../../../s
 import { recordChainsButtonVisible, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
 import { renderComponent, resetStores, settle } from '../../helpers/solid.js';
 import { byId, must } from '../../support.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 type Popover = ReturnType<typeof createPopover>;
 
@@ -165,6 +166,7 @@ afterEach(() => {
   resetStores();
   document.body.style.overflow = '';
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('createPopover, in every mode', () => {
@@ -271,34 +273,6 @@ describe('createPopover, in every mode', () => {
     expect(document.activeElement).toBe(document.body);
 
     // When
-    press('Escape');
-    await settle();
-
-    // Then
-    expect(popover.open()).toBe(false);
-    expect(document.activeElement).toBe(byId('trigger'));
-  });
-
-  it('As a keyboard user, Escape leaves the popover open, and focus alone, while shouldHandleEscape says something inside consumes it', async () => {
-    // Given: something inside (a row's dropdown) is open, then closes.
-    let inner = true;
-    const popover = renderPopover('popover', {
-      shouldHandleEscape: () => !inner,
-    });
-    await openPopover(popover);
-    byId('last').focus();
-
-    // When
-    const consumed = press('Escape');
-    await settle();
-
-    // Then
-    expect(popover.open()).toBe(true);
-    expect(document.activeElement).toBe(byId('last'));
-    expect(consumed.defaultPrevented).toBe(false);
-
-    // When
-    inner = false;
     press('Escape');
     await settle();
 
@@ -628,6 +602,24 @@ describe('createPopover, popover mode (Radix Popover, non-modal)', () => {
     expect(document.activeElement).toBe(document.body);
   });
 
+  it.each([
+    { phone: true, reached: false, title: 'on a phone, it never reaches the page' },
+    { phone: false, reached: true, title: 'on a wide screen, it reaches the page' },
+  ])('As a user, a mouse click outside a sheet-capable popover: $title', async ({ phone, reached: expected }) => {
+    // Given
+    stubPhoneViewport(phone);
+    const popover = renderPopover('popover', { sheet: true });
+    await openPopover(popover);
+
+    // When
+    const { reached } = pointerClick(byId('outside'));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(false);
+    expect(reached).toBe(expected);
+  });
+
   it('As a keyboard user, closing the popover from inside it hands focus back to the trigger', async () => {
     // Given
     const popover = renderPopover('popover');
@@ -873,6 +865,30 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     expect(document.activeElement).toBe(byId('surface'));
   });
 
+  it('As a mouse user, a long outside press on a menu still has its click swallowed', async () => {
+    // Given
+    const popover = renderPopover('menu');
+    await openPopover(popover);
+    vi.useFakeTimers();
+    try {
+      byId('outside').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'mouse' }));
+
+      // When: held for a second, then released.
+      vi.advanceTimersByTime(1000);
+      byId('outside').dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerType: 'mouse' }));
+      let reached = false;
+      byId('outside').addEventListener('click', () => {
+        reached = true;
+      });
+      byId('outside').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+
+      // Then
+      expect(reached).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('As a user, an outside pointerdown whose click never comes does not swallow a later click', async () => {
     // Given: a press outside that turns into a scroll, so no click follows.
     const popover = renderPopover('menu');
@@ -900,6 +916,44 @@ describe('createPopover, menu mode (Radix DropdownMenu, modal)', () => {
     // Then
     expect(popover.open()).toBe(false);
     expect(document.activeElement).toBe(byId('trigger'));
+  });
+
+  it('As a phone user, a menu with sheet opens as a sheet, slides out as one, and the next opening follows the viewport', async () => {
+    // Given
+    const viewport = stubPhoneViewport(true);
+    const popover = renderPopover('menu', { sheet: true });
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(true);
+
+    // When: the window widens, then the menu closes
+    viewport.set(false);
+    popover.setOpen(false);
+    await settle();
+
+    // Then: it closes as the sheet it opened as
+    expect(popover.sheet()).toBe(true);
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(false);
+  });
+
+  it('As a phone user, a menu without sheet still drops as a menu', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const popover = renderPopover('menu');
+
+    // When
+    await openPopover(popover);
+
+    // Then
+    expect(popover.sheet()).toBe(false);
   });
 });
 
@@ -1217,6 +1271,25 @@ describe('createPopover, touch outside (Radix usePointerDownOutside)', () => {
     return { click, reached };
   }
 
+  it.each([
+    { phone: true, reached: false, title: 'on a phone, it never reaches the page' },
+    { phone: false, reached: true, title: 'on a wide screen, it reaches the page' },
+  ])('As a touch user, a tap outside a sheet-capable popover: $title', async ({ phone, reached: expected }) => {
+    // Given
+    stubPhoneViewport(phone);
+    const popover = renderPopover('popover', { sheet: true });
+    await openPopover(popover);
+
+    // When
+    touchDown(byId('outside'));
+    const { reached } = tap(byId('outside'));
+    await settle();
+
+    // Then
+    expect(popover.open()).toBe(false);
+    expect(reached).toBe(expected);
+  });
+
   it.each<PopoverMode>(['popover', 'menu', 'dialog'])(
     'As a phone user, a touch outside the %s closes it only once it is a tap',
     async mode => {
@@ -1296,6 +1369,26 @@ describe('createPopover, touch outside (Radix usePointerDownOutside)', () => {
 
     // Then
     expect(reached).toBe(true);
+  });
+
+  it('As an assistive-technology user, a click that arrives after a tap closed the menu and a moment passed is not swallowed', async () => {
+    // Given: an outside tap closed the menu and no click followed it.
+    const popover = renderPopover('menu');
+    await openPopover(popover);
+    vi.useFakeTimers();
+    try {
+      touchDown(byId('outside'));
+      touchUp(byId('outside'));
+
+      // When: a moment passes, then a click lands on the page.
+      vi.advanceTimersByTime(1000);
+      const { reached } = tap(byId('outside'));
+
+      // Then
+      expect(reached).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('As a phone user, a touch outside the popover that becomes a scroll leaves it open', async () => {

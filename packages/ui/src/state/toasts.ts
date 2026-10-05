@@ -7,6 +7,7 @@
 
 import { captureException } from '@dotli/metrics';
 import { createSyncStore, shallowEqual, type ReadableStore } from './create-store.js';
+import type { StatusTone } from '../components/primitives/StatusDot.js';
 
 export interface ToastAction {
   label: string;
@@ -18,7 +19,8 @@ export interface ToastInput {
   label: string;
   deeplink?: string;
   icon: string;
-  iconBackground?: string;
+  /** What the toast reports, which tints its icon tile. Default: info. */
+  tone?: StatusTone;
   /** 0 = persistent. */
   dismissMs: number;
   onDismiss?: () => void;
@@ -31,7 +33,7 @@ export interface ToastEntry {
   label: string;
   deeplink?: string;
   icon: string;
-  iconBackground?: string;
+  tone: StatusTone;
   action?: ToastAction;
   leaving: boolean;
 }
@@ -138,13 +140,11 @@ export function pushToast(input: ToastInput): number {
     text: input.text,
     label: input.label,
     icon: input.icon,
+    tone: input.tone ?? 'info',
     leaving: false,
   };
   if (input.deeplink !== undefined) {
     entry.deeplink = input.deeplink;
-  }
-  if (input.iconBackground !== undefined) {
-    entry.iconBackground = input.iconBackground;
   }
   if (input.action !== undefined) {
     entry.action = input.action;

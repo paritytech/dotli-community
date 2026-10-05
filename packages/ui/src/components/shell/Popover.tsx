@@ -16,22 +16,21 @@ import {
 } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
-import { startDrag } from '../drag.js';
 import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
-import { createPopover, isSheetViewport } from './create-popover.js';
+import { isPhoneViewport } from '../../phone-viewport.js';
+import { Spinner } from '../primitives/Spinner.js';
+import { InSheet } from '../sheet/in-sheet.js';
+import { SheetHead } from '../sheet/SheetHead.js';
+import frame from '../sheet/Sheet.module.css';
+import { createPopover } from './create-popover.js';
 import s from './Popover.module.css';
 
 /** How long the content stays after a close: the surface's exit transition. */
 export const EXIT_MS = 220;
-export const SHEET_EXIT_MS = 280;
+/** A sheet's slide, `--dur-morph` in components/sheet/Sheet.module.css. */
+export const SHEET_EXIT_MS = 460;
 
-/** A swipe past this share of the sheet's height closes it. */
-const SWIPE_CLOSE_FRACTION = 0.3;
-/** So does one faster than this, in px/ms... */
-const SWIPE_CLOSE_SPEED = 0.5;
-/** ...that went at least this far, so a tap's jitter is no flick. */
-const SWIPE_FLICK_MIN_PX = 24;
 /** How long a mouse rests on the trigger before an `openOnHover` popover shows. */
 const HOVER_SHOW_MS = 200;
 /** How long after the mouse leaves before it hides. */
@@ -63,8 +62,11 @@ export interface PopoverProps {
   class?: string | undefined;
   /** Dim the page under the anchored surface; a press on it closes. */
   backdrop?: boolean;
-  /** `end`: under the topbar at its right edge. `trigger`: under the trigger. */
-  anchor?: 'end' | 'trigger';
+  /**
+   * Under the topbar at its right edge, or with `trigger` at the trigger's
+   * left edge.
+   */
+  anchor?: 'trigger';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   closeOnBlur?: boolean;
@@ -84,11 +86,6 @@ interface PopoverContextValue {
   /** The surface's id, for ids inside the content. */
   id: string;
   close: () => void;
-  /**
-   * Ask `handler` first on Escape: true means it took the key, and the
-   * popover stays open. Removed with the content.
-   */
-  onEscape: (handler: () => boolean) => void;
   /** Whether this opening is a bottom sheet. */
   sheet: Accessor<boolean>;
   /**
@@ -113,26 +110,33 @@ export function usePopover(): PopoverContextValue {
  * A shell popover: the trigger, and in the body a surface (`role="dialog"`)
  * with an optional backdrop. The surface opens anchored (under the topbar at
  * its right edge, or under its trigger) or, when the viewport matches
- * SHEET_QUERY as it opens, as a modal bottom sheet. The content is a lazy
- * component in its own chunk: preloaded when the browser is idle, mounted
- * when the popover opens, and unmounted once it has closed and faded out,
- * so each opening starts afresh. Content that cannot load or throws is
- * reported once and closes the popover; the next opening loads it again.
- * Focus and dismissal are createPopover's (`popover` mode anchored,
- * `dialog` mode as a sheet).
+ * PHONE_QUERY (phone-viewport.ts) as it opens, as a modal bottom sheet
+ * (components/sheet). The content is a lazy component in its own chunk:
+ * preloaded when the browser is idle, mounted when the popover opens, and
+ * unmounted once it has closed and faded out, so each opening starts
+ * afresh. Content that cannot load or throws is reported once and closes
+ * the popover, and the next opening loads it again. Focus and dismissal are
+ * createPopover's (`popover` mode anchored, `dialog` mode as a sheet).
  *
- * The surface carries its state as `data-open`, `data-sheet`, `data-peek`
+ * The surface carries its state as `data-open`, `data-sheet`, `data-handoff`
+ * (a sheet taking another's place, createPopover's `handedOff`), `data-peek`
  * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
- * `data-dragging` (while a sheet is being dragged),
- * and the backdrop `data-open` and `data-sheet`. A consumer's class on the
- * surface may react to them. Content that lays out differently in a sheet
- * reads `usePopover().sheet()` and marks its own elements.
+ * `data-dragging` (while a sheet is being dragged), and the backdrop
+ * `data-open`, `data-sheet` and `data-handoff`. A consumer's class on the
+ * surface may react to them. The surface draws the glass, and a Surface in
+ * the content reads whether it is in a sheet itself (InSheet). Other content
+ * that lays out differently in a sheet reads `usePopover().sheet()` and marks
+ * its own elements.
  */
 export function Popover(props: PopoverProps): JSX.Element {
   let triggerEl: HTMLElement | undefined;
   let surfaceEl: HTMLDivElement | undefined;
   const Content = untrack(() => props.content);
-  /** Whether the current (or last) opening is a sheet. */
+  /**
+   * Whether the current (or last) opening or peek is a sheet. Not
+   * createPopover's `sheet()`: a peek never opens it, so that one still
+   * holds the last opening's form while a peek shows anchored.
+   */
   const [sheet, setSheet] = createSignal(false);
   /** The content is in the surface: from an opening to the end of its close. */
   const [mounted, setMounted] = createSignal(false);
@@ -140,22 +144,21 @@ export function Popover(props: PopoverProps): JSX.Element {
   const [opening, setOpening] = createSignal(0);
   /** Shown while a mouse rests on the trigger (`openOnHover`), not opened. */
   const [peek, setPeek] = createSignal(false);
-  /** The anchored surface's place under its trigger (`anchor="trigger"`). */
-  const [place, setPlace] = createSignal<{ top: number; left: number } | null>(null);
+  /** The trigger's left edge, the anchored surface's (`anchor="trigger"`). */
+  const [left, setLeft] = createSignal<number | null>(null);
   const measure = (): void => {
-    const rect = triggerEl?.getBoundingClientRect();
-    setPlace(rect === undefined ? null : { top: rect.bottom + 6, left: rect.left });
+    setLeft(triggerEl?.getBoundingClientRect().left ?? null);
   };
   const anchoredToTrigger = (): boolean => props.anchor === 'trigger' && !sheet();
   /** A disclosure shown anchored: plain content, not a dialog. */
   const plain = (): boolean => props.disclosure === true && !sheet();
-  const escapeHandlers = new Set<() => boolean>();
   let unmountTimer: ReturnType<typeof setTimeout> | undefined;
 
   const popover = createPopover({
     mode: () => (untrack(sheet) ? 'dialog' : 'popover'),
     trigger: () => triggerEl,
     surface: () => surfaceEl,
+    sheet: true,
     // Read at each opening, and on each key.
     get closeOnBlur() {
       return props.closeOnBlur === true;
@@ -163,24 +166,37 @@ export function Popover(props: PopoverProps): JSX.Element {
     get trapFocus() {
       return props.trapFocus !== false;
     },
-    shouldHandleEscape: () => ![...escapeHandlers].some(handler => handler()),
     onClose: () => {
       props.onOpenChange?.(false);
     },
   });
 
-  const openNow = (): void => {
+  /**
+   * Mount the content for an opening or a peek about to show, as a sheet or
+   * anchored, and `afresh` as a new opening's.
+   */
+  const show = (asSheet: boolean, afresh: boolean): void => {
     clearTimeout(unmountTimer);
-    setSheet(isSheetViewport());
+    setSheet(asSheet);
     if (props.anchor === 'trigger') {
       measure();
     }
-    // A peek's content is this opening's: a click on a peeking explainer
-    // keeps it.
-    if (!untrack(peek)) {
+    if (afresh) {
       setOpening(n => n + 1);
     }
     setMounted(true);
+  };
+  /** Unmount the content once the surface's exit, `ms` long, has played. */
+  const scheduleUnmount = (ms: number): void => {
+    clearTimeout(unmountTimer);
+    unmountTimer = setTimeout(() => {
+      setMounted(false);
+    }, ms);
+  };
+  const openNow = (): void => {
+    // A peek's content is this opening's: a click on a peeking explainer
+    // keeps it.
+    show(isPhoneViewport(), !untrack(peek));
     popover.setOpen(true);
   };
   const close = (): void => {
@@ -222,13 +238,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     if (open || !untrack(mounted)) {
       return;
     }
-    clearTimeout(unmountTimer);
-    unmountTimer = setTimeout(
-      () => {
-        setMounted(false);
-      },
-      untrack(sheet) ? SHEET_EXIT_MS : EXIT_MS,
-    );
+    scheduleUnmount(untrack(sheet) ? SHEET_EXIT_MS : EXIT_MS);
   });
   onCleanup(() => {
     clearTimeout(unmountTimer);
@@ -259,15 +269,7 @@ export function Popover(props: PopoverProps): JSX.Element {
     clearTimeout(hoverTimer);
     hoverTimer = setTimeout(() => {
       if (!untrack(popover.open)) {
-        clearTimeout(unmountTimer);
-        setSheet(false);
-        if (props.anchor === 'trigger') {
-          measure();
-        }
-        if (!untrack(mounted)) {
-          setOpening(n => n + 1);
-        }
-        setMounted(true);
+        show(false, !untrack(mounted));
         setPeek(true);
       }
     }, HOVER_SHOW_MS);
@@ -285,10 +287,7 @@ export function Popover(props: PopoverProps): JSX.Element {
       }
       setPeek(false);
       if (!untrack(popover.open)) {
-        clearTimeout(unmountTimer);
-        unmountTimer = setTimeout(() => {
-          setMounted(false);
-        }, EXIT_MS);
+        scheduleUnmount(EXIT_MS);
       }
     }, HOVER_HIDE_MS);
   };
@@ -326,12 +325,6 @@ export function Popover(props: PopoverProps): JSX.Element {
       return props.id;
     },
     close,
-    onEscape: handler => {
-      escapeHandlers.add(handler);
-      onCleanup(() => {
-        escapeHandlers.delete(handler);
-      });
-    },
     sheet,
     open: popover.open,
   };
@@ -343,27 +336,26 @@ export function Popover(props: PopoverProps): JSX.Element {
         <Show when={props.backdrop === true || sheet()}>
           <div
             onClick={close}
-            class={s['backdrop']}
+            class={sheet() ? frame['scrim'] : s['backdrop']}
             id={`${props.id}-backdrop`}
             data-testid="popover-backdrop"
             data-open={popover.open() ? '' : undefined}
             data-sheet={sheet() ? '' : undefined}
+            data-handoff={popover.handedOff() ? '' : undefined}
           />
         </Show>
         <div
           ref={el => {
             surfaceEl = el;
           }}
-          class={[s['surface'], props.class]}
+          class={[frame['anchored'], s['surface'], frame['sheet'], props.class]}
+          data-chrome=""
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
+          data-handoff={popover.handedOff() ? '' : undefined}
           data-peek={peek() ? '' : undefined}
           data-anchor={anchoredToTrigger() ? 'trigger' : undefined}
-          style={
-            anchoredToTrigger() && place() !== null
-              ? { top: `${String(place()?.top)}px`, left: `${String(place()?.left)}px` }
-              : undefined
-          }
+          style={anchoredToTrigger() && left() !== null ? { left: `${String(left())}px` } : undefined}
           onPointerEnter={() => {
             clearTimeout(hoverTimer);
           }}
@@ -375,21 +367,37 @@ export function Popover(props: PopoverProps): JSX.Element {
           tabindex={plain() ? undefined : '-1'}
         >
           <Show when={sheet()}>
-            <SheetHeader title={props.title} surface={() => surfaceEl} close={close} />
+            <SheetHead
+              title={props.title}
+              surface={() => surfaceEl}
+              onDismiss={close}
+              closeLabel={`Close ${props.title}`}
+              testId="popover-sheet-header"
+              titleTestId="popover-sheet-title"
+              closeTestId="popover-sheet-close"
+            />
           </Show>
-          <div data-testid="popover-body">
+          <div class={sheet() ? frame['body'] : undefined} data-testid="popover-body">
             {/* Keyed on the opening, and taking it as a parameter (Show calls
                 only a child that declares one), so each opening mounts the
                 content afresh, a reopening during the fade-out included. */}
             <Show when={mounted() ? opening() : 0} keyed>
               {(_opening: number) => (
                 <PopoverContext value={context}>
-                  <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
-                    <Loading fallback={<div class={s['loading']} data-testid="popover-loading" aria-hidden="true" />}>
-                      <Content />
-                      <FocusWhenLoaded surface={() => surfaceEl} />
-                    </Loading>
-                  </Errored>
+                  <InSheet value={sheet}>
+                    <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
+                      <Loading
+                        fallback={
+                          <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
+                            <Spinner class={s['spinner']} />
+                          </div>
+                        }
+                      >
+                        <Content />
+                        <FocusWhenLoaded surface={() => surfaceEl} />
+                      </Loading>
+                    </Errored>
+                  </InSheet>
                 </PopoverContext>
               )}
             </Show>
@@ -414,81 +422,6 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
     },
   );
   return null;
-}
-
-/**
- * The sheet's header: a grabber, the title and a close button. A drag down
- * that starts on it moves the sheet with the pointer; released past 30% of
- * the sheet's height, or in a flick, it closes the sheet, and the sheet
- * springs back otherwise.
- */
-function SheetHeader(props: { title: string; surface: () => HTMLElement | undefined; close: () => void }): JSX.Element {
-  let header: HTMLDivElement | undefined;
-  let closeButton: HTMLButtonElement | undefined;
-  let stop: (() => void) | undefined;
-  onCleanup(() => stop?.());
-
-  const onPointerDown = (down: PointerEvent): void => {
-    const surface = props.surface();
-    if (header === undefined || surface === undefined || down.button !== 0) {
-      return;
-    }
-    // Not from the close button: its own click closes.
-    if (closeButton?.contains(down.target as Node) === true) {
-      return;
-    }
-    const startY = down.clientY;
-    const startTime = performance.now();
-    let dy = 0;
-    surface.setAttribute('data-dragging', '');
-    stop = startDrag(header, down, {
-      move: ev => {
-        dy = Math.max(0, ev.clientY - startY);
-        surface.style.transform = `translateY(${String(dy)}px)`;
-      },
-      end: () => {
-        const speed = dy / Math.max(1, performance.now() - startTime);
-        surface.removeAttribute('data-dragging');
-        if (
-          dy > surface.offsetHeight * SWIPE_CLOSE_FRACTION ||
-          (dy >= SWIPE_FLICK_MIN_PX && speed > SWIPE_CLOSE_SPEED)
-        ) {
-          props.close();
-        }
-        surface.style.transform = '';
-      },
-    });
-  };
-
-  return (
-    <div
-      ref={el => {
-        header = el;
-      }}
-      class={s['sheetHeader']}
-      data-testid="popover-sheet-header"
-      onPointerDown={onPointerDown}
-    >
-      <div class={s['grabber']} aria-hidden="true" />
-      <span class={s['sheetTitle']} data-testid="popover-sheet-title">
-        {props.title}
-      </span>
-      <button
-        ref={el => {
-          closeButton = el;
-        }}
-        type="button"
-        class={s['sheetClose']}
-        data-testid="popover-sheet-close"
-        aria-label={`Close ${props.title}`}
-        onClick={() => {
-          props.close();
-        }}
-      >
-        ✕
-      </button>
-    </div>
-  );
 }
 
 /**

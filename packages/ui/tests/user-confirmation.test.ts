@@ -1,7 +1,8 @@
 import type { UserConfirmation } from '@parity/truapi-host';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
-import { overlaysReady, resetOverlays } from './helpers/overlays.js';
+import { PERMISSION_ICONS } from '../src/permission-icons.js';
+import { footerVariants, overlaysReady, resetOverlays } from './helpers/overlays.js';
 import { byTestId, query } from './support.js';
 
 type UserConfirmationReview = Parameters<Required<UserConfirmation>['confirmUserAction']>[0];
@@ -96,6 +97,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Sign Transaction');
+    expect(byTestId('permission-modal-icon').querySelector(`path[d="${PERMISSION_ICONS.ChainSubmit}"]`)).not.toBeNull();
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
@@ -189,6 +191,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Sign Message');
+    expect(byTestId('permission-modal-icon').querySelector(`path[d="${PERMISSION_ICONS.ChainSubmit}"]`)).not.toBeNull();
     expect(modalFields()).toEqual({
       App: 'localhost:3000',
       Signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
@@ -388,6 +391,7 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Resource Allocation');
+    expect(document.querySelector('[data-testid="permission-modal-icon"]')).toBeNull();
     const fields = modalFields();
     expect(fields).toEqual({
       'Requesting product': 'localhost:3000',
@@ -757,6 +761,52 @@ describe('user confirmation modal', () => {
 
     // Then
     expect(footerButtons().map(({ text }) => text)).toEqual(['Deny', 'Allow']);
+  });
+
+  it('As a dotli user, Cancel on a signing prompt is drawn as the destructive answer', async () => {
+    // Given
+    const review: UserConfirmationReview = {
+      tag: 'SignRaw',
+      value: {
+        tag: 'LegacyAccount',
+        value: {
+          request: {
+            signer: '0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304',
+            payload: { tag: 'Bytes', value: { bytes: '0x48656c6c6f' } },
+          },
+          watermarked: true,
+        },
+      },
+    };
+
+    // When
+    void createUserConfirmationAdapters('localhost:3000').confirmUserAction(review);
+    await overlaysReady();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Cancel', 'danger'],
+      ['Sign', 'primary'],
+    ]);
+  });
+
+  it('As a dotli user, Deny on an account access prompt is drawn as the destructive answer', async () => {
+    // When
+    void createUserConfirmationAdapters('localhost:3000').confirmPermission({
+      tag: 'AccountAccess',
+      value: {
+        requestingProductId: 'truapi-playground.dot',
+        targetProductId: 'other-product.dot',
+      },
+    });
+    await overlaysReady();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Deny', 'danger'],
+      ['Always allow', 'secondary'],
+      ['Allow once', 'primary'],
+    ]);
   });
 
   it('As a dotli user, the confirmation dialog is announced as a dialog and dismissed with Escape', async () => {

@@ -28,6 +28,7 @@ window.addEventListener('vite:preloadError', event => {
   showNotification({
     label: 'Asset failed to load',
     text: 'A new version may have been deployed. Reload to get the latest.',
+    tone: 'err',
     dismissMs: 0,
     action: {
       label: 'Reload',

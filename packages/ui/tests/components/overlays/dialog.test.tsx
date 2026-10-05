@@ -9,6 +9,8 @@ import { attachProductFrame, resetProductFrameLayout } from '../../../src/produc
 import { renderComponent, settle } from '../../helpers/solid.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
+import { footerVariants } from '../../helpers/overlays.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
 
@@ -23,7 +25,7 @@ function permissionLike(overrides: Partial<ModalView<Choice>> = {}): ModalView<C
     ],
     notice: 'Granting this permission will reload the application.',
     buttons: [
-      { label: 'Deny', variant: 'cancel', result: 'deny' },
+      { label: 'Deny', variant: 'danger', result: 'deny' },
       { label: 'Always allow', variant: 'secondary', result: 'allow' },
       { label: 'Allow once', variant: 'primary', result: 'once' },
     ],
@@ -59,6 +61,7 @@ async function mountOutlet(): Promise<void> {
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   resetModalsForTests();
   resetProductFrameLayout();
   document.body.replaceChildren();
@@ -76,14 +79,16 @@ describe('signing dialog', () => {
     const modal = query(document, '[data-testid="signing-modal-backdrop"] > [data-testid="signing-modal"]');
     expect(modal.getAttribute('role')).toBe('dialog');
     expect(modal.getAttribute('aria-modal')).toBe('true');
-    const title = query(modal, 'h2');
+    const title = query(modal, `#${modal.getAttribute('aria-labelledby') ?? ''}`);
+    expect(title.tagName).toBe('H2');
     expect(title.textContent).toBe('Permission Request');
-    expect(modal.getAttribute('aria-labelledby')).toBe(title.id);
     expect(modal.querySelector('[data-testid="permission-modal-icon"] svg')).not.toBeNull();
     expect(
       [...document.querySelectorAll('[data-testid="signing-field"]')].map(f => f.hasAttribute('data-warning')),
     ).toEqual([false, false, true]);
-    expect(query(document, '[data-testid="signing-field-value"][data-mono]').textContent).toBe('0x1234');
+    expect(
+      query(document, '[data-testid="signing-field"][data-mono] [data-testid="signing-field-value"]').textContent,
+    ).toBe('0x1234');
     expect(byTestId('permission-modal-notice').textContent).toBe(
       'Granting this permission will reload the application.',
     );
@@ -99,6 +104,30 @@ describe('signing dialog', () => {
     ]);
   });
 
+  it('As a dotli user, the answer that rejects a request is drawn destructive, and Cancel on a password prompt is not', async () => {
+    // Given
+    void openModal(permissionLike());
+    await mountOutlet();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Deny', 'danger'],
+      ['Always allow', 'secondary'],
+      ['Allow once', 'primary'],
+    ]);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    void openModal(passwordView());
+    await settle();
+
+    // Then
+    expect(footerVariants()).toEqual([
+      ['Cancel', 'secondary'],
+      ['Unlock', 'primary'],
+    ]);
+  });
+
   it("As a dotli user, clicking a button settles the dialog with that button's result and closes it", async () => {
     // Given
     const outcome = openModal(permissionLike());
@@ -111,6 +140,24 @@ describe('signing dialog', () => {
     // Then
     await expect(outcome).resolves.toEqual({ result: 'allow' });
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
+  });
+
+  it('As a phone user, the page under a prompt does not scroll, and scrolls again once it is answered', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const outcome = openModal(permissionLike());
+    await mountOutlet();
+
+    // Then
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(true);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-secondary', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'allow' });
+    expect(document.body.hasAttribute('data-scroll-locked')).toBe(false);
   });
 
   it('As a dotli user, the backdrop and Escape dismiss a dialog that allows it, and a click inside does not', async () => {
@@ -176,6 +223,76 @@ describe('signing dialog', () => {
     // Then
     expect(settled).toBe(false);
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).not.toBeNull();
+  });
+
+  it("As a phone user, a prompt's sheet is headed by its title, and its close button dismisses it as the scrim does", async () => {
+    // Given
+    stubPhoneViewport(true);
+    const outcome = openModal(permissionLike());
+    await mountOutlet();
+
+    // Then: the head leads the sheet.
+    const modal = byTestId('signing-modal', document);
+    const head = byTestId('signing-modal-sheet-head', modal);
+    expect(modal.firstElementChild).toBe(head);
+    expect(byTestId('signing-modal-sheet-title', head).textContent).toBe('Permission Request');
+    const close = byTestId('signing-modal-sheet-close', head, HTMLButtonElement);
+    expect(close.getAttribute('aria-label')).toBe('Close');
+
+    // When
+    fireEvent.click(close);
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'dismissed' });
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
+  });
+
+  it('As a phone user, the close button on a prompt that must be answered answers it with its Cancel, without what I typed', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const outcome = openModal(passwordView());
+    await mountOutlet();
+    fireEvent.input(byTestId('password-prompt-input', document, HTMLInputElement), {
+      target: { value: 'typed' },
+    });
+    await settle();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'cancel' });
+  });
+
+  it('As a phone user, the close button on a prompt with no Cancel and no scrim answer answers it with its danger reject', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const outcome = openModal(permissionLike({ dismissOnBackdrop: false }));
+    await mountOutlet();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'deny' });
+  });
+
+  it('As a phone user, the close button on a scrim-dismissable prompt with no scrim answer answers it with its danger reject', async () => {
+    // Given
+    stubPhoneViewport(true);
+    const { dismissResult: _unused, ...view } = permissionLike();
+    const outcome = openModal(view);
+    await mountOutlet();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-sheet-close', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    await expect(outcome).resolves.toEqual({ result: 'deny' });
   });
 
   it('As a dotli user, focus starts on the dialog, not on the approve button, and Tab stays inside', async () => {
@@ -360,5 +477,79 @@ describe('signing dialog', () => {
 
     // Then
     expect(document.activeElement).toBe(incoming);
+  });
+
+  it('As a dotli user answering two queued prompts, the second opens over the scrim that is already up', async () => {
+    // Given
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+
+    // Then: the first prompt brings its scrim in.
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(false);
+
+    // When
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Second');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
+  });
+
+  it('As a dotli user denying a prompt with a scrim press, the queued one still opens over the same scrim', async () => {
+    // Given
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+    // A real press outside the card moves focus to the body first.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    // When
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Second');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(true);
+  });
+
+  it('As a dotli user, a scrim press that hands over to a queued dialog still returns focus to where I was when the queue ends', async () => {
+    // Given: two queued prompts opened from a focused button.
+    const opener = document.createElement('button');
+    document.body.appendChild(opener);
+    opener.focus();
+    void openModal(permissionLike());
+    void openModal(permissionLike({ title: 'Second' }));
+    await mountOutlet();
+    // A real press outside the card moves focus to the body first.
+    (document.activeElement as HTMLElement | null)?.blur();
+
+    // When: the scrim press dismisses the first, then the second is answered.
+    fireEvent.click(byTestId('signing-modal-backdrop', document));
+    await settle();
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
+    expect(document.activeElement).toBe(opener);
+  });
+
+  it('As a dotli user, a prompt that opens after the queue emptied brings its own scrim in', async () => {
+    // Given
+    void openModal(permissionLike());
+    await mountOutlet();
+    fireEvent.click(byTestId('signing-btn-cancel', document, HTMLButtonElement));
+    await settle();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
+
+    // When
+    void openModal(permissionLike({ title: 'Later' }));
+    await settle();
+
+    // Then
+    expect(query(document, 'h2').textContent).toBe('Later');
+    expect(byTestId('signing-modal-backdrop', document).hasAttribute('data-follows')).toBe(false);
   });
 });

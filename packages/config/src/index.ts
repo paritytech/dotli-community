@@ -40,7 +40,6 @@ export {
   CHAIN_ROLE_LABELS,
   NETWORK_KEY,
   NETWORK_NAME_TO_SERVICES_CONFIG,
-  NetworkName,
   chainRoleForGenesis,
   getActiveChainRoles,
   getActiveCoreGatewayChains,

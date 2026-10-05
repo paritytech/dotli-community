@@ -6,10 +6,12 @@ import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { AuthModal } from '../../../src/components/shell/AuthModal.js';
 import { setAuthState } from '../../../src/state/auth.js';
 import { updateAuthModal } from '../../../src/state/auth-modal.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
+import { getTopbarState, setBlockingModalActive, setTopbarVisible } from '../../../src/state/topbar.js';
+import { anyTopbarSurfaceOpen } from '../../../src/state/topbar-surfaces.js';
 import { ThemeToggle } from '../../../src/components/shell/ThemeToggle.js';
 import type { DotliAuthState } from '../../../src/host-callbacks/AuthState.js';
 import { mouseClick, pointerPress, renderComponent } from '../../helpers/solid.js';
+import { setViewportWidth, stubPhoneViewport } from '../../helpers/viewport.js';
 import {
   byId,
   coordinator,
@@ -140,6 +142,16 @@ interface ModalExpectation {
 
 const tags = (el: Element): string[] => Array.from(el.children).map(child => child.tagName);
 
+/** The drawn code on its tile: the canvas, named as an image, then the badge. */
+function expectQrTile(tile: Element, payload: string): void {
+  expect(tags(tile)).toEqual(['CANVAS', 'SPAN']);
+  const canvas = nth(tile.children, 0) as HTMLElement;
+  expect(canvas.dataset['qrPayload']).toBe(payload);
+  expect(canvas.getAttribute('role')).toBe('img');
+  expect(canvas.getAttribute('aria-label')).toBe('Sign-in QR code');
+  expect(tile.children[1]?.getAttribute('aria-hidden')).toBe('true');
+}
+
 /** The QR container's content for each view the modal can show. */
 function expectQrBody(qrBox: Element, body: ModalBody): void {
   switch (body.kind) {
@@ -150,26 +162,33 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       expectQrSpinnerView();
       break;
     case 'canvas': {
-      expect(tags(qrBox)).toEqual(['CANVAS']);
-      expect((qrBox.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      expect(tags(qrBox)).toEqual(['DIV', 'P']);
+      expectQrTile(byTestId('auth-modal-qr-tile', qrBox), body.payload);
+      expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
       break;
     }
     case 'mobile-qr': {
-      const expectedTags = body.qrShown ? ['BUTTON', 'A', 'A'] : ['A', 'BUTTON', 'A'];
-      expect(tags(qrBox)).toEqual(expectedTags);
-      const openApp = query(qrBox, 'a:not(:has(canvas))', HTMLAnchorElement);
-      const toggle = query(qrBox, 'button', HTMLButtonElement);
-      const qrLink = query(qrBox, 'a:has(canvas)', HTMLAnchorElement);
+      const openApp = byTestId('auth-modal-open-app', qrBox, HTMLAnchorElement);
       expect(openApp.getAttribute('href')).toBe(body.payload);
       expect(openApp.textContent).toBe('Login With Polkadot App');
-      expect(openApp.hidden).toBe(false);
-      expect(toggle.type).toBe('button');
-      expect(toggle.textContent).toBe('Show QR instead');
-      expect(toggle.hidden).toBe(body.qrShown);
-      expect(qrLink.getAttribute('href')).toBe(body.payload);
-      expect(qrLink.hidden).toBe(!body.qrShown);
-      expect(tags(qrLink)).toEqual(['CANVAS']);
-      expect((qrLink.children[0] as HTMLElement).dataset['qrPayload']).toBe(body.payload);
+      if (body.qrShown) {
+        // The QR on top, the deeplink demoted to a link under it, the toggle gone.
+        expect(tags(qrBox)).toEqual(['A', 'P', 'A']);
+        const qrLink = byTestId('auth-modal-qr-link', qrBox, HTMLAnchorElement);
+        expect(qrLink.getAttribute('href')).toBe(body.payload);
+        expectQrTile(qrLink, body.payload);
+        expect(byTestId('auth-modal-waiting', qrBox).textContent).toBe('Waiting for your phone');
+        expect(qrBox.lastElementChild).toBe(openApp);
+        expect(qrBox.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+      } else {
+        // The deeplink leads, then the toggle, and no QR yet.
+        expect(tags(qrBox)).toEqual(['A', 'BUTTON']);
+        expect(qrBox.firstElementChild).toBe(openApp);
+        const toggle = byTestId('auth-modal-qr-toggle', qrBox, HTMLButtonElement);
+        expect(toggle.type).toBe('button');
+        expect(toggle.textContent).toBe('Show QR instead');
+        expect(qrBox.querySelector('canvas')).toBeNull();
+      }
       break;
     }
     case 'authenticating': {
@@ -185,7 +204,7 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
       const view = nth(qrBox.children, 0);
       const expectedTags = ['DIV', 'DIV', 'DIV'];
       if (body.detail !== undefined && body.detail.length > 0) {
-        expectedTags.push('P');
+        expectedTags.push('DIV');
       }
       if (body.retry) {
         expectedTags.push('BUTTON');
@@ -208,9 +227,9 @@ function expectQrBody(qrBox: Element, body: ModalBody): void {
 }
 
 /**
- * The modal apart from styling: the dialog ARIA, the elements in order with
- * their ids and text, the visibility of the reason and the get-app link, and
- * the QR container's view.
+ * The surface apart from styling: the dialog ARIA, the head and the body in
+ * order with their ids and text, the visibility of the reason and the get-app
+ * link, and the QR container's view.
  */
 function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.id).toBe('auth-modal-backdrop');
@@ -220,17 +239,25 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
   expect(tags(backdrop)).toEqual(['DIV']);
-  const dialog = nth(backdrop.children, 0);
-  expect(Array.from(dialog.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
-    'H2#auth-modal-title',
-    'P#auth-modal-reason',
-    'P#auth-modal-hint',
+  // No sheet head on a wide screen: the body holds the Surface with the parts.
+  const surface = nth(backdrop.children, 0);
+  expect(tags(surface)).toEqual(['DIV']);
+  expect(tags(nth(surface.children, 0))).toEqual(['SECTION']);
+  const body = nth(nth(surface.children, 0).children, 0);
+  expect(Array.from(body.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'DIV#',
     'DIV#auth-modal-qr',
     'A#auth-modal-get-app',
     'BUTTON#auth-modal-close',
   ]);
+  const head = nth(body.children, 0);
+  expect(Array.from(head.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
+    'H2#auth-modal-title',
+    'P#auth-modal-reason',
+    'P#auth-modal-hint',
+  ]);
   expect(byId('auth-modal-title').textContent).toBe(
-    opts.productLabel !== undefined ? `${opts.productLabel} is asking you to sign in` : 'Login with Polkadot Mobile',
+    opts.productLabel !== undefined ? `${opts.productLabel} wants you to sign in` : 'Login with Polkadot Mobile',
   );
   const reason = byId('auth-modal-reason');
   expect(reason.hidden).toBe(opts.reason === undefined);
@@ -293,8 +320,9 @@ describe('AuthModal markup', () => {
     // Then
     expect(qr.toCanvas).toHaveBeenCalledTimes(1);
     expect(qr.toCanvas).toHaveBeenCalledWith(expect.any(HTMLCanvasElement), DEEPLINK, {
-      width: 200,
+      width: 218,
       margin: 2,
+      errorCorrectionLevel: 'Q',
       color: { dark: '#000000', light: '#ffffff' },
     });
     expectMarkup(backdrop, {
@@ -305,6 +333,60 @@ describe('AuthModal markup', () => {
       body: { kind: 'canvas', payload: DEEPLINK },
     });
     expect(document.querySelector('#auth-modal-qr canvas')).toBe(qr.toCanvas.mock.calls[0]?.[0]);
+  });
+
+  it("As a user on a phone-width window, the QR code is drawn at the phone sheet's larger size", async () => {
+    // Given
+    setViewportWidth(390);
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+
+      // When
+      await authState(pairing());
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(1);
+      expect(qr.toCanvas).toHaveBeenCalledWith(
+        expect.any(HTMLCanvasElement),
+        DEEPLINK,
+        expect.objectContaining({ width: 248 }),
+      );
+    } finally {
+      setViewportWidth(1024);
+    }
+  });
+
+  it('As a desktop user narrowing the window to a phone width and back, the open QR code is redrawn at each size', async () => {
+    // Given
+    try {
+      await renderModal();
+      byId('auth-button').click();
+      await settleQr();
+      await authState(pairing());
+      const canvas = qr.toCanvas.mock.calls[0]?.[0];
+
+      // When
+      setViewportWidth(390);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(2);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 248 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+
+      // When
+      setViewportWidth(1024);
+      await settleQr();
+
+      // Then
+      expect(qr.toCanvas).toHaveBeenCalledTimes(3);
+      expect(qr.toCanvas).toHaveBeenLastCalledWith(canvas, DEEPLINK, expect.objectContaining({ width: 218 }));
+      expect(document.querySelector('#auth-modal-qr canvas')).toBe(canvas);
+    } finally {
+      setViewportWidth(1024);
+    }
   });
 
   it('As a user asked to sign in by a product, the title names it and shows why, as text', async () => {
@@ -321,7 +403,7 @@ describe('AuthModal markup', () => {
 
     // Then
     expect(byId('auth-modal-title').querySelector('b')).toBeNull();
-    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:<b>x</b> wants you to sign in');
     expect(byId('auth-modal-reason').textContent).toBe('<i>to vote</i>');
     expectMarkup(backdrop, {
       open: true,
@@ -733,8 +815,60 @@ describe('AuthModal login flow', () => {
 
     // Then
     expect(isOpen()).toBe(true);
-    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 is asking you to sign in');
+    expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
     expect(document.querySelector('#auth-modal-qr canvas')).not.toBeNull();
+  });
+});
+
+describe('AuthModal and the topbar', () => {
+  it('As a dApp user with the bar folded into the capsule, a product asking me to sign in brings the pill back, and the bar counts the sign-in as open until it closes', async () => {
+    // Given
+    await renderModal();
+    setTopbarVisible(false);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    expect(anyTopbarSurfaceOpen()).toBe(true);
+
+    // When
+    byId('auth-modal-close').click();
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(anyTopbarSurfaceOpen()).toBe(false);
+  });
+
+  it('As a dApp user with the bar folded, a sign-in waiting behind another prompt leaves the capsule alone until it opens', async () => {
+    // Given: a prompt holds the blocking-modal queue.
+    await renderModal();
+    setTopbarVisible(false);
+    const scope = coordinator.createScope();
+    const { promise: held, resolve: release }: PromiseWithResolvers<void> = Promise.withResolvers();
+    const prompt = scope.enqueue(() => held);
+
+    // When
+    window.dispatchEvent(new CustomEvent('dotli:request-login', { detail: { label: 'localhost:3000' } }));
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(false);
+    expect(getTopbarState().visible).toBe(false);
+
+    // When
+    release();
+    await prompt;
+    await settleQr();
+
+    // Then
+    expect(isOpen()).toBe(true);
+    expect(getTopbarState().visible).toBe(true);
+    scope.dispose();
   });
 });
 
@@ -954,7 +1088,7 @@ describe('AuthModal on a phone', () => {
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: true },
     });
 
-    // When: the wallet approved; the QR's hint and the column layout stay.
+    // When: the wallet approved, the QR's hint stays.
     await authState({ tag: 'Authenticating' });
 
     // Then
@@ -978,6 +1112,89 @@ describe('AuthModal on a phone', () => {
       body: { kind: 'mobile-qr', payload: DEEPLINK, qrShown: false },
     });
   });
+
+  it('As a phone user, the sign-in sheet is headed Sign in with a close button, which closes it and cancels the login', async () => {
+    // Given
+    device.mobile = true;
+    stubPhoneViewport(true);
+    try {
+      const backdrop = await renderModal();
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      await authState(pairing());
+
+      // Then: the head leads the sheet, above the body as it was.
+      const surface = nth(backdrop.children, 0);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      const title = byTestId('auth-modal-sheet-title', head);
+      expect(title.tagName).toBe('H2');
+      expect(title.textContent).toBe('Sign in');
+      expect(byId('auth-modal-title').textContent).toBe('localhost:3000 wants you to sign in');
+
+      // When
+      const close = byTestId('auth-modal-sheet-close', head);
+      expect(close.getAttribute('aria-label')).toBe('Close');
+      close.click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('As a user who narrows an open sign-in to a phone width, the sheet it becomes is headed Sign in with a close button', async () => {
+    // Given: the sign-in open on a wide screen.
+    const viewport = stubPhoneViewport(false);
+    try {
+      const backdrop = await renderModal();
+      await authState(pairing());
+      const cancels = recordEvents('dotli:truapi-cancel-login');
+
+      // When
+      viewport.set(true);
+      await settleQr();
+
+      // Then
+      const surface = nth(backdrop.children, 0);
+      const head = byTestId('auth-modal-sheet-head', surface);
+      expect(surface.firstElementChild).toBe(head);
+      expect(byTestId('auth-modal-sheet-title', head).textContent).toBe('Sign in');
+
+      // When
+      byTestId('auth-modal-sheet-close', head).click();
+      await settleQr();
+
+      // Then
+      expect(isOpen()).toBe(false);
+      expect(cancels.details).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('As a keyboard user on a phone, Show QR instead keeps focus in the sign-in while the button goes away', async () => {
+    // Given
+    device.mobile = true;
+    await renderModal();
+    await authState(pairing());
+    const toggle = byTestId('auth-modal-qr-toggle', document);
+    toggle.focus();
+    expect(document.activeElement).toBe(toggle);
+
+    // When
+    toggle.click();
+    await settleQr();
+
+    // Then: the button is gone, and focus is on the dialog, not the body.
+    expect(toggle.isConnected).toBe(false);
+    expect(byTestId('auth-modal-qr-link', document)).toBeInstanceOf(HTMLAnchorElement);
+    expect(document.activeElement).toBe(byId('auth-modal-backdrop'));
+  });
 });
 
 describe('AuthModal on a phone, on unrelated store writes', () => {
@@ -988,14 +1205,15 @@ describe('AuthModal on a phone, on unrelated store writes', () => {
     await authState(pairing());
     byTestId('auth-modal-qr-toggle', document).click();
     await settleQr();
-    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
 
     // When
     updateAuthModal({ reason: 'first' });
     await settleQr();
 
     // Then
-    expect(byTestId('auth-modal-qr-link', document).hidden).toBe(false);
+    expect(document.querySelector('[data-testid="auth-modal-qr-toggle"]')).toBeNull();
+    expect(byTestId('auth-modal-qr-link', document, HTMLAnchorElement).getAttribute('href')).toBe(DEEPLINK);
     expect(byId('auth-modal-hint').textContent).toBe(DESKTOP_HINT);
   });
 });

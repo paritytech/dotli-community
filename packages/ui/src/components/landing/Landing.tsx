@@ -5,27 +5,26 @@ import { onSettled } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hideLoading } from '../../loading-controller.js';
 import { AuthButton } from '../shell/AuthButton.js';
-import { ThemeToggle } from '../shell/ThemeToggle.js';
 import s from './Landing.module.css';
 import { NavForm } from './NavForm.js';
 import { RecentPills } from './RecentPills.js';
 
 /**
  * The landing page, shown on the bare host with no name to resolve: the
- * name form, the recently visited names, and the auth and theme buttons in
- * the corner, the shell's own components outside the topbar (which the
- * landing page hides, its action group gone), with ids of their own
- * (`#landing-auth-button`, `#landing-theme-toggle` and their surfaces'),
- * the topbar's build-time markup still holding the topbar's. Rendered by the LandingPage
- * island, its own chunk. It replaces the loading screen once it renders.
+ * name form, the recently visited names, and the auth button in the corner,
+ * the shell's own component outside the topbar (which the landing page
+ * hides, its action group gone), with ids of its own (`#landing-auth-button`
+ * and its surface's), the topbar's build-time markup still holding the
+ * topbar's. The page is always dark, so it has no theme button. Rendered by
+ * the LandingPage island, its own chunk. It replaces the loading screen once
+ * it renders.
  */
 export function Landing(): JSX.Element {
   onSettled(hideLoading);
   return (
     <div class={s['landing']} data-testid="landing">
       <div class={s['corner']} id="landing-auth">
-        <AuthButton idPrefix="landing-" />
-        <ThemeToggle idPrefix="landing-" />
+        <AuthButton idPrefix="landing-" showName />
       </div>
       <div class={s['center']}>
         <div class={s['content']}>

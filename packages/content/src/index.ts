@@ -10,6 +10,6 @@ export { decryptContent, isEncrypted } from './decrypt.js';
 export { CONTENT_ERRORS } from './errors.js';
 export { type FetchResult } from './fetch.js';
 export { fetchFromIpfs } from './ipfs.js';
-export { computePreimageKey, hashToCid } from './preimage.js';
+export { hashToCid } from './preimage.js';
 export { assertBlockMatchesCid } from './verify.js';
-export { loadFetch, type FetchModule } from './lazy.js';
+export { loadFetch } from './lazy.js';

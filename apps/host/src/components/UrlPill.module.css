@@ -1,74 +1,101 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The shield is an island. A local product (data-localhost, set by bindUrlPill)
-   gets a terminal icon instead. */
-
+/* The address: a sunken well with 16 px ends (20 px on a phone), so the
+   shield's glyph and the end of the text sit the same distance from the
+   edges. In a pill at its max-width it shrinks first (a large flex-shrink),
+   down to 136 px, before any action collapses into More. A local product
+   (data-localhost, set by bindUrlPill) gets a terminal icon instead of the
+   shield. */
 .url {
-  grid-column: 2;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  /* Flex items default to `min-width: auto`. Without this, a long
-     nowrap pill pushes the right cluster off-screen past `max-width`. */
-  min-width: 0;
-  max-width: 480px;
-  margin: 0 12px;
+  flex: 0 100 auto;
+  min-width: 136px;
 }
 .url[hidden] {
   display: none;
 }
 .pill {
   display: flex;
+  flex: 1;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   box-sizing: border-box;
   min-width: 0;
-  height: 32px;
-  padding: 0 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 20px;
-  background: var(--fill-subtle);
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  letter-spacing: 0.01em;
+  height: var(--h-bar-control);
+  padding: 0 var(--sp-4);
+  border-radius: var(--r-full);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+  color: var(--chrome-text);
+  font: var(--fw-regular) 13px / 1 var(--font-sans);
   user-select: none;
+  transition: background var(--dur-fast);
 }
 .pill:hover {
-  background: var(--fill);
-  border-color: var(--border);
+  background: var(--chrome-well-strong);
 }
-@media (max-width: 560px) {
-  .pill {
-    height: 36px;
-    padding: 0 12px;
-  }
-}
-/* Clip from the head so the TLD stays anchored, like a browser address bar. */
+/* The board's address keeps the name's head and ellipsizes its end. Its
+   clip is the line box, so the line is tall enough for the descenders the
+   pill's `line-height: 1` would cut. */
 .text {
   min-width: 0;
   overflow: hidden;
+  line-height: 20px;
   white-space: nowrap;
   text-overflow: ellipsis;
-  direction: rtl;
-  text-align: left;
 }
 .domain {
-  color: var(--text-strong);
-  font-weight: 500;
+  color: var(--chrome-text);
+  font-weight: var(--fw-semibold);
 }
 .tld {
-  color: var(--text-faint);
-  font-weight: 500;
+  color: var(--chrome-text-muted);
 }
 .localhost-icon {
   flex-shrink: 0;
-  color: var(--text-muted);
+  width: 10px;
+  height: 10px;
+  color: var(--chrome-text-muted);
 }
 .pill:not([data-localhost]) .localhost-icon {
   display: none;
 }
 .pill[data-localhost] .domain {
-  font-family: monospace;
-  font-size: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Phones: the address fills the header between the logo and More, and the
+   whole of it opens the site source sheet: the shield's hit area stretches
+   over it (VerificationShield.module.css), so the pill draws that button's
+   states. Its hover is the .pill:hover above (the board's
+   button.address:hover), then a stronger well while the sheet is open and
+   the focus ring. */
+@media (max-width: 560px) {
+  .url {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .pill {
+    position: relative;
+    gap: var(--sp-2);
+    padding: 0 var(--sp-5);
+    font-size: var(--fs-body);
+  }
+  .localhost-icon {
+    width: 12px;
+    height: 12px;
+  }
+  .pill[data-localhost] .domain {
+    font-size: var(--fs-caption);
+  }
+  .pill:has([aria-expanded='true']) {
+    background: var(--chrome-well-strong);
+  }
+  .pill:has(:focus-visible) {
+    outline: var(--chrome-focus-ring);
+    outline-offset: 2px;
+  }
 }

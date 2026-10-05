@@ -52,6 +52,15 @@ afterEach(() => {
 });
 
 describe('toast store', () => {
+  it('As a dotli user, a toast without a tone reads as info, and a toast given one keeps it', () => {
+    // When
+    pushToast(input());
+    pushToast(input({ tone: 'warn' }));
+
+    // Then
+    expect(toastsStore.get().items.map(t => t.tone)).toEqual(['info', 'warn']);
+  });
+
   it('As a dotli user, a toast leaves after its duration and calls onDismiss once', () => {
     // Given
     const onDismiss = vi.fn();

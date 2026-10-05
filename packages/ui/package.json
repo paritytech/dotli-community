@@ -16,7 +16,10 @@
   "scripts": {
     "typecheck": "tsc --noEmit && tsc --noEmit -p tests",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "storybook": "storybook dev -p 6006 --no-open",
+    "build-storybook": "storybook build -o storybook-static",
+    "test:stories": "vitest run --config vitest.storybook.config.ts"
   },
   "devDependencies": {
     "@config/eslint": "*",
@@ -24,8 +27,16 @@
     "@config/vite": "*",
     "@solidjs/testing-library": "1.0.0-beta.3",
     "@solidjs/vite-plugin": "3.0.0-next.47",
+    "@storybook/addon-a11y": "^10.6.1",
+    "@storybook/addon-docs": "^10.6.1",
+    "@storybook/addon-vitest": "^10.6.1",
     "@types/qrcode": "^1.5.6",
-    "fake-indexeddb": "^6.2.5"
+    "@vitest/browser-playwright": "^5.0.3",
+    "fake-indexeddb": "^6.2.5",
+    "playwright": "^1.63.0",
+    "storybook": "^10.6.1",
+    "storybook-solidjs-vite": "^10.7.2",
+    "vite-plugin-solid": "3.0.0-next.27"
   },
   "dependencies": {
     "@dotli/config": "*",

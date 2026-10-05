@@ -5,36 +5,39 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
   box-sizing: border-box;
-  margin: 0 0 2rem;
+  width: 100%;
+  max-width: 300px;
+  margin: var(--sp-8) 0 0;
   padding: 0;
 }
 
 .bar {
   display: flex;
+  gap: var(--sp-1);
   align-items: center;
   box-sizing: border-box;
   width: 100%;
-  max-width: 340px;
-  height: 44px;
+  height: var(--h-control-lg);
   margin: 0;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  border-radius: 10px;
+  padding: 0 var(--sp-2) 0 var(--sp-5);
+  border: 0;
+  border-radius: var(--r-full);
   background: var(--surface);
-  transition: border-color 0.15s;
+  box-shadow: inset 0 0 0 1px var(--border-subtle);
+  transition: box-shadow var(--dur-fast);
 }
 
 .bar:focus-within {
-  border-color: var(--border-focus);
+  box-shadow:
+    inset 0 0 0 1px var(--border-subtle),
+    0 0 0 2px var(--border-focus);
 }
 
 /* After the focus rule, so an invalid name stays red while the input has focus. */
 .bar[data-invalid],
 .bar[data-invalid]:focus-within {
-  border-color: var(--danger);
+  box-shadow: inset 0 0 0 1px var(--danger);
 }
 
 .input {
@@ -43,52 +46,60 @@
   min-width: 0;
   height: 100%;
   margin: 0;
-  padding: 0 0 0 16px;
-  border: none;
-  outline: none;
+  padding: 0;
+  border: 0;
   background: transparent;
   color: var(--text-strong);
-  font-family: system-ui, sans-serif;
-  font-size: 1rem;
+  font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
+}
+
+/* The bar draws the ring. Outweighs global.css's :focus-visible whatever the
+   sheet order (dev loads it last). */
+.input:focus-visible {
+  outline: none;
+}
+
+.input::placeholder {
+  color: var(--text-secondary);
 }
 
 .suffix {
-  padding: 0 12px 0 0;
-  font-size: 1rem;
-  font-weight: 500;
+  flex: none;
+  font-size: var(--fs-title-lg);
   white-space: nowrap;
-  color: var(--text-muted);
+  color: var(--text-secondary);
   user-select: none;
 }
 
 .go {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: grid;
+  flex: none;
+  place-items: center;
   box-sizing: border-box;
-  width: 40px;
-  height: 100%;
-  margin: 0;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  margin: 0 0 0 var(--sp-2);
   padding: 0;
-  border: none;
-  border-left: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-faint);
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--fill);
+  color: var(--text-secondary);
   cursor: pointer;
   transition:
-    color 0.15s,
-    background 0.15s;
+    color var(--dur-fast),
+    background var(--dur-fast);
 }
 
 .input:not(:placeholder-shown) ~ .go {
-  color: var(--text);
+  background: var(--text-strong);
+  color: var(--bg-page);
 }
 
 .error {
-  margin: 10px 0 0;
+  margin: var(--sp-3) 0 0;
   padding: 0;
-  font-size: 0.8rem;
-  font-weight: 500;
+  font-size: var(--fs-small);
+  font-weight: var(--fw-medium);
   text-align: center;
   color: var(--danger);
 }

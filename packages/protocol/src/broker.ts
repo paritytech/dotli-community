@@ -69,13 +69,23 @@ interface SharedFollow {
     requestId: JsonRpcId;
     localToken: string;
   }[];
+  /** The newest finalized block alone, the base a later session's replay starts from. */
   finalizedBlockHashes: string[];
   finalizedBlockRuntime: unknown;
   bestBlockHash: string | null;
+  /** The unfinalized blocks above the newest finalized one. */
   blocks: Map<string, CachedBlock>;
-  /** Block hash -> local follow tokens still holding a pin on it. */
+  /** Block hash -> local follow tokens, and the snapshot, still holding a pin on it. */
   pins: Map<string, Set<string>>;
 }
+
+/**
+ * The pin holder for the blocks a later session is replayed. Sessions unpin as
+ * they please (papi drops all but the newest finalized block), and without
+ * this hold the last of them would unpin upstream a block the next session to
+ * join is then told of, whose every read the node refuses.
+ */
+const SNAPSHOT_HOLDER = 'snapshot';
 
 interface CachedBlock {
   result: Record<string, unknown>;
@@ -806,7 +816,12 @@ export class ChainBroker {
 
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
-      this.cacheSharedFollowEvent(sharedFollow, message.params?.result);
+      const eventResult = message.params?.result;
+      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+        this.stopSharedFollow(sharedFollow, upstreamToken, message);
+        return;
+      }
+      this.cacheSharedFollowEvent(sharedFollow, eventResult);
       for (const localToken of sharedFollow.localTokens) {
         const local = this.localFollowTokens.get(localToken);
         if (!local) {
@@ -816,7 +831,6 @@ export class ChainBroker {
         if (session?.connected !== true) {
           continue;
         }
-        const eventResult = message.params?.result;
         this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult['event'] === 'string'
@@ -831,25 +845,6 @@ export class ChainBroker {
             subscription: localToken,
           },
         });
-      }
-
-      // A `stop` kills this shared follow. Clear its dead upstream token and
-      // snapshot so a session's re-follow takes the fresh-follow path instead
-      // of binding to the dead token (which reads null and hangs). The `stop`
-      // already reached every session above, which papi needs before it
-      // re-issues `chainHead_v1_follow`.
-      const eventResult = message.params?.result;
-      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
-        brokerLog(
-          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
-        );
-        this.upstreamFollowTokens.delete(upstreamToken);
-        sharedFollow.upstreamToken = null;
-        sharedFollow.requestInFlight = false;
-        sharedFollow.finalizedBlockHashes = [];
-        sharedFollow.finalizedBlockRuntime = null;
-        sharedFollow.bestBlockHash = null;
-        sharedFollow.blocks.clear();
       }
       return;
     }
@@ -1120,6 +1115,34 @@ export class ChainBroker {
     this.sendUpstream({ ...rewritten, id: upstreamId });
   }
 
+  /**
+   * A `stop` ends the shared follow upstream. It is dropped, and its sessions'
+   * tokens released, before any session hears the `stop`. papi re-follows from
+   * inside that delivery, and bound to the dead follow it would be replayed the
+   * stopped snapshot and stopped again, without end.
+   */
+  private stopSharedFollow(sharedFollow: SharedFollow, upstreamToken: string, message: SubscriptionMessage): void {
+    brokerLog(
+      `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+    );
+    this.upstreamFollowTokens.delete(upstreamToken);
+    this.sharedFollows.delete(sharedFollow.key);
+    const recipients: { session: Session; localToken: string }[] = [];
+    for (const localToken of sharedFollow.localTokens) {
+      const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
+      // With the shared follow gone, this releases only the session's side:
+      // nothing goes upstream for a follow the node already ended.
+      this.releaseLocalFollowToken(localToken);
+      if (session?.connected === true) {
+        recipients.push({ session, localToken });
+      }
+    }
+    for (const { session, localToken } of recipients) {
+      brokerLog(`← subscription [${session.id}] event=stop method=${String(message.method)}`);
+      this.sendToSession(session, { ...message, params: { ...message.params, subscription: localToken } });
+    }
+  }
+
   private releaseLocalFollowToken(localToken: string): void {
     const followToken = this.localFollowTokens.get(localToken);
     if (!followToken) {
@@ -1176,10 +1199,14 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      sharedFollow.finalizedBlockHashes = newest === undefined ? [] : [newest];
       sharedFollow.finalizedBlockRuntime = eventResult['finalizedBlockRuntime'] ?? null;
       sharedFollow.blocks.clear();
       sharedFollow.bestBlockHash = null;
+      if (newest !== undefined) {
+        this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      }
       return;
     }
 
@@ -1192,6 +1219,7 @@ export class ChainBroker {
         result: { ...eventResult },
         parentBlockHash: typeof eventResult['parentBlockHash'] === 'string' ? eventResult['parentBlockHash'] : null,
       });
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, blockHash);
       return;
     }
 
@@ -1205,12 +1233,28 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      if (newest === undefined) {
+        return;
+      }
+      for (const hash of hashes) {
+        const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
+        if (newRuntime !== undefined && newRuntime !== null) {
+          sharedFollow.finalizedBlockRuntime = newRuntime;
+        }
+      }
       const pruned = Array.isArray(eventResult['prunedBlockHashes'])
         ? eventResult['prunedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      for (const hash of pruned) {
+      const dropped = [...sharedFollow.finalizedBlockHashes, ...hashes.slice(0, -1), ...pruned];
+      for (const hash of [...dropped, newest]) {
         sharedFollow.blocks.delete(hash);
+      }
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      sharedFollow.finalizedBlockHashes = [newest];
+      const orphaned = this.releasePins(sharedFollow, SNAPSHOT_HOLDER, dropped);
+      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
+        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
       }
     }
   }

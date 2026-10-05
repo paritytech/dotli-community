@@ -4,12 +4,9 @@
 import { createEffect, createMemo, createSignal, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissToast, removeToast, type ToastEntry } from '../../state/toasts.js';
+import { Button } from '../primitives/Button.js';
+import { CloseIcon, IconButton } from '../primitives/IconButton.js';
 import s from './ToastCard.module.css';
-
-export const CLOSE_SVG =
-  '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-  '<line x1="18" y1="6" x2="6" y2="18"/>' +
-  '<line x1="6" y1="6" x2="18" y2="18"/></svg>';
 
 export interface ToastCardProps {
   entry: ToastEntry;
@@ -59,9 +56,9 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       <div
         class={s['icon']}
         data-testid="notif-icon"
+        data-tone={props.entry.tone}
         // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
         innerHTML={props.entry.icon}
-        style={props.entry.iconBackground === undefined ? undefined : { background: props.entry.iconBackground }}
       />
       <div class={s['text']} data-testid="notif-text">
         <span class={s['title']} data-testid="notif-title">
@@ -84,32 +81,31 @@ export function ToastCard(props: ToastCardProps): JSX.Element {
       </div>
       <Show when={props.entry.action}>
         {action => (
-          <button
-            type="button"
+          <Button
+            size="sm"
             class={s['action']}
-            data-testid="notif-action"
+            testId="notif-action"
             onClick={event => {
               event.stopPropagation();
               action().onClick();
             }}
           >
             {action().label}
-          </button>
+          </Button>
         )}
       </Show>
-      <button
-        type="button"
+      <IconButton
+        size="sm"
         class={s['close']}
-        data-testid="notif-card-close"
-        data-id={String(id)}
+        testId="notif-card-close"
         aria-label="Dismiss"
-        // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-        innerHTML={CLOSE_SVG}
         onClick={event => {
           event.stopPropagation();
           dismissToast(id);
         }}
-      />
+      >
+        <CloseIcon />
+      </IconButton>
     </div>
   );
 }

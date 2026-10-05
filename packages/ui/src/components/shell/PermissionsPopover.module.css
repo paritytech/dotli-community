@@ -1,8 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The mockup's 400 px popover. It scrolls inside its own max height, which a
+   short window needs for twelve rows. */
 .popover {
-  width: 340px;
-  /* The row dropdowns float out of the popover's bounds. */
-  overflow: visible;
+  width: var(--w-pop-lg);
 }

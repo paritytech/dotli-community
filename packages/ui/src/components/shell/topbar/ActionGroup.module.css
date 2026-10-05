@@ -1,18 +1,57 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* In the pill's row: icons 4 px apart, at their own width. The address is
+   what shrinks when the pill reaches its max-width (UrlPill.module.css), and
+   topbarActionRoom says how much room the group has, so items collapse into
+   More only once the address is at its minimum. */
 .group {
-  grid-column: 3;
   display: flex;
+  flex: none;
   align-items: center;
-  gap: 4px;
-  justify-self: end;
+  gap: var(--sp-1);
 }
-/* Measuring, it fills its cell: its width is the room its items are fitted
-   into. */
 .group[data-collapsible] {
   position: relative;
-  justify-self: stretch;
   justify-content: flex-end;
-  min-width: 0;
+}
+
+/* A collapsed item, or More with nothing in it: out of flow and invisible,
+   but still laid out, so the bar can measure it and an item's button still
+   anchors its surface. */
+.group[data-collapsible] > [data-parked] {
+  position: absolute;
+  top: 0;
+  right: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* More shows once the bar measures. On a narrow viewport it shows from the
+   build-time render on, as the bar most likely collapses something there. */
+.more {
+  display: none;
+  flex: none;
+  align-items: center;
+}
+.group[data-collapsible] > .more {
+  display: flex;
+}
+
+/* Phones: More and the account are the header's last two controls, 8 px
+   apart like the rest of its row. The group is pinned to the right edge
+   because only the address grows there, and it is hidden until it shows. */
+@media (max-width: 560px) {
+  .group {
+    gap: var(--sp-2);
+    margin-inline-start: auto;
+  }
+  .more {
+    display: flex;
+  }
+  /* Until the bar has measured (its build-time render), the items it would
+     most likely collapse stay out, and More shows instead. */
+  .group:not([data-collapsible]) > [data-may-collapse] {
+    display: none;
+  }
 }

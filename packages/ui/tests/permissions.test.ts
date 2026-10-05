@@ -15,6 +15,7 @@ import {
   isDevicePermission,
   isEnforceableDevicePermission,
   registerPermissionAuthorizationProvider,
+  resetAllPermissions,
   resetPermission,
   setPermissionStatus,
 } from '../src/permissions.js';
@@ -193,6 +194,126 @@ describe('resetPermission', () => {
   });
 });
 
+describe('resetAllPermissions', () => {
+  it('As a user, Reset all to Ask sets every granted and denied permission of my app back to ask and reports them in menu order', async () => {
+    // Given
+    await setPermissionStatus('myapp', 'ChainSubmit', 'denied');
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    await setPermissionStatus('myapp', 'Notifications', 'granted');
+
+    // When
+    const result = await resetAllPermissions('myapp');
+
+    // Then
+    expect(result).toEqual({ reset: ['Notifications', 'Camera', 'ChainSubmit'], failed: false });
+    expect(
+      await getPermissionStatuses(
+        'myapp',
+        ALL_PERMISSIONS.map(({ name }) => name),
+      ),
+    ).toEqual(ALL_PERMISSIONS.map(() => 'ask'));
+    expect(myappStore).toEqual(new Map());
+  });
+
+  it("As a user, Reset all to Ask leaves other apps' permissions alone", async () => {
+    // Given
+    const unregister = registerTestProvider('other', new Map());
+    try {
+      await setPermissionStatus('other', 'Camera', 'granted');
+      await setPermissionStatus('myapp', 'Camera', 'granted');
+
+      // When
+      await resetAllPermissions('myapp');
+
+      // Then
+      expect(await getPermissionStatus('other', 'Camera')).toBe('granted');
+      expect(await getPermissionStatus('myapp', 'Camera')).toBe('ask');
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user with nothing granted or denied, Reset all to Ask writes nothing', async () => {
+    // Given
+    const set = vi.fn(() => Promise.resolve());
+    const unregister = registerPermissionAuthorizationProvider('quiet', {
+      getPermissionAuthorizationStatuses: requests => Promise.resolve(requests.map(() => 'NotDetermined' as const)),
+      setPermissionAuthorizationStatus: set,
+    });
+    try {
+      // When
+      const result = await resetAllPermissions('quiet');
+
+      // Then
+      expect(result).toEqual({ reset: [], failed: false });
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user, a write that fails keeps that permission as it was and is reported, while the others are reset', async () => {
+    // Given: the core refuses to change the camera.
+    const store = new Map<string, PermissionAuthorizationStatus>([
+      ['Device:Camera', 'Authorized'],
+      ['Device:Microphone', 'Denied'],
+    ]);
+    const unregister = registerPermissionAuthorizationProvider('flaky', {
+      getPermissionAuthorizationStatuses: requests =>
+        Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined')),
+      setPermissionAuthorizationStatus: (request, status) => {
+        const key = requestKey(request);
+        if (key === 'Device:Camera') {
+          return Promise.reject(new Error('core down'));
+        }
+        if (status === 'NotDetermined') {
+          store.delete(key);
+        } else {
+          store.set(key, status);
+        }
+        return Promise.resolve();
+      },
+    });
+    try {
+      // When
+      const result = await resetAllPermissions('flaky');
+
+      // Then
+      expect(result).toEqual({ reset: ['Microphone'], failed: true });
+      expect(store).toEqual(new Map([['Device:Camera', 'Authorized']]));
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a user whose permissions cannot be read, Reset all to Ask rejects and writes nothing', async () => {
+    // Given
+    const set = vi.fn(() => Promise.resolve());
+    const unregister = registerPermissionAuthorizationProvider('unreadable', {
+      getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
+      setPermissionAuthorizationStatus: set,
+    });
+    try {
+      // When
+      const result = resetAllPermissions('unreadable');
+
+      // Then
+      await expect(result).rejects.toThrow('core down');
+      expect(set).not.toHaveBeenCalled();
+    } finally {
+      unregister();
+    }
+  });
+
+  it('As a product without a permission provider, Reset all to Ask has nothing to reset', async () => {
+    // When
+    const result = await resetAllPermissions('nobody');
+
+    // Then
+    expect(result).toEqual({ reset: [], failed: false });
+  });
+});
+
 describe('hasAnyGrant', () => {
   it('As a new product, I have no persisted grants', async () => {
     expect(await hasAnyGrant('myapp')).toBe(false);
@@ -367,6 +488,30 @@ describe('ALL_PERMISSIONS (data invariants)', () => {
     expect(names).toContain('Notifications');
     expect(names).not.toContain('TransactionSubmit');
   });
+
+  it('As a user, the menu lists the eight device permissions, then the four app permissions', () => {
+    // Then
+    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'device').map(({ name }) => name)).toEqual([
+      'Notifications',
+      'Camera',
+      'Microphone',
+      'Location',
+      'Bluetooth',
+      'NFC',
+      'Clipboard',
+      'Biometrics',
+    ]);
+    expect(ALL_PERMISSIONS.filter(({ group }) => group === 'app').map(({ name }) => name)).toEqual([
+      'IdentityDisclosure',
+      'ChainSubmit',
+      'PreimageSubmit',
+      'StatementSubmit',
+    ]);
+    expect(ALL_PERMISSIONS.map(({ group }) => group)).toEqual([
+      ...ALL_PERMISSIONS.slice(0, 8).map(() => 'device'),
+      ...ALL_PERMISSIONS.slice(8).map(() => 'app'),
+    ]);
+  });
 });
 
 describe('DEVICE_PERMISSION_POLICY (sanity)', () => {
@@ -471,7 +616,7 @@ describe('three-way permission prompts', () => {
     expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
-  it('As a dotli user, a stored notification denial is answered without a prompt', async () => {
+  it('As a dotli user, a stored notification denial is answered without a prompt and with a quiet blocked notice', async () => {
     // Given
     await setPermissionStatus('myapp', 'Notifications', 'denied');
 
@@ -485,6 +630,7 @@ describe('three-way permission prompts', () => {
     expect(document.body.textContent).toContain(
       'Notifications access is blocked. Use the permissions menu in the top bar to change this.',
     );
+    expect(byTestId('notif-icon').getAttribute('data-tone')).toBe('idle');
   });
 
   it('As a dotli user, dismissing a notification prompt records no decision', async () => {

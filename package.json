@@ -16,6 +16,7 @@
     "preview": "turbo run build && node scripts/preview-server.ts",
     "preview:debug": "VITE_APP_DEBUG=true npm run preview",
     "serve": "node scripts/serve.ts",
+    "storybook": "npm run storybook -w @dotli/ui",
     "test": "turbo run test",
     "test:e2e:local": "E2E_PRODUCT_REPO=${E2E_PRODUCT_REPO:-../../../host-playground} E2E_PRODUCT_URL=${E2E_PRODUCT_URL:-http://localhost:5199} npm run link:truapi && VITE_NETWORKS=paseo-next-v2,previewnet VITE_APP_DEBUG=true npm run build && npm run --workspace apps/host test:e2e:local",
     "lint": "turbo run lint lint:root",

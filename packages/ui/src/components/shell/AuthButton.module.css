@@ -1,27 +1,103 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.12px;
-  text-transform: uppercase;
-}
-.badge[data-anon] svg {
-  width: 12px;
-  height: 12px;
+/* The menu's width, also for the loading spinner before its body's chunk is
+   in. Its place is the Popover's: 10 px below the pill. */
+.popover {
+  width: var(--w-pop-sm);
 }
 
-.popover {
-  top: calc(var(--topbar-height) + 4px);
-  width: 220px;
+/* The bar's Sign in button and account chip: the Button at the bar's
+   control height, its type, padding and gap scaled with it. */
+.sign-in,
+.chip {
+  gap: 6px;
+  height: var(--h-bar-control);
+  font-size: 13px;
+}
+.sign-in {
+  padding: 0 16px 0 13px;
+}
+.sign-in svg {
+  width: 14px;
+  height: 14px;
+}
+/* A secondary button led by an avatar, inset evenly on all sides (the
+   avatar sits 5 px from the chip's left edge, as from its top and bottom). */
+.chip {
+  max-width: 132px;
+  padding: 0 13px 0 calc((var(--h-bar-control) - 26px) / 2);
+  box-shadow: none;
+  font-weight: var(--fw-semibold);
+}
+/* Without the name: the avatar alone in a round button. */
+.avatar-only {
+  justify-content: center;
+  width: var(--h-bar-control);
+  padding: 0;
+  background: transparent;
+}
+.avatar-only:hover {
+  background: var(--chrome-fill);
+}
+.chip[aria-expanded='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: inset 0 0 0 1px var(--chrome-ring);
+}
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--chrome-avatar);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+  font-size: 11px;
+  font-weight: var(--fw-semibold);
+}
+.avatar svg {
+  width: 14px;
+  height: 14px;
+}
+.name {
+  min-width: 0;
   overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Phones: the account control is a 44 px circle, so the header keeps room
+   for the address and More: the Sign in icon alone at 20 px on the primary
+   fill (the board's .icon-btn-primary), or the avatar filling the button
+   (the board's .avatar-md). */
+@media (max-width: 560px) {
+  .chip,
+  .sign-in {
+    gap: var(--sp-2);
+    width: var(--h-control);
+    padding: 0;
+    font-size: var(--fs-body);
+  }
+  .name,
+  .label {
+    display: none;
+  }
+  .sign-in svg {
+    width: 20px;
+    height: 20px;
+    stroke-width: 1.75;
+  }
+  .chip {
+    background: transparent;
+  }
+  .chip .avatar {
+    width: var(--h-control);
+    height: var(--h-control);
+    font-size: var(--fs-title);
+  }
+  .chip .avatar svg {
+    width: 20px;
+    height: 20px;
+  }
 }

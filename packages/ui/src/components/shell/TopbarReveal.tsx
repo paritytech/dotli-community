@@ -49,11 +49,7 @@ export function TopbarReveal(): JSX.Element {
         Show browser bar
       </button>
       <Show when={autoHide()}>
-        <div
-          onMouseEnter={revealTopbar}
-          aria-hidden="true"
-          style={{ position: 'fixed', top: '0', left: '0', right: '0', height: '6px', 'z-index': '999' }}
-        />
+        <div class={s['hit']} onMouseEnter={revealTopbar} aria-hidden="true" />
       </Show>
     </>
   );

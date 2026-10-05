@@ -2,36 +2,46 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// The host's top bar (`header#topbar`, the page's banner): the home link,
-// the URL bar, the action group and the offline banner, as markup. Only the
-// action group is interactive, a Solid island (TopbarActions: the account
-// button first, then the actions and the More menu they collapse into),
-// hydrated at load: on the landing page it renders nothing.
+// The host's top bar (`header#topbar`, the page's banner): one element that
+// morphs between the open glass pill (the home link, the URL bar and the
+// action group) and the collapsed status capsule. At 560 px and below it is
+// the square phone header instead (logo, address, More, account), which never
+// folds away. Only the action group is interactive, a Solid island
+// (TopbarActions: the actions, the More menu they collapse into, then the
+// account button), hydrated at load: on the landing page it renders nothing.
 //
 // Its script sets the bar's state as attributes, which its module styles:
-// `data-hidden` when the auto-hide (topbar-autohide.ts in @dotli/ui) slides it
-// out, `data-offline` (shows the banner while the bar is visible). On `<body>`
-// it sets `data-landing`, which hides the bar and which `#app`
-// (pages/index.module.css) and the loading screen read. It also advertises the
-// reveal shortcut while the bar auto-hides, and reveals it on hover.
+// `data-hidden` when the auto-hide (topbar-autohide.ts in @dotli/ui) folds it
+// into the capsule, `data-tone` and `data-action` (bindTopbarStatus) for the
+// capsule's bar and action dot. On `<body>` it sets `data-landing`, which
+// hides the bar and which `#app` (pages/index.module.css) and the loading
+// screen read. It also advertises the reveal shortcut while the bar
+// auto-hides, and reveals it on hover.
 import { TopbarActions } from '@dotli/ui/islands/TopbarActions';
 import TopbarLogo from './TopbarLogo.astro';
 import UrlPill from './UrlPill.astro';
 import s from './Topbar.module.css';
 ---
 
-<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar">
-  <TopbarLogo />
-  <UrlPill />
-  <TopbarActions client:load />
-  {/* A status line, not focusable. */}
-  <div id="offline-banner" class={s['offline']} role="status" aria-live="polite">
-    You are offline
+<header id="topbar" class={s['topbar']} aria-label="dot.li browser bar" data-chrome>
+  {/* The collapsed capsule: the health bar, led by the action dot. Decorative,
+      the reveal button and the pill carry the words. */}
+  <span class={s['strip']} aria-hidden="true">
+    <span class={s['action']}></span>
+    <span class={s['bar']}></span>
+  </span>
+  <div class={s['row']}>
+    <TopbarLogo />
+    <UrlPill />
+    <TopbarActions client:load />
   </div>
+  {/* Says "You are offline" (bindTopbarStatus), which the capsule only shows. */}
+  <span id="topbar-offline" class={s['offline']} role="status"></span>
 </header>
 
 <script>
   import {
+    bindTopbarStatus,
     registerTopbarElement,
     revealTopbar,
     scheduleTopbarHide,
@@ -42,13 +52,13 @@ import s from './Topbar.module.css';
   const bar = document.getElementById('topbar');
   if (bar !== null) {
     registerTopbarElement(bar);
+    bindTopbarStatus(bar);
     bar.addEventListener('mouseenter', revealTopbar);
     bar.addEventListener('mouseleave', scheduleTopbarHide);
 
     const render = (): void => {
       const { visible, autoHide, landing } = topbarStore.get();
       bar.toggleAttribute('data-hidden', !visible);
-      bar.toggleAttribute('data-offline', !navigator.onLine);
       if (autoHide) {
         bar.setAttribute('aria-keyshortcuts', TOPBAR_REVEAL_SHORTCUT);
       } else {
@@ -56,8 +66,6 @@ import s from './Topbar.module.css';
       }
       document.body.toggleAttribute('data-landing', landing);
     };
-    window.addEventListener('online', render);
-    window.addEventListener('offline', render);
     render();
     topbarStore.subscribe(render);
   }

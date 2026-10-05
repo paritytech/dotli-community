@@ -135,6 +135,7 @@ let transfer: TransferState = {
 let listeners = new Set<() => void>();
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 let watching = false;
+let holds = 0;
 
 function notify(): void {
   for (const listener of listeners) {
@@ -306,6 +307,28 @@ export function endNetworkWatch(): void {
   watching = false;
 }
 
+/**
+ * Keep the watch running until the returned release is called. The status
+ * capsule and the network menu each hold it, so one closing does not drop
+ * the subscriptions the other reads. The idle grace starts when the last
+ * hold goes. Releasing twice counts once.
+ */
+export function holdNetworkWatch(): () => void {
+  holds += 1;
+  startNetworkWatch();
+  let released = false;
+  return () => {
+    if (released) {
+      return;
+    }
+    released = true;
+    holds -= 1;
+    if (holds === 0) {
+      stopNetworkWatch();
+    }
+  };
+}
+
 /** Subscribe to any change in the tracked state. Returns an unsubscribe. */
 export function subscribeNetwork(listener: () => void): () => void {
   listeners.add(listener);
@@ -314,28 +337,48 @@ export function subscribeNetwork(listener: () => void): () => void {
   };
 }
 
-/** A snapshot of every chain of the active network, in reading order. */
-export function getNetworkStatus(): ChainStatus[] {
-  const now = Date.now();
-  const roles = watching
+/** What the health verdict reads of a chain, without the bars, peers and phase. */
+export type ChainClock = Pick<ChainStatus, 'label' | 'latest' | 'sinceLast' | 'blockTimeMs' | 'reachable'>;
+
+function currentChains(): readonly ChainState[] {
+  return watching
     ? [...chains.values()]
     : getActiveChainRoles().map(role => ({
         role,
-        bars: [] as BlockBar[],
+        bars: [],
         latest: null,
         lastAt: null,
         unsubscribe: null,
       }));
-  return roles.map(state => ({
-    role: state.role.role,
+}
+
+function clockOf(state: ChainState, now: number): ChainClock {
+  return {
     label: state.role.label,
-    // A frozen copy: the monitor pushes and shifts its own array in place,
-    // which would change a snapshot a reader still holds.
-    bars: Object.freeze([...state.bars]),
     latest: state.latest,
     sinceLast: state.lastAt === null ? null : now - state.lastAt,
     blockTimeMs: state.role.blockTimeMs,
     reachable: state.role.hasEndpoint && (source?.isReachable(state.role.genesis) ?? false),
+  };
+}
+
+/**
+ * Every chain's clock as of `now`, in reading order. The health judges on
+ * every notify, a content chunk included, so this copies no bars.
+ */
+export function getChainClocks(now: number = Date.now()): ChainClock[] {
+  return currentChains().map(state => clockOf(state, now));
+}
+
+/** A snapshot of every chain of the active network, in reading order. */
+export function getNetworkStatus(): ChainStatus[] {
+  const now = Date.now();
+  return currentChains().map(state => ({
+    ...clockOf(state, now),
+    role: state.role.role,
+    // A frozen copy: the monitor pushes and shifts its own array in place,
+    // which would change a snapshot a reader still holds.
+    bars: Object.freeze([...state.bars]),
     peers: peerCounts.get(state.role.role) ?? null,
     phase: phases.get(state.role.role) ?? null,
   }));
@@ -344,6 +387,7 @@ export function getNetworkStatus(): ChainStatus[] {
 /** For tests. Drops all state and listeners. */
 export function resetNetworkMonitor(): void {
   endNetworkWatch();
+  holds = 0;
   chains = new Map();
   peerCounts = new Map();
   phases = new Map();

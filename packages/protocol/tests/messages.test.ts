@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
-import {
-  NETWORK_NAME_TO_SERVICES_CONFIG,
-  NetworkName,
-  getActiveSupportedGenesisHashes,
-  setNetwork,
-} from '@dotli/config';
+import { NETWORK_NAME_TO_SERVICES_CONFIG, getActiveSupportedGenesisHashes, setNetwork } from '@dotli/config';
+import { NetworkName } from '../../config/src/network.js';
 import {
   ENVELOPE_CHAIN_KEYS,
   ENVELOPE_SYNC_KINDS,

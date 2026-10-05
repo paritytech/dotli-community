@@ -1,15 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* Fixed, not shrink-to-fit: the loading spinner sits in a surface of the
+   menu's own width, and the bar strips growing as blocks arrive never widen
+   it while the visitor reads it. */
 .popover {
-  /* Fixed, not min-width: the bar strips grow as blocks arrive, and a
-     shrink-to-fit surface widened with them while the visitor read it. */
-  width: 320px;
-  max-width: calc(100vw - 24px);
-  /* Opaque, unlike the other popovers. It sits over the product frame,
-     where backdrop-filter samples nothing, and the app's own controls would
-     read straight through a translucent surface. */
-  background: var(--surface-2);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
+  width: var(--w-pop-md);
 }

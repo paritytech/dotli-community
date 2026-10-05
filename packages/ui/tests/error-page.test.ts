@@ -183,10 +183,10 @@ describe('showErrorPage optional blocks', () => {
 
   it('As a visitor, I see the warning mark only on a screen that warns me', () => {
     showErrorPage({ title: 't', glyph: 'warning' });
-    expect(document.querySelector('[data-testid="error-page-glyph"][data-warning]')).not.toBeNull();
+    expect(byTestId('error-page-glyph').hasAttribute('data-warning')).toBe(true);
 
     showErrorPage({ title: 't' });
-    expect(document.querySelector('[data-testid="error-page-glyph"]')).toBeNull();
+    expect(byTestId('error-page-glyph').hasAttribute('data-warning')).toBe(false);
   });
 });
 
@@ -235,7 +235,7 @@ describe('showRetryScreen', () => {
 
     // Then
     expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
-    expect(query(byTestId('retry-screen'), 'h1').textContent).toBe('dot.li');
-    expect(byId('status').textContent).toBe('Retrying...');
+    byTestId('retry-screen');
+    expect(byId('status').textContent).toBe('Retrying…');
   });
 });

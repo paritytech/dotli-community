@@ -69,9 +69,11 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the landing page renders its own theme button, and the topbar's
-    // action group, More button included, is gone.
-    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Theme: /);
+    // Then: the landing page renders its own auth button and no theme button
+    // (it is always dark), and the topbar's action group, More button
+    // included, is gone.
+    await expect(page.locator('#landing-auth-button')).toBeVisible();
+    await expect(page.locator('#landing-theme-toggle')).toHaveCount(0);
     await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
@@ -106,6 +108,41 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(page.locator('#more-popover')).not.toHaveAttribute('data-open');
     await expect(page.locator('#mode-popover')).toHaveAttribute('data-open');
+  });
+
+  test('As a phone user, the header spans the top with the address, More and then the account, and More opens as a sheet a tap on the scrim closes', async ({
+    page,
+  }) => {
+    // Given
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // When
+    await page.goto(LABEL_URL);
+    await expect(page.locator('#topbar-actions[data-collapsible]')).toBeAttached();
+
+    // Then
+    expect(await page.locator('#topbar').boundingBox()).toEqual({ x: 0, y: 0, width: 390, height: 60 });
+    await expect(page.locator('#theme-toggle')).toBeHidden();
+    await expect(page.locator('#permissions-button')).toBeHidden();
+    const more = await page.locator('#more-button').boundingBox();
+    const account = await page.locator('#auth-button').boundingBox();
+    expect((more?.x ?? 0) < (account?.x ?? 0)).toBe(true);
+    expect(Math.round((account?.x ?? 0) + (account?.width ?? 0))).toBe(390 - 8);
+
+    // When
+    await page.locator('#more-button').click();
+
+    // Then
+    const sheet = page.locator('#more-popover');
+    await expect(sheet).toHaveAttribute('data-sheet');
+    await expect(sheet.getByTestId('menu-sheet-title')).toHaveText('More');
+    await expect.poll(() => sheetBottom(sheet)).toBe(844);
+
+    // When
+    await page.mouse.click(195, 100);
+
+    // Then
+    await expect(sheet).not.toHaveAttribute('data-open');
   });
 
   test('As a phone user, Settings opens as a bottom sheet, and I can close it with its close button or a swipe', async ({
@@ -173,6 +210,8 @@ test.describe('Shell UI smoke', () => {
     await expect(sheet).toHaveAttribute('data-sheet');
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.getByTestId('popover-sheet-title')).toHaveText('Permissions');
+    await expect(sheet.locator('#permissions-popover-list')).toBeAttached();
+    await expect(sheet.getByTestId('permissions-popover-header')).toHaveCount(0);
 
     // When
     await sheet.getByTestId('popover-sheet-close').click();
@@ -248,12 +287,12 @@ test.describe('Shell UI smoke', () => {
 
   test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {
     // Given
-    await page.goto(LANDING_URL);
+    await page.goto(LABEL_URL);
 
     // When
-    await page.locator('#landing-theme-toggle').click();
-    await expect(page.locator('#landing-theme-popover')).toBeVisible();
-    await page.locator('[data-theme-option="dark"]').click();
+    await page.locator('#topbar #theme-toggle').click();
+    await expect(page.locator('#theme-popover')).toBeVisible();
+    await page.getByTestId('theme-option-dark').click();
 
     // Then
     const html = page.locator('html');
@@ -277,30 +316,29 @@ test.describe('Shell UI smoke', () => {
     await page.goto(LABEL_URL);
 
     // Then
-    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Theme: Light');
+    await expect(page.locator('#topbar #theme-toggle')).toHaveAttribute('title', 'Appearance: Light');
   });
 
-  test("As a user who loses the connection, I see an offline banner that goes away when I'm back", async ({
+  test("As a user who loses the connection, the bar's status turns red and recovers when I'm back", async ({
     page,
     context,
   }) => {
     // Given
     await page.goto(LABEL_URL);
-    await expect(page.locator('#topbar')).toBeVisible();
-    const banner = page.locator('#offline-banner');
+    const bar = page.locator('#topbar');
+    await expect(bar).toBeVisible();
 
     // When
     await context.setOffline(true);
 
     // Then
-    await expect(banner).toBeVisible();
-    await expect(banner).toHaveText('You are offline');
+    await expect(bar).toHaveAttribute('data-tone', 'err');
 
     // When
     await context.setOffline(false);
 
     // Then
-    await expect(banner).toBeHidden();
+    await expect(bar).not.toHaveAttribute('data-tone', 'err');
   });
 
   test('As a desktop user, I see a toast I can dismiss', async ({ page }) => {
@@ -312,6 +350,7 @@ test.describe('Shell UI smoke', () => {
 
     // Then
     await expect(card).toBeVisible();
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'info');
 
     // When
     await card.getByTestId('notif-card-close').click();
@@ -319,6 +358,23 @@ test.describe('Shell UI smoke', () => {
     // Then
     await expect(card).toHaveCount(0);
     expect(await page.evaluate(() => localStorage.getItem('desktop-banner-dismissed'))).toBe('1');
+  });
+
+  test('As a desktop user, a part of the app that fails to load offers a reload in an error toast', async ({
+    page,
+  }) => {
+    // Given
+    await page.goto(LANDING_URL);
+
+    // When
+    await page.evaluate(() => window.dispatchEvent(new Event('vite:preloadError')));
+
+    // Then
+    const card = page.getByTestId('notif-card').filter({
+      has: page.getByTestId('notif-title').filter({ hasText: 'Asset failed to load' }),
+    });
+    await expect(card.getByTestId('notif-icon')).toHaveAttribute('data-tone', 'err');
+    await expect(card.getByTestId('notif-action')).toHaveText('Reload');
   });
 
   test('As a user with JavaScript disabled, the server-rendered shell still shows the topbar', async ({ browser }) => {
@@ -335,8 +391,8 @@ test.describe('Shell UI smoke', () => {
     // Then: the bar is the page's banner landmark.
     await expect(page.getByRole('banner', { name: 'dot.li browser bar' })).toHaveAttribute('id', 'topbar');
     // The hydrated islands' build-time renders.
-    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Login with Polkadot Mobile');
-    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Theme: System');
+    await expect(page.locator('#auth-button')).toHaveAttribute('title', 'Sign in with Polkadot Mobile');
+    await expect(page.locator('#theme-toggle')).toHaveAttribute('title', 'Appearance: System');
 
     await context.close();
   });

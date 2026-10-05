@@ -85,13 +85,13 @@ afterEach(() => {
 });
 
 describe('toast stack', () => {
-  it('As a dotli user, a toast renders its icon, text, link, action and close button', async () => {
+  it('As a dotli user, a toast renders its tinted icon, text, link, action and close button', async () => {
     // Given
     const onClick = vi.fn();
     pushToast(
       input('Update available', {
         deeplink: 'https://dot.li/',
-        iconBackground: '#000',
+        tone: 'err',
         action: { label: 'Reload', onClick },
       }),
     );
@@ -103,7 +103,7 @@ describe('toast stack', () => {
     const card = nth(cards(), 0);
     expect(card.hasAttribute('data-entering')).toBe(true);
     expect(card.dataset['id']).toBe('0');
-    expect(byTestId('notif-icon', card).style.background).not.toBe('');
+    expect(byTestId('notif-icon', card).getAttribute('data-tone')).toBe('err');
     expect(byTestId('notif-title', card).textContent).toBe('Update available');
     const body = query(card, 'a[data-testid="notif-body"]', HTMLAnchorElement);
     expect(body.href).toBe('https://dot.li/');
@@ -361,5 +361,22 @@ describe('toast stack', () => {
 
     // Then
     expect(toastsStore.get().expanded).toBe(false);
+  });
+
+  it("As a dotli user, pressing a toast's action in a pile runs it once and leaves the pile as it was", async () => {
+    // Given
+    const onClick = vi.fn();
+    pushToast(input('A'));
+    pushToast(input('B', { action: { label: 'Reload', onClick } }));
+    await mountStack();
+
+    // When
+    fireEvent.click(byTestId('notif-action', document, HTMLButtonElement));
+    await settle();
+
+    // Then
+    expect(onClick).toHaveBeenCalledTimes(1);
+    expect(toastsStore.get().expanded).toBe(false);
+    expect(toastsStore.get().items.map(t => t.leaving)).toEqual([false, false]);
   });
 });

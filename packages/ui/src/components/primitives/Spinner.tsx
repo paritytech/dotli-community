@@ -5,7 +5,7 @@ import type { JSX } from '@solidjs/web';
 import s from './Spinner.module.css';
 
 export interface SpinnerProps {
-  class?: string;
+  class?: string | undefined;
   testId?: string;
 }
 

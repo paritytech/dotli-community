@@ -1,69 +1,124 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The base rule is wrapped in :where(), so a consumer's class (the More
-   button's visibility) wins over it whatever order the stylesheets load in. */
+/* The board's .icon-btn: round, 36 px (44 px on a phone), white on the dark
+   glass. The base rule is wrapped in :where(), so a consumer's class wins
+   over it whatever order the stylesheets load in. */
 
 :where(.button) {
+  /* The badge's colour: white unless data-tone names one. */
+  --tone: var(--chrome-action);
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   box-sizing: border-box;
-  height: 44px;
-  min-width: 50px;
+  width: var(--h-bar-control);
+  height: var(--h-bar-control);
   margin: 0;
-  padding: 0 15px;
-  border: 1px solid transparent;
-  border-radius: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--chrome-text);
   font-family: inherit;
   font-size: 0.75rem;
   cursor: pointer;
   transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
+    background var(--dur-fast),
+    box-shadow var(--dur-fast);
 }
 .button[hidden] {
   display: none;
 }
 .button:hover {
-  border-color: var(--border-subtle);
-  background: var(--fill);
-  color: var(--text-strong);
-}
-.button:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-.button:disabled:hover {
-  border-color: transparent;
-  background: transparent;
-  color: var(--text-secondary);
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
 }
 .button:active {
-  background: var(--fill-strong);
+  background: var(--chrome-fill-strong);
+}
+/* The board's .icon-btn.is-on: a bar button while its surface is open, which
+   each says with aria-expanded. */
+.button[aria-expanded='true'] {
+  background: var(--chrome-fill-strong);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+}
+.button:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 .button > svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
 }
-.button[data-active] {
-  border-color: var(--border-subtle);
-  background: var(--fill);
-  color: var(--text-strong);
-}
+/* On the icon's top-right corner, its centre 1 px inside it. */
 .button[data-badge]::after {
   content: '';
   position: absolute;
-  top: 9px;
-  right: 10px;
+  top: 8px;
+  right: 8px;
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: var(--inverse-bg);
-  box-shadow: 0 0 0 1.5px var(--inverse-fg);
+  background: var(--tone);
+  box-shadow: 0 0 0 var(--sp-hair) var(--chrome-solid);
+}
+/* The board's .icon-btn-sm, 28 px on desktop. */
+.button[data-size='sm'] {
+  width: 28px;
+  height: 28px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-full);
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+  transition: background var(--dur-fast);
+}
+.button[data-size='sm']:hover {
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+.button[data-size='sm']:active {
+  background: var(--chrome-fill-strong);
+}
+.button[data-size='sm']:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+/* The close cross: 14 px, the board's 16 on phones. */
+.button[data-size='sm'] > svg {
+  width: 14px;
+  height: 14px;
+}
+/* Phones: the board's 20 px icon and 8 px badge, and its 36 px small
+   button. */
+@media (max-width: 560px) {
+  .button > svg {
+    width: 20px;
+    height: 20px;
+  }
+  .button[data-badge]::after {
+    top: 9px;
+    right: 9px;
+    width: var(--sp-2);
+    height: var(--sp-2);
+  }
+  .button[data-size='sm'] {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+  }
+  .button[data-size='sm'] > svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .button,
+  .button[data-size='sm'] {
+    transition: none;
+  }
 }

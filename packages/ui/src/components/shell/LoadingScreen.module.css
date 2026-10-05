@@ -2,11 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* It sits outside `#app`, so whatever replaces `#app`'s content never takes it
-   along.
-
-   Positioned like a browser's own status pages: a bounded column in the upper
-   part of the viewport (Chrome uses `margin: 14vh auto 0` with a 600px cap), so
-   the text does not move when a second line wraps in. */
+   along. The column is centred a little above the middle, where the error
+   pages put theirs, so a failed load swaps one for the other in place. */
 .screen {
   position: absolute;
   top: var(--topbar-height);
@@ -16,13 +13,32 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   box-sizing: border-box;
-  max-width: 600px;
   min-height: var(--content-height);
-  margin: 0 auto;
-  padding: 14vh 16px 16px;
+  margin: 0;
+  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
   text-align: center;
+  color-scheme: dark;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 560px) {
+  .screen {
+    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+  }
 }
 
 :global(body[data-landing]) .screen {
@@ -37,10 +53,10 @@
 }
 
 .logo {
+  display: flex;
   box-sizing: border-box;
-  margin: 0 0 40px;
+  margin: 0;
   padding: 0;
-  transition: opacity 0.8s ease;
 }
 
 .mark {
@@ -92,30 +108,86 @@
   }
 }
 
+.text {
+  box-sizing: border-box;
+  width: 100%;
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+}
+
+.status {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.step {
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.host {
+  font-weight: var(--fw-semibold);
+}
+
+.tld {
+  color: var(--text-secondary);
+}
+
+.line {
+  box-sizing: border-box;
+  width: 100%;
+  /* Two lines reserved, so the bar below does not shift as an explanation
+     wraps or empties. */
+  min-height: 3em;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+/* Off-screen but still announced. `display: none` and `visibility: hidden`
+   would take it out of the accessibility tree too. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .progress {
   display: flex;
-  gap: 12px;
+  gap: var(--sp-3);
   align-items: center;
   box-sizing: border-box;
   width: 240px;
-  max-width: calc(100vw - 48px);
-  margin: 0 0 24px;
+  max-width: 100%;
+  margin: var(--sp-5) 0 0;
   padding: 0;
 }
 
 .bar {
   flex: 1;
   box-sizing: border-box;
-  height: 2px;
+  height: 4px;
   margin: 0;
   padding: 0;
   overflow: hidden;
-  border-radius: 1px;
-  background: var(--fill);
+  border-radius: var(--r-full);
+  background: var(--border-subtle);
 }
 
-/* The fill is the state indicator, so it needs 3:1 as a non-text component
-   in both themes. */
 .fill {
   position: relative;
   box-sizing: border-box;
@@ -124,21 +196,20 @@
   margin: 0;
   padding: 0;
   overflow: hidden;
-  border-radius: 1px;
-  background: var(--text-muted);
+  border-radius: var(--r-full);
+  background: var(--text-strong);
   transition: width 0.4s ease-out;
 }
 
 /* Continuous sheen sweeping the filled portion. The simulated crawl can sit
    near a band's top during a long sync with no real progress to report. The
-   sheen keeps visible motion so the bar never reads as frozen. A white
-   highlight in both themes, a decorative constant. */
+   sheen keeps visible motion so the bar never reads as frozen. */
 @media (prefers-reduced-motion: no-preference) {
   .fill::after {
     content: '';
     position: absolute;
     inset: 0;
-    background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.9) 50%, transparent 100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
     transform: translateX(-100%);
     animation: sheen 1.4s ease-in-out infinite;
   }
@@ -156,90 +227,35 @@
   }
 }
 
-/* Every string here has to clear 4.5:1 against the page, so these are solid
-   colors rather than `opacity` dimming. */
 .pct {
-  min-width: 3ch;
-  font-family: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
-  font-size: 11px;
+  min-width: 4ch;
+  font: var(--fw-medium) var(--fs-caption) / 1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
   text-align: right;
-  /* 6.12:1 dark, 4.89:1 light, and below the status line in both. */
-  color: var(--neutral-solid);
-}
-
-.text {
-  display: flex;
-  flex-direction: column;
-  flex-shrink: 0;
-  gap: 6px;
-  align-items: center;
-  box-sizing: border-box;
-  width: 100%;
-  /* Wide enough that the longer explanatory lines take two rows at most. */
-  max-width: 460px;
-  margin: 0;
-  padding: 0;
-}
-
-/* Status block: held back until the load is slow enough to explain itself.
-   Nothing sits below it, so no height needs reserving against a shift. */
-.status {
-  box-sizing: border-box;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-}
-
-.line {
-  box-sizing: border-box;
-  width: 100%;
-  /* The explanatory lines run past one line at this width, and clipping them
-     to an ellipsis would defeat the point of showing them. Two lines are
-     reserved so the bar above does not shift as a sentence wraps. */
-  min-height: 2.6em;
-  margin: 0;
-  padding: 0;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.3;
-  letter-spacing: -0.01em;
-  text-align: center;
-  text-wrap: balance;
-  color: var(--text);
-}
-
-/* Off-screen but still announced. `display: none` and `visibility: hidden`
-   would take it out of the accessibility tree too. */
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  padding: 0;
-  overflow: hidden;
-  border: 0;
-  clip-path: inset(50%);
-  white-space: nowrap;
+  color: var(--text-secondary);
 }
 
 /* Shown only while a chain has stopped making progress, so it must read as
-   information rather than failure. Amber is AA on both themes. Always laid
-   out and shown by visibility: the slot height is reserved so the warning
-   appearing or its text rewrapping cannot shift the logo, bar and sentence
-   above it, which is exactly when the screen must look calm. */
+   information rather than failure. Always laid out and shown by visibility,
+   with two lines of text reserved: the column is centred, so a notice that
+   took up room as it appeared would shift the logo, lines and bar above it,
+   which is exactly when the screen must look calm. */
 .warning {
   display: flex;
-  gap: 7px;
+  gap: var(--sp-2);
   align-items: flex-start;
-  justify-content: center;
   box-sizing: border-box;
-  width: 100%;
-  min-height: 34px;
-  margin: 18px 0 0;
-  padding: 0;
-  font-size: 11.5px;
-  line-height: 1.45;
-  color: var(--warning);
+  max-width: 100%;
+  min-height: calc(2 * var(--sp-3) + 3em);
+  margin: var(--sp-8) 0 0;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--chrome-warn) 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--chrome-warn) 28%, transparent);
+  font-size: var(--fs-small);
+  line-height: var(--lh-body);
+  text-align: left;
+  color: var(--text-strong);
   visibility: hidden;
 }
 
@@ -247,15 +263,9 @@
   visibility: visible;
 }
 
-.warning-text {
-  max-width: 46ch;
-  text-align: left;
-}
-
 .warning-icon {
-  flex-shrink: 0;
-  width: 14px;
-  height: 14px;
-  /* Nudged onto the baseline of the first line rather than its box top. */
-  margin: 1px 0 0;
+  flex: none;
+  /* Centred on the first line of text. */
+  margin: var(--sp-hair) 0 0;
+  color: var(--chrome-warn);
 }

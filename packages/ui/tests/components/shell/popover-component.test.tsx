@@ -8,8 +8,10 @@ import { createSignal, lazy } from 'solid-js';
 import { cleanup } from '@solidjs/testing-library';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { EXIT_MS, Popover, SHEET_EXIT_MS, usePopover } from '../../../src/components/shell/Popover.js';
+import { drag } from '../../helpers/drag.js';
 import { mouseClick, pointerPress, renderComponent, resetStores, settle, waitForContent } from '../../helpers/solid.js';
 import { byId, byTestId, must } from '../../support.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../../../metrics/src/sentry.js', () => sentry);
@@ -47,15 +49,6 @@ function Body() {
   );
 }
 
-function stubViewport(narrow: boolean): void {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(max-width: 560px)' && narrow,
-    media: query,
-    addEventListener: () => undefined,
-    removeEventListener: () => undefined,
-  }));
-}
-
 function renderPopover(
   content: ReturnType<typeof chunk>['Content'],
   extra: Partial<Parameters<typeof Popover>[0]> = {},
@@ -85,7 +78,7 @@ const trigger = (): HTMLElement => byId('test-trigger');
 const isOpen = (): boolean => surface().hasAttribute('data-open');
 
 beforeEach(() => {
-  stubViewport(false);
+  stubPhoneViewport(false);
   sentry.captureException.mockReset();
   vi.stubGlobal('requestIdleCallback', () => 1);
   vi.stubGlobal('cancelIdleCallback', () => undefined);
@@ -478,38 +471,9 @@ describe('Popover', () => {
     });
   });
 
-  it('As a user, something inside the content takes Escape first', async () => {
-    // Given
-    let taking = true;
-    function EscapeTaker() {
-      usePopover().onEscape(() => taking);
-      return <button id="taker" type="button" />;
-    }
-    const { Content, release } = chunk(EscapeTaker);
-    release();
-    renderPopover(Content);
-    await settle();
-    mouseClick(trigger());
-    await waitForContent('test-popover');
-
-    // When
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    taking = false;
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-    await settle();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
   it('As a phone user, a popover opens as a modal bottom sheet with a title and a close button', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content, { backdrop: true });
@@ -530,9 +494,14 @@ describe('Popover', () => {
       'sheet header',
     );
     expect(byTestId('popover-sheet-title', header).textContent).toBe('Test');
+    // The close is the small icon button: its name comes from its label alone.
+    const close = byTestId('popover-sheet-close', header, HTMLButtonElement);
+    expect(close.getAttribute('aria-label')).toBe('Close Test');
+    expect(close.getAttribute('data-size')).toBe('sm');
+    expect(close.textContent).toBe('');
 
     // When
-    mouseClick(must(header.querySelector<HTMLElement>('[data-testid="popover-sheet-close"]'), 'close'));
+    mouseClick(close);
     await settle();
 
     // Then
@@ -543,7 +512,7 @@ describe('Popover', () => {
   it('As a phone user, a closing sheet keeps its content until it has slid out', async () => {
     // Given
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content);
@@ -566,7 +535,7 @@ describe('Popover', () => {
 
   it('As a phone user, a resize past the breakpoint leaves the open sheet a sheet, and the next opening follows the viewport', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content);
@@ -575,7 +544,7 @@ describe('Popover', () => {
     await waitForContent('test-popover');
 
     // When
-    stubViewport(false);
+    stubPhoneViewport(false);
     window.dispatchEvent(new Event('resize'));
     await settle();
 
@@ -594,19 +563,8 @@ describe('Popover', () => {
   });
 
   describe('swipe', () => {
-    /** A drag on `el` from y 100 by `dy` pixels over `ms` milliseconds. */
-    function drag(el: HTMLElement, dy: number, ms: number): void {
-      const now = vi.spyOn(performance, 'now');
-      now.mockReturnValue(1000);
-      el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1, clientY: 100, button: 0 }));
-      now.mockReturnValue(1000 + ms);
-      el.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
-      el.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1, clientY: 100 + dy }));
-      now.mockRestore();
-    }
-
     async function openSheet(): Promise<HTMLElement> {
-      stubViewport(true);
+      stubPhoneViewport(true);
       const { Content, release } = chunk(Body);
       release();
       renderPopover(Content);
@@ -655,6 +613,7 @@ describe('Popover', () => {
       expect(surface().style.transform).toBe('');
     });
   });
+
   it('As a screen-reader user, a disclosure says only whether it is shown, and its plain content takes no focus', async () => {
     // Given
     function Text() {
@@ -680,7 +639,7 @@ describe('Popover', () => {
 
   it('As a phone user, a disclosure opens as a sheet, a modal dialog like any other', async () => {
     // Given
-    stubViewport(true);
+    stubPhoneViewport(true);
     const { Content, release } = chunk(Body);
     release();
     renderPopover(Content, { disclosure: true });
@@ -696,7 +655,7 @@ describe('Popover', () => {
     expect(trigger().getAttribute('aria-haspopup')).toBe('dialog');
   });
 
-  it('As a user, a popover anchored to its trigger opens under it', async () => {
+  it('As a user, a popover anchored to its trigger opens at its left edge, under the topbar as every popover does', async () => {
     // Given
     const { Content, release } = chunk(Body);
     release();
@@ -710,7 +669,7 @@ describe('Popover', () => {
 
     // Then
     expect(surface().getAttribute('data-anchor')).toBe('trigger');
-    expect(surface().style.top).toBe('36px');
+    expect(surface().style.top).toBe('');
     expect(surface().style.left).toBe('40px');
   });
 

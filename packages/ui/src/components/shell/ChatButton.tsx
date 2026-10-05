@@ -11,6 +11,7 @@ import {
   setChatPanelOpen,
   totalChatUnread,
 } from '../../state/chat-panel.js';
+import { Chip } from '../primitives/Chip.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
 import { focusLostOrInside, focusTrigger } from './create-popover.js';
@@ -19,15 +20,14 @@ import { TopbarContext } from './topbar/context.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './ChatButton.module.css';
 
-function ChatIcon(props: { size: number }): JSX.Element {
+function ChatIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      // The boards' toolbar set draws every icon at a 1.75 stroke.
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
     >
@@ -40,10 +40,12 @@ function ChatIcon(props: { size: number }): JSX.Element {
  * The topbar's chat button (`#chat-button`), which opens and closes the
  * docked chat panel (components/chat/ChatDock.tsx). It shows while the loaded
  * product has chat and a session is active (chatButtonVisible), shows pressed
- * (`data-active`) while the panel is open, and carries the unread count while
- * the panel is closed (the room rows carry their own while it is open). When
- * the panel closes with focus inside it (Escape, its own close button), focus
- * comes back here, or to the More button while the bar has collapsed this one.
+ * (`aria-expanded`) while the panel is open, and carries the unread count while
+ * the panel is closed (the room rows carry their own while it is open).
+ * Collapsed into More (always, on a phone), the count moves to its Chat row
+ * and More raises an info badge for it. When the panel closes with focus
+ * inside it (Escape, its own close button), focus comes back here, or to the
+ * More button while the bar has collapsed this one.
  */
 export function ChatButton(): JSX.Element {
   let button: HTMLButtonElement | undefined;
@@ -74,7 +76,9 @@ export function ChatButton(): JSX.Element {
     <TopbarItem
       name="chat"
       label="Chat"
-      icon={() => <ChatIcon size={14} />}
+      icon={ChatIcon}
+      alert={unread() === 0 ? undefined : { tone: 'info', label: 'chat has unread messages' }}
+      aside={unread() === 0 ? undefined : () => <Chip>{chatUnreadLabel(unread())}</Chip>}
       priority={TOPBAR_PRIORITY.chat}
       visible={visible()}
       activate={toggle}
@@ -85,14 +89,13 @@ export function ChatButton(): JSX.Element {
         }}
         onClick={toggle}
         id="chat-button"
-        active={open()}
         title="Chat"
         aria-label="Chat"
         aria-expanded={open() ? 'true' : 'false'}
         aria-controls="chat-panel"
         hidden={!visible()}
       >
-        <ChatIcon size={12} />
+        <ChatIcon />
         <span class={s['unread']} id="chat-unread-badge" hidden={unread() === 0}>
           {unread() === 0 ? '' : chatUnreadLabel(unread())}
         </span>

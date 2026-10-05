@@ -1,24 +1,35 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The sign-in surface. The backdrop is the dialog and its scrim, and a press
+   on it closes. It stays above the bar, as the Popover backdrop does, so the
+   pill shows through the light scrim and a press on it lands on the scrim.
+   The surface is the shared anchored frame and, on a phone's viewport, the
+   shared sheet (components/sheet/Sheet.module.css), as the popovers' is.
+
+   The backdrop is a near twin of Popover.module.css's, kept here because it
+   differs (layer, timing) and holds the surface.
+
+   Desktop sizes by default, the boards' in the phone block: the 234 px QR
+   tile in the 320 px surface is the board's 264 in 360. */
+
+/* Twin of Popover.module.css .backdrop, above the bar and on the --dur clock. */
 .backdrop {
   position: fixed;
   inset: 0;
   z-index: 2000;
   display: none;
-  align-items: center;
-  justify-content: center;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  background: var(--backdrop);
+  background: var(--chrome-scrim-light);
   opacity: 0;
   transition:
-    opacity 0.3s ease-out,
-    display 0.3s allow-discrete;
+    opacity var(--dur) var(--ease-out),
+    display var(--dur) allow-discrete;
 }
 .backdrop[data-open] {
-  display: flex;
+  display: block;
   opacity: 1;
 }
 .backdrop:focus-visible {
@@ -29,271 +40,279 @@
     opacity: 0;
   }
 }
-
-.modal {
-  box-sizing: border-box;
-  width: 100%;
-  max-width: 340px;
-  margin: 0;
-  padding: 24px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 16px;
-  background: var(--surface-glass);
-  -webkit-backdrop-filter: blur(28px) saturate(180%);
-  box-shadow: 0 24px 64px var(--shadow);
-  text-align: center;
-  opacity: 0;
-  transform: scale(0.7);
-  transition:
-    opacity 0.28s ease-out,
-    transform 0.3s cubic-bezier(0.34, 1.5, 0.5, 1);
-}
-.backdrop[data-open] .modal {
+/* The sheet sits inside the backdrop, so the scrim fades its colour, not
+   its opacity, and stays displayed (catching a tap's trailing click) until
+   the slide ends rather than the shared scrim's fade. */
+.backdrop[data-sheet] {
+  background: transparent;
   opacity: 1;
-  transform: scale(1);
+  transition:
+    background-color var(--dur) var(--ease-out),
+    display var(--dur-morph) allow-discrete;
+}
+.backdrop[data-sheet][data-open] {
+  background: var(--chrome-scrim);
 }
 @starting-style {
-  .backdrop[data-open] .modal {
-    opacity: 0;
-    transform: scale(0.7);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .backdrop,
-  .modal {
-    transition: none !important;
-  }
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .modal {
-    background: var(--surface);
-  }
-}
-@supports (backdrop-filter: blur(1px)) {
-  .modal {
-    backdrop-filter: blur(28px) saturate(180%);
+  .backdrop[data-sheet][data-open] {
+    background: transparent;
+    opacity: 1;
   }
 }
 
+/* The cap on the anchored frame's size, as Popover.module.css's. */
+:where(.surface) {
+  max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
+  max-height: calc(
+    100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
+  );
+  overflow-y: auto;
+}
+.surface[data-open] {
+  display: block;
+}
+
+/* Not SurfaceHead: that head is a row with an aside, this one stacks the
+   reason and the hint under the title. */
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: var(--sp-hair) var(--sp-1) 0;
+}
 .title {
-  margin: 0 0 4px;
+  margin: 0;
   padding: 0;
-  font-size: 1rem;
-  color: var(--text-strong);
+  color: var(--chrome-text);
+  font-size: var(--fs-pop-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  overflow-wrap: anywhere;
 }
-
-.title-nowrap {
-  white-space: nowrap;
+.title-rest {
+  color: var(--chrome-text-muted);
+  font-weight: var(--fw-regular);
 }
-
+/* The product's own words, set apart from the host's copy. */
 .reason {
-  margin: 0 0 4px;
+  margin: 0;
   padding: 0;
-  font-size: 0.8rem;
+  color: var(--chrome-text);
+  font-size: var(--fs-caption);
   font-style: italic;
-  line-height: 1.4;
-  color: var(--neutral-solid);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
 }
-
 .hint {
-  margin: 0 0 16px;
+  margin: 0;
   padding: 0;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--neutral-solid);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
 
 .qr {
+  --qr-gap: 10px;
+  /* The drawn code's side, read by qrSize() in AuthModal.tsx. */
+  --qr-size: 218px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--qr-gap);
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+/* The tile (--qr-size plus the tile's padding), the gap and the waiting
+   line, from the spinner on, so the surface keeps its size as the code comes
+   in and as login progress replaces it. */
+.qr-scan {
+  min-height: calc(var(--qr-size) + 2 * var(--sp-2) + var(--qr-gap) + var(--fs-caption) * var(--lh-body));
+}
+.qr .spinner {
+  margin: 0;
+}
+.tile {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--sp-2);
+  border-radius: 20px;
+  background: var(--qr-bg);
+  box-shadow: var(--chrome-shadow-tile);
+  line-height: 0;
+}
+.tile:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
+}
+.qr-canvas {
+  display: block;
+}
+.badge {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: grid;
+  place-items: center;
+  width: var(--sp-10);
+  height: var(--sp-10);
+  border-radius: 11px;
+  background: var(--qr-bg);
+  transform: translate(-50%, -50%);
+}
+.badge > span {
+  display: grid;
+  place-items: center;
+  width: var(--sp-8);
+  height: var(--sp-8);
+  border-radius: 7px;
+  background: var(--qr-ink);
+  color: var(--qr-bg);
+}
+.badge svg {
+  width: 18px;
+  height: 18px;
+}
+/* Not Hint: the board centres this line with a 12 px gap (10 on desktop),
+   Hint has 8 px. */
+.waiting {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-sizing: border-box;
-  min-height: 200px;
+  gap: var(--qr-gap);
   margin: 0;
   padding: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
 
-.qr-mobile {
-  flex-direction: column;
-  gap: 14px;
-}
-
-.qr-canvas {
-  border-radius: 8px;
-}
-
-.qr-link {
-  display: inline-flex;
+.link {
+  align-self: center;
   box-sizing: border-box;
-  border-radius: 8px;
-  line-height: 0;
-}
-.qr-link[hidden] {
-  display: none;
-}
-
-.open-app {
-  display: inline-block;
-  box-sizing: border-box;
-  padding: 8px 20px;
-  border-radius: 6px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background 0.15s ease;
-}
-.open-app:hover {
-  background: var(--inverse-bg-hover);
-}
-
-.open-app-link {
-  padding: 0;
-  background: none;
-  color: var(--neutral-solid);
-  font-weight: 500;
-  text-decoration: underline;
-}
-.open-app-link:hover {
-  background: none;
-  color: var(--text-strong);
-}
-
-.qr-toggle {
   margin: 0;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--neutral-solid);
-  font-family: inherit;
-  font-size: 0.8rem;
+  padding: 6px var(--sp-1);
+  border-radius: var(--r-hair);
+  color: var(--chrome-text);
+  font-size: var(--fs-small);
   text-decoration: underline;
-  cursor: pointer;
-  transition: color 0.15s ease;
+  /* The board's underline offset. */
+  text-underline-offset: 3px;
 }
-.qr-toggle:hover {
-  color: var(--text-strong);
+.link:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: 2px;
 }
 
 .progress {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--qr-gap);
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  text-align: center;
 }
-
 .progress-text {
-  margin: 8px 0 16px;
+  margin: 0;
   padding: 0;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--neutral-solid);
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
 
 .error-view {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 6px;
   box-sizing: border-box;
+  width: 100%;
   margin: 0;
   padding: 0;
   text-align: center;
 }
-
+/* IconTile, 4 px further from the title than the view's gap. */
 .pending-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  width: 44px;
-  height: 44px;
-  margin: 0 0 14px;
-  padding: 0;
-  border-radius: 12px;
-  background: var(--fill);
-  color: var(--text);
+  margin: 0 0 var(--sp-1);
 }
-
-.pending-glyph {
-  width: 22px;
-  height: 22px;
-}
-
 .pending-title {
-  margin: 0 0 4px;
-  padding: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: var(--text-strong);
-}
-
-.pending-subtitle {
-  margin: 0 0 16px;
-  padding: 0;
-  font-size: 0.8rem;
-  color: var(--neutral-solid);
-}
-
-.error {
-  margin: 0 0 16px;
-  padding: 0;
-  font-size: 0.8rem;
-  line-height: 1.4;
-  color: var(--neutral-solid);
-}
-
-.retry {
-  box-sizing: border-box;
   margin: 0;
-  padding: 6px 16px;
-  border: none;
-  border-radius: 6px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s ease;
+  color: var(--chrome-text);
+  font-size: var(--fs-pop-title);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
 }
-.retry:hover {
-  background: var(--inverse-bg-hover);
+.pending-subtitle {
+  margin: 0;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
-
-.get-app {
-  display: block;
-  margin: 14px 0 0;
-  color: var(--neutral-solid);
-  font-size: 0.8rem;
-  text-decoration: underline;
-  transition: color 0.15s ease;
+/* The raw reason, kept for bug reports: mono text in the Well, on the
+   board's tighter padding and radius rather than the Well's own. */
+.error {
+  align-self: stretch;
+  padding: 6px 10px;
+  border-radius: 10px;
+  color: var(--chrome-text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+  text-align: left;
+  overflow-wrap: anywhere;
 }
-.get-app:hover {
-  color: var(--text-strong);
-}
-.get-app[hidden] {
-  display: none;
+.retry {
+  margin-top: 6px;
 }
 
-.close {
-  box-sizing: border-box;
-  margin: 16px 0 0;
-  padding: 6px 16px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 0.8rem;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease;
+/* Phones: the boards' sizes of the parts. */
+@media (max-width: 560px) {
+  .head {
+    gap: var(--sp-2);
+  }
+  .qr {
+    --qr-gap: var(--sp-3);
+    --qr-size: 248px;
+  }
+  .tile {
+    border-radius: var(--r-lg);
+  }
+  .badge {
+    width: var(--h-control);
+    height: var(--h-control);
+    border-radius: var(--r-sm);
+  }
+  .badge > span {
+    width: var(--h-control-sm);
+    height: var(--h-control-sm);
+    border-radius: var(--r-xs);
+  }
+  .badge svg {
+    width: 20px;
+    height: 20px;
+  }
+  .link {
+    padding: var(--sp-2) var(--sp-1);
+  }
+  .error-view {
+    gap: var(--sp-2);
+  }
+  .error {
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+  .retry {
+    margin-top: var(--sp-2);
+  }
 }
-.close:hover {
-  border-color: var(--border-strong);
-  background: var(--fill);
-  color: var(--text-strong);
+
+@media (prefers-reduced-motion: reduce) {
+  .backdrop {
+    transition: none !important;
+  }
 }

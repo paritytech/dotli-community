@@ -18,124 +18,151 @@ const THEME_LABEL: Record<ThemePref, string> = {
   system: 'System',
 };
 
-/**
- * The sun, moon and monitor, of which CSS shows the one for
- * `<html data-theme-pref>`: on the button (12px) or a More menu row (14px).
- */
-function ThemeIcons(props: { size: number }): JSX.Element {
+interface GlyphProps {
+  class?: string | undefined;
+  testId?: string | undefined;
+}
+
+function SunGlyph(props: GlyphProps): JSX.Element {
   return (
-    <>
-      <svg
-        class={s['sun']}
-        data-testid="theme-icon-sun"
-        width={props.size}
-        height={props.size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <circle cx="12" cy="12" r="5" />
-        <line x1="12" y1="1" x2="12" y2="3" />
-        <line x1="12" y1="21" x2="12" y2="23" />
-        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-        <line x1="1" y1="12" x2="3" y2="12" />
-        <line x1="21" y1="12" x2="23" y2="12" />
-        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-      </svg>
-      <svg
-        class={s['moon']}
-        data-testid="theme-icon-moon"
-        width={props.size}
-        height={props.size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-      </svg>
-      <svg
-        class={s['system']}
-        data-testid="theme-icon-system"
-        width={props.size}
-        height={props.size}
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-width="2"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      >
-        <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-        <line x1="8" y1="21" x2="16" y2="21" />
-        <line x1="12" y1="17" x2="12" y2="21" />
-      </svg>
-    </>
+    <svg
+      class={props.class}
+      data-testid={props.testId}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+
+function MoonGlyph(props: GlyphProps): JSX.Element {
+  return (
+    <svg
+      class={props.class}
+      data-testid={props.testId}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+    </svg>
+  );
+}
+
+function MonitorGlyph(props: GlyphProps): JSX.Element {
+  return (
+    <svg
+      class={props.class}
+      data-testid={props.testId}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.75"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="2" y="3" width="20" height="14" rx="3" />
+      <path d="M8 21h8M12 17v4" />
+    </svg>
   );
 }
 
 /**
- * The shell's theme button (`#theme-toggle`) and its menu (`#theme-popover`,
- * rendered into the body), an item of the topbar's action group island (see
- * src/islands/): rendered with the host page from the theme store's default
- * ("Theme: System"), then hydrated, which brings the stored preference. The
- * landing page (components/landing/) renders it too, in its corner. The
- * menu is a modal menu, like Radix DropdownMenu with a RadioGroup
- * (createPopover's `menu` mode, which owns its keys and focus): a keyboard opening focuses the first option and a
- * pointer opening the menu itself; ArrowUp/ArrowDown (wrapping), Home, End
- * and typeahead move between the options (`menuitemradio`, `aria-checked`
- * on the current one); Escape closes and hands focus back to the button;
- * Tab is prevented; and a press outside closes it without reaching what is
- * underneath. Picking an option applies it through theme-controller.ts,
- * closes the menu and focuses the button (or the More button, while the
- * topbar has collapsed the theme button).
- *
- * The button's icon comes from CSS on `<html data-theme-pref>`, which the
- * inline bootstrap script and theme-controller.ts own, never this component:
- * the script sets it before the island hydrates, so the build-time button
- * already shows the stored choice.
- * The More menu's Theme row opens this menu with the row click: a keyboard
- * choice (`detail` 0) opens it as a keyboard opening, on the first option.
- *
- * `idPrefix` sets another instance's ids apart (the landing page's, whose
- * page also holds the topbar's build-time markup).
+ * The sun and moon, of which CSS shows the theme in effect,
+ * `<html data-theme>`, so System shows what it resolved to: on the button or
+ * a More menu row.
  */
-export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
-  const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
+function ThemeIcons(): JSX.Element {
+  return (
+    <>
+      <SunGlyph class={s['sun']} testId="theme-icon-sun" />
+      <MoonGlyph class={s['moon']} testId="theme-icon-moon" />
+    </>
+  );
+}
+
+/** One tile of the menu: its glyph over its label. */
+function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element }): JSX.Element {
+  return (
+    <MenuRow
+      class={s['tile']}
+      role="menuitemradio"
+      checked={props.checked}
+      onClick={() => {
+        selectThemePref(props.pref);
+      }}
+      testId={`theme-option-${props.pref}`}
+    >
+      {props.children}
+      <span>{THEME_LABEL[props.pref]}</span>
+    </MenuRow>
+  );
+}
+
+/**
+ * The shell's appearance button (`#theme-toggle`) and its menu
+ * (`#theme-popover`, rendered into the body), an item of the topbar's action
+ * group island (see src/islands/): rendered with the host page from the theme
+ * store's default ("Appearance: System"), then hydrated, which brings the
+ * stored preference.
+ *
+ * The menu is the board's Appearance popover: a title over three tiles
+ * (Light, Dark, System). On a phone it opens as a bottom sheet whose head
+ * carries the title. It is a modal menu, like Radix DropdownMenu with a
+ * RadioGroup (createPopover's `menu` mode, which owns its keys and focus): a
+ * keyboard opening focuses the first tile and a pointer opening the menu
+ * itself. The arrows (Left and Right along the row, Up and Down too, all
+ * wrapping), Home, End and typeahead move between the tiles
+ * (`menuitemradio`, `aria-checked` on the current one). Escape closes and
+ * hands focus back to the button, Tab is prevented (in a sheet, Tab reaches
+ * the head's close button), and a press outside
+ * closes it without reaching what is underneath. Picking a tile applies it
+ * through theme-controller.ts and leaves the menu open, so the user sees the
+ * page in the new theme and can pick again.
+ * The title is hidden from assistive technology, as the menu's own name
+ * already says it.
+ *
+ * The button's icon comes from CSS on `<html data-theme>`, which the inline
+ * bootstrap script and theme-controller.ts own, never this component: the
+ * script sets it before the island hydrates, so the build-time button already
+ * shows the theme in effect, and the controller follows the OS while the
+ * choice is System.
+ * The More menu's Appearance row opens this menu with the row click: a
+ * keyboard choice (`detail` 0) opens it as a keyboard opening, on the first
+ * tile.
+ */
+export function ThemeToggle(): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
   const theme = useStore(themeStore);
   const pref = (): ThemePref => theme().pref;
-  const title = (): string => `Theme: ${THEME_LABEL[pref()]}`;
+  const title = (): string => `Appearance: ${THEME_LABEL[pref()]}`;
 
   const menu = createPopover({
     mode: 'menu',
+    sheet: true,
     trigger: () => button,
     surface: () => popover,
   });
-
-  const onClick = (e: MouseEvent): void => {
-    const option = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-option]');
-    const next = option?.dataset['themeOption'];
-    if (next === 'light' || next === 'dark' || next === 'system') {
-      selectThemePref(next);
-      menu.onItemChosen();
-    }
-  };
 
   return (
     <>
       <TopbarItem
         name="theme"
-        label="Theme"
-        icon={() => <ThemeIcons size={14} />}
+        label="Appearance"
+        icon={ThemeIcons}
         priority={TOPBAR_PRIORITY.theme}
         activate={menu.toggle}
       >
@@ -144,14 +171,14 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
             button = el;
           }}
           onClick={menu.toggle}
-          id={id('theme-toggle')}
+          id="theme-toggle"
           title={title()}
           aria-label={title()}
           aria-haspopup="menu"
           aria-expanded={menu.open() ? 'true' : 'false'}
-          aria-controls={id('theme-popover')}
+          aria-controls="theme-popover"
         >
-          <ThemeIcons size={12} />
+          <ThemeIcons />
         </IconButton>
       </TopbarItem>
       <Portal>
@@ -159,112 +186,26 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           ref={el => {
             popover = el;
           }}
-          onClick={onClick}
           class={s['menu']}
-          id={id('theme-popover')}
-          open={menu.open()}
-          label="Theme"
+          id="theme-popover"
+          popover={menu}
+          label="Appearance"
+          orientation="horizontal"
         >
-          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'light'} data-theme-option="light">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="12" cy="12" r="5" />
-              <line x1="12" y1="1" x2="12" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="23" />
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" />
-              <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" />
-              <line x1="1" y1="12" x2="3" y2="12" />
-              <line x1="21" y1="12" x2="23" y2="12" />
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" />
-              <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" />
-            </svg>
-            <span>Light</span>
-            <svg
-              class={s['check']}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </MenuRow>
-          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'dark'} data-theme-option="dark">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-            </svg>
-            <span>Dark</span>
-            <svg
-              class={s['check']}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </MenuRow>
-          <MenuRow class={s['option']} role="menuitemradio" checked={pref() === 'system'} data-theme-option="system">
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-            </svg>
-            <span>System</span>
-            <svg
-              class={s['check']}
-              width="14"
-              height="14"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-          </MenuRow>
+          <div class={s['head']} aria-hidden="true">
+            Appearance
+          </div>
+          <div class={s['tiles']} role="group">
+            <Tile pref="light" checked={pref() === 'light'}>
+              <SunGlyph />
+            </Tile>
+            <Tile pref="dark" checked={pref() === 'dark'}>
+              <MoonGlyph />
+            </Tile>
+            <Tile pref="system" checked={pref() === 'system'}>
+              <MonitorGlyph />
+            </Tile>
+          </div>
         </Menu>
       </Portal>
     </>

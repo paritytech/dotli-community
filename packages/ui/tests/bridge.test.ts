@@ -382,7 +382,7 @@ describe('bridge render lifecycle', () => {
 
     for (const [index, render] of renders.entries()) {
       // When
-      layout.setTopbarLayout({ offset: true, shown: true, transition: '' });
+      layout.setTopbarLayout({ offset: true });
       const rendered = render();
       await waitForProviderRequests(index + 1);
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
@@ -393,8 +393,8 @@ describe('bridge render lifecycle', () => {
       expect(iframe.style.position).toBe('fixed');
 
       // And later layout changes reach it
-      layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
-      expect(iframe.style.transform).toBe('translateY(0)');
+      layout.setTopbarLayout({ offset: false });
+      expect(iframe.style.top).toBe('var(--safe-top, 0px)');
     }
   }, 10_000);
 

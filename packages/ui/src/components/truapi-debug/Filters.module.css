@@ -26,7 +26,7 @@
 }
 .label {
   color: var(--td-fg-dim);
-  font-size: 10.5px;
+  font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-right: 2px;
@@ -41,8 +41,10 @@
   font-size: 11px;
   cursor: pointer;
 }
+/* No text, but it would hold the UA's 13.333 px font size. */
 .checkbox {
   margin: 0;
+  font: inherit;
   accent-color: var(--td-accent);
 }
 

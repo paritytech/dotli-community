@@ -10,7 +10,7 @@ import { setTopbarPresent } from '../../../src/state/topbar.js';
 import { byId, byTestId } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
+const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
 
 let iframe: HTMLIFrameElement;
 /**

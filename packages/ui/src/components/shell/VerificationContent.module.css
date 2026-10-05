@@ -1,68 +1,21 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.content {
-  padding: 12px 14px;
-}
-.title {
-  display: block;
-  margin-bottom: 10px;
-  color: var(--text-muted);
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.row {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  align-items: start;
-  column-gap: 8px;
-  margin-bottom: 10px;
-  font-size: 0.74rem;
-  line-height: 1.45;
-}
-.row:last-child {
-  margin-bottom: 0;
-}
+/* The pill shield's own glyphs, 16 px (the board's 20 on phones), in the
+   shield's colours. Choice places them. */
 .icon {
-  width: 14px;
-  height: 14px;
-  margin-top: 2px;
+  width: 16px;
+  height: 16px;
 }
-.row[data-state='verified'] .icon {
-  color: var(--success);
+.verified {
+  color: var(--chrome-ok);
 }
-.row[data-state='trusted'] .icon {
-  color: var(--trusted);
+.trusted {
+  color: var(--chrome-warn);
 }
-.text {
-  display: block;
-  min-width: 0;
-}
-.name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.label {
-  color: var(--text-strong);
-  font-weight: 600;
-}
-.current {
-  padding: 1px 5px;
-  border-radius: 4px;
-  background: var(--fill-strong);
-  color: var(--text-secondary);
-  font-size: 0.58rem;
-  font-weight: 600;
-  line-height: 1.4;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-.row:not([data-current]) .current {
-  display: none;
-}
-.desc {
-  display: block;
+@media (max-width: 560px) {
+  .icon {
+    width: 20px;
+    height: 20px;
+  }
 }

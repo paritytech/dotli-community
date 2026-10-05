@@ -1,12 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { UrlPillShield } from '../src/components/shell/UrlPillShield.js';
-import { showProductPill } from '../src/state/url-pill.js';
+import { setVerificationShieldState, showProductPill } from '../src/state/url-pill.js';
 import { setBlockingModalActive } from '../src/state/topbar.js';
-import {
-  setVerificationShieldState,
-  VERIFICATION_SHIELD_ID,
-  VERIFICATION_TOOLTIP_ID,
-} from '../src/verification-shield.js';
+import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID } from '../src/verification-shield.js';
 import {
   pointerPress,
   pointerPressUnfocusable,
@@ -16,7 +12,8 @@ import {
   tabTo,
   waitForContent,
 } from './helpers/solid.js';
-import { byId, byTestId, query } from './support.js';
+import { byId, byTestId } from './support.js';
+import { stubPhoneViewport } from './helpers/viewport.js';
 
 function button(): HTMLButtonElement {
   return byId(VERIFICATION_SHIELD_ID, HTMLButtonElement);
@@ -39,7 +36,7 @@ function isClosed(): boolean {
 }
 
 function rowFor(state: string): HTMLElement {
-  return query(panel(), `[data-testid="verification-tooltip-row"][data-state="${state}"]`);
+  return byTestId(`verification-tooltip-row-${state}`, panel());
 }
 
 /** Open the explainer, and wait for its body (its own chunk). */
@@ -68,12 +65,7 @@ afterEach(() => {
 describe('verification shield', () => {
   it('As a phone user, the explainer opens as a sheet whose header names it, so the body has no title of its own', async () => {
     // Given
-    vi.stubGlobal('matchMedia', (media: string) => ({
-      matches: media === '(max-width: 560px)',
-      media,
-      addEventListener: () => undefined,
-      removeEventListener: () => undefined,
-    }));
+    stubPhoneViewport(true);
 
     // When
     await openShield();
@@ -81,7 +73,7 @@ describe('verification shield', () => {
     // Then
     expect(panel().hasAttribute('data-sheet')).toBe(true);
     expect(panel().querySelector('[data-testid="verification-tooltip-title"]')).toBeNull();
-    expect(panel().querySelectorAll('[data-testid="verification-tooltip-row"]').length).toBeGreaterThan(0);
+    expect(panel().querySelectorAll('[data-testid^="verification-tooltip-row-"]')).toHaveLength(2);
   });
 
   it('As a keyboard user, the shield is a real button that toggles the explainer', async () => {
@@ -236,7 +228,7 @@ describe('verification shield', () => {
     // open (its rows are its body).
     expect(button().getAttribute('aria-label')).toBe('How was this site loaded?');
     await openShield();
-    expect(panel().querySelector('[data-current]')).toBeNull();
+    expect(panel().querySelector('[data-selected]')).toBeNull();
 
     // When
     setVerificationShieldState('trusted');
@@ -245,8 +237,10 @@ describe('verification shield', () => {
     // Then
     expect(button().getAttribute('data-state')).toBe('trusted');
     expect(button().getAttribute('aria-label')).toBe('Loaded from a trusted provider. How was this site loaded?');
-    expect(rowFor('trusted').hasAttribute('data-current')).toBe(true);
-    expect(rowFor('verified').hasAttribute('data-current')).toBe(false);
+    expect(rowFor('trusted').hasAttribute('data-selected')).toBe(true);
+    expect(rowFor('verified').hasAttribute('data-selected')).toBe(false);
+    expect(rowFor('trusted').textContent).toContain('This site');
+    expect(rowFor('verified').textContent).not.toContain('This site');
 
     // When
     setVerificationShieldState('verified');
@@ -255,8 +249,8 @@ describe('verification shield', () => {
     // Then
     expect(button().getAttribute('data-state')).toBe('verified');
     expect(button().getAttribute('aria-label')).toBe('Verified via light client. How was this site loaded?');
-    expect(rowFor('verified').hasAttribute('data-current')).toBe(true);
-    expect(rowFor('trusted').hasAttribute('data-current')).toBe(false);
+    expect(rowFor('verified').hasAttribute('data-selected')).toBe(true);
+    expect(rowFor('trusted').hasAttribute('data-selected')).toBe(false);
   });
 
   it('As a dotli user, a state change keeps an open explainer open', async () => {
@@ -271,6 +265,20 @@ describe('verification shield', () => {
     expect(isOpen()).toBe(true);
   });
 
+  it('As a visitor, the explainer says how each way of loading a site works', async () => {
+    // When
+    await openShield();
+
+    // Then
+    expect(byTestId('verification-tooltip-title', panel()).textContent).toBe('How was this site loaded?');
+    expect(rowFor('verified').textContent).toBe(
+      'VerifiedChecked in your browser by the light client. The more secure option.',
+    );
+    expect(rowFor('trusted').textContent).toBe(
+      'TrustedServed by an external RPC provider. Faster, but you rely on its answers.',
+    );
+  });
+
   it('As a low-vision user, each state ships its own glyph', async () => {
     // Given
     await openShield();
@@ -278,7 +286,9 @@ describe('verification shield', () => {
     // Then
     const glyphs = button().querySelectorAll('[data-testid="verification-shield-icon"]');
     expect(glyphs).toHaveLength(2);
-    const [verified, trusted] = Array.from(glyphs).map(svg => svg.querySelector('path')?.getAttribute('d') ?? '');
+    const [verified, trusted] = Array.from(glyphs).map(svg =>
+      Array.from(svg.querySelectorAll('path'), path => path.getAttribute('d')).join(' '),
+    );
     expect(verified).not.toBe(trusted);
     for (const state of ['verified', 'trusted']) {
       expect(rowFor(state).querySelector('[data-testid="verification-tooltip-icon"]')).not.toBeNull();

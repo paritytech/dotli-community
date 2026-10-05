@@ -4,6 +4,7 @@
 import { vi } from 'vitest';
 import type { JSX } from '@solidjs/web';
 import { ActionGroup } from '../../../src/components/shell/topbar/ActionGroup.js';
+import type { TopbarMorph } from '../../../src/topbar-status.js';
 import { pointerPress, renderComponent, settle } from '../../helpers/solid.js';
 import { byId, query } from '../../support.js';
 
@@ -80,14 +81,31 @@ export function stubTopbarLayout(room: number, widths: Record<string, number> = 
 
 /**
  * Render `items` as the children of an ActionGroup in the document, as the
- * topbar island does, with `room` pixels for them (see stubTopbarLayout).
+ * topbar island does, with `room` pixels for them (see stubTopbarLayout), or
+ * the room `options.room` says, as the pill's does, and `options.end` after
+ * the More button, as the account is. `options.morph` stands in the bar's.
  * Returns the layout, to change the room later.
  */
-export async function renderTopbar(items: () => JSX.Element, room: number): Promise<TopbarLayout> {
+export async function renderTopbar(
+  items: () => JSX.Element,
+  room: number,
+  options: {
+    room?: (group: HTMLElement) => number | undefined;
+    morph?: TopbarMorph;
+    end?: () => JSX.Element;
+  } = {},
+): Promise<TopbarLayout> {
   const layout = stubTopbarLayout(room);
   const container = document.createElement('div');
   document.body.append(container);
-  renderComponent(() => <ActionGroup>{items()}</ActionGroup>, { container });
+  renderComponent(
+    () => (
+      <ActionGroup room={options.room} morph={options.morph} end={options.end?.()}>
+        {items()}
+      </ActionGroup>
+    ),
+    { container },
+  );
   await settle();
   return layout;
 }

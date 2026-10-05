@@ -2,9 +2,10 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* Design tokens and the page base. Nothing here resets elements, each module
-   resets its own. Dark is on :root, light under data-theme='light' on <html>,
-   set by the boot script in apps/host/src/pages/index.astro and by theme-
-   controller.ts. */
+   resets its own. The dotli UI is dark only: the theme preference
+   (data-theme on <html>, from the boot script in apps/host/src/pages/
+   index.astro and theme-controller.ts) is the product's, and the bar's theme
+   button shows it. */
 
 :root {
   --text-strong: rgba(255, 255, 255, 0.95);
@@ -14,30 +15,17 @@
   --text-faint: rgba(255, 255, 255, 0.35);
   --bg-page: #0a0a0a;
   --surface: #161616;
-  --surface-2: #1f1f1f;
-  --surface-glass: rgba(22, 22, 22, 0.92);
   --fill-subtle: rgba(255, 255, 255, 0.04);
   --fill: rgba(255, 255, 255, 0.07);
   --fill-strong: rgba(255, 255, 255, 0.12);
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border: rgba(255, 255, 255, 0.14);
-  --border-strong: rgba(255, 255, 255, 0.28);
   --border-focus: rgba(255, 255, 255, 0.5);
   --inverse-bg: #fafafa;
   --inverse-bg-hover: #ffffff;
   --inverse-fg: #0a0a0a;
-  --backdrop: rgba(0, 0, 0, 0.6);
-  --shadow: rgba(0, 0, 0, 0.4);
   --danger: #f87171;
-  --danger-strong: #d93b30;
-  --success: #4ade80;
-  --success-solid: #22c55e;
-  --warning: #eab308;
-  --warning-bg: #b45309;
-  --caution: #f0c060;
-  --trusted: #ff8c00;
   --neutral-solid: #8f8f8f;
-  --knob: rgba(255, 255, 255, 0.7);
 
   /* A product's custom chat message names these colors (FgPrimary,
      BgSurfaceNested, ...) and chat/custom-styles.ts writes them into inline
@@ -60,52 +48,232 @@
   --safe-right: env(safe-area-inset-right, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --safe-left: env(safe-area-inset-left, 0px);
-  --topbar-height: calc(56px + var(--safe-top));
+  /* The pill's band: 10 px above, the 48 px pill, 10 px below. The product
+     frame runs under the floating pill, the loading screen and the docked
+     panels start below it. */
+  --topbar-height: calc(var(--topbar-inset) + var(--h-bar) + var(--topbar-inset) + var(--safe-top));
   --content-height: calc(100dvh - var(--topbar-height) - var(--safe-bottom));
 }
 
-:root[data-theme='light'] {
-  --text-strong: rgba(0, 0, 0, 0.92);
-  --text: rgba(0, 0, 0, 0.82);
-  --text-secondary: rgba(0, 0, 0, 0.65);
-  --text-muted: rgba(0, 0, 0, 0.5);
-  --text-faint: rgba(0, 0, 0, 0.35);
-  --bg-page: #f5f5f5;
-  --surface: #ffffff;
-  --surface-2: #ebebeb;
-  --surface-glass: rgba(255, 255, 255, 0.92);
-  --fill-subtle: rgba(0, 0, 0, 0.03);
-  --fill: rgba(0, 0, 0, 0.05);
-  --fill-strong: rgba(0, 0, 0, 0.09);
-  --border-subtle: rgba(0, 0, 0, 0.08);
-  --border: rgba(0, 0, 0, 0.14);
-  --border-strong: rgba(0, 0, 0, 0.28);
-  --border-focus: rgba(0, 0, 0, 0.45);
-  --inverse-bg: #0a0a0a;
-  --inverse-bg-hover: #000000;
-  --inverse-fg: #fafafa;
-  --backdrop: rgba(0, 0, 0, 0.3);
-  --shadow: rgba(0, 0, 0, 0.14);
-  --danger: #dc2626;
-  --danger-strong: #b91c1c;
-  --success: #16a34a;
-  --success-solid: #15803d;
-  --warning: #b45309;
-  --warning-bg: #b45309;
-  --caution: #8a5a00;
-  --trusted: #ff8c00;
-  --neutral-solid: #6b6b6b;
-  --knob: rgba(0, 0, 0, 0.55);
+/* Phones: the bar is the header's 60 px row under the top inset, with no
+   band around it (Topbar.astro), so the page and the product frame start
+   right below it. */
+@media (max-width: 560px) {
+  :root {
+    --topbar-height: calc(var(--h-bar) + var(--safe-top));
+  }
+}
 
-  --chat-fg-primary: rgba(0, 0, 0, 0.88);
-  --chat-fg-secondary: rgba(0, 0, 0, 0.6);
-  --chat-fg-tertiary: rgba(0, 0, 0, 0.4);
-  --chat-bg-surface-main: rgb(250, 250, 250);
-  --chat-bg-surface-container: rgba(0, 0, 0, 0.05);
-  --chat-bg-surface-nested: rgba(0, 0, 0, 0.1);
-  --chat-fg-success: #16a34a;
-  --chat-fg-error: #dc2626;
-  --chat-fg-warning: #d97706;
+/* The chrome: the topbar, its menus and sheets, the modals and the toasts.
+   Text ratios are against the lightest the glass gets, --chrome-top over a
+   white product page (#2e2e32). */
+:root {
+  --chrome-top: rgba(40, 40, 44, 0.97);
+  --chrome-bottom: rgba(24, 24, 27, 0.98);
+  --chrome-glass: linear-gradient(180deg, var(--chrome-top) 0%, var(--chrome-bottom) 100%);
+  --chrome-blur: blur(32px) saturate(150%);
+  --chrome-solid: #2a2a2e;
+  --chrome-well: rgba(0, 0, 0, 0.3);
+  --chrome-well-strong: rgba(0, 0, 0, 0.45);
+  --chrome-fill: rgba(255, 255, 255, 0.07);
+  --chrome-fill-strong: rgba(255, 255, 255, 0.12);
+  --chrome-line: rgba(255, 255, 255, 0.08);
+  --chrome-ring-subtle: rgba(255, 255, 255, 0.06);
+  --chrome-ring: rgba(255, 255, 255, 0.14);
+  --chrome-ring-strong: rgba(255, 255, 255, 0.5);
+
+  --chrome-text: #f4f4f5; /* 12.3:1 */
+  --chrome-text-muted: #c4c4ca; /* 7.8:1, 9.4:1 on --chrome-well */
+  --chrome-on-primary: #141416; /* 13.1:1 on --chrome-primary */
+  --chrome-primary: linear-gradient(180deg, #fafafa 0%, #d9d9dd 100%);
+  --chrome-primary-hover: linear-gradient(180deg, #ffffff 0%, #e3e3e7 100%);
+  --chrome-avatar: linear-gradient(160deg, #4e4e55 0%, #2a2a2f 100%); /* initials 7.5:1 */
+  --chrome-focus: #96b8ff;
+  --chrome-focus-ring: 2px solid var(--chrome-focus);
+
+  /* Status marks: dots, bars, badges and icon tiles, 3:1 or more. */
+  --chrome-ok: #4cc38a;
+  --chrome-warn: #f0a93b;
+  --chrome-err: #f2555a;
+  --chrome-info: #7aa2ff;
+  --chrome-idle: #a1a1aa;
+  --chrome-action: #ffffff;
+  --chrome-action-dim: #5e5e66;
+  /* Status text. */
+  --chrome-ok-text: #9ff0c6; /* 10.1:1 */
+  --chrome-warn-text: #ffd48a; /* 9.7:1 */
+  --chrome-err-text: #ffb8ba; /* 8.3:1 */
+  /* Two strengths of any status colour, for chips, icon tiles, halos and hovers. */
+  --chrome-tint: 16%;
+  --chrome-tint-strong: 22%;
+  /* A red tint, never solid red, so the primary action stays the brightest. */
+  --chrome-danger-fill: color-mix(in srgb, var(--chrome-err) var(--chrome-tint), transparent);
+  --chrome-danger-fill-strong: color-mix(in srgb, var(--chrome-err) var(--chrome-tint-strong), transparent);
+  --chrome-danger-ring: color-mix(in srgb, var(--chrome-err) 45%, transparent);
+  --chrome-danger-text: #ffd0d1; /* 7.5:1 on --chrome-danger-fill-strong */
+
+  --chrome-shadow-pop:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 24px 48px rgba(0, 0, 0, 0.32),
+    0 2px 8px rgba(0, 0, 0, 0.2);
+  --chrome-shadow-bar:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 18px 44px rgba(0, 0, 0, 0.28),
+    0 2px 6px rgba(0, 0, 0, 0.18);
+  --chrome-shadow-capsule:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 6px 18px rgba(0, 0, 0, 0.18);
+  --chrome-shadow-sheet:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1), inset 0 0 0 1px rgba(255, 255, 255, 0.09), 0 -12px 40px rgba(0, 0, 0, 0.3);
+  --chrome-shadow-raised:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 0 0 1px rgba(255, 255, 255, 0.16), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --chrome-shadow-inset: inset 0 1px 2px rgba(0, 0, 0, 0.35), inset 0 0 0 1px var(--chrome-ring-subtle);
+  --chrome-shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --chrome-shadow-knob: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --chrome-shadow-tile: 0 8px 24px rgba(0, 0, 0, 0.3);
+
+  --chrome-scrim: rgba(0, 0, 0, 0.45); /* behind a sheet or a modal */
+  --chrome-scrim-light: rgba(0, 0, 0, 0.06); /* behind a desktop popover */
+  /* Black on white whatever the theme, so phones can scan it. */
+  --qr-bg: #ffffff;
+  --qr-ink: #141416;
+}
+/* Unblurred, the translucent glass would let the page show through: it is
+   solid instead, for every surface that draws it. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --chrome-glass: var(--chrome-solid);
+  }
+}
+
+/* A status mark's colour, from its data-tone (StatusTone). A mark that may
+   go without the attribute sets its own default --tone on itself, so it never
+   takes an ancestor's. */
+[data-tone='ok'] {
+  --tone: var(--chrome-ok);
+}
+[data-tone='warn'] {
+  --tone: var(--chrome-warn);
+}
+[data-tone='err'] {
+  --tone: var(--chrome-err);
+}
+[data-tone='info'] {
+  --tone: var(--chrome-info);
+}
+[data-tone='idle'] {
+  --tone: var(--chrome-idle);
+}
+
+/* Layout scales shared by the chrome: a 4 px spacing grid with a 2 px
+   hairline step, radii, control sizes (44 px is the touch minimum), popover
+   widths, type and motion. */
+:root {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --fs-label: 11px;
+  --fs-caption: 12px;
+  --fs-small: 13px;
+  --fs-body: 14px;
+  --fs-title: 15px;
+  /* A popover's or prompt's title, the title size on phones. */
+  --fs-pop-title: 14px;
+  --fs-title-lg: 17px;
+  --fs-h2: 20px;
+  --fs-h1: 24px;
+  --fs-display: 32px;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --lh-tight: 1.3;
+  --lh-body: 1.5;
+  --ls-caps: 0.08em;
+  --ls-tight: -0.01em;
+  --ls-display: -0.02em;
+
+  --sp-hair: 2px;
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-14: 56px;
+
+  --r-hair: 2px;
+  --r-xs: 8px;
+  --r-sm: 12px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 28px;
+  --r-full: 999px;
+
+  --h-chip: 20px;
+  --h-row-xs: 24px;
+  --h-row-sm: 32px;
+  --h-control-sm: 36px;
+  --h-control: 44px;
+  --h-row: 48px;
+  --h-control-lg: 52px;
+  --h-row-lg: 56px;
+  --h-tile: 72px;
+  /* The desktop pill: 36 px controls with 6 px above and below, 10 px from
+     the top of the window. Desktop is not touch, so its bar is smaller than
+     the phone header below. */
+  --h-bar: 48px;
+  --h-bar-control: 36px;
+  --topbar-inset: 10px;
+
+  /* Desktop popover widths, the boards' 300 / 360 / 400 / 760 on phones.
+     The gap is the popover's distance below the pill. The corner is the
+     popovers' and menus', the boards' 24 on phones. */
+  --w-pop-sm: 260px;
+  --w-pop-md: 320px;
+  --w-pop-lg: 360px;
+  --w-pop-xl: 680px;
+  --pop-gap: 10px;
+  --r-pop: 20px;
+  /* The board's toast is 380. Phones' toasts are full width. */
+  --w-toast: 340px;
+
+  --ease-spring: cubic-bezier(0.2, 0.9, 0.25, 1.08);
+  --ease-out: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 0.15s;
+  --dur: 0.26s;
+  --dur-morph: 0.46s;
+  /* The pill's content waits for the morph. */
+  --delay-content: 0.2s;
+  /* Pulses. */
+  --loop: 1.4s;
+}
+
+/* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
+   sign-in, the prompts and the toasts), desktop type is a step under the
+   page's: desktop is not touch. The scheme is set here, not on :root, which
+   would change how the browser paints the product frame's backdrop. */
+[data-chrome] {
+  color-scheme: dark;
+  --fs-small: 12px;
+  --fs-body: 13px;
+}
+
+/* Phones: the header's 60 px row of 44 px touch controls, the popovers and
+   the chrome type at the boards' sizes. */
+@media (max-width: 560px) {
+  :root {
+    --h-bar: 60px;
+    --h-bar-control: 44px;
+    --w-pop-sm: 300px;
+    --w-pop-md: 360px;
+    --w-pop-lg: 400px;
+    --w-pop-xl: 760px;
+    --pop-gap: 12px;
+    --r-pop: var(--r-lg);
+    --fs-pop-title: var(--fs-title);
+  }
+  [data-chrome] {
+    --fs-small: 13px;
+    --fs-body: 14px;
+  }
 }
 
 body {
@@ -113,6 +281,10 @@ body {
   background: var(--bg-page);
   color: var(--text);
   font-family: system-ui, sans-serif;
+  /* The boards' (.ds) rendering: macOS's default subpixel smoothing draws
+     light text on the dark chrome a weight heavier than designed. */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* A modal shell dialog is open (components/focus.ts lockScroll). An attribute,
@@ -125,4 +297,9 @@ body[data-scroll-locked] {
 :focus-visible {
   outline: 2px solid var(--text-muted);
   outline-offset: 2px;
+}
+/* The chrome's own controls draw --chrome-focus-ring. Anything there that
+   does not gets the default ring in the chrome's muted text. */
+:where([data-chrome], [data-chrome] *):focus-visible {
+  outline-color: var(--chrome-text-muted);
 }

@@ -4,8 +4,7 @@
 import {
   getNetworkStatus,
   getTransfer,
-  startNetworkWatch,
-  stopNetworkWatch,
+  holdNetworkWatch,
   subscribeNetwork,
   type ChainStatus,
   type TransferState,
@@ -96,11 +95,12 @@ export function startNetworkStore(): () => void {
 /**
  * Watch every chain's block arrivals, for the chains popover while it is
  * open, and re-read the monitor: starting a watch and what the backend can
- * reach change what it reports without a notification. Returns the stop,
- * which lets the watch lapse after the monitor's idle grace.
+ * reach change what it reports without a notification. Returns the release,
+ * which lets the watch lapse after the monitor's idle grace once nobody else
+ * holds it.
  */
 export function watchNetwork(): () => void {
-  startNetworkWatch();
+  const release = holdNetworkWatch();
   sync();
-  return stopNetworkWatch;
+  return release;
 }

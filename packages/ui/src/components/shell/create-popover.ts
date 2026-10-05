@@ -1,37 +1,27 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, onSettled, useContext, type Accessor } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onSettled, untrack, useContext, type Accessor } from 'solid-js';
 import { topbarStore } from '../../state/topbar.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
+import { isPhoneViewport } from '../../phone-viewport.js';
 import { containTab, focusInto, lockScroll } from '../focus.js';
 import { useStore } from '../use-store.js';
 import { TopbarContext } from './topbar/context.js';
 
 /**
- * The viewport where a popover opens as a bottom sheet (Popover.tsx), which
- * marks its surface `data-sheet` for that opening.
- */
-export const SHEET_QUERY = '(max-width: 560px)';
-
-/** Whether a popover opening now opens as a sheet. */
-export function isSheetViewport(): boolean {
-  return window.matchMedia(SHEET_QUERY).matches;
-}
-
-/**
  * How a shell surface behaves, after the Radix UI v1 primitive it
- * corresponds to. The primitive handles focus and dismissal; the component
+ * corresponds to. The primitive handles focus and dismissal. The component
  * renders the markup, which each mode expects to carry:
  *
  * - `popover` (Radix Popover, non-modal, with a focus trap): the trigger has
- *   `aria-haspopup="dialog"`, `aria-expanded` and `aria-controls`; the
+ *   `aria-haspopup="dialog"`, `aria-expanded` and `aria-controls`. The
  *   surface has `role="dialog"` and `tabindex="-1"`.
  * - `menu` (Radix DropdownMenu, modal): the trigger has
- *   `aria-haspopup="menu"`, `aria-expanded` and `aria-controls`; the surface
- *   has `role="menu"` and `tabindex="-1"`, and its items have
- *   `role="menuitem"` (or `menuitemradio`, `menuitemcheckbox`) and
- *   `tabindex="-1"`.
+ *   `aria-haspopup="menu"`, `aria-expanded` and `aria-controls`. The surface
+ *   has `role="menu"` and `tabindex="-1"` (as a sheet, an element in it does,
+ *   under the sheet's head), and its items have `role="menuitem"` (or
+ *   `menuitemradio`, `menuitemcheckbox`) and `tabindex="-1"`.
  * - `dialog` (Radix Dialog, modal): the surface has `role="dialog"`,
  *   `aria-modal="true"` and `tabindex="-1"`, behind a backdrop outside it.
  */
@@ -55,32 +45,39 @@ export interface PopoverOptions {
    */
   closeOnBlur?: boolean;
   /**
-   * `popover` mode: loop Tab and Shift+Tab inside the surface. Default true;
-   * false for a disclosure with nothing to focus inside (the verification
+   * `popover` mode: loop Tab and Shift+Tab inside the surface. Default true.
+   * False for a disclosure with nothing to focus inside (the verification
    * shield's explainer), where a trap would leave Tab going nowhere.
    */
   trapFocus?: boolean;
   /**
    * Close when a blocking modal comes up (`topbarStore`'s
-   * `blockingModalActive` turning true). Default true; false for the
+   * `blockingModalActive` turning true). Default true. False for the
    * blocking modal itself.
    */
   closeOnBlockingModal?: boolean;
   /**
-   * Asked on Escape: false leaves the popover open, for something inside it
-   * that consumes Escape first (the permissions popover's open row dropdown,
-   * which closes on its own Escape listener). Absent means always handle.
+   * Open as a bottom sheet when the viewport is a phone's (isPhoneViewport)
+   * as an opening starts (a menu on a phone). `sheet()` on the result says
+   * so. Popover.tsx keeps its own too, since its mode and its peek depend on
+   * it, and sets this for the hand-off (see `handedOff`). An opening as a
+   * sheet swallows the outside press's click, as a menu does.
    */
-  shouldHandleEscape?: () => boolean;
+  sheet?: boolean;
   /** Called after every close, whatever closed it. */
   onClose?: () => void;
 }
 
 export interface Popover {
   open: Accessor<boolean>;
+  /**
+   * Whether the current (or last) opening is a bottom sheet, so a closing
+   * sheet slides out as one. Always false without the `sheet` option.
+   */
+  sheet: Accessor<boolean>;
   setOpen: (open: boolean) => void;
   /**
-   * Open or close; wire the trigger's click to it. For a menu, a click with
+   * Open or close. Wire the trigger's click to it. For a menu, a click with
    * `detail` 0 (a key's, or one forwarded from a keyboard choice, like the
    * "more" menu's) opens it as a keyboard opening, on its first item.
    */
@@ -90,7 +87,30 @@ export interface Popover {
    * the More button, when the topbar has collapsed the trigger).
    */
   onItemChosen: () => void;
+  /**
+   * A sheet's item was chosen: as `onItemChosen`, then `activate` the item.
+   * When that opens another sheet, the two trade places at once (see
+   * `handedOff`).
+   */
+  handOffTo: (activate: () => void) => void;
+  /**
+   * The current opening (or closing) is one sheet taking another's place: the
+   * surface and its scrim neither slide nor fade, so the scrim stays dark.
+   * The next open or close clears it, so the sheet's own close slides out.
+   */
+  handedOff: Accessor<boolean>;
 }
+
+/**
+ * A sheet hand-off under way: `pending` while a sheet's chosen item runs,
+ * `taken` once a sheet opened in its place.
+ */
+let pendingHandoff: 'pending' | 'taken' | undefined;
+/**
+ * A call, not an inline comparison: TypeScript would keep `pendingHandoff`
+ * narrowed to `pending` across the activation that sets it.
+ */
+const pendingHandoffTaken = (): boolean => pendingHandoff === 'taken';
 
 /** Whether focus is lost (on the body) or still inside `surface`. */
 export function focusLostOrInside(surface: HTMLElement | undefined): boolean {
@@ -111,6 +131,11 @@ export function focusTrigger(trigger: HTMLElement | undefined, fallback: HTMLEle
 
 const MENU_ITEM_SELECTOR = '[role^="menuitem"]';
 
+/** The `role="menu"` element: the surface, or a sheet's body under its head. */
+function menuElement(surface: HTMLElement): HTMLElement {
+  return surface.matches('[role="menu"]') ? surface : (surface.querySelector<HTMLElement>('[role="menu"]') ?? surface);
+}
+
 /** The menu's items that can take focus, in order. */
 function menuItems(surface: HTMLElement): HTMLElement[] {
   return Array.from(surface.querySelectorAll<HTMLElement>(MENU_ITEM_SELECTOR)).filter(
@@ -123,8 +148,9 @@ function menuItems(surface: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Roving focus in a menu: ArrowUp/ArrowDown (looping), Home, End and
- * typeahead on the first letter. Returns whether it handled the key.
+ * Roving focus in a menu: ArrowUp/ArrowDown (looping), also ArrowLeft/ArrowRight
+ * in a horizontal one, Home, End and typeahead on the first letter. Returns
+ * whether it handled the key.
  */
 function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   const items = menuItems(surface);
@@ -133,9 +159,11 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
   }
   const index = items.indexOf(document.activeElement as HTMLElement);
   let next: HTMLElement | undefined;
-  if (ev.key === 'ArrowDown') {
+  // A row of items (aria-orientation) also takes the keys along the row.
+  const horizontal = menuElement(surface).getAttribute('aria-orientation') === 'horizontal';
+  if (ev.key === 'ArrowDown' || (horizontal && ev.key === 'ArrowRight')) {
     next = items[(index + 1) % items.length];
-  } else if (ev.key === 'ArrowUp') {
+  } else if (ev.key === 'ArrowUp' || (horizontal && ev.key === 'ArrowLeft')) {
     next = items[index <= 0 ? items.length - 1 : index - 1];
   } else if (ev.key === 'Home') {
     next = items[0];
@@ -166,13 +194,12 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * and wires the trigger's click to `toggle`.
  *
  * In every mode, opening focuses the first tabbable element in the surface,
- * or the surface itself when it has a tabindex; Escape closes and hands
- * focus back to the trigger; a pointerdown outside the trigger and the
- * surface closes (a touch one on its click, so a scroll that starts outside
- * does not, as Radix's usePointerDownOutside does); and so do a blocking
- * modal coming up (unless
- * `closeOnBlockingModal` is false) and, with `closeOnBlur`, the window
- * losing focus. Closing hands focus back to the
+ * or the surface itself when it has a tabindex. Escape closes and hands
+ * focus back to the trigger. A pointerdown outside the trigger and the
+ * surface closes (a touch one on its pointerup, so a scroll that starts
+ * outside does not, as Radix's usePointerDownOutside does). So do a blocking
+ * modal coming up (unless `closeOnBlockingModal` is false) and, with
+ * `closeOnBlur`, the window losing focus. Closing hands focus back to the
  * trigger, unless the user moved it elsewhere (or, for `popover`, closed it
  * by interacting outside). Per mode:
  *
@@ -184,10 +211,13 @@ function moveMenuFocus(ev: KeyboardEvent, surface: HTMLElement): boolean {
  * - `menu`: Enter, Space or ArrowDown on the trigger opens it and focuses the
  *   first item (the click a browser may still fire for the key is dropped),
  *   and so does a trigger click with `detail` 0, while a pointer opening
- *   focuses the surface; the items have
- *   roving focus (ArrowUp/ArrowDown looping, Home, End, typeahead, pointer
- *   hover); Tab is prevented; an outside pointerdown closes it and swallows
- *   its click, so the click does not activate what is underneath. Call
+ *   focuses the menu element. The items have
+ *   roving focus (ArrowUp/ArrowDown looping and ArrowLeft/ArrowRight in a
+ *   menu marked `aria-orientation="horizontal"`, Home, End, typeahead, pointer
+ *   hover). Tab is prevented (in a sheet it stays inside, for the head's
+ *   close button), and an outside pointerdown closes it and swallows
+ *   its click, so the click does not activate what is underneath
+ *   (as it does when it opens as a sheet, in any mode). Call
  *   `onItemChosen` when an item is chosen.
  * - `dialog`: Tab and Shift+Tab are trapped inside, and the page does not
  *   scroll while it is open (`data-scroll-locked` on the body).
@@ -209,6 +239,8 @@ export function createPopover(options: PopoverOptions): Popover {
     // the store's producer is in (see useStore).
     ownedWrite: true,
   });
+  const [sheet, setSheet] = createSignal(false, { ownedWrite: true });
+  const [handedOff, setHandedOff] = createSignal(false, { ownedWrite: true });
   /** The next opening came from the trigger's keyboard (menu mode). */
   let openedWithKeyboard = false;
   /** This closing must leave focus where the user put it. */
@@ -224,6 +256,18 @@ export function createPopover(options: PopoverOptions): Popover {
   const setOpen = (next: boolean): void => {
     const wasOpen = current;
     current = next;
+    // A hand-off marks one opening or closing only.
+    setHandedOff(false);
+    if (next && !wasOpen && options.sheet === true) {
+      const phone = isPhoneViewport();
+      // Written in the same batch as the open state, so the surface takes its
+      // place and its open state in one render.
+      setSheet(phone);
+      if (phone && pendingHandoff === 'pending') {
+        pendingHandoff = 'taken';
+        setHandedOff(true);
+      }
+    }
     if (!next) {
       // A keyboard opening undone in the same batch must not mark the next.
       openedWithKeyboard = false;
@@ -315,6 +359,9 @@ export function createPopover(options: PopoverOptions): Popover {
       }
       setOpen(false);
     };
+    // A sheet's scrim goes the same frame under reduced motion, so the tap
+    // that closes it would otherwise land on the page beneath.
+    const swallowsOutsideClick = (): boolean => mode === 'menu' || untrack(sheet);
     /** Drops the close a touch outside is waiting to make on its click. */
     let cancelTouchClose: (() => void) | undefined;
     const onPointerDown = (ev: PointerEvent): void => {
@@ -335,13 +382,13 @@ export function createPopover(options: PopoverOptions): Popover {
         // is a tap, so a scroll or drag that starts outside (a
         // pointercancel, a scroll) closes nothing. The tap is its pointerup,
         // not its click: iOS fires no click on a non-interactive element
-        // when the only listeners are on the document. A menu's close
-        // swallows the click, if one follows.
+        // when the only listeners are on the document. A menu's or a sheet's
+        // close swallows the click, if one follows.
         cancelTouchClose = awaitEvent(
           'pointerup',
           () => {
-            if (mode === 'menu') {
-              swallowNextClick();
+            if (swallowsOutsideClick()) {
+              swallowNextClick({ afterRelease: true });
             }
             closeOutside();
           },
@@ -349,7 +396,7 @@ export function createPopover(options: PopoverOptions): Popover {
         );
         return;
       }
-      if (mode === 'menu') {
+      if (swallowsOutsideClick()) {
         swallowNextClick();
       }
       closeOutside();
@@ -362,9 +409,7 @@ export function createPopover(options: PopoverOptions): Popover {
         return;
       }
       if (ev.key === 'Escape') {
-        if (options.shouldHandleEscape?.() !== false) {
-          closeReturningFocus();
-        }
+        closeReturningFocus();
         return;
       }
       if (surface === undefined) {
@@ -374,7 +419,12 @@ export function createPopover(options: PopoverOptions): Popover {
         containTab(ev, surface);
       } else if (mode === 'menu' && surface.contains(document.activeElement)) {
         if (ev.key === 'Tab') {
-          ev.preventDefault();
+          // A sheet's head holds its close button, which Tab reaches.
+          if (untrack(sheet)) {
+            containTab(ev, surface);
+          } else {
+            ev.preventDefault();
+          }
         } else {
           moveMenuFocus(ev, surface);
         }
@@ -415,8 +465,8 @@ export function createPopover(options: PopoverOptions): Popover {
     }
     if (surface !== undefined) {
       // A menu opened with the keyboard focuses its first item, one opened
-      // with a pointer the surface.
-      focusInto(surface, mode === 'menu' ? (keyboard ? menuItems(surface) : []) : undefined);
+      // with a pointer the menu itself.
+      focusInto(surface, mode === 'menu' ? (keyboard ? menuItems(surface) : [menuElement(surface)]) : undefined);
     }
     // Last, so nothing after it can throw and leave the page locked.
     const unlockScroll = mode === 'dialog' ? lockScroll() : undefined;
@@ -439,6 +489,7 @@ export function createPopover(options: PopoverOptions): Popover {
 
   return {
     open,
+    sheet,
     setOpen,
     toggle: (ev?: Event) => {
       if (!current && options.mode === 'menu' && ev instanceof MouseEvent && ev.detail === 0) {
@@ -450,6 +501,19 @@ export function createPopover(options: PopoverOptions): Popover {
       setOpen(false);
       focusBack();
     },
+    handOffTo: activate => {
+      pendingHandoff = 'pending';
+      try {
+        setOpen(false);
+        focusBack();
+        activate();
+        // In the batch of this close and that opening, so both land in one frame.
+        setHandedOff(pendingHandoffTaken());
+      } finally {
+        pendingHandoff = undefined;
+      }
+    },
+    handedOff,
   };
 }
 
@@ -481,14 +545,21 @@ function awaitEvent<K extends 'click' | 'pointerup'>(
 }
 
 /**
+ * How long a swallowed click is awaited. A tap's click follows its pointerup
+ * within a frame or so, and iOS may fire none at all.
+ */
+const SWALLOW_CLICK_MS = 500;
+
+/**
  * Stops the click that follows an outside pointerdown from reaching what is
  * underneath, the way Radix's modal menu disables outside pointer events.
- * A press that never becomes a click (a scroll, a drag) stops waiting at
- * its pointercancel or the next pointerdown or keydown, so a later keyboard
- * or programmatic click is not eaten.
+ * A press that never becomes a click (a scroll, a drag, a tap iOS fires no
+ * click for) stops waiting at its pointercancel, the next pointerdown or
+ * keydown, or, armed `afterRelease` (at a pointerup), after a moment, so a
+ * later keyboard, assistive-technology or programmatic click is not eaten.
  */
-function swallowNextClick(): void {
-  awaitEvent(
+function swallowNextClick({ afterRelease = false } = {}): void {
+  const stop = awaitEvent(
     'click',
     ev => {
       ev.preventDefault();
@@ -496,6 +567,13 @@ function swallowNextClick(): void {
     },
     ['pointerdown', 'pointercancel', 'keydown'],
   );
+  // Armed at a pointerup, the click follows at once, so it may time out. A
+  // mouse swallow is armed at the pointerdown, and a held press must still
+  // have its click swallowed.
+  if (afterRelease) {
+    // Stopping twice is harmless.
+    setTimeout(stop, SWALLOW_CLICK_MS);
+  }
 }
 
 /**

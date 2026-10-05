@@ -1,70 +1,78 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* Shown once the bar measures. On a narrow viewport it shows from the
-   build-time render on, as the bar most likely collapses something there. */
-.more {
-  display: none;
-}
-:global(#topbar-actions[data-collapsible]) .more {
+/* The board's .menu-row parts in the Menu's rows. The row sizes each item's
+   icon, 16 px on desktop and the board's 20 px on phones, with its 1.75
+   stroke. */
+.icon {
   display: inline-flex;
+  flex: none;
+  color: var(--chrome-text-muted);
 }
-@media (max-width: 560px) {
-  .more {
-    display: inline-flex;
-  }
+.icon > svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 1.75;
 }
-/* Nothing collapsed into it: out of flow and invisible, but still laid out,
-   so the bar can measure it. */
-:global(#topbar-actions[data-collapsible]) .more[data-idle] {
-  position: absolute;
-  top: 0;
-  right: 0;
-  visibility: hidden;
-  pointer-events: none;
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.hamburger {
-  display: inline-block;
-  position: relative;
-  width: 20px;
-  height: 16px;
+/* What an item adds at its row's end, 12 px apart like the row's other
+   parts: the network's dot and verdict word (the board's .dot.dot-sm and
+   .caption.menu-row-end), the chat's unread count. */
+.aside {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
 }
-.bar {
-  display: block;
-  position: absolute;
-  left: 0;
-  width: 100%;
-  height: 2px;
-  border-radius: 1px;
-  background: currentColor;
-  transition:
-    top 0.22s ease,
-    transform 0.22s cubic-bezier(0.4, 0, 0.2, 1),
-    opacity 0.12s ease;
+
+.rows {
+  display: flex;
+  flex-direction: column;
 }
-.bar:nth-child(1) {
-  top: 1px;
+/* The trailing chevron. */
+.row > svg {
+  width: 14px;
+  height: 14px;
 }
-.bar:nth-child(2) {
-  top: 7px;
-}
-.bar:nth-child(3) {
-  top: 13px;
-}
-.hamburger[data-open] .bar:nth-child(1) {
-  top: 7px;
-  transform: rotate(45deg);
-}
-.hamburger[data-open] .bar:nth-child(2) {
-  opacity: 0;
-}
-.hamburger[data-open] .bar:nth-child(3) {
-  top: 7px;
-  transform: rotate(-45deg);
-}
-@media (prefers-reduced-motion: reduce) {
-  .bar {
-    transition: none;
+@media (max-width: 560px) {
+  .icon > svg {
+    width: 20px;
+    height: 20px;
   }
+  .aside {
+    gap: var(--sp-3);
+  }
+  .row > svg {
+    width: 16px;
+    height: 16px;
+  }
+}
+
+/* Phones: the board's More sheet, its rows in a flush well under the head,
+   56 px tall at 15 px, with hairlines between them. */
+.menu[data-sheet] .rows {
+  margin: var(--sp-1) var(--sp-4) 0;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: var(--chrome-well);
+  box-shadow: var(--chrome-shadow-inset);
+}
+.menu[data-sheet] .row {
+  height: var(--h-row-lg);
+  padding: 0 var(--sp-4);
+  border-radius: 0;
+  font-size: var(--fs-title);
+}
+.menu[data-sheet] .row + .row {
+  border-top: 1px solid var(--chrome-line);
 }

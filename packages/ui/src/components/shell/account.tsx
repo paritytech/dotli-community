@@ -5,6 +5,7 @@
 // account; both live in the one auth island.
 
 import { createMemo, type Accessor } from 'solid-js';
+import type { JSX } from '@solidjs/web';
 import type { TruapiSessionUiState } from '../../host-callbacks/SessionStore.js';
 import { authStore, loggedInStore } from '../../state/auth.js';
 import { useStore } from '../use-store.js';
@@ -68,4 +69,27 @@ export function shortenAccount(account: string | undefined): string | undefined 
     return undefined;
   }
   return `${account.slice(0, 8)}...${account.slice(-4)}`;
+}
+
+/** The name the account goes by: its username, else its shortened account. */
+export function sessionDisplayName(state: TruapiSessionUiState): string | undefined {
+  return sessionUsername(state) ?? shortenAccount(state.identityAccountId ?? state.publicKey);
+}
+
+/** The board's person, for an account without initials or a sign-in. */
+export function UserIcon(): JSX.Element {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      aria-hidden="true"
+    >
+      <circle cx="12" cy="8" r="4" />
+      <path d="M4 21a8 8 0 0 1 16 0" />
+    </svg>
+  );
 }

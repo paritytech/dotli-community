@@ -1,51 +1,88 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The board's account menu: the large avatar beside "Welcome back" and the
+   name, inset 4 px like a popover head, then the hint, a hairline and Log out.
+   Desktop: a 40 px avatar and a 15 px name (the boards' 48 and 17 on phones). */
+
 .identity {
-  padding: 12px 14px 8px;
-}
-.label {
-  color: var(--text-secondary);
-  font-size: 0.75rem;
-}
-.name {
-  margin-top: 2px;
-  color: var(--text-strong);
-  font-size: 0.9rem;
-  font-weight: 500;
-}
-.hint {
-  margin-top: 6px;
-  color: var(--text-secondary);
-  font-size: 0.72rem;
-  line-height: 1.35;
-}
-.divider {
-  border-top: 1px solid var(--border-subtle);
-}
-.disconnect {
   display: flex;
   align-items: center;
   gap: 10px;
-  box-sizing: border-box;
-  width: 100%;
-  margin: 0;
-  padding: 10px 14px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-1) 0;
 }
-.disconnect:hover {
-  background: var(--fill);
-  color: var(--text-strong);
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--chrome-avatar);
+  box-shadow: var(--chrome-shadow-raised);
+  color: var(--chrome-text);
+  font-size: 16px;
+  font-weight: var(--fw-semibold);
 }
-.disconnect svg {
-  width: 18px;
-  height: 18px;
+.avatar svg {
+  width: 16px;
+  height: 16px;
+}
+.text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-hair);
+  min-width: 0;
+}
+.label {
+  color: var(--chrome-text-muted);
+  font-size: var(--fs-caption);
+  line-height: var(--lh-body);
+}
+.name {
+  overflow: hidden;
+  color: var(--chrome-text);
+  font-size: 15px;
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A shortened account is code, not a name. */
+.name[data-address] {
+  font-family: var(--font-mono);
+}
+.divider {
+  height: 1px;
+  margin: 0 var(--sp-1);
+  border: 0;
+  background: var(--chrome-line);
+}
+/* Log out's icon. */
+.icon {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 560px) {
+  .identity {
+    gap: var(--sp-3);
+  }
+  .avatar {
+    width: var(--h-row);
+    height: var(--h-row);
+    font-size: var(--fs-h2);
+  }
+  .avatar svg {
+    width: 20px;
+    height: 20px;
+  }
+  .name {
+    font-size: var(--fs-title-lg);
+  }
+  .icon {
+    width: 16px;
+    height: 16px;
+  }
 }

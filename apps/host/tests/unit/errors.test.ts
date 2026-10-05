@@ -5,7 +5,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { setBackend } from '@dotli/config';
 import { ProtocolInitFailedError } from '@dotli/protocol';
 
-import { describeError, HOST_ERRORS } from '../../src/errors.js';
+import { HOST_ERRORS } from '../../src/error-copy.js';
+import { describeError } from '../../src/errors.js';
 import { ManifestRejectedError } from '../../src/manifest-gate.js';
 
 /** An error as the protocol client rebuilds it from a failed response. */

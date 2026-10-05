@@ -52,6 +52,8 @@ async function mountScreen(): Promise<HTMLElement> {
 }
 
 const FADE_MS = 300;
+// Mirrors MESSAGE_ROTATE_MS in loading-controller.ts.
+const ROTATE_MS = 9_000;
 
 // The status typewriter (loading-controller.ts) runs on animation frames,
 // which the tests step by hand.
@@ -111,13 +113,14 @@ afterEach(() => {
 });
 
 describe('Loading screen island', () => {
-  it('As a visitor, progress, status and warning made before it hydrates show at once, and nothing restarts', async () => {
+  it('As a visitor, progress, lines and warning made before it hydrates show at once, and nothing restarts', async () => {
     // Given a load already underway
     updateLoading({
       progress: 37.4,
-      statusText: 'Downloading the app',
-      statusOpacity: 0.8,
-      srText: 'Downloading the app',
+      step: ['Downloading the app'],
+      explanation: 'The files come from',
+      explanationOpacity: 0.8,
+      srText: 'The files come from many computers at once',
       warning: 'Still looking for peers',
     });
     const before = getLoadingState();
@@ -129,9 +132,10 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-fill').style.width).toBe('37.4%');
     expect(byId('loading-progress-pct').textContent).toBe('37%');
     expect(byId('loading-progress').getAttribute('aria-valuenow')).toBe('37');
-    expect(byId('status').textContent).toBe('Downloading the app');
+    expect(byId('loading-step').textContent).toBe('Downloading the app');
+    expect(byId('status').textContent).toBe('The files come from');
     expect(byId('status').style.opacity).toBe('0.8');
-    expect(byId('status-sr').textContent).toBe('Downloading the app');
+    expect(byId('status-sr').textContent).toBe('The files come from many computers at once');
     expect(byId('loading-warning').hasAttribute('data-visible')).toBe(true);
     expect(byId('loading-warning-text').textContent).toBe('Still looking for peers');
     await settle();
@@ -145,9 +149,10 @@ describe('Loading screen island', () => {
     // When
     updateLoading({
       progress: 62.6,
-      statusText: 'Connecting to',
-      statusOpacity: 0.9,
-      srText: 'Connecting to Polkadot',
+      step: ['Looking up ', { host: 'my<b>app</b>', tld: '.dot' }],
+      explanation: 'Catching up',
+      explanationOpacity: 0.9,
+      srText: 'Catching up on the newest blocks',
       warning: 'Slow <b>peers</b>',
     });
     await settle();
@@ -156,9 +161,12 @@ describe('Loading screen island', () => {
     expect(byId('loading-progress-fill').style.width).toBe('62.6%');
     expect(byId('loading-progress-pct').textContent).toBe('63%');
     expect(byId('loading-progress').getAttribute('aria-valuenow')).toBe('63');
-    expect(byId('status').textContent).toBe('Connecting to');
+    // The name is text, never markup.
+    expect(byId('loading-step').textContent).toBe('Looking up my<b>app</b>.dot');
+    expect(byId('loading-step').querySelector('b')).toBeNull();
+    expect(byId('status').textContent).toBe('Catching up');
     expect(byId('status').style.opacity).toBe('0.9');
-    expect(byId('status-sr').textContent).toBe('Connecting to Polkadot');
+    expect(byId('status-sr').textContent).toBe('Catching up on the newest blocks');
     const warning = byId('loading-warning');
     expect(warning.hasAttribute('data-visible')).toBe(true);
     // A warning is text, never markup.
@@ -205,7 +213,7 @@ describe('Loading screen island', () => {
     expect(screen.isConnected).toBe(false);
     expect(document.getElementById('app-loading')).toBeNull();
     expect(getLoadingState().phase).toBe('gone');
-    updateLoading({ statusText: 'late line' });
+    updateLoading({ explanation: 'late line' });
     await settle();
     expect(query(screen, '#status').textContent).not.toBe('late line');
     expect(frames.size).toBe(0);
@@ -217,6 +225,8 @@ describe('Loading screen island', () => {
     ctl.advancePhase(0);
     await mountScreen();
     const screen = byId('app-loading');
+    // The first explanation is due one rotation in.
+    vi.advanceTimersByTime(ROTATE_MS);
     runFrames(100);
     // The typewriter's next frame.
     expect(frames.size).toBe(1);

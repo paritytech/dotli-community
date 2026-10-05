@@ -29,7 +29,6 @@ export {
   setCachedCid,
   withRecentLabel,
   writeRecentLabels,
-  type CachedCid,
   type CachedManifests,
 } from './cid-cache.js';
 export {

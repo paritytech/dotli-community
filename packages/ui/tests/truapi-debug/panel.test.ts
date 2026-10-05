@@ -20,6 +20,7 @@ import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.j
 import type * as TopbarStateModule from '../../src/state/topbar.js';
 import { byTestId, query, must } from '../support.js';
 import { nth } from '../helpers/nth.js';
+import { setViewportWidth } from '../helpers/viewport.js';
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
@@ -160,13 +161,6 @@ function toggle(checkbox: HTMLInputElement): void {
   checkbox.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-/** Resize the viewport as a phone or a rotation does; media queries follow. */
-function setViewportWidth(width: number): void {
-  (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
-    width,
-  });
-}
-
 function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
   target.dispatchEvent(
     new PointerEvent(type, {
@@ -224,7 +218,7 @@ function attachFrame(withTopbar: boolean): Record<string, string> {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
+const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
 const FULL_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
 function stubClipboard(writeText: ((text: string) => Promise<void>) | null): void {
@@ -1871,7 +1865,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     stubPanelBox(400, 300);
     const frame = attachFrame(true);
     layout.setChatWidth(360);
-    layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
+    layout.setTopbarLayout({ offset: false });
     const dispose = mount();
     expect(frame['height']).toBe(`calc(${FULL_HEIGHT} - 300px)`);
 
@@ -1882,7 +1876,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     expect(frame['width']).toBe(`calc(${SAFE_WIDTH} - 360px)`);
     expect(frame['height']).toBe(FULL_HEIGHT);
     expect(frame['top']).toBe('var(--safe-top, 0px)');
-    expect(frame['transform']).toBe('translateY(0)');
+    expect(frame['transform']).toBe('');
 
     // When a product loads after the panel is gone
     window.dispatchEvent(new CustomEvent('dotli:product-loaded'));

@@ -9,7 +9,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import type * as MetricsModule from '@dotli/metrics';
 import type { ProtocolRequestEnvelope } from '@dotli/protocol';
-import type { ChainDetail, ChainSyncEvent } from '@dotli/resolver';
+import type { ChainDetail, ChainSyncEvent } from '../../../packages/resolver/src/chain-sync.js';
 
 const resolver = vi.hoisted(() => ({
   fatal: null as ((message: string) => void) | null,

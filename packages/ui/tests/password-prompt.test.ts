@@ -50,6 +50,7 @@ describe('password prompt', () => {
 
     // Then
     expect(byTestId('password-prompt-error').textContent).toBe('Wrong password');
+    expect(byTestId('signing-btn-cancel').dataset['variant']).toBe('secondary');
 
     // When
     byTestId('signing-btn-cancel').click();

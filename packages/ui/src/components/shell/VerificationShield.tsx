@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { lazy } from 'solid-js';
+import { For, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { VERIFICATION_SHIELD_ID, VERIFICATION_TOOLTIP_ID, type ShieldState } from '../../verification-shield.js';
 import { pillShield, urlPillStore } from '../../state/url-pill.js';
@@ -22,10 +22,10 @@ const BUTTON_LABEL: Record<ShieldState, string> = {
 
 /**
  * The URL pill's shield (`#verification-shield`) and its "How was this site
- * loaded?" explainer (`#verification-tooltip`), a Popover under the shield,
- * in the body: a disclosure (the button toggles it, and it takes no focus)
- * that also shows while a mouse rests on the shield, and a bottom sheet on
- * phones. It closes on a press outside both, on focus leaving both, on
+ * loaded?" explainer (`#verification-tooltip`), a Popover in the body that
+ * drops from the pill below the shield: a disclosure (the button toggles it,
+ * and it takes no focus) that also shows while a mouse rests on the shield,
+ * and a bottom sheet on phones. It closes on a press outside both, on focus leaving both, on
  * Escape (focus back to the button when it was inside or lost to the body),
  * on window blur (a tap inside the product iframe) and when a blocking modal
  * comes up. The shield's state is the url-pill store's (pillShield), null
@@ -69,25 +69,31 @@ export function VerificationShield(): JSX.Element {
               class={[s['glyph'], s['verifiedGlyph']]}
               data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
-              fill="currentColor"
-              fill-rule="evenodd"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
               // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
               focusable="false"
             >
-              <path d={GLYPH_PATHS.verified} />
+              <For each={GLYPH_PATHS.verified}>{d => <path d={d} />}</For>
             </svg>
             <svg
               class={[s['glyph'], s['trustedGlyph']]}
               data-testid="verification-shield-icon"
               viewBox="0 0 24 24"
-              fill="currentColor"
-              fill-rule="evenodd"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
               aria-hidden="true"
               // @ts-expect-error -- not in Solid's SVG types; kept from the pre-Solid markup
               focusable="false"
             >
-              <path d={GLYPH_PATHS.trusted} />
+              <For each={GLYPH_PATHS.trusted}>{d => <path d={d} />}</For>
             </svg>
           </button>
         )}

@@ -19,7 +19,7 @@
 
 .time {
   color: var(--td-fg-faint);
-  font-size: 10.5px;
+  font-size: 11px;
 }
 .arrowIn {
   color: var(--td-green);
@@ -44,14 +44,14 @@
 .latency {
   color: var(--td-green);
   margin-left: 6px;
-  font-size: 10.5px;
+  font-size: 11px;
 }
 
 .layer {
   display: inline-flex;
   align-items: center;
   font-family: system-ui, sans-serif;
-  font-size: 9.5px;
+  font-size: 10px;
   font-weight: 600;
   padding: 1px 5px;
   border-radius: 3px;

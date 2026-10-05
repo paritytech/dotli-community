@@ -161,18 +161,34 @@ describe('The network panel blocks arrive as motion', () => {
     expect(strip.hasAttribute('data-sliding')).toBe(false);
   });
 
-  it('As a user with a narrow panel, only the newest blocks that fit are shown', async () => {
-    // Given: the strip fits (200 + 4) / (4 + 4) = 25 marks.
+  it('As a user watching a chain, the strip always has 48 slots and stubs fill the empty ones', async () => {
+    // Given
     const strip = await openPanel();
 
     // When
-    for (let n = 100; n <= 130; n += 1) {
+    for (let n = 100; n <= 105; n += 1) {
+      await emit(n);
+    }
+
+    // Then: five bars (the first block only anchors the chain) and 43 stubs.
+    expect(strip.children).toHaveLength(48);
+    expect(strip.querySelectorAll(BAR)).toHaveLength(5);
+    expect(strip.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(43);
+  });
+
+  it('As a user watching a long history, only the newest 48 blocks are shown', async () => {
+    // Given
+    const strip = await openPanel();
+
+    // When
+    for (let n = 100; n <= 160; n += 1) {
       await emit(n);
     }
 
     // Then
     const marks = [...strip.querySelectorAll<HTMLElement>(BAR)];
-    expect(marks).toHaveLength(25);
-    expect(marks.at(-1)?.dataset['block']).toBe('130');
+    expect(marks).toHaveLength(48);
+    expect(marks.at(-1)?.dataset['block']).toBe('160');
+    expect(strip.querySelectorAll('[data-testid="chains-bar-stub"]')).toHaveLength(0);
   });
 });

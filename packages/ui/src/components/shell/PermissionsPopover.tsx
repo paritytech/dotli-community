@@ -6,6 +6,7 @@ import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
 import { IconButton } from '../primitives/IconButton.js';
+import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { Popover } from './Popover.js';
@@ -17,20 +18,18 @@ import s from './PermissionsPopover.module.css';
 const Permissions = lazy(() => import('./PermissionsContent.js'), { export: 'PermissionsContent' });
 
 /** The permissions' lock, on the button and the More menu row. */
-function LockIcon(props: { size: number }): JSX.Element {
+function LockIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width="2"
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
-      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      <rect x="4" y="11" width="16" height="10" rx="3" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </svg>
   );
 }
@@ -42,15 +41,15 @@ function LockIcon(props: { size: number }): JSX.Element {
  * src/islands/), rendered with the host page and hydrated.
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
- * product's permissions, each with a dropdown to allow, deny or reset it.
+ * product's permissions in a Device and an App group, each set with Ask,
+ * Allow and Deny segments, and Reset all to Ask, which reloads the app once.
  * The button carries its badge (`data-badge`) while the product has any
  * permission granted, read again on a product loading or failing and on a
  * permission change.
  *
  * A press outside (the backdrop included), focus leaving it, Escape and a
- * blocking modal close the popover, a non-modal one. An open row dropdown
- * takes Escape first. The More menu's Permissions row opens it while the
- * topbar has collapsed the button.
+ * blocking modal close the popover, a non-modal one. The More menu's
+ * Permissions row opens it while the topbar has collapsed the button.
  */
 export function PermissionsPopover(): JSX.Element {
   const product = useStore(productStore);
@@ -98,12 +97,13 @@ export function PermissionsPopover(): JSX.Element {
         <TopbarItem
           name="permissions"
           label="Permissions"
-          icon={() => <LockIcon size={14} />}
+          icon={LockIcon}
+          aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
           priority={TOPBAR_PRIORITY.permissions}
           activate={t.onClick}
         >
           <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
-            <LockIcon size={12} />
+            <LockIcon />
           </IconButton>
         </TopbarItem>
       )}
