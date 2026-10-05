@@ -1,16 +1,19 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-// Shared dialog shell: the scrim and the glass card (a bottom sheet at 560 px
-// and below, led by the sheets' head), dialog semantics, initial focus, a Tab
-// trap, Escape, and focus restored on close. Its layout parts (DialogHead,
-// DialogBody, DialogActions) draw the board's modal inside it.
+// Shared dialog shell: the scrim and the glass card (a bottom sheet while the
+// viewport is a phone's, in the shared frame of components/sheet, led by the
+// sheets' head), dialog semantics, initial focus, a Tab trap, Escape, and
+// focus restored on close. Its layout parts (DialogHead, DialogBody,
+// DialogActions) draw the board's modal inside it.
 
-import { onCleanup, onSettled, Show } from 'solid-js';
+import { createSignal, onCleanup, onSettled, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { isPhoneViewport, watchPhoneViewport } from '../../phone-viewport.js';
 import { currentProductFrame } from '../../product-frame-layout.js';
 import { containTab } from '../focus.js';
 import { SheetHead } from '../sheet/SheetHead.js';
+import frame from '../sheet/Sheet.module.css';
 import { IconTile } from './IconTile.js';
 import s from './Dialog.module.css';
 
@@ -94,6 +97,12 @@ export function Dialog(props: DialogProps): JSX.Element {
   // Read once, before this dialog is in the page: a follow-up keeps the scrim
   // still rather than fade it in again.
   const follows = followsDialog();
+  // Read as it mounts, so a sheet slides in from its first frame, then
+  // followed: a dialog open across a resize takes the other form. A dialog
+  // is mounted only while open, so its `data-open`, which the frame's slide
+  // keys on, never goes.
+  const [sheet, setSheet] = createSignal(isPhoneViewport());
+  onCleanup(watchPhoneViewport(setSheet));
 
   const onKeyDown = (event: KeyboardEvent): void => {
     if (event.key === 'Escape') {
@@ -120,6 +129,7 @@ export function Dialog(props: DialogProps): JSX.Element {
     <div
       class={s['backdrop']}
       data-follows={follows ? '' : undefined}
+      data-sheet={sheet() ? '' : undefined}
       data-testid={`${props.testId}-backdrop`}
       ref={el => {
         backdrop = el;
@@ -131,9 +141,11 @@ export function Dialog(props: DialogProps): JSX.Element {
       }}
     >
       <div
-        class={s['dialog']}
+        class={[s['dialog'], frame['sheet']]}
         data-chrome=""
         data-dialog=""
+        data-open=""
+        data-sheet={sheet() ? '' : undefined}
         data-testid={props.testId}
         ref={el => {
           dialog = el;
@@ -144,18 +156,18 @@ export function Dialog(props: DialogProps): JSX.Element {
         aria-labelledby={props.titleId}
         tabindex="-1"
       >
-        {/* Always in the dialog: the stylesheet shows it at phone width only. */}
-        <SheetHead
-          title={props.title}
-          surface={() => dialog}
-          onDismiss={props.onClose}
-          closeLabel="Close"
-          class={s['sheetHead']}
-          testId={`${props.testId}-sheet-head`}
-          titleTestId={`${props.testId}-sheet-title`}
-          closeTestId={`${props.testId}-sheet-close`}
-        />
-        <div class={s['content']}>{props.children}</div>
+        <Show when={sheet()}>
+          <SheetHead
+            title={props.title}
+            surface={() => dialog}
+            onDismiss={props.onClose}
+            closeLabel="Close"
+            testId={`${props.testId}-sheet-head`}
+            titleTestId={`${props.testId}-sheet-title`}
+            closeTestId={`${props.testId}-sheet-close`}
+          />
+        </Show>
+        <div class={[s['content'], sheet() && frame['body']]}>{props.children}</div>
       </div>
     </div>
   );

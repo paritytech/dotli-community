@@ -1,48 +1,40 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createContext, createMemo, Show, useContext, type Accessor } from 'solid-js';
+import { Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { InSheet } from '../sheet/in-sheet.js';
 import s from './Surface.module.css';
 
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';
 
-// An accessor, so a sheet that opens or closes around the surface is seen.
-const InSheet = createContext<Accessor<boolean>>(() => false);
-
 /**
- * The glass body of a popover. In a bottom sheet (`sheet`) the sheet already
- * draws the glass and the title, so this draws neither. `bare` does the same
- * for the glass inside a Popover, whose own surface is already glass.
+ * The body of a popover: its padding, gap, head and foot. The frame it sits
+ * in draws the glass. In a bottom sheet the sheet's head carries the title,
+ * so SurfaceHead draws none.
  */
 export function Surface(props: {
   width?: SurfaceWidth;
-  sheet?: boolean;
-  /** Inside a Popover, whose own surface is the glass: draws none of its own. */
-  bare?: boolean;
   label?: string;
   class?: string | undefined;
   testId?: string;
   ref?: (el: HTMLElement) => void;
   children: JSX.Element;
 }): JSX.Element {
-  const sheet = createMemo(() => props.sheet === true);
+  const inSheet = useContext(InSheet);
   return (
-    <InSheet value={sheet}>
-      <section
-        ref={el => {
-          props.ref?.(el);
-        }}
-        class={[s['surface'], props.class]}
-        aria-label={props.label}
-        data-width={props.width ?? 'md'}
-        data-sheet={sheet() ? '' : undefined}
-        data-bare={props.bare === true ? '' : undefined}
-        data-testid={props.testId}
-      >
-        {props.children}
-      </section>
-    </InSheet>
+    <section
+      ref={el => {
+        props.ref?.(el);
+      }}
+      class={[s['surface'], props.class]}
+      aria-label={props.label}
+      data-width={props.width ?? 'md'}
+      data-sheet={inSheet() ? '' : undefined}
+      data-testid={props.testId}
+    >
+      {props.children}
+    </section>
   );
 }
 

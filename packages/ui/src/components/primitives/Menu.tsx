@@ -67,7 +67,7 @@ export function Menu(props: MenuProps): JSX.Element {
           props.ref(el);
         }}
         onClick={ev => props.onClick?.(ev)}
-        class={[s['menu'], frame['sheet'], props.class]}
+        class={[frame['anchored'], s['menu'], frame['sheet'], props.class]}
         id={props.id}
         role={sheet() ? undefined : 'menu'}
         aria-label={sheet() ? undefined : props.label}

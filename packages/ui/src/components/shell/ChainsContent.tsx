@@ -24,7 +24,6 @@ import {
   HISTORY_SLOTS,
   slotOpacity,
 } from './chains-format.js';
-import { usePopover } from './Popover.js';
 import s from './ChainsContent.module.css';
 
 /**
@@ -251,7 +250,6 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
  * Every chain's block arrivals are watched while it is mounted.
  */
 export function ChainsContent(): JSX.Element {
-  const popover = usePopover();
   // Once mounted: the watch goes with the content.
   onSettled(() => watchNetwork());
   const network = useStore(networkStore);
@@ -318,7 +316,7 @@ export function ChainsContent(): JSX.Element {
         };
   };
   return (
-    <Surface width="md" bare sheet={popover.sheet()} testId="chains-content">
+    <Surface width="md" testId="chains-content">
       <SurfaceHead
         title="Network"
         aside={

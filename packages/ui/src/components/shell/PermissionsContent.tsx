@@ -192,7 +192,7 @@ export function PermissionsContent(): JSX.Element {
   };
 
   return (
-    <Surface width="lg" bare sheet={popover.sheet()}>
+    <Surface width="lg">
       <SurfaceHead
         title="Permissions"
         testId="permissions-popover-header"

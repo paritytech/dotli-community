@@ -1,12 +1,12 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createMemo, createSignal, Match, Show, Switch } from 'solid-js';
+import { createEffect, createMemo, createSignal, Match, onSettled, Show, Switch } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { isMobileDevice, log } from '@dotli/shared';
 
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
-import { PHONE_QUERY } from '../../phone-viewport.js';
+import { isPhoneViewport, PHONE_QUERY, watchPhoneViewport } from '../../phone-viewport.js';
 import { revealTopbar } from '../../topbar-autohide.js';
 import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
@@ -17,7 +17,9 @@ import { Spinner } from '../primitives/Spinner.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { Surface } from '../primitives/Surface.js';
 import { Well } from '../primitives/Well.js';
+import { InSheet } from '../sheet/in-sheet.js';
 import { SheetHead } from '../sheet/SheetHead.js';
+import frame from '../sheet/Sheet.module.css';
 import s from './AuthModal.module.css';
 import { createPopover } from './create-popover.js';
 
@@ -147,14 +149,14 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  * login that started before the island hydrated shows once it has.
  *
  * The glass surface drops from the pill's right edge like the topbar's
- * popovers, over a light scrim, and at 560 px and below it is a bottom sheet
- * over the dark scrim, led by the sheets' head (SheetHead): the grabber,
- * "Sign in" and a close button, and a swipe down on it closes, as Cancel
- * does. The landing page has no pill, so there it takes the popovers'
- * fallback place in the top right corner. The body follows the
- * store's view: a spinner, the pairing QR code on its tile with the Polkadot
- * badge, login progress, or an error with the friendly copy and, when it can
- * help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
+ * popovers, over a light scrim, and while the viewport is a phone's it is a
+ * bottom sheet over the dark scrim (the shared frames of components/sheet),
+ * led by the sheets' head (SheetHead): the grabber, "Sign in" and a close
+ * button, and a swipe down on it closes, as Cancel does. The landing page
+ * has no pill, so there it takes the popovers' fallback place in the top
+ * right corner. The body follows the store's view: a spinner, the pairing
+ * QR code on its tile with the Polkadot badge, login progress, or an error
+ * with the friendly copy and, when it can help, Retry. The QR is drawn on a canvas by the lazily imported `qrcode`,
  * and a drawing that finishes after the view moved on (a newer code,
  * progress, a close) is dropped. On a phone the deeplink button leads and
  * the QR sits behind "Show QR instead", and the "get the app" link shows
@@ -175,7 +177,7 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  */
 export function AuthModal(): JSX.Element {
   let backdrop: HTMLDivElement | undefined;
-  let surface: HTMLElement | undefined;
+  let surface: HTMLDivElement | undefined;
   let qrBox: HTMLDivElement | undefined;
   const state = useStore(authModalStore);
   // A phone's layout once hydrated: the build-time render, which has no
@@ -187,6 +189,17 @@ export function AuthModal(): JSX.Element {
   // whole store would re-run them on any write (a new reason, say), and the
   // memos only notify when their own value changes.
   const open = createMemo(() => state().open);
+  // Followed once hydrated: the build-time render has no viewport.
+  const [phone, setPhone] = createSignal(false);
+  onSettled(() => {
+    setPhone(isPhoneViewport());
+    return watchPhoneViewport(setPhone);
+  });
+  /**
+   * A sheet while open on a phone's viewport, a sign-in narrowed to one
+   * included. A closing one keeps its form, so it leaves as it showed.
+   */
+  const sheet = createMemo<boolean>(prev => (open() ? phone() : (prev ?? false)));
   /** The view on show: none while closed, as the topbar emptied it. */
   const view = createMemo<AuthModalView | null>(
     () => {
@@ -331,96 +344,102 @@ export function AuthModal(): JSX.Element {
       class={s['backdrop']}
       data-chrome=""
       data-open={open() ? '' : undefined}
+      data-sheet={sheet() ? '' : undefined}
       id="auth-modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-labelledby="auth-modal-title"
       tabindex="-1"
     >
-      <Surface
+      <div
         ref={el => {
           surface = el;
         }}
-        class={s['surface']}
+        class={[frame['anchored'], s['surface'], frame['sheet']]}
+        data-open={open() ? '' : undefined}
+        data-sheet={sheet() ? '' : undefined}
       >
-        {/* Always in the surface: the stylesheet shows it at phone width,
-            so an open sign-in narrowed to a phone's gets it too. */}
-        <SheetHead
-          title="Sign in"
-          surface={() => surface}
-          onDismiss={closeAuthModal}
-          closeLabel="Close"
-          class={s['sheetHead']}
-          testId="auth-modal-sheet-head"
-          titleTestId="auth-modal-sheet-title"
-          closeTestId="auth-modal-sheet-close"
-        />
-        <div class={s['body']}>
-          <div class={s['head']}>
-            <h2 class={s['title']} id="auth-modal-title">
-              <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
-                {label => (
-                  <>
-                    {label()}
-                    <span class={s['titleRest']}> wants you to sign in</span>
-                  </>
-                )}
-              </Show>
-            </h2>
-            <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
-              {state().reason ?? ''}
-            </p>
-            <p class={s['hint']} id="auth-modal-hint">
-              {hint()}
-            </p>
-          </div>
-          <div
-            ref={el => {
-              qrBox = el;
-            }}
-            class={[s['qr'], !mobile() && s['qrScan']]}
-            id="auth-modal-qr"
-          >
-            <Switch>
-              <Match when={view()?.kind === 'authenticating'}>
-                <div class={s['progress']}>
-                  <Spinner class={s['spinner']} testId="auth-modal-spinner" />
-                  <p class={s['progressText']}>Logging in...</p>
-                </div>
-              </Match>
-              <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
-              <Match when={view() !== null}>
-                <Show when={qr()} fallback={<Spinner class={s['spinner']} testId="auth-modal-spinner" />}>
-                  {drawnQr => (
-                    <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
-                      <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />
+        <Show when={sheet()}>
+          <SheetHead
+            title="Sign in"
+            surface={() => surface}
+            onDismiss={closeAuthModal}
+            closeLabel="Close"
+            testId="auth-modal-sheet-head"
+            titleTestId="auth-modal-sheet-title"
+            closeTestId="auth-modal-sheet-close"
+          />
+        </Show>
+        <div class={sheet() ? frame['body'] : undefined}>
+          <InSheet value={sheet}>
+            <Surface>
+              <div class={s['head']}>
+                <h2 class={s['title']} id="auth-modal-title">
+                  <Show when={state().productLabel} fallback="Login with Polkadot Mobile">
+                    {label => (
+                      <>
+                        {label()}
+                        <span class={s['titleRest']}> wants you to sign in</span>
+                      </>
+                    )}
+                  </Show>
+                </h2>
+                <p class={s['reason']} id="auth-modal-reason" hidden={state().reason === null}>
+                  {state().reason ?? ''}
+                </p>
+                <p class={s['hint']} id="auth-modal-hint">
+                  {hint()}
+                </p>
+              </div>
+              <div
+                ref={el => {
+                  qrBox = el;
+                }}
+                class={[s['qr'], !mobile() && s['qrScan']]}
+                id="auth-modal-qr"
+              >
+                <Switch>
+                  <Match when={view()?.kind === 'authenticating'}>
+                    <div class={s['progress']}>
+                      <Spinner class={s['spinner']} testId="auth-modal-spinner" />
+                      <p class={s['progressText']}>Logging in...</p>
+                    </div>
+                  </Match>
+                  <Match when={errorView()}>{v => <ErrorBody view={v()} retry={retry} />}</Match>
+                  <Match when={view() !== null}>
+                    <Show when={qr()} fallback={<Spinner class={s['spinner']} testId="auth-modal-spinner" />}>
+                      {drawnQr => (
+                        <Show when={mobile()} fallback={<QrCode qr={drawnQr()} link={false} />}>
+                          <MobileQr qr={drawnQr()} shown={qrShown()} reveal={showQr} />
+                        </Show>
+                      )}
                     </Show>
-                  )}
-                </Show>
-              </Match>
-            </Switch>
-          </div>
-          <a
-            class={s['link']}
-            id="auth-modal-get-app"
-            href={POLKADOT_MOBILE_DOWNLOAD_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            hidden={getAppHidden()}
-          >
-            Don't have the app? Get Polkadot Mobile
-          </a>
-          <Button
-            id="auth-modal-close"
-            block
-            onClick={() => {
-              closeAuthModal();
-            }}
-          >
-            Cancel
-          </Button>
+                  </Match>
+                </Switch>
+              </div>
+              <a
+                class={s['link']}
+                id="auth-modal-get-app"
+                href={POLKADOT_MOBILE_DOWNLOAD_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                hidden={getAppHidden()}
+              >
+                Don't have the app? Get Polkadot Mobile
+              </a>
+              <Button
+                id="auth-modal-close"
+                block
+                onClick={() => {
+                  closeAuthModal();
+                }}
+              >
+                Cancel
+              </Button>
+            </Surface>
+          </InSheet>
         </div>
-      </Surface>
+      </div>
     </div>
   );
 }

@@ -4,13 +4,11 @@
 /* The sign-in surface. The backdrop is the dialog and its scrim, and a press
    on it closes. It stays above the bar, as the Popover backdrop does, so the
    pill shows through the light scrim and a press on it lands on the scrim.
-   The surface hangs from the pill like the anchored popovers, from the same
-   published box, and at 560 px and below it is a bottom sheet.
+   The surface is the shared anchored frame and, on a phone's viewport, the
+   shared sheet (components/sheet/Sheet.module.css), as the popovers' is.
 
-   The backdrop, the anchored surface and the sheet are near twins of
-   Popover.module.css's, kept here because each differs (layer, timing,
-   position, radius) and a cross-file composes would copy that whole sheet
-   into this one.
+   The backdrop is a near twin of Popover.module.css's, kept here because it
+   differs (layer, timing) and holds the surface.
 
    Desktop sizes by default, the boards' in the phone block: the 234 px QR
    tile in the 320 px surface is the board's 264 in 360. */
@@ -42,43 +40,36 @@
     opacity: 0;
   }
 }
+/* The sheet sits inside the backdrop, so the scrim fades its colour, not
+   its opacity, and stays displayed (catching a tap's trailing click) until
+   the slide ends rather than the shared scrim's fade. */
+.backdrop[data-sheet] {
+  background: transparent;
+  opacity: 1;
+  transition:
+    background-color var(--dur) var(--ease-out),
+    display var(--dur-morph) allow-discrete;
+}
+.backdrop[data-sheet][data-open] {
+  background: var(--chrome-scrim);
+}
+@starting-style {
+  .backdrop[data-sheet][data-open] {
+    background: transparent;
+    opacity: 1;
+  }
+}
 
-/* Twin of Popover.module.css .surface, placed in the backdrop. */
-.surface {
-  position: absolute;
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
-  right: var(--topbar-inline-end, calc(var(--sp-3) + var(--safe-right)));
+/* The cap on the anchored frame's size, as Popover.module.css's. */
+:where(.surface) {
   max-width: calc(100vw - 2 * var(--sp-3) - var(--safe-left) - var(--safe-right));
   max-height: calc(
     100dvh - var(--topbar-bottom, var(--topbar-height)) - var(--pop-gap) - var(--sp-4) - var(--safe-bottom)
   );
   overflow-y: auto;
-  opacity: 0;
-  transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
-  transform-origin: top right;
-  transition:
-    opacity var(--dur) var(--ease-spring),
-    transform var(--dur) var(--ease-spring);
 }
-.backdrop[data-open] .surface {
-  opacity: 1;
-  transform: none;
-}
-@starting-style {
-  .backdrop[data-open] .surface {
-    opacity: 0;
-    transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
-  }
-}
-
-/* The sheet's head (SheetHead) leads the phone layout only. */
-.surface .sheet-head {
-  display: none;
-}
-/* Its parts sit in the surface on wide screens, and scroll under the head in
-   the sheet. */
-.body {
-  display: contents;
+.surface[data-open] {
+  display: block;
 }
 
 /* Not SurfaceHead: that head is a row with an aside, this one stacks the
@@ -279,10 +270,7 @@
   margin-top: 6px;
 }
 
-/* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
-   in components/sheet/Sheet.module.css (radius, shadow, 85dvh cap, the head
-   over the body that scrolls, the --dur-morph slide and the --dur scrim
-   fade): keep the two in step. Then the boards' sizes of the parts. */
+/* Phones: the boards' sizes of the parts. */
 @media (max-width: 560px) {
   .head {
     gap: var(--sp-2);
@@ -325,74 +313,10 @@
   .retry {
     margin-top: var(--sp-2);
   }
-  /* The sheet sits inside the backdrop, so the scrim fades its colour, not
-     its opacity, and stays displayed (catching a tap's trailing click) until
-     the slide ends rather than the shared scrim's fade. */
-  .backdrop {
-    background: transparent;
-    opacity: 1;
-    transition:
-      background-color var(--dur) var(--ease-out),
-      display var(--dur-morph) allow-discrete;
-  }
-  .backdrop[data-open] {
-    background: var(--chrome-scrim);
-  }
-  @starting-style {
-    .backdrop[data-open] {
-      background: transparent;
-      opacity: 1;
-    }
-  }
-  .surface {
-    top: auto;
-    right: 0;
-    bottom: 0;
-    left: 0;
-    width: 100%;
-    max-width: 100%;
-    max-height: 85dvh;
-    overflow: hidden;
-    gap: 0;
-    padding: 0;
-    border-radius: var(--r-xl) var(--r-xl) 0 0;
-    box-shadow: var(--chrome-shadow-sheet);
-    opacity: 1;
-    transform: translateY(100%);
-    transform-origin: bottom center;
-    transition: transform var(--dur-morph) var(--ease-out);
-  }
-  .backdrop[data-open] .surface {
-    transform: none;
-  }
-  @starting-style {
-    .backdrop[data-open] .surface {
-      opacity: 1;
-      transform: translateY(100%);
-    }
-  }
-  /* A dragged sheet follows the finger without easing. */
-  .surface[data-dragging] {
-    transition: none;
-  }
-  .surface .sheet-head {
-    display: grid;
-  }
-  /* The board's .sheet-scroll around a sheet's .popover.is-sheet. */
-  .body {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--sp-3);
-    min-height: 0;
-    overflow: auto;
-    padding: var(--sp-1) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .backdrop,
-  .surface {
+  .backdrop {
     transition: none !important;
   }
 }

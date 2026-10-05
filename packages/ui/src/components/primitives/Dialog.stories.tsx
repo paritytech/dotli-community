@@ -92,7 +92,8 @@ export const Phone: Story = {
       await waitFor(() => expect(isPhoneViewport()).toBe(true));
     });
     await step('When I press the sheet close button', async () => {
-      await userEvent.click(canvas.getByTestId('story-dialog-sheet-close'));
+      // The dialog becomes a sheet as the frame crosses to the phone's width.
+      await userEvent.click(await canvas.findByTestId('story-dialog-sheet-close'));
     });
     await step('Then the dialog is closed', async () => {
       await expect(args.onClose).toHaveBeenCalledOnce();

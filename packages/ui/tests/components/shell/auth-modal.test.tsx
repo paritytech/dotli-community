@@ -238,12 +238,12 @@ function expectMarkup(backdrop: Element, opts: ModalExpectation): void {
   expect(backdrop.getAttribute('aria-labelledby')).toBe('auth-modal-title');
   expect(backdrop.getAttribute('tabindex')).toBe('-1');
   expect(backdrop.hasAttribute('data-open')).toBe(opts.open);
-  expect(tags(backdrop)).toEqual(['SECTION']);
-  // The sheet head, which only a phone's stylesheet shows, then the parts in the body.
+  expect(tags(backdrop)).toEqual(['DIV']);
+  // No sheet head on a wide screen: the body holds the Surface with the parts.
   const surface = nth(backdrop.children, 0);
-  expect(tags(surface)).toEqual(['DIV', 'DIV']);
-  expect(nth(surface.children, 0).getAttribute('data-testid')).toBe('auth-modal-sheet-head');
-  const body = nth(surface.children, 1);
+  expect(tags(surface)).toEqual(['DIV']);
+  expect(tags(nth(surface.children, 0))).toEqual(['SECTION']);
+  const body = nth(nth(surface.children, 0).children, 0);
   expect(Array.from(body.children).map(child => `${child.tagName}#${child.id}`)).toEqual([
     'DIV#',
     'DIV#auth-modal-qr',

@@ -81,7 +81,7 @@ export function AccountContent(): JSX.Element {
     requestTruapiDisconnect();
   };
   return (
-    <Surface width="sm" bare sheet={popover.sheet()} testId="account-content">
+    <Surface width="sm" testId="account-content">
       <div class={s['identity']}>
         <span class={s['avatar']} aria-hidden="true">
           <Show when={initials()} fallback={<UserIcon />}>

@@ -9,7 +9,6 @@ import { Chip } from '../primitives/Chip.js';
 import { Choice } from '../primitives/Choice.js';
 import { Surface, SurfaceHead } from '../primitives/Surface.js';
 import { useStore } from '../use-store.js';
-import { usePopover } from './Popover.js';
 import { GLYPH_PATHS, TOOLTIP_TITLE } from './verification-glyphs.js';
 import s from './VerificationContent.module.css';
 
@@ -32,10 +31,9 @@ const SOURCES: readonly { state: ShieldState; title: string; description: string
  * ringed (`data-selected`) with a "This site" chip.
  */
 export function VerificationContent(): JSX.Element {
-  const popover = usePopover();
   const state = useStore(urlPillStore, pill => pillShield(pill) ?? null);
   return (
-    <Surface width="md" bare sheet={popover.sheet()}>
+    <Surface width="md">
       <SurfaceHead title={TOOLTIP_TITLE} testId="verification-tooltip-title" />
       <For each={SOURCES}>
         {source => (

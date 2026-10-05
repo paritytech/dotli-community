@@ -124,7 +124,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
   const unavailable = (value: Backend): boolean => value === 'smoldot-shared-worker' && !saved.sharedWorkerAvailable;
 
   return (
-    <Surface width="xl" bare sheet={popover.sheet()}>
+    <Surface width="xl">
       <SurfaceHead title="Settings" />
       <div class={s['columns']} data-testid="mode-popover-columns">
         <div class={s['column']}>

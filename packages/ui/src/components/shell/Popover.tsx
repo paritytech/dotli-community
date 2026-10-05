@@ -20,6 +20,7 @@ import { focusInto } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { isPhoneViewport } from '../../phone-viewport.js';
 import { Spinner } from '../primitives/Spinner.js';
+import { InSheet } from '../sheet/in-sheet.js';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
 import { createPopover } from './create-popover.js';
@@ -119,8 +120,10 @@ export function usePopover(): PopoverContextValue {
  * (shown while a mouse rests on the trigger), `data-anchor="trigger"` and
  * `data-dragging` (while a sheet is being dragged), and the backdrop
  * `data-open`, `data-sheet` and `data-handoff`. A consumer's class on the
- * surface may react to them. Content that lays out differently in a sheet
- * reads `usePopover().sheet()` and marks its own elements.
+ * surface may react to them. The surface draws the glass, and a Surface in
+ * the content reads whether it is in a sheet itself (InSheet). Other content
+ * that lays out differently in a sheet reads `usePopover().sheet()` and marks
+ * its own elements.
  */
 export function Popover(props: PopoverProps): JSX.Element {
   let triggerEl: HTMLElement | undefined;
@@ -342,7 +345,7 @@ export function Popover(props: PopoverProps): JSX.Element {
           ref={el => {
             surfaceEl = el;
           }}
-          class={[s['surface'], frame['sheet'], props.class]}
+          class={[frame['anchored'], s['surface'], frame['sheet'], props.class]}
           data-chrome=""
           data-open={popover.open() ? '' : undefined}
           data-sheet={sheet() ? '' : undefined}
@@ -382,18 +385,20 @@ export function Popover(props: PopoverProps): JSX.Element {
             <Show when={mounted() ? opening() : 0} keyed>
               {(_opening: number) => (
                 <PopoverContext value={context}>
-                  <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
-                    <Loading
-                      fallback={
-                        <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
-                          <Spinner class={s['spinner']} />
-                        </div>
-                      }
-                    >
-                      <Content />
-                      <FocusWhenLoaded surface={() => surfaceEl} />
-                    </Loading>
-                  </Errored>
+                  <InSheet value={sheet}>
+                    <Errored fallback={err => <Broken id={props.id} error={err()} fail={fail} />}>
+                      <Loading
+                        fallback={
+                          <div class={s['loading']} data-testid="popover-loading" aria-hidden="true">
+                            <Spinner class={s['spinner']} />
+                          </div>
+                        }
+                      >
+                        <Content />
+                        <FocusWhenLoaded surface={() => surfaceEl} />
+                      </Loading>
+                    </Errored>
+                  </InSheet>
                 </PopoverContext>
               )}
             </Show>

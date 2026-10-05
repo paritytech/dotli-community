@@ -1,8 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The mockup's .glass and .popover: one padding and one gap for every
-   popover, 12 and 10 on desktop, the boards' 16 and 12 on phones. */
+/* The mockup's .popover: one padding and one gap for every popover, 12 and
+   10 on desktop, the boards' 16 and 12 on phones. The frame around it draws
+   the glass. */
 
 :where(.surface) {
   box-sizing: border-box;
@@ -13,13 +14,6 @@
   max-width: 100%;
   margin: 0;
   padding: var(--sp-3);
-  border-radius: var(--r-pop);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  backdrop-filter: var(--chrome-blur);
-  box-shadow: var(--chrome-shadow-pop);
-  color: var(--chrome-text);
-  font-family: var(--font-sans);
 }
 .surface[data-width='sm'] {
   width: var(--w-pop-sm);
@@ -30,21 +24,9 @@
 .surface[data-width='xl'] {
   width: var(--w-pop-xl);
 }
-/* Inside a Popover, whose surface already is the glass: one glass, not two. */
-.surface[data-bare] {
-  background: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
-}
 .surface[data-sheet] {
   width: 100%;
   padding: var(--sp-1) var(--sp-4) var(--sp-4);
-  border-radius: 0;
-  background: none;
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
-  box-shadow: none;
 }
 .head {
   display: flex;

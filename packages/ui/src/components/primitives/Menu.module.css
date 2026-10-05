@@ -1,60 +1,22 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The base rules are wrapped in :where(), so a consumer's class (the theme
-   menu's width) wins over them whatever order the stylesheets load in.
-   `display` animates too (allow-discrete), and @starting-style gives the way in
-   its first frame. */
+/* The menu is the shared anchored frame (components/sheet/Sheet.module.css)
+   holding a column of rows. The base rules are wrapped in :where(), so a
+   consumer's class (the theme menu's width) wins over them whatever order
+   the stylesheets load in. */
 
 :where(.menu) {
-  display: none;
   /* Layout lives on the base rule, not on [data-open], so it holds through the
      close transition while allow-discrete keeps `display: flex`. Otherwise the
      rows briefly stack sideways on the way out. */
   flex-direction: column;
   gap: 0;
-  position: fixed;
-  top: calc(var(--topbar-bottom, var(--topbar-height)) + var(--pop-gap));
-  right: var(--topbar-inline-end, calc(12px + var(--safe-right)));
-  box-sizing: border-box;
   min-width: var(--w-pop-sm);
   padding: 6px;
-  border: 0;
-  border-radius: var(--r-pop);
-  background: var(--chrome-glass);
-  -webkit-backdrop-filter: var(--chrome-blur);
-  box-shadow: var(--chrome-shadow-pop);
-  color: var(--chrome-text);
-  font-family: var(--font-sans);
-  z-index: 1500;
-  opacity: 0;
-  transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
-  transform-origin: top right;
-  transition:
-    opacity var(--dur) var(--ease-spring),
-    transform var(--dur) var(--ease-spring),
-    display var(--dur) allow-discrete;
-}
-@supports (backdrop-filter: blur(1px)) {
-  :where(.menu) {
-    backdrop-filter: var(--chrome-blur);
-  }
 }
 .menu[data-open] {
   display: flex;
-  opacity: 1;
-  transform: scale(1);
-}
-@starting-style {
-  .menu[data-open] {
-    opacity: 0;
-    transform: translateY(calc(-1 * var(--sp-2))) scale(0.97);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .menu {
-    transition: none !important;
-  }
 }
 
 :where(.row) {
@@ -86,11 +48,6 @@
 .row:focus-visible {
   outline: var(--chrome-focus-ring);
   outline-offset: -2px;
-}
-/* The menu takes focus itself (tabindex -1) for a pointer opening, as a
-   popover surface does, and shows no ring for it: its rows carry the ring. */
-.menu:focus-visible {
-  outline: none;
 }
 .row > svg {
   flex: none;

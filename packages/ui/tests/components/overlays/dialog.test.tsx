@@ -9,6 +9,7 @@ import { attachProductFrame, resetProductFrameLayout } from '../../../src/produc
 import { renderComponent, settle } from '../../helpers/solid.js';
 import { byTestId, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
+import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { footerVariants } from '../../helpers/overlays.js';
 
 type Choice = 'deny' | 'allow' | 'once' | 'dismissed';
@@ -60,6 +61,7 @@ async function mountOutlet(): Promise<void> {
 }
 
 afterEach(() => {
+  vi.unstubAllGlobals();
   resetModalsForTests();
   resetProductFrameLayout();
   document.body.replaceChildren();
@@ -207,6 +209,7 @@ describe('signing dialog', () => {
 
   it("As a phone user, a prompt's sheet is headed by its title, and its close button dismisses it as the scrim does", async () => {
     // Given
+    stubPhoneViewport(true);
     const outcome = openModal(permissionLike());
     await mountOutlet();
 
@@ -229,6 +232,7 @@ describe('signing dialog', () => {
 
   it('As a phone user, the close button on a prompt that must be answered answers it with its Cancel, without what I typed', async () => {
     // Given
+    stubPhoneViewport(true);
     const outcome = openModal(passwordView());
     await mountOutlet();
     fireEvent.input(byTestId('password-prompt-input', document, HTMLInputElement), {
@@ -246,6 +250,7 @@ describe('signing dialog', () => {
 
   it('As a phone user, the close button on a prompt with no Cancel and no scrim answer answers it with its danger reject', async () => {
     // Given
+    stubPhoneViewport(true);
     const outcome = openModal(permissionLike({ dismissOnBackdrop: false }));
     await mountOutlet();
 
@@ -259,6 +264,7 @@ describe('signing dialog', () => {
 
   it('As a phone user, the close button on a scrim-dismissable prompt with no scrim answer answers it with its danger reject', async () => {
     // Given
+    stubPhoneViewport(true);
     const { dismissResult: _unused, ...view } = permissionLike();
     const outcome = openModal(view);
     await mountOutlet();

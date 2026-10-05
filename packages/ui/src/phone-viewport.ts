@@ -14,3 +14,18 @@ export const PHONE_QUERY = '(max-width: 560px)';
 export function isPhoneViewport(): boolean {
   return window.matchMedia(PHONE_QUERY).matches;
 }
+
+/**
+ * Calls `onChange` with whether the viewport is a phone's each time it
+ * crosses PHONE_QUERY. Returns a function that stops.
+ */
+export function watchPhoneViewport(onChange: (phone: boolean) => void): () => void {
+  const query = window.matchMedia(PHONE_QUERY);
+  const notify = (): void => {
+    onChange(query.matches);
+  };
+  query.addEventListener('change', notify);
+  return () => {
+    query.removeEventListener('change', notify);
+  };
+}

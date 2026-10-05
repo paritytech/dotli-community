@@ -1,16 +1,17 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's modal: a centred glass card over the dark scrim, and at 560 px
-   and below (PHONE_QUERY in phone-viewport.ts) a bottom sheet led by the
-   sheets' head (SheetHead), as the board's phone draws a prompt. Both come in
-   with the board's keyframes. Nothing animates out: the outlet unmounts an
-   answered dialog in the update that mounts the next queued one. Desktop
-   draws the card at 360 px with 20 px padding, a 16 px gap and 24 px
-   corners. The boards' card is 400 / 24 / 20 / 28. The layout parts below
-   (.head, .title, .body, .actions) are the board's .modal-head, .modal-title
-   and .modal-actions, desktop sizes by default and the boards' in the phone
-   block. */
+/* The board's modal: a centred glass card over the dark scrim, and while the
+   viewport is a phone's (`data-sheet`) a bottom sheet in the shared frame
+   (components/sheet/Sheet.module.css) led by the sheets' head (SheetHead), as
+   the board's phone draws a prompt. The card comes in with the board's
+   keyframes, the sheet with the frame's slide. Nothing animates out: the
+   outlet unmounts an answered dialog in the update that mounts the next
+   queued one. Desktop draws the card at 360 px with 20 px padding, a 16 px
+   gap and 24 px corners. The boards' card is 400 / 24 / 20 / 28. The layout
+   parts below (.head, .title, .body, .actions) are the board's .modal-head,
+   .modal-title and .modal-actions, desktop sizes by default and the board's
+   .modal.is-sheet in the sheet. */
 
 .backdrop {
   position: fixed;
@@ -52,10 +53,6 @@
 /* Focused itself on open, so keyboard users start inside: no ring for that. */
 .dialog:focus-visible {
   outline: none;
-}
-/* The sheet head leads the phone layout only. */
-.dialog .sheet-head {
-  display: none;
 }
 /* The dialog's parts sit in the card on wide screens, and scroll under the
    head in the sheet. */
@@ -122,68 +119,38 @@
     transform: translateY(var(--sp-2)) scale(0.96);
   }
 }
-@keyframes sheet-in {
-  from {
-    transform: translateY(100%);
-  }
+/* The sheet sits at the foot of the scrim, which holds it. */
+.backdrop[data-sheet] {
+  place-items: end stretch;
+  padding: 0;
 }
-
-/* PHONE_QUERY in phone-viewport.ts. A media-query twin of the sheet frame
-   in components/sheet/Sheet.module.css: keep the two in step. */
-@media (max-width: 560px) {
-  .backdrop {
-    place-items: end stretch;
-    padding: 0;
-  }
-  /* The board's .sheet. It covers the whole screen, the header included, so
-     its 85% cap is of the screen. */
-  .dialog {
-    gap: 0;
-    width: 100%;
-    max-height: 85dvh;
-    padding: 0;
-    border-radius: var(--r-xl) var(--r-xl) 0 0;
-    box-shadow: var(--chrome-shadow-sheet);
-    /* No fill: a finished animation that keeps filling its transform stops
-       the transition below from easing a short swipe back. */
-    animation: sheet-in var(--dur-morph) var(--ease-out);
-    transition: transform var(--dur-morph) var(--ease-out);
-  }
-  /* A dragged sheet follows the finger without easing. */
-  .dialog[data-dragging] {
-    transition: none;
-  }
-  .dialog .sheet-head {
-    display: grid;
-  }
-  /* The board's .sheet-scroll around its .modal.is-sheet: the modal's 4 px
-     top and 16 px sides and bottom, the scroll's 24 px, then the home
-     indicator. A column, so a tall review still scrolls in the prompt's own
-     body with the answers in view. */
-  .content {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--sp-5);
-    min-height: 0;
-    overflow: auto;
-    padding: var(--sp-1) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
-  }
-  /* The board's .modal.is-sheet drops the modal's own head, as the sheet
-     head carries the title, and stacks the answers. */
-  .head {
-    display: none;
-  }
-  .body {
-    gap: var(--sp-5);
-  }
-  .actions {
-    grid-auto-flow: row;
-    gap: var(--sp-2);
-  }
-  .actions > * {
-    padding: 0 var(--sp-3);
-  }
+.dialog[data-sheet] {
+  animation: none;
+}
+/* The board's .sheet-scroll around its .modal.is-sheet: the modal's 4 px
+   top and 16 px sides and bottom, the scroll's 24 px, then the home
+   indicator. A column, so a tall review still scrolls in the prompt's own
+   body with the answers in view. */
+.dialog[data-sheet] .content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding: var(--sp-1) var(--sp-4) calc(var(--sp-4) + var(--sp-6) + var(--safe-bottom));
+}
+/* The board's .modal.is-sheet drops the modal's own head, as the sheet head
+   carries the title, and stacks the answers. */
+.dialog[data-sheet] .head {
+  display: none;
+}
+.dialog[data-sheet] .body {
+  gap: var(--sp-5);
+}
+.dialog[data-sheet] .actions {
+  grid-auto-flow: row;
+  gap: var(--sp-2);
+}
+.dialog[data-sheet] .actions > * {
+  padding: 0 var(--sp-3);
 }
 
 @media (prefers-reduced-motion: reduce) {

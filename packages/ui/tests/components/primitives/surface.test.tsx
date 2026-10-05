@@ -3,6 +3,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Hint, Surface, SurfaceFoot, SurfaceHead } from '../../../src/components/primitives/Surface.js';
+import { InSheet } from '../../../src/components/sheet/in-sheet.js';
 import { renderComponent } from '../../helpers/solid.js';
 import { byTestId } from '../../support.js';
 
@@ -30,10 +31,12 @@ describe('Surface', () => {
   it('As an assistive technology user in a bottom sheet, I hear the title once, from the sheet', () => {
     // Given / When
     renderComponent(() => (
-      <Surface sheet label="Permissions" testId="surface">
-        <SurfaceHead title="Permissions" testId="head" />
-        <p>Rows</p>
-      </Surface>
+      <InSheet value={() => true}>
+        <Surface label="Permissions" testId="surface">
+          <SurfaceHead title="Permissions" testId="head" />
+          <p>Rows</p>
+        </Surface>
+      </InSheet>
     ));
 
     // Then
