@@ -34,6 +34,7 @@ import {
 } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
 import { showNotification } from './notification.js';
+import { setNotificationAccount } from './notification-activation.js';
 
 export interface PageProduct {
   label: string;
@@ -304,6 +305,8 @@ function createCore(product: PageProduct): Core {
       assertCurrent();
       const pairing = booted;
       unsubscribeStore = onStoredSessionChanged(() => {
+        // Fence both local and cross-tab changes before the worker reloads auth.
+        setNotificationAccount(product.label, undefined);
         pairing.notifySessionStoreChanged();
       });
       queueMicrotask(() => {
