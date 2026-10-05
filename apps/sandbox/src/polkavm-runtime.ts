@@ -1999,9 +1999,9 @@ function installInput(
     const locked = document.pointerLockElement === canvas;
     const active = locked || touchCaptureActive;
     firstMoveAfterPointerLock = locked;
-    if (active) {
-      pointerCaptureArmed = false;
-    }
+    // Escape (or focus loss) ends Pointer Lock without the guest releasing its
+    // request: keep the next primary click able to re-acquire it.
+    pointerCaptureArmed = !active && captureRequested && pointerCaptureSupported;
     if (pointerCaptureRequested()) {
       sendPointerCaptureState(active);
     }
