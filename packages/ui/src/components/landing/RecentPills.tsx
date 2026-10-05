@@ -5,6 +5,8 @@ import { createSignal, For, onCleanup, Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { getActiveTldSuffix } from '@dotli/config';
 import { forgetRecentLabel, loadRecentLabels } from '../../recent-labels.js';
+import { CloseIcon } from '../primitives/IconButton.js';
+import { SectionLabel } from '../primitives/SectionLabel.js';
 import { dotUrl } from './dot-url.js';
 import s from './RecentPills.module.css';
 
@@ -92,9 +94,7 @@ export function RecentPills(): JSX.Element {
       hidden={labels().length === 0}
     >
       <Show when={labels().length > 0}>
-        <h2 id="dotli-recent-label" class={s['heading']}>
-          Recent
-        </h2>
+        <SectionLabel as="h2" text="Recent" id="dotli-recent-label" class={s['heading']} />
         <div class={s['list']} role="group" aria-labelledby="dotli-recent-label" data-testid="landing-recent-list">
           <For each={labels()}>
             {label => (
@@ -129,20 +129,7 @@ export function RecentPills(): JSX.Element {
                     forget(e, label);
                   }}
                 >
-                  <svg
-                    width="10"
-                    height="10"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <path d="M18 6 6 18" />
-                    <path d="m6 6 12 12" />
-                  </svg>
+                  <CloseIcon />
                 </button>
               </span>
             )}

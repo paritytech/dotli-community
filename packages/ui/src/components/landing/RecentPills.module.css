@@ -7,13 +7,9 @@
   padding: 0;
 }
 
+/* SectionLabel in the page's colours, flush with the pills. */
 .heading {
-  margin: 0;
   padding: 0;
-  font-size: var(--fs-label);
-  font-weight: var(--fw-semibold);
-  letter-spacing: var(--ls-caps);
-  text-transform: uppercase;
   color: var(--text-secondary);
 }
 
@@ -84,6 +80,13 @@
   transition:
     opacity var(--dur-fast),
     background var(--dur-fast);
+}
+
+/* CloseIcon at 10 px, its stroke heavier so it holds at that size. */
+.remove svg {
+  width: 10px;
+  height: 10px;
+  stroke-width: 2.5;
 }
 
 /* The disc is small, so the touch target reaches 32 px around it. */

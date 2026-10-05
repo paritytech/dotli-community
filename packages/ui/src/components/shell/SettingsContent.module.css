@@ -21,12 +21,6 @@
   gap: var(--sp-4);
   min-width: 0;
 }
-.group,
-.choices {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 /* The clear-caches button's icon. */
 .icon {
   width: 14px;
@@ -41,15 +35,11 @@
   margin-left: 0;
 }
 
-/* Phones: the boards' 20 px column rhythm, 8 px stacks and 16 px icon. */
+/* Phones: the boards' 20 px column rhythm and 16 px icon. */
 @media (max-width: 560px) {
   .columns,
   .column {
     gap: var(--sp-5);
-  }
-  .group,
-  .choices {
-    gap: var(--sp-2);
   }
   .icon {
     width: 16px;

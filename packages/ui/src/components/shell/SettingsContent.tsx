@@ -10,7 +10,7 @@ import { settingsStore, type SettingsState } from '../../state/settings.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
 import { Choice } from '../primitives/Choice.js';
-import { SectionLabel } from '../primitives/SectionLabel.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Switch } from '../primitives/Switch.js';
 import { Row, Well } from '../primitives/Well.js';
@@ -129,9 +129,9 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
       <div class={s['columns']} data-testid="mode-popover-columns">
         <div class={s['column']}>
           <Show when={networks.length > 1}>
-            <div class={s['group']}>
+            <Stack>
               <SectionLabel text="Network" />
-              <div class={s['choices']} role="radiogroup" aria-label="Network">
+              <Stack role="radiogroup" aria-label="Network">
                 <For each={networks}>
                   {value => (
                     <Choice
@@ -148,12 +148,12 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
                     />
                   )}
                 </For>
-              </div>
-            </div>
+              </Stack>
+            </Stack>
           </Show>
-          <div class={s['group']}>
+          <Stack>
             <SectionLabel text="Network transport" />
-            <div class={s['choices']} role="radiogroup" aria-label="Network transport">
+            <Stack role="radiogroup" aria-label="Network transport">
               <For each={TRANSPORTS}>
                 {transport => (
                   <Choice
@@ -176,9 +176,9 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
                   />
                 )}
               </For>
-            </div>
-          </div>
-          <div class={s['group']}>
+            </Stack>
+          </Stack>
+          <Stack>
             <SectionLabel text="Cache" />
             <Well layout="controls" testId="mode-cache">
               <For each={CACHES}>
@@ -209,7 +209,7 @@ function SettingsPanel(props: { saved: SettingsState }): JSX.Element {
                 {clearing() ? 'Clearing…' : 'Clear all caches'}
               </Button>
             </div>
-          </div>
+          </Stack>
         </div>
         <Diagnostics backend={persisted.chain} />
       </div>

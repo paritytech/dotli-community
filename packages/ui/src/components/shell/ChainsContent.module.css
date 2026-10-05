@@ -30,9 +30,6 @@
 }
 
 .group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   padding: 0 var(--sp-1);
 }
 /* The surface's gap plus 4 between chains. */
@@ -213,7 +210,6 @@
   .status {
     gap: var(--sp-3);
   }
-  .group,
   .group-label {
     gap: var(--sp-2);
   }

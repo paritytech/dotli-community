@@ -17,7 +17,7 @@ import { recordPermissionsChanged } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
 import { Button } from '../primitives/Button.js';
 import { Chip } from '../primitives/Chip.js';
-import { SectionLabel } from '../primitives/SectionLabel.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
 import { Hint, ReloadIcon, Surface, SurfaceFoot, SurfaceHead } from '../primitives/Surface.js';
 import { Callout, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
@@ -212,11 +212,10 @@ export function PermissionsContent(): JSX.Element {
           {list => (
             <For each={MENU_GROUPS}>
               {group => (
-                <div
-                  class={s['group']}
+                <Stack
                   role="group"
                   aria-labelledby={`permissions-popover-group-${group.id}`}
-                  data-testid="permissions-popover-group"
+                  testId="permissions-popover-group"
                 >
                   <SectionLabel as="h3" text={group.label} id={`permissions-popover-group-${group.id}`} />
                   <Well layout="controls">
@@ -224,7 +223,7 @@ export function PermissionsContent(): JSX.Element {
                       {perm => <PermissionRow perm={perm} status={statusIn(list(), perm.name)} choose={choose} />}
                     </For>
                   </Well>
-                </div>
+                </Stack>
               )}
             </For>
           )}

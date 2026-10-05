@@ -13,7 +13,7 @@ import {
   packageVersions,
 } from '../../settings-actions.js';
 import { Button } from '../primitives/Button.js';
-import { SectionLabel } from '../primitives/SectionLabel.js';
+import { SectionLabel, Stack } from '../primitives/SectionLabel.js';
 import { KeyValue, Well } from '../primitives/Well.js';
 import { loadRpcResolve } from '@dotli/resolver';
 import s from './Diagnostics.module.css';
@@ -192,7 +192,7 @@ export function Diagnostics(props: {
   };
 
   return (
-    <div class={s['diagnostics']}>
+    <Stack class={s['diagnostics']}>
       <SectionLabel text="Diagnostics" />
       <Well layout="kv" testId="mode-diagnostics">
         <For each={base}>
@@ -266,6 +266,6 @@ export function Diagnostics(props: {
           {debugOn ? 'Exit debug mode' : 'Debug mode'}
         </Button>
       </div>
-    </div>
+    </Stack>
   );
 }

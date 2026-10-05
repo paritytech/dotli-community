@@ -7,18 +7,9 @@
   flex-direction: column;
   gap: 10px;
 }
-/* The mockup's .stack: the label over its well, 6 px apart. */
-.group {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-/* Phones: the boards' 12 and 8. */
+/* Phones: the boards' 12. */
 @media (max-width: 560px) {
   .list {
     gap: var(--sp-3);
-  }
-  .group {
-    gap: var(--sp-2);
   }
 }

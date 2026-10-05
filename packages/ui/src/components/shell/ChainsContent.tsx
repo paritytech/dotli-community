@@ -11,6 +11,7 @@ import { networkHealthStore } from '../../state/network-health.js';
 import { productStore } from '../../state/product.js';
 import { settingsStore } from '../../state/settings.js';
 import { Chip } from '../primitives/Chip.js';
+import { Stack } from '../primitives/SectionLabel.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { Surface, SurfaceHead } from '../primitives/Surface.js';
 import { Callout, InfoIcon, Well } from '../primitives/Well.js';
@@ -218,7 +219,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
   // the shell does not know the count, and zero is a different claim.
   const peers = (): number | null => (props.chain.reachable ? props.chain.peers : null);
   return (
-    <div class={s['group']}>
+    <Stack class={s['group']}>
       <p class={s['groupLabel']} data-testid="chains-group-label">
         <span>{props.chain.label}</span>
         <span
@@ -239,7 +240,7 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
           <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
         </Show>
       </div>
-    </div>
+    </Stack>
   );
 }
 

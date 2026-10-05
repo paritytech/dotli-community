@@ -315,7 +315,7 @@ describe('landing page', () => {
     expect(remove?.getAttribute('type')).toBe('button');
     expect(remove?.getAttribute('aria-label')).toBe(`Remove alpha${SUFFIX} from recently visited`);
     expect(remove?.getAttribute('title')).toBe('Remove');
-    expect(remove?.querySelectorAll('svg path')).toHaveLength(2);
+    expect(remove?.querySelector('svg path')?.getAttribute('d')).toBe('M18 6 6 18M6 6l12 12');
   });
 
   it('As a visitor with no recently visited names, no recents row shows', async () => {

@@ -1,11 +1,8 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's right column of Settings: one stack 6 px apart (8 on phones). */
+/* The board's right column of Settings: one stack. */
 .diagnostics {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
   min-width: 0;
 }
 
@@ -76,7 +73,6 @@
 }
 /* Phones: the boards' sizes. */
 @media (max-width: 560px) {
-  .diagnostics,
   .actions {
     gap: var(--sp-2);
   }
