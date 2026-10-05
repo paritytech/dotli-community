@@ -206,6 +206,7 @@
   --fs-title: 15px;
   --fs-title-lg: 17px;
   --fs-h2: 20px;
+  --fs-display: 32px;
   --fw-regular: 400;
   --fw-medium: 500;
   --fw-semibold: 600;
@@ -213,6 +214,7 @@
   --lh-body: 1.5;
   --ls-caps: 0.08em;
   --ls-tight: -0.01em;
+  --ls-display: -0.02em;
 
   --sp-hair: 2px;
   --sp-1: 4px;
