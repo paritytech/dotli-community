@@ -83,9 +83,23 @@
   padding: var(--sp-hair);
   pointer-events: none;
 }
+/* Shown at once, the bar would fill the pill while it still shrinks, a wide
+   flash of colour. It fades in over the collapse instead, slow at first while
+   the pill is large, and out quickly as the bar opens. Hidden once faded, so
+   its loops do not run behind the open bar. */
 @media (min-width: 561px) {
-  .topbar[data-hidden] .strip {
+  .strip {
     display: flex;
+    visibility: hidden;
+    opacity: 0;
+    transition:
+      opacity var(--dur-fast),
+      visibility 0s var(--dur-fast);
+  }
+  .topbar[data-hidden] .strip {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity var(--dur-morph) ease-in;
   }
 }
 /* The bar's --tone is the network's, from the topbar's data-tone. */
@@ -162,7 +176,9 @@
 @media (prefers-reduced-motion: reduce) {
   .topbar,
   .row,
-  .topbar[data-hidden] .row {
+  .topbar[data-hidden] .row,
+  .strip,
+  .topbar[data-hidden] .strip {
     transition: none;
   }
   .bar,
