@@ -203,9 +203,9 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(moreRowNames()).toEqual(['network', 'permissions', 'theme', 'settings']);
-    expect(byId('more-button').hasAttribute('data-idle')).toBe(false);
+    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(false);
     const account = must(byId('auth-button').closest<HTMLElement>('[data-testid="topbar-item"]'), 'the account item');
-    expect(account.hasAttribute('data-collapsed')).toBe(false);
+    expect(account.hasAttribute('data-parked')).toBe(false);
     expect(byId('more-button').compareDocumentPosition(account) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

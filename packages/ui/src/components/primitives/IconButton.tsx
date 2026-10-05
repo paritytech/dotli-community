@@ -17,8 +17,6 @@ export interface IconButtonProps {
   'aria-haspopup'?: 'dialog' | 'menu' | undefined;
   'aria-expanded'?: 'true' | 'false';
   'aria-controls'?: string;
-  'data-idle'?: '' | undefined;
-  active?: boolean;
   badge?: boolean;
   /** The badge's colour; white without one. */
   badgeTone?: StatusTone;
@@ -44,9 +42,7 @@ export function IconButton(props: IconButtonProps): JSX.Element {
       aria-haspopup={props['aria-haspopup']}
       aria-expanded={props['aria-expanded']}
       aria-controls={props['aria-controls']}
-      data-idle={props['data-idle']}
       class={[s['button'], props.class]}
-      data-active={props.active === true ? '' : undefined}
       data-badge={props.badge === true ? '' : undefined}
       data-tone={props.badgeTone}
       data-size={props.size}

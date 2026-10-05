@@ -467,7 +467,7 @@ describe('landing page', () => {
     expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
     expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
     expect(document.getElementById('landing-theme-toggle')).toBeNull();
-    expect(corner.querySelector('[data-collapsed]')).toBeNull();
+    expect(corner.querySelector('[data-parked]')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
     // The menu renders through a portal, outside the page.
     expect(byId('landing-user-popover').parentElement).toBe(document.body);

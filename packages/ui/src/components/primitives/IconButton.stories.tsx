@@ -50,7 +50,6 @@ export const Default: Story = {
     });
   },
 };
-export const Active: Story = { args: { active: true } };
 export const Badges: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '12px' }}>

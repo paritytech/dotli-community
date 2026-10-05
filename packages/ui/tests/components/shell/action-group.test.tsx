@@ -73,7 +73,7 @@ const room = (n: number): number => n * ITEM_WIDTH;
 
 function inline(name: string): boolean {
   const el = document.querySelector<HTMLElement>(`[data-testid="topbar-item"][data-item="${name}"]`);
-  return el !== null && el.hidden === false && !el.hasAttribute('data-collapsed');
+  return el !== null && el.hidden === false && !el.hasAttribute('data-parked');
 }
 
 function rowNames(): string[] {
@@ -83,7 +83,7 @@ function rowNames(): string[] {
 }
 
 function moreShows(): boolean {
-  return !byId('more-button').hasAttribute('data-idle');
+  return !byTestId('more-item').hasAttribute('data-parked');
 }
 
 function isOpen(): boolean {
@@ -345,7 +345,7 @@ describe('ActionGroup', () => {
     expect(isOpen()).toBe(false);
   });
 
-  it('As the build-time render, the items that may collapse are marked, and the More button is idle', async () => {
+  it('As the build-time render, the items that may collapse are marked, and the More button is parked', async () => {
     // Given: a bar that has not measured yet, as in the host page's build-time render.
     const bar: TopbarBar = {
       register: () => () => false,
@@ -367,7 +367,7 @@ describe('ActionGroup', () => {
       .filter(item => item.hasAttribute('data-may-collapse'))
       .map(item => item.dataset['item']);
     expect(mayCollapse).toEqual(['network', 'chat', 'permissions', 'theme', 'settings']);
-    expect(byId('more-button').hasAttribute('data-idle')).toBe(true);
+    expect(byTestId('more-item').hasAttribute('data-parked')).toBe(true);
   });
 
   it('As a user, a collapsed item stays in place, out of the tab order, so its surface keeps its anchor', async () => {
@@ -376,7 +376,7 @@ describe('ActionGroup', () => {
 
     // Then
     const wrapper = byId('settings-button').parentElement;
-    expect(wrapper?.hasAttribute('data-collapsed')).toBe(true);
+    expect(wrapper?.hasAttribute('data-parked')).toBe(true);
     expect(byId('settings-button').isConnected).toBe(true);
   });
 

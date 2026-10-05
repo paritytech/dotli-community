@@ -105,7 +105,14 @@ export function AuthButton(props: {
           }
         };
         return (
-          <TopbarItem name="auth" label={label()} icon={UserIcon} priority={TOPBAR_PRIORITY.auth} activate={onClick}>
+          <TopbarItem
+            name="auth"
+            label={label()}
+            icon={UserIcon}
+            priority={TOPBAR_PRIORITY.auth}
+            activate={onClick}
+            separated
+          >
             <Show
               when={chip()}
               fallback={

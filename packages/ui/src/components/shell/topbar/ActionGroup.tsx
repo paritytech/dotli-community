@@ -33,11 +33,13 @@ function inDocumentOrder(a: TopbarEntry, b: TopbarEntry): number {
  * unread count), and an item showing or hiding does too. The More button
  * only shows while something is collapsed.
  *
- * `data-collapsible` marks the group once it is mounted and measuring. The
- * build-time render (the Astro page) goes without it, and until the group
- * hydrates, its items (TopbarItem) and the More button (OverflowMenu) read
- * its absence and lay themselves out for a narrow screen as the bar would
- * most likely fit them.
+ * The group owns how its children are laid out (ActionGroup.module.css). A
+ * collapsed item, or More with no row, is `data-parked`: out of flow and
+ * invisible, but still measured. `data-collapsible` marks the group once it
+ * is mounted and measuring. The build-time render (the Astro page) goes
+ * without it, and until the group hydrates, a narrow screen hides the items
+ * marked `data-may-collapse` and shows More, as the bar would most likely
+ * fit them, while a wide one hides More.
  */
 export function ActionGroup(props: {
   /** The group's room, when its container knows better than its own width (a content-sized pill). */
@@ -145,6 +147,7 @@ export function ActionGroup(props: {
       >
         {props.children}
         <OverflowMenu
+          class={s['more']}
           rows={rows()}
           buttonRef={el => {
             more = el;

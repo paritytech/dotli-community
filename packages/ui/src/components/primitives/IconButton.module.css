@@ -2,9 +2,8 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
 /* The board's .icon-btn: round, 36 px (44 px on a phone), white on the dark
-   glass. The base rule is wrapped in :where(), so a consumer's class (the
-   More button's visibility) wins over it whatever order the stylesheets load
-   in. */
+   glass. The base rule is wrapped in :where(), so a consumer's class wins
+   over it whatever order the stylesheets load in. */
 
 :where(.button) {
   /* The badge's colour: white unless data-tone names one. */
@@ -41,9 +40,8 @@
   background: var(--chrome-fill-strong);
 }
 /* The board's .icon-btn.is-on: a bar button while its surface is open, which
-   each says with aria-expanded, or one pressed without a surface (active). */
-.button[aria-expanded='true'],
-.button[data-active] {
+   each says with aria-expanded. */
+.button[aria-expanded='true'] {
   background: var(--chrome-fill-strong);
   box-shadow: var(--chrome-shadow-raised);
   color: var(--chrome-text);

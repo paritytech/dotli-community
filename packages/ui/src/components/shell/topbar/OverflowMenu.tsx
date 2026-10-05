@@ -35,12 +35,9 @@ function Chevron(): JSX.Element {
 /**
  * The topbar's More button (`#more-button`) and its flyout (`#more-popover`,
  * rendered into the body), holding a row for each item the bar has
- * collapsed (`rows`, in bar order). Once the bar measures (the group's
- * `data-collapsible`), the button shows only while there is a row. Until
- * then it stays measurable, out of flow and invisible (`data-idle`), so the
- * bar knows the room it takes. Before the bar measures (its build-time
- * render), it shows on a narrow viewport, where the bar most likely
- * collapses something.
+ * collapsed (`rows`, in bar order). The button sits in a wrapper (`class`,
+ * the group's) that is `data-parked` while there is no row, so the bar
+ * still knows the room it takes.
  *
  * The flyout is a modal menu, like Radix DropdownMenu (createPopover's
  * `menu` mode, which owns its keys and focus), with the rows as its menu
@@ -65,6 +62,7 @@ function Chevron(): JSX.Element {
 export function OverflowMenu(props: {
   rows: readonly TopbarEntry[];
   buttonRef: (el: HTMLButtonElement) => void;
+  class?: string | undefined;
 }): JSX.Element {
   let button: HTMLButtonElement | undefined;
   let popover: HTMLDivElement | undefined;
@@ -111,29 +109,29 @@ export function OverflowMenu(props: {
 
   return (
     <>
-      <IconButton
-        ref={el => {
-          button = el;
-          props.buttonRef(el);
-        }}
-        onClick={menu.toggle}
-        id="more-button"
-        class={s['more']}
-        data-idle={props.rows.length === 0 ? '' : undefined}
-        title="More"
-        aria-label={moreLabel()}
-        badge={badgeTone() !== undefined}
-        badgeTone={badgeTone() ?? 'ok'}
-        aria-haspopup="menu"
-        aria-expanded={menu.open() ? 'true' : 'false'}
-        aria-controls="more-popover"
-      >
-        <svg data-testid="more-icon" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-          <circle cx="5" cy="12" r="1.8" />
-          <circle cx="12" cy="12" r="1.8" />
-          <circle cx="19" cy="12" r="1.8" />
-        </svg>
-      </IconButton>
+      <span class={props.class} data-testid="more-item" data-parked={props.rows.length === 0 ? '' : undefined}>
+        <IconButton
+          ref={el => {
+            button = el;
+            props.buttonRef(el);
+          }}
+          onClick={menu.toggle}
+          id="more-button"
+          title="More"
+          aria-label={moreLabel()}
+          badge={badgeTone() !== undefined}
+          badgeTone={badgeTone() ?? 'ok'}
+          aria-haspopup="menu"
+          aria-expanded={menu.open() ? 'true' : 'false'}
+          aria-controls="more-popover"
+        >
+          <svg data-testid="more-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="5" cy="12" r="1.8" />
+            <circle cx="12" cy="12" r="1.8" />
+            <circle cx="19" cy="12" r="1.8" />
+          </svg>
+        </IconButton>
+      </span>
       {/* In the body: inside the bar, whose glass is a backdrop filter, a
           fixed menu would be placed against the bar instead of the page. */}
       <Portal>
