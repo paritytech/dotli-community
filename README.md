@@ -61,6 +61,11 @@ name.app.paseo.li        App build (CID from URL contract, content fetch, render
 Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
 products stay isolated for SW/storage/security purposes.
 
+The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`.
+Replacing an already-adopted port on a queued retry disconnects the product, so only a new
+connection identifier triggers reconnection. A genuine document reload supplies a new identifier.
+The existing source-window and origin checks still apply; the identifier is not an authority token.
+
 ### What it does
 
 1. **Resolves** `.dot` names via an in-browser [smoldot](https://github.com/paritytech/smoldot) light client connected
@@ -276,6 +281,25 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 | `featureSupported`             | Reports whether a feature is supported (e.g. a chain's genesis hash)                  |
 | `connectionStatus`             | Streams auth state changes to the SPA                                                 |
 | `chat.*`                       | Product chat: rooms and messages persisted locally, rendered in the topbar chat panel |
+
+### Ordinary notification activation
+
+Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
+host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
+notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
+the host entry page. It does not navigate the product's route.
+
+The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
+`{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
+consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
+product, account, network or artifact cannot read or acknowledge the retained activation.
+
+Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
+opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
+is bounded to 256 records; a full queue never evicts an unacknowledged clicked event to accept a new notification.
+In-page toasts remain actionable when OS permission or service-worker notification delivery is unavailable. OS focus and
+window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
+supply one.
 
 ### Product chat
 

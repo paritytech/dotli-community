@@ -253,6 +253,16 @@ export declare const NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION: {
     readonly method: 1;
     readonly kind: "request";
 };
+export declare const NOTIFICATIONS_ACTIVATION_EVENTS: {
+    readonly trait: 8;
+    readonly method: 8;
+    readonly kind: "request";
+};
+export declare const NOTIFICATIONS_ACKNOWLEDGE_ACTIVATION: {
+    readonly trait: 8;
+    readonly method: 9;
+    readonly kind: "request";
+};
 export declare const PAYMENT_BALANCE_SUBSCRIBE: {
     readonly trait: 9;
     readonly method: 0;
