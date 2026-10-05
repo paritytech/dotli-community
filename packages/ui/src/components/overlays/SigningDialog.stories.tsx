@@ -20,7 +20,8 @@ const LOCK_SVG =
 const meta = {
   title: 'Overlays/SigningDialog',
   component: SigningDialog,
-  parameters: { layout: 'fullscreen' },
+  // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
+  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '640px' } } },
   args: {
     entry: entry({
       icon: PERMISSION_ICONS.Camera,

@@ -9,7 +9,9 @@ import { Dialog } from './Dialog.js';
 const meta = {
   title: 'Overlays/Dialog',
   component: Dialog,
-  parameters: { layout: 'fullscreen' },
+  // Own docs iframes: a fixed dialog over the docs page would take its focus
+  // and keys, and the Light story would turn the whole page light.
+  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '420px' } } },
   args: {
     titleId: 'story-dialog-title',
     title: 'Permission Request',

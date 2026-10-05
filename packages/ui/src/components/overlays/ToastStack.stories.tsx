@@ -14,7 +14,8 @@ const toast = (text: string): ToastInput => ({ text, label: 'playground.dot', ic
 const meta = {
   title: 'Overlays/ToastStack',
   component: ToastStack,
-  parameters: { layout: 'fullscreen' },
+  // Own docs iframes, so each stack is fixed in its own frame and fills its own store.
+  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '320px' } } },
 } satisfies Meta<typeof ToastStack>;
 
 export default meta;

@@ -8,7 +8,8 @@ import { Menu, MenuRow } from './Menu.js';
 const meta = {
   title: 'Primitives/Menu',
   component: Menu,
-  parameters: { layout: 'fullscreen' },
+  // Own docs iframes, since every menu is fixed to the top right of its page.
+  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '260px' } } },
   args: { id: 'story-menu', open: true, label: 'More', ref: () => undefined, onDismiss: fn(), children: <></> },
 } satisfies Meta<typeof Menu>;
 

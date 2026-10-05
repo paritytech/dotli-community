@@ -75,6 +75,8 @@ export const Link: Story = {
 export const Light: Story = {
   args: { variant: 'primary' },
   globals: { theme: 'light' },
+  // The theme is set on <html>, so on a shared docs page the last story's wins.
+  parameters: { docs: { story: { inline: false, height: '96px' } } },
   play: async ({ step }) => {
     await step('Then the page is in the light theme', async () => {
       await expect(document.documentElement.getAttribute('data-theme')).toBe('light');
@@ -84,6 +86,7 @@ export const Light: Story = {
 
 export const Theme: Story = {
   globals: { theme: 'dark' },
+  parameters: { docs: { story: { inline: false, height: '96px' } } },
   play: async ({ step }) => {
     await step('Then a dark story puts the page back in the dark theme', async () => {
       await expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
