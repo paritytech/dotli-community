@@ -15,8 +15,8 @@ useAuthController();
 
 const PUBLIC_KEY = '0x000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f';
 
-async function renderButton(props: { variant?: 'icon' | 'chip'; idPrefix?: string } = {}): Promise<HTMLButtonElement> {
-  renderComponent(() => <AuthButton variant={props.variant} idPrefix={props.idPrefix} />);
+async function renderButton(props: { showName?: boolean; idPrefix?: string } = {}): Promise<HTMLButtonElement> {
+  renderComponent(() => <AuthButton showName={props.showName} idPrefix={props.idPrefix} />);
   await settleAll();
   return byId(`${props.idPrefix ?? ''}auth-button`, HTMLButtonElement);
 }
@@ -25,8 +25,8 @@ async function renderButton(props: { variant?: 'icon' | 'chip'; idPrefix?: strin
  * What the button carries apart from styling: its id, label, no busy or
  * disabled state, the ARIA of a Radix-style trigger for what a click opens
  * (logged in, the user popover, and logged out, the auth modal), and its content:
- * the user icon logged out, one badge div logged in (initials, or the icon
- * when the account has no username).
+ * the user icon and Sign in logged out, the avatar alone logged in (initials,
+ * or the icon when the account has no username).
  */
 function expectMarkup(button: Element, state: 'logged-out' | { initials: string | undefined }): void {
   const label = state === 'logged-out' ? 'Sign in with Polkadot Mobile' : 'Account';
@@ -40,10 +40,11 @@ function expectMarkup(button: Element, state: 'logged-out' | { initials: string 
   expect(button.getAttribute('aria-expanded')).toBe(!account && getAuthModalState().open ? 'true' : 'false');
   expect(button.getAttribute('aria-controls')).toBe(account ? 'user-popover' : 'auth-modal-backdrop');
   if (state === 'logged-out') {
-    expect(Array.from(button.children).map(child => child.tagName)).toEqual(['svg']);
+    expect(Array.from(button.children).map(child => child.tagName)).toEqual(['svg', 'SPAN']);
+    expect(button.textContent.trim()).toBe('Sign in');
     return;
   }
-  expect(Array.from(button.children).map(child => child.tagName)).toEqual(['DIV']);
+  expect(Array.from(button.children).map(child => child.tagName)).toEqual(['SPAN']);
   const badge = nth(button.children, 0);
   if (state.initials !== undefined) {
     expect(badge.textContent).toBe(state.initials);
@@ -54,10 +55,10 @@ function expectMarkup(button: Element, state: 'logged-out' | { initials: string 
   }
 }
 
-describe('AuthButton in the bar', () => {
+describe('AuthButton in the bar and on the landing page', () => {
   it('As a logged-out user in the bar, I see a Sign in button named for Polkadot Mobile', async () => {
     // When
-    const button = await renderButton({ variant: 'chip' });
+    const button = await renderButton();
 
     // Then
     expect(button.textContent.trim()).toBe('Sign in');
@@ -65,9 +66,9 @@ describe('AuthButton in the bar', () => {
     expect(button.getAttribute('aria-controls')).toBe('auth-modal-backdrop');
   });
 
-  it("As a signed-in user in the bar, I see my initials and my name, which also starts the button's name", async () => {
+  it('As a signed-in user in the bar, I see my initials alone, not my name', async () => {
     // Given
-    const button = await renderButton({ variant: 'chip' });
+    const button = await renderButton();
 
     // When
     setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
@@ -75,14 +76,14 @@ describe('AuthButton in the bar', () => {
 
     // Then
     expect(byTestId('user-badge').textContent).toBe('AS');
-    expect(button.textContent).toContain('Alice Smith');
-    expect(button.getAttribute('aria-label')).toBe('Alice Smith, account');
+    expect(button.textContent).not.toContain('Alice Smith');
+    expect(button.getAttribute('aria-label')).toBe('Account');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
   });
 
   it('As a signed-in user whose name changes, the badge in the bar follows the new initials', async () => {
     // Given
-    await renderButton({ variant: 'chip' });
+    await renderButton();
     setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
     await settleAll();
 
@@ -94,13 +95,18 @@ describe('AuthButton in the bar', () => {
     expect(byTestId('user-badge').textContent).toBe('BJ');
   });
 
-  it('As a visitor on the landing page, I keep the icon account button', async () => {
+  it("As a signed-in user on the landing page, I see my initials and my name, which also starts the button's name", async () => {
+    // Given
+    const button = await renderButton({ idPrefix: 'landing-', showName: true });
+
     // When
-    const button = await renderButton({ idPrefix: 'landing-' });
+    setAuthState({ tag: 'Connected', session: { connected: true, fullUsername: 'Alice Smith' } });
+    await settleAll();
 
     // Then
-    expect(button.textContent.trim()).toBe('');
-    expect(button.getAttribute('aria-label')).toBe('Sign in with Polkadot Mobile');
+    expect(byTestId('user-badge').textContent).toBe('AS');
+    expect(button.textContent).toContain('Alice Smith');
+    expect(button.getAttribute('aria-label')).toBe('Alice Smith, account');
   });
 });
 

@@ -28,7 +28,7 @@ export function TopbarActions(): JSX.Element {
   const landing = useStore(topbarStore, state => state.landing);
   return (
     <Show when={!landing()}>
-      <ActionGroup room={topbarActionRoom} morph={topbarMorph} end={<AuthButton variant="chip" />}>
+      <ActionGroup room={topbarActionRoom} morph={topbarMorph} end={<AuthButton />}>
         <ChainsPopover />
         <ChatButton />
         <PermissionsPopover />

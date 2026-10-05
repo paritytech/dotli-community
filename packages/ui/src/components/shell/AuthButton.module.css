@@ -1,25 +1,6 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-.badge {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 6px;
-  background: var(--inverse-bg);
-  color: var(--inverse-fg);
-  font-size: 8px;
-  font-weight: 600;
-  letter-spacing: 0.12px;
-  text-transform: uppercase;
-}
-.badge[data-anon] svg {
-  width: 12px;
-  height: 12px;
-}
-
 /* The menu's width, also for the loading spinner before its body's chunk is
    in. Its place is the Popover's: 10 px below the pill. */
 .popover {
@@ -48,6 +29,16 @@
   padding: 0 13px 0 calc((var(--h-bar-control) - 26px) / 2);
   box-shadow: none;
   font-weight: var(--fw-semibold);
+}
+/* Without the name: the avatar alone in a round button. */
+.avatar-only {
+  justify-content: center;
+  width: var(--h-bar-control);
+  padding: 0;
+  background: transparent;
+}
+.avatar-only:hover {
+  background: var(--chrome-fill);
 }
 .chip[aria-expanded='true'] {
   background: var(--chrome-fill-strong);

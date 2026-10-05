@@ -36,25 +36,6 @@
   padding: 0;
 }
 
-/* The bar's round button, drawn in the page's colours instead of the
-   chrome's. Under .corner, so each rule outweighs IconButton's state rules
-   whatever order the sheets load in. */
-.corner .corner-button {
-  background: transparent;
-  box-shadow: none;
-  color: var(--text-strong);
-}
-.corner .corner-button:hover {
-  background: var(--fill);
-  color: var(--text-strong);
-}
-.corner .corner-button:active,
-.corner .corner-button[aria-expanded='true'] {
-  background: var(--fill-strong);
-  box-shadow: none;
-  color: var(--text-strong);
-}
-
 .center {
   display: flex;
   flex: 1;
