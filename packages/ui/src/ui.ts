@@ -51,14 +51,6 @@ export interface ErrorAction {
   icon?: string;
 }
 
-/**
- * The topbar's own Settings sliders, so a button that opens that panel carries
- * the same mark the visitor is being sent to look for. The shapes match the
- * `#mode-button` icon (components/shell/SettingsPopover.tsx), at 15px so it
- * sits with the button text.
- */
-export const SETTINGS_GLYPH = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7h-9"/><path d="M14 17H4"/><circle cx="7" cy="7" r="3"/><circle cx="17" cy="17" r="3"/></svg>`;
-
 const WARNING_GLYPH = `<svg width="44" height="44" viewBox="0 0 24 24" fill="currentColor"><path d="M10.3 3.2 1.8 17.5A2 2 0 0 0 3.5 20.5h17a2 2 0 0 0 1.7-3L13.7 3.2a2 2 0 0 0-3.4 0z"></path><path fill="#fff" d="M11 8.5h2v5h-2zM11 15.5h2v2h-2z"></path></svg>`;
 
 const GLOBE_GLYPH = `<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.5"></circle><path d="M3.5 12h17"></path><path d="M12 2.5c2.5 3 3.75 6.2 3.75 9.5s-1.25 6.5-3.75 9.5"></path><path d="M12 2.5c-2.5 3-3.75 6.2-3.75 9.5s1.25 6.5 3.75 9.5"></path></svg>`;

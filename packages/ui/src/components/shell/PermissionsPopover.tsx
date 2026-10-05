@@ -18,11 +18,9 @@ import s from './PermissionsPopover.module.css';
 const Permissions = lazy(() => import('./PermissionsContent.js'), { export: 'PermissionsContent' });
 
 /** The permissions' lock, on the button and the More menu row. */
-function LockIcon(props: { size: number }): JSX.Element {
+function LockIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -99,13 +97,13 @@ export function PermissionsPopover(): JSX.Element {
         <TopbarItem
           name="permissions"
           label="Permissions"
-          icon={() => <LockIcon size={14} />}
+          icon={LockIcon}
           aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
           priority={TOPBAR_PRIORITY.permissions}
           activate={t.onClick}
         >
           <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
-            <LockIcon size={12} />
+            <LockIcon />
           </IconButton>
         </TopbarItem>
       )}

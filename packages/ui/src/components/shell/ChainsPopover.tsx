@@ -18,15 +18,13 @@ import s from './ChainsPopover.module.css';
 const Chains = lazy(() => import('./ChainsContent.js'), { export: 'ChainsContent' });
 
 /** The network globe, on the button and the More menu row. */
-function GlobeIcon(props: { size: number; stroke?: number }): JSX.Element {
+function GlobeIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
-      stroke-width={props.stroke ?? 2}
+      stroke-width="1.75"
       stroke-linecap="round"
       stroke-linejoin="round"
     >
@@ -70,7 +68,7 @@ export function ChainsPopover(): JSX.Element {
         <TopbarItem
           name="network"
           label="Network"
-          icon={() => <GlobeIcon size={14} />}
+          icon={GlobeIcon}
           alert={
             health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
           }
@@ -85,7 +83,7 @@ export function ChainsPopover(): JSX.Element {
           activate={t.onClick}
         >
           <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
-            <GlobeIcon size={20} stroke={1.75} />
+            <GlobeIcon />
           </IconButton>
         </TopbarItem>
       )}

@@ -3,6 +3,7 @@
 
 import { lazy, onCleanup } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
 import { IconButton } from '../primitives/IconButton.js';
@@ -17,11 +18,9 @@ import s from './SettingsPopover.module.css';
 const Settings = lazy(() => import('./SettingsContent.js'), { export: 'SettingsContent' });
 
 /** The board's settings sliders, on the button and the More menu row. */
-function SlidersIcon(props: { size: number }): JSX.Element {
+function SlidersIcon(): JSX.Element {
   return (
     <svg
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -29,10 +28,7 @@ function SlidersIcon(props: { size: number }): JSX.Element {
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <path d="M20 7h-9" />
-      <path d="M14 17H4" />
-      <circle cx="7" cy="7" r="3" />
-      <circle cx="17" cy="17" r="3" />
+      <path d={SLIDERS_PATH} />
     </svg>
   );
 }
@@ -86,7 +82,7 @@ export function SettingsPopover(): JSX.Element {
         <TopbarItem
           name="settings"
           label="Settings"
-          icon={() => <SlidersIcon size={14} />}
+          icon={SlidersIcon}
           aside={
             settings()?.verified === false
               ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
@@ -102,7 +98,7 @@ export function SettingsPopover(): JSX.Element {
             title="Settings"
             aria-label="Settings"
           >
-            <SlidersIcon size={12} />
+            <SlidersIcon />
           </IconButton>
         </TopbarItem>
       )}

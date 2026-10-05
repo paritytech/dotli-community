@@ -1,9 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The board's .menu-row parts in the Menu's rows. Each item draws its icon
-   at 14 px for any place, so the row sizes it, 16 px on desktop and the
-   board's 20 px on phones, with its 1.75 stroke. */
+/* The board's .menu-row parts in the Menu's rows. The row sizes each item's
+   icon, 16 px on desktop and the board's 20 px on phones, with its 1.75
+   stroke. */
 .icon {
   display: inline-flex;
   flex: none;

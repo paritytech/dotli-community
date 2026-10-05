@@ -19,7 +19,6 @@ const THEME_LABEL: Record<ThemePref, string> = {
 };
 
 interface GlyphProps {
-  size: number;
   class?: string | undefined;
   testId?: string | undefined;
 }
@@ -29,8 +28,6 @@ function SunGlyph(props: GlyphProps): JSX.Element {
     <svg
       class={props.class}
       data-testid={props.testId}
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -50,8 +47,6 @@ function MoonGlyph(props: GlyphProps): JSX.Element {
     <svg
       class={props.class}
       data-testid={props.testId}
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -70,8 +65,6 @@ function MonitorGlyph(props: GlyphProps): JSX.Element {
     <svg
       class={props.class}
       data-testid={props.testId}
-      width={props.size}
-      height={props.size}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -91,11 +84,11 @@ function MonitorGlyph(props: GlyphProps): JSX.Element {
  * `<html data-theme>`, so System shows what it resolved to: on the button or
  * a More menu row.
  */
-function ThemeIcons(props: { size: number }): JSX.Element {
+function ThemeIcons(): JSX.Element {
   return (
     <>
-      <SunGlyph size={props.size} class={s['sun']} testId="theme-icon-sun" />
-      <MoonGlyph size={props.size} class={s['moon']} testId="theme-icon-moon" />
+      <SunGlyph class={s['sun']} testId="theme-icon-sun" />
+      <MoonGlyph class={s['moon']} testId="theme-icon-moon" />
     </>
   );
 }
@@ -175,7 +168,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
       <TopbarItem
         name="theme"
         label="Appearance"
-        icon={() => <ThemeIcons size={14} />}
+        icon={ThemeIcons}
         priority={TOPBAR_PRIORITY.theme}
         activate={menu.toggle}
       >
@@ -191,7 +184,7 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           aria-expanded={menu.open() ? 'true' : 'false'}
           aria-controls={id('theme-popover')}
         >
-          <ThemeIcons size={12} />
+          <ThemeIcons />
         </IconButton>
       </TopbarItem>
       <Portal>
@@ -211,13 +204,13 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           </div>
           <div class={s['tiles']} role="group">
             <Tile pref="light" checked={pref() === 'light'}>
-              <SunGlyph size={20} />
+              <SunGlyph />
             </Tile>
             <Tile pref="dark" checked={pref() === 'dark'}>
-              <MoonGlyph size={20} />
+              <MoonGlyph />
             </Tile>
             <Tile pref="system" checked={pref() === 'system'}>
-              <MonitorGlyph size={20} />
+              <MonitorGlyph />
             </Tile>
           </div>
         </Menu>

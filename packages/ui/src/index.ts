@@ -44,7 +44,8 @@ export {
   TOPBAR_REVEAL_SHORTCUT,
 } from './topbar-autohide.js';
 export { initTopBar, setChainsButtonVisible } from './topbar.js';
-export { SETTINGS_GLYPH, showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
+export { SETTINGS_GLYPH } from './settings-glyph.js';
+export { showError, showErrorPage, showNoContentError, showRetryScreen } from './ui.js';
 export { type ShieldState } from './verification-shield.js';
 export {
   loadBridge,
