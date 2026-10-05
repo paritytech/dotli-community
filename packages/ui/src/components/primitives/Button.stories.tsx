@@ -72,7 +72,15 @@ export const Link: Story = {
   ),
 };
 
-export const Light: Story = { args: { variant: 'primary' }, globals: { theme: 'light' } };
+export const Light: Story = {
+  args: { variant: 'primary' },
+  globals: { theme: 'light' },
+  play: async ({ step }) => {
+    await step('Then the page is in the light theme', async () => {
+      await expect(document.documentElement.getAttribute('data-theme')).toBe('light');
+    });
+  },
+};
 
 export const Theme: Story = {
   globals: { theme: 'dark' },

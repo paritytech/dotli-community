@@ -1,6 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { merge } from 'solid-js';
 import type { Preview } from 'storybook-solidjs-vite';
 import '../src/global.css';
 
@@ -27,11 +28,23 @@ const preview: Preview = {
     a11y: { test: 'error' },
     viewport: {
       options: {
-        // Phone sizes start at 560 px and below (PHONE_QUERY).
+        // Phone sits below the 560 px PHONE_QUERY breakpoint, so the phone layouts apply.
         phone: { name: 'Phone', styles: { width: '390px', height: '844px' }, type: 'mobile' },
         desktop: { name: 'Desktop', styles: { width: '1280px', height: '800px' }, type: 'desktop' },
       },
     },
+  },
+  // The framework's default render passes its args store itself as props, so
+  // a prop no story sets but the component reads once in its body (Button's
+  // ref) is an untracked store read and trips STRICT_READ_UNTRACKED. A merge
+  // view checks `in` before it reads, as a call-site spread does in the app.
+  render: (args, context) => {
+    const Component = context.component;
+    if (Component === undefined) {
+      throw new Error(`Story ${context.id} has no component and no render`);
+    }
+    const props = merge(args, {});
+    return <Component {...props} />;
   },
   decorators: [
     (Story, context) => {
