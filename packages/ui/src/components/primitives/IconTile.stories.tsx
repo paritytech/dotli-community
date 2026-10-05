@@ -13,8 +13,8 @@ type Story = StoryObj<typeof meta>;
 // The tile as the permission prompt fills it, from the app's own icon set.
 export const Markup: Story = { args: { markup: PERMISSION_ICONS.Camera } };
 export const Children: Story = {
-  args: {
-    children: (
+  render: args => (
+    <IconTile {...args}>
       <svg
         width="20"
         height="20"
@@ -27,6 +27,6 @@ export const Children: Story = {
         <rect x="4" y="11" width="16" height="10" rx="3" />
         <path d="M8 11V7a4 4 0 0 1 8 0v4" />
       </svg>
-    ),
-  },
+    </IconTile>
+  ),
 };

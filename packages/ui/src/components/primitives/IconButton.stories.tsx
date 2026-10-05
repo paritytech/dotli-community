@@ -27,7 +27,14 @@ const Sliders = () => (
 const meta = {
   title: 'Primitives/IconButton',
   component: IconButton,
-  args: { 'aria-label': 'Settings', onClick: fn(), children: <Sliders /> },
+  args: { 'aria-label': 'Settings', onClick: fn() },
+  // Icons render per story, since one node in the args would move between
+  // every button that shows it.
+  render: args => (
+    <IconButton {...args}>
+      <Sliders />
+    </IconButton>
+  ),
 } satisfies Meta<typeof IconButton>;
 
 export default meta;
@@ -48,9 +55,20 @@ export const Badges: Story = {
   render: args => (
     <div style={{ display: 'flex', gap: '12px' }}>
       <For each={['ok', 'warn', 'err', 'info', 'idle'] as const} keyed={false}>
-        {tone => <IconButton {...args} aria-label={`Settings, ${tone()}`} badge badgeTone={tone()} />}
+        {tone => (
+          <IconButton {...args} aria-label={`Settings, ${tone()}`} badge badgeTone={tone()}>
+            <Sliders />
+          </IconButton>
+        )}
       </For>
     </div>
   ),
 };
-export const Small: Story = { args: { size: 'sm', 'aria-label': 'Close', children: <CloseIcon /> } };
+export const Small: Story = {
+  args: { size: 'sm', 'aria-label': 'Close' },
+  render: args => (
+    <IconButton {...args}>
+      <CloseIcon />
+    </IconButton>
+  ),
+};

@@ -22,7 +22,10 @@ type Story = StoryObj<typeof meta>;
 
 export const Plain: Story = {};
 export const Selected: Story = { args: { selected: true } };
-export const WithChip: Story = { args: { selected: true, chip: <Chip tone="ok">Recommended</Chip> } };
+export const WithChip: Story = {
+  args: { selected: true },
+  render: args => <Choice {...args} chip={<Chip tone="ok">Recommended</Chip>} />,
+};
 
 const TRANSPORTS = [
   { value: 'per-tab', title: 'Light client per tab', description: 'Verified in your browser, separate for each tab' },

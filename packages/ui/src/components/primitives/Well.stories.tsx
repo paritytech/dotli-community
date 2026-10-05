@@ -10,29 +10,35 @@ import { Callout, InfoIcon, KeyValue, Row, Well } from './Well.js';
 const meta = {
   title: 'Primitives/Well',
   component: Well,
-  args: { children: <span>Plain well content</span> },
+  // Each story renders its own content, since one node in the args would
+  // move between every well that shows it.
+  args: { children: <></> },
   argTypes: { layout: { control: 'inline-radio', options: ['plain', 'list', 'controls', 'kv', 'flush'] } },
 } satisfies Meta<typeof Well>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Plain: Story = {};
+export const Plain: Story = {
+  render: args => (
+    <Well {...args}>
+      <span>Plain well content</span>
+    </Well>
+  ),
+};
 
 export const List: Story = {
-  args: {
-    layout: 'list',
-    children: (
-      <>
-        <Row label="Notifications">
-          <Switch checked label="Notifications" onChange={fn()} />
-        </Row>
-        <Row label="Camera">
-          <Switch checked={false} label="Camera" onChange={fn()} />
-        </Row>
-      </>
-    ),
-  },
+  args: { layout: 'list' },
+  render: args => (
+    <Well {...args}>
+      <Row label="Notifications">
+        <Switch checked label="Notifications" onChange={fn()} />
+      </Row>
+      <Row label="Camera">
+        <Switch checked={false} label="Camera" onChange={fn()} />
+      </Row>
+    </Well>
+  ),
 };
 
 // The row only reports the press, so the owner copies and announces it.
