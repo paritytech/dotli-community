@@ -28,10 +28,12 @@
   /* Lets width animate between the capsule's size and fit-content where
      supported, elsewhere it snaps. */
   interpolate-size: allow-keywords;
+  /* No overshoot: a spring carries the pill past its size and back, and the
+     row inside visibly lurches as it settles. */
   transition:
-    width var(--dur-morph) var(--ease-spring),
-    height var(--dur-morph) var(--ease-spring),
-    top var(--dur-morph) var(--ease-spring),
+    width var(--dur-morph) var(--ease-out),
+    height var(--dur-morph) var(--ease-out),
+    top var(--dur-morph) var(--ease-out),
     box-shadow var(--dur);
 }
 .topbar[data-hidden] {
