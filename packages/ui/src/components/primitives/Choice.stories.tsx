@@ -5,6 +5,7 @@ import { createSignal, For } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
 import { Chip } from './Chip.js';
+import { GLYPH_PATHS } from '../shell/verification-glyphs.js';
 import { Choice } from './Choice.js';
 
 const meta = {
@@ -25,6 +26,37 @@ export const Selected: Story = { args: { selected: true } };
 export const WithChip: Story = {
   args: { selected: true },
   render: args => <Choice {...args} chip={<Chip tone="ok">Recommended</Chip>} />,
+};
+
+// The verification explainer's card for the way this site was loaded.
+export const WithIcon: Story = {
+  args: {
+    title: 'Verified',
+    description: 'Checked in your browser by the light client. The more secure option.',
+    selected: true,
+  },
+  render: args => (
+    <Choice
+      {...args}
+      chip={<Chip>This site</Chip>}
+      icon={
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.75"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          aria-hidden="true"
+          style={{ color: 'var(--chrome-ok)' }}
+        >
+          <For each={GLYPH_PATHS.verified}>{d => <path d={d} />}</For>
+        </svg>
+      }
+    />
+  ),
 };
 
 const TRANSPORTS = [

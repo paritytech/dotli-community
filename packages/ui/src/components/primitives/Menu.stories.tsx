@@ -18,6 +18,55 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 type MenuArgs = Parameters<typeof Menu>[0];
 
+// The Appearance menu's glyphs, which ThemeToggle.tsx keeps to itself.
+const SunGlyph = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+  </svg>
+);
+const MoonGlyph = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />
+  </svg>
+);
+const MonitorGlyph = () => (
+  <svg
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.75"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="2" y="3" width="20" height="14" rx="3" />
+    <path d="M8 21h8M12 17v4" />
+  </svg>
+);
+
 const onRow = fn((_row: string): void => {
   /* spy only */
 });
@@ -87,6 +136,29 @@ export const RadioRows: Story = {
       <MenuRow role="menuitemradio" checked={false}>
         Dark
       </MenuRow>
+    </Menu>
+  ),
+};
+
+// Menu gives the row its keys and name, and the consumer lays the items out.
+export const Horizontal: Story = {
+  args: { orientation: 'horizontal' },
+  render: args => (
+    <Menu ref={noRef} id={args.id} open={args.open} label="Appearance" orientation={args.orientation}>
+      <div role="group" style={{ display: 'flex', gap: '4px' }}>
+        <MenuRow role="menuitemradio" checked={false}>
+          <SunGlyph />
+          <span>Light</span>
+        </MenuRow>
+        <MenuRow role="menuitemradio" checked>
+          <MoonGlyph />
+          <span>Dark</span>
+        </MenuRow>
+        <MenuRow role="menuitemradio" checked={false}>
+          <MonitorGlyph />
+          <span>System</span>
+        </MenuRow>
+      </div>
     </Menu>
   ),
 };
