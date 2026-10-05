@@ -23,7 +23,7 @@
     "@dotli/shared": "*"
   },
   "peerDependencies": {
-    "@sentry/browser": ">=10.0.0"
+    "@sentry/browser": "^11.2.0"
   },
   "peerDependenciesMeta": {
     "@sentry/browser": {
