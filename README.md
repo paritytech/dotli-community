@@ -150,12 +150,12 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
-On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
-JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
-through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
-genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
-are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
-signing, storage, or arbitrary web access.
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to the blocker integration above
+`feat/jam-peer-transport-on-seity`. JAM peer transport is execution-local in the sandbox. Before dialing a network, it
+requests `JamPeers` permission through the product's authenticated port to the shared page core. The host's Solid
+permission dialog shows the full genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves
+no decision. Durable decisions are scoped to product and genesis, while a one-time grant lasts only for that execution.
+This grants no account, signing, storage, or arbitrary web access.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -416,6 +416,11 @@ display language. Products should use that date for day grouping rather than sli
 
 The SDK provenance in `vendor/truapi-host.lock.json` pins the native source revision, original package archives, client
 bundle, and both browser and testing WASM digests. Each browser stack layer vendors its matching native feature layer.
+
+Refresh complete SDK packages using content checksums, not file timestamps and sizes. Reproducible npm archives can
+preserve both while wasm-bindgen glue changes. A checksum-based copy (for example, `rsync --checksum --delete`) keeps
+the glue and WASM from the same build; verify archive-to-vendor contents, allowing only the recorded local dependency
+override. Matching WASM hashes alone do not establish that its JavaScript glue matches.
 
 ### Running the functional browser suite locally
 
