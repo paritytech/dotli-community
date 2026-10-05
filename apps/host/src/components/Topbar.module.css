@@ -88,14 +88,25 @@
   animation: pulse var(--loop) infinite ease-in-out;
 }
 /* Something waits on the user: a white dot leads the bar and pulses in
-   colour, not in size, so the capsule never changes shape. */
+   colour, not in size, so the capsule never changes shape. The colour fades
+   through an overlay's opacity, which stays on the compositor, where an
+   animated background would repaint the blurred capsule every frame. */
 .action {
+  position: relative;
   display: none;
   flex: none;
   width: var(--sp-1);
   height: var(--sp-1);
   border-radius: 50%;
   background: var(--chrome-action);
+}
+.action::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--chrome-action-dim);
+  opacity: 0;
   animation: action var(--loop) infinite ease-in-out;
 }
 .topbar[data-action] .action {
@@ -108,7 +119,7 @@
 }
 @keyframes action {
   50% {
-    background: var(--chrome-action-dim);
+    opacity: 1;
   }
 }
 /* Phones: the square header across the top (the board's .tb-header): the
@@ -144,7 +155,7 @@
     transition: none;
   }
   .bar,
-  .action {
+  .action::after {
     animation: none;
   }
 }
