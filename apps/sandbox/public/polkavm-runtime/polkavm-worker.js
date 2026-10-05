@@ -915,6 +915,7 @@
       motionAvailability = MOTION_STATUS_UNAVAILABLE,
       mediatedInputKinds = [],
       fileInput = null,
+      maxGasSlices = 1,
     ) {
       if (!TranslatedPolkaVmRuntime.isCompiledProgram(program)) {
         throw new TypeError("invalid translated PolkaVM compiled program");
@@ -1006,6 +1007,11 @@
       this.uiSemanticsSubmitted = false;
       this.uiOutputSubmitted = false;
       this.maxGas = BigInt(maxGas);
+      if (!Number.isSafeInteger(maxGasSlices) || maxGasSlices < 1) {
+        throw new Error("translated PolkaVM runtime has invalid gas slice count");
+      }
+      this.maxGasSlices = maxGasSlices;
+      this.remainingGasSlices = 0;
       this.input = [];
       this.coreInput = [];
       this.epocaInput = [];
@@ -1026,6 +1032,7 @@
       this.hostcalls = 0;
       this.hostcallBytes = 0;
       this.resumePending = false;
+      this.continuationPending = false;
       this.stopped = false;
       this.coreVm = this.metadata.exports.has("_pvm_start");
       if (this.coreVm && graphicsProfile !== "framebuffer") {
@@ -1080,7 +1087,7 @@
     }
 
     hasPendingContinuation() {
-      return !this.coreVm && this.resumePending;
+      return this.continuationPending;
     }
 
     pendingHostFrameResponses() {
@@ -2032,11 +2039,17 @@
       let status;
       if (this.resumePending) {
         this.resumePending = false;
+        if (!this.continuationPending) {
+          this.remainingGasSlices = this.maxGasSlices - 1;
+        }
+        this.continuationPending = false;
         status = this.pvm.pvm_resume();
       } else {
         if (entry === undefined) {
           throw new Error("translated PolkaVM entrypoint is missing");
         }
+        this.remainingGasSlices =
+          gas === this.maxGas ? this.maxGasSlices - 1 : 0;
         status = this.pvm.pvm_begin(entry, gas);
       }
       for (;;) {
@@ -2052,7 +2065,13 @@
           );
         }
         if (status === STATUS_OUT_OF_GAS) {
-          throw new Error("translated PolkaVM guest ran out of gas");
+          if (this.remainingGasSlices === 0) {
+            throw new Error("translated PolkaVM guest ran out of gas");
+          }
+          this.remainingGasSlices--;
+          this.resumePending = true;
+          this.continuationPending = true;
+          return;
         }
         if (status !== STATUS_ECALL) {
           throw new Error(
@@ -2072,6 +2091,7 @@
           : this.#handleCooperativeCall(name);
         if (yielded && yieldOnFrame) {
           this.resumePending = true;
+          this.continuationPending = false;
           return;
         }
         if (this.hostcalls === 0) {
@@ -2079,6 +2099,7 @@
           // assets can require more than one bounded hostcall slice, while
           // returning here keeps each slice capped and the worker responsive.
           this.resumePending = true;
+          this.continuationPending = true;
           return;
         }
         status = this.pvm.pvm_resume();
@@ -3286,6 +3307,8 @@ globalThis.createPolkaVmRuntime = (endpoint, options = {}) => {
   const LEGACY_FRAME_INTERVAL_MS = 1000 / 60;
   const MAX_GAS_PER_UPDATE = 10_000_000_000;
   const MAX_TRANSLATED_LOOPS_PER_UPDATE = 50_000_000;
+  const MAX_TRANSLATED_GAS_SLICES_PER_UPDATE =
+    MAX_GAS_PER_UPDATE / MAX_TRANSLATED_LOOPS_PER_UPDATE;
   const MAX_PROGRAM_BYTES = 64 * 1024 * 1024;
   const MAX_ASSET_FILES = 2048;
   const MAX_ASSET_NAME_BYTES = 1024;
@@ -4118,6 +4141,10 @@ globalThis.createPolkaVmRuntime = (endpoint, options = {}) => {
       }
       return;
     }
+    if (translated?.hasPendingContinuation()) {
+      scheduleTick(0);
+      return;
+    }
     const requestedDelay = requestedUpdateDelay(completedAt);
     if (requestedDelay !== null) {
       scheduleTick(requestedDelay);
@@ -4568,6 +4595,7 @@ globalThis.createPolkaVmRuntime = (endpoint, options = {}) => {
         motionAvailability,
         message.mediatedInputKinds ?? [],
         message.fileInput ?? null,
+        MAX_TRANSLATED_GAS_SLICES_PER_UPDATE,
       );
       const relaunch = relaunchFile(message);
       if (relaunch !== null) {
