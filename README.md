@@ -272,6 +272,11 @@ Astro builds the release-specific classic upgrade worker after its static pages 
 Browser validation and Node-loaded build configuration share the version in
 `packages/config/src/host-sandbox-version.ts`; the build does not import browser network configuration.
 
+Failed host-worker update checks are handled and logged as warnings, leaving the active worker, current page, and
+persistent storage intact. The existing 15-minute and visible-tab checks can retry later; failures do not start an
+additional retry loop or bypass reload consent. A required sandbox-contract update remains pending after a failed check
+and still activates automatically once a compatible replacement finishes installing.
+
 ## TrUAPI bridge
 
 Loaded SPAs communicate with dotli through a postMessage-based protocol. The bridge exposes:
