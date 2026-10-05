@@ -71,9 +71,9 @@
 }
 
 /* The bar is hidden on this page, so the menus that drop from the corner's
-   buttons anchor to the corner instead: 12 px below the 44 px buttons, right
+   buttons anchor to the corner instead: the bar's gap below its buttons, right
    edges aligned. */
 :global(:root:has(body[data-landing])) {
-  --topbar-bottom: calc(16px + var(--h-control) + var(--safe-top));
+  --topbar-bottom: calc(16px + var(--h-bar-control) + var(--safe-top));
   --topbar-inline-end: calc(16px + var(--safe-right));
 }
