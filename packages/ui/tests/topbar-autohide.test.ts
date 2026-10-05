@@ -539,6 +539,85 @@ describe('topbar auto-hide over the product', () => {
   });
 });
 
+describe('topbar auto-hide on use of the app', () => {
+  /** A press or a Tab into the cross-origin frame: focus moves to it and this window blurs. */
+  function pressIntoApp(): void {
+    appFrame().focus();
+    window.dispatchEvent(new FocusEvent('blur'));
+    flushUi();
+  }
+
+  it('As a dApp user, pressing into the app folds the bar at once', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a dApp user, pressing into the app while a popover of the bar is open leaves the bar up until it closes', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+    const settings = surface(true);
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    settings.open = false;
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+
+  it('As a user on the loading screen, pressing into the frame leaves the bar up', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide(true, false);
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    pressIntoApp();
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+  });
+
+  it('As a user switching to another window, the bar folds only after the usual delay', async () => {
+    // Given
+    const { armTopbarAutoHide } = await loadAutoHide();
+    armTopbarAutoHide();
+    flushUi();
+
+    // When
+    window.dispatchEvent(new FocusEvent('blur'));
+    advance(0);
+
+    // Then
+    expect(isHidden()).toBe(false);
+
+    // When
+    advance(HIDE_DELAY_MS);
+
+    // Then
+    expect(isHidden()).toBe(true);
+  });
+});
+
 describe('topbar auto-hide on a phone', () => {
   it('As a phone user, the header never folds away, and the app starts below it', async () => {
     // Given

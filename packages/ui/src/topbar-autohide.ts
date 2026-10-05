@@ -5,9 +5,10 @@
 //
 // The bar folds into its status capsule a moment after the product's content
 // shows on desktop, signed in or not (never over the loading screen or an
-// error page), never at a phone's width (PHONE_QUERY), where it is the
-// phone header, and returns on pointer hover, on keyboard focus, and on the
-// reveal shortcut, so home, settings, permissions and login never become
+// error page), and at once when the user presses or tabs into the app. It
+// never folds at a phone's width (PHONE_QUERY), where it is the phone header,
+// and returns on pointer hover, on keyboard focus, and on the reveal
+// shortcut, so home, settings, permissions and login never become
 // mouse-only.
 //
 // The timing and the input handling live here, framework-free; what shows
@@ -37,6 +38,7 @@ export const TOPBAR_REVEAL_BUTTON_ID = 'topbar-reveal';
 
 let hideTimer: ReturnType<typeof setTimeout> | null = null;
 let focusoutTimer: ReturnType<typeof setTimeout> | null = null;
+let blurTimer: ReturnType<typeof setTimeout> | null = null;
 let listeners: AbortController | null = null;
 /** The product's own content is on screen, as the host reports it. */
 let contentShown = false;
@@ -198,6 +200,23 @@ function onKeyDown(event: KeyboardEvent): void {
   setVisible(false);
 }
 
+/**
+ * The user pressed or tabbed into the app: the bar folds at once, as it does
+ * for the shortcut. With a popover of the bar still open it waits for it, as
+ * the timer does.
+ */
+function foldForApp(): void {
+  if (!canAutoHide()) {
+    return;
+  }
+  if (isBusy()) {
+    scheduleTopbarHide();
+    return;
+  }
+  cancelHide();
+  setVisible(false);
+}
+
 function syncFocus(): void {
   if (!getTopbarState().autoHide) {
     return;
@@ -241,6 +260,26 @@ function bindListeners(): void {
     { signal },
   );
   document.addEventListener('keydown', onKeyDown, { signal });
+  // A press or a Tab into the cross-origin app frame is seen here only as
+  // focus leaving this window for the frame, which is how the popovers and
+  // the toasts read it too. Checked on the next tick, after the popovers that
+  // close on blur have closed.
+  window.addEventListener(
+    'blur',
+    () => {
+      if (blurTimer !== null) {
+        clearTimeout(blurTimer);
+      }
+      blurTimer = setTimeout(() => {
+        blurTimer = null;
+        const frame = currentProductFrame();
+        if (frame !== null && document.activeElement === frame) {
+          foldForApp();
+        }
+      }, 0);
+    },
+    { signal },
+  );
   window.matchMedia(PHONE_QUERY).addEventListener('change', onViewportChange, { signal });
 }
 
@@ -267,6 +306,10 @@ export function pinTopbarVisible(): void {
   if (focusoutTimer !== null) {
     clearTimeout(focusoutTimer);
     focusoutTimer = null;
+  }
+  if (blurTimer !== null) {
+    clearTimeout(blurTimer);
+    blurTimer = null;
   }
   setVisible(true);
 }
