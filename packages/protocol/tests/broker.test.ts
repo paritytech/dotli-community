@@ -590,6 +590,82 @@ describe('chain pool brokering', () => {
     ]);
   });
 
+  it('As a dApp user, joining a follow another session holds replays only blocks still pinned upstream', () => {
+    // Given: session A follows, sees two blocks finalized and a third on top,
+    // then unpins what it no longer needs, as papi does
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesA: string[] = [];
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('asset-hub', 'conn-a', message => messagesA.push(message));
+    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
+    const localTokenA = (JSON.parse(messagesA[0] ?? '{}') as { result: string }).result;
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-a', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { type: 'valid' } });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0' });
+    event({ event: 'newBlock', blockHash: '0xb2', parentBlockHash: '0xb1' });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1', '0xb2'], prunedBlockHashes: [] });
+    event({ event: 'newBlock', blockHash: '0xb3', parentBlockHash: '0xb2' });
+    event({ event: 'bestBlockChanged', bestBlockHash: '0xb3' });
+    connectionA?.send(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 2,
+        method: 'chainHead_v1_unpin',
+        params: [localTokenA, ['0xf0', '0xb1', '0xb3']],
+      }),
+    );
+
+    // When
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 3, method: 'chainHead_v1_follow', params: [true] }));
+
+    // Then: B starts from the newest finalized block, and every block it hears of is still pinned
+    const unpinned = harness.sent
+      .filter(message => message.method === 'chainHead_v1_unpin')
+      .flatMap(message => (message.params as [string, string[]])[1]);
+    const replay = messagesB
+      .slice(1)
+      .map(message => (JSON.parse(message) as { params: { result: Record<string, unknown> } }).params.result);
+    expect(replay).toEqual([
+      { event: 'initialized', finalizedBlockHashes: ['0xb2'], finalizedBlockRuntime: { type: 'valid' } },
+      { event: 'newBlock', blockHash: '0xb3', parentBlockHash: '0xb2' },
+      { event: 'bestBlockChanged', bestBlockHash: '0xb3' },
+    ]);
+    expect(unpinned).not.toContain('0xb2');
+    expect(unpinned).not.toContain('0xb3');
+  });
+
+  it('As a dApp user, joining a follow after a runtime upgrade was finalized replays the upgraded runtime', () => {
+    // Given
+    const harness = createProviderHarness();
+    const manager = createManager(() => harness.provider);
+    const messagesB: string[] = [];
+    const connectionA = manager.connectRemote('asset-hub', 'conn-a', () => undefined);
+    const connectionB = manager.connectRemote('asset-hub', 'conn-b', message => messagesB.push(message));
+    connectionA?.send(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'chainHead_v1_follow', params: [true] }));
+    harness.emit({ jsonrpc: '2.0', id: (harness.sent[0] as { id: string }).id, result: 'up-a' });
+    const event = (result: Record<string, unknown>): void => {
+      harness.emit({ jsonrpc: '2.0', method: 'chainHead_v1_followEvent', params: { subscription: 'up-a', result } });
+    };
+    event({ event: 'initialized', finalizedBlockHashes: ['0xf0'], finalizedBlockRuntime: { type: 'valid', spec: 1 } });
+    event({ event: 'newBlock', blockHash: '0xb1', parentBlockHash: '0xf0', newRuntime: { type: 'valid', spec: 2 } });
+    event({ event: 'finalized', finalizedBlockHashes: ['0xb1'], prunedBlockHashes: [] });
+
+    // When
+    connectionB?.send(JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'chainHead_v1_follow', params: [true] }));
+
+    // Then
+    expect((JSON.parse(messagesB[1] ?? '{}') as { params: { result: unknown } }).params.result).toEqual({
+      event: 'initialized',
+      finalizedBlockHashes: ['0xb1'],
+      finalizedBlockRuntime: { type: 'valid', spec: 2 },
+    });
+  });
+
   it('provides a local provider that uses the same upstream broker', () => {
     const harness = createProviderHarness();
     const manager = createManager(() => harness.provider);
@@ -763,6 +839,16 @@ describe('chain pool brokering', () => {
         result: { event: 'newBlock', blockHash: '0xblock' },
       },
     });
+    // A newer block is finalized over it, so a later joiner is no longer
+    // replayed it and only the sessions hold it.
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: {
+        subscription: 'up-a',
+        result: { event: 'finalized', finalizedBlockHashes: ['0xblock', '0xnext'], prunedBlockHashes: [] },
+      },
+    });
 
     // First tab unpins: still held by the second tab, so nothing forwarded.
     connectionA?.send(
@@ -840,6 +926,15 @@ describe('chain pool brokering', () => {
       params: {
         subscription: 'up-a',
         result: { event: 'newBlock', blockHash: '0xblock' },
+      },
+    });
+    // A newer block is finalized over it, so only the sessions hold it.
+    harness.emit({
+      jsonrpc: '2.0',
+      method: 'chainHead_v1_followEvent',
+      params: {
+        subscription: 'up-a',
+        result: { event: 'finalized', finalizedBlockHashes: ['0xblock', '0xnext'], prunedBlockHashes: [] },
       },
     });
 

@@ -69,13 +69,23 @@ interface SharedFollow {
     requestId: JsonRpcId;
     localToken: string;
   }[];
+  /** The newest finalized block alone, the base a later session's replay starts from. */
   finalizedBlockHashes: string[];
   finalizedBlockRuntime: unknown;
   bestBlockHash: string | null;
+  /** The unfinalized blocks above the newest finalized one. */
   blocks: Map<string, CachedBlock>;
-  /** Block hash -> local follow tokens still holding a pin on it. */
+  /** Block hash -> local follow tokens, and the snapshot, still holding a pin on it. */
   pins: Map<string, Set<string>>;
 }
+
+/**
+ * The pin holder for the blocks a later session is replayed. Sessions unpin as
+ * they please (papi drops all but the newest finalized block), and without
+ * this hold the last of them would unpin upstream a block the next session to
+ * join is then told of, whose every read the node refuses.
+ */
+const SNAPSHOT_HOLDER = 'snapshot';
 
 interface CachedBlock {
   result: Record<string, unknown>;
@@ -1189,10 +1199,14 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      sharedFollow.finalizedBlockHashes = newest === undefined ? [] : [newest];
       sharedFollow.finalizedBlockRuntime = eventResult['finalizedBlockRuntime'] ?? null;
       sharedFollow.blocks.clear();
       sharedFollow.bestBlockHash = null;
+      if (newest !== undefined) {
+        this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      }
       return;
     }
 
@@ -1205,6 +1219,7 @@ export class ChainBroker {
         result: { ...eventResult },
         parentBlockHash: typeof eventResult['parentBlockHash'] === 'string' ? eventResult['parentBlockHash'] : null,
       });
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, blockHash);
       return;
     }
 
@@ -1218,12 +1233,28 @@ export class ChainBroker {
       const hashes = Array.isArray(eventResult['finalizedBlockHashes'])
         ? eventResult['finalizedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      sharedFollow.finalizedBlockHashes = hashes;
+      const newest = hashes.at(-1);
+      if (newest === undefined) {
+        return;
+      }
+      for (const hash of hashes) {
+        const newRuntime = sharedFollow.blocks.get(hash)?.result['newRuntime'];
+        if (newRuntime !== undefined && newRuntime !== null) {
+          sharedFollow.finalizedBlockRuntime = newRuntime;
+        }
+      }
       const pruned = Array.isArray(eventResult['prunedBlockHashes'])
         ? eventResult['prunedBlockHashes'].filter((hash): hash is string => typeof hash === 'string')
         : [];
-      for (const hash of pruned) {
+      const dropped = [...sharedFollow.finalizedBlockHashes, ...hashes.slice(0, -1), ...pruned];
+      for (const hash of [...dropped, newest]) {
         sharedFollow.blocks.delete(hash);
+      }
+      this.registerPin(sharedFollow, SNAPSHOT_HOLDER, newest);
+      sharedFollow.finalizedBlockHashes = [newest];
+      const orphaned = this.releasePins(sharedFollow, SNAPSHOT_HOLDER, dropped);
+      if (orphaned.length > 0 && sharedFollow.upstreamToken !== null) {
+        this.sendUpstreamUnpin(sharedFollow.upstreamToken, orphaned);
       }
     }
   }
