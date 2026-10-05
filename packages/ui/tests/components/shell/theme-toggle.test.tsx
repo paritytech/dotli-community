@@ -9,15 +9,7 @@ import { mouseClick, pointerPress, renderComponent, resetStores, settle } from '
 import { stubColorScheme } from '../../helpers/color-scheme.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 import { moreRow, renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { mountLandingPage } from '../../helpers/landing.js';
 import { byId, byTestId } from '../../support.js';
-
-// The landing page loads the recent names from the shared storage frame,
-// which happy-dom would try to fetch.
-vi.mock('../../../src/recent-labels.js', () => ({
-  loadRecentLabels: () => Promise.resolve([]),
-  forgetRecentLabel: () => Promise.resolve(),
-}));
 
 beforeEach(() => {
   vi.unstubAllGlobals();
@@ -547,44 +539,6 @@ describe('ThemeToggle', () => {
     expect(localStorage.getItem('dotli-theme')).toBe('light');
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
-  });
-
-  it("As a visitor on the landing page, the page's own theme button and menu work in its corner", async () => {
-    // Given: the landing page renders its own theme button, outside any
-    // topbar, and the menu in the body.
-    stubColorScheme('dark');
-    localStorage.setItem('dotli-theme', 'light');
-    const landing = mountLandingPage();
-    await settle();
-    initTheme();
-    await settle();
-    const btn = themeButton('landing-');
-    expect(btn.closest('#landing-auth')).not.toBeNull();
-    expect(themePopover('landing-').parentElement).toBe(document.body);
-
-    // When
-    mouseClick(btn);
-    await settle();
-
-    // Then
-    expect(isOpen('landing-')).toBe(true);
-    expect(document.activeElement).toBe(themePopover('landing-'));
-
-    // When
-    await pressThemeKey('ArrowDown');
-
-    // Then
-    expect(document.activeElement).toBe(themeOption('light'));
-
-    // When
-    themeOption('dark')?.click();
-    await settle();
-
-    // Then
-    expect(localStorage.getItem('dotli-theme')).toBe('dark');
-    expect(isOpen('landing-')).toBe(false);
-    expect(document.activeElement).toBe(btn);
-    landing.dispose();
   });
 
   it("As a dotli user, the System option's label follows the store after an OS change", async () => {

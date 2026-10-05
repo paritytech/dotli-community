@@ -69,9 +69,11 @@ test.describe('Shell UI smoke', () => {
     // When
     await page.goto(LANDING_URL);
 
-    // Then: the landing page renders its own theme button, and the topbar's
-    // action group, More button included, is gone.
-    await expect(page.locator('#landing-theme-toggle')).toHaveAttribute('title', /^Appearance: /);
+    // Then: the landing page renders its own auth button and no theme button
+    // (it is always dark), and the topbar's action group, More button
+    // included, is gone.
+    await expect(page.locator('#landing-auth-button')).toBeVisible();
+    await expect(page.locator('#landing-theme-toggle')).toHaveCount(0);
     await expect(page.locator('#theme-toggle')).toHaveCount(0);
     await expect(page.locator('#more-button')).toHaveCount(0);
     expect(problems.filter(text => /solid|island|hydrat/i.test(text))).toEqual([]);
@@ -285,11 +287,11 @@ test.describe('Shell UI smoke', () => {
 
   test('As a user, the theme I pick applies at once and survives a reload', async ({ page }) => {
     // Given
-    await page.goto(LANDING_URL);
+    await page.goto(LABEL_URL);
 
     // When
-    await page.locator('#landing-theme-toggle').click();
-    await expect(page.locator('#landing-theme-popover')).toBeVisible();
+    await page.locator('#topbar #theme-toggle').click();
+    await expect(page.locator('#theme-popover')).toBeVisible();
     await page.locator('[data-theme-option="dark"]').click();
 
     // Then

@@ -455,52 +455,29 @@ describe('landing page', () => {
     expect(remove).toHaveBeenCalledWith('pointerdown', added[0]?.[1]);
   });
 
-  it("As a visitor, the auth and theme buttons sit in the page's corner, with their surfaces in the body", async () => {
+  it("As a visitor, the auth button sits in the page's corner, with its surface in the body", async () => {
     // When
     mount();
     await settle();
 
-    // Then: the buttons, each in its item wrapper, always inline (there is
-    // no topbar to collapse them into).
+    // Then: the button in its item wrapper, always inline (there is no
+    // topbar to collapse it into). The page is always dark, so it has no
+    // theme button.
     const corner = byId('landing-auth');
-    expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth', 'theme']);
+    expect([...corner.children].map(el => (el as HTMLElement).dataset['item'])).toEqual(['auth']);
     expect(query(corner, '[data-item="auth"] > #landing-auth-button', HTMLButtonElement).disabled).toBe(false);
-    expect(query(corner, '[data-item="theme"] > #landing-theme-toggle')).not.toBeNull();
+    expect(document.getElementById('landing-theme-toggle')).toBeNull();
     expect(corner.querySelector('[data-collapsed]')).toBeNull();
     expect(document.getElementById('more-button')).toBeNull();
-    // The menus render through portals, outside the page.
-    expect(byId('landing-theme-popover').parentElement).toBe(document.body);
+    // The menu renders through a portal, outside the page.
     expect(byId('landing-user-popover').parentElement).toBe(document.body);
-    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
+    for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.querySelectorAll(`[id="${id}"]`)).toHaveLength(1);
     }
     expect(sentry.captureException).not.toHaveBeenCalled();
   });
 
-  it("As a visitor, the corner's theme button opens its menu, and picking a theme applies it and closes the menu", async () => {
-    // Given
-    mount();
-    await settle();
-
-    // When
-    click(byId('landing-theme-toggle'));
-    await settle();
-
-    // Then
-    expect(byId('landing-theme-popover').hasAttribute('data-open')).toBe(true);
-    expect(byId('landing-theme-toggle').getAttribute('aria-expanded')).toBe('true');
-
-    // When
-    click(query(document, '[data-theme-option="dark"]'));
-    await settle();
-
-    // Then
-    expect(byId('landing-theme-popover').hasAttribute('data-open')).toBe(false);
-    expect(query(document, '[data-theme-option="dark"]').getAttribute('aria-checked')).toBe('true');
-    expect(byId('landing-theme-toggle').title).toBe('Appearance: Dark');
-  });
-
-  it('As a visitor, leaving the landing page takes its corner buttons and their menus with it', async () => {
+  it('As a visitor, leaving the landing page takes its corner button and its menu with it', async () => {
     // Given
     mount();
     await settle();
@@ -511,7 +488,7 @@ describe('landing page', () => {
     await settle();
 
     // Then
-    for (const id of ['landing-auth-button', 'landing-theme-toggle', 'landing-theme-popover', 'landing-user-popover']) {
+    for (const id of ['landing-auth-button', 'landing-user-popover']) {
       expect(document.getElementById(id)).toBeNull();
     }
   });
