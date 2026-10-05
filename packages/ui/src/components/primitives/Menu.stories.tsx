@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { expect, fn } from 'storybook/test';
+import { expect, fn, waitFor } from 'storybook/test';
+import { isPhoneViewport } from '../../phone-viewport.js';
 import { Menu, MenuRow } from './Menu.js';
 
 const meta = {
@@ -95,6 +96,11 @@ export const Sheet: Story = {
   args: { sheet: true, sheetTitle: 'More' },
   render: rows,
   play: async ({ args, canvas, userEvent, step }) => {
+    // The workshop sizes its frame for the story's viewport only after the
+    // first render, so the play waits for it.
+    await step('Given the phone viewport', async () => {
+      await waitFor(() => expect(isPhoneViewport()).toBe(true));
+    });
     await step('Given the menu opens as a sheet titled More', async () => {
       await expect(canvas.getByTestId('menu-sheet-title')).toHaveTextContent('More');
     });
