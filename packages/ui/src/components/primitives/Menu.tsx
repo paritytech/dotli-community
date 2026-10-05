@@ -5,34 +5,27 @@ import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { SheetHead } from '../sheet/SheetHead.js';
 import frame from '../sheet/Sheet.module.css';
+import type { Popover } from '../shell/create-popover.js';
 import s from './Menu.module.css';
 
 export interface MenuProps {
   id: string;
-  open: boolean;
+  /**
+   * The menu's createPopover (`menu` mode, `sheet: true`), wired to the
+   * surface it receives through `ref`. Menu shows its open state, its sheet
+   * form (over a scrim, led by a head) and its hand-off (it and its scrim
+   * appear or go at once), and a swipe down on the sheet's head, or its
+   * close button, closes it.
+   */
+  popover: Pick<Popover, 'open' | 'sheet' | 'handedOff' | 'setOpen'>;
   /** Receives the surface, for createPopover's `menu` mode. */
   ref: (el: HTMLDivElement) => void;
-  label?: string;
-  labelledBy?: string;
+  /** The menu's accessible name, and its sheet's title. */
+  label: string;
   /** `horizontal` for a row of items (the Appearance tiles): Left and Right move between them too. */
   orientation?: 'horizontal' | undefined;
   onClick?: (ev: MouseEvent) => void;
   class?: string | undefined;
-  testId?: string;
-  /**
-   * Show as a bottom sheet (createPopover's `sheet()`): over a scrim, led by
-   * a head with the grabber and `sheetTitle`.
-   */
-  sheet?: boolean | undefined;
-  /**
-   * This sheet takes another's place, or gives its place to another
-   * (createPopover's `handedOff()`): it and its scrim appear or go at once.
-   */
-  handedOff?: boolean | undefined;
-  /** The sheet head's title. */
-  sheetTitle?: string | undefined;
-  /** A swipe down on the sheet's head, or its close button, asks to close it. */
-  onDismiss?: (() => void) | undefined;
   children: JSX.Element;
 }
 
@@ -44,20 +37,22 @@ export interface MenuProps {
  * so a press on it is a press outside the menu, which closes it. The surface
  * is then the frame: the head, with its close button, and under it the body
  * that scrolls, which is the `role="menu"` element, since a menu holds only
- * its items. The surface keeps the id, the test id and the state attributes
- * in both forms.
+ * its items. The surface keeps the id and the state attributes in both
+ * forms.
  */
 export function Menu(props: MenuProps): JSX.Element {
   let surface: HTMLDivElement | undefined;
-  const sheet = (): boolean => props.sheet === true;
+  const sheet = (): boolean => props.popover.sheet();
+  const open = (): string | undefined => (props.popover.open() ? '' : undefined);
+  const handoff = (): string | undefined => (props.popover.handedOff() ? '' : undefined);
   return (
     <>
       <Show when={sheet()}>
         <div
           class={frame['scrim']}
           data-testid="menu-scrim"
-          data-open={props.open ? '' : undefined}
-          data-handoff={props.handedOff === true ? '' : undefined}
+          data-open={open()}
+          data-handoff={handoff()}
           aria-hidden="true"
         />
       </Show>
@@ -71,22 +66,22 @@ export function Menu(props: MenuProps): JSX.Element {
         id={props.id}
         role={sheet() ? undefined : 'menu'}
         aria-label={sheet() ? undefined : props.label}
-        aria-labelledby={sheet() ? undefined : props.labelledBy}
         aria-orientation={sheet() ? undefined : props.orientation}
         data-chrome=""
         tabindex="-1"
-        data-open={props.open ? '' : undefined}
+        data-open={open()}
         data-sheet={sheet() ? '' : undefined}
-        data-handoff={props.handedOff === true ? '' : undefined}
-        data-testid={props.testId}
+        data-handoff={handoff()}
       >
         {/* Each form renders the items afresh: the form changes only as an
             opening starts. */}
         <Show when={sheet()} fallback={props.children}>
           <SheetHead
-            title={props.sheetTitle ?? ''}
+            title={props.label}
             surface={() => surface}
-            onDismiss={() => props.onDismiss?.()}
+            onDismiss={() => {
+              props.popover.setOpen(false);
+            }}
             closeLabel="Close"
             testId="menu-sheet-head"
             titleTestId="menu-sheet-title"
@@ -96,7 +91,6 @@ export function Menu(props: MenuProps): JSX.Element {
             class={frame['body']}
             role="menu"
             aria-label={props.label}
-            aria-labelledby={props.labelledBy}
             aria-orientation={props.orientation}
             tabindex="-1"
             data-testid="menu-sheet-body"

@@ -6,17 +6,26 @@ import { expect, fn, waitFor } from 'storybook/test';
 import { isPhoneViewport } from '../../phone-viewport.js';
 import { Menu, MenuRow } from './Menu.js';
 
+type MenuArgs = Parameters<typeof Menu>[0];
+
+/** A menu that stays open, as a sheet or not: the story is the menu, not its trigger. */
+const shown = (sheet: boolean): MenuArgs['popover'] => ({
+  open: () => true,
+  sheet: () => sheet,
+  handedOff: () => false,
+  setOpen: fn().mockName('setOpen'),
+});
+
 const meta = {
   title: 'Primitives/Menu',
   component: Menu,
   // Own docs iframes, since every menu is fixed to the top right of its page.
   parameters: { docs: { story: { inline: false, height: '260px' } } },
-  args: { id: 'story-menu', open: true, label: 'More', ref: () => undefined, onDismiss: fn(), children: <></> },
+  args: { id: 'story-menu', popover: shown(false), label: 'More', ref: () => undefined, children: <></> },
 } satisfies Meta<typeof Menu>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;
-type MenuArgs = Parameters<typeof Menu>[0];
 
 // The Appearance menu's glyphs, which ThemeToggle.tsx keeps to itself.
 const SunGlyph = () => (
@@ -73,15 +82,7 @@ const onRow = fn<(row: string) => void>().mockName('onRow');
 // is a reactive read there, so it is a static prop and the rest are explicit.
 const noRef = (): void => undefined;
 const rows = (args: MenuArgs) => (
-  <Menu
-    ref={noRef}
-    id={args.id}
-    open={args.open}
-    label="More"
-    sheet={args.sheet}
-    sheetTitle={args.sheetTitle}
-    onDismiss={args.onDismiss}
-  >
+  <Menu ref={noRef} id={args.id} popover={args.popover} label="More">
     <MenuRow
       testId="row-network"
       onClick={() => {
@@ -124,7 +125,7 @@ export const Rows: Story = {
 
 export const RadioRows: Story = {
   render: args => (
-    <Menu ref={noRef} id={args.id} open={args.open} label="Appearance">
+    <Menu ref={noRef} id={args.id} popover={args.popover} label="Appearance">
       <MenuRow role="menuitemradio" checked>
         System
       </MenuRow>
@@ -142,7 +143,7 @@ export const RadioRows: Story = {
 export const Horizontal: Story = {
   args: { orientation: 'horizontal' },
   render: args => (
-    <Menu ref={noRef} id={args.id} open={args.open} label="Appearance" orientation={args.orientation}>
+    <Menu ref={noRef} id={args.id} popover={args.popover} label="Appearance" orientation={args.orientation}>
       <div role="group" style={{ display: 'flex', gap: '4px' }}>
         <MenuRow role="menuitemradio" checked={false}>
           <SunGlyph />
@@ -165,7 +166,7 @@ export const Sheet: Story = {
   // A docs iframe renders at the column's width, never the phone's.
   tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
-  args: { sheet: true, sheetTitle: 'More' },
+  args: { popover: shown(true) },
   render: rows,
   play: async ({ args, canvas, userEvent, step }) => {
     // The workshop sizes its frame for the story's viewport only after the
@@ -180,7 +181,8 @@ export const Sheet: Story = {
       await userEvent.click(canvas.getByTestId('menu-sheet-close'));
     });
     await step('Then the menu is dismissed', async () => {
-      await expect(args.onDismiss).toHaveBeenCalledOnce();
+      await expect(args.popover.setOpen).toHaveBeenCalledOnce();
+      await expect(args.popover.setOpen).toHaveBeenCalledWith(false);
     });
   },
 };

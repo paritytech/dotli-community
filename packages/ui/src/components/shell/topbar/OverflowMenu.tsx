@@ -143,14 +143,8 @@ export function OverflowMenu(props: {
           }}
           id="more-popover"
           class={s['menu']}
-          open={menu.open()}
+          popover={menu}
           label="More"
-          sheet={menu.sheet()}
-          handedOff={menu.handedOff()}
-          sheetTitle="More"
-          onDismiss={() => {
-            menu.setOpen(false);
-          }}
         >
           <div class={s['rows']}>
             <For each={props.rows}>

@@ -8,14 +8,15 @@ import { renderComponent, settle } from '../../helpers/solid.js';
 import { byId, byTestId } from '../../support.js';
 
 /** An open menu named Things, as a sheet or not. */
-function renderMenu(sheet: boolean): { onDismiss: () => void } {
-  const onDismiss = vi.fn<() => void>();
+function renderMenu(sheet: boolean): { setOpen: (open: boolean) => void } {
+  const setOpen = vi.fn<(open: boolean) => void>();
+  const popover = { open: () => true, sheet: () => sheet, handedOff: () => false, setOpen };
   renderComponent(() => (
-    <Menu ref={() => undefined} id="menu" open label="Things" sheet={sheet} sheetTitle="Things" onDismiss={onDismiss}>
+    <Menu ref={() => undefined} id="menu" popover={popover} label="Things">
       <MenuRow data-item="one">One</MenuRow>
     </Menu>
   ));
-  return { onDismiss };
+  return { setOpen };
 }
 
 afterEach(() => {
@@ -44,14 +45,14 @@ describe('Menu', () => {
 
   it('As a phone user, the close button in the menu sheet head asks to close it', async () => {
     // Given
-    const { onDismiss } = renderMenu(true);
+    const { setOpen } = renderMenu(true);
     await settle();
 
     // When
     byTestId('menu-sheet-close').click();
 
     // Then
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(setOpen).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it('As a desktop user, a menu that is no sheet has no head and no scrim', async () => {
@@ -68,7 +69,7 @@ describe('Menu', () => {
 
   it('As a phone user, a swipe down on the sheet head asks to close it, and a jittery tap does not', async () => {
     // Given
-    const { onDismiss } = renderMenu(true);
+    const { setOpen } = renderMenu(true);
     await settle();
     vi.spyOn(byId('menu'), 'offsetHeight', 'get').mockReturnValue(300);
     const head = byTestId('menu-sheet-head');
@@ -77,7 +78,7 @@ describe('Menu', () => {
     drag(head, 4, 5);
 
     // Then
-    expect(onDismiss).not.toHaveBeenCalled();
+    expect(setOpen).not.toHaveBeenCalled();
     expect(byId('menu').style.transform).toBe('');
     expect(byId('menu').hasAttribute('data-dragging')).toBe(false);
 
@@ -85,6 +86,6 @@ describe('Menu', () => {
     drag(head, 120, 1000);
 
     // Then
-    expect(onDismiss).toHaveBeenCalledTimes(1);
+    expect(setOpen).toHaveBeenCalledExactlyOnceWith(false);
   });
 });

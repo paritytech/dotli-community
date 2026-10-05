@@ -202,15 +202,9 @@ export function ThemeToggle(props: { idPrefix?: string }): JSX.Element {
           onClick={onClick}
           class={s['menu']}
           id={id('theme-popover')}
-          open={menu.open()}
+          popover={menu}
           label="Appearance"
           orientation="horizontal"
-          sheet={menu.sheet()}
-          handedOff={menu.handedOff()}
-          sheetTitle="Appearance"
-          onDismiss={() => {
-            menu.setOpen(false);
-          }}
         >
           <div class={s['head']} aria-hidden="true">
             Appearance
