@@ -16,6 +16,7 @@ const Sliders = () => (
 
 const meta = {
   title: 'Primitives/IconButton',
+  parameters: { chrome: true },
   component: IconButton,
   args: { 'aria-label': 'Settings', onClick: fn() },
   // Icons render per story, since one node in the args would move between

@@ -10,6 +10,7 @@ import { Callout, InfoIcon, KeyValue, Row, Well } from './Well.js';
 
 const meta = {
   title: 'Primitives/Well',
+  parameters: { chrome: true },
   component: Well,
   // Each story renders its own content, since one node in the args would
   // move between every well that shows it.

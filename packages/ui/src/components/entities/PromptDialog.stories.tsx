@@ -21,7 +21,7 @@ const meta = {
   title: 'Entities/PromptDialog',
   component: PromptDialog,
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
-  parameters: { docs: { story: { inline: false, height: '640px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '640px' } } },
   args: {
     entry: entry({
       icon: iconMarkup(PERMISSION_ICONS.Camera),

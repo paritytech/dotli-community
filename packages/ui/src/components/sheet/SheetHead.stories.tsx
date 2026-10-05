@@ -10,7 +10,7 @@ const meta = {
   title: 'Primitives/SheetHead',
   component: SheetHead,
   globals: { viewport: { value: 'phone', isRotated: false } },
-  parameters: { docs: { story: { inline: false, height: '120px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '120px' } } },
   args: {
     title: 'Network',
     surface: () => undefined,

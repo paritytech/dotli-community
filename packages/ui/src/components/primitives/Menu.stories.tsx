@@ -20,7 +20,7 @@ const meta = {
   title: 'Primitives/Menu',
   component: Menu,
   // Own docs iframes, since every menu is fixed to the top right of its page.
-  parameters: { docs: { story: { inline: false, height: '260px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '260px' } } },
   args: { id: 'story-menu', popover: shown(false), label: 'More', ref: () => undefined, children: <></> },
 } satisfies Meta<typeof Menu>;
 

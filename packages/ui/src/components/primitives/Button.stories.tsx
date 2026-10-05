@@ -7,6 +7,7 @@ import { Button, ButtonLink } from './Button.js';
 
 const meta = {
   title: 'Primitives/Button',
+  parameters: { chrome: true },
   component: Button,
   args: { children: 'Continue', onClick: fn() },
   argTypes: {

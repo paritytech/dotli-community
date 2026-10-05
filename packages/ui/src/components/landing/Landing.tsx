@@ -24,7 +24,7 @@ export function Landing(): JSX.Element {
   return (
     <div class={s['landing']} data-testid="landing">
       <div class={s['corner']} id="landing-auth">
-        <AuthButton idPrefix="landing-" />
+        <AuthButton idPrefix="landing-" iconClass={s['cornerButton']} />
       </div>
       <div class={s['center']}>
         <div class={s['content']}>

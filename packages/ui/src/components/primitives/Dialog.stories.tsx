@@ -18,7 +18,7 @@ const meta = {
   component: Dialog,
   // Own docs iframes: a fixed dialog over the docs page would take its focus
   // and keys.
-  parameters: { docs: { story: { inline: false, height: '420px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '420px' } } },
   args: {
     titleId: 'story-dialog-title',
     title: 'Clear site data',

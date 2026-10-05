@@ -64,6 +64,7 @@ const OPTIONS = [
 
 const meta = {
   title: 'Primitives/SegmentedControl',
+  parameters: { chrome: true },
   component: SegmentedControl<Theme>,
   args: { label: 'Theme', options: OPTIONS, value: 'system', onChange: fn() },
 } satisfies Meta<typeof SegmentedControl<Theme>>;

@@ -4,7 +4,9 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { Spinner } from './Spinner.js';
 
-const meta = { title: 'Primitives/Spinner', component: Spinner } satisfies Meta<typeof Spinner>;
+const meta = { title: 'Primitives/Spinner', component: Spinner, parameters: { chrome: true } } satisfies Meta<
+  typeof Spinner
+>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

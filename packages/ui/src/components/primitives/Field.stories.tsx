@@ -6,6 +6,7 @@ import { Field } from './Field.js';
 
 const meta = {
   title: 'Primitives/Field',
+  parameters: { chrome: true },
   component: Field,
   args: { label: 'Application', value: 'playground.dot' },
 } satisfies Meta<typeof Field>;

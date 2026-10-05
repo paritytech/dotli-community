@@ -87,10 +87,6 @@
 
 /* Phones: the boards' sizes. */
 @media (max-width: 560px) {
-  .menu {
-    gap: var(--sp-3);
-    padding: var(--sp-4);
-  }
   .tiles {
     border-radius: var(--r-md);
   }

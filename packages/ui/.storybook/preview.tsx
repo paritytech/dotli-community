@@ -40,10 +40,16 @@ const preview: Preview = {
   decorators: [
     // Once per mount: the framework's story memo declines to render a story
     // twice, so a decorator it re-runs on a globals change empties the canvas.
-    createJSXDecorator(Story => {
+    // `parameters.chrome` marks a chrome component's stories: the app renders
+    // only those under data-chrome, with its type step and focus colour.
+    createJSXDecorator((Story, context) => {
       document.body.style.background = 'var(--bg-page)';
       return (
-        <div class={s['root']} data-chrome="" data-testid="story-root">
+        <div
+          class={s['root']}
+          data-chrome={context.parameters['chrome'] === true ? '' : undefined}
+          data-testid="story-root"
+        >
           <Story />
         </div>
       );

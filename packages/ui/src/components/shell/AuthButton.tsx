@@ -39,11 +39,13 @@ const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountCont
  * authModalStore says).
  *
  * `idPrefix` sets another instance's ids apart (the landing page's, whose
- * page also holds the topbar's build-time markup).
+ * page also holds the topbar's build-time markup). `iconClass` goes on the
+ * icon button, for a page that draws it in its own colours.
  */
 export function AuthButton(props: {
   idPrefix?: string | undefined;
   variant?: 'icon' | 'chip' | undefined;
+  iconClass?: string | undefined;
 }): JSX.Element {
   const id = (name: string): string => `${props.idPrefix ?? ''}${name}`;
   let button: HTMLButtonElement | undefined;
@@ -106,6 +108,7 @@ export function AuthButton(props: {
                 <IconButton
                   ref={bindRef}
                   onClick={onClick}
+                  class={props.iconClass}
                   id={id('auth-button')}
                   title={label()}
                   aria-label={label()}

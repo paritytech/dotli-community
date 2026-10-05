@@ -7,6 +7,9 @@
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
+}
+/* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
+.list:focus-visible {
   outline: none;
 }
 

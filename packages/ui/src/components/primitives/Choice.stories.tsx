@@ -10,6 +10,7 @@ import { Choice } from './Choice.js';
 
 const meta = {
   title: 'Primitives/Choice',
+  parameters: { chrome: true },
   component: Choice,
   args: {
     title: 'Light client per tab',

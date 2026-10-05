@@ -8,6 +8,9 @@
   min-height: 0;
   overflow: auto;
   scrollbar-width: thin;
-  outline: none;
   background: var(--td-bg);
+}
+/* Beats global.css's :focus-visible whatever the sheet order (dev loads it last). */
+.timeline:focus-visible {
+  outline: none;
 }

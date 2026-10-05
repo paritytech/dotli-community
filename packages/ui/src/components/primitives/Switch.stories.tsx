@@ -8,6 +8,7 @@ import { Switch } from './Switch.js';
 
 const meta = {
   title: 'Primitives/Switch',
+  parameters: { chrome: true },
   component: Switch,
   args: { checked: false, label: 'Notifications', onChange: fn() },
 } satisfies Meta<typeof Switch>;

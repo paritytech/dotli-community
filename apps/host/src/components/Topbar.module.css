@@ -36,14 +36,19 @@
     top var(--dur-morph) var(--ease-out),
     box-shadow var(--dur);
 }
-.topbar[data-hidden] {
-  top: calc(var(--sp-1) + var(--safe-top));
-  width: 120px;
-  height: var(--sp-2);
-  /* Clip, not hidden: a hidden overflow is a scroll container, and focusing
-     a clipped control would scroll the strip out of view. */
-  overflow: clip;
-  box-shadow: var(--chrome-shadow-capsule);
+/* Desktop only, like the auto-hide: a data-hidden that lands on a phone
+   (between a resize across 560 px and the auto-hide reacting) must not fold
+   the header. */
+@media (min-width: 561px) {
+  .topbar[data-hidden] {
+    top: calc(var(--sp-1) + var(--safe-top));
+    width: 120px;
+    height: var(--sp-2);
+    /* Clip, not hidden: a hidden overflow is a scroll container, and focusing
+       a clipped control would scroll the strip out of view. */
+    overflow: clip;
+    box-shadow: var(--chrome-shadow-capsule);
+  }
 }
 :global(body[data-landing]) .topbar {
   display: none;
@@ -60,10 +65,12 @@
 }
 /* Collapsed, the row stays in the DOM and keeps its tab stops (tabbing into
    it reveals the bar), clipped by the capsule and transparent. */
-.topbar[data-hidden] .row {
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity var(--dur-fast);
+@media (min-width: 561px) {
+  .topbar[data-hidden] .row {
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--dur-fast);
+  }
 }
 
 .strip {
@@ -76,8 +83,10 @@
   padding: var(--sp-hair);
   pointer-events: none;
 }
-.topbar[data-hidden] .strip {
-  display: flex;
+@media (min-width: 561px) {
+  .topbar[data-hidden] .strip {
+    display: flex;
+  }
 }
 /* The bar's --tone is the network's, from the topbar's data-tone. */
 .bar {

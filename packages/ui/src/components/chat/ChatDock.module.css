@@ -19,6 +19,7 @@
   /* Painted with the chat palette's surface so it matches product boxes painted
      BgSurfaceMain exactly. */
   background: var(--chat-bg-surface-main);
+  color-scheme: dark;
   transition: top 0.3s ease;
 }
 .panel[data-topbar-hidden] {

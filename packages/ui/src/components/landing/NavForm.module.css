@@ -48,10 +48,15 @@
   margin: 0;
   padding: 0;
   border: 0;
-  outline: none;
   background: transparent;
   color: var(--text-strong);
   font: var(--fw-regular) var(--fs-title-lg) / 1 var(--font-sans);
+}
+
+/* The bar draws the ring. Outweighs global.css's :focus-visible whatever the
+   sheet order (dev loads it last). */
+.input:focus-visible {
+  outline: none;
 }
 
 .input::placeholder {

@@ -6,6 +6,7 @@ import { Chip } from './Chip.js';
 
 const meta = {
   title: 'Primitives/Chip',
+  parameters: { chrome: true },
   component: Chip,
   args: { children: 'Paseo' },
   argTypes: { tone: { control: 'inline-radio', options: ['default', 'ok', 'outline', 'mono'] } },

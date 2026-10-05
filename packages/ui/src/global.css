@@ -251,8 +251,10 @@
 
 /* Inside the chrome (data-chrome: the topbar, its popovers and menus, the
    sign-in, the prompts and the toasts), desktop type is a step under the
-   page's: desktop is not touch. */
+   page's: desktop is not touch. The scheme is set here, not on :root, which
+   would change how the browser paints the product frame's backdrop. */
 [data-chrome] {
+  color-scheme: dark;
   --fs-small: 12px;
   --fs-body: 13px;
 }

@@ -9,6 +9,7 @@ const TONES = ['ok', 'warn', 'err', 'info', 'idle'] as const;
 
 const meta = {
   title: 'Primitives/StatusDot',
+  parameters: { chrome: true },
   component: StatusDot,
   args: { tone: 'ok', label: 'In sync' },
   argTypes: {

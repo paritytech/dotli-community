@@ -5,7 +5,9 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
 import { IconTile } from './IconTile.js';
 
-const meta = { title: 'Primitives/IconTile', component: IconTile } satisfies Meta<typeof IconTile>;
+const meta = { title: 'Primitives/IconTile', component: IconTile, parameters: { chrome: true } } satisfies Meta<
+  typeof IconTile
+>;
 
 export default meta;
 type Story = StoryObj<typeof meta>;

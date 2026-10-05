@@ -21,6 +21,7 @@
   color: var(--text-strong);
   font-family: var(--font-sans);
   text-align: center;
+  color-scheme: dark;
 }
 
 .column {

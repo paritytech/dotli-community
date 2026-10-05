@@ -15,7 +15,7 @@ const meta = {
   title: 'Primitives/ToastStack',
   component: ToastStack,
   // Own docs iframes, so each stack is fixed in its own frame and fills its own store.
-  parameters: { docs: { story: { inline: false, height: '320px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '320px' } } },
 } satisfies Meta<typeof ToastStack>;
 
 export default meta;

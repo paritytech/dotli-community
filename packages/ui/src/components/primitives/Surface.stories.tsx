@@ -43,7 +43,7 @@ const meta = {
   title: 'Primitives/Surface',
   component: Surface,
   // Own docs iframes, since the frame is fixed to the top right of its page.
-  parameters: { docs: { story: { inline: false, height: '320px' } } },
+  parameters: { chrome: true, docs: { story: { inline: false, height: '320px' } } },
   args: { width: 'md', label: 'Settings', children: <></> },
   argTypes: { width: { control: 'inline-radio', options: ['sm', 'md', 'lg', 'xl'] } },
   render: args => <Frame>{settings(args)}</Frame>,

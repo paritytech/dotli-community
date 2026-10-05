@@ -6,6 +6,7 @@ import { SectionLabel } from './SectionLabel.js';
 
 const meta = {
   title: 'Primitives/SectionLabel',
+  parameters: { chrome: true },
   component: SectionLabel,
   args: { text: 'Account and chain' },
 } satisfies Meta<typeof SectionLabel>;

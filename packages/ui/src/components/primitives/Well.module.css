@@ -103,6 +103,11 @@
   position: absolute;
   inset: 0;
 }
+/* The row's ring replaces the global one, which out-specifies the :where
+   base's all: unset. */
+.copy:focus-visible {
+  outline: none;
+}
 .copy:focus-visible::after {
   outline: var(--chrome-focus-ring);
   outline-offset: -2px;

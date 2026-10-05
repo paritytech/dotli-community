@@ -7,9 +7,11 @@
   position: fixed;
   right: var(--sp-4);
   bottom: var(--sp-4);
-  /* Under the header, the scrims and the modals, so a toast never covers a
-     prompt the user has to answer. */
-  z-index: 900;
+  /* Under the header (1000), the scrims and popovers (1400 up) and the modals
+     (2000 up), so a toast never covers a prompt the user has to answer. Under
+     the docked chat (900) and the debug panel (950) too, so it never covers
+     the chat's composer. */
+  z-index: 850;
   box-sizing: border-box;
   width: var(--w-toast);
   margin: 0;
