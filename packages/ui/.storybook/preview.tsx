@@ -3,7 +3,9 @@
 
 import { createRenderEffect, merge } from 'solid-js';
 import { createJSXDecorator, type Preview } from 'storybook-solidjs-vite';
+import { themes } from 'storybook/theming';
 import '../src/global.css';
+import s from './preview.module.css';
 
 const preview: Preview = {
   tags: ['autodocs'],
@@ -23,7 +25,9 @@ const preview: Preview = {
   },
   initialGlobals: { theme: 'dark' },
   parameters: {
-    layout: 'padded',
+    // The decorator's wrapper pads every story, so docs blocks get the page too.
+    layout: 'fullscreen',
+    docs: { theme: themes.dark },
     // The building blocks first, then what the app's domain composes from them.
     options: { storySort: { order: ['Primitives', 'Entities', '*'] } },
     // The addon's default, 'todo', only warns, so a violation would pass CI.
@@ -64,7 +68,7 @@ const preview: Preview = {
       );
       document.body.style.background = 'var(--bg-page)';
       return (
-        <div data-chrome="" data-testid="story-root">
+        <div class={s['root']} data-chrome="" data-testid="story-root">
           <Story />
         </div>
       );

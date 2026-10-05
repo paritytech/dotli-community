@@ -25,7 +25,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Default: Story = {
+// The docs page's story. Its iframe renders at the column's width, so the
+// head shows its desktop sizes there.
+export const Default: Story = {};
+
+export const Dismiss: Story = {
+  tags: ['!autodocs'],
   play: async ({ args, canvas, userEvent, step }) => {
     // The workshop sizes its frame for the story's viewport only after the
     // first render, so the play waits for it.

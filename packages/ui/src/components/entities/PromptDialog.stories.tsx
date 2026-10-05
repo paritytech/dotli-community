@@ -21,7 +21,7 @@ const meta = {
   title: 'Entities/PromptDialog',
   component: PromptDialog,
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
-  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '640px' } } },
+  parameters: { docs: { story: { inline: false, height: '640px' } } },
   args: {
     entry: entry({
       icon: PERMISSION_ICONS.Camera,
@@ -161,4 +161,8 @@ export const SignMessage: Story = {
   },
 };
 
-export const Phone: Story = { globals: { viewport: { value: 'phone', isRotated: false } } };
+export const Phone: Story = {
+  // A docs iframe renders at the column's width, never the phone's.
+  tags: ['!autodocs'],
+  globals: { viewport: { value: 'phone', isRotated: false } },
+};

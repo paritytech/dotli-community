@@ -18,7 +18,7 @@ const meta = {
   component: Dialog,
   // Own docs iframes: a fixed dialog over the docs page would take its focus
   // and keys, and the Light story would turn the whole page light.
-  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '420px' } } },
+  parameters: { docs: { story: { inline: false, height: '420px' } } },
   args: {
     titleId: 'story-dialog-title',
     title: 'Clear site data',
@@ -55,6 +55,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Desktop: Story = {
+  // Its play moves focus and presses Escape in a docs iframe on load.
+  tags: ['!autodocs'],
   play: async ({ args, canvas, userEvent, step }) => {
     const dialog = canvas.getByRole('dialog', { name: 'Clear site data' });
     await step('Given focus starts inside the dialog', async () => {
@@ -80,6 +82,8 @@ export const Desktop: Story = {
 };
 
 export const Phone: Story = {
+  // A docs iframe renders at the column's width, never the phone's.
+  tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
   play: async ({ args, canvas, userEvent, step }) => {
     // The workshop sizes its frame for the story's viewport only after the

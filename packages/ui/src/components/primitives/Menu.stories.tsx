@@ -10,7 +10,7 @@ const meta = {
   title: 'Primitives/Menu',
   component: Menu,
   // Own docs iframes, since every menu is fixed to the top right of its page.
-  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '260px' } } },
+  parameters: { docs: { story: { inline: false, height: '260px' } } },
   args: { id: 'story-menu', open: true, label: 'More', ref: () => undefined, onDismiss: fn(), children: <></> },
 } satisfies Meta<typeof Menu>;
 
@@ -162,6 +162,8 @@ export const Horizontal: Story = {
 };
 
 export const Sheet: Story = {
+  // A docs iframe renders at the column's width, never the phone's.
+  tags: ['!autodocs'],
   globals: { viewport: { value: 'phone', isRotated: false } },
   args: { sheet: true, sheetTitle: 'More' },
   render: rows,

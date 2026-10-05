@@ -15,7 +15,7 @@ const meta = {
   title: 'Primitives/ToastStack',
   component: ToastStack,
   // Own docs iframes, so each stack is fixed in its own frame and fills its own store.
-  parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '320px' } } },
+  parameters: { docs: { story: { inline: false, height: '320px' } } },
 } satisfies Meta<typeof ToastStack>;
 
 export default meta;
@@ -56,6 +56,8 @@ export const ThreeToasts: Story = {
 // Plays run in the workshop too, so the dismissals get stories of their own
 // and the stacks above stay on screen.
 export const DismissOne: Story = {
+  // Its play empties the stack, which a docs page would show as a blank block.
+  tags: ['!autodocs'],
   beforeEach: showOne,
   play: async ({ canvas, userEvent, step }) => {
     await step('Given one toast shows', async () => {
@@ -71,6 +73,7 @@ export const DismissOne: Story = {
 };
 
 export const DismissAll: Story = {
+  tags: ['!autodocs'],
   beforeEach: showThree,
   play: async ({ canvas, userEvent, step }) => {
     await step('Given three toasts are stacked', async () => {

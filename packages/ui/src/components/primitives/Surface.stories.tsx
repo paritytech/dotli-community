@@ -35,7 +35,8 @@ export const Medium: Story = {};
 export const Large: Story = { args: { width: 'lg' } };
 export const ExtraLarge: Story = { args: { width: 'xl' } };
 export const InSheet: Story = {
+  // A docs iframe renders at the column's width, never the phone's.
+  tags: ['!autodocs'],
   args: { sheet: true },
   globals: { viewport: { value: 'phone', isRotated: false } },
-  parameters: { docs: { story: { inline: false, height: '180px' } } },
 };
