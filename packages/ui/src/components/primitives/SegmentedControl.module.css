@@ -10,6 +10,7 @@
   display: flex;
   flex: none;
   gap: var(--sp-hair);
+  width: fit-content;
   margin: 0;
   padding: var(--sp-hair);
   border-radius: var(--r-full);
