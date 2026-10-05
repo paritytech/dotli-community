@@ -218,11 +218,12 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.2` release candidate, including runtime-registered streamed file input and private
-caches; this update retains the separately pinned TrUAPI host SDK. Synchronization verifies the package's complete
-checksum inventory, including its session API and type declarations, but serves only the host's selected runtime
-artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those
-artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
+The current pin is the `0.3.2-rc.3` release candidate, including runtime-registered streamed file input, private
+caches, and translated updates resumed across bounded gas slices; this update retains the separately pinned TrUAPI host
+SDK. Synchronization verifies the package's complete checksum inventory, including its session API and type
+declarations, but serves only the host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`,
+`THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those artifacts; the consolidated attribution bundle
+replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
