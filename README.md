@@ -61,10 +61,10 @@ name.app.paseo.li        App build (CID from URL contract, content fetch, render
 Each product gets its own `<label>.app.paseo.li` origin, so versions of the same product share an origin while different
 products stay isolated for SW/storage/security purposes.
 
-The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`.
-Replacing an already-adopted port on a queued retry disconnects the product, so only a new
-connection identifier triggers reconnection. A genuine document reload supplies a new identifier.
-The existing source-window and origin checks still apply; the identifier is not an authority token.
+The iframe bridge deduplicates TrUAPI readiness retries by the SDK's public `connectionId`. Replacing an already-adopted
+port on a queued retry disconnects the product, so only a new connection identifier triggers reconnection. A genuine
+document reload supplies a new identifier. The existing source-window and origin checks still apply; the identifier is
+not an authority token.
 
 ### What it does
 
