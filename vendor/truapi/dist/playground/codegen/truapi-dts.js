@@ -2608,6 +2608,76 @@ export type Modifier =
     value: BlendingMode;
 };
 export const Modifier: Codec<Modifier>;
+/**
+ * A host-admitted notification activation for the authenticated product,
+ * account and environment bound to this runtime.
+ */
+export interface NotificationActivation {
+    /** Host-assigned sequence, unique within the bound activation queue. */
+    sequence: bigint;
+    /** Identifier of the activated notification. */
+    notificationId: number;
+    /** Validated product-relative route beginning with exactly one slash. */
+    route: string;
+}
+export const NotificationActivation: Codec<NotificationActivation>;
+/** Versioned envelope for [\`NotificationActivationAcknowledgeError\`]. */
+export type VersionedNotificationActivationAcknowledgeError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedNotificationActivationAcknowledgeError: Codec<VersionedNotificationActivationAcknowledgeError>;
+/** Versioned envelope for [\`NotificationActivationAcknowledgeRequest\`]. */
+export type VersionedNotificationActivationAcknowledgeRequest = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivationAcknowledgeRequest;
+};
+export const VersionedNotificationActivationAcknowledgeRequest: Codec<VersionedNotificationActivationAcknowledgeRequest>;
+/** Versioned envelope for [\`NotificationActivationAcknowledgeResponse\`]. */
+export type VersionedNotificationActivationAcknowledgeResponse = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedNotificationActivationAcknowledgeResponse: Codec<VersionedNotificationActivationAcknowledgeResponse>;
+/** Versioned envelope for [\`NotificationActivationEventsError\`]. */
+export type VersionedNotificationActivationEventsError = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: GenericError;
+};
+export const VersionedNotificationActivationEventsError: Codec<VersionedNotificationActivationEventsError>;
+/** Versioned envelope for [\`NotificationActivationEventsRequest\`]. */
+export type VersionedNotificationActivationEventsRequest = 
+/** Version 1 (no payload). */
+{
+    tag: "V1";
+    value?: undefined;
+};
+export const VersionedNotificationActivationEventsRequest: Codec<VersionedNotificationActivationEventsRequest>;
+/** Versioned envelope for [\`NotificationActivationEventsResponse\`]. */
+export type VersionedNotificationActivationEventsResponse = 
+/** Version 1 payload. */
+{
+    tag: "V1";
+    value: NotificationActivations;
+};
+export const VersionedNotificationActivationEventsResponse: Codec<VersionedNotificationActivationEventsResponse>;
+/**
+ * Pending activations, retained until individually acknowledged. Hosts return
+ * at most 32 events in sequence order, without consuming them on retrieval.
+ */
+export interface NotificationActivations {
+    /** Pending events in ascending sequence order. */
+    events: Array<NotificationActivation>;
+}
+export const NotificationActivations: Codec<NotificationActivations>;
 /** Outcome of starting a chain-head operation. */
 export type OperationStartedResult = 
 /** The operation was accepted; results arrive as follow events. */
@@ -4932,6 +5002,12 @@ export interface HostWorkerEndOperationRequest {
     id: number;
 }
 export const HostWorkerEndOperationRequest: Codec<HostWorkerEndOperationRequest>;
+/** Acknowledge one handled activation in the runtime's bound queue. */
+export interface NotificationActivationAcknowledgeRequest {
+    /** Exact sequence to acknowledge; never a cumulative watermark. */
+    sequence: bigint;
+}
+export const NotificationActivationAcknowledgeRequest: Codec<NotificationActivationAcknowledgeRequest>;
 /** A body the host needs drawn. */
 export interface ProductRendererRenderRequest {
     /** Where the body lives. */
@@ -5642,6 +5718,14 @@ export import ImageSource = T.ImageSource;
 export import LegacyAccount = T.LegacyAccount;
 export import LegacyAccountTxPayload = T.LegacyAccountTxPayload;
 export import Modifier = T.Modifier;
+export import NotificationActivation = T.NotificationActivation;
+export import VersionedNotificationActivationAcknowledgeError = T.VersionedNotificationActivationAcknowledgeError;
+export import VersionedNotificationActivationAcknowledgeRequest = T.VersionedNotificationActivationAcknowledgeRequest;
+export import VersionedNotificationActivationAcknowledgeResponse = T.VersionedNotificationActivationAcknowledgeResponse;
+export import VersionedNotificationActivationEventsError = T.VersionedNotificationActivationEventsError;
+export import VersionedNotificationActivationEventsRequest = T.VersionedNotificationActivationEventsRequest;
+export import VersionedNotificationActivationEventsResponse = T.VersionedNotificationActivationEventsResponse;
+export import NotificationActivations = T.NotificationActivations;
 export import OperationStartedResult = T.OperationStartedResult;
 export import PaymentTopUpSource = T.PaymentTopUpSource;
 export import PocketCard = T.PocketCard;
@@ -5848,6 +5932,7 @@ export import HostThemeSubscribeItem = T.HostThemeSubscribeItem;
 export import HostWorkerBeginOperationRequest = T.HostWorkerBeginOperationRequest;
 export import HostWorkerBeginOperationResponse = T.HostWorkerBeginOperationResponse;
 export import HostWorkerEndOperationRequest = T.HostWorkerEndOperationRequest;
+export import NotificationActivationAcknowledgeRequest = T.NotificationActivationAcknowledgeRequest;
 export import ProductRendererRenderRequest = T.ProductRendererRenderRequest;
 export import RemoteChainHeadBodyRequest = T.RemoteChainHeadBodyRequest;
 export import RemoteChainHeadBodyResponse = T.RemoteChainHeadBodyResponse;
@@ -6345,7 +6430,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "7c073d1a8c5db314";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "ea3e5bc80abf291b";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -6586,6 +6671,18 @@ export declare class NotificationsClient {
      * [RFC 0019]: https://github.com/paritytech/trinity-user-agents/blob/main/docs/rfcs/0019-scheduled-notifications.md
      */
     cancelPushNotification(request: T.HostPushNotificationCancelRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostPushNotificationCancelError>>;
+    /**
+     * Retrieve up to 32 pending activations for this runtime's authenticated
+     * product, account and environment. Retrieval does not consume events,
+     * prompt for permissions or enroll a background receiver.
+     */
+    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
+    /**
+     * Acknowledge exactly one activation after the product router handles it.
+     * Unknown or already acknowledged sequences are idempotent, and can never
+     * remove an activation from another product, account or environment.
+     */
+    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {

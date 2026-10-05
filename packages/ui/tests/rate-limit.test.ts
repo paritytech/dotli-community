@@ -161,7 +161,6 @@ describe('prompt rate limiting across host callbacks', () => {
     }
 
     expect(mocks.showPermissionRequestModal).toHaveBeenCalledTimes(MAX_PER_WINDOW);
-    status = 'NotDetermined';
     await expect(permissions.devicePermission(PRODUCT, 'Notifications')).rejects.toThrow(
       'Permission prompt rate limited',
     );
