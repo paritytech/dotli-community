@@ -287,7 +287,8 @@ describe('Topbar actions island', () => {
     expect(moreRow('settings').querySelector('[data-testid="more-row-aside"]')).toBeNull();
   });
 
-  it('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {
+  // Off with the chat button (TopbarActions.tsx) until it is redone.
+  it.skip('As a phone user with unread chat, I see More raise its badge and name the chat, and the Chat row show the unread count', async () => {
     // Given: a chat-capable product, a session, and two messages while the panel is closed
     stubTopbarLayout(6 * ITEM_WIDTH);
     stubPhoneViewport(true);
@@ -429,7 +430,8 @@ describe('Topbar actions island', () => {
     expect(scrim?.hasAttribute('data-handoff')).toBe(false);
   });
 
-  it('As a phone user choosing Chat in More, More closes as usual', async () => {
+  // Off with the chat button (TopbarActions.tsx) until it is redone.
+  it.skip('As a phone user choosing Chat in More, More closes as usual', async () => {
     // Given: a chat-capable product and a session, with nothing unread
     stubTopbarLayout(MORE_ONLY);
     stubPhoneViewport(true);

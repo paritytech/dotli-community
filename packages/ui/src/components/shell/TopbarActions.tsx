@@ -7,7 +7,7 @@ import { topbarStore } from '../../state/topbar.js';
 import { useStore } from '../use-store.js';
 import { AuthButton } from './AuthButton.js';
 import { ChainsPopover } from './ChainsPopover.js';
-import { ChatButton } from './ChatButton.js';
+// import { ChatButton } from './ChatButton.js';
 import { PermissionsPopover } from './PermissionsPopover.js';
 import { SettingsPopover } from './SettingsPopover.js';
 import { ThemeToggle } from './ThemeToggle.js';
@@ -30,7 +30,8 @@ export function TopbarActions(): JSX.Element {
     <Show when={!landing()}>
       <ActionGroup room={topbarActionRoom} morph={topbarMorph} end={<AuthButton />}>
         <ChainsPopover />
-        <ChatButton />
+        {/* Off until the chat button is redone. */}
+        {/* <ChatButton /> */}
         <PermissionsPopover />
         <ThemeToggle />
         <SettingsPopover />
