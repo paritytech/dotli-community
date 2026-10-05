@@ -7,28 +7,9 @@ import { requestTruapiDisconnect } from '../../auth-controller.js';
 import { Button } from '../primitives/Button.js';
 import { Surface } from '../primitives/Surface.js';
 import { Callout, InfoIcon } from '../primitives/Well.js';
-import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
+import { sessionDisplayName, sessionInitials, sessionUsername, useAccount, UserIcon } from './account.js';
 import { usePopover } from './Popover.js';
 import s from './AccountContent.module.css';
-
-function UserIcon(): JSX.Element {
-  return (
-    <svg
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-      <circle cx="12" cy="7" r="4" />
-    </svg>
-  );
-}
 
 function LogOutIcon(): JSX.Element {
   return (
@@ -66,16 +47,16 @@ export function AccountContent(): JSX.Element {
     const session = account.session();
     return session === undefined ? undefined : sessionUsername(session);
   };
-  const address = (): string | undefined => {
+  const displayName = (): string | undefined => {
     const session = account.session();
-    return session === undefined ? undefined : shortenAccount(session.identityAccountId ?? session.publicKey);
+    return session === undefined ? undefined : sessionDisplayName(session);
   };
   const initials = (): string | undefined => {
     const session = account.session();
     return session === undefined ? undefined : sessionInitials(session);
   };
   const name = (): string =>
-    account.session() === undefined ? '' : (username() ?? address() ?? 'Connected with Polkadot Mobile');
+    account.session() === undefined ? '' : (displayName() ?? 'Connected with Polkadot Mobile');
   const onDisconnect = (): void => {
     popover.close();
     requestTruapiDisconnect();
@@ -93,7 +74,7 @@ export function AccountContent(): JSX.Element {
           <div
             class={s['name']}
             id={id('username')}
-            data-address={username() === undefined && address() !== undefined ? '' : undefined}
+            data-address={username() === undefined && displayName() !== undefined ? '' : undefined}
           >
             {name()}
           </div>

@@ -9,29 +9,11 @@ import { authModalStore, setAuthModalTrigger } from '../../state/auth-modal.js';
 import { Button } from '../primitives/Button.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { useStore } from '../use-store.js';
-import { sessionInitials, sessionUsername, shortenAccount, useAccount } from './account.js';
+import { sessionDisplayName, sessionInitials, useAccount, UserIcon } from './account.js';
 import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './AuthButton.module.css';
-
-function UserIcon(props: { size?: number } = {}): JSX.Element {
-  return (
-    <svg
-      width={props.size ?? 12}
-      height={props.size ?? 12}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <circle cx="12" cy="8" r="4" />
-      <path d="M4 21a8 8 0 0 1 16 0" />
-    </svg>
-  );
-}
 
 /** The popover's body, its own chunk. */
 const Account = lazy(() => import('./AccountContent.js'), { export: 'AccountContent' });
@@ -77,9 +59,7 @@ export function AuthButton(props: {
   /** The name the chip shows: the username, else the shortened account. */
   const chipName = (): string | undefined => {
     const session = account.loggedIn() ? account.session() : undefined;
-    return session === undefined
-      ? undefined
-      : (sessionUsername(session) ?? shortenAccount(session.identityAccountId ?? session.publicKey));
+    return session === undefined ? undefined : sessionDisplayName(session);
   };
   // The visible name starts the button's name, so speech input can use it.
   const chipLabel = (): string => {
@@ -104,6 +84,13 @@ export function AuthButton(props: {
             startLogin();
           }
         };
+        const bindRef = (el: HTMLButtonElement): void => {
+          button = el;
+          t.ref(el);
+        };
+        const expanded = (): 'true' | 'false' =>
+          (opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false';
+        const controls = (): string => (opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop');
         return (
           <TopbarItem
             name="auth"
@@ -117,17 +104,14 @@ export function AuthButton(props: {
               when={chip()}
               fallback={
                 <IconButton
-                  {...t}
-                  ref={el => {
-                    button = el;
-                    t.ref(el);
-                  }}
+                  ref={bindRef}
                   onClick={onClick}
                   id={id('auth-button')}
                   title={label()}
                   aria-label={label()}
-                  aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
-                  aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
+                  aria-haspopup={t['aria-haspopup']}
+                  aria-expanded={expanded()}
+                  aria-controls={controls()}
                 >
                   <Show when={account.loggedIn() && account.session()} fallback={<UserIcon />}>
                     {session => (
@@ -152,17 +136,14 @@ export function AuthButton(props: {
             >
               {/* One element across login and logout, so the auth modal keeps its trigger. */}
               <Button
-                ref={el => {
-                  button = el;
-                  t.ref(el);
-                }}
+                ref={bindRef}
                 onClick={onClick}
                 id={id('auth-button')}
                 title={label()}
                 aria-label={chipLabel()}
                 aria-haspopup={t['aria-haspopup']}
-                aria-expanded={(opensPopover() ? t['aria-expanded'] === 'true' : authModal().open) ? 'true' : 'false'}
-                aria-controls={opensPopover() ? t['aria-controls'] : 'auth-modal-backdrop'}
+                aria-expanded={expanded()}
+                aria-controls={controls()}
                 variant={account.loggedIn() ? 'secondary' : 'primary'}
                 class={account.loggedIn() ? s['chip'] : s['signIn']}
               >
@@ -170,7 +151,7 @@ export function AuthButton(props: {
                   when={account.loggedIn() && account.session()}
                   fallback={
                     <>
-                      <UserIcon size={16} />
+                      <UserIcon />
                       <span class={s['label']}>Sign in</span>
                     </>
                   }
@@ -182,7 +163,7 @@ export function AuthButton(props: {
                         data-testid="user-badge"
                         data-anon={sessionInitials(session()) === undefined ? '' : undefined}
                       >
-                        <Show when={sessionInitials(session())} fallback={<UserIcon size={16} />}>
+                        <Show when={sessionInitials(session())} fallback={<UserIcon />}>
                           {initials => <>{initials()}</>}
                         </Show>
                       </span>
