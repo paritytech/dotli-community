@@ -176,7 +176,7 @@ describe('ThemeToggle', () => {
     expect(btn.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('As a dotli user, I select Dark from the theme menu and it applies and persists', async () => {
+  it('As a dotli user, I select Dark from the theme menu and it applies and persists, and the menu stays open', async () => {
     // Given
     const btn = await openThemeMenu('light', 'light');
     const popover = themePopover();
@@ -191,14 +191,13 @@ describe('ThemeToggle', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(themeOption('dark')?.getAttribute('aria-checked')).toBe('true');
     expect(themeOption('light')?.getAttribute('aria-checked')).toBe('false');
-    expect(popover.hasAttribute('data-open')).toBe(false);
-    expect(btn.getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(btn);
+    expect(popover.hasAttribute('data-open')).toBe(true);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
     expect(btn.title).toBe('Appearance: Dark');
     expect(btn.getAttribute('aria-label')).toBe('Appearance: Dark');
   });
 
-  it('As a phone user, the Appearance menu opens as a bottom sheet with its title in the head, and picking a tile applies it and closes the sheet', async () => {
+  it('As a phone user, the Appearance menu opens as a bottom sheet with its title in the head, and picking a tile applies it and keeps the sheet open', async () => {
     // Given
     await renderToggle('dark', 'dark');
     stubPhoneViewport(true);
@@ -218,7 +217,7 @@ describe('ThemeToggle', () => {
     await settle();
 
     // Then
-    expect(isOpen()).toBe(false);
+    expect(isOpen()).toBe(true);
     expect(document.documentElement.getAttribute('data-theme-pref')).toBe('light');
   });
 
@@ -396,9 +395,9 @@ describe('ThemeToggle', () => {
     expect(document.activeElement).toBe(focused);
   });
 
-  it('As a keyboard user, I press Enter on a focused option and it selects that theme', async () => {
+  it('As a keyboard user, I press Enter on a focused option and it selects that theme, focus staying on it', async () => {
     // Given
-    const btn = await openThemeMenuWithKeyboard('light', 'dark');
+    await openThemeMenuWithKeyboard('light', 'dark');
     await pressThemeKey('ArrowDown');
 
     // When: a focused button turns Enter into a click.
@@ -407,7 +406,7 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(localStorage.getItem('dotli-theme')).toBe('dark');
-    expect(document.activeElement).toBe(btn);
+    expect(document.activeElement).toBe(themeOption('dark'));
   });
 
   it('As a dotli user, clicking outside closes the theme menu', async () => {
@@ -510,7 +509,7 @@ describe('ThemeToggle', () => {
     expect(document.activeElement).toBe(byId('more-button'));
   });
 
-  it('As a dotli user whose browser blocks storage, picking a theme still applies it and closes the menu', async () => {
+  it('As a dotli user whose browser blocks storage, picking a theme still applies it', async () => {
     // Given
     await openThemeMenu('light', 'light');
     const blocked = (): never => {
@@ -525,11 +524,10 @@ describe('ThemeToggle', () => {
     // Then
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
     expect(themeButton().title).toBe('Appearance: Dark');
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(themeButton());
+    expect(isOpen()).toBe(true);
   });
 
-  it('As a mobile user, picking a theme while the bar has collapsed the theme button hands focus to the More button', async () => {
+  it('As a mobile user, picking a theme while the bar has collapsed the theme button keeps the menu open, and Escape hands focus to the More button', async () => {
     // Given
     await renderCollapsedToggle('dark', 'dark');
     await tapMoreRow('theme');
@@ -540,6 +538,12 @@ describe('ThemeToggle', () => {
 
     // Then
     expect(localStorage.getItem('dotli-theme')).toBe('light');
+    expect(isOpen()).toBe(true);
+
+    // When
+    await pressThemeKey('Escape');
+
+    // Then
     expect(isOpen()).toBe(false);
     expect(document.activeElement).toBe(byId('more-button'));
   });

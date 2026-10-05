@@ -94,19 +94,14 @@ function ThemeIcons(): JSX.Element {
 }
 
 /** One tile of the menu: its glyph over its label. */
-function Tile(props: {
-  pref: ThemePref;
-  checked: boolean;
-  choose: (pref: ThemePref) => void;
-  children: JSX.Element;
-}): JSX.Element {
+function Tile(props: { pref: ThemePref; checked: boolean; children: JSX.Element }): JSX.Element {
   return (
     <MenuRow
       class={s['tile']}
       role="menuitemradio"
       checked={props.checked}
       onClick={() => {
-        props.choose(props.pref);
+        selectThemePref(props.pref);
       }}
       testId={`theme-option-${props.pref}`}
     >
@@ -134,8 +129,8 @@ function Tile(props: {
  * hands focus back to the button, Tab is prevented (in a sheet, Tab reaches
  * the head's close button), and a press outside
  * closes it without reaching what is underneath. Picking a tile applies it
- * through theme-controller.ts, closes the menu and focuses the button (or
- * the More button, while the topbar has collapsed the appearance button).
+ * through theme-controller.ts and leaves the menu open, so the user sees the
+ * page in the new theme and can pick again.
  * The title is hidden from assistive technology, as the menu's own name
  * already says it.
  *
@@ -161,11 +156,6 @@ export function ThemeToggle(): JSX.Element {
     trigger: () => button,
     surface: () => popover,
   });
-
-  const choose = (next: ThemePref): void => {
-    selectThemePref(next);
-    menu.onItemChosen();
-  };
 
   return (
     <>
@@ -206,13 +196,13 @@ export function ThemeToggle(): JSX.Element {
             Appearance
           </div>
           <div class={s['tiles']} role="group">
-            <Tile pref="light" checked={pref() === 'light'} choose={choose}>
+            <Tile pref="light" checked={pref() === 'light'}>
               <SunGlyph />
             </Tile>
-            <Tile pref="dark" checked={pref() === 'dark'} choose={choose}>
+            <Tile pref="dark" checked={pref() === 'dark'}>
               <MoonGlyph />
             </Tile>
-            <Tile pref="system" checked={pref() === 'system'} choose={choose}>
+            <Tile pref="system" checked={pref() === 'system'}>
               <MonitorGlyph />
             </Tile>
           </div>
