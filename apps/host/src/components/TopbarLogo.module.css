@@ -52,9 +52,16 @@
   text-transform: uppercase;
   pointer-events: none;
 }
+.sign {
+  display: none;
+}
 /* Narrow pills: the mark alone, so the wordmark doesn't squeeze the address
-   and push actions into More. The tag would cover the mark, so it goes too. */
+   and push actions into More. The tag shrinks to β in the corner, with room
+   kept on the right so it clears the mark. */
 @media (max-width: 620px) {
+  .home {
+    padding-right: 12px;
+  }
   /* Out of sight but still the link's accessible name. */
   .brand {
     position: absolute;
@@ -64,7 +71,19 @@
     clip-path: inset(50%);
   }
   .beta {
+    right: 0;
+    justify-content: center;
+    width: 12px;
+    padding: 0;
+    /* Uppercase would turn β into a capital that reads as a B. */
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .word {
     display: none;
+  }
+  .sign {
+    display: inline;
   }
 }
 /* Phones: the mark alone, centred in a 44 px box like an icon (the board's
