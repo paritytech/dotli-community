@@ -32,6 +32,7 @@ import type { ContactAvatarOverlay } from '../profile/avatar-overlay.js';
 import { createSessionStoreAdapters } from './SessionStore.js';
 import { createUserConfirmationAdapters } from './UserConfirmation.js';
 import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { setNotificationAccount } from '../notification-activation.js';
 
 export interface CreateHostCallbacksOptions {
   label: string;
@@ -61,6 +62,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     contacts,
     contactsDirectory,
   } = options;
+  const presentAuth = createAuthStateChanged(pairingLabel ?? label, {
+    dotSuffix: pairingDotSuffix,
+    hostGlobal: pairingHostGlobal,
+  });
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(label),
@@ -78,10 +83,10 @@ export function createHostCallbacks(options: CreateHostCallbacksOptions): Requir
     productOperations: createProductOperations(),
     coreStorage: createSessionStoreAdapters(custodyLease),
     auth: {
-      authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
-        dotSuffix: pairingDotSuffix,
-        hostGlobal: pairingHostGlobal,
-      }),
+      authStateChanged: state => {
+        setNotificationAccount(label, state.tag === 'Connected' ? state.value.identityAccountId : undefined);
+        return presentAuth(state);
+      },
     },
     userConfirmation: createUserConfirmationAdapters(label, blockingModalScope),
     theme: { subscribeTheme: createThemeSubscribe() },

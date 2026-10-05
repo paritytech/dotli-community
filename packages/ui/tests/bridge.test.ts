@@ -270,6 +270,7 @@ describe('bridge render lifecycle', () => {
       (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        iframe.allow = args.allow;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -337,6 +338,62 @@ describe('bridge render lifecycle', () => {
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
     expect(document.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+  }, 10_000);
+
+  it('As a product user, media grants reload the sandbox with origin-scoped capture and revocation removes device access', async () => {
+    // Re-import after resetModules so the test exercises this render's listener state.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const initial = nth(mocks.iframeHosts, 0);
+    const origin = new URL(initial.iframeUrl).origin;
+    expect(initial.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'cross-origin-isolated',
+    ]);
+    expect(initial.allowedOrigin).toBe(origin);
+
+    window.dispatchEvent(new Event('dotli:device-permission-changed'));
+    await waitForProviderRequests(2);
+    expect(initial.iframe.isConnected).toBe(true);
+    const grantedProvider = makeProvider();
+    grantedProvider.getPermissionAuthorizationStatuses.mockImplementation(
+      (requests: { tag: string; value?: string }[]) =>
+        Promise.resolve(
+          requests.map(request =>
+            request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+              ? 'Authorized'
+              : 'NotDetermined',
+          ),
+        ),
+    );
+    nth(mocks.coreProviderDefers, 1).resolve(grantedProvider);
+    await vi.waitFor(() => expect(initial.dispose).toHaveBeenCalledTimes(1));
+    const granted = nth(mocks.iframeHosts, 1);
+    expect(granted.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'camera',
+      'microphone',
+      'cross-origin-isolated',
+    ]);
+
+    window.dispatchEvent(new Event('dotli:device-permission-changed'));
+    await waitForProviderRequests(3);
+    const revokedProvider = makeProvider();
+    revokedProvider.getPermissionAuthorizationStatuses.mockImplementation((requests: unknown[]) =>
+      Promise.resolve(requests.map(() => 'Denied')),
+    );
+    nth(mocks.coreProviderDefers, 2).resolve(revokedProvider);
+    await vi.waitFor(() => expect(granted.dispose).toHaveBeenCalledTimes(1));
+    const revoked = nth(mocks.iframeHosts, 2);
+    expect(revoked.iframe.allow).toBe(initial.iframe.allow);
+    expect(new URL(revoked.iframeUrl).origin).toBe(origin);
+    expect(document.querySelectorAll('#app iframe')).toHaveLength(1);
   }, 10_000);
 
   it('As a dotli integrator, the host keeps the previous iframe visible while its replacement initializes', async () => {

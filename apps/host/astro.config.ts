@@ -25,6 +25,7 @@ import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-v
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 import { receivingWorker } from './receiving-build.ts';
+import { notificationWorker } from './notification-build.js';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -321,8 +322,9 @@ export default defineConfig({
     // Before astroPwa: it rewrites the page that the precache manifest hashes.
     pagePreloads(),
     hostUpdateWorker(),
-    // Emits the classic receiver and matching WASM before Workbox precaching.
+    // Emit both independent notification handlers before Workbox precaching.
     receivingWorker(),
+    notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. Compatible host
@@ -361,9 +363,10 @@ export default defineConfig({
           '**/truapi_verifiable_bg*.wasm',
           '**/host-update-*.js',
           'host-receiving.js',
+          '**/host-notifications.js',
         ],
         cleanupOutdatedCaches: true,
-        importScripts: [HOST_UPDATE_SCRIPT, '/host-receiving.js'],
+        importScripts: [HOST_UPDATE_SCRIPT, '/host-receiving.js', '/host-notifications.js'],
         // The upgrade worker overrides these only for outdated shells;
         // matching-contract sessions still opt into an ordinary update.
         skipWaiting: false,

@@ -95,6 +95,7 @@ import { describeWireFrame } from './debug-wire-describe.js';
 import type { BlockingModalCoordinator } from './blocking-modal-queue.js';
 import { createRendererImageLoader, registerChatConnection } from './chat/service.js';
 import { showNotification } from './notification.js';
+import { registerProductNotificationTarget } from './notification-activation.js';
 import { ERRORS } from './errors.js';
 import { disposeAppRoot, disposeAppRoots } from './mount/app-roots.js';
 import { jamPeerTransportUnavailableMessage } from './jam-peer-browser-support.js';
@@ -1661,9 +1662,11 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
-      '; ',
-    );
+    const allow = [
+      await buildAllowAttribute(args.label, args.allowedOrigin),
+      ...(args.extraAllow ?? []),
+      'cross-origin-isolated',
+    ].join('; ');
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -2067,6 +2070,24 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
     stray.remove();
   }
   currentHost = host;
+  const product = currentProduct;
+  if (product?.mode === 'subdomain') {
+    const generation = renderGeneration;
+    const unregister = registerProductNotificationTarget(product.label, {
+      artifact: product.cid,
+      entryUrl: new URL('/', window.location.origin).href,
+      isActive: () => currentHost === host && renderGeneration === generation,
+      focus: () => {
+        window.focus();
+        host.iframe.contentWindow?.focus();
+      },
+    });
+    const dispose = host.dispose;
+    host.dispose = () => {
+      unregister();
+      dispose();
+    };
+  }
 }
 
 function newFlowId(prefix: string): string {

@@ -15,11 +15,13 @@ function setVisibility(state: 'visible' | 'hidden'): void {
 
 beforeEach(() => {
   setVisibility('visible');
+  vi.spyOn(document, 'hasFocus').mockReturnValue(true);
 });
 
 afterEach(() => {
   resetOverlays();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
   document.body.replaceChildren();
 });
 
@@ -48,7 +50,7 @@ describe('showNotification', () => {
     const items = toastsStore.get().items;
     expect(items.map(t => t.label)).toEqual(['Long']);
     expect(items[0]?.text).toHaveLength(200);
-    expect(items[0]?.deeplink).toBeUndefined();
+    expect(items[0]?.onActivate).toBeUndefined();
   });
 
   it('As a dotli user, a notification leaves after the default delay', () => {
@@ -64,30 +66,49 @@ describe('showNotification', () => {
     vi.useRealTimers();
   });
 
-  it('As a dotli user with the tab hidden, I also get a system notification when permission is granted', () => {
-    // Given
-    const created: { title: string; body: string | undefined }[] = [];
-    class FakeNotification {
-      static permission = 'granted';
-      static requestPermission = vi.fn();
-      onclick: (() => void) | null = null;
-      constructor(title: string, options?: { body?: string }) {
-        created.push({ title, body: options?.body });
+  it.each([
+    { visibility: 'visible', focused: true, system: false },
+    { visibility: 'visible', focused: false, system: true },
+    { visibility: 'hidden', focused: true, system: true },
+    { visibility: 'hidden', focused: false, system: true },
+  ] as const)(
+    'As a dotli user with visibility=$visibility and focused=$focused, system notification delivery is $system',
+    ({ visibility, focused, system }) => {
+      // Given
+      vi.useFakeTimers();
+      const created: { title: string; body: string | undefined }[] = [];
+      class FakeNotification {
+        static permission = 'granted';
+        static requestPermission = vi.fn();
+        onclick: (() => void) | null = null;
+        constructor(title: string, options?: { body?: string }) {
+          created.push({ title, body: options?.body });
+        }
+        close(): void {}
       }
-      close(): void {}
-    }
-    vi.stubGlobal('Notification', FakeNotification);
-    setVisibility('hidden');
+      vi.stubGlobal('Notification', FakeNotification);
+      setVisibility(visibility);
+      vi.mocked(document.hasFocus).mockReturnValue(focused);
 
-    // When
-    showNotification({ label: 'Ping', text: 'Background' });
-    showNotification({
-      label: 'Quiet',
-      text: 'No system one',
-      browserNotification: false,
-    });
+      try {
+        // When
+        showNotification({ label: 'Ping', text: 'Message' });
+        showNotification({
+          label: 'Quiet',
+          text: 'No system one',
+          browserNotification: false,
+        });
 
-    // Then
-    expect(created).toEqual([{ title: 'Ping', body: 'Background' }]);
-  });
+        // Then: both stay available in-page, regardless of system delivery.
+        expect(toastsStore.get().items.map(({ label, text }) => ({ label, text }))).toEqual([
+          { label: 'Ping', text: 'Message' },
+          { label: 'Quiet', text: 'No system one' },
+        ]);
+        expect(created).toEqual(system ? [{ title: 'Ping', body: 'Message' }] : []);
+      } finally {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+      }
+    },
+  );
 });
