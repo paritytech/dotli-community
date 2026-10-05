@@ -16,7 +16,6 @@ import {
   normalizedPointerDelta,
   installPageCacheRestoreReload,
   postFirstUiPlatformCommand,
-  matchingFileInputHandlers,
   polkavmWebFallbackEntrypoint,
   polkaVmCompatibilityError,
   validateFiles,
@@ -26,7 +25,6 @@ import {
   webGpuAdapterMeetsRequirements,
   waitForTruapiPort,
   type HostFrameResponseQueueOptions,
-  validatedFileInputHandlers,
   type TruapiPortScope,
   type TruapiPortTarget,
 } from './polkavm-runtime.js';
@@ -440,7 +438,6 @@ describe('PolkaVM package recognition', () => {
       inputFeatures: ['pointer', 'keyboard', 'wheel', 'motion'],
       audioEnabled: true,
       requiredAssets: ['game/doom.wad'],
-      fileInputHandlers: [],
       manifestVersion: null,
     });
   });
@@ -462,7 +459,6 @@ describe('PolkaVM package recognition', () => {
       inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: true,
       requiredAssets: [],
-      fileInputHandlers: [],
       manifestVersion: 2,
     });
     expect(() => describePolkaVmPackage(files)).toThrow(/external App manifest is required/);
@@ -495,71 +491,19 @@ describe('PolkaVM package recognition', () => {
     }
   });
 
-  it('routes registered files without inspecting their contents', () => {
-    const value = JSON.parse(doomAppV2Manifest()) as {
-      runtime: { entrypoint: string };
-      capabilities: Record<string, unknown>;
-    };
-    value.capabilities['fileInput'] = {
-      abiVersion: 1,
-      handlers: [
-        {
-          id: 'snes-rom',
-          label: 'SNES cartridge image',
-          extensions: ['.sfc', '.smc'],
-          maxBytes: 16 * 1024 * 1024,
-          mountPath: 'game/cartridge.sfc',
-        },
-      ],
-    };
-    const manifest = JSON.stringify(value);
+  it('validates a packaged app without manifest-declared file handlers or a user file', () => {
+    const manifest = webGpuRasterAppV2Manifest();
     const files = {
       'manifest.json': encoder.encode(manifest),
       'app.polkavm': new Uint8Array([1, 2, 3]),
-      'game/cartridge.sfc': new Uint8Array(32 * 1024),
+      'room/data.bin': new Uint8Array([4, 5, 6]),
     };
-    const handlers = describePolkaVmPackage(files, manifest)?.fileInputHandlers ?? [];
-    expect(handlers).toEqual([
-      {
-        id: 'snes-rom',
-        label: 'SNES cartridge image',
-        extensions: ['.sfc', '.smc'],
-        mediaTypes: [],
-        maxBytes: 16 * 1024 * 1024,
-        mountPath: 'game/cartridge.sfc',
-      },
-    ]);
-    expect(
-      matchingFileInputHandlers(handlers, {
-        name: 'Chrono.SFC',
-        size: 2 * 1024 * 1024,
-        type: '',
-      }),
-    ).toHaveLength(1);
-    expect(
-      matchingFileInputHandlers(handlers, {
-        name: 'game.nes',
-        size: 2 * 1024 * 1024,
-        type: '',
-      }),
-    ).toEqual([]);
-    expect(() =>
-      validatedFileInputHandlers(
-        {
-          abiVersion: 1,
-          handlers: [
-            {
-              id: 'escape',
-              label: 'Unsafe',
-              extensions: ['.sfc'],
-              maxBytes: 1024,
-              mountPath: '../cartridge.sfc',
-            },
-          ],
-        },
-        value.runtime.entrypoint,
-      ),
-    ).toThrow(/invalid fileInput handler/);
+    const descriptor = describePolkaVmPackage(files, manifest);
+    if (descriptor === null) {
+      throw new Error('Expected a packaged app');
+    }
+    expect(descriptor.requiredAssets).toEqual([]);
+    expect(validateFiles(files, descriptor)).toEqual(files['app.polkavm']);
   });
 
   it.each([false, true])('provides baseline input for a graphics-only app (device input declared: %s)', declared => {
@@ -667,7 +611,6 @@ describe('PolkaVM package recognition', () => {
       inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: false,
       requiredAssets: [],
-      fileInputHandlers: [],
       manifestVersion: 2,
     });
   });
@@ -694,7 +637,6 @@ describe('PolkaVM package recognition', () => {
       inputFeatures: ['pointer', 'keyboard', 'text', 'ime', 'focus', 'wheel'],
       audioEnabled: false,
       requiredAssets: [],
-      fileInputHandlers: [],
       manifestVersion: 2,
     });
   });
