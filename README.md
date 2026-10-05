@@ -168,11 +168,25 @@ focus loss, backgrounding, resizing, and disabling controls release all held vir
 keyboard/mouse input remains independent of virtual holds. The overlay respects safe-area insets and is absent on
 desktop-only devices and apps that do not request capture; ordinary apps continue receiving raw multi-touch records.
 
-An App may declare `capabilities.fileInput` ABI 1 with bounded handlers for file extensions or media types. The sandbox
-exposes **Open file** and drag/drop only after the runtime is ready, asks for explicit consent before reading the
-selected file, mounts the bytes at the handler's declared relative path, and restarts the guest in the same iframe. The
-file remains local to that product origin; it is not uploaded. Save storage is keyed by the mounted file digest so two
-cartridges do not share save data.
+Apps register file handlers at runtime through `host_file_register`; manifest declarations do not authorize file
+delivery. The sandbox follows the current execution's `file-registrations` and exposes **Open file** and drag/drop only
+when ready. Packaged content starts normally without selecting a file. A guest `file-input-request` opens the app menu;
+the user clicks **Open file** to supply the browser activation required for the native picker. The host asks for
+explicit consent and routes the file to that execution's current registration, not to another product or a stale
+handler.
+
+Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
+whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
+cleanup errors are recoverable and reported separately from fatal runtime errors. Stopping cancels pending selection,
+waits for the runtime's cleanup acknowledgement, and only then terminates its worker; an unresponsive worker is forcibly
+terminated after one second with an explicit warning that cache cleanup could not be confirmed. Browser process death or
+abrupt document destruction cannot guarantee a cleanup acknowledgement.
+
+Only a runtime `file-input-delivery` with outcome `relaunch` authorizes restarting with its session-only mount. Retry
+preserves that selection; **Return to launcher** restores the original package. Save storage remains isolated by product
+origin and, for mounted/relaunch content, the file digest, so different cartridges do not share save data. Stream/inline
+selection does not change the save namespace. Picker cancellation and released file streams do not cancel or invalidate
+an unrelated camera request.
 
 While a guest text field is active, native paste shortcuts (`Cmd+V`, `Ctrl+V`, `Ctrl+Shift+V`, or `Shift+Insert`, where
 supported by the browser) deliver plain text through bounded text-input records. They do not also invoke the guest's
@@ -189,11 +203,11 @@ top-level document's ephemeral storage partition; they are not durable across ho
 reuse the translation cache and the bounded compiled-module cache. WebAssembly compilation remains browser-owned. If
 translation or Wasm compilation fails, the same worker retries through the bounded interpreter.
 
-The current pin is the `0.3.2-rc.1` release candidate; this update retains the separately pinned TrUAPI host SDK.
-Synchronization verifies the package's complete checksum inventory, including its session API and type declarations, but
-serves only the host's selected runtime artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and
-`THIRD_PARTY_LICENSES.txt` alongside those artifacts; the consolidated attribution bundle replaces the older standalone
-PolkaVM license files.
+The current pin is the `0.3.2-rc.2` release candidate, including runtime-registered streamed file input and private
+caches; this update retains the separately pinned TrUAPI host SDK. Synchronization verifies the package's complete
+checksum inventory, including its session API and type declarations, but serves only the host's selected runtime
+artifacts. Preserve `LICENSE-MPL-2.0`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES.txt` alongside those
+artifacts; the consolidated attribution bundle replaces the older standalone PolkaVM license files.
 
 The Doom performance gate measures presented frames over 30 seconds against the guest's 35-tic/second cadence, with one
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
