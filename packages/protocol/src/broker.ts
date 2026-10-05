@@ -807,45 +807,21 @@ export class ChainBroker {
     const sharedFollow = this.upstreamFollowTokens.get(upstreamToken);
     if (sharedFollow) {
       const eventResult = message.params?.result;
-      const stopped = isJsonRpcObject(eventResult) && eventResult['event'] === 'stop';
-      // The followers as they are now. papi re-follows from inside the
-      // delivery of a `stop`, and that follow must not hear this event too.
-      const recipients = [...sharedFollow.localTokens];
-      if (stopped) {
-        // Retired before any session hears the `stop`, so a re-follow takes
-        // the fresh-follow path. Bound to the dead token, it would be replayed
-        // the stopped snapshot and stopped again, without end.
-        brokerLog(
-          `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
-        );
-        this.upstreamFollowTokens.delete(upstreamToken);
-        sharedFollow.upstreamToken = null;
-        sharedFollow.requestInFlight = false;
-        sharedFollow.finalizedBlockHashes = [];
-        sharedFollow.finalizedBlockRuntime = null;
-        sharedFollow.bestBlockHash = null;
-        sharedFollow.blocks.clear();
-        sharedFollow.localTokens.clear();
-      } else {
-        this.cacheSharedFollowEvent(sharedFollow, eventResult);
+      if (isJsonRpcObject(eventResult) && eventResult['event'] === 'stop') {
+        this.stopSharedFollow(sharedFollow, upstreamToken, message);
+        return;
       }
-      for (const localToken of recipients) {
+      this.cacheSharedFollowEvent(sharedFollow, eventResult);
+      for (const localToken of sharedFollow.localTokens) {
         const local = this.localFollowTokens.get(localToken);
         if (!local) {
           continue;
         }
         const session = this.sessions.get(local.sessionId);
-        if (stopped) {
-          // A stopped follow is over: the session never unfollows it.
-          this.localFollowTokens.delete(localToken);
-          session?.ownedTokens.delete(localToken);
-        }
         if (session?.connected !== true) {
           continue;
         }
-        if (!stopped) {
-          this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
-        }
+        this.registerPinsFromEvent(sharedFollow, localToken, eventResult);
         const eventType = isJsonRpcObject(eventResult)
           ? typeof eventResult['event'] === 'string'
             ? eventResult['event']
@@ -1127,6 +1103,34 @@ export class ChainBroker {
       method: request.method as string,
     });
     this.sendUpstream({ ...rewritten, id: upstreamId });
+  }
+
+  /**
+   * A `stop` ends the shared follow upstream. It is dropped, and its sessions'
+   * tokens released, before any session hears the `stop`. papi re-follows from
+   * inside that delivery, and bound to the dead follow it would be replayed the
+   * stopped snapshot and stopped again, without end.
+   */
+  private stopSharedFollow(sharedFollow: SharedFollow, upstreamToken: string, message: SubscriptionMessage): void {
+    brokerLog(
+      `Shared follow stopped by upstream; clearing for re-follow: key=${sharedFollow.key} token=${upstreamToken.slice(0, 12)}…`,
+    );
+    this.upstreamFollowTokens.delete(upstreamToken);
+    this.sharedFollows.delete(sharedFollow.key);
+    const recipients: { session: Session; localToken: string }[] = [];
+    for (const localToken of sharedFollow.localTokens) {
+      const session = this.sessions.get(this.localFollowTokens.get(localToken)?.sessionId ?? '');
+      // With the shared follow gone, this releases only the session's side:
+      // nothing goes upstream for a follow the node already ended.
+      this.releaseLocalFollowToken(localToken);
+      if (session?.connected === true) {
+        recipients.push({ session, localToken });
+      }
+    }
+    for (const { session, localToken } of recipients) {
+      brokerLog(`← subscription [${session.id}] event=stop method=${String(message.method)}`);
+      this.sendToSession(session, { ...message, params: { ...message.params, subscription: localToken } });
+    }
   }
 
   private releaseLocalFollowToken(localToken: string): void {
