@@ -298,8 +298,12 @@ describe('landing page', () => {
     // Then
     const recent = byId('dotli-recent');
     expect(recent.hidden).toBe(false);
-    expect(recent.children).toHaveLength(1);
-    expect(recent.children[0]?.getAttribute('data-testid')).toBe('landing-recent-list');
+    expect(recent.children).toHaveLength(2);
+    expect(recent.children[1]?.getAttribute('data-testid')).toBe('landing-recent-list');
+    const heading = recent.children[0];
+    expect(heading?.tagName).toBe('H2');
+    expect(heading?.textContent).toBe('Recent');
+    expect(recent.children[1]?.getAttribute('aria-labelledby')).toBe(heading?.id);
     expect(items().map(item => item.dataset['label'])).toEqual(['alpha', 'beta']);
     const pill = nth(items(), 0).querySelector<HTMLAnchorElement>('a[data-testid="landing-recent-pill"]');
     expect(pill?.getAttribute('href')).toBe('http://alpha.localhost:5173');
@@ -311,7 +315,7 @@ describe('landing page', () => {
     expect(remove?.getAttribute('type')).toBe('button');
     expect(remove?.getAttribute('aria-label')).toBe(`Remove alpha${SUFFIX} from recently visited`);
     expect(remove?.getAttribute('title')).toBe('Remove');
-    expect(remove?.querySelectorAll('svg line')).toHaveLength(2);
+    expect(remove?.querySelectorAll('svg path')).toHaveLength(2);
   });
 
   it('As a visitor with no recently visited names, no recents row shows', async () => {

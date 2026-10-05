@@ -1,6 +1,28 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
+/* The landing is always dark, whatever the theme preference, so its page
+   tokens live on the root: html and body show them too, under overscroll and
+   behind the scrollbar. */
+:global(:root:has(body[data-landing])) {
+  --page-bg: #0e0e10;
+  --page-panel: #161619;
+  --page-line: #2a2a30;
+  --page-text: #f4f4f5;
+  --page-muted: #b4b4bc;
+  --page-active: #232328;
+  --page-focus: #2f5bd3;
+  --page-hover: color-mix(in srgb, var(--page-text) 5%, transparent);
+  /* A red legible on the dark page, 7.6:1. */
+  --page-err: #ff8a8e;
+  background: var(--page-bg);
+  color-scheme: dark;
+}
+
+:global(body[data-landing]) {
+  background: var(--page-bg);
+}
+
 .landing {
   display: flex;
   flex-direction: column;
@@ -8,11 +30,11 @@
   box-sizing: border-box;
   min-height: 100dvh;
   margin: 0;
-  padding: calc(2rem + var(--safe-top)) calc(2rem + var(--safe-right)) calc(2rem + var(--safe-bottom))
-    calc(2rem + var(--safe-left));
-  background: var(--bg-page);
-  color: var(--text);
-  font-family: system-ui, sans-serif;
+  padding: calc(32px + var(--safe-top)) calc(32px + var(--safe-right)) calc(32px + var(--safe-bottom))
+    calc(32px + var(--safe-left));
+  background: var(--page-bg);
+  color: var(--page-text);
+  font-family: var(--font-sans);
 }
 
 /* The landing route hides the topbar, so these buttons are the ones that would
@@ -22,11 +44,29 @@
   top: calc(16px + var(--safe-top));
   right: calc(16px + var(--safe-right));
   display: flex;
-  gap: 8px;
+  gap: var(--sp-1);
   align-items: center;
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+}
+
+/* The bar's round buttons, drawn in the page's colours instead of the
+   chrome's. The signed-in chip is a Button (data-variant), left as it is. */
+.corner button:not([data-variant]) {
+  background: transparent;
+  box-shadow: none;
+  color: var(--page-text);
+}
+.corner button:not([data-variant]):hover {
+  background: var(--page-hover);
+  color: var(--page-text);
+}
+.corner button:not([data-variant]):active,
+.corner button:not([data-variant])[aria-expanded='true'] {
+  background: var(--page-active);
+  box-shadow: none;
+  color: var(--page-text);
 }
 
 .center {
@@ -35,39 +75,52 @@
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  width: 100%;
   margin: 0;
   padding: 0;
 }
 
 .content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   box-sizing: border-box;
-  max-width: 520px;
+  width: 100%;
+  max-width: 440px;
   margin: 0;
   padding: 0;
   text-align: center;
 }
 
 .logo {
+  display: flex;
   box-sizing: border-box;
-  margin: 0 0 1.2rem;
+  margin: 0;
   padding: 0;
 }
 
 .title {
-  margin: 0 0 0.5rem;
+  margin: var(--sp-6) 0 0;
   padding: 0;
-  font-size: 2.8rem;
+  font-size: var(--fs-display);
   font-weight: 700;
-  letter-spacing: -0.03em;
-  color: var(--text-strong);
+  letter-spacing: var(--ls-display);
+  line-height: var(--lh-tight);
 }
 
 .subtitle {
-  margin: 0 0 1.5rem;
+  margin: var(--sp-2) 0 0;
   padding: 0;
-  font-size: 1.05rem;
-  line-height: 1.7;
-  color: var(--neutral-solid);
+  font-size: var(--fs-title-lg);
+  line-height: var(--lh-body);
+  color: var(--page-muted);
+}
+
+@media (max-width: 560px) {
+  .landing {
+    padding-right: calc(16px + var(--safe-right));
+    padding-left: calc(16px + var(--safe-left));
+  }
 }
 
 /* The bar is hidden on this page, so the menus that drop from the corner's

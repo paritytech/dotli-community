@@ -92,7 +92,10 @@ export function RecentPills(): JSX.Element {
       hidden={labels().length === 0}
     >
       <Show when={labels().length > 0}>
-        <div class={s['list']} data-testid="landing-recent-list">
+        <h2 id="dotli-recent-label" class={s['heading']}>
+          Recent
+        </h2>
+        <div class={s['list']} role="group" aria-labelledby="dotli-recent-label" data-testid="landing-recent-list">
           <For each={labels()}>
             {label => (
               <span
@@ -127,17 +130,18 @@ export function RecentPills(): JSX.Element {
                   }}
                 >
                   <svg
-                    class={s['removeIcon']}
-                    width="8"
-                    height="8"
+                    width="10"
+                    height="10"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
-                    stroke-width="3"
+                    stroke-width="2.5"
                     stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
                   >
-                    <line x1="5" y1="5" x2="19" y2="19" />
-                    <line x1="19" y1="5" x2="5" y2="19" />
+                    <path d="M18 6 6 18" />
+                    <path d="m6 6 12 12" />
                   </svg>
                 </button>
               </span>
