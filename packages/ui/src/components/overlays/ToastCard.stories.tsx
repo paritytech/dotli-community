@@ -22,7 +22,7 @@ const toast = (over: Partial<ToastEntry>): ToastEntry => ({
 });
 
 const meta = {
-  title: 'Overlays/ToastCard',
+  title: 'Primitives/ToastCard',
   component: ToastCard,
   args: { entry: toast({}), hidden: false, depth: 0, expanded: false, single: true },
 } satisfies Meta<typeof ToastCard>;

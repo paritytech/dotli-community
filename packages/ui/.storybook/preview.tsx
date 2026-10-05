@@ -24,6 +24,8 @@ const preview: Preview = {
   initialGlobals: { theme: 'dark' },
   parameters: {
     layout: 'padded',
+    // The building blocks first, then what the app's domain composes from them.
+    options: { storySort: { order: ['Primitives', 'Entities', '*'] } },
     // The addon's default, 'todo', only warns, so a violation would pass CI.
     a11y: { test: 'error' },
     viewport: {

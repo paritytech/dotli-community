@@ -12,7 +12,7 @@ const BELL =
 const toast = (text: string): ToastInput => ({ text, label: 'playground.dot', icon: BELL, dismissMs: 0 });
 
 const meta = {
-  title: 'Overlays/ToastStack',
+  title: 'Primitives/ToastStack',
   component: ToastStack,
   // Own docs iframes, so each stack is fixed in its own frame and fills its own store.
   parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '320px' } } },

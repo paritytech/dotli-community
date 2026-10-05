@@ -6,7 +6,7 @@ import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
 import { PERMISSION_ICONS } from '../../permission-modal.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
-import { PromptDialog } from '../entities/PromptDialog.js';
+import { PromptDialog } from './PromptDialog.js';
 
 // Ids outside the store, so a pressed button settles nothing.
 let nextId = 1000;
@@ -18,7 +18,7 @@ const LOCK_SVG =
   '<path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
 
 const meta = {
-  title: 'Overlays/SigningDialog',
+  title: 'Entities/PromptDialog',
   component: PromptDialog,
   // Own docs iframes, since each fixed dialog takes the focus and keys of the page it is on.
   parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '640px' } } },
@@ -52,9 +52,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Permission: Story = {};
+export const PermissionRequest: Story = {};
 
-export const Password: Story = {
+export const PasswordPrompt: Story = {
   args: {
     entry: entry({
       icon: LOCK_SVG,
@@ -80,7 +80,7 @@ export const Password: Story = {
   },
 };
 
-export const PasswordError: Story = {
+export const WrongPassword: Story = {
   args: {
     entry: entry({
       icon: LOCK_SVG,
@@ -102,7 +102,7 @@ export const PasswordError: Story = {
   },
 };
 
-export const Preimage: Story = {
+export const PreimageSubmit: Story = {
   args: {
     entry: entry({
       icon: PERMISSION_ICONS.PreimageSubmit,
@@ -140,7 +140,7 @@ export const SignTransaction: Story = {
   },
 };
 
-export const SignRaw: Story = {
+export const SignMessage: Story = {
   args: {
     entry: entry({
       title: 'Sign Message',

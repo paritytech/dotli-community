@@ -4,18 +4,24 @@
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect, fn, waitFor } from 'storybook/test';
 import { isPhoneViewport } from '../../phone-viewport.js';
-import { Button } from '../primitives/Button.js';
-import { Dialog } from '../primitives/Dialog.js';
+import { Button } from './Button.js';
+import { Dialog, DialogActions, DialogBody, DialogHead } from './Dialog.js';
+import { Callout } from './Well.js';
+
+const TRASH_SVG =
+  '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+  '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>' +
+  '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
 
 const meta = {
-  title: 'Overlays/Dialog',
+  title: 'Primitives/Dialog',
   component: Dialog,
   // Own docs iframes: a fixed dialog over the docs page would take its focus
   // and keys, and the Light story would turn the whole page light.
   parameters: { layout: 'fullscreen', docs: { story: { inline: false, height: '420px' } } },
   args: {
     titleId: 'story-dialog-title',
-    title: 'Permission Request',
+    title: 'Clear site data',
     testId: 'story-dialog',
     onDismiss: fn(),
     onClose: fn(),
@@ -29,10 +35,18 @@ const meta = {
       onDismiss={args.onDismiss}
       onClose={args.onClose}
     >
-      <h2 id={args.titleId}>Permission Request</h2>
-      <p>playground.dot wants to use your camera.</p>
-      <Button variant="danger">Deny</Button>
-      <Button variant="primary">Allow</Button>
+      <DialogHead titleId={args.titleId} title={args.title} icon={TRASH_SVG} />
+      <DialogBody>
+        <Callout>The site forgets its settings and signs you out.</Callout>
+      </DialogBody>
+      <DialogActions>
+        <Button variant="secondary" block>
+          Cancel
+        </Button>
+        <Button variant="danger" block>
+          Clear
+        </Button>
+      </DialogActions>
     </Dialog>
   ),
 } satisfies Meta<typeof Dialog>;
@@ -42,19 +56,19 @@ type Story = StoryObj<typeof meta>;
 
 export const Desktop: Story = {
   play: async ({ args, canvas, userEvent, step }) => {
-    const dialog = canvas.getByRole('dialog', { name: 'Permission Request' });
+    const dialog = canvas.getByRole('dialog', { name: 'Clear site data' });
     await step('Given focus starts inside the dialog', async () => {
       await expect(dialog.contains(document.activeElement)).toBe(true);
     });
     await step('When I Tab through both buttons and once more', async () => {
       await userEvent.tab();
-      await expect(canvas.getByRole('button', { name: 'Deny' })).toHaveFocus();
+      await expect(canvas.getByRole('button', { name: 'Cancel' })).toHaveFocus();
       await userEvent.tab();
-      await expect(canvas.getByRole('button', { name: 'Allow' })).toHaveFocus();
+      await expect(canvas.getByRole('button', { name: 'Clear' })).toHaveFocus();
       await userEvent.tab();
     });
     await step('Then focus wrapped to the first button', async () => {
-      await expect(canvas.getByRole('button', { name: 'Deny' })).toHaveFocus();
+      await expect(canvas.getByRole('button', { name: 'Cancel' })).toHaveFocus();
     });
     await step('When I press Escape', async () => {
       await userEvent.keyboard('{Escape}');
