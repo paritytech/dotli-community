@@ -17,7 +17,7 @@ const meta = {
   title: 'Primitives/Dialog',
   component: Dialog,
   // Own docs iframes: a fixed dialog over the docs page would take its focus
-  // and keys, and the Light story would turn the whole page light.
+  // and keys.
   parameters: { docs: { story: { inline: false, height: '420px' } } },
   args: {
     titleId: 'story-dialog-title',
@@ -99,5 +99,3 @@ export const Phone: Story = {
     });
   },
 };
-
-export const Light: Story = { globals: { theme: 'light' } };

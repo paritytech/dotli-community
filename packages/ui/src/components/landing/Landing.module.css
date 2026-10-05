@@ -1,8 +1,9 @@
 /* Copyright 2026 Parity Technologies (UK) Ltd. */
 /* SPDX-License-Identifier: AGPL-3.0-only */
 
-/* The landing is always dark, whatever the theme preference: global.css
-   keeps the light palette off while it shows. */
+/* Native scrollbars and form controls match the dark page. Only here: on a
+   product page the host's colour scheme would change how the browser paints
+   the product frame's backdrop. */
 :global(:root:has(body[data-landing])) {
   color-scheme: dark;
 }

@@ -1,7 +1,7 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createRenderEffect, merge } from 'solid-js';
+import { merge } from 'solid-js';
 import { createJSXDecorator, type Preview } from 'storybook-solidjs-vite';
 import { themes } from 'storybook/theming';
 import '../src/global.css';
@@ -9,21 +9,6 @@ import s from './preview.module.css';
 
 const preview: Preview = {
   tags: ['autodocs'],
-  globalTypes: {
-    theme: {
-      description: 'Colour theme',
-      toolbar: {
-        title: 'Theme',
-        icon: 'mirror',
-        items: [
-          { value: 'dark', title: 'Dark' },
-          { value: 'light', title: 'Light' },
-        ],
-        dynamicTitle: true,
-      },
-    },
-  },
-  initialGlobals: { theme: 'dark' },
   parameters: {
     // The decorator's wrapper pads every story, so docs blocks get the page too.
     layout: 'fullscreen',
@@ -53,19 +38,9 @@ const preview: Preview = {
     return <Component {...props} />;
   },
   decorators: [
-    // A plain decorator re-runs on every globals change, and a globals read
-    // in its body makes the framework's story memo re-run it too, after which
-    // the framework declines to render the story twice and the canvas
-    // empties. So this one runs once per mount and reads the theme only in
-    // its own effect.
-    createJSXDecorator((Story, context) => {
-      createRenderEffect(
-        () => (context.globals['theme'] === 'light' ? 'light' : 'dark'),
-        theme => {
-          // As theme-controller.ts does, on <html> for both themes.
-          document.documentElement.setAttribute('data-theme', theme);
-        },
-      );
+    // Once per mount: the framework's story memo declines to render a story
+    // twice, so a decorator it re-runs on a globals change empties the canvas.
+    createJSXDecorator(Story => {
       document.body.style.background = 'var(--bg-page)';
       return (
         <div class={s['root']} data-chrome="" data-testid="story-root">
