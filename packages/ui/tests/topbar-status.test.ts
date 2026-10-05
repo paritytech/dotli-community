@@ -88,6 +88,10 @@ describe('bindTopbarStatus', () => {
     vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1440);
     const bar = document.createElement('header');
     const rect = vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(340, 12, 760, 60));
+    // The bar's own transitions, running while it morphs.
+    vi.spyOn(bar, 'getAnimations').mockImplementation(
+      () => [{ transitionProperty: 'width' }] as unknown as Animation[],
+    );
     unbind = bindTopbarStatus(bar);
 
     // When: the bar folds, a frame of its morph, then the capsule at rest
@@ -117,6 +121,45 @@ describe('bindTopbarStatus', () => {
     // Then
     expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('300px');
     expect(document.documentElement.style.getPropertyValue('--topbar-bottom')).toBe('72px');
+  });
+
+  it('As a popover dropping from the pill, I still read its box when a morph ended without its event', () => {
+    // Given: a fold that started and was dropped without a transitionend or transitioncancel
+    vi.spyOn(document.documentElement, 'clientWidth', 'get').mockReturnValue(1440);
+    const bar = document.createElement('header');
+    const rect = vi.spyOn(bar, 'getBoundingClientRect').mockReturnValue(new DOMRect(340, 12, 760, 60));
+    vi.spyOn(bar, 'getAnimations').mockReturnValue([]);
+    unbind = bindTopbarStatus(bar);
+    bar.dispatchEvent(new Event('transitionrun'));
+
+    // When: the window resizes with the bar at rest
+    rect.mockReturnValue(new DOMRect(300, 12, 840, 60));
+    window.dispatchEvent(new Event('resize'));
+
+    // Then
+    expect(document.documentElement.style.getPropertyValue('--topbar-inline-end')).toBe('300px');
+  });
+
+  it('As a screen reader user, I hear when I go offline, and the line clears when I am back', () => {
+    // Given
+    const bar = document.createElement('header');
+    bar.innerHTML = '<span id="topbar-offline" role="status"></span>';
+    unbind = bindTopbarStatus(bar);
+    const status = bar.querySelector('#topbar-offline');
+
+    // When
+    const onLine = vi.spyOn(navigator, 'onLine', 'get').mockReturnValue(false);
+    window.dispatchEvent(new Event('offline'));
+
+    // Then
+    expect(status?.textContent).toBe('You are offline');
+
+    // When
+    onLine.mockReturnValue(true);
+    window.dispatchEvent(new Event('online'));
+
+    // Then
+    expect(status?.textContent).toBe('');
   });
 
   it('As the page, an unchanged pill box leaves the root style alone', () => {

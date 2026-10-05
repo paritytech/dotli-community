@@ -19,6 +19,26 @@ import { needsAction } from './state/topbar-signals.js';
 // folding, so none drops from a morphing bar.
 let morphs = 0;
 const morphEnds = new Set<() => void>();
+/** The bound bar, whose own transitions say whether a morph still runs. */
+let morphBar: HTMLElement | null = null;
+
+/**
+ * Whether the bar is mid-morph. The count alone could stick: an engine may
+ * drop a transition without its end or cancel event, and a stuck count would
+ * freeze the published box and the action group's room for good. So a count
+ * with none of the bar's own transitions running is cleared.
+ */
+function morphing(): boolean {
+  if (
+    morphs > 0 &&
+    morphBar !== null &&
+    typeof morphBar.getAnimations === 'function' &&
+    !morphBar.getAnimations().some(animation => 'transitionProperty' in animation)
+  ) {
+    morphs = 0;
+  }
+  return morphs > 0;
+}
 
 /** The bar's fold and reveal morph, for what is laid out against its box. */
 export interface TopbarMorph {
@@ -28,7 +48,7 @@ export interface TopbarMorph {
 }
 
 export const topbarMorph: TopbarMorph = {
-  running: () => morphs > 0,
+  running: morphing,
   onEnd: listener => {
     morphEnds.add(listener);
     return () => {
@@ -42,9 +62,16 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
   // it starts the health's online and offline listening itself. Shared and
   // idempotent, so unbinding the bar leaves it running.
   initNetworkHealth();
+  morphBar = bar;
+  // The capsule's colour is not announced, so going offline is said in words.
+  const offline = bar.querySelector('#topbar-offline');
   const render = (): void => {
     bar.dataset['tone'] = networkHealthStore.get();
     bar.toggleAttribute('data-action', needsAction(topbarStore.get(), totalChatUnread(chatPanelStore.get())));
+    const words = navigator.onLine ? '' : 'You are offline';
+    if (offline !== null && offline.textContent !== words) {
+      offline.textContent = words;
+    }
   };
   const root = document.documentElement;
   // As last written, so an unchanged box leaves the root's style alone.
@@ -54,7 +81,7 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
   const place = (): void => {
     // Folded, the bar is not where a surface drops from, and the box it
     // published open is the one it reveals to.
-    if (morphs > 0 || bar.hasAttribute('data-hidden')) {
+    if (morphing() || bar.hasAttribute('data-hidden')) {
       return;
     }
     const box = bar.getBoundingClientRect();
@@ -106,6 +133,8 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(place);
   observer?.observe(bar);
   window.addEventListener('resize', place);
+  window.addEventListener('online', render);
+  window.addEventListener('offline', render);
   bar.addEventListener('transitionrun', onMorphRun);
   bar.addEventListener('transitionend', onMorphEnd);
   bar.addEventListener('transitioncancel', onMorphEnd);
@@ -115,10 +144,15 @@ export function bindTopbarStatus(bar: HTMLElement): () => void {
     offChat();
     observer?.disconnect();
     window.removeEventListener('resize', place);
+    window.removeEventListener('online', render);
+    window.removeEventListener('offline', render);
     bar.removeEventListener('transitionrun', onMorphRun);
     bar.removeEventListener('transitionend', onMorphEnd);
     bar.removeEventListener('transitioncancel', onMorphEnd);
     morphs = 0;
+    if (morphBar === bar) {
+      morphBar = null;
+    }
   };
 }
 

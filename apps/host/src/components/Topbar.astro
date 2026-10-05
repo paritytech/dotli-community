@@ -35,6 +35,8 @@ import s from './Topbar.module.css';
     <UrlPill />
     <TopbarActions client:load />
   </div>
+  {/* Says "You are offline" (bindTopbarStatus), which the capsule only shows. */}
+  <span id="topbar-offline" class={s['offline']} role="status"></span>
 </header>
 
 <script>
