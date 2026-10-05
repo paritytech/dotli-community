@@ -20,14 +20,44 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+const showOne = () => {
+  resetToastsForTests();
+  pushToast(toast('Your transfer is in a block'));
+  return resetToastsForTests;
+};
+
+const showThree = () => {
+  resetToastsForTests();
+  pushToast(toast('Account connected'));
+  pushToast(toast('Your transfer is in a block'));
+  pushToast(toast('Transfer finalized'));
+  return resetToastsForTests;
+};
+
 export const OneToast: Story = {
-  beforeEach: () => {
-    resetToastsForTests();
-    pushToast(toast('Your transfer is in a block'));
-    return resetToastsForTests;
+  beforeEach: showOne,
+  play: async ({ canvas, step }) => {
+    await step('Then exactly one toast shows', async () => {
+      await expect(canvas.getAllByTestId('notif-card')).toHaveLength(1);
+    });
   },
+};
+
+export const ThreeToasts: Story = {
+  beforeEach: showThree,
+  play: async ({ canvas, step }) => {
+    await step('Then three toasts are stacked', async () => {
+      await expect(canvas.getAllByTestId('notif-card')).toHaveLength(3);
+    });
+  },
+};
+
+// Plays run in the workshop too, so the dismissals get stories of their own
+// and the stacks above stay on screen.
+export const DismissOne: Story = {
+  beforeEach: showOne,
   play: async ({ canvas, userEvent, step }) => {
-    await step('Given exactly one toast shows', async () => {
+    await step('Given one toast shows', async () => {
       await expect(canvas.getAllByTestId('notif-card')).toHaveLength(1);
     });
     await step('When I dismiss it', async () => {
@@ -39,14 +69,8 @@ export const OneToast: Story = {
   },
 };
 
-export const ThreeToasts: Story = {
-  beforeEach: () => {
-    resetToastsForTests();
-    pushToast(toast('Account connected'));
-    pushToast(toast('Your transfer is in a block'));
-    pushToast(toast('Transfer finalized'));
-    return resetToastsForTests;
-  },
+export const DismissAll: Story = {
+  beforeEach: showThree,
   play: async ({ canvas, userEvent, step }) => {
     await step('Given three toasts are stacked', async () => {
       await expect(canvas.getAllByTestId('notif-card')).toHaveLength(3);
