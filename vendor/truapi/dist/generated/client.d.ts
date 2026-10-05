@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 3;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "7cf5d7f894407ead";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "8f2f391be2e3cbfa";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -338,6 +338,18 @@ export declare class NotificationsClient {
     receiverEvents(request: T.HostNotificationReceiverEventsRequest, options?: CallOptions): ResultAsync<Array<T.ReceivingEvent>, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
     /** Acknowledge an event after application handling. */
     acknowledgeReceiverEvent(request: T.HostNotificationAcknowledgeReceiverEventRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostNotificationReceivingError>>;
+    /**
+     * Retrieve up to 32 pending activations for this runtime's authenticated
+     * product, account and environment. Retrieval does not consume events,
+     * prompt for permissions or enroll a background receiver.
+     */
+    activationEvents(options?: CallOptions): ResultAsync<T.NotificationActivations, S.CallErrorValue<T.VersionedNotificationActivationEventsError>>;
+    /**
+     * Acknowledge exactly one activation after the product router handles it.
+     * Unknown or already acknowledged sequences are idempotent, and can never
+     * remove an activation from another product, account or environment.
+     */
+    acknowledgeActivation(request: T.NotificationActivationAcknowledgeRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedNotificationActivationAcknowledgeError>>;
 }
 /** Payment request and balance/status subscription methods. */
 export declare class PaymentClient {

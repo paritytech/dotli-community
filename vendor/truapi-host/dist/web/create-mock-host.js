@@ -633,6 +633,12 @@ export function createMockHost(config = {}) {
             async receiverConsent() { throw new Error("background receiving unsupported"); },
             async receiverChanged() { throw new Error("background receiving unsupported"); },
             async receiverCommand() { return undefined; },
+            async activationEvents() {
+                throw new Error("notification activation is unsupported");
+            },
+            async acknowledgeActivation() {
+                throw new Error("notification activation is unsupported");
+            },
         },
         permissions: {
             async devicePermission(_product, request) {

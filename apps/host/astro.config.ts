@@ -25,6 +25,7 @@ import { SANDBOX_SCHEMA_VERSION } from '../../packages/config/src/host-sandbox-v
 import { stripAnalytics } from '@dotli/metrics/vite';
 import { handleNodeIdentityProxy, IDENTITY_PROXY_PREFIX } from '../../scripts/identity-proxy.ts';
 import { receivingWorker } from './receiving-build.ts';
+import { notificationWorker } from './notification-build.js';
 
 // vite-plugin-wasm types its ESM entry with CommonJS-style declarations, so
 // NodeNext sees the module object. At runtime the default export is the plugin.
@@ -323,6 +324,8 @@ export default defineConfig({
     hostUpdateWorker(),
     // Emits the classic receiver and matching WASM before Workbox precaching.
     receivingWorker(),
+    // Build the classic notification handler before Workbox imports it.
+    notificationWorker(),
     // Host shell PWA. Scope-locked to the host origin (myapp.dot.li). The
     // protocol iframe on host.dot.li and the app iframe on *.app.dot.li are
     // cross-origin and outside this SW's reach by design. Compatible host
@@ -356,14 +359,16 @@ export default defineConfig({
         // The TrUAPI core loads its ring-VRF module (~4.6 MB) only when a
         // ring-VRF operation first needs it. Precaching it would make every
         // installed shell download it after each release.
+        // Imported service-worker code must bypass the shell precache.
         globIgnores: [
           '**/truapi_provider_bg*.wasm',
           '**/truapi_verifiable_bg*.wasm',
           '**/host-update-*.js',
           'host-receiving.js',
+          'host-notifications.js',
         ],
         cleanupOutdatedCaches: true,
-        importScripts: [HOST_UPDATE_SCRIPT, '/host-receiving.js'],
+        importScripts: [HOST_UPDATE_SCRIPT, '/host-receiving.js', '/host-notifications.js'],
         // The upgrade worker overrides these only for outdated shells;
         // matching-contract sessions still opt into an ordinary update.
         skipWaiting: false,

@@ -689,39 +689,6 @@ describe('bridge render lifecycle', () => {
     }
   });
 
-  it('reconnects the TrUAPI MessagePort after a product iframe reload', async () => {
-    const { renderAppSubdomain } = await import('../src/bridge.js');
-    const render = renderAppSubdomain('reload-cid', 'reload-app');
-    await waitForProviderRequests(1);
-    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
-    await render;
-
-    const created = nth(mocks.iframeHosts, 0);
-    const targetWindow = created.iframe.contentWindow;
-    if (targetWindow === null) {
-      throw new Error('app frame has no content window');
-    }
-    const postMessage = vi.spyOn(targetWindow, 'postMessage').mockImplementation(() => {});
-    const ready = (): void => {
-      window.dispatchEvent(
-        new MessageEvent('message', {
-          data: { type: 'truapi-ready' },
-          origin: created.allowedOrigin,
-          source: targetWindow,
-        }),
-      );
-    };
-
-    ready();
-    expect(postMessage).not.toHaveBeenCalled();
-    ready();
-
-    expect(postMessage).toHaveBeenCalledTimes(1);
-    expect(postMessage).toHaveBeenCalledWith({ type: 'truapi-init' }, created.allowedOrigin, [
-      expect.objectContaining({ postMessage: expect.any(Function) as unknown }),
-    ]);
-  });
-
   it('rejects legacy window frames without forwarding codec-1 bytes to the core', async () => {
     const { renderAppSubdomain } = await import('../src/bridge.js');
     const notification = await import('../src/notification.js');

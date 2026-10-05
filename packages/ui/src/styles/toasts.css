@@ -125,10 +125,15 @@
   color: #666;
   margin-top: 1px;
 }
-a.notif-body {
-  text-decoration: none;
+button.notif-body {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-a.notif-body:hover {
+button.notif-body:hover {
   text-decoration: underline;
 }
 

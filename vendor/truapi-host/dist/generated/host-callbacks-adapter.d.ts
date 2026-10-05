@@ -42,6 +42,8 @@ export interface RawCallbacks {
     receiverConsent?(authority: Uint8Array, watches: Uint8Array): Promise<boolean>;
     receiverChanged?(): Promise<void>;
     receiverCommand?(productId: string, action: number, payload: Uint8Array): Promise<Uint8Array | null | undefined>;
+    activationEvents?(): Promise<Uint8Array>;
+    acknowledgeActivation?(request: Uint8Array): Promise<void>;
     devicePermissionStatus?(request: Uint8Array): Promise<Uint8Array>;
     devicePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;
     remotePermission(product: Uint8Array, request: Uint8Array): Promise<Uint8Array>;

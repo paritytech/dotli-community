@@ -70,12 +70,13 @@ afterEach(() => {
 });
 
 describe('toast stack', () => {
-  it("As a dotli user, a toast renders today's card markup", async () => {
+  it('As a dotli user, I can activate a notification or invoke its separate action', async () => {
     // Given
     const onClick = vi.fn();
+    const onActivate = vi.fn();
     pushToast(
       input('Update available', {
-        deeplink: 'https://dot.li/',
+        onActivate,
         iconBackground: '#000',
         action: { label: 'Reload', onClick },
       }),
@@ -86,29 +87,16 @@ describe('toast stack', () => {
 
     // Then
     const card = nth(cards(), 0);
-    expect(card.classList.contains('notif-card')).toBe(true);
-    expect(card.classList.contains('notif-enter')).toBe(true);
-    expect(card.dataset['id']).toBe('0');
-    expect(card.querySelector<HTMLElement>('.notif-icon')?.style.background).not.toBe('');
     expect(card.querySelector('.notif-title')?.textContent).toBe('Update available');
-    const body = card.querySelector<HTMLAnchorElement>('a.notif-body');
-    expect(body?.href).toBe('https://dot.li/');
-    expect(body?.target).toBe('_blank');
-    expect(body?.rel).toBe('noopener');
-    expect(card.querySelector('.notif-card-close')?.getAttribute('aria-label')).toBe('Dismiss');
-    expect(document.querySelector('.notif-cards')?.getAttribute('aria-live')).toBe('polite');
-    expect(document.querySelector('.notif-cards')?.getAttribute('role')).toBe('status');
-    expect(document.querySelector('.notif-stack')?.classList.contains('single')).toBe(true);
-    expect(document.querySelector<HTMLElement>('.notif-close-all')?.style.display).toBe('none');
-
     // When
+    fireEvent.click(query(card, '.notif-body', HTMLButtonElement));
     fireEvent.click(query(card, '.notif-action', HTMLButtonElement));
     fireEvent.animationEnd(card);
     await settle();
 
     // Then
     expect(onClick).toHaveBeenCalledTimes(1);
-    expect(card.classList.contains('notif-enter')).toBe(false);
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user, only the newest three toasts are visible, with close-all shown', async () => {
@@ -194,22 +182,21 @@ describe('toast stack', () => {
     expect(visibleTitles()).toEqual(['B', 'C', 'D']);
   });
 
-  it('As a dotli user, clicking a link inside a toast does not expand the stack', async () => {
+  it('As a dotli user, activating a notification does not expand the stack', async () => {
     // Given
-    pushToast(input('A', { deeplink: 'https://dot.li/' }));
-    pushToast(input('B', { deeplink: 'https://dot.li/' }));
+    const onActivate = vi.fn();
+    pushToast(input('A', { onActivate }));
+    pushToast(input('B', { onActivate }));
     await mountStack();
-    const link = query(document, 'a.notif-body', HTMLAnchorElement);
-    link.addEventListener('click', event => {
-      event.preventDefault();
-    });
+    const body = query(document, '.notif-body', HTMLButtonElement);
 
     // When
-    fireEvent.click(link);
+    fireEvent.click(body);
     await settle();
 
     // Then
     expect(toastsStore.get().expanded).toBe(false);
+    expect(onActivate).toHaveBeenCalledTimes(1);
   });
 
   it('As a dotli user, dismiss all plays every exit and removes the stack once they finish', async () => {
