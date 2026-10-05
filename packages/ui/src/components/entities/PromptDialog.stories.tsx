@@ -4,7 +4,7 @@
 import { snapshot, untrack } from 'solid-js';
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
 import { expect } from 'storybook/test';
-import { PERMISSION_ICONS } from '../../permission-modal.js';
+import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
 import type { ModalEntry, ModalView } from '../../state/modals.js';
 import { PromptDialog } from './PromptDialog.js';
 
@@ -24,7 +24,7 @@ const meta = {
   parameters: { docs: { story: { inline: false, height: '640px' } } },
   args: {
     entry: entry({
-      icon: PERMISSION_ICONS.Camera,
+      icon: iconMarkup(PERMISSION_ICONS.Camera),
       title: 'Permission Request',
       fields: [
         { label: 'Application', value: 'playground.dot' },
@@ -105,7 +105,7 @@ export const WrongPassword: Story = {
 export const PreimageSubmit: Story = {
   args: {
     entry: entry({
-      icon: PERMISSION_ICONS.PreimageSubmit,
+      icon: iconMarkup(PERMISSION_ICONS.PreimageSubmit),
       title: 'Submit Preimage',
       fields: [{ label: 'Data size', value: '12 KB' }],
       buttons: [

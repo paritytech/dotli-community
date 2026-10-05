@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { Meta, StoryObj } from 'storybook-solidjs-vite';
-import { PERMISSION_ICONS } from '../../permission-modal.js';
+import { iconMarkup, PERMISSION_ICONS } from '../../permission-icons.js';
 import { IconTile } from './IconTile.js';
 
 const meta = { title: 'Primitives/IconTile', component: IconTile } satisfies Meta<typeof IconTile>;
@@ -11,7 +11,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 // The tile as the permission prompt fills it, from the app's own icon set.
-export const Markup: Story = { args: { markup: PERMISSION_ICONS.Camera } };
+export const Markup: Story = { args: { markup: iconMarkup(PERMISSION_ICONS.Camera) } };
 export const Children: Story = {
   render: args => (
     <IconTile {...args}>

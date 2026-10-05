@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { PERMISSION_ICONS } from '../src/permission-icons.js';
 import { showPreimageSubmitModal } from '../src/preimage-modal.js';
 import { ERRORS } from '../src/errors.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -21,7 +22,7 @@ describe('preimage submit modal', () => {
     // Then
     expect(query(byTestId('signing-modal'), 'h2').textContent).toBe('Submit Preimage');
     expect(
-      byTestId('permission-modal-icon').querySelector('path[d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"]'),
+      byTestId('permission-modal-icon').querySelector(`path[d="${PERMISSION_ICONS.PreimageSubmit}"]`),
     ).not.toBeNull();
     expect(byTestId('signing-field-label').textContent).toBe('Data size');
     expect(byTestId('signing-field-value').textContent).toBe('2 KB');

@@ -11,7 +11,7 @@
 
 import { ERRORS } from './errors.js';
 import { presentModal } from './overlays/load.js';
-import { PERMISSION_ICONS } from './permission-modal.js';
+import { iconMarkup, PERMISSION_ICONS } from './permission-icons.js';
 
 function formatSize(bytes: number): string {
   return bytes >= 1024 ? `${String(Math.round(bytes / 1024))} KB` : `${String(bytes)} B`;
@@ -21,7 +21,7 @@ export async function showPreimageSubmitModal(dataSize: number, signal?: AbortSi
   const { result } = await presentModal<'cancel' | 'allow'>(
     {
       // The same upload glyph as the PreimageSubmit permission.
-      icon: PERMISSION_ICONS.PreimageSubmit,
+      icon: iconMarkup(PERMISSION_ICONS.PreimageSubmit),
       title: 'Submit Preimage',
       fields: [{ label: 'Data size', value: formatSize(dataSize) }],
       buttons: [

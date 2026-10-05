@@ -21,7 +21,7 @@
   color: var(--chrome-text);
 }
 /* The board's 1.75 stroke, whatever size and stroke the markup was drawn
-   at (the app's prompt icons are 24 px at 2). */
+   at (the password prompt's lock is 24 px at 2). */
 .tile > svg {
   width: var(--sp-4);
   height: var(--sp-4);
