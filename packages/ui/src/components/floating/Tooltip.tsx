@@ -17,9 +17,9 @@ import { anchorName, FloatingLayer, type Placement } from './FloatingLayer.js';
 import s from './Tooltip.module.css';
 
 /** How long a mouse rests on the trigger before the tooltip shows. */
-export const SHOW_MS = 200;
+const SHOW_MS = 200;
 /** How long after the pointer leaves the trigger and the tooltip before it hides. */
-export const HIDE_MS = 100;
+const HIDE_MS = 100;
 
 export interface TooltipTriggerProps {
   ref: (el: HTMLElement) => void;
