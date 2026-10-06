@@ -2,13 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type * as Config from '@dotli/config';
 
 const mocks = vi.hoisted(() => ({
   backend: 'smoldot-direct',
   readArchiveFiles: vi.fn(),
 }));
 
-vi.mock('@dotli/config', () => ({ getBackend: () => mocks.backend }));
+vi.mock('@dotli/config', async importOriginal => ({
+  ...(await importOriginal<typeof Config>()),
+  getBackend: () => mocks.backend,
+}));
 vi.mock('@dotli/content', () => ({
   loadFetch: () => Promise.resolve({ readArchiveFiles: mocks.readArchiveFiles }),
 }));
