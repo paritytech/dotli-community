@@ -4,7 +4,7 @@
 // capability traits. One interface per Rust trait + a composite
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 import * as S from "@parity/truapi/scale";
-import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
+import { AllocatableResource, Bytes32, ChainIdentifier, DerivationIndex, HostAccountSignVrfRequest, HostDevicePermissionRequest, HostNativeChatAttachmentMetadata, HostNativeChatPayment, HostSignPayloadRequest, HostSignPayloadWithLegacyAccountRequest, HostSignRawRequest, HostSignRawWithLegacyAccountRequest, LegacyAccountTxPayload, MediaLocalState, MediaLocalTracks, MediaOperationFailure, MediaOperationId, MediaParticipantId, MediaRemoteState, MediaSessionId, MediaSurface, MediaViewport, ProductAccountId, ProductAccountTxPayload, ProductProofContext, RemotePermissionRequest, RingLocation, } from "@parity/truapi";
 /**
  * Review shown before a product asks to access another product account.
  */
@@ -19,6 +19,14 @@ export const AccountAliasReview = S.lazy(() => S.Struct({ callingProductId: S.st
  * and never derive auth UI from any other signal.
  */
 export const AuthState = S.lazy(() => S.TaggedUnion({ Disconnected: S._void, Pairing: S.Struct({ deeplink: S.str }), Connected: SessionUiInfo, LoginFailed: S.Struct({ kind: LoginFailureKind, reason: S.str }), Authenticating: S._void }));
+/**
+ * Immutable calling-consent context resolved by the trusted core.
+ *
+ * Approval applies only to this exact canonical product, authenticated network,
+ * and authority-derived account. It neither grants camera/microphone access nor
+ * carries over to another account or network.
+ */
+export const CallingReview = S.lazy(() => S.Struct({ productId: S.str, network: S.Bytes(32), account: S.Bytes(32) }));
 /**
  * Review shown before a product binds or uses wallet-held Chat identity authority.
  */
@@ -94,6 +102,66 @@ export const LoginFailureKind = S.lazy(() => S.Status("NoFreeAllowanceSlots", "O
  */
 export const MainPurseChatPaymentReview = S.lazy(() => S.Struct({ callingProductId: S.str, recipientIdentity: S.Bytes(32), recipientUsername: S.Option(S.str), amountCents: S.u64, maxDebitCents: S.u64, genesisHash: S.Bytes(32), coinageInstanceId: S.Option(S.u32), operationId: S.Bytes(32) }));
 /**
+ * Complete backend availability and simultaneous live-resource limits.
+ *
+ * `supported` is true only when every mandatory facility is implemented,
+ * including microphone/camera capture, screen picking, RTC, audio playback and
+ * routing, trusted indicators, and unreadable compositing. Runtime device
+ * absence or user denial does not mean a facility is unimplemented. There are
+ * deliberately no per-facility public support flags.
+ */
+export const MediaBackendCapabilities = S.lazy(() => S.Struct({ supported: S.bool, maxSessions: S.u16, maxRemoteParticipants: S.u16, maxSurfacesPerSession: S.u16 }));
+/**
+ * Trusted operations scoped by the method's product and runtime parameters.
+ *
+ * IDs are core-admitted handles, not globally addressable resources. The
+ * backend must fence delayed callbacks and release capture obtained after an
+ * operation was cancelled, superseded, or its session/runtime was closed.
+ */
+export const MediaBackendCommand = S.lazy(() => S.TaggedUnion({ OpenSession: S.Struct({ sessionId: MediaSessionId, operationId: MediaOperationId, tracks: MediaLocalTracks }), SetTracks: S.Struct({ sessionId: MediaSessionId, operationId: MediaOperationId, intentRevision: S.u64, tracks: MediaLocalTracks }), CancelOperation: S.Struct({ operationId: MediaOperationId }), CloseSession: S.Struct({ sessionId: MediaSessionId }), CreatePeer: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, offerer: S.bool }), ApplyDescription: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, description: MediaDescription }), AddIceCandidate: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, candidate: MediaIceCandidate }), RemovePeer: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId }), SetSurfaces: S.Struct({ sessionId: MediaSessionId, viewportRevision: S.u64, layoutRevision: S.u64, surfaces: S.Vector(MediaSurface) }), CloseRuntime: S._void, CommitOperation: S.Struct({ operationId: MediaOperationId }), RequestConsent: S.Struct({ operationId: MediaOperationId, request: MediaConsentRequest }) }));
+/**
+ * Trusted events scoped to the product/runtime that opened the stream.
+ *
+ * The core converts observations into public lifecycle events. Descriptions
+ * and candidates go exclusively to core-authenticated signaling; they must
+ * never become product events, error diagnostics, or product debug logs.
+ */
+export const MediaBackendEvent = S.lazy(() => S.TaggedUnion({ ViewportChanged: S.Struct({ viewport: S.Option(MediaViewport) }), LocalStateChanged: S.Struct({ sessionId: MediaSessionId, intentRevision: S.u64, state: MediaLocalState }), PeerStateChanged: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, state: MediaBackendPeerState }), RemoteStateChanged: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, state: MediaRemoteState }), Description: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, description: MediaDescription }), IceCandidate: S.Struct({ sessionId: MediaSessionId, participantId: MediaParticipantId, candidate: MediaIceCandidate }), ScreenStopped: S.Struct({ sessionId: MediaSessionId }), HostEnded: S.Struct({ sessionId: MediaSessionId }), PermissionRevoked: S.Struct({ permission: MediaRevokedPermission, source: MediaRevocationSource }) }));
+/**
+ * Backend-observed connection state for one remote endpoint.
+ */
+export const MediaBackendPeerState = S.lazy(() => S.Status("Connecting", "Connected", "Reconnecting", "Failed", "Closed"));
+/**
+ * Bounded result of a trusted backend command, without diagnostic strings.
+ */
+export const MediaBackendResponse = S.lazy(() => S.TaggedUnion({ Done: S._void, LocalState: S.Struct({ state: MediaLocalState }), Rejected: S.Struct({ failure: MediaOperationFailure }), Consent: S.Struct({ granted: S.bool }) }));
+/**
+ * User decision presented by trusted host UI for one cancellable operation.
+ * The core alone reads and persists grants; these prompts never delegate
+ * browser capture permission or media objects into the product realm.
+ */
+export const MediaConsentRequest = S.lazy(() => S.TaggedUnion({ Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }), Microphone: S._void, Camera: S._void }));
+/**
+ * Host-only session description; Debug never includes SDP.
+ */
+export const MediaDescription = S.lazy(() => S.Struct({ kind: MediaDescriptionKind, sdp: S.str }));
+/**
+ * Negotiation role of a host-only description.
+ */
+export const MediaDescriptionKind = S.lazy(() => S.Status("Offer", "Answer"));
+/**
+ * Host-only ICE candidate; Debug never includes candidate or media-ID strings.
+ */
+export const MediaIceCandidate = S.lazy(() => S.Struct({ candidate: S.str, mid: S.Option(S.str), mlineIndex: S.Option(S.u16) }));
+/**
+ * OS gating must not overwrite a separately remembered product decision.
+ */
+export const MediaRevocationSource = S.lazy(() => S.Status("Product", "OperatingSystem"));
+/**
+ * Revocation observations; screen stopping is not a permission revocation.
+ */
+export const MediaRevokedPermission = S.lazy(() => S.Status("Calling", "Microphone", "Camera"));
+/**
  * Trusted context for exporting a verified native Chat attachment.
  */
 export const NativeChatFileExportRequest = S.lazy(() => S.Struct({ productId: S.str, peerIdentity: S.Bytes(32), peerUsername: S.Option(S.str), metadata: HostNativeChatAttachmentMetadata }));
@@ -142,7 +210,7 @@ export const NativeCoinageTopUpOutcome = S.lazy(() => S.TaggedUnion({ Cleared: S
  * Permission request whose authorization status can be inspected or updated
  * by host administration UI.
  */
-export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }) }));
+export const PermissionAuthorizationRequest = S.lazy(() => S.TaggedUnion({ Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest, IdentityDisclosure: S._void, AccountAccess: S.Struct({ targetProductId: S.str }), ChatAuthority: S._void, StatementStoreAllowance: S.Struct({ derivationIndex: S.Option(DerivationIndex) }), Calling: S.Struct({ network: S.Bytes(32), account: S.Bytes(32) }) }));
 /**
  * Authorization status for a permission request.
  *
@@ -215,4 +283,4 @@ export const StatementStoreProductSignReview = S.lazy(() => S.Struct({ callingPr
 /**
  * Review shown before a user-confirmed core action continues.
  */
-export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview }));
+export const UserConfirmationReview = S.lazy(() => S.TaggedUnion({ SignPayload: SignPayloadReview, SignRaw: SignRawReview, StatementStoreProductSign: StatementStoreProductSignReview, CreateTransaction: CreateTransactionReview, AccountAlias: AccountAliasReview, CreateProof: CreateProofReview, IdentityDisclosure: IdentityDisclosureReview, ResourceAllocation: ResourceAllocationReview, PreimageSubmit: PreimageSubmitReview, AccountAccess: AccountAccessReview, SignVrf: SignVrfReview, ProductSubtree: ProductSubtreeReview, ChatAuthority: ChatAuthorityReview, MainPurseChatPayment: MainPurseChatPaymentReview, Calling: CallingReview }));

@@ -6,7 +6,7 @@
 // primitives and byte blobs pass through unchanged.
 import * as S from "@parity/truapi/scale";
 import { HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotRequest, HostChatRegisterBotResponse, HostDevicePermissionRequest, HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostLocalStorageChangeItem, HostLocaleLocalizeTimestampsRequest, HostLocaleLocalizeTimestampsResponse, HostLocaleSubscribeItem, HostPocketListSubscribeItem, HostPocketRemoveCardRequest, HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem, HostWorkerBeginOperationResponse, NotificationActivationAcknowledgeRequest, NotificationActivations, RemotePermissionRequest, } from "@parity/truapi";
-import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
+import { AuthState, CoreStorageKey, DevicePermissionStatus, HostChainSet, HostContactLookup, HostContactMatches, HostContactPick, MediaBackendCapabilities, MediaBackendCommand, MediaBackendEvent, MediaBackendResponse, NativeChatFileExportRequest, NativeChatFilePickRequest, NativeChatPickedFile, NativeCoinageRequest, NativeCoinageResponse, PermissionDecision, ProductContext, UserConfirmationReview, } from "./host-callbacks.js";
 import { chainConnectAdapter, coinageWalletHostAdapter, driveResultStream, hopConnectAdapter, unavailableHopProvider, unavailableNativeChatFilesHost, } from "../adapter-support.js";
 const allowedHopEndpointsResultCodec = S.Vector(S.str);
 const identityUsernameCandidatesResultCodec = S.Vector(S.Bytes(32));
@@ -18,6 +18,7 @@ export function createWasmRawCallbacks(callbacks) {
     const coinageWallet = coinageWalletHostAdapter(callbacks.coinageWallet);
     const contacts = callbacks.contacts;
     const identityBackend = callbacks.identityBackend;
+    const media = callbacks.media;
     const permissionStatus = callbacks.permissionStatus;
     const pocket = callbacks.pocket;
     const hop = callbacks.hop ?? unavailableHopProvider;
@@ -47,6 +48,8 @@ export function createWasmRawCallbacks(callbacks) {
         readCoreStorage: async (key) => await callbacks.coreStorage.readCoreStorage(CoreStorageKey.dec(key)),
         writeCoreStorage: async (key, value) => await callbacks.coreStorage.writeCoreStorage(CoreStorageKey.dec(key), value),
         clearCoreStorage: async (key) => await callbacks.coreStorage.clearCoreStorage(CoreStorageKey.dec(key)),
+        compareExchangeCoreStorage: async (key, expected, replacement, notifyOnSuccess) => await callbacks.coreStorage.compareExchangeCoreStorage(CoreStorageKey.dec(key), expected ?? undefined, replacement, notifyOnSuccess),
+        coreStorageChanged: async (key) => await callbacks.coreStorage.coreStorageChanged(CoreStorageKey.dec(key)),
         featureSupported: async (request) => HostFeatureSupportedResponse.enc(await callbacks.features.featureSupported(HostFeatureSupportedRequest.dec(request))),
         supportedChains: async () => HostChainSet.enc(await callbacks.features.supportedChains()),
         allowedHopEndpoints: async (bulletinGenesisHash) => allowedHopEndpointsResultCodec.enc(await hop.allowedHopEndpoints(bulletinGenesisHash)),
@@ -58,6 +61,13 @@ export function createWasmRawCallbacks(callbacks) {
             : {}),
         subscribeLocale: (sendItem, sendError) => driveResultStream(callbacks.locale.subscribeLocale(), (item) => sendItem(HostLocaleSubscribeItem.enc(item)), sendError),
         localizeTimestamps: async (request) => HostLocaleLocalizeTimestampsResponse.enc(await callbacks.locale.localizeTimestamps(HostLocaleLocalizeTimestampsRequest.dec(request))),
+        ...(typeof media?.mediaBackendCapabilities === "function" && typeof media?.mediaBackendEvents === "function" && typeof media?.mediaBackendCommand === "function"
+            ? {
+                mediaBackendCapabilities: async (product) => MediaBackendCapabilities.enc(await media.mediaBackendCapabilities(ProductContext.dec(product))),
+                mediaBackendEvents: (product, runtimeId, sendItem, sendError) => driveResultStream(media.mediaBackendEvents(ProductContext.dec(product), runtimeId), (item) => sendItem(MediaBackendEvent.enc(item)), sendError, true),
+                mediaBackendCommand: async (product, runtimeId, command) => MediaBackendResponse.enc(await media.mediaBackendCommand(ProductContext.dec(product), runtimeId, MediaBackendCommand.dec(command))),
+            }
+            : {}),
         pickChatFiles: async (request) => pickChatFilesResultCodec.enc(await nativeChatFiles.pickChatFiles(NativeChatFilePickRequest.dec(request))),
         readChatFile: async (sourceId, offset, length) => await nativeChatFiles.readChatFile(sourceId, offset, length),
         releaseChatFile: async (sourceId) => await nativeChatFiles.releaseChatFile(sourceId),

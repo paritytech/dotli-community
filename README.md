@@ -412,10 +412,10 @@ npm run preview          # Build + serve both apps on localhost:5173
 ```
 
 This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native Media layer
-(`feat/media-sessions`, Chat #709 plus the Media service). `vendor/truapi-host.lock.json` records the source revision,
-archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests; that revision is local until
-the Media layer is pushed. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
-dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
+(`host-rust-core#1258`, `feat/media-sessions`: Chat #709 plus the Media service). `vendor/truapi-host.lock.json` records
+the source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests. The
+browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the dependency tree recorded in
+`package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

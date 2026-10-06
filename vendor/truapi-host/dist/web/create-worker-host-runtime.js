@@ -327,7 +327,10 @@ function handleCallbackRequest(state, msg) {
                     ? "Native Coinage wallet operation failed"
                     : NATIVE_CHAT_FILE_CALLBACKS[msg.name]
                         ? "Native Chat file operation failed"
-                        : errorMessage(err),
+                        : msg.name === "mediaBackendCapabilities" ||
+                            msg.name === "mediaBackendCommand"
+                            ? "media backend failure"
+                            : errorMessage(err),
             });
         }
         catch {
@@ -336,39 +339,87 @@ function handleCallbackRequest(state, msg) {
     });
 }
 function handleSubscriptionStart(state, msg) {
-    const sendItem = (value) => {
-        if (state.disposed)
+    const privateMedia = msg.name === "mediaBackendEvents";
+    let closed = false;
+    let outstanding = 0;
+    let dispose;
+    const close = () => {
+        if (closed)
             return;
+        closed = true;
+        state.subscriptionDisposers.delete(msg.subId);
+        state.mediaSubscriptionAcks.delete(msg.subId);
+        if (typeof dispose === "function") {
+            try {
+                dispose();
+            }
+            catch (error) {
+                throw privateMedia ? new Error("media backend failure") : error;
+            }
+        }
+    };
+    const sendError = (error) => {
+        if (state.disposed || closed)
+            return;
+        state.worker.postMessage({
+            kind: "subscriptionError",
+            subId: msg.subId,
+            error: privateMedia && error.reason !== "media event overflow"
+                ? "media backend failure"
+                : error.reason,
+        });
+        if (privateMedia) {
+            try {
+                close();
+            }
+            catch {
+                /* Private callback diagnostics are redacted. */
+            }
+        }
+    };
+    const sendItem = (value) => {
+        if (state.disposed || closed)
+            return;
+        if (privateMedia && outstanding >= 128) {
+            sendError({ reason: "media event overflow" });
+            return;
+        }
+        if (privateMedia)
+            outstanding++;
         state.worker.postMessage({
             kind: "subscriptionItem",
             subId: msg.subId,
             value,
         });
     };
-    const sendError = (error) => {
-        if (state.disposed)
-            return;
-        state.worker.postMessage({
-            kind: "subscriptionError",
-            subId: msg.subId,
-            error: error.reason,
+    state.subscriptionDisposers.set(msg.subId, close);
+    if (privateMedia) {
+        state.mediaSubscriptionAcks.set(msg.subId, () => {
+            if (outstanding > 0)
+                outstanding--;
         });
-    };
-    let dispose = undefined;
+    }
     try {
         const callbacks = msg.coreId === undefined
             ? state.rawCallbacks
             : state.coreCallbacks.get(msg.coreId);
         if (!callbacks)
             throw new Error("Product callbacks are unavailable");
-        dispose = startRawSubscription(callbacks, msg.name, msg.payload, sendItem, sendError);
+        dispose = startRawSubscription(callbacks, msg.name, msg.args, sendItem, sendError);
+        // A host can publish synchronously during subscribe, including overflow.
+        if (closed && typeof dispose === "function")
+            dispose();
     }
     catch (err) {
-        sendError({ reason: errorMessage(err) });
-        return;
-    }
-    if (typeof dispose === "function") {
-        state.subscriptionDisposers.set(msg.subId, dispose);
+        sendError({
+            reason: privateMedia ? "media backend failure" : errorMessage(err),
+        });
+        try {
+            close();
+        }
+        catch {
+            /* Subscription startup has already failed. */
+        }
     }
 }
 function handleSubscriptionStop(state, msg) {
@@ -551,6 +602,7 @@ function rejectPendingRuntimeRequests(state, error) {
     rejectAll(state.pendingPermissionAuthorizationStatuses, error);
     rejectAll(state.pendingPermissionAuthorizationStatusBatches, error);
     rejectAll(state.pendingSetPermissionAuthorizationStatuses, error);
+    rejectAll(state.pendingPermissionAuthorizationRefreshes, error);
     rejectAll(state.pendingSessionChatIdentityKeys, error);
     rejectAll(state.pendingDeviceStatementKeys, error);
     rejectAll(state.pendingDeviceEncryptionKeys, error);
@@ -754,6 +806,7 @@ function teardown(state, error, fault) {
         }
     }
     state.subscriptionDisposers.clear();
+    state.mediaSubscriptionAcks.clear();
     for (const entry of state.chainConnections.values()) {
         entry.closed = true;
         try {
@@ -828,6 +881,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             disposePending: false,
             disposeGraceTimer: undefined,
             operationGraceMs: options.operationGraceMs ?? 30_000,
+            mediaSubscriptionAcks: new Map(),
             chainConnections: new Map(),
             chatFileExports: new Set(),
             disposeNativeChatFiles: () => browserFiles?.dispose(),
@@ -837,6 +891,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
             pendingPermissionAuthorizationStatuses: new Map(),
             pendingPermissionAuthorizationStatusBatches: new Map(),
             pendingSetPermissionAuthorizationStatuses: new Map(),
+            pendingPermissionAuthorizationRefreshes: new Map(),
             pendingSessionChatIdentityKeys: new Map(),
             pendingProductSubtreePublicKeys: new Map(),
             pendingDeviceStatementKeys: new Map(),
@@ -930,6 +985,11 @@ function createWebWorkerHostRuntime(worker, host, options) {
                 case "setPermissionAuthorizationStatusResponse":
                     handleSetPermissionAuthorizationStatusResponse(state, msg);
                     break;
+                case "refreshPermissionAuthorizationResponse":
+                    settlePending(state.pendingPermissionAuthorizationRefreshes, msg.requestId, msg.ok
+                        ? { ok: true, value: undefined }
+                        : { ok: false, error: msg.error });
+                    break;
                 case "sessionChatIdentityKeyResponse":
                     handleSessionChatIdentityKeyResponse(state, msg);
                     break;
@@ -1001,6 +1061,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
                 case "subscriptionStop":
                     handleSubscriptionStop(state, msg);
                     break;
+                case "mediaSubscriptionAck":
+                    state.mediaSubscriptionAcks.get(msg.subId)?.();
+                    break;
                 case "chainConnectStart":
                 case "hopConnectStart":
                     if (debugLoggingEnabled(state)) {
@@ -1065,6 +1128,9 @@ function createWebWorkerHostRuntime(worker, host, options) {
                         identityBackend: host.identityBackend !== undefined,
                         coinageWallet: callbacks.nativeCoinage !== undefined,
                         contacts: host.contacts !== undefined,
+                        media: typeof host.media?.mediaBackendCapabilities === "function" &&
+                            typeof host.media?.mediaBackendEvents === "function" &&
+                            typeof host.media?.mediaBackendCommand === "function",
                     },
                     debuggerUrl: debuggerDial,
                 });
@@ -1181,6 +1247,12 @@ function buildRuntime(state) {
                                     pocket: callbacks.pocket !== undefined,
                                     identityBackend: callbacks.identityBackend !== undefined,
                                     coinageWallet: state.rawCallbacks.nativeCoinage !== undefined,
+                                    media: typeof callbacks.media?.mediaBackendCapabilities ===
+                                        "function" &&
+                                        typeof callbacks.media?.mediaBackendEvents ===
+                                            "function" &&
+                                        typeof callbacks.media?.mediaBackendCommand ===
+                                            "function",
                                 },
                             }),
                     });
@@ -1342,12 +1414,26 @@ function buildRuntime(state) {
             }));
         },
         setPermissionAuthorizationStatus(productId, request, status) {
+            if (state.disposed) {
+                return Promise.reject(state.closedError ?? new Error("runtime disposed"));
+            }
             return sendWorkerRequest(state, state.pendingSetPermissionAuthorizationStatuses, () => ++nextPermissionAuthorizationRequestId, undefined, (requestId) => ({
                 kind: "setPermissionAuthorizationStatus",
                 productId,
                 requestId,
                 request: encodePermissionAuthorizationRequest(request),
                 status,
+            }));
+        },
+        refreshPermissionAuthorization(productId, request) {
+            if (state.disposed) {
+                return Promise.reject(state.closedError ?? new Error("runtime disposed"));
+            }
+            return sendWorkerRequest(state, state.pendingPermissionAuthorizationRefreshes, () => ++nextPermissionAuthorizationRequestId, undefined, (requestId) => ({
+                kind: "refreshPermissionAuthorization",
+                productId,
+                requestId,
+                request: encodePermissionAuthorizationRequest(request),
             }));
         },
         setLogLevel(level) {
@@ -1534,6 +1620,12 @@ function buildProvider(state, core, runtime) {
                 return Promise.reject(core.closedError ?? new Error("product connection is closed"));
             }
             return runtime.setPermissionAuthorizationStatus(core.productId, request, status);
+        },
+        refreshPermissionAuthorization(request) {
+            if (core.disposed) {
+                return Promise.reject(core.closedError ?? new Error("product connection is closed"));
+            }
+            return runtime.refreshPermissionAuthorization(core.productId, request);
         },
         setLogLevel(level) {
             if (core.disposed)

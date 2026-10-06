@@ -444,3 +444,58 @@ export const CONTACTS_PICK = {
     method: 0,
     kind: "request",
 };
+export const MEDIA_GET_CAPABILITIES = {
+    trait: 218,
+    method: 0,
+    kind: "request",
+};
+export const MEDIA_SESSION_SUBSCRIBE = {
+    trait: 218,
+    method: 1,
+    kind: "subscription",
+};
+export const MEDIA_CREATE_SESSION = {
+    trait: 218,
+    method: 2,
+    kind: "request",
+};
+export const MEDIA_ADD_PARTICIPANT = {
+    trait: 218,
+    method: 3,
+    kind: "request",
+};
+export const MEDIA_RESPOND_INCOMING = {
+    trait: 218,
+    method: 4,
+    kind: "request",
+};
+export const MEDIA_REMOVE_PARTICIPANT = {
+    trait: 218,
+    method: 5,
+    kind: "request",
+};
+export const MEDIA_SET_LOCAL_TRACKS = {
+    trait: 218,
+    method: 6,
+    kind: "request",
+};
+export const MEDIA_SET_SURFACES = {
+    trait: 218,
+    method: 7,
+    kind: "request",
+};
+export const MEDIA_END_SESSION = {
+    trait: 218,
+    method: 8,
+    kind: "request",
+};
+export const MEDIA_GET_OPERATION = {
+    trait: 218,
+    method: 9,
+    kind: "request",
+};
+export const MEDIA_CANCEL_OPERATION = {
+    trait: 218,
+    method: 10,
+    kind: "request",
+};

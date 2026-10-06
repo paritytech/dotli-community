@@ -1,28 +1,29 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/chat-v2-product-authority",
-  "upstreamRevision": "a78944c2375f212e86cb57bfff3be92923ee1793",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/709",
+  "upstreamBranch": "feat/media-sessions",
+  "upstreamRevision": "3d19f1b39d7ce547d1c533b68f74b928e8b42938",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1258",
+  "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/709",
+  "baseRevision": "02e98b42c8cec21533546524f751897fcd8464a1",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "58a3e0046158333db64a4127792a36dec820c55a6d5a0d19c9ef20012d4dcd7b",
-      "clientSha256": "a4d20f9f42bdab07324ccb939a799d6d5f6b6f762eadffff5935f87d50eb0fd6"
+      "sourceArchiveSha256": "a0e999ad36c20111b635d0463b131ec055de0b58025fff33c88cbcea4d54d6ae",
+      "clientSha256": "eb58d107c9565d1a7b0c8de0d427866150d0e61613900b4445f82aa0d6841525"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "899546ae63534bf80602a4c9b8afb692fece4779e256e762a57ed1b44a5d35d2",
+      "sourceArchiveSha256": "b5816f6ba2db93301f1cba40b500eae44f96ccfa815e7dee67412fd4ff3c6f00",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "eef49d4c14d23ffce5e9d1ee4b84b08bd991f100f8493184f07f96f8c75102e4",
-      "testingWasmSha256": "bb20d11db444e1d48f88c2979414cf26acc7057136442529c705cabdcb167946",
+      "wasmSha256": "ed12c034739b49c1f429b9db3d703cc0f4af6770e497bbfc6913b76246263320",
+      "testingWasmSha256": "fcd7517c86b2c1da69a986757488a30784b1b3b36627386a1989cb390190b2e9",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "a78944c2375f212e86cb57bfff3be92923ee1793",
-  "publication": "Approved notification activation and readiness rollout; SDK packages are vendored, not npm-published."
+  "wasmUpstreamRevision": "3d19f1b39d7ce547d1c533b68f74b928e8b42938"
 }
