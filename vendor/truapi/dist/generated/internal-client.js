@@ -7,7 +7,7 @@ import * as W from './wire-table.js';
 export { ResultAsync, SubscriptionError };
 export const TRUAPI_VERSION = 3;
 export const TRUAPI_CODEC_VERSION = 3;
-export const TRUAPI_WIRE_SCHEMA_HASH = "8f2f391be2e3cbfa";
+export const TRUAPI_WIRE_SCHEMA_HASH = "b0670a81d09e7646";
 /** Permission request methods. */
 class PermissionsClient {
     #transport;

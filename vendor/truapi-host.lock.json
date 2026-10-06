@@ -1,29 +1,31 @@
 {
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
-  "upstreamBranch": "feat/jam-peer-transport-on-seity",
-  "upstreamRevision": "795a4082023abd952041c784c9f9e81714aab999",
-  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
-  "baseRevision": "f7ac212cf0e19d6860c4d60298d4d1cf442e1c55",
-  "publication": "Approved notification activation and readiness rollout; SDK packages are vendored, not npm-published.",
+  "upstreamBranch": "feat/media-on-jam-seity",
+  "upstreamRevision": "6d424c208b26900ed30945b5d726346cb0ad5a5d",
+  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (d8105398ba24431357d7dc169682902d69e86bc0, the Media service at prototype wire trait 218 on #709 a78944c23) into 795a4082023abd952041c784c9f9e81714aab999, the #1011 integration revision #291 vendors.",
+  "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
+  "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
+  "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
+  "publication": "Media integration above #1011; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "764e216df225272704811a13920bd60955563d0fa0d520859af595b6b128e035",
-      "clientSha256": "f327dda7b159e40218e306fbcfc3823c861be08de2bcf40942523adb3d2d6a6e"
+      "sourceArchiveSha256": "e403327a7dbd3e9b6f2bb25145755685330f4c6dfb0c833f3a8894d6e7eb6d34",
+      "clientSha256": "27adb6baddd524db3a8c490ea7e32ecf9dd3fa14ba1407cf104e5a0428d94208"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "1481dffb4042dfeef6ffbacd74e44e0dc547dca672ba306012984c1618f7ec85",
+      "sourceArchiveSha256": "07064569b50c31a2869c1713aa9a57b47a4e09c76cba5e610ead2a834cb23878",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "49492a42a21083cd3b237c511da980b0e17970c9d12653726b2724b439f67259",
-      "testingWasmSha256": "31cda0fa760d945bc9f1fe3e720ddc44b209f63f0066f7797f5bd94dbac44d86",
+      "wasmSha256": "b784128e9123acc9730adbbd026770f6b71ef2df1388bb2045ae7d44ac23bf09",
+      "testingWasmSha256": "7122b181c57618e2c562f12e1d0739725594f295620c7541e65ca8c55a190954",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "795a4082023abd952041c784c9f9e81714aab999"
+  "wasmUpstreamRevision": "6d424c208b26900ed30945b5d726346cb0ad5a5d"
 }

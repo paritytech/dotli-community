@@ -181,6 +181,7 @@ Each browser layer must vendor a matching client/host package set from its corre
 | #287 Seity profiles     | `host-rust-core#1001`, `feat/chat-seity-profile`          |
 | #290 JAM PeerTransport  | `host-rust-core#1010`, `feat/pvm-peer-transport`          |
 | #291 Deploy integration | `host-rust-core#1011`, `feat/jam-peer-transport-on-seity` |
+| Media integration       | `feat/media-on-jam-seity` (#1011 + `feat/media-sessions`) |
 
 Keep #291 and native #1011 integration-only: merge their refreshed Seity and PeerTransport parents with `--no-ff`, then
 refresh the matching vendored packages. Never copy Chat, Seity, PeerTransport, or Media APIs into a lower layer.
@@ -270,15 +271,15 @@ provider credentials.
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
 `WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native #1011 receiving candidate `75796176b248c8e17e5996e4975d4a4ee2c642e9`, based on
-`f7ac212cf0e19d6860c4d60298d4d1cf442e1c55`. Archive and generated client/WASM checksums are recorded in
-`vendor/truapi-host.lock.json`; the only package override is the host SDK's local `@parity/truapi` dependency. A clean
-#185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never reuse this top integration artifact
-downward. The build bundles `host-receiving.js` as a standalone classic IIFE and copies that SDK's WASM to a
-content-hashed, same-origin `assets/receiving-<sha256>.wasm`. No dynamic imports or second service-worker registration
-are used. The canonical installer owns callback SCALE adaptation. Workbox imports this bundle into `/host-sw.js`,
-retains its existing precache rules and prompted update behavior, and precaches the matching WASM. Deploy the complete
-host output together, not a worker or WASM file in isolation.
+native `feat/media-on-jam-seity` `6d424c208b26900ed30945b5d726346cb0ad5a5d` (trinity-user-agents #1217), the Media layer
+merged into #1011 integration revision `795a4082023abd952041c784c9f9e81714aab999`. Archive and generated client/WASM
+checksums are recorded in `vendor/truapi-host.lock.json`; the only package override is the host SDK's local
+`@parity/truapi` dependency. A clean #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never
+reuse this top integration artifact downward. The build bundles `host-receiving.js` as a standalone classic IIFE and
+copies that SDK's WASM to a content-hashed, same-origin `assets/receiving-<sha256>.wasm`. No dynamic imports or second
+service-worker registration are used. The canonical installer owns callback SCALE adaptation. Workbox imports this
+bundle into `/host-sw.js`, retains its existing precache rules and prompted update behavior, and precaches the matching
+WASM. Deploy the complete host output together, not a worker or WASM file in isolation.
 
 For CSP-enforcing hosting, the build also emits `host-receiving-csp.conf`, an nginx `add_header` directive with the
 exact relay origin. `deploy-nginx` installs this file as the site-specific `dotli-receiving-csp.conf` when

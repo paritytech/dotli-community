@@ -155,12 +155,12 @@ traffic stays on the bounded PolkaVM runtime ABI 1. Guest Host requests use the 
 Host-frame bytes use the canonical TrUAPI wire codec, currently version 3. Build guest clients against the SDK recorded
 in `vendor/truapi-host.lock.json`; runtime ABI 1 compatibility alone does not imply TrUAPI wire compatibility.
 
-On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/jam-peer-transport-on-seity`.
-JAM peer transport is execution-local in the sandbox. Before dialing a network, it requests `JamPeers` permission
-through the product's authenticated port to the shared page core. The host's Solid permission dialog shows the full
-genesis hash and offers **Allow once**, **Always allow**, and **Deny**; dismissal saves no decision. Durable decisions
-are scoped to product and genesis, while a one-time grant lasts only for that execution. This grants no account,
-signing, storage, or arbitrary web access.
+On this branch, `vendor/truapi-host.lock.json` pins the canonical SDK and Wasm to `feat/media-on-jam-seity`, the native
+merge of the Media layer into `feat/jam-peer-transport-on-seity`. JAM peer transport is execution-local in the sandbox.
+Before dialing a network, it requests `JamPeers` permission through the product's authenticated port to the shared page
+core. The host's Solid permission dialog shows the full genesis hash and offers **Allow once**, **Always allow**, and
+**Deny**; dismissal saves no decision. Durable decisions are scoped to product and genesis, while a one-time grant lasts
+only for that execution. This grants no account, signing, storage, or arbitrary web access.
 
 The sandbox checks for the required browser WebTransport capability before requesting permission. If it is unavailable,
 the host leaves the stored permission unchanged, shows the detected browser version and compatibility requirements, and
@@ -415,11 +415,12 @@ npm install
 npm run preview          # Build + serve both apps on localhost:5173
 ```
 
-This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native Media layer
-(`feat/media-sessions`, Chat #709 plus the Media service). `vendor/truapi-host.lock.json` records the source revision,
-archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests; that revision is local until
-the Media layer is pushed. The browser wallet artifact enables `wasm-signing-host`, without `test-host`. Install the
-dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout instead, run:
+This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packages from the native integration layer
+`feat/media-on-jam-seity` (#1011 plus the Media layer `feat/media-sessions`). `vendor/truapi-host.lock.json` records the
+source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests; that revision
+is local until the integration layer is pushed. The browser wallet artifact enables `wasm-signing-host`, without
+`test-host`. Install the dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local
+truapi checkout instead, run:
 
 ```bash
 npm run link:truapi

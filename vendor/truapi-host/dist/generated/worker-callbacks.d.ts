@@ -1,13 +1,13 @@
 import type { RawCallbacks } from "./host-callbacks-adapter.js";
 import type { GenericError } from "@parity/truapi";
 import type { ChainConnect, HopConnect } from "../runtime.js";
-export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "pickContacts", "placeContactLabels", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "featureSupported", "supportedChains", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "receiverAuthority", "receiverConsent", "receiverChanged", "receiverCommand", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "presentProfile", "presentContactProfile", "placeContactAvatars", "confirmPermission", "confirmUserAction"];
+export declare const CALLBACK_NAMES: readonly ["authStateChanged", "createChatRoom", "registerChatBot", "postChatMessage", "nativeCoinage", "contacts", "pickContact", "pickContacts", "placeContactLabels", "readCoreStorage", "writeCoreStorage", "clearCoreStorage", "compareExchangeCoreStorage", "coreStorageChanged", "featureSupported", "supportedChains", "allowedHopEndpoints", "identityUsernameCandidates", "localizeTimestamps", "mediaBackendCapabilities", "mediaBackendCommand", "pickChatFiles", "readChatFile", "releaseChatFile", "beginChatFileExport", "writeChatFileExport", "finishChatFileExport", "cancelChatFileExport", "navigateTo", "pushNotification", "cancelNotification", "receiverAuthority", "receiverConsent", "receiverChanged", "receiverCommand", "activationEvents", "acknowledgeActivation", "devicePermissionStatus", "devicePermission", "remotePermission", "removePocketCard", "beginOperation", "endOperation", "read", "write", "clear", "presentProfile", "presentContactProfile", "placeContactAvatars", "confirmPermission", "confirmUserAction"];
 export type CallbackName = typeof CALLBACK_NAMES[number];
-export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
+export declare const SUBSCRIPTION_NAMES: readonly ["subscribeChatRooms", "subscribeLocale", "mediaBackendEvents", "subscribePocketCards", "lookupPreimage", "subscribeStorage", "subscribeTheme"];
 export type SubscriptionName = typeof SUBSCRIPTION_NAMES[number];
 export interface WorkerCallbackBridge {
     callbackRequest(name: CallbackName, args: readonly unknown[]): Promise<unknown>;
-    startSubscription<T>(name: SubscriptionName, payload: Uint8Array | string | null, sendItem: (value: T) => void, sendError: (error: GenericError) => void): () => void;
+    startSubscription<T>(name: SubscriptionName, args: readonly unknown[], sendItem: (value: T) => void, sendError: (error: GenericError) => void): () => void;
     chainConnect: ChainConnect;
     hopConnect: HopConnect;
 }
@@ -26,6 +26,8 @@ export interface OptionalCapabilities {
     /** Whether the host serves this capability. */
     identityBackend?: boolean;
     /** Whether the host serves this capability. */
+    media?: boolean;
+    /** Whether the host serves this capability. */
     permissionStatus?: boolean;
     /** Whether the host serves this capability. */
     pocket?: boolean;
@@ -33,4 +35,4 @@ export interface OptionalCapabilities {
     profile?: boolean;
 }
 export declare function createWorkerRawCallbacks(bridge: WorkerCallbackBridge, capabilities?: OptionalCapabilities): Record<string, unknown>;
-export declare function startRawSubscription(callbacks: RawCallbacks, name: SubscriptionName, payload: Uint8Array | string | null, sendItem: (value?: unknown) => void, sendError: (error: GenericError) => void): (() => void) | void;
+export declare function startRawSubscription(callbacks: RawCallbacks, name: SubscriptionName, args: readonly unknown[], sendItem: (value?: unknown) => void, sendError: (error: GenericError) => void): (() => void) | void;
