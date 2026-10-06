@@ -218,7 +218,7 @@ function attachFrame(withTopbar: boolean): Record<string, string> {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
+const CLEAR_OF_BAR_HEIGHT = 'calc(100dvh - var(--content-top, 68px) - var(--content-bottom, 0px))';
 const FULL_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
 function stubClipboard(writeText: ((text: string) => Promise<void>) | null): void {
@@ -1433,7 +1433,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     expect(dock.title).toBe('Dock to bottom');
     expect(dock.getAttribute('aria-label')).toBe('Dock to bottom');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
-    expect(panel().style.top).toBe('var(--topbar-height)');
+    expect(panel().style.top).toBe('var(--content-top)');
 
     // When
     click(dock);
@@ -1771,13 +1771,13 @@ describe('truapi debug panel: product iframe geometry', () => {
 
     // Then
     expect(frame['width']).toBe(SAFE_WIDTH);
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
 
     // When
     click(q('[data-testid="td-collapse"]'));
 
     // Then
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 32px)`);
   });
 
   it('As a dotli developer, without a topbar the frame keeps the full safe height, and a collapsed mount reserves 32px', () => {
@@ -1803,7 +1803,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     click(q('[data-testid="td-dock"]'));
 
     // Then
-    expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(frame['height']).toBe(CLEAR_OF_BAR_HEIGHT);
     expect(frame['width']).toBe(`calc(${SAFE_WIDTH} - 400px)`);
 
     // When
@@ -1811,7 +1811,7 @@ describe('truapi debug panel: product iframe geometry', () => {
 
     // Then
     expect(frame['width']).toBe(SAFE_WIDTH);
-    expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(frame['height']).toBe(CLEAR_OF_BAR_HEIGHT);
 
     // When
     click(q('[data-testid="td-collapse"]'));
@@ -1819,7 +1819,7 @@ describe('truapi debug panel: product iframe geometry', () => {
 
     // Then
     expect(frame['width']).toBe(SAFE_WIDTH);
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 300px)`);
   });
 
   it('As a dotli developer, dragging the panel edge refits the iframe', () => {
@@ -1838,7 +1838,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     vi.advanceTimersByTime(20);
 
     // Then
-    expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
+    expect(frame['height']).toBe(`calc(${CLEAR_OF_BAR_HEIGHT} - 268px)`);
     pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
   });
 
@@ -1857,7 +1857,7 @@ describe('truapi debug panel: product iframe geometry', () => {
 
     // Then
     expect(reloaded['width']).toBe(`calc(${SAFE_WIDTH} - 760px)`);
-    expect(reloaded['height']).toBe(BELOW_BAR_HEIGHT);
+    expect(reloaded['height']).toBe(CLEAR_OF_BAR_HEIGHT);
   });
 
   it('As a dotli developer, closing the panel with chat open restores the full layout', () => {
