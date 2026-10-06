@@ -12,7 +12,7 @@ import {
   type Accessor,
 } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { captureException } from '@dotli/metrics';
+import { Broken } from './broken.js';
 import { anchorName, FloatingLayer, type Placement } from './FloatingLayer.js';
 import s from './Tooltip.module.css';
 
@@ -251,23 +251,11 @@ function Content(props: {
         }
       }}
     >
-      <Errored fallback={err => <Broken id={state.id} error={err()} fail={state.hide} />}>
+      <Errored fallback={err => <Broken root={`tooltip:${state.id}`} error={err()} fail={state.hide} />}>
         <Loading fallback={null}>{props.children}</Loading>
       </Errored>
     </FloatingLayer>
   );
-}
-
-/** Reports the content's failure once and hides the tooltip. */
-function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.Element {
-  createEffect(
-    () => props.error,
-    error => {
-      captureException(error, { flow: 'ui', step: 'root_render', tags: { root: `tooltip:${props.id}` } });
-      props.fail();
-    },
-  );
-  return null;
 }
 
 export const Tooltip = Object.assign(TooltipRoot, { Trigger, Content });
