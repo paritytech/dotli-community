@@ -26,7 +26,10 @@ describe("blocking modal queue", () => {
         targetProductId: "other-product.dot",
       },
     });
-    const camera = callbacks.permissions.devicePermission("Camera");
+    const camera = callbacks.permissions.devicePermission(
+      { productId: "myapp", executionKind: "App" },
+      "Camera",
+    );
 
     // Then
     expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
@@ -54,7 +57,7 @@ describe("blocking modal queue", () => {
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
 
     // Then
-    await expect(camera).resolves.toEqual({ granted: true });
+    await expect(camera).resolves.toBe("AllowAlways");
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     scope.dispose();
   });
@@ -76,8 +79,14 @@ describe("blocking modal queue", () => {
     const { devicePermission } = createPromptPermission("myapp", scope);
 
     // When
-    const first = devicePermission("Notifications");
-    const second = devicePermission("Notifications");
+    const first = devicePermission(
+      { productId: "myapp", executionKind: "App" },
+      "Notifications",
+    );
+    const second = devicePermission(
+      { productId: "myapp", executionKind: "App" },
+      "Notifications",
+    );
     await vi.waitFor(() => {
       expect(document.querySelectorAll(".signing-modal-backdrop")).toHaveLength(
         1,
@@ -89,8 +98,8 @@ describe("blocking modal queue", () => {
 
     // Then
     await expect(Promise.all([first, second])).resolves.toEqual([
-      { granted: true },
-      { granted: true },
+      "AllowAlways",
+      "AllowAlways",
     ]);
     expect(document.querySelector(".signing-modal-backdrop")).toBeNull();
     expect(status).toBe("Authorized");

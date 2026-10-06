@@ -47,42 +47,48 @@ export function createPromptPermission(
   // its prompt budget by alternating prompt kinds.
   limiter: SubmitRateLimiter = createSubmitRateLimiter(),
 ): Permissions {
-  const devicePermission: Permissions["devicePermission"] = async (tag) => {
+  const devicePermission: Permissions["devicePermission"] = async (
+    _product,
+    tag,
+  ) => {
     // OpenUrl has no host-side enforcement point; auto-grant rather than show
     // a modal whose deny button cannot block the underlying browser API.
     if (!isEnforceableDevicePermission(tag)) {
-      return { granted: true };
+      return "AllowAlways";
     }
-    return {
-      granted: await decidePromptPermission(
-        label,
-        tag,
-        {
-          kind: "Device",
-          limiter,
-          reloadOnGrant: isDevicePermission(tag),
-        },
-        modalScope,
-      ),
-    };
+    return (await decidePromptPermission(
+      label,
+      tag,
+      {
+        kind: "Device",
+        limiter,
+        reloadOnGrant: isDevicePermission(tag),
+      },
+      modalScope,
+    ))
+      ? "AllowAlways"
+      : "Deny";
   };
 
-  const remotePermission: Permissions["remotePermission"] = async (request) => {
+  const remotePermission: Permissions["remotePermission"] = async (
+    _product,
+    request,
+  ) => {
     const name = gatedRemotePermissionName(request.permission.tag);
     if (name === null) {
-      return { granted: true };
+      return "AllowAlways";
     }
-    return {
-      granted: await decidePromptPermission(
-        label,
-        name,
-        {
-          kind: "Remote",
-          limiter,
-        },
-        modalScope,
-      ),
-    };
+    return (await decidePromptPermission(
+      label,
+      name,
+      {
+        kind: "Remote",
+        limiter,
+      },
+      modalScope,
+    ))
+      ? "AllowAlways"
+      : "Deny";
   };
 
   return { devicePermission, remotePermission };

@@ -4,6 +4,8 @@ import { encodeCoreStorageKey } from "@parity/truapi-host";
 import type {
   CoreStorage,
   CoreStorageKey,
+  SecretCoreStorage,
+  SecretCoreStorageKey,
   SessionUiInfo,
 } from "@parity/truapi-host";
 import { SHARED_CORE_SESSION_KEY } from "@dotli/protocol/auth-storage";
@@ -155,38 +157,57 @@ export function emitPersistedSessionUiState(): void {
   })();
 }
 
-export function createSessionStoreAdapters(): CoreStorage {
+let storageOperation: Promise<unknown> = Promise.resolve();
+
+function orderedStorage<T>(operation: () => Promise<T> | T): Promise<T> {
+  const pending = storageOperation.then(operation);
+  storageOperation = pending.catch(() => undefined);
+  return pending;
+}
+
+export function createSessionStoreAdapters(): CoreStorage & SecretCoreStorage {
   return {
-    async readCoreStorage(key) {
-      return readCoreStorageValue(key);
+    readCoreStorage(key) {
+      return orderedStorage(() => {
+        const raw = localStorage.getItem(coreLocalStorageKey(key));
+        return raw === null
+          ? undefined
+          : decodeStoredBytes(raw, `core storage ${key.tag}`);
+      });
     },
-    async writeCoreStorage(key, value) {
-      await writeCoreStorageValue(key, value);
+    writeCoreStorage(key, value) {
+      return orderedStorage(() => {
+        localStorage.setItem(coreLocalStorageKey(key), bytesToHex(value));
+      });
     },
-    async clearCoreStorage(key) {
-      await clearCoreStorageValue(key);
+    clearCoreStorage(key) {
+      return orderedStorage(() => {
+        localStorage.removeItem(coreLocalStorageKey(key));
+      });
+    },
+    readSecretCoreStorage(key) {
+      return orderedStorage(() => readSecretCoreStorageValue(key));
+    },
+    writeSecretCoreStorage(key, value) {
+      return orderedStorage(() => writeSecretCoreStorageValue(key, value));
+    },
+    clearSecretCoreStorage(key) {
+      return orderedStorage(() => clearSecretCoreStorageValue(key));
     },
   };
 }
 
-async function readCoreStorageValue(
-  key: CoreStorageKey,
+async function readSecretCoreStorageValue(
+  key: SecretCoreStorageKey,
 ): Promise<Uint8Array | undefined> {
   if (key.tag === "AuthSession") {
-    let raw: string | null;
-    try {
-      raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
-    } catch (err) {
-      log.warn("[dot.li] shared auth session read failed:", err);
-      return undefined;
-    }
-    if (raw === null || raw === "") {
-      return undefined;
-    }
-    return decodeStoredBytes(raw, "shared auth session");
+    const raw = await readSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
+    return raw === null ? undefined : hexToBytes(raw);
   }
-  const raw = localStorage.getItem(coreLocalStorageKey(key));
-  return raw === null ? undefined : await decodeCoreStorageValue(key, raw);
+  const raw = localStorage.getItem(secretLocalStorageKey(key));
+  return raw === null
+    ? undefined
+    : await decodeSecretCoreStorageValue(key, raw);
 }
 
 function decodeStoredBytes(
@@ -201,8 +222,8 @@ function decodeStoredBytes(
   }
 }
 
-async function writeCoreStorageValue(
-  key: CoreStorageKey,
+async function writeSecretCoreStorageValue(
+  key: SecretCoreStorageKey,
   value: Uint8Array,
 ): Promise<void> {
   if (key.tag === "AuthSession") {
@@ -215,136 +236,106 @@ async function writeCoreStorageValue(
     return;
   }
   localStorage.setItem(
-    coreLocalStorageKey(key),
-    await encodeCoreStorageValue(key, value),
+    secretLocalStorageKey(key),
+    await encodeSecretCoreStorageValue(key, value),
   );
 }
 
-async function clearCoreStorageValue(key: CoreStorageKey): Promise<void> {
+async function clearSecretCoreStorageValue(
+  key: SecretCoreStorageKey,
+): Promise<void> {
   if (key.tag === "AuthSession") {
     await clearSharedAuthStorage(SITE_ID, SHARED_CORE_SESSION_KEY);
     await writeUiStateCache({ connected: false });
     emitLocalChange();
     return;
   }
-  localStorage.removeItem(coreLocalStorageKey(key));
+  localStorage.removeItem(secretLocalStorageKey(key));
 }
 
 function coreLocalStorageKey(key: CoreStorageKey): string {
   switch (key.tag) {
-    case "PairingDeviceIdentity":
-      return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
     case "PermissionAuthorization":
-      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
-    case "AllowanceKeys":
-      return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
-    case "AutoSigningKey":
-      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
-    // Wallet-bound capabilities for the active pairing: one slot, unlike the
-    // legacy per-product `AutoSigningKey` above.
-    case "AutoSigningKeys":
-      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
-    // Keyed by root public key so several rings can coexist. The snapshot is
-    // public, so it is not treated as secret material below.
+      return `${CORE_LOCAL_STORAGE_PREFIX}permission:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case "RingVrfRegistry":
-      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(
-        encodeCoreStorageKey(key),
-      )}`;
+      return `${CORE_LOCAL_STORAGE_PREFIX}ring-vrf-registry:${hexNoPrefix(encodeCoreStorageKey(key))}`;
     case "StatementRenewalTargets":
       return `${CORE_LOCAL_STORAGE_PREFIX}statement-renewal-targets`;
     case "LastProcessedPairingStatement":
       return `${CORE_LOCAL_STORAGE_PREFIX}last-processed-pairing-statement`;
-    case "AuthSession":
-      return `${CORE_LOCAL_STORAGE_PREFIX}auth-session`;
+    case "ProductSubtree":
+    case "SsoResponderRequestLedger":
+    case "ProductManifest":
+      return `${CORE_LOCAL_STORAGE_PREFIX}${hexNoPrefix(encodeCoreStorageKey(key))}`;
   }
 }
 
-function storesSecretMaterial(key: CoreStorageKey): boolean {
+function secretLocalStorageKey(
+  key: Exclude<SecretCoreStorageKey, { tag: "AuthSession" }>,
+): string {
+  switch (key.tag) {
+    case "PairingDeviceIdentity":
+      return `${CORE_LOCAL_STORAGE_PREFIX}pairing-device-identity`;
+    case "AllowanceKeys":
+      return `${CORE_LOCAL_STORAGE_PREFIX}allowance-keys:${key.value.sessionId}`;
+    case "AutoSigningKeys":
+      return `${CORE_LOCAL_STORAGE_PREFIX}auto-signing-keys`;
+    case "DeviceEncryptionKey":
+      return `${CORE_LOCAL_STORAGE_PREFIX}device-encryption-key`;
+  }
+}
+
+function storesEncryptedMaterial(key: SecretCoreStorageKey): boolean {
   return (
     key.tag === "AllowanceKeys" ||
-    key.tag === "AutoSigningKey" ||
-    key.tag === "AutoSigningKeys"
+    key.tag === "AutoSigningKeys" ||
+    key.tag === "DeviceEncryptionKey"
   );
 }
 
-async function encodeCoreStorageValue(
-  key: CoreStorageKey,
+async function encodeSecretCoreStorageValue(
+  key: SecretCoreStorageKey,
   value: Uint8Array,
 ): Promise<string> {
-  if (storesSecretMaterial(key)) {
-    const nonce = crypto.getRandomValues(
-      new Uint8Array(CORE_SECRET_NONCE_LENGTH),
-    );
-    const ciphertext = new Uint8Array(
-      await crypto.subtle.encrypt(
-        { name: "AES-GCM", iv: nonce },
-        await coreSecretStorageKey(),
-        new Uint8Array(value),
-      ),
-    );
-    const stored = new Uint8Array(nonce.length + ciphertext.length);
-    stored.set(nonce);
-    stored.set(ciphertext, nonce.length);
-    return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
+  if (!storesEncryptedMaterial(key)) {
+    return bytesToHex(value);
   }
-  return bytesToHex(value);
+  const nonce = crypto.getRandomValues(
+    new Uint8Array(CORE_SECRET_NONCE_LENGTH),
+  );
+  const ciphertext = new Uint8Array(
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: nonce },
+      await coreSecretStorageKey(),
+      new Uint8Array(value),
+    ),
+  );
+  const stored = new Uint8Array(nonce.length + ciphertext.length);
+  stored.set(nonce);
+  stored.set(ciphertext, nonce.length);
+  return ENCRYPTED_VALUE_PREFIX + bytesToHex(stored);
 }
 
-async function decodeCoreStorageValue(
-  key: CoreStorageKey,
+async function decodeSecretCoreStorageValue(
+  key: SecretCoreStorageKey,
   raw: string,
-): Promise<Uint8Array | undefined> {
-  if (!storesSecretMaterial(key)) {
-    return decodeStoredBytes(raw, `core storage ${key.tag}`);
+): Promise<Uint8Array> {
+  if (!storesEncryptedMaterial(key)) {
+    return hexToBytes(raw);
   }
   if (!raw.startsWith(ENCRYPTED_VALUE_PREFIX)) {
-    // Slots written before at-rest encryption shipped hold the plain key
-    // bytes. Re-persist encrypted so the plaintext copy doesn't outlive
-    // this read.
-    const bytes = decodeStoredBytes(raw, `core storage ${key.tag}`);
-    if (bytes === undefined) {
-      return undefined;
-    }
-    log.warn(`[dot.li] re-encrypting legacy plaintext core storage ${key.tag}`);
-    localStorage.setItem(
-      coreLocalStorageKey(key),
-      await encodeCoreStorageValue(key, bytes),
-    );
-    return bytes;
+    throw new Error(`Invalid encrypted secret storage ${key.tag}`);
   }
-  const bytes = decodeStoredBytes(
-    raw.slice(ENCRYPTED_VALUE_PREFIX.length),
-    `core storage ${key.tag}`,
+  const bytes = hexToBytes(raw.slice(ENCRYPTED_VALUE_PREFIX.length));
+  return new Uint8Array(
+    await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
+      await coreSecretStorageKey(),
+      bytes.slice(CORE_SECRET_NONCE_LENGTH),
+    ),
   );
-  if (bytes === undefined) {
-    return undefined;
-  }
-  try {
-    return new Uint8Array(
-      await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: bytes.slice(0, CORE_SECRET_NONCE_LENGTH) },
-        await coreSecretStorageKey(),
-        bytes.slice(CORE_SECRET_NONCE_LENGTH),
-      ),
-    );
-  } catch (err) {
-    // The slot was written under a key we no longer hold (IndexedDB
-    // cleared while localStorage survived, or a session-ephemeral fallback
-    // key) or the bytes are corrupt. Drop it: returning the raw bytes
-    // would hand ciphertext to the core as key material.
-    log.warn(`[dot.li] dropping undecryptable core storage ${key.tag}:`, err);
-    localStorage.removeItem(coreLocalStorageKey(key));
-    return undefined;
-  }
 }
 
-// Marks a slot as holding the encrypted format. Legacy plaintext slots are
-// bare hex, so the prefix cleanly separates "must decrypt" from "migrate":
-// a decrypt failure never falls back to treating ciphertext as plaintext.
 const ENCRYPTED_VALUE_PREFIX = "enc1:";
 
 // Standard AES-GCM nonce length. A fresh random nonce is drawn per write and
@@ -358,22 +349,13 @@ const CORE_SECRET_KEY_ID = "allowance-keys";
 
 let coreSecretKeyPromise: Promise<CryptoKey> | undefined;
 
-/**
- * The at-rest key for core signing-secret slots: a random per-install AES key
- * generated non-extractable and persisted in IndexedDB, so the key material
- * itself can never be read out of the browser's crypto implementation — a
- * key derived from bundle data would be computable by anyone. If IndexedDB
- * is unavailable the key degrades to session-ephemeral: values written then
- * fail to decrypt after a reload and are dropped like any corrupt slot.
- */
 function coreSecretStorageKey(): Promise<CryptoKey> {
-  coreSecretKeyPromise ??= loadOrCreateCoreSecretKey().catch((err: unknown) => {
-    log.warn(
-      "[dot.li] falling back to a session-ephemeral core-secret storage key:",
-      err,
-    );
-    return generateCoreSecretKey();
-  });
+  coreSecretKeyPromise ??= loadOrCreateCoreSecretKey().catch(
+    (error: unknown) => {
+      coreSecretKeyPromise = undefined;
+      throw error;
+    },
+  );
   return coreSecretKeyPromise;
 }
 
@@ -432,7 +414,11 @@ function idbGetKey(db: IDBDatabase): Promise<CryptoKey | undefined> {
       .get(CORE_SECRET_KEY_ID);
     request.onsuccess = () => {
       const value: unknown = request.result;
-      resolve(isCryptoKey(value) ? value : undefined);
+      if (value === undefined || isCryptoKey(value)) {
+        resolve(value);
+      } else {
+        reject(new Error("Invalid persisted core-secret storage key"));
+      }
     };
     request.onerror = () => {
       reject(request.error ?? new Error("indexedDB get failed"));
@@ -462,10 +448,18 @@ function idbAddKey(db: IDBDatabase, key: CryptoKey): Promise<void> {
 /** `instanceof CryptoKey` is unreliable across realms (and the global is
  * missing under happy-dom), so validate the stored record structurally. */
 function isCryptoKey(value: unknown): value is CryptoKey {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const key = value as Partial<CryptoKey>;
+  const algorithm = key.algorithm as Partial<AesKeyAlgorithm> | undefined;
   return (
-    typeof value === "object" &&
-    value !== null &&
-    (value as CryptoKey).type === "secret"
+    key.type === "secret" &&
+    key.extractable === false &&
+    algorithm?.name === "AES-GCM" &&
+    algorithm.length === 256 &&
+    key.usages?.includes("encrypt") === true &&
+    key.usages.includes("decrypt")
   );
 }
 

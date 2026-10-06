@@ -133,24 +133,26 @@ describe("user confirmation modal", () => {
       value: {
         tag: "Product",
         value: {
-          account: {
-            dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Index", value: 2 },
-          },
-          payload: {
-            blockHash:
-              "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-            blockNumber: "0x00000000",
-            era: "0x00",
-            genesisHash:
-              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-            method: "0x0500",
-            nonce: "0x00000000",
-            signedExtensions: [],
-            specVersion: "0x00000000",
-            tip: "0x00000000000000000000000000000000",
-            transactionVersion: "0x00000000",
-            version: 4,
+          request: {
+            account: {
+              dotNsIdentifier: "truapi-playground.dot",
+              derivationIndex: { tag: "Index", value: 2 },
+            },
+            payload: {
+              blockHash:
+                "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+              blockNumber: "0x00000000",
+              era: "0x00",
+              genesisHash:
+                "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+              method: "0x0500",
+              nonce: "0x00000000",
+              signedExtensions: [],
+              specVersion: "0x00000000",
+              tip: "0x00000000000000000000000000000000",
+              transactionVersion: "0x00000000",
+              version: 4,
+            },
           },
         },
       },
@@ -185,11 +187,14 @@ describe("user confirmation modal", () => {
       value: {
         tag: "LegacyAccount",
         value: {
-          signer:
-            "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
-          payload: {
-            tag: "Bytes",
-            value: { bytes: "0x48656c6c6f2c20776f726c6421" },
+          watermarked: true,
+          request: {
+            signer:
+              "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
+            payload: {
+              tag: "Bytes",
+              value: { bytes: "0x48656c6c6f2c20776f726c6421" },
+            },
           },
         },
       },
@@ -207,6 +212,7 @@ describe("user confirmation modal", () => {
       Signer:
         "0x2afb6161ad5d4132b6d2362330e1475be90b706b0e68ba344a80e7a1df071304",
       Message: "0x48656c6c6f2c20776f726c6421",
+      "Signing mode": "Watermarked message",
     });
     expect(document.body.textContent).not.toContain("Request");
 
@@ -269,15 +275,17 @@ describe("user confirmation modal", () => {
       value: {
         tag: "Product",
         value: {
-          signer: {
-            dotNsIdentifier: "truapi-playground.dot",
-            derivationIndex: { tag: "Index", value: 3 },
+          payload: {
+            signer: {
+              dotNsIdentifier: "truapi-playground.dot",
+              derivationIndex: { tag: "Index", value: 3 },
+            },
+            genesisHash:
+              "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
+            callData: "0x0500",
+            extensions: [],
+            txExtVersion: 5,
           },
-          genesisHash:
-            "0xbf0488dbe9daa1de1c08c5f743e26fdc2a4ecd74cf87dd1b4b1eeb99ae4ef19f",
-          callData: "0x0500",
-          extensions: [],
-          txExtVersion: 5,
         },
       },
     };
@@ -312,6 +320,7 @@ describe("user confirmation modal", () => {
     const review: UserConfirmationReview = {
       tag: "ResourceAllocation",
       value: {
+        callingProductId: "truapi-playground.dot",
         resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
       },
     };
@@ -325,6 +334,7 @@ describe("user confirmation modal", () => {
     );
     const fields = modalFields();
     expect(fields).toEqual({
+      "Requesting product": "truapi-playground.dot",
       Resources: "StatementStoreAllowance, AutoSigning",
     });
     expect(Object.keys(fields)).not.toContain("Application");
@@ -566,6 +576,53 @@ describe("user confirmation modal", () => {
     document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
 
     // Then
+    await expect(confirmation).resolves.toBe(false);
+  });
+  it("requires explicit account-subtree consent for the named product", async () => {
+    const { confirmPermission } = createUserConfirmationAdapters("shell-label");
+    const denied = confirmPermission({
+      tag: "ProductSubtree",
+      value: { productId: "beneficiary.dot" },
+    });
+    expect(modalFields()).toEqual({ "Requesting product": "beneficiary.dot" });
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
+    await expect(denied).resolves.toBe("Deny");
+    const accepted = confirmPermission({
+      tag: "ProductSubtree",
+      value: { productId: "beneficiary.dot" },
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
+    await expect(accepted).resolves.toBe("AllowAlways");
+  });
+
+  it("warns when a raw signature can authorize a transaction and names its caller", async () => {
+    const confirmation = createUserConfirmationAdapters(
+      "shell-label",
+    ).confirmUserAction({
+      tag: "SignRaw",
+      value: {
+        tag: "Product",
+        value: {
+          callingProductId: "caller.dot",
+          watermarked: false,
+          request: {
+            account: {
+              dotNsIdentifier: "signer.dot",
+              derivationIndex: { tag: "Index", value: 0 },
+            },
+            payload: { tag: "Bytes", value: { bytes: "0x0102" } },
+          },
+        },
+      },
+    });
+    expect(modalFields()).toEqual({
+      App: "caller.dot",
+      Signer: "signer.dot / 0",
+      Message: "0x0102",
+      "Signing mode":
+        "Unwatermarked signature. This can authorize transactions.",
+    });
+    document.querySelector<HTMLButtonElement>(".signing-btn-cancel")?.click();
     await expect(confirmation).resolves.toBe(false);
   });
 });

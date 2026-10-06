@@ -274,13 +274,15 @@ describe("device permission prompts", () => {
     };
     window.addEventListener("dotli:device-permission-changed", onReload);
 
-    const response =
-      createPromptPermission("myapp").devicePermission(permission);
+    const response = createPromptPermission("myapp").devicePermission(
+      { productId: "myapp", executionKind: "App" },
+      permission,
+    );
     await vi.waitFor(() => {
       expect(document.querySelector(".signing-btn-sign")).not.toBeNull();
     });
     document.querySelector<HTMLButtonElement>(".signing-btn-sign")?.click();
-    await expect(response).resolves.toEqual({ granted: true });
+    await expect(response).resolves.toBe("AllowAlways");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     window.removeEventListener("dotli:device-permission-changed", onReload);

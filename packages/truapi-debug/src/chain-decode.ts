@@ -208,7 +208,9 @@ export function decodeChainAnnotations(
       // is tolerated in case a producer already unwrapped the field.
       const r = payload as ResultValue<unknown, unknown>;
       if (r.success) {
-        const opId = asString(r.value) ?? asString(asObj(r.value)?.operationId);
+        const response = peelVersion(r.value);
+        const opId =
+          asString(response) ?? asString(asObj(response)?.operationId);
         if (opId !== undefined) {
           return {
             kind: "tx-broadcast-response",
@@ -362,8 +364,8 @@ function operationStarterResponse(
       errorMessage: extractErrorReason(r.value),
     };
   }
-  const struct = asObj(r.value);
-  const inner = asEnum(struct?.operation) ?? asEnum(r.value);
+  const struct = asObj(peelVersion(r.value));
+  const inner = asEnum(struct?.operation) ?? asEnum(peelVersion(r.value));
   if (inner === undefined) {
     // Unknown shape, but the response was still a success. Report ok.
     return { kind, outcome: "ok" };

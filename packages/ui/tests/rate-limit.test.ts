@@ -107,7 +107,10 @@ describe("prompt rate limiting across host callbacks", () => {
 
     // When: permission prompts exhaust the whole window budget.
     for (let i = 0; i < MAX_PER_WINDOW; i += 1) {
-      await permissions.devicePermission("Camera");
+      await permissions.devicePermission(
+        { productId: "myapp", executionKind: "App" },
+        "Camera",
+      );
     }
 
     // Then: a notification prompt shares that budget and is rate limited

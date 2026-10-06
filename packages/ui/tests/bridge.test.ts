@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  HostRequestLoginResponse,
+  VersionedHostRequestLoginResponse,
+  MESSAGE_TYPE_RESPONSE,
   VersionedHostRequestLoginError,
   decodeWireMessage,
   encodeWireMessage,
@@ -157,47 +158,43 @@ function loginResponseFrame(
   result:
     | { success: true; value: "Success" | "AlreadyConnected" | "Rejected" }
     | { success: false; reason: string }
-    | { success: false; hostFailure: string },
+    | { success: false; hostFailure: string }
+    | { success: false; cancelled: true },
 ): Uint8Array {
-  const responseCodec = scale.indexedTaggedUnion({
-    V1: [
-      0,
-      scale.Result(
-        HostRequestLoginResponse,
-        scale.CallError(VersionedHostRequestLoginError),
-      ),
-    ] as const,
-  });
-  const value = responseCodec.enc({
-    tag: "V1",
-    value: result.success
-      ? { success: true, value: result.value }
-      : "hostFailure" in result
-        ? {
-            success: false,
-            value: {
-              tag: "HostFailure",
-              value: { reason: result.hostFailure },
-            },
-          }
-        : {
-            success: false,
-            value: {
-              tag: "Domain",
+  const responseCodec = scale.Result(
+    VersionedHostRequestLoginResponse,
+    scale.CallError(VersionedHostRequestLoginError),
+  );
+  const value = responseCodec.enc(
+    result.success
+      ? { success: true, value: { tag: "V1", value: result.value } }
+      : "cancelled" in result
+        ? { success: false, value: { tag: "Cancelled" } }
+        : "hostFailure" in result
+          ? {
+              success: false,
               value: {
-                tag: "V1",
+                tag: "HostFailure",
+                value: { reason: result.hostFailure },
+              },
+            }
+          : {
+              success: false,
+              value: {
+                tag: "Domain",
                 value: {
-                  tag: "Unknown",
-                  value: { reason: result.reason },
+                  tag: "V1",
+                  value: { tag: "Unknown", value: { reason: result.reason } },
                 },
               },
             },
-          },
-  });
+  );
   const frame = encodeWireMessage({
     requestId,
     payload: {
-      id: ACCOUNT_REQUEST_LOGIN.response,
+      traitId: ACCOUNT_REQUEST_LOGIN.trait,
+      methodId: ACCOUNT_REQUEST_LOGIN.method,
+      messageType: MESSAGE_TYPE_RESPONSE,
       value,
     },
   });
@@ -513,6 +510,26 @@ describe("requestCoreLogin", () => {
     await expect(promise).rejects.toMatchObject({
       name: "LoginRequestError",
       error: { tag: "HostFailure", value: { reason } },
+    });
+    expect(provider.listener).toBeNull();
+  });
+
+  it("reports a cancelled login without losing its typed error", async () => {
+    const { requestCoreLogin } = await import("@dotli/ui/bridge");
+    const provider = makeLoginProvider({
+      onPostMessage(message) {
+        provider.listener?.(
+          loginResponseFrame(requestIdFromFrame(message), {
+            success: false,
+            cancelled: true,
+          }),
+        );
+      },
+    });
+    await expect(requestCoreLogin(provider)).rejects.toMatchObject({
+      name: "LoginRequestError",
+      message: "Login request cancelled",
+      error: { tag: "Cancelled" },
     });
     expect(provider.listener).toBeNull();
   });

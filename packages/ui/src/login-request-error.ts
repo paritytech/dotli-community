@@ -20,6 +20,8 @@ function formatLoginRequestError(error: LoginRequestFailure): string {
   switch (error.tag) {
     case "Domain":
       return formatDomainLoginError(error.value);
+    case "Cancelled":
+      return "Login request cancelled";
     case "Denied":
       return "Login request denied";
     case "Unsupported":

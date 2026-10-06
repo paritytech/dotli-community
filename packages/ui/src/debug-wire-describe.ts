@@ -21,28 +21,15 @@
 
 import * as WIRE_TABLE from "@parity/truapi/wire-table";
 import * as generated from "@parity/truapi";
-import {
-  CallError,
-  indexedTaggedUnion,
-  Result,
-  _void,
-  type Codec,
-} from "@parity/truapi/scale";
+import type { MethodIds, Payload } from "@parity/truapi";
+import { CallError, Result, _void, type Codec } from "@parity/truapi/scale";
 
 interface WireCodec {
   dec: (bytes: Uint8Array) => unknown;
 }
 
-/**
- * Builds the codec for a chain response discriminant. The generated client
- * wraps every response in a `V1` envelope around
- * `Result(<bare response struct>, CallError(<versioned error>))`, never a
- * bare `Versioned*Response`. The composition has to match because the bare
- * codec doesn't throw on real response bytes. It quietly decodes garbage,
- * which would defeat the raw-bytes fallback in `describeWireFrame`.
- */
 function responseCodec<T, E>(ok: Codec<T>, err: Codec<E>): WireCodec {
-  return indexedTaggedUnion({ V1: [0, Result(ok, CallError(err))] });
+  return Result(ok, CallError(err));
 }
 
 /**
@@ -133,6 +120,24 @@ interface CallRoles {
   response: number;
 }
 
+function frameId(method: MethodIds, messageType: number): number {
+  return method.trait * 65536 + method.method * 256 + messageType;
+}
+
+function wireRoles(method: MethodIds): SubscriptionRoles | CallRoles {
+  return method.kind === "subscription"
+    ? {
+        start: frameId(method, generated.MESSAGE_TYPE_START),
+        receive: frameId(method, generated.MESSAGE_TYPE_RECEIVE),
+        interrupt: frameId(method, generated.MESSAGE_TYPE_INTERRUPT),
+        stop: frameId(method, generated.MESSAGE_TYPE_STOP),
+      }
+    : {
+        request: frameId(method, generated.MESSAGE_TYPE_REQUEST),
+        response: frameId(method, generated.MESSAGE_TYPE_RESPONSE),
+      };
+}
+
 function isSubscriptionRoles(
   roles: SubscriptionRoles | CallRoles,
 ): roles is SubscriptionRoles {
@@ -151,9 +156,7 @@ function buildChainEntries(): Map<number, ChainEntry> {
   const entries = new Map<number, ChainEntry>();
 
   for (const { wireTableKey, stem } of CHAIN_LINKAGE) {
-    const roles = WIRE_TABLE[wireTableKey] as unknown as
-      | SubscriptionRoles
-      | CallRoles;
+    const roles = wireRoles(WIRE_TABLE[wireTableKey]);
     const tagBase = `remote_chain_${snakeCase(stem)}`;
 
     if (isSubscriptionRoles(roles)) {
@@ -184,7 +187,7 @@ function buildChainEntries(): Map<number, ChainEntry> {
 
     const okCodec = VOID_RESPONSE_STEMS.has(stem)
       ? VOID_CODEC
-      : resolveCodec(`RemoteChain${stem}Response`);
+      : resolveCodec(`VersionedRemoteChain${stem}Response`);
     const errCodec = resolveCodec(`VersionedRemoteChain${stem}Error`);
     const responseWireCodec =
       okCodec !== undefined && errCodec !== undefined
@@ -217,11 +220,11 @@ interface GenericEntry {
  */
 function buildGenericNames(): Map<number, GenericEntry> {
   const names = new Map<number, GenericEntry>();
-  for (const [exportName, roles] of Object.entries(WIRE_TABLE)) {
-    if (typeof roles !== "object") {
+  for (const [exportName, method] of Object.entries(WIRE_TABLE)) {
+    if (typeof method !== "object") {
       continue;
     }
-    for (const [role, id] of Object.entries(roles)) {
+    for (const [role, id] of Object.entries(wireRoles(method))) {
       if (typeof id === "number") {
         const name = `${exportName.toLowerCase()}_${role}`;
         const redacted = REDACTED_PREFIXES.some((prefix) =>
@@ -237,10 +240,13 @@ function buildGenericNames(): Map<number, GenericEntry> {
 let chainEntries: Map<number, ChainEntry> | null = null;
 let genericNames: Map<number, GenericEntry> | null = null;
 
-export function describeWireFrame(
-  wireId: number,
-  bytes: Uint8Array,
-): { tag: string; value: unknown } {
+export function describeWireFrame(payload: Payload): {
+  tag: string;
+  value: unknown;
+} {
+  const wireId =
+    payload.traitId * 65536 + payload.methodId * 256 + payload.messageType;
+  const bytes = payload.value;
   chainEntries ??= buildChainEntries();
   genericNames ??= buildGenericNames();
 
@@ -280,4 +286,5 @@ export const __testing = {
   resolveCodec,
   buildChainEntries,
   isSubscriptionRoles,
+  wireRoles,
 };

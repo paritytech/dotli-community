@@ -15,12 +15,15 @@ import {
   createLocalStorageRead,
   createLocalStorageWrite,
   createLocalStorageClear,
+  createLocalStorageSubscribe,
 } from "./LocalStorage";
 import { createPreimageAdapters } from "./Preimage";
 import { createChainConnect } from "./Chain";
 import { createFeatureSupported } from "./FeatureSupported";
 import { createSupportedChains } from "./SupportedChains";
 import { createThemeSubscribe } from "./Theme";
+import { createLocaleSubscribe } from "./Locale";
+import { createProductOperations } from "./ProductOperations";
 import { createAuthStateChanged } from "./AuthState";
 import { createSessionStoreAdapters } from "./SessionStore";
 import { createUserConfirmationAdapters } from "./UserConfirmation";
@@ -51,6 +54,7 @@ export function createHostCallbacks(
   // Permission and notification prompts draw from one budget so a product
   // cannot double its prompt rate by alternating prompt kinds.
   const promptLimiter = createSubmitRateLimiter();
+  const storage = createSessionStoreAdapters();
   return {
     navigation: { navigateTo: createNavigateTo() },
     notifications: createNotificationAdapters(
@@ -71,8 +75,11 @@ export function createHostCallbacks(
       read: createLocalStorageRead(),
       write: createLocalStorageWrite(),
       clear: createLocalStorageClear(),
+      subscribeStorage: createLocalStorageSubscribe(),
     },
-    coreStorage: createSessionStoreAdapters(),
+    productOperations: createProductOperations(),
+    coreStorage: storage,
+    secretCoreStorage: storage,
     auth: {
       authStateChanged: createAuthStateChanged(pairingLabel ?? label, {
         dotSuffix: pairingDotSuffix,
@@ -81,6 +88,7 @@ export function createHostCallbacks(
     },
     userConfirmation: createUserConfirmationAdapters(label, blockingModalScope),
     theme: { subscribeTheme: createThemeSubscribe() },
+    locale: { subscribeLocale: createLocaleSubscribe() },
     preimage: createPreimageAdapters(label),
     chain: { connect: createChainConnect() },
   };

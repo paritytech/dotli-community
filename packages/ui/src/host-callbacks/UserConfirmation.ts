@@ -180,6 +180,12 @@ function confirmationDisplay(
       return { fields: createIdentityDisclosureFields(review.value) };
     case "ResourceAllocation":
       return { fields: createResourceAllocationFields(review.value) };
+    case "ProductSubtree":
+      return {
+        fields: [
+          { label: "Requesting product", value: review.value.productId },
+        ],
+      };
   }
 }
 
@@ -221,9 +227,9 @@ function createSignPayloadFields(
 ): ConfirmationField[] {
   if (review.tag === "Product") {
     return createPayloadFields(
-      label,
-      formatProductAccount(review.value.account),
-      review.value.payload,
+      review.value.callingProductId ?? label,
+      formatProductAccount(review.value.request.account),
+      review.value.request.payload,
     );
   }
 
@@ -234,25 +240,29 @@ function createSignRawFields(
   label: string,
   review: SignRawReview,
 ): ConfirmationField[] {
-  if (review.tag === "Product") {
-    return [
-      { label: "App", value: label },
-      { label: "Signer", value: formatProductAccount(review.value.account) },
-      {
-        label: "Message",
-        value: formatRawPayload(review.value.payload),
-        mono: true,
-      },
-    ];
-  }
-
+  const signer =
+    review.tag === "Product"
+      ? formatProductAccount(review.value.request.account)
+      : review.value.request.signer;
   return [
-    { label: "App", value: label },
-    { label: "Signer", value: review.value.signer },
+    {
+      label: "App",
+      value:
+        review.tag === "Product"
+          ? (review.value.callingProductId ?? label)
+          : label,
+    },
+    { label: "Signer", value: signer },
     {
       label: "Message",
-      value: formatRawPayload(review.value.payload),
+      value: formatRawPayload(review.value.request.payload),
       mono: true,
+    },
+    {
+      label: "Signing mode",
+      value: review.value.watermarked
+        ? "Watermarked message"
+        : "Unwatermarked signature. This can authorize transactions.",
     },
   ];
 }
@@ -261,14 +271,21 @@ function createTransactionFields(
   label: string,
   review: CreateTransactionReview,
 ): ConfirmationField[] {
-  const payload = review.value;
+  const payload =
+    review.tag === "Product" ? review.value.payload : review.value;
   const signer =
     review.tag === "Product"
-      ? formatProductAccount(review.value.signer)
+      ? formatProductAccount(review.value.payload.signer)
       : review.value.signer;
 
   return [
-    { label: "App", value: label },
+    {
+      label: "App",
+      value:
+        review.tag === "Product"
+          ? (review.value.callingProductId ?? label)
+          : label,
+    },
     { label: "Signer", value: signer },
     { label: "Genesis Hash", value: payload.genesisHash, mono: true },
     { label: "Call Data", value: truncateHex(payload.callData), mono: true },
@@ -311,7 +328,7 @@ function createStatementSignFields(
   review: StatementStoreProductSignReview,
 ): ConfirmationField[] {
   return [
-    { label: "App", value: label },
+    { label: "App", value: review.callingProductId ?? label },
     { label: "Signer", value: formatProductAccount(review.account) },
     {
       label: "Statement",
@@ -359,6 +376,7 @@ function createResourceAllocationFields(
   review: ResourceAllocationReview,
 ): ConfirmationField[] {
   return [
+    { label: "Requesting product", value: review.callingProductId },
     {
       label: "Resources",
       value: review.resources.map(formatResource).join(", "),
@@ -404,6 +422,8 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
       };
     case "ResourceAllocation":
       return { title: "Resource Allocation", action: "Allow" };
+    case "ProductSubtree":
+      return { title: "Account Access", action: "Allow", cancelAction: "Deny" };
   }
 }
 
@@ -444,13 +464,17 @@ export function createUserConfirmationAdapters(
   label: string,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Required<UserConfirmationHost> {
+  const confirmUserAction: UserConfirmationHost["confirmUserAction"] = (
+    review,
+  ) =>
+    modalScope.enqueue((signal) =>
+      review.tag === "PreimageSubmit"
+        ? handlePreimageSubmitReview(review.value, signal)
+        : handleConfirmationReview(label, review, signal),
+    );
   return {
-    confirmUserAction: (review) => {
-      return modalScope.enqueue((signal) =>
-        review.tag === "PreimageSubmit"
-          ? handlePreimageSubmitReview(review.value, signal)
-          : handleConfirmationReview(label, review, signal),
-      );
-    },
+    confirmUserAction,
+    confirmPermission: async (review) =>
+      (await confirmUserAction(review)) ? "AllowAlways" : "Deny",
   };
 }
