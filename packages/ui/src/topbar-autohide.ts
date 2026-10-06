@@ -6,7 +6,7 @@
 // The bar folds into its status capsule a moment after the product's content
 // shows on desktop, signed in or not (never over the loading screen or an
 // error page), and at once when the user presses or tabs into the app. It
-// never folds at a phone's width (PHONE_QUERY), where it is the phone header,
+// never folds at a phone's width (PHONE_QUERY), where it is the phone bar,
 // and returns on pointer hover, on keyboard focus, and on the reveal
 // shortcut, so home, settings, permissions and login never become
 // mouse-only.
@@ -76,9 +76,8 @@ export function registerTopbarRevealButton(el: HTMLElement): () => void {
 /**
  * On desktop the pill and the capsule float over a full-height frame, as the
  * board draws them, so the product never relayouts on a fold or a reveal.
- * The phone header sits in the page flow, with the frame below it, and so
- * does a touch device's bar, which never folds (armTopbarAutoHide) and would
- * otherwise cover the app's top for good.
+ * The phone bar and a touch device's bar never fold (armTopbarAutoHide), so
+ * the frame keeps clear of them rather than sit under them for good.
  */
 function syncFrameLayout(): void {
   setTopbarLayout({ offset: isPhoneViewport() || isMobileDevice() });
@@ -151,8 +150,8 @@ export function revealTopbarAndFocus(): void {
 }
 
 /**
- * The window crossed the phone width: as the phone header the bar comes back
- * and stays, with the frame below it, and as the pill it folds away again
+ * The window crossed the phone width: as the phone bar it comes back and
+ * stays, with the frame above it, and as the pill it folds away again
  * after the delay, floating over the full-height frame.
  */
 function onViewportChange(): void {
