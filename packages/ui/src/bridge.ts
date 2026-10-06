@@ -727,7 +727,7 @@ window.addEventListener('dotli:permission-changed', event => {
   if (
     currentProduct === null ||
     currentHost === null ||
-    (detail?.productId !== currentHost.productId && detail?.label !== currentProduct.label)
+    (detail.productId !== currentHost.productId && detail.label !== currentProduct.label)
   ) {
     return;
   }
