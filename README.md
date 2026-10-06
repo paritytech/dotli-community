@@ -331,8 +331,11 @@ no popups or top navigation; its other device grants still apply. Capture grants
 iframe capture: a raw camera or microphone request fails with an error rather than a denial, so it never records a
 durable device denial that would block host Media. Host video planes are siblings of the product inside an isolated
 compositor that takes the frame's layout; neither product DOM/canvas readback nor the product's own RTC connections
-reach host tracks, peers, SDP, ICE or decoded pictures. Host occlusion hides or clips the planes, scaled, rotated or
-skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls stay above the product.
+reach host tracks, peers, SDP, ICE or decoded pictures. Host UI that paints above the compositor's stacking context
+(toasts, popovers, modals) covers the planes while pictures keep rendering; any other visible host element over the
+product, or one whose stacking order cannot be established, blanks them. Viewport edges and the call bar clip the
+planes, scaled, rotated or skewed layouts blank them, and the call, screen-picker, audio-resume and end-call controls
+stay above the product.
 
 Calling consent shows the exact product, sr25519 account and network genesis. Each prompt is cancelled with its
 operation, never reloads the product, and persists nothing in browser UI code: the core owns scoped authorization. The

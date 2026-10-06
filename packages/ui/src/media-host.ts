@@ -37,6 +37,136 @@ export const PROTECTED_MEDIA_ALLOW =
 /** Pure translations stay representable; any scale, rotation or skew blanks media. */
 const TRANSLATION = /^matrix\(1, 0, 0, 1, -?[\d.e+-]+, -?[\d.e+-]+\)$/;
 
+type StyleOf = (element: Element) => CSSStyleDeclaration;
+
+/** Computed values that leave a stacking-context trigger off. */
+const NEUTRAL = new Set(['', 'none', 'auto', 'normal', 'static']);
+
+function active(value: string | undefined): boolean {
+  return value !== undefined && !NEUTRAL.has(value);
+}
+
+/** The z-index an element is painted at in its parent context, if z-index applies. */
+function zIndex(element: Element, styleOf: StyleOf): number | undefined {
+  const style = styleOf(element);
+  const parent = element.parentElement === null ? '' : styleOf(element.parentElement).display;
+  return active(style.zIndex) && (active(style.position) || /^(inline-)?(flex|grid)$/.test(parent))
+    ? Number(style.zIndex)
+    : undefined;
+}
+
+/**
+ * Whether `element` forms a stacking context; `undefined` when a property not
+ * modelled here might make it one.
+ */
+function stackingContext(element: Element, styleOf: StyleOf): boolean | undefined {
+  const style = styleOf(element);
+  if (
+    element === element.ownerDocument.documentElement ||
+    style.position === 'fixed' ||
+    style.position === 'sticky' ||
+    zIndex(element, styleOf) !== undefined ||
+    (style.opacity !== '' && Number(style.opacity) < 1) ||
+    style.isolation === 'isolate' ||
+    [
+      style.mixBlendMode,
+      style.transform,
+      style.translate,
+      style.rotate,
+      style.scale,
+      style.filter,
+      style.backdropFilter,
+      style.perspective,
+      style.clipPath,
+      style.maskImage,
+    ].some(active)
+  ) {
+    return true;
+  }
+  return [style.willChange, style.contain, style.containerType].some(active) ? undefined : false;
+}
+
+function inTopLayer(element: Element): boolean {
+  // The fullscreen root element keeps every relative order inside it.
+  return (
+    element !== element.ownerDocument.documentElement &&
+    [':modal', ':popover-open', ':fullscreen'].some(selector => {
+      try {
+        return element.matches(selector);
+      } catch {
+        return false;
+      }
+    })
+  );
+}
+
+/**
+ * Stacking contexts from `element` itself up to the root; `undefined` when one
+ * cannot be decided or the chain enters the top layer.
+ */
+function stackingContexts(element: Element, styleOf: StyleOf): Element[] | undefined {
+  const chain: Element[] = [];
+  for (let current: Element | null = element; current; current = current.parentElement) {
+    const context = stackingContext(current, styleOf);
+    if (context === undefined || inTopLayer(current)) {
+      return undefined;
+    }
+    if (context) {
+      chain.push(current);
+    }
+  }
+  return chain;
+}
+
+/**
+ * Whether host `node` provably paints above the whole isolated stacking
+ * context of `compositor` (CSS 2.2 Appendix E), so no plane confined to it can
+ * cover `node`. Any doubt answers `false`.
+ */
+function paintsAbove(node: Element, compositor: Element, styleOf: StyleOf): boolean {
+  const own = stackingContexts(compositor, styleOf);
+  if (own === undefined) {
+    return false;
+  }
+  const theirs = stackingContexts(node, styleOf);
+  if (theirs === undefined) {
+    // Host top-layer UI (modal dialogs, popovers) paints above every context.
+    for (let current: Element | null = node; current; current = current.parentElement) {
+      if (inTopLayer(current)) {
+        return true;
+      }
+    }
+    return false;
+  }
+  // The nearest context holding both, and each side's participant in it: the
+  // child context holding it, else the innermost positioned ancestor-or-self of
+  // `node` (painted with its flow subtree). Flow content paints beneath every
+  // positioned layer at z-index 0 or above.
+  const common = theirs.find(context => own.includes(context));
+  if (common === undefined) {
+    return false;
+  }
+  const ours = own[own.indexOf(common) - 1];
+  let participant: Element | null | undefined = theirs[theirs.indexOf(common) - 1];
+  for (participant ??= node; participant !== common; participant = participant.parentElement) {
+    if (participant === null) {
+      return false;
+    }
+    if (active(styleOf(participant).position) || theirs.includes(participant)) {
+      break;
+    }
+  }
+  if (ours === undefined || participant === common) {
+    return false;
+  }
+  const theirLevel = zIndex(participant, styleOf) ?? 0;
+  const ourLevel = zIndex(ours, styleOf) ?? 0;
+  return (
+    theirLevel > ourLevel ||
+    (theirLevel === ourLevel && (ours.compareDocumentPosition(participant) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0)
+  );
+}
+
 export interface CallingPermissionSetting {
   productId: string;
   network: string;
@@ -275,8 +405,20 @@ export function createMediaHost(options: {
       (visual?.offsetTop ?? 0) + (visual?.height ?? innerHeight),
       indicator.getBoundingClientRect().top,
     );
-    // A rectangular layout cannot represent holes. Blank media, rather than
-    // showing pixels beneath any trusted modal/popover/other host occlusion.
+    // Planes live inside the compositor's isolated stacking context, so host UI
+    // that paints above that context (toasts, popovers, modals) stays on top of
+    // every picture without blanking it. A visible host element that may paint
+    // beneath the compositor blanks media: a rectangular layout cannot represent
+    // holes, and a plane above the product would otherwise cover trusted UI.
+    const styles = new Map<Element, CSSStyleDeclaration>();
+    const styleOf = (element: Element): CSSStyleDeclaration => {
+      let style = styles.get(element);
+      if (style === undefined) {
+        style = getComputedStyle(element);
+        styles.set(element, style);
+      }
+      return style;
+    };
     for (const node of occluders) {
       if (
         !node.isConnected ||
@@ -301,8 +443,13 @@ export function createMediaHost(options: {
       ) {
         continue;
       }
-      const style = getComputedStyle(node);
-      if (style.display !== 'none' && style.visibility === 'visible' && Number(style.opacity) !== 0) {
+      const style = styleOf(node);
+      if (
+        style.display !== 'none' &&
+        style.visibility === 'visible' &&
+        Number(style.opacity) !== 0 &&
+        !paintsAbove(node, compositor, styleOf)
+      ) {
         return undefined;
       }
     }
