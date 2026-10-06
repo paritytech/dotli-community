@@ -16,12 +16,13 @@ import {
 import type { JSX } from '@solidjs/web';
 import { captureException } from '@dotli/metrics';
 import { isPhoneViewport } from '../../phone-viewport.js';
-import { focusInto, focusLostOrInside, focusTrigger } from '../focus.js';
+import { focusables, focusInto, focusLostOrInside, focusTrigger } from '../focus.js';
 import { preloadWhenIdle } from '../idle.js';
 import { Spinner } from '../primitives/Spinner.js';
 import { TopbarContext } from '../shell/topbar/context.js';
-import { BottomSheet } from './BottomSheet.js';
+import { BottomSheet, SHEET_EXIT_MS } from './BottomSheet.js';
 import { anchorName, FloatingLayer, type CloseReason, type Placement } from './FloatingLayer.js';
+import { createPresence } from './presence.js';
 import s from './Popover.module.css';
 
 export interface PopoverTriggerProps {
@@ -166,7 +167,9 @@ function Trigger(props: {
         // listener, so the layer is already shown when the invoker's toggle
         // runs, which would hide it again; and on a phone a sheet opens
         // instead of the layer.
-        if (untrack(state.open)) {
+        // A trigger that drops `popovertarget` while it opens something
+        // else (AuthButton, while not connected) opens nothing here.
+        if (untrack(state.open) || !el.hasAttribute('popovertarget')) {
           return;
         }
         ev.preventDefault();
@@ -215,7 +218,11 @@ function Content(props: {
     const preload = props.preload;
     return preload === undefined ? undefined : preloadWhenIdle({ preload });
   });
-  const body = (): JSX.Element => (
+  /** The sheet's content wrapper, while the popover is a sheet. */
+  let sheetBody: HTMLDivElement | undefined;
+  /** The sheet's content stays for the sheet's slide out, as the layer's does for its exit. */
+  const sheetPresence = createPresence(() => state.sheet() && state.open(), SHEET_EXIT_MS);
+  const body = (root: () => HTMLElement | null | undefined): JSX.Element => (
     <Errored fallback={err => <Broken id={state.id} error={err()} fail={state.close} />}>
       <Loading
         fallback={
@@ -225,7 +232,7 @@ function Content(props: {
         }
       >
         {props.children}
-        <FocusWhenLoaded id={state.id} />
+        <FocusWhenLoaded root={root} />
       </Loading>
     </Errored>
   );
@@ -251,7 +258,7 @@ function Content(props: {
             focusInto(surface);
           }}
         >
-          {body()}
+          {body(() => document.getElementById(state.id))}
         </FloatingLayer>
       }
     >
@@ -263,9 +270,18 @@ function Content(props: {
         title={state.title}
         id={state.id}
         testId="popover"
+        initialFocus={() => (sheetBody === undefined ? undefined : firstControl(sheetBody))}
       >
-        <div class={props.class} data-sheet="">
-          {body()}
+        <div
+          ref={el => {
+            sheetBody = el;
+          }}
+          class={props.class}
+          data-sheet=""
+        >
+          <Show when={sheetPresence()} keyed>
+            {(_opening: number) => body(() => sheetBody)}
+          </Show>
         </div>
       </BottomSheet>
     </Show>
@@ -284,15 +300,25 @@ function Broken(props: { id: string; error: unknown; fail: () => void }): JSX.El
   return null;
 }
 
+/** The first control Tab reaches in `root`, links skipped, as focusInto picks. */
+function firstControl(root: HTMLElement): HTMLElement | undefined {
+  return focusables(root).find(el => !(el instanceof HTMLAnchorElement));
+}
+
 /**
  * The popover opened before its content was in, so the surface itself took
- * focus: once the content renders, focus moves into it.
+ * focus (the anchored layer, or the sheet holding `root`): once the content
+ * renders, focus moves into it.
  */
-function FocusWhenLoaded(props: { id: string }): JSX.Element {
+function FocusWhenLoaded(props: { root: () => HTMLElement | null | undefined }): JSX.Element {
   onSettled(() => {
-    const surface = document.getElementById(props.id);
-    if (surface !== null && document.activeElement === surface) {
-      focusInto(surface);
+    const root = props.root();
+    if (root === null || root === undefined) {
+      return;
+    }
+    const holder = root.closest('[data-modal-surface]') ?? root;
+    if (document.activeElement === holder) {
+      focusInto(root);
     }
   });
   return null;

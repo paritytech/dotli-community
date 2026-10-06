@@ -1,10 +1,11 @@
 // Copyright 2026 Parity Technologies (UK) Ltd.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { createEffect, createSignal, onCleanup, Show, untrack, type Accessor } from 'solid-js';
+import { createEffect, onCleanup, Show, untrack, type Accessor } from 'solid-js';
 import { Portal, type JSX } from '@solidjs/web';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { containTab } from '../focus.js';
+import { createPresence } from './presence.js';
 import s from './FloatingLayer.module.css';
 
 export type Placement = 'topbar-end' | 'trigger-start';
@@ -61,9 +62,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
    * `:popover-open`, which happy-dom's selector engine does not know.
    */
   let shown = false;
-  /** The content stays after a close: until its exit transition has played. */
-  const [lingering, setLingering] = createSignal(false);
-  let unmountTimer: ReturnType<typeof setTimeout> | undefined;
+  /** The opening the content belongs to, 0 once its exit has played. */
+  const presence = createPresence(() => props.open(), EXIT_MS);
   /** Why the next close happens, set by the listener that saw its cause. */
   let reason: CloseReason = 'programmatic';
 
@@ -76,9 +76,7 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       if (el === undefined) {
         return;
       }
-      clearTimeout(unmountTimer);
       if (open) {
-        setLingering(true);
         if (!shown) {
           el.showPopover();
         }
@@ -89,14 +87,8 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
       if (shown) {
         el.hidePopover();
       }
-      unmountTimer = setTimeout(() => {
-        setLingering(false);
-      }, EXIT_MS);
     },
   );
-  onCleanup(() => {
-    clearTimeout(unmountTimer);
-  });
 
   const onBeforeToggle = (ev: ToggleEvent): void => {
     shown = ev.newState === 'open';
@@ -191,7 +183,11 @@ export function FloatingLayer(props: FloatingLayerProps): JSX.Element {
         onPointerEnter={() => props.onPointerEnter?.()}
         onPointerLeave={() => props.onPointerLeave?.()}
       >
-        <Show when={props.open() || lingering()}>{props.children}</Show>
+        {/* Keyed, taking the key as a parameter (Show calls only a child
+            that declares one), so each opening mounts the content afresh. */}
+        <Show when={presence()} keyed>
+          {(_opening: number) => props.children}
+        </Show>
       </div>
     </Portal>
   );

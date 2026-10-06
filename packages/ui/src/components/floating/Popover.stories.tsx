@@ -9,12 +9,13 @@ import { Button } from '../primitives/Button.js';
 import { Popover } from './Popover.js';
 
 const onOpenChange = fn().mockName('onOpenChange');
+const onElse = fn().mockName('onElse');
 // The surface is portalled into the body, outside the story's canvas.
 const body = within(document.body);
 
 const Failing = lazy(() => Promise.reject(new Error('chunk')));
 
-function Harness(props: { content?: 'buttons' | 'failing' }) {
+function Harness(props: { content?: 'buttons' | 'failing'; opensElse?: boolean }) {
   const content = (): JSX.Element =>
     props.content === 'failing' ? (
       <Failing />
@@ -28,11 +29,25 @@ function Harness(props: { content?: 'buttons' | 'failing' }) {
     <div style={{ display: 'flex', 'justify-content': 'flex-end' }}>
       <Popover id="story-popover" title="Example" onOpenChange={onOpenChange}>
         <Popover.Trigger>
-          {t => (
-            <Button {...t} testId="trigger">
-              Open
-            </Button>
-          )}
+          {t =>
+            props.opensElse === true ? (
+              // As AuthButton while not connected: no invoker, its click starts something else.
+              <Button
+                {...t}
+                popovertarget={undefined}
+                testId="trigger"
+                onClick={() => {
+                  onElse();
+                }}
+              >
+                Open
+              </Button>
+            ) : (
+              <Button {...t} testId="trigger">
+                Open
+              </Button>
+            )
+          }
         </Popover.Trigger>
         <Popover.Content testId="story-popover-surface">{content()}</Popover.Content>
       </Popover>
@@ -47,6 +62,7 @@ const meta = {
   tags: ['!autodocs'],
   beforeEach: () => {
     onOpenChange.mockClear();
+    onElse.mockClear();
   },
 } satisfies Meta<typeof Harness>;
 
@@ -87,6 +103,46 @@ export const PhoneSheet: Story = {
       await expect(document.querySelectorAll(':popover-open')).toHaveLength(0);
       await expect(onOpenChange.mock.calls).toEqual([[true]]);
     });
+    await step('And focus is on its first control', async () => {
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
+    });
+  },
+};
+
+export const PhoneClosesReturnFocus: Story = {
+  globals: { viewport: { value: 'phone', isRotated: false } },
+  play: async ({ step }) => {
+    const settled = async (calls: boolean[][]) => {
+      await waitFor(() => expect(onOpenChange.mock.calls).toEqual(calls));
+      await waitFor(() => expect((document.getElementById('story-popover') as HTMLDialogElement).open).toBe(false));
+      await waitFor(() => expect(body.getByTestId('trigger')).toHaveFocus());
+      // Both the sheet's restore and the popover's land on the trigger, and nothing moves it after.
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      await expect(body.getByTestId('trigger')).toHaveFocus();
+    };
+    await step('Given the sheet is open', () => press('trigger'));
+    await step('When I press its close button', () => press('popover-sheet-close'));
+    await step('Then it closed once and the trigger has focus', () => settled([[true], [false]]));
+    await step('Given the sheet is open again', () => press('trigger'));
+    await step('When I press Escape', async () => {
+      await waitFor(() => expect(body.getByTestId('inside-a')).toHaveFocus());
+      await (await input()).keyboard('{Escape}');
+    });
+    await step('Then it closed once more and the trigger has focus', () => settled([[true], [false], [true], [false]]));
+  },
+};
+
+export const TriggerWithoutTargetOpensNothing: Story = {
+  args: { opensElse: true },
+  play: async ({ step }) => {
+    await step('When I press a trigger that has dropped its popovertarget', () => press('trigger'));
+    await step('Then its own click ran and the popover stayed closed', async () => {
+      await expect(onElse).toHaveBeenCalledOnce();
+      await expect(body.getByTestId('trigger')).not.toHaveAttribute('popovertarget');
+      await new Promise(resolve => requestAnimationFrame(resolve));
+      await expect(onOpenChange).not.toHaveBeenCalled();
+      await expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open');
+    });
   },
 };
 
@@ -98,6 +154,11 @@ export const LazyContentFails: Story = {
       await waitFor(() => expect(onOpenChange.mock.calls).toEqual([[true], [false]]));
       await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
       await expect(body.getByTestId('trigger')).toHaveAttribute('aria-expanded', 'false');
+    });
+    await step('When I open it again at once, while the failed content is still fading out', () => press('trigger'));
+    await step('Then the content loaded afresh, failed again and closed again', async () => {
+      await waitFor(() => expect(onOpenChange.mock.calls).toEqual([[true], [false], [true], [false]]));
+      await waitFor(() => expect(document.getElementById('story-popover')).not.toHaveAttribute('data-open'));
     });
   },
 };

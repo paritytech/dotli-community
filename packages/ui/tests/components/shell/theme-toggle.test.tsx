@@ -181,6 +181,8 @@ describe('ThemeToggle', () => {
     expect(sheet.open).toBe(true);
     expect(byTestId('popover-sheet-title', sheet).textContent).toBe('Appearance');
     expect(query(sheet, '[role="radiogroup"]').getAttribute('aria-label')).toBe('Theme');
+    // The first control in the content: the checked tile, the group's only Tab stop.
+    expect(document.activeElement).toBe(themeOption('dark'));
 
     // When
     themeOption('light')?.click();
