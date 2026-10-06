@@ -17,7 +17,10 @@
   max-height: none;
   margin: 0;
   padding: 0;
-  overflow: hidden;
+  /* Not `hidden`, which is still a scroll container: iOS Safari scrolls it to
+     reveal the focus taken inside a sheet that is still below the frame at
+     its starting style, and the sheet then rests that far up. */
+  overflow: clip;
   border: 0;
   background: transparent;
   color: var(--chrome-text);
