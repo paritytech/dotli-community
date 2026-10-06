@@ -247,6 +247,11 @@ frame of sampling-boundary tolerance. The displayed short-window FPS remains unr
 Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
 checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
 
+Runtime failures are reported from the sandbox to Sentry with the resolved CID, program SHA-256, pinned browser-runtime
+revision, active backend, startup stage, graphics profile, and trap program counter when present. The existing
+resolution ID correlates the failure with the host and protocol events for the same load; app bytes and imported file
+contents are never attached.
+
 ## Caching and verification
 
 dotli uses three cache layers:
@@ -309,9 +314,9 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
 host-owned IndexedDB, scoped to the host-selected product, live authenticated account, network and executable artifact.
-Published products bind to their verified CID; developer iframe previews instead bind to the host-accepted source URL
-and execution namespace, not to a claimed immutable artifact. A session without an optional identity account binds to
-its authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
+Published products bind to their verified CID; developer iframe previews instead bind to a fresh execution identity,
+never a mutable URL claimed as immutable content. A session without an optional identity account binds to its
+authenticated root public key. OS notifications carry only an opaque token; the existing host service worker records
 activation before focusing or opening the host entry page. It does not navigate the product's route.
 
 The matching foreground product polls `notifications.activationEvents()` and receives up to 32 pending events in
@@ -324,6 +329,10 @@ the current page core's live account and network, and any conflicting mounted ar
 while the product is unmounted remains pending until the matching verified product is opened; the host does not execute
 the destination to reopen it. Account authority is cleared on logout, core retirement or product-core replacement, not
 on a storage reload hint: the core may reconcile the same session without emitting another auth transition.
+
+Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
+URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
+replacing a direct iframe cannot inherit an earlier execution's notification activations.
 
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and
