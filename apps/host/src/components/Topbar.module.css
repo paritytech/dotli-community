@@ -38,7 +38,7 @@
 }
 /* Desktop only, like the auto-hide: a data-hidden that lands on a phone
    (between a resize across 560 px and the auto-hide reacting) must not fold
-   the header. */
+   the phone bar. */
 @media (min-width: 561px) {
   .topbar[data-hidden] {
     top: calc(var(--sp-1) + var(--safe-top));
@@ -147,23 +147,23 @@
     opacity: 1;
   }
 }
-/* Phones: the square header across the top (the board's .tb-header): the
-   glass, a hairline at the bottom, the 60 px row under the top inset, no
-   radius and no shadow. The auto-hide never folds it at this width
+/* Phones: the square bar across the foot of the screen, next to Safari's
+   own toolbar. The auto-hide never folds it at this width
    (topbar-autohide.ts), and it never slides away on scroll. Fixed rather
    than in the flow: the host page never scrolls, and the page and the frame
-   already start below --topbar-height (global.css), so the two look the
-   same and the element stays the one that morphs at desktop widths. */
+   already end at --content-bottom (global.css), so the two look the same
+   and the element stays the one that morphs at desktop widths. */
 @media (max-width: 560px) {
   .topbar {
-    top: 0;
+    top: auto;
+    bottom: 0;
     left: 0;
     width: 100%;
     max-width: none;
-    height: calc(var(--h-bar) + var(--safe-top));
-    padding: var(--safe-top) var(--safe-right) 0 var(--safe-left);
+    height: var(--topbar-height);
+    padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
     border-radius: 0;
-    box-shadow: inset 0 -1px 0 var(--chrome-line);
+    box-shadow: inset 0 1px 0 var(--chrome-line);
     transform: none;
     transition: none;
   }

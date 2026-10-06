@@ -40,8 +40,16 @@
   place-items: center;
   padding: var(--sp-6);
 }
+/* The phone bar at the foot of the screen stays in view: a sheet rests on it
+   and slides up from behind its edge, and the scrim (fixed, so the frame's
+   clip does not reach it) stops there too. */
 .layer[data-layout='sheet'] {
+  bottom: var(--content-bottom);
+  height: auto;
   place-items: end stretch;
+}
+.layer[data-layout='sheet'] .scrim {
+  bottom: var(--content-bottom);
 }
 .layer[data-layout='topbar-end'] {
   display: block;
