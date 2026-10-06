@@ -445,8 +445,8 @@ This branch vendors the `@parity/truapi` and `@parity/truapi-host` 0.23.0 packag
 `feat/media-on-jam-seity` (#1011 plus the Media layer `feat/media-sessions`). `vendor/truapi-host.lock.json` records the
 source revision, archive hashes, `dist/generated/client.js` digest, and browser and testing WASM digests. The pinned
 revision is published on native #1217. The browser wallet artifact enables `wasm-signing-host`, without `test-host`.
-Install the dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local
-truapi checkout instead, run:
+Install the dependency tree recorded in `package-lock.json` with `npm ci`. To iterate against a local truapi checkout
+instead, run:
 
 ```bash
 npm run link:truapi
