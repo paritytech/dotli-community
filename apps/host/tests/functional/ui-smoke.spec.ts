@@ -273,7 +273,8 @@ test.describe('Shell UI smoke', () => {
     // Then
     const popover = page.locator('#permissions-popover');
     await expect(popover).toHaveAttribute('data-open');
-    await expect(popover).not.toHaveAttribute('data-sheet');
+    // The anchored form: a shown popover element, not the sheet's dialog.
+    await expect(page.locator('#permissions-popover:popover-open')).toBeAttached();
     const box = await popover.boundingBox();
     expect(box?.y ?? 0).toBeLessThan(100);
   });
