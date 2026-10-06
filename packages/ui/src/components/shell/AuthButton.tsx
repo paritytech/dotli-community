@@ -57,10 +57,13 @@ export function AuthButton(props: { idPrefix?: string | undefined; showName?: bo
     return session === undefined ? undefined : sessionDisplayName(session);
   };
   const label = (): string => (account.loggedIn() ? 'Account' : 'Sign in with Polkadot Mobile');
-  // A visible name starts the button's name, so speech input can use it.
+  // The visible text (initials, then name) starts the button's name, so
+  // speech input can use it (WCAG 2.5.3).
   const ariaLabel = (): string => {
-    const name = shownName();
-    return name === undefined ? label() : `${name}, account`;
+    const session = account.loggedIn() ? account.session() : undefined;
+    const initials = session === undefined ? undefined : sessionInitials(session);
+    const visible = [initials, shownName()].filter(part => part !== undefined).join(' ');
+    return visible === '' ? label() : `${visible}, account`;
   };
   // The auth modal's trigger, while mounted (see setAuthModalTrigger).
   onSettled(() => {

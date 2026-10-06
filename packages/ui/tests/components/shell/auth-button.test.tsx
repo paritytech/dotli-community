@@ -33,7 +33,9 @@ function expectMarkup(button: Element, state: 'logged-out' | { initials: string 
   const account = state !== 'logged-out';
   expect(button.id).toBe('auth-button');
   expect(button.getAttribute('title')).toBe(label);
-  expect(button.getAttribute('aria-label')).toBe(label);
+  expect(button.getAttribute('aria-label')).toBe(
+    account && state.initials !== undefined ? `${state.initials}, account` : label,
+  );
   expect(button.hasAttribute('disabled')).toBe(false);
   expect(button.hasAttribute('aria-busy')).toBe(false);
   expect(button.getAttribute('aria-haspopup')).toBe('dialog');
@@ -77,7 +79,7 @@ describe('AuthButton in the bar and on the landing page', () => {
     // Then
     expect(byTestId('user-badge').textContent).toBe('AS');
     expect(button.textContent).not.toContain('Alice Smith');
-    expect(button.getAttribute('aria-label')).toBe('Account');
+    expect(button.getAttribute('aria-label')).toBe('AS, account');
     expect(button.getAttribute('aria-controls')).toBe('user-popover');
   });
 
@@ -95,7 +97,7 @@ describe('AuthButton in the bar and on the landing page', () => {
     expect(byTestId('user-badge').textContent).toBe('BJ');
   });
 
-  it("As a signed-in user on the landing page, I see my initials and my name, which also starts the button's name", async () => {
+  it("As a signed-in user on the landing page, I see my initials and my name, which also start the button's name", async () => {
     // Given
     const button = await renderButton({ idPrefix: 'landing-', showName: true });
 
@@ -106,7 +108,7 @@ describe('AuthButton in the bar and on the landing page', () => {
     // Then
     expect(byTestId('user-badge').textContent).toBe('AS');
     expect(button.textContent).toContain('Alice Smith');
-    expect(button.getAttribute('aria-label')).toBe('Alice Smith, account');
+    expect(button.getAttribute('aria-label')).toBe('AS Alice Smith, account');
   });
 });
 
