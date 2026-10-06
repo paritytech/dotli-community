@@ -315,9 +315,9 @@ Core-initiated permission callbacks return the user's decision without writing t
 that decision against the permission revision it captured before prompting; an adapter-side write would invalidate the
 pending request. Host-initiated mediated-device prompts still persist their own durable decisions.
 
-After a committed permission change, the bridge matches the canonical product identity and refreshes the active
-iframe's Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps
-the requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
+After a committed permission change, the bridge matches the canonical product identity and refreshes the active iframe's
+Permissions Policy. It replaces the iframe only if that policy changes. Notification approval therefore keeps the
+requesting execution alive; grants that change iframe access reload it, and stale executions cannot trigger reloads.
 
 ### Ordinary notification activation
 
