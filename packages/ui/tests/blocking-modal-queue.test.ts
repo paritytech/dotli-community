@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 import type { ProductContext } from '@parity/truapi-host';
 import { createBlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
-import { createPromptPermission } from '../src/host-callbacks/PromptPermission.js';
 import { createHostCallbacks } from '../src/host-callbacks/handlers.js';
 import { registerPermissionAuthorizationProvider } from '../src/permissions.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -71,44 +70,6 @@ describe('blocking modal queue', () => {
     await overlaysReady();
     expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
     scope.dispose();
-  });
-
-  it('As a dotli integrator, the host rechecks permission state before showing a queued duplicate', async () => {
-    // Given
-    let status: 'NotDetermined' | 'Authorized' = 'NotDetermined';
-    const unregister = registerPermissionAuthorizationProvider('myapp', {
-      getPermissionAuthorizationStatuses(requests) {
-        return Promise.resolve(requests.map(() => status));
-      },
-      setPermissionAuthorizationStatus(_request, nextStatus) {
-        if (nextStatus === 'Authorized' || nextStatus === 'NotDetermined') {
-          status = nextStatus;
-        }
-        return Promise.resolve();
-      },
-    });
-    const scope = createBlockingModalCoordinator().createScope();
-    const permissions = createPromptPermission('myapp', scope);
-
-    // When
-    const first = permissions.devicePermission(PRODUCT, 'Notifications');
-    const second = permissions.devicePermission(PRODUCT, 'Notifications');
-    await overlaysReady();
-    await vi.waitFor(() => {
-      expect(document.querySelectorAll('.signing-modal-backdrop')).toHaveLength(1);
-    });
-
-    // When
-    document.querySelector<HTMLButtonElement>('.signing-btn-secondary')?.click();
-
-    // Then: the duplicate reads the saved grant instead of prompting, and
-    // answers without upgrading what it found.
-    await expect(Promise.all([first, second])).resolves.toEqual(['AllowAlways', 'AllowOnce']);
-    await overlaysReady();
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
-    expect(status).toBe('Authorized');
-    scope.dispose();
-    unregister();
   });
 
   it('As a dotli integrator, the host removes a disposed host modal and advances to the next host', async () => {

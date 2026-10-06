@@ -15,6 +15,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
+import type { PermissionAuthorizationRequest } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -270,6 +271,7 @@ describe('bridge render lifecycle', () => {
       (args: { iframeUrl: string; allowedOrigin: string; allow: string; container: HTMLElement }) => {
         const iframe = document.createElement('iframe');
         iframe.dataset['src'] = args.iframeUrl;
+        iframe.allow = args.allow;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -293,6 +295,48 @@ describe('bridge render lifecycle', () => {
     initBridgeEventListeners(createBlockingModalCoordinator());
     bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
+  });
+
+  it('keeps notification grants in place and reloads only a changed committed iframe policy', async () => {
+    const { renderIframe } = await import('../src/bridge.js');
+    let cameraGranted = false;
+    const provider = makeProvider();
+    provider.getPermissionAuthorizationStatuses.mockImplementation((requests: PermissionAuthorizationRequest[]) =>
+      Promise.resolve(requests.map(request =>
+        request.tag === 'Device' && (request.value === 'Notifications' || (request.value === 'Camera' && cameraGranted))
+          ? 'Authorized'
+          : 'NotDetermined',
+      )),
+    );
+    const initial = renderIframe('https://preview.example/app', 'committed-policy');
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await initial;
+    const first = nth(mocks.iframeHosts, 0);
+    const notify = async (): Promise<void> => {
+      vi.useFakeTimers({ toFake: ['setTimeout'] });
+      try {
+        window.dispatchEvent(new CustomEvent('dotli:permission-changed', { detail: { productId: 'committed-policy' } }));
+        await vi.runAllTimersAsync();
+      } finally {
+        vi.useRealTimers();
+      }
+    };
+    await notify();
+    expect(first.iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(1);
+
+    cameraGranted = true;
+    await notify();
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(provider);
+    await vi.waitFor(() => {
+      expect(first.iframe.isConnected).toBe(false);
+      expect(nth(mocks.iframeHosts, 1).iframe.allow.split('; ')).toContain('camera');
+    });
+    await notify();
+    expect(nth(mocks.iframeHosts, 1).iframe.isConnected).toBe(true);
+    expect(mocks.iframeHosts).toHaveLength(2);
   });
 
   it('does not enable experimental custody through stored state or a debug URL in production', async () => {

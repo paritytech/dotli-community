@@ -119,6 +119,7 @@ interface ActiveHost {
   generation: number;
   iframe: HTMLIFrameElement;
   receiving: ReceivingExecution;
+  refreshPermissionPolicy: () => Promise<void>;
   dispose: () => void;
 }
 
@@ -166,6 +167,7 @@ const mediatedInputHost = new MediatedInputHost({
           kind: 'Device',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
+          commitOwner: 'host',
         },
         scope,
       );
@@ -717,6 +719,16 @@ window.addEventListener('dotli:device-permission-changed', () => {
   if (product !== null) {
     rerenderProduct(product);
   }
+});
+
+window.addEventListener('dotli:permission-changed', event => {
+  const detail = (event as CustomEvent<{ productId?: string; label?: string }>).detail;
+  if (currentProduct === null || (detail?.productId ?? detail?.label) !== currentProduct.label) {
+    return;
+  }
+  void currentHost?.refreshPermissionPolicy().catch((error: unknown) => {
+    log.warn('[dot.li] Permission policy refresh failed:', error);
+  });
 });
 
 window.addEventListener('dotli:receiving-account-changed', () => {
@@ -1662,9 +1674,9 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const allow = [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join(
-      '; ',
-    );
+    const readAllow = async (): Promise<string> =>
+      [await buildAllowAttribute(args.label), ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
+    const allow = await readAllow();
     const host = createIframeHost({
       iframeUrl: args.iframeUrl,
       allowedOrigin: args.allowedOrigin,
@@ -1727,6 +1739,19 @@ async function createHost(args: {
       generation: hostGeneration,
       receiving: connection.receiving,
       iframe: host.iframe,
+      async refreshPermissionPolicy() {
+        const nextAllow = await readAllow();
+        // Only committed policy changes can replace the current execution.
+        // A notification grant or another identical policy keeps it alive.
+        if (
+          hostGeneration === renderGeneration &&
+          currentHost?.iframe === host.iframe &&
+          currentProduct !== null &&
+          nextAllow !== host.iframe.allow
+        ) {
+          rerenderProduct(currentProduct);
+        }
+      },
       dispose() {
         mediatedInputHost.stop();
         disposeViewInsets?.();
