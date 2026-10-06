@@ -151,7 +151,6 @@ export function AnchoredContent(props: {
   state: Anchored;
   role: 'dialog' | 'menu';
   placement: Placement | undefined;
-  /** The anchored surface's class. */
   class: string;
   testId?: string | undefined;
   trapFocus?: boolean | undefined;
@@ -160,7 +159,6 @@ export function AnchoredContent(props: {
   children: JSX.Element;
   sheetTestId: string;
   sheetBody?: BottomSheetProps['body'];
-  /** The sheet wrapper's class. */
   sheetClass?: string | undefined;
   onSheetPointerMove?: ((ev: PointerEvent) => void) | undefined;
   /** Where focus goes as the sheet opens, given the wrapper. */
@@ -201,7 +199,7 @@ export function AnchoredContent(props: {
       <BottomSheet
         open={props.state.open()}
         onOpenChange={next => {
-          props.state.setOpen(next, 'dismiss');
+          props.state.setOpen(next, 'sheet');
         }}
         title={props.state.title}
         id={props.state.id}

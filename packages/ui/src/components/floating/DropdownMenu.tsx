@@ -106,7 +106,7 @@ function focusHovered(ev: PointerEvent): void {
  * the surface the item opens. A press outside, a blur or focus moving away
  * keeps it where the user put it.
  */
-const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'dismiss', 'trigger']);
+const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger']);
 
 /**
  * A menu of actions opened from a button: anchored glass on wide screens, a

@@ -12,7 +12,7 @@ import s from './FloatingLayer.module.css';
 export type Placement = 'topbar-end' | 'trigger-start';
 
 /** The closes a layer reports; `dismiss` is a sheet's. */
-export type LayerCloseReason = Exclude<CloseReason, 'dismiss'>;
+export type LayerCloseReason = Exclude<CloseReason, 'sheet'>;
 
 /** How long content stays after a close: the surface's exit, `--dur`. */
 export const EXIT_MS = 220;

@@ -50,14 +50,14 @@ export function usePopover(): PopoverApi {
  * own close, the button, or a choice that closes it programmatically. A press
  * outside, a blur or focus moving away keeps it where the user put it.
  */
-const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'dismiss', 'trigger', 'programmatic']);
+const RETURN_FOCUS_ON: ReadonlySet<CloseReason> = new Set(['escape', 'sheet', 'trigger', 'programmatic']);
 
 /**
  * A non-modal panel opened from a button: anchored glass on wide screens,
  * a bottom sheet when it opens on a phone's. Focus moves in and Tab stays
- * inside. A press outside (in the product's iframe too), Escape, the button
- * again, focus leaving or a modal opening closes it, and a press outside
- * still reaches what it pressed.
+ * inside. A press outside, a press in the product's iframe (seen as the
+ * window blurring), Escape, the button again, focus leaving or a modal
+ * opening closes it, and a press outside still reaches what it pressed.
  */
 function PopoverRoot(props: {
   id: string;

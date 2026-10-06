@@ -37,8 +37,9 @@ export function handOffSheet(activate: () => void): boolean {
     return taken;
   } finally {
     pendingHandoff = undefined;
-    // `activate` threw after a sheet was held: it closes as without a
-    // hand-off, rather than stay up over an inert page.
+    // A sheet still held here (`activate` threw, or one was held during the
+    // last flush) closes as without a hand-off, rather than stay up over an
+    // inert page.
     if (leaving.size > 0) {
       settleLeaving(false);
       flush();
