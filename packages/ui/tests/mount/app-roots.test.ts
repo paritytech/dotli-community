@@ -149,8 +149,9 @@ describe('app roots', () => {
     expect(loading).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-      kind: 'app_root_dispose_error',
-      root: 'page',
+      flow: 'ui',
+      step: 'root_dispose',
+      tags: { root: 'page', kind: 'app_root_dispose_error' },
     });
   });
 

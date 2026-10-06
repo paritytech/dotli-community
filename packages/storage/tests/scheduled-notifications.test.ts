@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import 'fake-indexeddb/auto';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   schedule,
   cancel,
   allocateId,
-  listForProduct,
+  listAll,
   removeById,
   removeStale,
   type ScheduledNotificationRecord,
@@ -30,6 +30,10 @@ async function clearAll(): Promise<void> {
       reject(tx.error ?? new Error('clear failed'));
     };
   });
+}
+
+async function recordsOf(productId: string): Promise<ScheduledNotificationRecord[]> {
+  return (await listAll()).filter(r => r.productId === productId);
 }
 
 function future(ms: number): number {
@@ -190,7 +194,7 @@ describe('cancel', () => {
 
     // Then cancel reports success and the queue is empty
     expect(removed).toBe(true);
-    expect(await listForProduct('acme.dot')).toEqual([]);
+    expect(await recordsOf('acme.dot')).toEqual([]);
   });
 
   it('As a dapp, cancelling the same notification twice is idempotent', async () => {
@@ -227,7 +231,7 @@ describe('cancel', () => {
 
     // Then nothing is removed and acme's notification survives
     expect(removed).toBe(false);
-    expect(await listForProduct('acme.dot')).toHaveLength(1);
+    expect(await recordsOf('acme.dot')).toHaveLength(1);
   });
 });
 
@@ -244,7 +248,7 @@ describe('allocateId', () => {
 
     // Then it gets id 1 and nothing is queued
     expect(id).toBe(1);
-    expect(await listForProduct('acme.dot')).toEqual([]);
+    expect(await recordsOf('acme.dot')).toEqual([]);
   });
 
   it('As the immediate-fire path, allocateId and schedule share one monotonic counter', async () => {
@@ -268,43 +272,6 @@ describe('allocateId', () => {
   });
 });
 
-describe('listForProduct', () => {
-  beforeEach(async () => {
-    await clearAll();
-  });
-
-  it('As the scheduler, I list only the records belonging to a given product', async () => {
-    // Given two products with interleaved schedules
-    await schedule({
-      productId: 'acme.dot',
-      title: 'Acme',
-      text: 'a1',
-      deeplink: null,
-      scheduledAt: future(60_000),
-    });
-    await schedule({
-      productId: 'bravo.dot',
-      title: 'Bravo',
-      text: 'b1',
-      deeplink: null,
-      scheduledAt: future(60_000),
-    });
-    await schedule({
-      productId: 'acme.dot',
-      title: 'Acme',
-      text: 'a2',
-      deeplink: null,
-      scheduledAt: future(120_000),
-    });
-
-    // When listing one product
-    const acme = await listForProduct('acme.dot');
-
-    // Then only that product's records come back
-    expect(acme.map((r: ScheduledNotificationRecord) => r.text).sort()).toEqual(['a1', 'a2']);
-  });
-});
-
 describe('removeById', () => {
   beforeEach(async () => {
     await clearAll();
@@ -319,7 +286,7 @@ describe('removeById', () => {
       deeplink: null,
       scheduledAt: future(60_000),
     });
-    const [rec] = await listForProduct('acme.dot');
+    const [rec] = await recordsOf('acme.dot');
     if (rec === undefined) {
       throw new Error('expected the scheduled record');
     }
@@ -331,7 +298,7 @@ describe('removeById', () => {
     // Then the first reports it existed and the second does not
     expect(first).toBe(true);
     expect(second).toBe(false);
-    expect(await listForProduct('acme.dot')).toEqual([]);
+    expect(await recordsOf('acme.dot')).toEqual([]);
   });
 });
 
@@ -363,7 +330,7 @@ describe('removeStale', () => {
 
     // Then only the stale one is gone
     expect(removed).toBe(1);
-    const remaining = await listForProduct('acme.dot');
+    const remaining = await recordsOf('acme.dot');
     expect(remaining.map((r: ScheduledNotificationRecord) => r.text)).toEqual(['fresh']);
   });
 
@@ -382,5 +349,45 @@ describe('removeStale', () => {
 
     // Then nothing is removed
     expect(removed).toBe(0);
+  });
+});
+
+describe('a database connection that is closing', () => {
+  beforeEach(async () => {
+    // Opened first, so the spy only meets the transactions under test.
+    await getDb();
+    vi.spyOn(IDBDatabase.prototype, 'transaction').mockImplementation(() => {
+      throw new DOMException(
+        "Failed to execute 'transaction' on 'IDBDatabase': The database connection is closing.",
+        'InvalidStateError',
+      );
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  const request = {
+    productId: 'acme.dot',
+    title: 'Acme',
+    text: 'x',
+    deeplink: null,
+    scheduledAt: Date.now() + 60_000,
+  };
+
+  it.each([
+    ['schedule', () => schedule(request)],
+    ['allocateId', () => allocateId('acme.dot')],
+    ['cancel', () => cancel('acme.dot', 1)],
+    ['removeById', () => removeById(1)],
+    ['listAll', () => listAll()],
+    ['removeStale', () => removeStale(Date.now())],
+  ] as const)('As the scheduler, %s rejects rather than hanging', async (_name, call) => {
+    // Given a connection that throws on every new transaction
+
+    // When the scheduler calls into the queue
+    // Then the call rejects with that error
+    await expect(call()).rejects.toMatchObject({ name: 'InvalidStateError' });
   });
 });

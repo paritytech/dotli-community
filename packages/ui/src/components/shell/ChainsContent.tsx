@@ -3,12 +3,29 @@
 
 import { createEffect, createMemo, createSignal, For, onSettled, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
+import { NETWORK_NAME_TO_SERVICES_CONFIG } from '@dotli/config';
 import type { ChainStatus } from '../../network-monitor.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { networkStore, watchNetwork } from '../../state/network.js';
+import { networkHealthStore } from '../../state/network-health.js';
 import { productStore } from '../../state/product.js';
+import { settingsStore } from '../../state/settings.js';
+import { Chip } from '../primitives/Chip.js';
+import { Stack } from '../primitives/SectionLabel.js';
+import { StatusDot } from '../primitives/StatusDot.js';
+import { Surface, SurfaceHead } from '../primitives/Surface.js';
+import { Callout, InfoIcon, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
-import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripCapacity } from './chains-format.js';
+import {
+  describeBlockDelay,
+  describeLiveNetwork,
+  describeNetworkStatus,
+  formatRate,
+  formatSize,
+  HISTORY_SLOTS,
+  slotOpacity,
+} from './chains-format.js';
+import s from './ChainsContent.module.css';
 
 /**
  * How often the pending cells' countdown is recomputed while open and a
@@ -16,15 +33,16 @@ import { describeBlockDelay, describeLiveNetwork, formatRate, formatSize, stripC
  */
 const PENDING_TICK_MS = 250;
 
-const TIPS = ['Close apps and tabs you are not using', 'Move closer to your router'];
+const TIP = 'For steadier peers, close tabs and apps you are not using and stay close to your router.';
 
 /**
  * Glide the strip left by the room the newly landed bars just took.
  *
  * The bars are packed to the right, so appending one shifts every older bar
  * left instantly. Starting the strip offset by that same distance and
- * transitioning it back to zero replays the shift as motion, which is what
- * makes a block arriving read as an arrival.
+ * transitioning it back to zero (`data-sliding`) replays the shift as
+ * motion, which is what makes a block arriving read as an arrival. Each
+ * new bar is marked `data-new` until its landing animation ends.
  */
 function slideStrip(strip: HTMLElement, landed: number): void {
   const style = getComputedStyle(strip);
@@ -37,22 +55,22 @@ function slideStrip(strip: HTMLElement, landed: number): void {
   }
   for (const node of Array.from(strip.children).slice(-landed)) {
     const mark = node as HTMLElement;
-    mark.classList.add('is-new');
+    mark.setAttribute('data-new', '');
     mark.addEventListener(
       'animationend',
       () => {
-        mark.classList.remove('is-new');
+        mark.removeAttribute('data-new');
       },
       { once: true },
     );
   }
-  strip.classList.remove('is-sliding');
+  strip.removeAttribute('data-sliding');
   strip.style.transform = `translateX(${String(shift)}px)`;
   // Read back so the untransitioned offset is committed before the class that
   // animates it is added. Without this the browser coalesces both into the
   // final position and nothing moves.
   strip.getBoundingClientRect();
-  strip.classList.add('is-sliding');
+  strip.setAttribute('data-sliding', '');
   strip.style.transform = 'translateX(0)';
 }
 
@@ -69,14 +87,14 @@ function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JS
   // Read four times per render: computed once per tick.
   const pending = createMemo(
     (): {
-      modifier: string;
+      phase: 'searching' | 'counting' | 'due';
       height?: string;
       text: string;
     } => {
       const since = props.sinceLast;
       if (since === null) {
         return {
-          modifier: ' is-searching',
+          phase: 'searching',
           text: props.chain.phase ?? 'connecting',
         };
       }
@@ -85,28 +103,44 @@ function PendingBar(props: { chain: ChainStatus; sinceLast: number | null }): JS
       const leftMs = props.chain.blockTimeMs - since;
       return leftMs > 0
         ? {
-            modifier: '',
+            phase: 'counting',
             height,
             text: `next block in about ${String(Math.ceil(leftMs / 1000))}s`,
           }
-        : { modifier: ' is-due', height, text: 'due any moment' };
+        : { phase: 'due', height, text: 'due any moment' };
     },
   );
   return (
     <>
+      <Stubs count={HISTORY_SLOTS - 1} />
       <span
-        class={`chains-bar chains-bar-pending${pending().modifier}`}
+        class={[s['bar'], s['pending']]}
+        data-testid="chains-bar-pending"
+        data-pending={pending().phase}
         style={pending().height === undefined ? undefined : { height: pending().height }}
       />
-      <span class="chains-bars-waiting">{pending().text}</span>
+      <span class={s['waiting']} data-testid="chains-bars-waiting">
+        {pending().text}
+      </span>
     </>
   );
 }
 
+/** The empty slots of a strip that has fewer samples than slots, at the left. */
+function Stubs(props: { count: number }): JSX.Element {
+  const slots = createMemo(() => Array.from({ length: Math.max(0, props.count) }, (_, i) => i));
+  return (
+    <For each={slots()}>
+      {slot => <span class={s['stub']} data-testid="chains-bar-stub" style={{ opacity: slotOpacity(slot) }} />}
+    </For>
+  );
+}
+
 /**
- * One chain's strip of block bars, newest at the right. Bars keep their
- * element while they stay on screen, so newly landed ones slide in (see
- * slideStrip) instead of the strip being rebuilt.
+ * One chain's strip of block bars: always 48 slots, filled from the right as
+ * samples arrive, the rest stubs. Bars keep their element while they stay on
+ * screen, so newly landed ones slide in (see slideStrip) instead of the strip
+ * being rebuilt.
  */
 function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.Element {
   let strip: HTMLDivElement | undefined;
@@ -115,35 +149,11 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
   // changes one, so the same bars mean no block landed, and nothing below
   // runs for such an update.
   const bars = createMemo(() => props.chain.bars, { equals: shallowEqual });
-  /** How many bars the strip fits: all of them until it is measured. */
-  const [capacity, setCapacity] = createSignal(Number.POSITIVE_INFINITY);
-  const measure = (): void => {
-    if (strip !== undefined) {
-      setCapacity(stripCapacity(strip, Number.POSITIVE_INFINITY));
-    }
-  };
-  // Measured once the strip is in the page, which is as the popover opens
-  // (the strip mounts with the popover's content), and again whenever it
-  // resizes. Network updates read no layout.
-  onSettled(() => {
-    measure();
-    if (strip === undefined || typeof ResizeObserver === 'undefined') {
-      return;
-    }
-    const observer = new ResizeObserver(measure);
-    observer.observe(strip);
-    return () => {
-      observer.disconnect();
-    };
-  });
-  // Only the newest marks the strip can fit are rendered. The rest stay in
-  // the monitor, so widening the panel reveals more history rather than
-  // starting it over.
+  // Only the newest slots' worth is drawn. The rest stay in the monitor.
   const visible = createMemo(
     () => {
       const list = bars();
-      const fit = capacity();
-      return fit >= list.length ? list : list.slice(-fit);
+      return list.length > HISTORY_SLOTS ? list.slice(-HISTORY_SLOTS) : list;
     },
     { equals: shallowEqual },
   );
@@ -151,8 +161,8 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
     if (strip === undefined || prev === undefined) {
       return;
     }
-    // Only blocks newer than the newest shown landed: bars revealed on the
-    // left by a wider strip are history, not arrivals.
+    // Only blocks newer than the newest shown landed, so a re-render with the
+    // same history slides nothing.
     const newest = prev.at(-1)?.number;
     const landed = newest === undefined ? list.length : list.filter(bar => bar.number > newest).length;
     // Bars landing in a strip that showed none (on opening, or after the
@@ -166,14 +176,16 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
       ref={el => {
         strip = el;
       }}
-      class="chains-bars"
+      class={s['bars']}
+      data-testid="chains-bars"
     >
       <Show
         when={props.chain.bars.length > 0}
         fallback={<PendingBar chain={props.chain} sinceLast={props.sinceLast} />}
       >
+        <Stubs count={HISTORY_SLOTS - visible().length} />
         <For each={visible()}>
-          {bar => {
+          {(bar, index) => {
             const block = String(bar.number);
             // Hovering a bar answers the only question it raises: how late
             // was it.
@@ -184,7 +196,9 @@ function BarStrip(props: { chain: ChainStatus; sinceLast: number | null }): JSX.
             return (
               <span
                 data-block={block}
-                class={`chains-bar is-${bar.health}`}
+                class={s['bar']}
+                data-health={bar.health}
+                style={{ opacity: slotOpacity(HISTORY_SLOTS - visible().length + index()) }}
                 title={delay}
                 aria-label={`Block ${block}, ${delay}`}
               />
@@ -205,11 +219,13 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
   // the shell does not know the count, and zero is a different claim.
   const peers = (): number | null => (props.chain.reachable ? props.chain.peers : null);
   return (
-    <div class="chains-group">
-      <p class="chains-group-label">
+    <Stack class={s['group']}>
+      <p class={s['groupLabel']} data-testid="chains-group-label">
         <span>{props.chain.label}</span>
         <span
-          class="chains-group-peers"
+          class={s['peers']}
+          data-testid="chains-group-peers"
+          data-none={peers() === 0 ? '' : undefined}
           aria-label={
             peers() === null
               ? undefined
@@ -219,29 +235,44 @@ function ChainGroup(props: { chain: ChainStatus; sinceLast: number | null }): JS
           {peers() === null ? '' : peers() === 1 ? '1 peer' : `${String(peers())} peers`}
         </span>
       </p>
-      <div class={props.chain.reachable ? 'chains-bars-cell' : 'chains-bars-cell is-unavailable'}>
+      <div class={s['cell']} data-unavailable={props.chain.reachable ? undefined : ''}>
         <Show when={props.chain.reachable} fallback="no endpoint on this network">
           <BarStrip chain={props.chain} sinceLast={props.sinceLast} />
         </Show>
       </div>
-    </div>
+    </Stack>
   );
 }
 
 /**
  * The network popover's body (ChainsPopover), its own chunk, rendered while
- * the popover is open: the verdict, the chains, the transfer footer and the
- * tips. Every chain's block arrivals are watched while it is mounted.
+ * the popover is open: the head with the network, the status line (its tone
+ * as the dot's `data-tone`), the chains, the transfer rows and the tips.
+ * Every chain's block arrivals are watched while it is mounted.
  */
 export function ChainsContent(): JSX.Element {
   // Once mounted: the watch goes with the content.
   onSettled(() => watchNetwork());
   const network = useStore(networkStore);
+  const health = useStore(networkHealthStore);
   const product = useStore(productStore);
+  const settings = useStore(settingsStore);
   // The verdict reads from block arrivals, which both backends produce, so a
   // gateway connection reports its health the same way a light client does.
-  // Read twice per render: worked out once per update.
-  const verdict = createMemo(() => describeLiveNetwork(network().chains));
+  // Only the captions follow the backend. Read three times per render: worked out once per update.
+  const status = createMemo(() =>
+    describeNetworkStatus(
+      describeLiveNetwork(network().chains),
+      health() === 'err',
+      network().chains.filter(chain => chain.reachable).length,
+      settings()?.backend,
+    ),
+  );
+  /** The network the host runs, once the host has seeded the settings. */
+  const networkLabel = (): string | undefined => {
+    const current = settings();
+    return current === null ? undefined : NETWORK_NAME_TO_SERVICES_CONFIG[current.network].label;
+  };
 
   const [now, setNow] = createSignal(Date.now());
   // Only a chain still waiting for its first block shows a countdown (its
@@ -286,44 +317,58 @@ export function ChainsContent(): JSX.Element {
         };
   };
   return (
-    <>
-      <div class="mode-popover-section">Network</div>
-      <div class="chains-status">
-        <span class={`chains-status-dot is-${verdict().tone}`} />
-        <span>{verdict().text}</span>
-      </div>
+    <Surface width="md" testId="chains-content">
+      <SurfaceHead
+        title="Network"
+        aside={
+          <Show when={networkLabel()}>
+            {label => (
+              <Chip tone="mono" testId="chains-network">
+                {label()}
+              </Chip>
+            )}
+          </Show>
+        }
+      />
+      <Well class={s['status']} testId="chains-status">
+        <StatusDot tone={status().tone} testId="chains-status-dot" />
+        <div class={s['statusText']}>
+          <p class={s['statusTitle']}>{status().title}</p>
+          <Show when={status().detail}>{detail => <p class={s['statusDetail']}>{detail()}</p>}</Show>
+        </div>
+      </Well>
       <For each={network().chains} keyed={chain => chain.role}>
         {chain => <ChainGroup chain={chain()} sinceLast={sinceLast(chain())} />}
       </For>
-      <div class="chains-transfer">
-        <p class="chains-transfer-row">
+      <div class={s['transfer']}>
+        <p class={s['transferRow']} data-testid="chains-transfer-row">
           <Show when={speed()}>
             {rate => (
               <>
-                <span class="chains-transfer-label">Speed</span>
-                <span class="chains-transfer-value">{rate()}</span>
+                <span class={s['transferLabel']}>Speed</span>
+                <span class={s['transferValue']}>{rate()}</span>
               </>
             )}
           </Show>
         </p>
-        <p class="chains-transfer-row">
+        <p class={s['transferRow']} data-testid="chains-transfer-row">
           <Show when={size()}>
             {row => (
               <>
-                <span class="chains-transfer-label">{row().label}</span>
-                <span class="chains-transfer-value">{row().value}</span>
+                <span class={s['transferLabel']}>{row().label}</span>
+                <span class={s['transferValue']}>{row().value}</span>
               </>
             )}
           </Show>
         </p>
       </div>
-      {/* What a visitor can actually do about a slow connection. */}
-      <div class="chains-tips">
-        <p class="chains-tips-title">Tips for better performance</p>
-        <ul class="chains-tips-list">
-          <For each={TIPS}>{tip => <li>{tip}</li>}</For>
-        </ul>
-      </div>
-    </>
+      {/* What a visitor can actually do about a slow light client. Trusted
+          providers have no peers to steady. */}
+      <Show when={settings()?.backend !== 'rpc-gateway'}>
+        <Callout icon={<InfoIcon />} testId="chains-tips">
+          {TIP}
+        </Callout>
+      </Show>
+    </Surface>
   );
 }

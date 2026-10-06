@@ -18,8 +18,9 @@ import { loadPanel, type PanelModule } from './panel-entry.js';
 import type * as DotliDebugBusModule from '../../../truapi-debug/src/dotli-debug-bus.js';
 import type * as ProductFrameLayoutModule from '../../src/product-frame-layout.js';
 import type * as TopbarStateModule from '../../src/state/topbar.js';
-import { query, must } from '../support.js';
+import { byTestId, query, must } from '../support.js';
 import { nth } from '../helpers/nth.js';
+import { setViewportWidth } from '../helpers/viewport.js';
 
 type Bus = typeof DotliDebugBusModule;
 type BusEvent = Parameters<Bus['emitDotliDebugEvent']>[0];
@@ -89,15 +90,15 @@ function q(selector: string): HTMLElement {
 }
 
 function rows(): HTMLElement[] {
-  return [...panel().querySelectorAll<HTMLElement>('.td-list .td-row')];
+  return [...panel().querySelectorAll<HTMLElement>('[data-testid="td-list"] [data-testid="td-row"]')];
 }
 
 function rowTags(): string[] {
-  return rows().map(r => r.querySelector('.td-tag')?.textContent ?? '');
+  return rows().map(r => byTestId('td-tag', r).textContent);
 }
 
 function rowByTag(tag: string): HTMLElement {
-  const row = rows().find(r => r.querySelector('.td-tag')?.textContent === tag);
+  const row = rows().find(r => byTestId('td-tag', r).textContent === tag);
   if (row === undefined) {
     throw new Error(`no row tagged ${tag}`);
   }
@@ -105,7 +106,7 @@ function rowByTag(tag: string): HTMLElement {
 }
 
 function counts(): string {
-  return q('.td-counts').textContent;
+  return q('[data-testid="td-counts"]').textContent;
 }
 
 /** Let one animation frame pass, so a scheduled render runs. */
@@ -160,13 +161,6 @@ function toggle(checkbox: HTMLInputElement): void {
   checkbox.dispatchEvent(new Event('change', { bubbles: true }));
 }
 
-/** Resize the viewport as a phone or a rotation does; media queries follow. */
-function setViewportWidth(width: number): void {
-  (window as unknown as { happyDOM: { setViewport: (viewport: { width: number }) => void } }).happyDOM.setViewport({
-    width,
-  });
-}
-
 function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
   target.dispatchEvent(
     new PointerEvent(type, {
@@ -180,7 +174,7 @@ function pointer(target: EventTarget, type: string, x = 0, y = 0): void {
 
 function detailRows(): Record<string, string> {
   const out: Record<string, string> = {};
-  const head = q('.td-detail .td-detail-head');
+  const head = q('[data-testid="td-detail-head"]');
   for (const dt of head.querySelectorAll('dt')) {
     out[dt.textContent] = dt.nextElementSibling?.textContent ?? '';
   }
@@ -188,20 +182,15 @@ function detailRows(): Record<string, string> {
 }
 
 function selectedRows(): HTMLElement[] {
-  return rows().filter(r => r.classList.contains('selected'));
+  return rows().filter(r => r.getAttribute('data-selection') === 'selected');
 }
 
 function tab(view: 'list' | 'timeline' | 'resolution' | 'archive'): HTMLElement {
-  return q(`.td-tab[data-view="${view}"]`);
+  return q(`[data-testid="td-tab"][data-view="${view}"]`);
 }
 
 function resolutionFact(name: string): string {
-  for (const fact of panel().querySelectorAll('.td-res .td-res-fact')) {
-    if (fact.querySelector('dt')?.firstChild?.textContent === name) {
-      return fact.querySelector('dd')?.textContent ?? '';
-    }
-  }
-  throw new Error(`no resolution fact ${name}`);
+  return query(panel(), `[data-testid="td-res"] [data-testid="td-res-fact"][data-fact="${name}"] dd`).textContent;
 }
 
 /** happy-dom lays nothing out: give the panel element a box. */
@@ -229,7 +218,7 @@ function attachFrame(withTopbar: boolean): Record<string, string> {
 }
 
 const SAFE_WIDTH = 'calc(100% - var(--safe-left, 0px) - var(--safe-right, 0px))';
-const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 56px) - var(--safe-bottom, 0px))';
+const BELOW_BAR_HEIGHT = 'calc(100dvh - var(--topbar-height, 68px) - var(--safe-bottom, 0px))';
 const FULL_HEIGHT = 'calc(100dvh - var(--safe-top, 0px) - var(--safe-bottom, 0px))';
 
 function stubClipboard(writeText: ((text: string) => Promise<void>) | null): void {
@@ -244,6 +233,17 @@ function restoreClipboard(): void {
 }
 
 /** A request/response pair plus one system event, one frame apart. */
+/** The timeline box whose tooltip mentions `text`. */
+function timelineBox(text: string): SVGRectElement {
+  const box = [
+    ...panel().querySelectorAll<SVGRectElement>('[data-testid="td-timeline"] [data-testid="td-tl-segment"]'),
+  ].find(r => r.getAttribute('data-tooltip')?.includes(text) === true);
+  if (box === undefined) {
+    throw new Error(`no timeline box for ${text}`);
+  }
+  return box;
+}
+
 function seedMixedTraffic(): void {
   truapi({
     tag: 'system_handshake_request',
@@ -275,52 +275,58 @@ describe('truapi debug panel: mount and dispose', () => {
 
     // Then
     const root = panel();
-    expect(root.classList.contains('collapsed')).toBe(false);
-    expect(root.classList.contains('docked-right')).toBe(false);
-    expect(root.querySelector('.td-resize-handle')).not.toBeNull();
-    expect(q('.td-header .td-title').textContent).toBe('TrUAPI Debug');
+    expect(root.hasAttribute('data-collapsed')).toBe(false);
+    expect(root.getAttribute('data-dock')).toBe('bottom');
+    expect(root.querySelector('[data-testid="td-resize-handle"]')).not.toBeNull();
+    expect(q('[data-testid="td-header"] [data-testid="td-title"]').textContent).toBe('TrUAPI Debug');
     expect(counts()).toBe('0 events');
-    expect(q('.td-pause').textContent).toBe('Pause');
-    expect(q('.td-clear').textContent).toBe('Clear');
-    expect(q('.td-export').title).toBe('Download as JSON');
-    expect(q('.td-export').getAttribute('aria-label')).toBe('Download as JSON');
-    expect(q('.td-export').querySelector('svg')).not.toBeNull();
-    expect(q('.td-copy').title).toBe('Copy to clipboard');
-    expect(q('.td-copy').getAttribute('aria-label')).toBe('Copy to clipboard');
-    expect(q('.td-copy').querySelector('svg')).not.toBeNull();
-    expect(q('.td-dock').title).toBe('Dock to right');
-    expect(q('.td-dock').getAttribute('aria-label')).toBe('Dock to right');
-    expect(q('.td-dock').querySelector('svg')).not.toBeNull();
-    expect(q('.td-collapse').textContent).toBe('▼');
-    expect(q('.td-collapse').title).toBe('Collapse');
-    expect(q('.td-close').textContent).toBe('×');
-    expect(q('.td-close').title).toBe('Hide (Ctrl+Shift+D)');
+    expect(q('[data-testid="td-pause"]').textContent).toBe('Pause');
+    expect(q('[data-testid="td-clear"]').textContent).toBe('Clear');
+    expect(q('[data-testid="td-export"]').title).toBe('Download as JSON');
+    expect(q('[data-testid="td-export"]').getAttribute('aria-label')).toBe('Download as JSON');
+    expect(q('[data-testid="td-export"]').querySelector('svg')).not.toBeNull();
+    expect(q('[data-testid="td-copy"]').title).toBe('Copy to clipboard');
+    expect(q('[data-testid="td-copy"]').getAttribute('aria-label')).toBe('Copy to clipboard');
+    expect(q('[data-testid="td-copy"]').querySelector('svg')).not.toBeNull();
+    expect(q('[data-testid="td-dock"]').title).toBe('Dock to right');
+    expect(q('[data-testid="td-dock"]').getAttribute('aria-label')).toBe('Dock to right');
+    expect(q('[data-testid="td-dock"]').querySelector('svg')).not.toBeNull();
+    expect(q('[data-testid="td-collapse"]').textContent).toBe('▼');
+    expect(q('[data-testid="td-collapse"]').title).toBe('Collapse');
+    expect(q('[data-testid="td-close"]').textContent).toBe('×');
+    expect(q('[data-testid="td-close"]').title).toBe('Hide (Ctrl+Shift+D)');
 
-    const kinds = [...root.querySelectorAll<HTMLInputElement>('.td-filters input.td-kind')];
+    const kinds = [
+      ...root.querySelectorAll<HTMLInputElement>('[data-testid="td-filters"] input[data-testid="td-kind"]'),
+    ];
     expect(kinds.map(k => [k.dataset['kind'], k.checked])).toEqual([
       ['truapi', true],
       ['system', true],
     ]);
-    const dirs = [...root.querySelectorAll<HTMLElement>('.td-dir')];
+    const dirs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-dir"]')];
     expect(dirs.map(d => d.textContent)).toEqual(['both', '▶ out', '◀ in']);
-    expect(dirs.map(d => d.classList.contains('active'))).toEqual([true, false, false]);
-    const chips = [...root.querySelectorAll<HTMLElement>('.td-product-chip')];
+    expect(dirs.map(d => d.hasAttribute('data-active'))).toEqual([true, false, false]);
+    const chips = [...root.querySelectorAll<HTMLElement>('[data-testid="td-product-chip"]')];
     expect(chips.map(c => c.textContent)).toEqual(['all']);
-    expect(chips[0]?.classList.contains('active')).toBe(true);
-    expect(query(panel(), '.td-tag-input', HTMLInputElement).placeholder).toBe('filter by method…');
-    expect(query(panel(), '.td-exclude-input', HTMLInputElement).placeholder).toBe('hide by method…');
+    expect(chips[0]?.hasAttribute('data-active')).toBe(true);
+    expect(byTestId('td-tag-input', panel(), HTMLInputElement).placeholder).toBe('filter by method…');
+    expect(byTestId('td-exclude-input', panel(), HTMLInputElement).placeholder).toBe('hide by method…');
 
-    const tabs = [...root.querySelectorAll<HTMLElement>('.td-tabs .td-tab')];
+    const tabs = [...root.querySelectorAll<HTMLElement>('[data-testid="td-tabs"] [data-testid="td-tab"]')];
     expect(tabs.map(t => t.textContent)).toEqual(['List', 'Timeline', 'Resolution', 'Archive']);
-    expect(tabs.map(t => t.classList.contains('active'))).toEqual([true, false, false, false]);
-    expect(q('.td-list').classList.contains('hidden')).toBe(false);
-    expect(q('.td-list .td-empty').textContent).toBe('No events match the current filter.');
-    expect(q('.td-timeline').classList.contains('hidden')).toBe(true);
-    expect(q('.td-res').classList.contains('hidden')).toBe(true);
-    expect(q('.td-archive').classList.contains('hidden')).toBe(true);
-    expect(root.querySelector('.td-body-splitter')).not.toBeNull();
-    expect(q('.td-detail .td-detail-empty').textContent).toBe('Select an event on the left to inspect its payload.');
-    expect(root.querySelector('.td-tooltip')).not.toBeNull();
+    expect(tabs.map(t => t.getAttribute('aria-selected'))).toEqual(['true', 'false', 'false', 'false']);
+    expect(q('[data-testid="td-list"]').hidden).toBe(false);
+    expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
+      'No events match the current filter.',
+    );
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
+    expect(q('[data-testid="td-archive"]').hidden).toBe(true);
+    expect(root.querySelector('[data-testid="td-body-splitter"]')).not.toBeNull();
+    expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
+      'Select an event on the left to inspect its payload.',
+    );
+    expect(root.querySelector('[data-testid="td-tooltip"]')).not.toBeNull();
   });
 
   it('As a dotli developer, a second setup while mounted is a no-op', () => {
@@ -344,8 +350,10 @@ describe('truapi debug panel: mount and dispose', () => {
     mount({ startCollapsed: true });
 
     // Then
-    expect(panel().classList.contains('collapsed')).toBe(true);
-    expect(q('.td-collapse').textContent).toBe('▲');
+    expect(panel().hasAttribute('data-collapsed')).toBe(true);
+    expect(q('[data-testid="td-collapse"]').textContent).toBe('▲');
+    expect(q('[data-testid="td-resize-handle"]').hasAttribute('data-collapsed')).toBe(true);
+    expect(q('[data-testid="td-filters"]').hasAttribute('data-collapsed')).toBe(true);
   });
 
   it('As a dotli developer, dispose removes the panel and stops every timer and subscription', () => {
@@ -386,34 +394,34 @@ describe('truapi debug panel: event rows', () => {
     // Then
     expect(counts()).toBe('5 events');
     const request = rowByTag('system_handshake_request');
-    expect(request.classList.contains('system')).toBe(false);
+    expect(request.hasAttribute('data-system')).toBe(false);
     expect(request.getAttribute('role')).toBe('listitem');
-    expect(request.querySelector('.td-time')?.textContent).toBe('12:34:56.789');
-    expect(request.querySelector('.td-arrow-out')?.textContent).toBe('▶');
-    expect(request.querySelector('.td-arrow-in')).toBeNull();
-    expect(request.querySelector('.td-product')?.textContent).toBe('app.dot');
-    expect(request.querySelector('.td-product')?.classList.contains('anon')).toBe(false);
-    expect(request.querySelector('.td-rid')?.textContent).toBe('req-aa');
-    const reqTag = request.querySelector('.td-tag');
-    expect(reqTag?.className).toBe('td-tag td-tag-req');
-    expect(request.querySelector('.td-summary')?.textContent).toBe('version=1');
-    expect(request.querySelector('.td-latency')).toBeNull();
+    expect(byTestId('td-time', request).textContent).toBe('12:34:56.789');
+    expect(byTestId('td-arrow-out', request).textContent).toBe('▶');
+    expect(request.querySelector('[data-testid="td-arrow-in"]')).toBeNull();
+    expect(byTestId('td-product', request).textContent).toBe('app.dot');
+    expect(byTestId('td-product', request).hasAttribute('data-anon')).toBe(false);
+    expect(byTestId('td-rid', request).textContent).toBe('req-aa');
+    const reqTag = byTestId('td-tag', request);
+    expect(reqTag.getAttribute('data-kind')).toBe('request');
+    expect(byTestId('td-summary', request).textContent).toBe('version=1');
+    expect(request.querySelector('[data-testid="td-latency"]')).toBeNull();
 
     const response = rowByTag('system_handshake_response');
-    expect(response.querySelector('.td-arrow-in')?.textContent).toBe('◀');
-    expect(response.querySelector('.td-tag')?.className).toBe('td-tag td-tag-res');
-    expect(response.querySelector('.td-latency')?.textContent).toBe('+50ms');
-    expect(response.querySelector('.td-summary')?.textContent).toBe('ok=true');
+    expect(byTestId('td-arrow-in', response).textContent).toBe('◀');
+    expect(byTestId('td-tag', response).getAttribute('data-kind')).toBe('response');
+    expect(byTestId('td-latency', response).textContent).toBe('+50ms');
+    expect(byTestId('td-summary', response).textContent).toBe('ok=true');
 
     const anon = rowByTag('chat_subscribe');
-    expect(anon.querySelector('.td-product')?.textContent).toBe('(no id)');
-    expect(anon.querySelector('.td-product')?.classList.contains('anon')).toBe(true);
-    expect(anon.querySelector('.td-tag')?.className).toBe('td-tag td-tag-sub');
-    expect(anon.querySelector('.td-summary')?.textContent).toBe('hello');
+    expect(byTestId('td-product', anon).textContent).toBe('(no id)');
+    expect(byTestId('td-product', anon).hasAttribute('data-anon')).toBe(true);
+    expect(byTestId('td-tag', anon).getAttribute('data-kind')).toBe('subscription');
+    expect(byTestId('td-summary', anon).textContent).toBe('hello');
 
-    expect(rowByTag('plain_tag').querySelector('.td-tag')?.className).toBe('td-tag');
+    expect(byTestId('td-tag', rowByTag('plain_tag')).getAttribute('data-kind')).toBe('plain');
     // An empty payload has no summary span.
-    expect(rowByTag('plain_tag').querySelector('.td-summary')).toBeNull();
+    expect(rowByTag('plain_tag').querySelector('[data-testid="td-summary"]')).toBeNull();
   });
 
   it('As a dotli developer, system events appear as rows with layer badge, flow id, layer.event and summary', () => {
@@ -425,15 +433,15 @@ describe('truapi debug panel: event rows', () => {
 
     // Then
     const row = rowByTag('boot.started');
-    expect(row.classList.contains('system')).toBe(true);
-    expect(row.querySelector('.td-layer-badge')?.className).toBe('td-layer-badge td-layer-boot');
-    expect(row.querySelector('.td-layer-badge')?.textContent).toBe('boot');
-    expect(row.querySelector('.td-rid')?.textContent).toBe('flow-b');
-    expect(row.querySelector('.td-tag')?.className).toBe('td-tag td-tag-sys');
-    expect(row.querySelector('.td-summary')?.textContent).toBe(
+    expect(row.hasAttribute('data-system')).toBe(true);
+    expect(byTestId('td-layer-badge', row).getAttribute('data-layer')).toBe('boot');
+    expect(byTestId('td-layer-badge', row).textContent).toBe('boot');
+    expect(byTestId('td-rid', row).textContent).toBe('flow-b');
+    expect(byTestId('td-tag', row).getAttribute('data-kind')).toBe('system');
+    expect(byTestId('td-summary', row).textContent).toBe(
       'Host boot started (mode: direct, chain: smoldot, content: helia).',
     );
-    expect(row.querySelector('.td-arrow-out, .td-arrow-in')).toBeNull();
+    expect(row.querySelector('[data-testid="td-arrow-out"], [data-testid="td-arrow-in"]')).toBeNull();
   });
 
   it('As a dotli developer, chain messages show their decoded method label instead of the raw tag', () => {
@@ -449,9 +457,33 @@ describe('truapi debug panel: event rows', () => {
     frame();
 
     // Then
-    const tag = nth(rows(), 0).querySelector('.td-tag');
-    expect(tag?.textContent).toBe('chainHead.follow');
-    expect(tag?.className).toBe('td-tag td-tag-req');
+    const tag = byTestId('td-tag', nth(rows(), 0));
+    expect(tag.textContent).toBe('chainHead.follow');
+    expect(tag.getAttribute('data-kind')).toBe('request');
+  });
+
+  it('As a dotli developer, a selected chain response shows its summary and its decoded annotations', () => {
+    // Given
+    mount();
+    truapi({
+      tag: 'remote_chain_head_header_response',
+      requestId: 'header-1',
+      direction: 'incoming',
+      value: { tag: 'V1', value: { success: false, value: { reason: 'block not pinned' } } },
+    });
+    frame();
+
+    // When
+    click(nth(rows(), 0));
+
+    // Then
+    expect(q('[data-testid="td-detail-summary"]').textContent).toBe('Header fetch failed: block not pinned.');
+    const chain = q('[data-testid="td-chain-head"]');
+    expect([...chain.querySelectorAll('dt')].map(dt => dt.textContent)).toEqual(['method', 'outcome']);
+    expect([...chain.querySelectorAll('dd')].map(dd => dd.textContent)).toEqual([
+      'chainHead.header',
+      'error: block not pinned',
+    ]);
   });
 
   it('As a dotli developer, events emitted after buffering is enabled but before the panel mounts are shown', () => {
@@ -477,31 +509,31 @@ describe('truapi debug panel: header actions', () => {
     frame();
 
     // When
-    click(q('.td-pause'));
+    click(q('[data-testid="td-pause"]'));
     truapi({ tag: 'while_paused_request', requestId: 'r2' });
     frame();
 
     // Then
-    expect(q('.td-pause').textContent).toBe('Resume');
-    expect(q('.td-pause').classList.contains('active')).toBe(true);
+    expect(q('[data-testid="td-pause"]').textContent).toBe('Resume');
+    expect(q('[data-testid="td-pause"]').hasAttribute('data-active')).toBe(true);
     expect(rowTags()).toEqual(['before_request']);
     expect(counts()).toBe('1 events');
 
     // When
-    click(q('.td-pause'));
+    click(q('[data-testid="td-pause"]'));
     truapi({ tag: 'after_request', requestId: 'r3' });
     frame();
 
     // Then
-    expect(q('.td-pause').textContent).toBe('Pause');
-    expect(q('.td-pause').classList.contains('active')).toBe(false);
+    expect(q('[data-testid="td-pause"]').textContent).toBe('Pause');
+    expect(q('[data-testid="td-pause"]').hasAttribute('data-active')).toBe(false);
     expect(rowTags()).toEqual(['before_request', 'after_request']);
   });
 
   it('As a dotli developer, system events emitted while paused do not reach the Resolution view', () => {
     // Given
     mount();
-    click(q('.td-pause'));
+    click(q('[data-testid="td-pause"]'));
 
     // When
     system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
@@ -509,15 +541,15 @@ describe('truapi debug panel: header actions', () => {
       label: 'myapp',
       source: 'smoldot',
     });
-    click(q('.td-pause'));
+    click(q('[data-testid="td-pause"]'));
     click(tab('resolution'));
     frame();
 
     // Then
-    expect(q('.td-res .td-res-empty').textContent).toBe(
+    expect(q('[data-testid="td-res"] [data-testid="td-res-empty"]').textContent).toBe(
       'No page load recorded yet. Reload the page with the panel open.',
     );
-    expect(panel().querySelector('.td-res-summary')).toBeNull();
+    expect(panel().querySelector('[data-testid="td-res-summary"]')).toBeNull();
   });
 
   it('As a dotli developer, Clear empties the list, the counts, the selection and the Resolution view', () => {
@@ -528,23 +560,27 @@ describe('truapi debug panel: header actions', () => {
     expect(counts()).toBe('2 events (+1 dropped)');
 
     // When
-    click(q('.td-clear'));
+    click(q('[data-testid="td-clear"]'));
     frame();
 
     // Then
     expect(rows()).toHaveLength(0);
-    expect(q('.td-list .td-empty').textContent).toBe('No events match the current filter.');
+    expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
+      'No events match the current filter.',
+    );
     expect(counts()).toBe('0 events');
-    expect(q('.td-detail .td-detail-empty').textContent).toBe('Select an event on the left to inspect its payload.');
+    expect(q('[data-testid="td-detail-empty"]').textContent).toBe(
+      'Select an event on the left to inspect its payload.',
+    );
     click(tab('resolution'));
-    expect(panel().querySelector('.td-res .td-res-empty')).not.toBeNull();
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
   });
 
   it('As a dotli developer, Export downloads the filtered events as JSON', async () => {
     // Given
     mount();
     seedMixedTraffic();
-    type(query(panel(), '.td-exclude-input', HTMLInputElement), 'response');
+    type(byTestId('td-exclude-input', panel(), HTMLInputElement), 'response');
     const blobs: Blob[] = [];
     vi.spyOn(URL, 'createObjectURL').mockImplementation(blob => {
       blobs.push(blob as Blob);
@@ -561,7 +597,7 @@ describe('truapi debug panel: header actions', () => {
     });
 
     // When
-    click(q('.td-export'));
+    click(q('[data-testid="td-export"]'));
 
     // Then
     expect(downloads).toHaveLength(1);
@@ -593,10 +629,10 @@ describe('truapi debug panel: header actions', () => {
     // Given
     mount();
     seedMixedTraffic();
-    toggle(query(panel(), ".td-kind[data-kind='system']", HTMLInputElement));
+    toggle(query(panel(), '[data-testid="td-kind"][data-kind="system"]', HTMLInputElement));
     const writeText = vi.fn((_text: string) => Promise.resolve());
     stubClipboard(writeText);
-    const copy = query(panel(), '.td-copy', HTMLButtonElement);
+    const copy = byTestId('td-copy', panel(), HTMLButtonElement);
 
     try {
       // When
@@ -635,7 +671,7 @@ describe('truapi debug panel: header actions', () => {
     // Given
     mount();
     seedMixedTraffic();
-    const copy = query(panel(), '.td-copy', HTMLButtonElement);
+    const copy = byTestId('td-copy', panel(), HTMLButtonElement);
 
     try {
       // When the write is rejected
@@ -670,7 +706,7 @@ describe('truapi debug panel: header actions', () => {
     const reload = vi.spyOn(window.location, 'reload').mockImplementation(() => undefined);
 
     // When
-    click(q('.td-close'));
+    click(q('[data-testid="td-close"]'));
 
     // Then
     expect(sessionStorage.getItem('dotli:truapi-debug')).toBe('0');
@@ -712,8 +748,8 @@ describe('truapi debug panel: filters', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const truapiBox = query(panel(), ".td-kind[data-kind='truapi']", HTMLInputElement);
-    const systemBox = query(panel(), ".td-kind[data-kind='system']", HTMLInputElement);
+    const truapiBox = query(panel(), '[data-testid="td-kind"][data-kind="truapi"]', HTMLInputElement);
+    const systemBox = query(panel(), '[data-testid="td-kind"][data-kind="system"]', HTMLInputElement);
 
     // When
     toggle(truapiBox);
@@ -734,7 +770,9 @@ describe('truapi debug panel: filters', () => {
     toggle(truapiBox);
 
     // Then
-    expect(q('.td-list .td-empty').textContent).toBe('No events match the current filter.');
+    expect(q('[data-testid="td-list"] [data-testid="td-empty"]').textContent).toBe(
+      'No events match the current filter.',
+    );
   });
 
   it('As a dotli developer, direction chips filter TrUAPI rows and leave system rows alone', () => {
@@ -743,34 +781,37 @@ describe('truapi debug panel: filters', () => {
     seedFilterTraffic();
 
     // When
-    click(q(".td-dir[data-dir='outgoing']"));
+    click(q('[data-testid="td-dir"][data-dir="outgoing"]'));
 
     // Then
     expect(rowTags()).toEqual(['alpha_request', 'gamma_request', 'boot.started']);
-    expect(q(".td-dir[data-dir='outgoing']").classList.contains('active')).toBe(true);
-    expect(q(".td-dir[data-dir='both']").classList.contains('active')).toBe(false);
+    expect(q('[data-testid="td-dir"][data-dir="outgoing"]').hasAttribute('data-active')).toBe(true);
+    expect(q('[data-testid="td-dir"][data-dir="both"]').hasAttribute('data-active')).toBe(false);
 
     // When
-    click(q(".td-dir[data-dir='incoming']"));
+    click(q('[data-testid="td-dir"][data-dir="incoming"]'));
 
     // Then
     expect(rowTags()).toEqual(['alpha_response', 'beta_request', 'boot.started']);
 
     // When
-    click(q(".td-dir[data-dir='both']"));
+    click(q('[data-testid="td-dir"][data-dir="both"]'));
 
     // Then
     expect(rows()).toHaveLength(5);
-    expect(q(".td-dir[data-dir='both']").classList.contains('active')).toBe(true);
+    expect(q('[data-testid="td-dir"][data-dir="both"]').hasAttribute('data-active')).toBe(true);
   });
 
   it('As a dotli developer, a product chip appears per product id and filters TrUAPI rows to it', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const chipTexts = (): string[] => [...panel().querySelectorAll('.td-product-chip')].map(c => c.textContent);
+    const chipTexts = (): string[] =>
+      [...panel().querySelectorAll('[data-testid="td-product-chip"]')].map(c => c.textContent);
     const chip = (text: string): HTMLElement => {
-      const found = [...panel().querySelectorAll<HTMLElement>('.td-product-chip')].find(c => c.textContent === text);
+      const found = [...panel().querySelectorAll<HTMLElement>('[data-testid="td-product-chip"]')].find(
+        c => c.textContent === text,
+      );
       if (found === undefined) {
         throw new Error(`no chip ${text}`);
       }
@@ -785,36 +826,36 @@ describe('truapi debug panel: filters', () => {
 
     // Then
     expect(rowTags()).toEqual(['alpha_request', 'alpha_response', 'boot.started']);
-    expect(chip('b.dot').classList.contains('active')).toBe(true);
-    expect(chip('all').classList.contains('active')).toBe(false);
+    expect(chip('b.dot').hasAttribute('data-active')).toBe(true);
+    expect(chip('all').hasAttribute('data-active')).toBe(false);
 
     // When
     click(chip('(no id)'));
 
     // Then
     expect(rowTags()).toEqual(['gamma_request', 'boot.started']);
-    expect(chip('(no id)').classList.contains('active')).toBe(true);
+    expect(chip('(no id)').hasAttribute('data-active')).toBe(true);
 
     // When
     click(chip('all'));
 
     // Then
     expect(rows()).toHaveLength(5);
-    expect(chip('all').classList.contains('active')).toBe(true);
+    expect(chip('all').hasAttribute('data-active')).toBe(true);
   });
 
   it('As a dotli developer, product chips survive traffic from known products and show markup ids as text', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const before = [...panel().querySelectorAll('.td-product-chip')];
+    const before = [...panel().querySelectorAll('[data-testid="td-product-chip"]')];
 
     // When
     truapi({ tag: 'more_request', requestId: 'm1', productId: 'a.dot' });
     frame();
 
     // Then
-    const after = [...panel().querySelectorAll('.td-product-chip')];
+    const after = [...panel().querySelectorAll('[data-testid="td-product-chip"]')];
     expect(after).toHaveLength(before.length);
     after.forEach((node, i) => {
       expect(node).toBe(before[i]);
@@ -825,18 +866,18 @@ describe('truapi debug panel: filters', () => {
     frame();
 
     // Then
-    const texts = [...panel().querySelectorAll('.td-product-chip')].map(c => c.textContent);
+    const texts = [...panel().querySelectorAll('[data-testid="td-product-chip"]')].map(c => c.textContent);
     expect(texts).toContain('<b>x</b>');
-    expect(panel().querySelector('.td-filters b')).toBeNull();
-    expect(panel().querySelector('.td-list b')).toBeNull();
+    expect(panel().querySelector('[data-testid="td-filters"] b')).toBeNull();
+    expect(panel().querySelector('[data-testid="td-list"] b')).toBeNull();
   });
 
   it('As a dotli developer, include and exclude text filters match the tag or layer:event', () => {
     // Given
     mount();
     seedFilterTraffic();
-    const include = query(panel(), '.td-tag-input', HTMLInputElement);
-    const exclude = query(panel(), '.td-exclude-input', HTMLInputElement);
+    const include = byTestId('td-tag-input', panel(), HTMLInputElement);
+    const exclude = byTestId('td-exclude-input', panel(), HTMLInputElement);
 
     // When
     type(include, 'ALPHA');
@@ -856,7 +897,7 @@ describe('truapi debug panel: filters', () => {
 
     // Then
     expect(rowTags()).toEqual(['alpha_request', 'beta_request']);
-    expect(include.classList.contains('invalid')).toBe(false);
+    expect(include.getAttribute('aria-invalid')).toBeNull();
 
     // When the exclude matches too, it wins
     type(exclude, 'beta');
@@ -868,7 +909,7 @@ describe('truapi debug panel: filters', () => {
     type(include, '/(/');
 
     // Then
-    expect(include.classList.contains('invalid')).toBe(true);
+    expect(include.getAttribute('aria-invalid')).toBe('true');
     expect(rowTags()).toEqual(['alpha_request', 'alpha_response', 'gamma_request', 'boot.started']);
 
     // When
@@ -876,7 +917,7 @@ describe('truapi debug panel: filters', () => {
     type(exclude, '/[/');
 
     // Then
-    expect(exclude.classList.contains('invalid')).toBe(true);
+    expect(exclude.getAttribute('aria-invalid')).toBe('true');
     expect(rows()).toHaveLength(5);
   });
 });
@@ -891,10 +932,11 @@ describe('truapi debug panel: selection and detail', () => {
     click(rowByTag('system_handshake_request'));
 
     // Then
-    expect(document.activeElement).toBe(q('.td-list'));
-    expect(rowByTag('system_handshake_request').classList.contains('selected')).toBe(true);
-    expect(rowByTag('system_handshake_response').classList.contains('paired')).toBe(true);
-    expect(rowByTag('boot.started').className).toBe('td-row system');
+    expect(document.activeElement).toBe(q('[data-testid="td-list"]'));
+    expect(rowByTag('system_handshake_request').getAttribute('data-selection')).toBe('selected');
+    expect(rowByTag('system_handshake_response').getAttribute('data-selection')).toBe('paired');
+    expect(rowByTag('boot.started').hasAttribute('data-system')).toBe(true);
+    expect(rowByTag('boot.started').hasAttribute('data-selection')).toBe(false);
     const detail = detailRows();
     expect(Object.keys(detail)).toEqual(['time', 'direction', 'product', 'tag', 'requestId', 'group']);
     expect(detail['time']).toBe('12:34:56.789');
@@ -903,22 +945,22 @@ describe('truapi debug panel: selection and detail', () => {
     expect(detail['tag']).toBe('system_handshake_request');
     expect(detail['requestId']).toBe('req-aa req-aaa-111');
     expect(detail['group']).toBe('2 events — system_handshake_response +50ms');
-    expect(q('.td-detail .td-detail-pre').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
+    expect(q('[data-testid="td-detail-pre"]').textContent).toBe(JSON.stringify({ version: 1 }, null, 2));
 
     // When the sibling pill is clicked
-    click(q('.td-detail .td-detail-pair'));
+    click(q('[data-testid="td-detail-pair"]'));
 
     // Then
-    expect(rowByTag('system_handshake_response').classList.contains('selected')).toBe(true);
-    expect(rowByTag('system_handshake_request').classList.contains('paired')).toBe(true);
+    expect(rowByTag('system_handshake_response').getAttribute('data-selection')).toBe('selected');
+    expect(rowByTag('system_handshake_request').getAttribute('data-selection')).toBe('paired');
     expect(detailRows()['group']).toBe('2 events — system_handshake_request −50ms');
 
     // When another group is selected
     click(rowByTag('boot.started'));
 
     // Then
-    expect(rowByTag('system_handshake_request').className).toBe('td-row');
-    expect(rowByTag('system_handshake_response').className).toBe('td-row');
+    expect(rowByTag('system_handshake_request').hasAttribute('data-selection')).toBe(false);
+    expect(rowByTag('system_handshake_response').hasAttribute('data-selection')).toBe(false);
     expect(selectedRows()).toEqual([rowByTag('boot.started')]);
   });
 
@@ -938,22 +980,22 @@ describe('truapi debug panel: selection and detail', () => {
     expect(detail['event']).toBe('started');
     expect(detail['flowId']).toBe('flow-b flow-boot-1');
     expect(detail['group']).toBe('1 event');
-    expect(q('.td-detail .td-detail-section-title').textContent).toBe('Summary');
-    expect(q('.td-detail .td-detail-summary').textContent).toBe(
+    expect(q('[data-testid="td-detail-section-title"]').textContent).toBe('Summary');
+    expect(q('[data-testid="td-detail-summary"]').textContent).toBe(
       'Host boot started (mode: direct, chain: smoldot, content: helia).',
     );
-    const explanation = query(panel(), '.td-detail details.td-detail-explanation', HTMLDetailsElement);
+    const explanation = query(panel(), 'details[data-testid="td-detail-explanation"]', HTMLDetailsElement);
     expect(explanation.querySelector('summary')?.textContent).toBe('What is this? — Host boot started');
     expect(explanation.querySelector('code')?.textContent).toBe('main()');
-    expect(q('.td-detail .td-detail-pre').textContent).toContain('"smoldot"');
+    expect(q('[data-testid="td-detail-pre"]').textContent).toContain('"smoldot"');
   });
 
   it('As a dotli developer, arrow keys on the list step the selection and clamp at the ends', () => {
     // Given
     mount();
     seedMixedTraffic();
-    const list = q('.td-list');
-    const selectedTag = (): string[] => selectedRows().map(r => r.querySelector('.td-tag')?.textContent ?? '');
+    const list = q('[data-testid="td-list"]');
+    const selectedTag = (): string[] => selectedRows().map(r => byTestId('td-tag', r).textContent);
 
     // When nothing is selected, ArrowDown picks the first row
     key(list, 'ArrowDown');
@@ -994,7 +1036,7 @@ describe('truapi debug panel: selection and detail', () => {
     seedMixedTraffic();
 
     // When
-    key(q('.td-list'), 'ArrowUp');
+    key(q('[data-testid="td-list"]'), 'ArrowUp');
 
     // Then
     expect(selectedRows()).toEqual([rowByTag('boot.started')]);
@@ -1015,8 +1057,8 @@ describe('truapi debug panel: selection and detail', () => {
 
     // Then
     expect(panel().querySelector('b')).toBeNull();
-    expect(rows()[0]?.querySelector('.td-summary')?.textContent).toContain('<b>bold</b>');
-    expect(q('.td-detail .td-detail-pre').textContent).toContain('"note": "<b>bold</b>"');
+    expect(byTestId('td-summary', nth(rows(), 0)).textContent).toContain('<b>bold</b>');
+    expect(q('[data-testid="td-detail-pre"]').textContent).toContain('"note": "<b>bold</b>"');
   });
 
   it('As a dotli developer, incoming events do not rebuild the detail pane', () => {
@@ -1024,7 +1066,7 @@ describe('truapi debug panel: selection and detail', () => {
     mount();
     seedMixedTraffic();
     click(rowByTag('boot.started'));
-    const explanation = query(panel(), '.td-detail details', HTMLDetailsElement);
+    const explanation = query(panel(), '[data-testid="td-detail"] details', HTMLDetailsElement);
     explanation.open = true;
 
     // When
@@ -1034,7 +1076,7 @@ describe('truapi debug panel: selection and detail', () => {
     }
 
     // Then
-    expect(q('.td-detail details')).toBe(explanation);
+    expect(q('[data-testid="td-detail"] details')).toBe(explanation);
     expect(explanation.open).toBe(true);
   });
 
@@ -1045,11 +1087,11 @@ describe('truapi debug panel: selection and detail', () => {
     click(rowByTag('system_handshake_request'));
 
     // When
-    type(query(panel(), '.td-tag-input', HTMLInputElement), 'handshake');
+    type(byTestId('td-tag-input', panel(), HTMLInputElement), 'handshake');
 
     // Then
-    expect(rowByTag('system_handshake_request').classList.contains('selected')).toBe(true);
-    expect(rowByTag('system_handshake_response').classList.contains('paired')).toBe(true);
+    expect(rowByTag('system_handshake_request').getAttribute('data-selection')).toBe('selected');
+    expect(rowByTag('system_handshake_response').getAttribute('data-selection')).toBe('paired');
     expect(detailRows()['tag']).toBe('system_handshake_request');
   });
 });
@@ -1064,36 +1106,41 @@ describe('truapi debug panel: views', () => {
     click(tab('timeline'));
 
     // Then
-    expect(tab('timeline').classList.contains('active')).toBe(true);
-    expect(tab('list').classList.contains('active')).toBe(false);
-    expect(q('.td-list').classList.contains('hidden')).toBe(true);
-    expect(q('.td-timeline').classList.contains('hidden')).toBe(false);
-    expect(q('.td-res').classList.contains('hidden')).toBe(true);
-    expect(panel().classList.contains('res-view')).toBe(false);
-    const headers = [...panel().querySelectorAll('.td-timeline .td-sw-col .td-sw-header-label')].map(
-      h => h.textContent,
-    );
+    expect(tab('timeline').getAttribute('aria-selected')).toBe('true');
+    expect(tab('list').getAttribute('aria-selected')).toBe('false');
+    expect(q('[data-testid="td-list"]').hidden).toBe(true);
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(false);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
+    expect(panel().getAttribute('data-view')).toBe('timeline');
+    const headers = [
+      ...panel().querySelectorAll(
+        '[data-testid="td-timeline"] [data-testid="td-sw-col"] [data-testid="td-sw-header-label"]',
+      ),
+    ].map(h => h.textContent);
     expect(headers).toEqual(['System', 'Other']);
-    expect(panel().querySelectorAll('.td-timeline svg.td-tl-svg').length).toBe(2);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-svg"]').length).toBe(2);
     // One box for the request/response pair, one for the boot flow.
-    expect(panel().querySelectorAll('.td-timeline rect.td-tl-segment')).toHaveLength(2);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(2);
 
     // When
     click(tab('resolution'));
 
     // Then
-    expect(tab('resolution').classList.contains('active')).toBe(true);
-    expect(q('.td-timeline').classList.contains('hidden')).toBe(true);
-    expect(q('.td-res').classList.contains('hidden')).toBe(false);
-    expect(panel().classList.contains('res-view')).toBe(true);
+    expect(tab('resolution').getAttribute('aria-selected')).toBe('true');
+    expect(q('[data-testid="td-timeline"]').hidden).toBe(true);
+    expect(q('[data-testid="td-res"]').hidden).toBe(false);
+    expect(panel().getAttribute('data-view')).toBe('resolution');
+    expect(q('[data-testid="td-body-splitter"]').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(true);
 
     // When
     click(tab('list'));
 
     // Then
-    expect(q('.td-list').classList.contains('hidden')).toBe(false);
-    expect(q('.td-res').classList.contains('hidden')).toBe(true);
-    expect(panel().classList.contains('res-view')).toBe(false);
+    expect(q('[data-testid="td-list"]').hidden).toBe(false);
+    expect(q('[data-testid="td-res"]').hidden).toBe(true);
+    expect(q('[data-testid="td-detail"]').hidden).toBe(false);
+    expect(panel().getAttribute('data-view')).toBe('list');
     expect(rows()).toHaveLength(3);
   });
 
@@ -1105,18 +1152,18 @@ describe('truapi debug panel: views', () => {
     click(tab('archive'));
 
     // Then
-    expect(tab('archive').classList.contains('active')).toBe(true);
-    expect(q('.td-list').classList.contains('hidden')).toBe(true);
-    expect(q('.td-archive').classList.contains('hidden')).toBe(false);
-    expect(panel().classList.contains('archive-view')).toBe(true);
-    expect(q('.td-archive').textContent).toContain('No product loaded');
+    expect(tab('archive').getAttribute('aria-selected')).toBe('true');
+    expect(q('[data-testid="td-list"]').hidden).toBe(true);
+    expect(q('[data-testid="td-archive"]').hidden).toBe(false);
+    expect(panel().getAttribute('data-view')).toBe('archive');
+    expect(q('[data-testid="td-archive"]').textContent).toContain('No product loaded');
 
     // When
     click(tab('list'));
 
     // Then
-    expect(q('.td-archive').classList.contains('hidden')).toBe(true);
-    expect(panel().classList.contains('archive-view')).toBe(false);
+    expect(q('[data-testid="td-archive"]').hidden).toBe(true);
+    expect(panel().getAttribute('data-view')).toBe('list');
   });
 
   it('As a dotli developer, clicking a timeline box shows its whole group in the detail pane', () => {
@@ -1124,9 +1171,9 @@ describe('truapi debug panel: views', () => {
     mount();
     seedMixedTraffic();
     click(tab('timeline'));
-    const box = [...panel().querySelectorAll<SVGRectElement>('.td-timeline rect.td-tl-segment')].find(
-      r => r.getAttribute('data-tooltip')?.includes('handshake') === true,
-    );
+    const box = [
+      ...panel().querySelectorAll<SVGRectElement>('[data-testid="td-timeline"] [data-testid="td-tl-segment"]'),
+    ].find(r => r.getAttribute('data-tooltip')?.includes('handshake') === true);
     if (box === undefined) {
       throw new Error('no handshake box');
     }
@@ -1135,11 +1182,16 @@ describe('truapi debug panel: views', () => {
     click(box);
 
     // Then
-    expect(box.classList.contains('selected')).toBe(true);
-    const members = [...panel().querySelectorAll('.td-detail .td-detail-member')].map(
-      m => m.querySelector('.td-tag')?.textContent,
+    expect(box.hasAttribute('data-selected')).toBe(true);
+    const members = [...panel().querySelectorAll('[data-testid="td-detail-member"]')].map(
+      m => byTestId('td-tag', m).textContent,
     );
     expect(members).toEqual(['system_handshake_request', 'system_handshake_response']);
+    expect(
+      [...panel().querySelectorAll('[data-testid="td-detail-member"] [data-testid="td-tag"]')].map(t =>
+        t.getAttribute('data-kind'),
+      ),
+    ).toEqual(['request', 'response']);
     const head = detailRows();
     expect(head['requestId']).toBe('req-aa req-aaa-111');
     expect(head['group']).toBe('2 events');
@@ -1156,7 +1208,62 @@ describe('truapi debug panel: views', () => {
     frame();
 
     // Then
-    expect(panel().querySelectorAll('.td-timeline rect.td-tl-segment')).toHaveLength(1);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(1);
+  });
+
+  it('As a dotli developer, streaming traffic keeps the hovered timeline box, its tooltip and a click that started on it', () => {
+    // Given
+    mount();
+    seedMixedTraffic();
+    click(tab('timeline'));
+    const box = timelineBox('handshake');
+    const tooltip = q('[data-testid="td-tooltip"]');
+    box.dispatchEvent(new PointerEvent('pointerover', { bubbles: true, clientX: 30, clientY: 40 }));
+    box.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+
+    // When
+    for (let i = 0; i < 3; i++) {
+      truapi({ tag: 'late_request', requestId: `late-${String(i)}` });
+      frame();
+    }
+    click(box);
+
+    // Then
+    expect(timelineBox('handshake')).toBe(box);
+    expect(panel().querySelectorAll('[data-testid="td-timeline"] [data-testid="td-tl-segment"]')).toHaveLength(5);
+    expect(tooltip.hasAttribute('data-visible')).toBe(true);
+    expect(box.hasAttribute('data-selected')).toBe(true);
+    expect(detailRows()['group']).toBe('2 events');
+  });
+
+  it('As a dotli developer, the selected timeline box follows the selection, and a box shows while it is pending', () => {
+    // Given
+    mount();
+    truapi({ tag: 'first_request', requestId: 'a-1' });
+    truapi({ tag: 'second_request', requestId: 'b-1' });
+    frame();
+    click(tab('timeline'));
+    const first = timelineBox('first');
+    const second = timelineBox('second');
+    expect(first.hasAttribute('data-pending')).toBe(true);
+
+    // When
+    click(first);
+
+    // Then
+    expect(first.hasAttribute('data-selected')).toBe(true);
+    expect(second.hasAttribute('data-selected')).toBe(false);
+
+    // When
+    click(second);
+    truapi({ tag: 'first_response', requestId: 'a-1', direction: 'incoming' });
+    frame();
+
+    // Then
+    expect(first.hasAttribute('data-selected')).toBe(false);
+    expect(second.hasAttribute('data-selected')).toBe(true);
+    expect(timelineBox('first')).toBe(first);
+    expect(first.hasAttribute('data-pending')).toBe(false);
   });
 
   it('As a dotli developer, hovering a timeline box shows its tooltip at once, and leaving or switching tabs hides it', () => {
@@ -1164,8 +1271,12 @@ describe('truapi debug panel: views', () => {
     mount();
     seedMixedTraffic();
     click(tab('timeline'));
-    const box = query(panel(), '.td-timeline rect.td-tl-segment[data-tooltip]', SVGRectElement);
-    const tooltip = q('.td-tooltip');
+    const box = query(
+      panel(),
+      '[data-testid="td-timeline"] [data-testid="td-tl-segment"][data-tooltip]',
+      SVGRectElement,
+    );
+    const tooltip = q('[data-testid="td-tooltip"]');
 
     // When
     box.dispatchEvent(
@@ -1177,28 +1288,28 @@ describe('truapi debug panel: views', () => {
     );
 
     // Then
-    expect(tooltip.classList.contains('visible')).toBe(true);
+    expect(tooltip.hasAttribute('data-visible')).toBe(true);
     expect(tooltip.textContent).toBe(box.getAttribute('data-tooltip'));
 
     // When
-    q('.td-timeline').dispatchEvent(new PointerEvent('pointerleave'));
+    q('[data-testid="td-timeline"]').dispatchEvent(new PointerEvent('pointerleave'));
 
     // Then
-    expect(tooltip.classList.contains('visible')).toBe(false);
+    expect(tooltip.hasAttribute('data-visible')).toBe(false);
 
     // When
     box.dispatchEvent(new PointerEvent('pointerover', { bubbles: true }));
     click(tab('list'));
 
     // Then
-    expect(tooltip.classList.contains('visible')).toBe(false);
+    expect(tooltip.hasAttribute('data-visible')).toBe(false);
   });
 
   it('As a dotli developer, the Resolution view redraws an in-flight load on its tick, but not while collapsed', () => {
     // Given
     mount();
     click(tab('resolution'));
-    expect(q('.td-res .td-res-empty')).not.toBeNull();
+    expect(q('[data-testid="td-res"] [data-testid="td-res-empty"]')).not.toBeNull();
 
     // When
     system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
@@ -1209,7 +1320,7 @@ describe('truapi debug panel: views', () => {
     frame();
 
     // Then
-    expect(panel().querySelector('.td-res .td-res-summary')).not.toBeNull();
+    expect(panel().querySelector('[data-testid="td-res"] [data-testid="td-res-summary"]')).not.toBeNull();
     expect(resolutionFact('name')).toBe('myapp');
     const first = resolutionFact('elapsed');
 
@@ -1221,11 +1332,84 @@ describe('truapi debug panel: views', () => {
     expect(second).not.toBe(first);
 
     // When collapsed
-    click(q('.td-collapse'));
+    click(q('[data-testid="td-collapse"]'));
     vi.advanceTimersByTime(1500);
 
     // Then
     expect(resolutionFact('elapsed')).toBe(second);
+  });
+
+  it('As a dotli developer, the Resolution chart shows each phase, the open block and the chains that never started', () => {
+    // Given
+    mount();
+    click(tab('resolution'));
+
+    // When the relay connects, then syncs, and the load fails
+    system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'connecting' });
+    vi.advanceTimersByTime(300);
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'warping' });
+    frame();
+
+    // Then
+    const res = q('[data-testid="td-res"]');
+    const relay = query(res, '[data-testid="td-res-row"][data-role="relay"]');
+    const blocks = [...relay.querySelectorAll('[data-testid="td-res-block"]')];
+    expect(blocks.map(b => b.getAttribute('data-phase'))).toEqual(['connecting', 'unknown']);
+    expect(blocks.map(b => b.hasAttribute('data-open'))).toEqual([false, true]);
+    expect(blocks[1]?.textContent).toBe('warping');
+    expect(res.querySelectorAll('[data-testid="td-res-idle"]')).toHaveLength(3);
+    expect(query(res, '[data-fact="outcome"] [data-testid="td-res-value"]').getAttribute('data-tone')).toBe('running');
+
+    // When
+    system('boot', 'failed', 'flow-boot', { reason: 'no peers' });
+    frame();
+
+    // Then the load is over, so no block is open, and the reason is a tooltip
+    expect(relay.querySelector('[data-testid="td-res-block"][data-open]')).toBeNull();
+    const outcome = query(res, '[data-fact="outcome"] [data-testid="td-res-value"]');
+    expect(outcome.textContent).toBe('failed');
+    expect(outcome.getAttribute('data-tone')).toBe('bad');
+    expect(outcome.getAttribute('data-tooltip')).toBe('no peers');
+    expect(outcome.hasAttribute('data-tooltip-prose')).toBe(true);
+  });
+
+  it('As a dotli developer, a Resolution redraw keeps the nodes it draws, and a finished load is not touched at all', () => {
+    // Given an in-flight load: a closed block and an open one
+    mount();
+    click(tab('resolution'));
+    system('boot', 'started', 'flow-boot', { chainBackend: 'smoldot' });
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'connecting' });
+    vi.advanceTimersByTime(300);
+    system('chain', 'phase', 'flow-chain', { chain: 'relay', phase: 'syncing' });
+    frame();
+    const res = q('[data-testid="td-res"]');
+    const block = query(res, '[data-role="relay"] [data-testid="td-res-block"]');
+    const info = query(res, '[data-fact="elapsed"] [data-testid="td-res-info"]');
+    const width = block.style.width;
+    expect(info.getAttribute('data-tooltip')).toBeTruthy();
+    expect(info.hasAttribute('data-tooltip-prose')).toBe(true);
+    expect(block.title).not.toBe('');
+
+    // When a tick passes
+    vi.advanceTimersByTime(500);
+
+    // Then the closed block narrows as the axis grows, in the same node
+    expect(query(res, '[data-role="relay"] [data-testid="td-res-block"]')).toBe(block);
+    expect(block.style.width).not.toBe(width);
+    expect(query(res, '[data-fact="elapsed"] [data-testid="td-res-info"]')).toBe(info);
+
+    // When the load finishes and more ticks pass
+    system('boot', 'ready', 'flow-boot');
+    frame();
+    const observer = new MutationObserver(() => undefined);
+    observer.observe(res, { subtree: true, childList: true, attributes: true, characterData: true });
+    vi.advanceTimersByTime(1500);
+
+    // Then nothing in the view changed
+    expect(observer.takeRecords()).toEqual([]);
+    observer.disconnect();
+    expect(query(res, '[data-role="relay"] [data-testid="td-res-block"]')).toBe(block);
   });
 });
 
@@ -1234,13 +1418,18 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given: the host page, which has the topbar.
     topbarState.setTopbarPresent();
     mount();
-    const dock = q('.td-dock');
+    const dock = q('[data-testid="td-dock"]');
 
     // When
     click(dock);
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(true);
+    expect(panel().getAttribute('data-dock')).toBe('right');
+    expect(panel().getAttribute('data-layout')).toBe('stacked');
+    for (const part of ['td-resize-handle', 'td-header', 'td-filters']) {
+      expect(q(`[data-testid="${part}"]`).getAttribute('data-dock')).toBe('right');
+    }
+    expect(q('[data-testid="td-body-splitter"]').getAttribute('data-layout')).toBe('stacked');
     expect(dock.title).toBe('Dock to bottom');
     expect(dock.getAttribute('aria-label')).toBe('Dock to bottom');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('right');
@@ -1250,7 +1439,9 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     click(dock);
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(false);
+    expect(panel().getAttribute('data-dock')).toBe('bottom');
+    expect(panel().hasAttribute('data-layout')).toBe(false);
+    expect(q('[data-testid="td-header"]').getAttribute('data-dock')).toBe('bottom');
     expect(dock.title).toBe('Dock to right');
     expect(dock.getAttribute('aria-label')).toBe('Dock to right');
     expect(localStorage.getItem('truapi-debug:dock')).toBe('bottom');
@@ -1265,8 +1456,8 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     mount();
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(true);
-    expect(q('.td-dock').title).toBe('Dock to bottom');
+    expect(panel().getAttribute('data-dock')).toBe('right');
+    expect(q('[data-testid="td-dock"]').title).toBe('Dock to bottom');
     expect(panel().style.top).toBe('0px');
   });
 
@@ -1276,7 +1467,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     localStorage.setItem('truapi-debug:dock', 'right');
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    const splitter = q('.td-body-splitter');
+    const splitter = q('[data-testid="td-body-splitter"]');
     vi.spyOn(must(splitter.parentElement, "the splitter's parent"), 'getBoundingClientRect').mockReturnValue(
       new DOMRect(0, 0, 390, 600),
     );
@@ -1287,8 +1478,8 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     pointer(splitter, 'pointerup');
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(false);
-    expect(panel().classList.contains('stacked')).toBe(true);
+    expect(panel().getAttribute('data-dock')).toBe('bottom');
+    expect(panel().getAttribute('data-layout')).toBe('stacked');
     expect(panel().style.top).toBe('');
     expect(splitter.getAttribute('aria-orientation')).toBe('horizontal');
     expect(panel().style.getPropertyValue('--td-top-height')).toBe('250px');
@@ -1299,21 +1490,21 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given
     localStorage.setItem('truapi-debug:dock', 'right');
     mount();
-    expect(panel().classList.contains('docked-right')).toBe(true);
+    expect(panel().getAttribute('data-dock')).toBe('right');
 
     // When
     setViewportWidth(390);
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(false);
-    expect(panel().classList.contains('stacked')).toBe(true);
+    expect(panel().getAttribute('data-dock')).toBe('bottom');
+    expect(panel().getAttribute('data-layout')).toBe('stacked');
     expect(panel().style.top).toBe('');
 
     // When
     setViewportWidth(1024);
 
     // Then
-    expect(panel().classList.contains('docked-right')).toBe(true);
+    expect(panel().getAttribute('data-dock')).toBe('right');
     expect(panel().style.top).toBe('0px');
   });
 
@@ -1321,14 +1512,14 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    pointer(q('.td-resize-handle'), 'pointerdown');
-    pointer(q('.td-resize-handle'), 'pointermove', 0, 500);
-    pointer(q('.td-resize-handle'), 'pointerup');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerdown');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 0, 500);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
     panel().style.setProperty('--td-left-width', '300px');
     expect(panel().style.height).toBe('268px');
 
     // When
-    click(q('.td-dock'));
+    click(q('[data-testid="td-dock"]'));
 
     // Then
     expect(panel().style.height).toBe('');
@@ -1340,33 +1531,33 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    pointer(q('.td-resize-handle'), 'pointerdown');
-    pointer(q('.td-resize-handle'), 'pointermove', 0, 400);
-    pointer(q('.td-resize-handle'), 'pointerup');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerdown');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 0, 400);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
     expect(panel().style.height).toBe('368px');
 
     // When
-    click(q('.td-collapse'));
+    click(q('[data-testid="td-collapse"]'));
 
     // Then
-    expect(panel().classList.contains('collapsed')).toBe(true);
-    expect(q('.td-collapse').textContent).toBe('▲');
+    expect(panel().hasAttribute('data-collapsed')).toBe(true);
+    expect(q('[data-testid="td-collapse"]').textContent).toBe('▲');
     expect(panel().style.height).toBe('');
 
     // When a drag is attempted while collapsed
-    pointer(q('.td-resize-handle'), 'pointerdown');
-    pointer(q('.td-resize-handle'), 'pointermove', 0, 100);
-    pointer(q('.td-resize-handle'), 'pointerup');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerdown');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 0, 100);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
 
     // Then it is ignored
     expect(panel().style.height).toBe('');
 
     // When
-    click(q('.td-collapse'));
+    click(q('[data-testid="td-collapse"]'));
 
     // Then
-    expect(panel().classList.contains('collapsed')).toBe(false);
-    expect(q('.td-collapse').textContent).toBe('▼');
+    expect(panel().hasAttribute('data-collapsed')).toBe(false);
+    expect(q('[data-testid="td-collapse"]').textContent).toBe('▼');
     expect(panel().style.height).toBe('368px');
   });
 
@@ -1374,7 +1565,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given (happy-dom viewport: 1024 x 768)
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    const handle = q('.td-resize-handle');
+    const handle = q('[data-testid="td-resize-handle"]');
 
     // When a move happens without a drag
     pointer(handle, 'pointermove', 0, 500);
@@ -1419,8 +1610,8 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     // Given
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    const handle = q('.td-resize-handle');
-    const splitter = q('.td-body-splitter');
+    const handle = q('[data-testid="td-resize-handle"]');
+    const splitter = q('[data-testid="td-body-splitter"]');
     vi.spyOn(must(splitter.parentElement, "the splitter's parent"), 'getBoundingClientRect').mockReturnValue(
       new DOMRect(0, 0, 1000, 400),
     );
@@ -1444,7 +1635,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
 
     // Then
     expect(panel().style.getPropertyValue('--td-left-width')).toBe('400px');
-    expect(splitter.classList.contains('dragging')).toBe(false);
+    expect(splitter.hasAttribute('data-dragging')).toBe(false);
     expect(document.body.style.userSelect).toBe('');
   });
 
@@ -1455,32 +1646,32 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
 
     // When
-    pointer(q('.td-resize-handle'), 'pointerdown');
-    pointer(q('.td-resize-handle'), 'pointermove', 600, 0);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerdown');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 600, 0);
 
     // Then
     expect(panel().style.width).toBe('424px');
 
     // When
-    pointer(q('.td-resize-handle'), 'pointermove', 1000, 0);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 1000, 0);
 
     // Then
     expect(panel().style.width).toBe('280px');
 
     // When
-    pointer(q('.td-resize-handle'), 'pointermove', 0, 0);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 0, 0);
 
     // Then
     expect(panel().style.width).toBe('819.2px');
-    pointer(q('.td-resize-handle'), 'pointerup');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
   });
 
   it('As a dotli developer, the body splitter rebalances the panes within the documented minimums', () => {
     // Given
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    const splitter = q('.td-body-splitter');
-    const body = q('.td-body');
+    const splitter = q('[data-testid="td-body-splitter"]');
+    const body = q('[data-testid="td-body"]');
     body.getBoundingClientRect = () =>
       ({
         left: 10,
@@ -1497,7 +1688,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     pointer(splitter, 'pointerdown');
 
     // Then
-    expect(splitter.classList.contains('dragging')).toBe(true);
+    expect(splitter.hasAttribute('data-dragging')).toBe(true);
     expect(document.body.style.userSelect).toBe('none');
 
     // When
@@ -1522,7 +1713,7 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     pointer(splitter, 'pointerup');
 
     // Then
-    expect(splitter.classList.contains('dragging')).toBe(false);
+    expect(splitter.hasAttribute('data-dragging')).toBe(false);
     expect(document.body.style.userSelect).toBe('');
 
     // When
@@ -1537,8 +1728,9 @@ describe('truapi debug panel: dock, collapse and resize', () => {
     localStorage.setItem('truapi-debug:dock', 'right');
     mount();
     vi.spyOn(HTMLElement.prototype, 'setPointerCapture').mockImplementation(() => undefined);
-    const splitter = q('.td-body-splitter');
-    q('.td-body').getBoundingClientRect = () => ({ left: 0, top: 20, width: 400, height: 600 }) as DOMRect;
+    const splitter = q('[data-testid="td-body-splitter"]');
+    q('[data-testid="td-body"]').getBoundingClientRect = () =>
+      ({ left: 0, top: 20, width: 400, height: 600 }) as DOMRect;
 
     // When
     pointer(splitter, 'pointerdown');
@@ -1582,7 +1774,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 300px)`);
 
     // When
-    click(q('.td-collapse'));
+    click(q('[data-testid="td-collapse"]'));
 
     // Then
     expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 32px)`);
@@ -1608,22 +1800,22 @@ describe('truapi debug panel: product iframe geometry', () => {
     mount();
 
     // When
-    click(q('.td-dock'));
+    click(q('[data-testid="td-dock"]'));
 
     // Then
     expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
     expect(frame['width']).toBe(`calc(${SAFE_WIDTH} - 400px)`);
 
     // When
-    click(q('.td-collapse'));
+    click(q('[data-testid="td-collapse"]'));
 
     // Then
     expect(frame['width']).toBe(SAFE_WIDTH);
     expect(frame['height']).toBe(BELOW_BAR_HEIGHT);
 
     // When
-    click(q('.td-collapse'));
-    click(q('.td-dock'));
+    click(q('[data-testid="td-collapse"]'));
+    click(q('[data-testid="td-dock"]'));
 
     // Then
     expect(frame['width']).toBe(SAFE_WIDTH);
@@ -1640,14 +1832,14 @@ describe('truapi debug panel: product iframe geometry', () => {
     mount();
 
     // When
-    pointer(q('.td-resize-handle'), 'pointerdown');
-    pointer(q('.td-resize-handle'), 'pointermove', 0, 500);
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerdown');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointermove', 0, 500);
     // The refit lands on the next animation frame.
     vi.advanceTimersByTime(20);
 
     // Then
     expect(frame['height']).toBe(`calc(${BELOW_BAR_HEIGHT} - 268px)`);
-    pointer(q('.td-resize-handle'), 'pointerup');
+    pointer(q('[data-testid="td-resize-handle"]'), 'pointerup');
   });
 
   it('As a dotli developer, a product reload with chat open and a right dock keeps both', () => {
@@ -1673,7 +1865,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     stubPanelBox(400, 300);
     const frame = attachFrame(true);
     layout.setChatWidth(360);
-    layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
+    layout.setTopbarLayout({ offset: false });
     const dispose = mount();
     expect(frame['height']).toBe(`calc(${FULL_HEIGHT} - 300px)`);
 
@@ -1684,7 +1876,7 @@ describe('truapi debug panel: product iframe geometry', () => {
     expect(frame['width']).toBe(`calc(${SAFE_WIDTH} - 360px)`);
     expect(frame['height']).toBe(FULL_HEIGHT);
     expect(frame['top']).toBe('var(--safe-top, 0px)');
-    expect(frame['transform']).toBe('translateY(0)');
+    expect(frame['transform']).toBe('');
 
     // When a product loads after the panel is gone
     window.dispatchEvent(new CustomEvent('dotli:product-loaded'));
@@ -1704,10 +1896,10 @@ describe('truapi debug panel: pending requests', () => {
     frame();
 
     // Then
-    const badge = (): HTMLElement | null => nth(rows(), 0).querySelector<HTMLElement>('.td-pending');
+    const badge = (): HTMLElement | null => nth(rows(), 0).querySelector<HTMLElement>('[data-testid="td-pending"]');
     expect(badge()?.hidden).toBe(false);
     expect(badge()?.textContent).toMatch(/^⟳ \d+ms pending$/);
-    expect(badge()?.classList.contains('slow')).toBe(false);
+    expect(badge()?.hasAttribute('data-slow')).toBe(false);
 
     // When
     vi.advanceTimersByTime(980);
@@ -1720,7 +1912,7 @@ describe('truapi debug panel: pending requests', () => {
 
     // Then
     expect(badge()?.textContent).toBe('⟳ 3.0s pending');
-    expect(badge()?.classList.contains('slow')).toBe(true);
+    expect(badge()?.hasAttribute('data-slow')).toBe(true);
 
     // When
     truapi({ tag: 'sign_response', requestId: 's1', direction: 'incoming' });
@@ -1728,7 +1920,7 @@ describe('truapi debug panel: pending requests', () => {
 
     // Then
     expect(badge()).toBeNull();
-    expect(rows()[1]?.querySelector('.td-pending')).toBeNull();
+    expect(rows()[1]?.querySelector('[data-testid="td-pending"]')).toBeNull();
   });
 });
 
@@ -1757,7 +1949,7 @@ describe('truapi debug panel: streaming load', () => {
     const before = rows();
     const target = rowByTag('system_handshake_request');
     click(target);
-    const detailPre = q('.td-detail .td-detail-pre');
+    const detailPre = q('[data-testid="td-detail-pre"]');
 
     // When a burst streams in over several frames
     for (let f = 0; f < 10; f++) {
@@ -1777,8 +1969,8 @@ describe('truapi debug panel: streaming load', () => {
       expect(rows()[i]).toBe(node);
     });
     expect(target.isConnected).toBe(true);
-    expect(target.classList.contains('selected')).toBe(true);
-    expect(q('.td-detail .td-detail-pre')).toBe(detailPre);
+    expect(target.getAttribute('data-selection')).toBe('selected');
+    expect(q('[data-testid="td-detail-pre"]')).toBe(detailPre);
   });
 
   it('As a dotli developer, a click that lands mid-burst sticks after the next render', () => {
@@ -1796,7 +1988,7 @@ describe('truapi debug panel: streaming load', () => {
 
     // Then
     expect(rowByTag('system_handshake_response')).toBe(target);
-    expect(target.classList.contains('selected')).toBe(true);
+    expect(target.getAttribute('data-selection')).toBe('selected');
     expect(detailRows()['tag']).toBe('system_handshake_response');
     expect(rows()).toHaveLength(23);
   });

@@ -13,6 +13,7 @@ import {
   initSentry,
   installGlobalErrorHandlers,
   captureException,
+  getResolutionId,
   m,
   setResolutionId,
   spans as S,
@@ -34,15 +35,14 @@ installByteMeter();
 // Do NOT silently reload on chunk preload failure. The protocol iframe is
 // hidden and has no UI of its own, so it surfaces the failure to the parent
 // via the standard error envelope. The parent will render the user-facing
-// error.
+// error, and reports it: a capture here would file the same failure twice.
 window.addEventListener('vite:preloadError', event => {
   const evt = event as unknown as { payload?: unknown };
-  captureException(evt.payload ?? new Error('vite:preloadError'), {
-    kind: 'chunk_preload_error',
-    surface: 'protocol_iframe',
-  });
+  log.error('[dot.li protocol] Asset failed to load', evt.payload);
   if (window.parent !== window) {
-    const msg = evt.payload instanceof Error ? evt.payload.message : 'Asset failed to load';
+    // The browser's message is what names the chunk: the failed dynamic
+    // import or the stylesheet's URL. Only Safari omits it.
+    const msg = evt.payload === undefined ? 'no detail from the loader' : serializeError(evt.payload);
     window.parent.postMessage(
       {
         namespace: 'dotli:protocol',
@@ -54,7 +54,7 @@ window.addEventListener('vite:preloadError', event => {
   }
 });
 
-import { log, errorName, serializeError } from '@dotli/shared';
+import { log, serializeError } from '@dotli/shared';
 import {
   DEBUG,
   SITE_ID,
@@ -102,9 +102,10 @@ import { observeChains } from './observe-chains.js';
 import { createEngine, type ProtocolEngine, type ResponseCallback } from './engine.js';
 import protocolSharedWorkerUrl from './protocol-shared-worker.ts?sharedworker&url';
 import { sharedWorkerGeneration } from './shared-worker-generation.js';
+import { errorResponse } from './error-response.js';
 
-initSentry('host');
-installGlobalErrorHandlers('host');
+initSentry('protocol');
+installGlobalErrorHandlers('protocol');
 
 // Adopted at module scope, not inside init(): an auth-only iframe and every
 // invalid-mode path return before init() gets far, and those boots still
@@ -199,7 +200,9 @@ function broadcastSharedAuthChange(siteId: SiteId, key: string, value: string | 
     const msg: SharedAuthBroadcastMessage = { siteId, key, value };
     sharedAuthChannel.postMessage(msg);
   } catch (error: unknown) {
-    log.warn('[dot.li protocol] Shared auth broadcast failed:', error);
+    // The write itself succeeded and was answered, so the host never hears
+    // that other tabs missed it.
+    captureException(error, { flow: 'storage', step: 'shared_auth_broadcast' });
   }
 }
 
@@ -250,7 +253,8 @@ function bindSharedAuthBroadcastRelay(): void {
         parentOrigin,
       );
     } catch (error: unknown) {
-      log.warn('[dot.li protocol] Failed to forward shared auth change to parent:', error);
+      // Nothing waits on this notification, so the host never hears it was lost.
+      captureException(error, { flow: 'storage', step: 'shared_auth_forward' });
     }
   });
 }
@@ -287,15 +291,7 @@ function bindSharedAuthListener(): void {
       postToSource(event.source, event.origin, response);
     }).catch((error: unknown) => {
       countSharedReject('auth', 'validation');
-      const name = errorName(error);
-      postToSource(event.source, event.origin, {
-        namespace: 'dotli:protocol',
-        kind: 'response',
-        id: data.id,
-        ok: false,
-        error: serializeError(error),
-        ...(name !== undefined ? { errorName: name } : {}),
-      });
+      postToSource(event.source, event.origin, errorResponse(data.id, error));
     });
   });
 }
@@ -399,7 +395,9 @@ function bindSharedWalletListener(): void {
               state,
             });
           } catch (error: unknown) {
-            log.warn('[dot.li protocol] Wallet revision broadcast failed:', error);
+            // The write itself succeeded and is answered, so the host never
+            // hears that other tabs missed it.
+            captureException(error, { flow: 'storage', step: 'wallet_revision_broadcast' });
           }
         },
         request.deadlineMs,
@@ -416,15 +414,7 @@ function bindSharedWalletListener(): void {
         result.secret?.fill(0);
       }
     })().catch((error: unknown) => {
-      const name = errorName(error);
-      postToSource(event.source, event.origin, {
-        namespace: 'dotli:protocol',
-        kind: 'response',
-        id: request.id,
-        ok: false,
-        error: serializeError(error),
-        ...(name !== undefined ? { errorName: name } : {}),
-      });
+      postToSource(event.source, event.origin, errorResponse(request.id, error));
     });
   });
 }
@@ -576,7 +566,7 @@ async function purgeWorkerCaches(): Promise<void> {
         }),
     ),
   );
-  log.warn('[dot.li protocol] Purged worker caches (skipWorkerCache)');
+  log.event('Worker caches purged', { flow: 'protocol', databases: targets.length });
 }
 
 async function init(): Promise<void> {
@@ -599,7 +589,7 @@ async function init(): Promise<void> {
   // When no mode is requested, the iframe is only serving shared auth
   // storage requests (localStorage). No chain provider needed.
   if (mode === null) {
-    log.warn('[dot.li protocol] No mode requested — auth-only iframe, skipping chain provider');
+    log.event('Protocol mode', { flow: 'protocol', mode: 'auth-only' });
     signalReady();
     return;
   }
@@ -618,7 +608,7 @@ async function init(): Promise<void> {
   }
   setNetworkOverride(requestedNetwork.network);
   m.setDefaults({ network: requestedNetwork.network });
-  log.warn(`[dot.li protocol] Active network pinned to ${requestedNetwork.network}`);
+  log.event('Protocol mode', { flow: 'protocol', mode, network: requestedNetwork.network });
 
   // Worker-cache purge runs *before* any broker/smoldot init so the clean
   // state is what the chain client opens against. A purge failure when the
@@ -635,35 +625,42 @@ async function init(): Promise<void> {
     }
   }
 
-  const stopInit = m.timer(S.PROTOCOL_INIT);
-  log.warn(`[dot.li protocol] Requested mode: ${mode}`);
-
-  if (mode === 'shared-worker') {
-    if (typeof SharedWorker === 'undefined') {
-      const msg = 'SharedWorker is not available in this browser';
-      log.error(`[dot.li protocol] ${msg}`);
-      signalError(msg);
-      stopInit();
-      return;
+  const initStart = performance.now();
+  let initOutcome: 'ok' | 'error' = 'error';
+  try {
+    if (mode === 'shared-worker') {
+      if (typeof SharedWorker === 'undefined') {
+        const msg = 'SharedWorker is not available in this browser';
+        log.error(`[dot.li protocol] ${msg}`);
+        signalError(msg);
+        return;
+      }
+      // Register protocol_mode as a session default before any further metrics
+      // so bootnode errors, chain-connect failures etc. all carry the mode tag.
+      // Values are kebab-case to match `DotliMode` and the `?mode=` URL
+      // convention, keeping one naming scheme across host and protocol.
+      m.setDefaults({ protocol_mode: 'shared-worker' });
+      await initSharedWorkerMode(requestedNetwork.network);
+      m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
+    } else if (mode === 'rpc') {
+      m.setDefaults({ protocol_mode: 'rpc' });
+      initRpcMode();
+      m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
+    } else {
+      m.setDefaults({ protocol_mode: 'direct' });
+      await initDirectMode();
+      m.count(S.PROTOCOL_MODE, { mode: 'direct' });
     }
-    // Register protocol_mode as a session default before any further metrics
-    // so bootnode errors, chain-connect failures etc. all carry the mode tag.
-    // Values are kebab-case to match `DotliMode` and the `?mode=` URL
-    // convention, keeping one naming scheme across host and protocol.
-    m.setDefaults({ protocol_mode: 'shared-worker' });
-    await initSharedWorkerMode(requestedNetwork.network);
-    m.count(S.PROTOCOL_MODE, { mode: 'shared-worker' });
-  } else if (mode === 'rpc') {
-    m.setDefaults({ protocol_mode: 'rpc' });
-    initRpcMode();
-    m.count(S.PROTOCOL_MODE, { mode: 'rpc' });
-  } else {
-    m.setDefaults({ protocol_mode: 'direct' });
-    await initDirectMode();
-    m.count(S.PROTOCOL_MODE, { mode: 'direct' });
+    initOutcome = 'ok';
+  } finally {
+    const initMs = performance.now() - initStart;
+    // The measurement describes a protocol that came up. A failed init is
+    // only a point in the distribution, where its outcome separates it.
+    if (initOutcome === 'ok') {
+      m.measure(S.PROTOCOL_INIT, initMs);
+    }
+    m.distribution(S.PROTOCOL_INIT, initMs, 'millisecond', { outcome: initOutcome });
   }
-
-  stopInit();
 }
 
 function signalError(message: string): void {
@@ -700,8 +697,14 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
   });
   const port = worker.port;
   let halted = false;
-  let rejectReady: ((error: Error) => void) | null = null;
-  const halt = (message: string): void => {
+  // Set while the ready wait below is pending.
+  let failReadyWait: ((error: Error, reason: string) => void) | null = null;
+  // Every terminal failure of the worker ends here: its script failing to
+  // load, an uncaught error inside it, or a fatal it reports. Logging alone
+  // would leave the host's native consumer on a dead lease, so the host
+  // always hears of it through its typed frame halt path, and a pending ready
+  // wait fails now with the cause rather than at the timeout with none.
+  const halt = (message: string, reason: string): void => {
     if (halted) {
       return;
     }
@@ -714,20 +717,21 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
         message = `${message}; SharedWorker generation retirement failed: ${serializeError(error)}`;
       })
       .then(() => {
-        rejectReady?.(new Error(message));
-        rejectReady = null;
+        failReadyWait?.(new Error(message), reason);
         if (window.parent !== window) {
           window.parent.postMessage({ namespace: 'dotli:protocol', kind: 'fatal', message }, '*');
         }
       });
   };
 
-  // Script-load and runtime worker failures must reach the host's typed
-  // frame halt path; logging alone leaves its native consumer on a dead lease.
+  // Fires when the worker script cannot be fetched or evaluated. Uncaught
+  // errors inside a running worker go to its own handlers, which report them
+  // as a fatal below.
   worker.addEventListener('error', event => {
-    log.error('[dot.li protocol] SharedWorker error event:', event);
-    m.count(S.BOOTNODE_ERROR, { source: 'shared-worker' });
-    halt(event.message || 'Protocol SharedWorker failed');
+    const detail = event instanceof ErrorEvent && event.message !== '' ? `: ${event.message}` : '';
+    const error = new Error(`SharedWorker failed to start${detail}`);
+    log.error('[dot.li protocol] SharedWorker error event', error);
+    halt(error.message, 'load_failed');
   });
 
   // Relay SharedWorker responses up to the parent from the first moment the
@@ -740,11 +744,11 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
     }
     const data = event.data as SWOutbound | null;
     if (data?.type === 'relay-response' && (data.envelope.kind === 'fatal' || data.envelope.kind === 'init-failed')) {
-      halt(data.envelope.message);
+      halt(data.envelope.message, 'worker_fatal');
       return;
     }
     if (data?.type === 'error') {
-      halt(data.message);
+      halt(`SharedWorker error: ${data.message}`, 'worker_reported');
       return;
     }
     if (data?.type === 'relay-response' && window.parent !== window) {
@@ -754,22 +758,22 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 
   // Wait for SharedWorker to signal ready (or error)
   await new Promise<void>((resolve, reject) => {
-    if (halted) {
-      reject(new Error('Protocol SharedWorker failed before ready'));
-      return;
-    }
-    const timer = setTimeout(() => {
-      const waitMs = performance.now() - swStartTime;
-      m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
-        outcome: 'timeout',
-      });
-      reject(new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
-    }, TIMEOUTS.SHARED_WORKER_READY);
-    rejectReady = error => {
+    function settle(outcome: 'ok' | 'error' | 'timeout', error?: Error, reason?: string): void {
       clearTimeout(timer);
       port.removeEventListener('message', onMessage);
-      reject(error);
-    };
+      failReadyWait = null;
+      const waitMs = performance.now() - swStartTime;
+      m.distribution(S.PROTOCOL_SW_READY, waitMs, 'millisecond', {
+        outcome,
+        ...(reason !== undefined ? { reason } : {}),
+      });
+      if (error !== undefined) {
+        reject(error);
+        return;
+      }
+      m.measure(S.PROTOCOL_SW_READY, waitMs);
+      resolve();
+    }
 
     function onMessage(event: MessageEvent): void {
       if (halted) {
@@ -777,24 +781,19 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       }
       const data = event.data as SWOutbound | null;
       if (data?.type === 'ready') {
-        clearTimeout(timer);
-        port.removeEventListener('message', onMessage);
-        rejectReady = null;
-        const readyMs = performance.now() - swStartTime;
-        m.measure(S.PROTOCOL_SW_READY, readyMs);
-        m.distribution(S.PROTOCOL_SW_READY, readyMs, 'millisecond', {
-          outcome: 'ok',
-        });
-        resolve();
+        settle('ok');
       }
     }
 
+    const timer = setTimeout(() => {
+      settle('timeout', new Error(PROTOCOL_APP_ERRORS.SHARED_WORKER_READY_TIMEOUT));
+    }, TIMEOUTS.SHARED_WORKER_READY);
+    failReadyWait = (error, reason) => {
+      settle('error', error, reason);
+    };
     port.addEventListener('message', onMessage);
     port.start();
   });
-
-  log.warn('[dot.li protocol] === SHARED WORKER MODE ACTIVE ===');
-  log.warn('[dot.li protocol] Smoldot runs in SharedWorker, persists across navigations');
 
   // Relay parent postMessage requests into the SharedWorker.
   window.addEventListener('message', (event: MessageEvent) => {
@@ -819,10 +818,14 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       return;
     }
 
+    // Read per request: the worker serves every tab, and labels only the work
+    // it does for this one with it.
+    const resolutionId = getResolutionId();
     const msg: SWRelayRequest = {
       type: 'relay-request',
       envelope: data,
       origin: event.origin,
+      ...(resolutionId !== null ? { resolutionId } : {}),
     };
     port.postMessage(msg);
   });
@@ -834,7 +837,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
       return;
     }
     halted = true;
-    log.warn('[dot.li protocol] Iframe unloading, sending disconnect to SharedWorker');
     try {
       port.postMessage({ type: 'disconnect' });
       // eslint-disable-next-line no-restricted-syntax -- best-effort unload signal to the SharedWorker; the port may already be closed (browser tab unloading), which is the expected terminal state.
@@ -846,9 +848,6 @@ async function initSharedWorkerMode(network: Network): Promise<void> {
 }
 
 async function initDirectMode(): Promise<void> {
-  log.warn('[dot.li protocol] === DIRECT MODE ===');
-  log.warn('[dot.li protocol] Smoldot runs in this iframe with no cross-tab coordination');
-
   // Dynamic imports so users in `rpc` or `shared-worker` submode don't pay
   // the chain-provider bundle cost (D-1).
   const [provider, resolve] = await Promise.all([loadProvider(), loadResolve()]);
@@ -887,7 +886,7 @@ async function initDirectMode(): Promise<void> {
   // Direct mode has no SharedWorker in the loop, so a light client that cannot
   // connect a chain is posted straight up to the host shell.
   onProviderFatal(message => {
-    log.error('[dot.li protocol] Chain death detected, signaling fatal');
+    log.error(`[dot.li protocol] Light client died, signaling fatal: ${message}`);
     if (window.parent !== window) {
       window.parent.postMessage(
         {
@@ -1008,7 +1007,7 @@ async function initDirectMode(): Promise<void> {
       // a cold parachain warp sync. Not needed for resolution, so do not await.
       // The shared worker does the same at its own pre-sync.
       void waitForPeopleFinalized().catch((err: unknown) => {
-        log.warn(`[dot.li protocol] People chain warm failed (retried on demand): ${String(err)}`);
+        log.warn('[dot.li protocol] People chain warm failed (retried on demand)', err);
       });
       return Promise.resolve();
     },
@@ -1033,9 +1032,6 @@ async function initDirectMode(): Promise<void> {
 // up here. The host never sends them when gateway is active.
 
 function initRpcMode(): void {
-  log.warn('[dot.li protocol] === RPC MODE ===');
-  log.warn('[dot.li protocol] Chain calls routed via WSS JSON-RPC (no smoldot)');
-
   const engine = createEngine({
     // The core set rather than the advertised one, so the network panel can
     // watch Bulletin blocks over its configured RPC. Advertisement to dApps
@@ -1080,16 +1076,9 @@ function bindEngineToMessages(engine: ProtocolEngine): void {
         postToSource(event.source, event.origin, response);
       })
       .catch((error: unknown) => {
-        log.error('[dot.li protocol] Request failed:', error);
-        const name = errorName(error);
-        postToSource(event.source, event.origin, {
-          namespace: 'dotli:protocol',
-          kind: 'response',
-          id: data.id,
-          ok: false,
-          error: serializeError(error),
-          ...(name !== undefined ? { errorName: name } : {}),
-        });
+        // The host rebuilds this failure from the response and reports it.
+        log.warn(`[dot.li protocol] ${data.method} failed`, error);
+        postToSource(event.source, event.origin, errorResponse(data.id, error));
       });
   });
 }
@@ -1199,15 +1188,7 @@ function bindSharedModeListener(): void {
       });
     } catch (error: unknown) {
       countSharedReject('mode', 'validation');
-      const name = errorName(error);
-      postToSource(event.source, event.origin, {
-        namespace: 'dotli:protocol',
-        kind: 'response',
-        id: data.id,
-        ok: false,
-        error: serializeError(error),
-        ...(name !== undefined ? { errorName: name } : {}),
-      });
+      postToSource(event.source, event.origin, errorResponse(data.id, error));
     }
   });
 }
@@ -1293,5 +1274,5 @@ bindSharedWalletListener();
 
 void init().catch((err: unknown) => {
   log.error('[dot.li protocol] Init failed:', err);
-  signalError(err instanceof Error ? err.message : String(err));
+  signalError(serializeError(err));
 });

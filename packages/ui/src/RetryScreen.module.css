@@ -1,0 +1,111 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The loading screen's column, mark and lines, kept here rather than shared:
+   importing LoadingScreen.module.css from a page script alongside the
+   LoadingScreen island makes the page link that island's chunk sheet, a
+   second render-blocking copy of CSS that index.css already holds. */
+
+.screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: var(--content-height);
+  margin: 0;
+  padding: 0 calc(32px + var(--safe-right)) 80px calc(32px + var(--safe-left));
+  color: var(--text-strong);
+  font-family: var(--font-sans);
+  text-align: center;
+  color-scheme: dark;
+}
+
+/* The sandbox has no `#app`, so the screen fills its transparent body itself. */
+.standalone {
+  min-height: 100dvh;
+  background: var(--bg-page);
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 400px;
+  margin: 0;
+  padding: 0;
+}
+
+.mark {
+  display: block;
+  overflow: visible;
+}
+
+.petal {
+  fill: var(--text-strong);
+  transform-origin: 128px 128px;
+}
+
+/* The loading screen's pulse: each petal lights up in turn, one 1.4 s cycle
+   for all six. Still under reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .petal {
+    animation: petal-pulse 1.4s linear infinite;
+  }
+  .petal:nth-child(2) {
+    animation-delay: -1166.667ms;
+  }
+  .petal:nth-child(3) {
+    animation-delay: -933.333ms;
+  }
+  .petal:nth-child(4) {
+    animation-delay: -700ms;
+  }
+  .petal:nth-child(5) {
+    animation-delay: -466.667ms;
+  }
+  .petal:nth-child(6) {
+    animation-delay: -233.333ms;
+  }
+}
+
+@keyframes petal-pulse {
+  0% {
+    opacity: 1;
+    transform: scale(1);
+    animation-timing-function: cubic-bezier(0.3333, 0.4806, 0.6667, 0.8139);
+  }
+  24.508%,
+  100% {
+    opacity: 0.15;
+    transform: scale(0.932);
+  }
+}
+
+.step {
+  margin: var(--sp-8) 0 0;
+  padding: 0;
+  font-size: var(--fs-title-lg);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+}
+
+.line {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  font-size: var(--fs-title);
+  line-height: var(--lh-body);
+  text-wrap: balance;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 560px) {
+  .screen {
+    padding: 0 calc(16px + var(--safe-right)) 60px calc(16px + var(--safe-left));
+  }
+}

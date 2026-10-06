@@ -233,8 +233,11 @@ async function showContactPicker(
   const { result } = await presentModal<Bytes32 | 'dismissed'>(
     {
       title: 'Choose a contact',
-      fields: [],
-      notice: `${product.productId} is asking you to choose a Chat contact. Names and account identities stay in this host picker.`,
+      // Fields, not a notice: the prompt's notice is the reload callout.
+      fields: [
+        { label: 'Requesting product', value: product.productId },
+        { label: 'Shared with the app', value: "Only the chosen contact's account. The list stays in this picker." },
+      ],
       choices: contacts.map(contact => ({
         label: contact.username !== undefined && contact.username !== '' ? contact.username : 'Chat contact',
         result: contact.peerIdentity,

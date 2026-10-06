@@ -1,0 +1,39 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+:where(.dot) {
+  --dot-halo: var(--sp-1);
+  box-sizing: border-box;
+  display: inline-block;
+  flex: none;
+  width: var(--sp-2);
+  height: var(--sp-2);
+  margin: 0;
+  border-radius: 50%;
+  background: var(--tone);
+  box-shadow: 0 0 0 var(--dot-halo) color-mix(in srgb, var(--tone) var(--chrome-tint-strong), transparent);
+}
+/* 8 px in a 3 px halo on desktop, the boards' 10 px in 4 px on phones. */
+.dot[data-size='md'] {
+  --dot-halo: 3px;
+}
+@media (max-width: 560px) {
+  .dot[data-size='md'] {
+    --dot-halo: var(--sp-1);
+    width: 10px;
+    height: 10px;
+  }
+}
+.dot[data-pulse] {
+  animation: pulse var(--loop) infinite ease-in-out;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.4;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .dot[data-pulse] {
+    animation: none;
+  }
+}

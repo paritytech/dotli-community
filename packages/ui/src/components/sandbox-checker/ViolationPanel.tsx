@@ -15,6 +15,7 @@ import { createEffect, createSignal, For, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { setDockInset } from '../../product-frame-layout.js';
 import { startDrag } from '../drag.js';
+import s from './ViolationPanel.module.css';
 
 interface Violation {
   id: number;
@@ -141,7 +142,9 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
   return (
     <div
       id="sandbox-checker-panel"
-      class={{ visible: total() > 0, collapsed: collapsed() }}
+      class={s['panel']}
+      data-visible={total() > 0 ? '' : undefined}
+      data-collapsed={collapsed() ? '' : undefined}
       style={{
         height: !collapsed() && height() !== null ? `${String(height())}px` : undefined,
       }}
@@ -150,7 +153,8 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
       }}
     >
       <div
-        class="sc-resize-handle"
+        class={s['resizeHandle']}
+        data-testid="sc-resize-handle"
         ref={el => {
           handle = el;
         }}
@@ -160,12 +164,17 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
           }
         }}
       />
-      <div class="sc-header">
-        <span class="sc-badge">{String(total())}</span>
-        <span class="sc-label">API Violations</span>
+      <div class={s['header']}>
+        <span class={s['badge']} data-testid="sc-badge">
+          {String(total())}
+        </span>
+        <span class={s['label']} data-testid="sc-label">
+          API Violations
+        </span>
         <button
           type="button"
-          class="sc-toggle"
+          class={s['toggle']}
+          data-testid="sc-toggle"
           aria-label="Toggle panel"
           onClick={() => {
             // Collapsing clears any custom height.
@@ -179,7 +188,8 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
         </button>
       </div>
       <div
-        class="sc-log"
+        class={s['log']}
+        data-testid="sc-log"
         style={{
           'max-height':
             !collapsed() && height() !== null ? `${String((height() ?? 0) - HEADER_AND_HANDLE)}px` : undefined,
@@ -190,9 +200,18 @@ export function ViolationPanel(props: { iframe: HTMLIFrameElement }): JSX.Elemen
       >
         <For each={violations()}>
           {entry => (
-            <div class="sc-entry">
-              <span class="sc-time">{entry.time}</span> <span class="sc-api">{entry.api}</span>{' '}
-              {entry.details !== '' ? <span class="sc-details">{entry.details}</span> : null}
+            <div class={s['entry']} data-testid="sc-entry">
+              <span class={s['time']} data-testid="sc-time">
+                {entry.time}
+              </span>{' '}
+              <span class={s['api']} data-testid="sc-api">
+                {entry.api}
+              </span>{' '}
+              {entry.details !== '' ? (
+                <span class={s['details']} data-testid="sc-details">
+                  {entry.details}
+                </span>
+              ) : null}
             </div>
           )}
         </For>

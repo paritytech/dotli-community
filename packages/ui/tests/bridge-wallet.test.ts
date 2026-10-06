@@ -420,8 +420,8 @@ describe('host-owned experimental identity', () => {
         authorized = accepted;
       });
       await overlaysReady();
-      expect(document.querySelector('.signing-field-value')?.textContent).toBe('old-active.dot');
-      const staleButton = document.querySelector<HTMLButtonElement>('.signing-btn-sign');
+      expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('old-active.dot');
+      const staleButton = document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]');
       expect(staleButton).not.toBeNull();
 
       if (kind === 'expected') {
@@ -432,11 +432,11 @@ describe('host-owned experimental identity', () => {
       oldLease.release();
       await Promise.all([activeRejected, queuedRejected]);
       await overlaysReady();
-      expect(document.querySelector('.signing-field-value')?.textContent).toBe('replacement.dot');
+      expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('replacement.dot');
       staleButton?.click();
       await overlaysReady();
       expect(authorized).toBe(false);
-      expect(document.querySelector('.signing-field-value')?.textContent).toBe('replacement.dot');
+      expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('replacement.dot');
       await expect(
         first.callbacks.userConfirmation.confirmUserAction({
           tag: 'IdentityDisclosure',
@@ -450,7 +450,7 @@ describe('host-owned experimental identity', () => {
         value: { publicKey: wallet.account, identityAccountId: wallet.account, liteUsername: 'stale.westend' },
       });
       expect(auth).toEqual(before);
-      document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
+      document.querySelector<HTMLButtonElement>('[data-testid="signing-btn-sign"]')?.click();
       await expect(fresh).resolves.toBe(true);
       await expect(replacement.wallet?.runtime.refreshLocalIdentity()).resolves.toMatchObject({
         identityAccountId: wallet.account,
@@ -490,12 +490,12 @@ describe('host-owned experimental identity', () => {
       });
       const activeRejected = expect(active).rejects.toMatchObject({ name: 'AbortError' });
       await overlaysReady();
-      expect(document.querySelector('.signing-field-value')?.textContent).toBe('pending.dot');
+      expect(document.querySelector('[data-testid="signing-field-value"]')?.textContent).toBe('pending.dot');
       if (kind === 'retirement') {
         disposePageCores();
         await activeRejected;
         await overlaysReady();
-        expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+        expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
       } else {
         wallet.failNextProduct = true;
       }
@@ -503,7 +503,7 @@ describe('host-owned experimental identity', () => {
       await rejected;
       await activeRejected;
       await overlaysReady();
-      expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
       lease.release();
     },
   );

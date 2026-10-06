@@ -3,20 +3,29 @@
 
 import { Show } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
+import type { DockPosition, PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
+import s from './RuntimeView.module.css';
 
 function backendLabel(snapshot: PolkaVmDebugSnapshot): string {
   return snapshot.backend === 'compiler' ? 'JIT' : snapshot.backend === 'interpreter' ? 'Interpreter' : 'Starting';
 }
 
-export function RuntimeBadge(props: { snapshot: PolkaVmDebugSnapshot | null; onOpen: () => void }): JSX.Element {
+export function RuntimeBadge(props: {
+  snapshot: PolkaVmDebugSnapshot | null;
+  dock: DockPosition;
+  onOpen: () => void;
+}): JSX.Element {
   return (
     <Show when={props.snapshot}>
       {snapshot => (
         <button
-          class="td-runtime-badge"
+          class={s['badge']}
+          data-testid="td-runtime-badge"
+          data-dock={props.dock}
           type="button"
-          onClick={props.onOpen}
+          onClick={() => {
+            props.onOpen();
+          }}
           title={`PolkaVM / ${backendLabel(snapshot())} · first frame ${snapshot().firstFrameMs > 0 ? `${snapshot().firstFrameMs.toFixed(1)} ms` : 'pending'}`}
         >
           {`PVM ${backendLabel(snapshot())} · ${snapshot().fps.toFixed(1)} FPS`}
@@ -26,95 +35,64 @@ export function RuntimeBadge(props: { snapshot: PolkaVmDebugSnapshot | null; onO
   );
 }
 
+function Metric(props: { label: string; metric?: string; children: JSX.Element }): JSX.Element {
+  return (
+    <div class={s['metric']}>
+      <dt class={s['label']}>{props.label}</dt>
+      <dd class={s['value']} data-runtime-metric={props.metric}>
+        {props.children}
+      </dd>
+    </div>
+  );
+}
+
 /** Live counters never enter the event store. Only the visible view formats them. */
 export function RuntimeView(props: { snapshot: PolkaVmDebugSnapshot | null; active: boolean }): JSX.Element {
   return (
     <div
-      class={props.active ? 'td-runtime' : 'td-runtime hidden'}
+      class={s['runtime']}
+      data-testid="td-runtime"
+      hidden={!props.active}
       role="tabpanel"
       aria-label="PolkaVM runtime diagnostics"
     >
       <Show when={props.active && props.snapshot}>
         {snapshot => (
           <>
-            <div class="td-runtime-heading">
-              <span class="td-runtime-kicker">PolkaVM runtime</span>
-              <strong data-runtime-metric="backend">{backendLabel(snapshot())}</strong>
-              <span class="td-runtime-stage">{snapshot().startupStage.replaceAll('-', ' ')}</span>
+            <div class={s['heading']}>
+              <span class={s['kicker']}>PolkaVM runtime</span>
+              <strong class={s['backend']} data-runtime-metric="backend">
+                {backendLabel(snapshot())}
+              </strong>
+              <span class={s['stage']}>{snapshot().startupStage.replaceAll('-', ' ')}</span>
             </div>
-            <dl class="td-runtime-grid">
+            <dl class={s['grid']}>
               <Show when={snapshot().backend === 'interpreter' && snapshot().compilerFallbackReason !== undefined}>
-                <div>
-                  <dt>Compiler fallback stage</dt>
-                  <dd>{snapshot().compilerFallbackStage ?? 'unknown'}</dd>
-                </div>
-                <div>
-                  <dt>Compiler fallback reason</dt>
-                  <dd>{snapshot().compilerFallbackReason}</dd>
-                </div>
+                <Metric label="Compiler fallback stage">{snapshot().compilerFallbackStage ?? 'unknown'}</Metric>
+                <Metric label="Compiler fallback reason">{snapshot().compilerFallbackReason}</Metric>
               </Show>
-              <div>
-                <dt>First frame</dt>
-                <dd data-runtime-metric="first-frame">
-                  {snapshot().firstFrameMs > 0 ? `${snapshot().firstFrameMs.toFixed(1)} ms` : 'pending'}
-                </dd>
-              </div>
-              <div>
-                <dt>Startup</dt>
-                <dd>{snapshot().startupMs.toFixed(1)} ms</dd>
-              </div>
-              <div>
-                <dt>Translation cache</dt>
-                <dd>{snapshot().cacheHit ? 'Hit' : 'Miss'}</dd>
-              </div>
-              <div>
-                <dt>Translated Wasm</dt>
-                <dd>
-                  {snapshot().translatedWasmBytes === 0
-                    ? '—'
-                    : `${(snapshot().translatedWasmBytes / 1024).toFixed(1)} KiB`}
-                </dd>
-              </div>
-              <div>
-                <dt>Translate</dt>
-                <dd>{snapshot().translationMs.toFixed(1)} ms</dd>
-              </div>
-              <div>
-                <dt>Compile</dt>
-                <dd>{snapshot().compilationMs.toFixed(1)} ms</dd>
-              </div>
-              <div>
-                <dt>Frame rate</dt>
-                <dd data-runtime-metric="fps">{snapshot().fps.toFixed(1)} FPS</dd>
-              </div>
-              <div>
-                <dt>Frames</dt>
-                <dd>{snapshot().frames}</dd>
-              </div>
-              <div>
-                <dt>Updates</dt>
-                <dd>{snapshot().updates}</dd>
-              </div>
-              <div>
-                <dt>Update p50</dt>
-                <dd>{snapshot().updateP50Ms.toFixed(2)} ms</dd>
-              </div>
-              <div>
-                <dt>Update p95</dt>
-                <dd>{snapshot().updateP95Ms.toFixed(2)} ms</dd>
-              </div>
-              <div>
-                <dt>Update max</dt>
-                <dd>{snapshot().updateMaxMs.toFixed(2)} ms</dd>
-              </div>
-              <div>
-                <dt>Audio chunks</dt>
-                <dd>{snapshot().audioChunks}</dd>
-              </div>
-              <div>
-                <dt>Audio samples</dt>
-                <dd>{snapshot().audioSamples}</dd>
-              </div>
+              <Metric label="First frame" metric="first-frame">
+                {snapshot().firstFrameMs > 0 ? `${snapshot().firstFrameMs.toFixed(1)} ms` : 'pending'}
+              </Metric>
+              <Metric label="Startup">{snapshot().startupMs.toFixed(1)} ms</Metric>
+              <Metric label="Translation cache">{snapshot().cacheHit ? 'Hit' : 'Miss'}</Metric>
+              <Metric label="Translated Wasm">
+                {snapshot().translatedWasmBytes === 0
+                  ? '—'
+                  : `${(snapshot().translatedWasmBytes / 1024).toFixed(1)} KiB`}
+              </Metric>
+              <Metric label="Translate">{snapshot().translationMs.toFixed(1)} ms</Metric>
+              <Metric label="Compile">{snapshot().compilationMs.toFixed(1)} ms</Metric>
+              <Metric label="Frame rate" metric="fps">
+                {snapshot().fps.toFixed(1)} FPS
+              </Metric>
+              <Metric label="Frames">{snapshot().frames}</Metric>
+              <Metric label="Updates">{snapshot().updates}</Metric>
+              <Metric label="Update p50">{snapshot().updateP50Ms.toFixed(2)} ms</Metric>
+              <Metric label="Update p95">{snapshot().updateP95Ms.toFixed(2)} ms</Metric>
+              <Metric label="Update max">{snapshot().updateMaxMs.toFixed(2)} ms</Metric>
+              <Metric label="Audio chunks">{snapshot().audioChunks}</Metric>
+              <Metric label="Audio samples">{snapshot().audioSamples}</Metric>
             </dl>
           </>
         )}

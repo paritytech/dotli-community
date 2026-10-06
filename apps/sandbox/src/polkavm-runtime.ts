@@ -2682,16 +2682,20 @@ export async function runPolkaVmApplication(
     reportedErrors.add(runtimeError);
     const trapPc = /\btrapped at (\d+)\b/.exec(runtimeError.message)?.[1];
     captureException(runtimeError, {
-      surface: 'sandbox_polkavm_runtime',
-      cid,
-      polkavm_backend: details?.backend ?? 'starting',
-      polkavm_failure_source: details?.source ?? 'sandbox',
-      polkavm_graphics_profile: descriptor.graphicsProfile,
-      polkavm_phase: details?.phase ?? 'startup',
-      polkavm_program_sha256: details?.programSha256 ?? 'unavailable',
-      polkavm_runtime_source: POLKAVM_RUNTIME_SOURCE,
-      polkavm_startup_stage: details?.startupStage ?? 'pre-worker',
-      ...(trapPc === undefined ? {} : { polkavm_trap_pc: trapPc }),
+      flow: 'content',
+      step: 'polkavm_runtime',
+      tags: {
+        surface: 'sandbox_polkavm_runtime',
+        cid,
+        polkavm_backend: details?.backend ?? 'starting',
+        polkavm_failure_source: details?.source ?? 'sandbox',
+        polkavm_graphics_profile: descriptor.graphicsProfile,
+        polkavm_phase: details?.phase ?? 'startup',
+        polkavm_program_sha256: details?.programSha256 ?? 'unavailable',
+        polkavm_runtime_source: POLKAVM_RUNTIME_SOURCE,
+        polkavm_startup_stage: details?.startupStage ?? 'pre-worker',
+        ...(trapPc === undefined ? {} : { polkavm_trap_pc: trapPc }),
+      },
     });
   };
   let cleanupRecovery = (): void => undefined;

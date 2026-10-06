@@ -25,9 +25,7 @@ export function createBlockSource(): BlockSource {
           }
         },
         (err: unknown) => {
-          log.warn(
-            `[dot.li network] cannot watch ${genesis.slice(0, 10)}: ${err instanceof Error ? err.message : String(err)}`,
-          );
+          log.warn(`[dot.li network] cannot watch ${genesis.slice(0, 10)}:`, err);
         },
       );
       return () => {

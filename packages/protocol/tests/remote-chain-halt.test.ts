@@ -13,8 +13,8 @@ import {
   isProtocolReady,
   onProtocolReady,
   resetProtocolFrame,
-  type RemoteChainHalt,
 } from '../src/client.js';
+import type { RemoteChainHalt } from '../src/chain-halted.js';
 import type { ProtocolEnvelope, ProtocolRequestEnvelope } from '../src/messages.js';
 
 // The client's protocol iframe points at a host that does not exist here; keep

@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import './bc-ur-polyfill.js';
+import { createComponent, createSignal } from 'solid-js';
 import { BrowserQRCodeReader, type IScannerControls } from '@zxing/browser';
 import { URDecoder } from '@ngraveio/bc-ur';
+import { CameraScanDialog, type CameraOption } from './components/entities/CameraScanDialog.js';
+import { mountRoot } from './mount/root.js';
 
 const MAX_INPUT_BYTES = 1024 * 1024;
 
@@ -90,47 +93,60 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
     delayBetweenScanSuccess: 50,
   });
 
-  const backdrop = document.createElement('div');
-  backdrop.className = 'signing-modal-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'signing-modal';
-  modal.style.width = 'min(680px, calc(100vw - 32px))';
+  const [progress, setProgress] = createSignal('Waiting for a QR frame…');
+  const [cameraOptions, setCameraOptions] = createSignal<CameraOption[]>([]);
+  const [selectedCamera, setSelectedCamera] = createSignal('');
+  const [compactPicker, setCompactPicker] = createSignal(false);
+  // The dialog hands over its preview element once Solid has created it.
+  const preview = Promise.withResolvers<HTMLVideoElement>();
+  let video: HTMLVideoElement | undefined;
+  let onCancel: () => void = () => undefined;
+  let onSelectCamera: (deviceId: string) => void = () => undefined;
+  let onFlipCamera: () => void = () => undefined;
 
-  const heading = document.createElement('h2');
-  heading.textContent = `Scan ${request.mediaType}`;
-  const detail = document.createElement('p');
-  detail.textContent = `${label} requested decoded camera input. Point the camera at the UR QR stream.`;
-  const video = document.createElement('video');
-  video.autoplay = true;
-  video.muted = true;
-  video.playsInline = true;
-  video.style.cssText =
-    'display:block;width:100%;max-height:60vh;object-fit:cover;background:#050505;border-radius:10px;margin:16px 0';
-  const cameraPicker = document.createElement('div');
-  cameraPicker.className = 'camera-input-picker';
-  cameraPicker.hidden = true;
-  const cameraPickerLabel = document.createElement('span');
-  cameraPickerLabel.textContent = 'Camera';
-  const cameraSelect = document.createElement('select');
-  cameraSelect.setAttribute('aria-label', 'Camera');
-  const cameraFlip = document.createElement('button');
-  cameraFlip.type = 'button';
-  cameraFlip.className = 'signing-btn-cancel';
-  cameraFlip.textContent = 'Flip camera';
-  cameraFlip.hidden = true;
-  cameraPicker.append(cameraPickerLabel, cameraSelect, cameraFlip);
-  const progress = document.createElement('p');
-  progress.textContent = 'Waiting for a QR frame…';
-  const footer = document.createElement('div');
-  footer.className = 'signing-modal-footer';
-  const cancel = document.createElement('button');
-  cancel.className = 'signing-btn-cancel';
-  cancel.textContent = 'Cancel';
-  footer.append(cancel);
-  modal.append(heading, detail, video, cameraPicker, progress, footer);
-  backdrop.append(modal);
-  document.body.append(backdrop);
-
+  const container = document.createElement('div');
+  document.body.append(container);
+  const disposeDialog = mountRoot(
+    'camera-scan',
+    container,
+    () =>
+      createComponent(CameraScanDialog, {
+        title: `Scan ${request.mediaType}`,
+        detail: `${label} requested decoded camera input. Point the camera at the UR QR stream.`,
+        get progress() {
+          return progress();
+        },
+        get cameras() {
+          return cameraOptions();
+        },
+        get selectedCamera() {
+          return selectedCamera();
+        },
+        get compactPicker() {
+          return compactPicker();
+        },
+        video: el => {
+          video = el;
+          preview.resolve(el);
+        },
+        onSelectCamera: deviceId => {
+          onSelectCamera(deviceId);
+        },
+        onFlipCamera: () => {
+          onFlipCamera();
+        },
+        onCancel: () => {
+          onCancel();
+        },
+      }),
+    {
+      removeContainer: true,
+      // A dialog that failed to render cannot be answered: cancel the scan.
+      onBroken: () => {
+        onCancel();
+      },
+    },
+  );
   let controls: IScannerControls | undefined;
   let cameraGeneration = 0;
   let availableCameras: MediaDeviceInfo[] = [];
@@ -141,17 +157,17 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
     const cleanup = (): void => {
       cameraGeneration += 1;
       signal.removeEventListener('abort', onAbort);
-      cameraSelect.removeEventListener('change', onCameraChange);
-      cameraFlip.removeEventListener('click', onFlipCamera);
       controls?.stop();
-      const stream = video.srcObject;
+      const stream = video?.srcObject;
       if (stream instanceof MediaStream) {
         for (const track of stream.getTracks()) {
           track.stop();
         }
       }
-      video.srcObject = null;
-      backdrop.remove();
+      if (video !== undefined) {
+        video.srcObject = null;
+      }
+      disposeDialog();
     };
     const finish = (outcome: { bytes: Uint8Array } | { error: Error }): void => {
       if (settled) {
@@ -174,7 +190,7 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
       }
       try {
         const decoded = decoder.receive(result.getText());
-        progress.textContent = `UR reconstruction ${String(decoded.progress)}%`;
+        setProgress(`UR reconstruction ${String(decoded.progress)}%`);
         if (decoded.bytes !== null) {
           finish({ bytes: decoded.bytes });
         }
@@ -187,25 +203,23 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
         device => device.kind === 'videoinput',
       );
       if (settled || availableCameras.length <= 1) {
-        cameraPicker.hidden = true;
+        setCameraOptions([]);
         return;
       }
-      const compactControl = window.matchMedia('(pointer: coarse)').matches;
-      cameraSelect.hidden = compactControl;
-      cameraFlip.hidden = !compactControl;
-      cameraSelect.replaceChildren(new Option('System default camera', ''));
-      availableCameras.forEach((camera, index) => {
-        cameraSelect.add(
-          new Option(camera.label.length > 0 ? camera.label : `Camera ${String(index + 1)}`, camera.deviceId),
-        );
-      });
-      cameraSelect.value =
+      setCompactPicker(window.matchMedia('(pointer: coarse)').matches);
+      setCameraOptions(
+        availableCameras.map((camera, index) => ({
+          deviceId: camera.deviceId,
+          label: camera.label.length > 0 ? camera.label : `Camera ${String(index + 1)}`,
+        })),
+      );
+      setSelectedCamera(
         activeDeviceId !== undefined &&
-        activeDeviceId.length > 0 &&
-        availableCameras.some(camera => camera.deviceId === activeDeviceId)
+          activeDeviceId.length > 0 &&
+          availableCameras.some(camera => camera.deviceId === activeDeviceId)
           ? activeDeviceId
-          : '';
-      cameraPicker.hidden = false;
+          : '',
+      );
     };
     const startCamera = async (deviceId?: string): Promise<void> => {
       const generation = ++cameraGeneration;
@@ -220,13 +234,14 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
           : { facingMode: { ideal: 'environment' } }),
       };
       try {
-        const nextControls = await reader.decodeFromConstraints({ video: videoConstraints }, video, receive);
+        const element = await preview.promise;
+        const nextControls = await reader.decodeFromConstraints({ video: videoConstraints }, element, receive);
         if (settled || generation !== cameraGeneration) {
           nextControls.stop();
           return;
         }
         controls = nextControls;
-        const stream = video.srcObject;
+        const stream = element.srcObject;
         if (stream instanceof MediaStream) {
           const track = stream.getVideoTracks().at(0);
           const settingsDeviceId = track?.getSettings().deviceId;
@@ -249,7 +264,7 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
           }
         }
         await populateCameraPicker(activeCameraDeviceId).catch(() => {
-          cameraPicker.hidden = true;
+          setCameraOptions([]);
         });
       } catch (error) {
         if (settled || generation !== cameraGeneration) {
@@ -258,33 +273,26 @@ export function scanCameraUr(label: string, request: CameraUrInputRequest, signa
         throw error;
       }
     };
-    const onCameraChange = (): void => {
-      progress.textContent = 'Switching camera…';
-      void startCamera(cameraSelect.value.length > 0 ? cameraSelect.value : undefined).catch((error: unknown) => {
+    onSelectCamera = deviceId => {
+      setProgress('Switching camera…');
+      void startCamera(deviceId.length > 0 ? deviceId : undefined).catch((error: unknown) => {
         finish({ error: cameraError(error) });
       });
     };
-    const onFlipCamera = (): void => {
+    onFlipCamera = () => {
       const activeIndex = availableCameras.findIndex(camera => camera.deviceId === activeCameraDeviceId);
       const nextCamera = availableCameras.at((activeIndex + 1) % availableCameras.length);
       if (nextCamera === undefined) {
         return;
       }
-      progress.textContent = 'Switching camera…';
+      setProgress('Switching camera…');
       void startCamera(nextCamera.deviceId).catch((error: unknown) => {
         finish({ error: cameraError(error) });
       });
     };
+    onCancel = onAbort;
 
     signal.addEventListener('abort', onAbort, { once: true });
-    cancel.addEventListener('click', onAbort, { once: true });
-    cameraSelect.addEventListener('change', onCameraChange);
-    cameraFlip.addEventListener('click', onFlipCamera);
-    backdrop.addEventListener('click', event => {
-      if (event.target === backdrop) {
-        onAbort();
-      }
-    });
     if (signal.aborted) {
       onAbort();
       return;

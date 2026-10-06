@@ -54,6 +54,16 @@ export function query(root: ParentNode, selector: string, type: ElementClass<Ele
 }
 
 /**
+ * The element with `data-testid="id"` under `root` (by default the
+ * document), which must exist and be a `type` (by default an HTMLElement).
+ */
+export function byTestId(id: string, root?: ParentNode): HTMLElement;
+export function byTestId<E extends Element>(id: string, root: ParentNode, type: ElementClass<E>): E;
+export function byTestId(id: string, root: ParentNode = document, type: ElementClass<Element> = HTMLElement): Element {
+  return query(root, `[data-testid="${id}"]`, type);
+}
+
+/**
  * The value an iterator step yielded. An async iterator's `next()` types a
  * finished step's value as `any`, so this narrows the step, and throws if the
  * iterator finished instead.

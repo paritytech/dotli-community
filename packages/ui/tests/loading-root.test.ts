@@ -7,6 +7,7 @@ import type * as UiModule from '../src/ui.js';
 import type * as LoadingControllerModule from '../src/loading-controller.js';
 import type * as AppRootsModule from '../src/mount/app-roots.js';
 import type * as LoadingModule from '../src/state/loading.js';
+import { byTestId } from './support.js';
 
 const sentry = vi.hoisted(() => ({ captureException: vi.fn() }));
 vi.mock('../../metrics/src/sentry.js', () => sentry);
@@ -46,13 +47,13 @@ const PARKED_PHASES: LoadingPhase[] = [
 function installLoadingDom(): void {
   // As the host page paints it: the loading screen beside `#app`.
   document.body.innerHTML = `
-    <div class="loading" id="app-loading">
-      <div class="loading-progress" id="loading-progress">
-        <div class="loading-progress-fill" id="loading-progress-fill"></div>
-        <span class="loading-progress-pct" id="loading-progress-pct">0%</span>
+    <div id="app-loading">
+      <div id="loading-progress">
+        <div id="loading-progress-fill"></div>
+        <span id="loading-progress-pct">0%</span>
       </div>
       <p id="status"></p>
-      <p class="sr-only" id="status-sr"></p>
+      <p id="status-sr"></p>
     </div>
     <div id="app"></div>`;
 }
@@ -106,7 +107,7 @@ describe('The loading screen is a tracked app root', () => {
 
     // Then no crawl tick lands after the error
     expect(progress()).toBe(frozen);
-    expect(document.querySelector('.error-page-title')?.textContent).toBe("This app can't be reached");
+    expect(byTestId('error-page-title').textContent).toBe("This app can't be reached");
   });
 
   it('As a visitor whose load failed, the loading bar stops ticking behind the error', () => {
@@ -173,7 +174,7 @@ describe('The loading screen is a tracked app root', () => {
     // Then
     expect(state.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
-    expect(document.querySelector('.error-page-title')).not.toBeNull();
+    expect(document.querySelector('[data-testid="error-page-title"]')).not.toBeNull();
   });
 
   it('As the shell, an error page disposes the page and loading roots before it replaces #app', () => {
@@ -181,7 +182,7 @@ describe('The loading screen is a tracked app root', () => {
     const seen: string[] = [];
     const record = (name: string) => () => {
       // Disposal comes first, while the old content is still in place.
-      expect(document.querySelector('.error-page')).toBeNull();
+      expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
       seen.push(name);
     };
     // Registered loading first, so the order below is the dispose order.
@@ -193,14 +194,14 @@ describe('The loading screen is a tracked app root', () => {
 
     // Then
     expect(seen).toEqual(['page', 'loading']);
-    expect(document.querySelector('.error-page')).not.toBeNull();
+    expect(document.querySelector('[data-testid="error-page"]')).not.toBeNull();
   });
 
   it('As the shell, the no-content page disposes the page and loading roots before it replaces #app', () => {
     // Given
     const seen: string[] = [];
     const record = (name: string) => () => {
-      expect(document.querySelector('.error-page')).toBeNull();
+      expect(document.querySelector('[data-testid="error-page"]')).toBeNull();
       seen.push(name);
     };
     // Registered loading first, so the order below is the dispose order.
@@ -212,7 +213,7 @@ describe('The loading screen is a tracked app root', () => {
 
     // Then
     expect(seen).toEqual(['page', 'loading']);
-    expect(document.querySelector('.error-page')).not.toBeNull();
+    expect(document.querySelector('[data-testid="error-page"]')).not.toBeNull();
   });
 
   it('As the shell, disposing the loading root stops its timers and takes the overlay down', () => {
@@ -270,11 +271,12 @@ describe('The loading screen is a tracked app root', () => {
 
     // Then the loading root is still disposed and the error page is up
     expect(state.getLoadingState().phase).toBe('gone');
-    expect(document.querySelector('.error-page-title')).not.toBeNull();
+    expect(document.querySelector('[data-testid="error-page-title"]')).not.toBeNull();
     expect(sentry.captureException).toHaveBeenCalledTimes(1);
     expect(sentry.captureException).toHaveBeenCalledWith(failure, {
-      kind: 'app_root_dispose_error',
-      root: 'page',
+      flow: 'ui',
+      step: 'root_dispose',
+      tags: { root: 'page', kind: 'app_root_dispose_error' },
     });
   });
 

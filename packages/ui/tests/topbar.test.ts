@@ -184,3 +184,37 @@ describe('topbar theme', () => {
     expect(document.documentElement.getAttribute('data-theme')).toBe('light');
   });
 });
+
+describe('The status capsule network watch', () => {
+  it('As a dApp user, the capsule starts watching the chains only once the page is idle after the product renders', async () => {
+    // Given
+    let idle: (() => void) | undefined;
+    vi.stubGlobal('requestIdleCallback', (callback: () => void) => {
+      idle = callback;
+      return 1;
+    });
+    const monitor = await import('../src/network-monitor.js');
+    const subscribed: string[] = [];
+    monitor.setBlockSource({
+      isReachable: () => true,
+      subscribe: genesis => {
+        subscribed.push(genesis);
+        return () => {};
+      },
+    });
+    const { setChainsButtonVisible } = await import('../src/topbar.js');
+
+    // When
+    setChainsButtonVisible(true);
+
+    // Then
+    expect(subscribed).toEqual([]);
+
+    // When
+    idle?.();
+
+    // Then
+    expect(subscribed.length).toBeGreaterThan(0);
+    setChainsButtonVisible(false);
+  });
+});

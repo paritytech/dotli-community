@@ -8,8 +8,8 @@ import { createSyncStore, type ReadableStore } from './create-store.js';
 // auth controller must see every step as it happens, including a repeated
 // LoginFailed (a retry that fails the same way shows its error again). So no
 // set is ever dropped as equal.
-const auth = createSyncStore<DotliAuthState>({ tag: 'Disconnected' }, { equals: () => false });
-const session = createSyncStore<boolean>(false);
+const auth = createSyncStore<DotliAuthState>('auth', { tag: 'Disconnected' }, { equals: () => false });
+const session = createSyncStore<boolean>('session', false);
 
 export const authStore: ReadableStore<DotliAuthState> = auth;
 export const getAuthState = auth.get;

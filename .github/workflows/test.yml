@@ -33,6 +33,27 @@ jobs:
       - name: Run tests
         run: npx turbo run test
 
+  # Stories double as browser tests (axe included), so this needs Chromium.
+  # Playwright is installed from apps/host's pin, which packages/ui matches.
+  stories:
+    name: Stories
+    runs-on: ubuntu-latest
+    if: ${{ github.event.sender.type != 'Bot' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Setup Playwright
+        uses: ./.github/actions/setup-playwright
+
+      - name: Run stories as tests
+        working-directory: packages/ui
+        run: npm run test:stories
+
+      - name: Build Storybook
+        working-directory: packages/ui
+        run: npm run build-storybook
+
   functional:
     name: Functional
     runs-on: ubuntu-latest

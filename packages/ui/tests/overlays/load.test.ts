@@ -10,6 +10,7 @@ import { presentModal, presentToast, prefetchOverlays } from '../../src/overlays
 import { toastsStore } from '../../src/state/toasts.js';
 import type { ModalView } from '../../src/state/modals.js';
 import { overlaysReady, resetOverlays } from '../helpers/overlays.js';
+import { byId, byTestId } from '../support.js';
 
 const VIEW: ModalView<'no' | 'yes' | 'dismissed'> = {
   title: 'Question',
@@ -40,22 +41,22 @@ describe('overlays loader', () => {
       icon: '<svg></svg>',
       dismissMs: 0,
     });
-    expect(document.querySelector('.notif-card')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-card"]')).toBeNull();
 
     // When
     await overlaysReady();
 
     // Then
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Hello');
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Hello');
   });
 
-  it('As a dotli user, a dialog renders into the overlay root and settles from its buttons', async () => {
+  it('As a dotli user, a dialog renders from the overlays root and settles from its buttons', async () => {
     // Given
     const outcome = presentModal(VIEW);
     await overlaysReady();
 
-    // When
-    document.querySelector<HTMLButtonElement>('#overlay-root .signing-btn-sign')?.click();
+    // When: the dialog is portalled into the body, for the top layer.
+    byTestId('signing-btn-sign').click();
 
     // Then
     await expect(outcome).resolves.toEqual({ result: 'yes' });
@@ -89,7 +90,7 @@ describe('overlays loader', () => {
 
     // Then
     await expect(outcome).rejects.toMatchObject({ name: 'AbortError' });
-    expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
   });
 
   it('As a dotli user, prefetching mounts the overlays when the browser is idle', async () => {
@@ -123,7 +124,7 @@ describe('overlays loader', () => {
 
     // Then
     expect(toastsStore.get().items.map(t => t.label)).toEqual(['A']);
-    expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('A');
+    expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('A');
   });
 
   it('As a dotli user, a render error settles the open dialog and lets the overlays recover for what comes next', async () => {
@@ -148,14 +149,16 @@ describe('overlays loader', () => {
       // Then
       await expect(broken).resolves.toEqual({ result: 'dismissed' });
       expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-        root: 'overlays',
+        flow: 'ui',
+        step: 'root_render',
+        tags: { root: 'overlays' },
       });
 
       // When: a dialog queued after the error still renders and settles
       // from its own button, instead of hanging forever.
       const recovered = presentModal(VIEW);
       await overlaysReady();
-      document.querySelector<HTMLButtonElement>('#overlay-root .signing-btn-sign')?.click();
+      byTestId('signing-btn-sign').click();
 
       // Then
       await expect(recovered).resolves.toEqual({ result: 'yes' });
@@ -170,7 +173,7 @@ describe('overlays loader', () => {
       await overlaysReady();
 
       // Then
-      expect(document.querySelector('#overlay-root .notif-title')?.textContent).toBe('Recovered');
+      expect(byTestId('notif-title', byId('overlay-root')).textContent).toBe('Recovered');
     } finally {
       getSpy.mockRestore();
     }
@@ -211,7 +214,9 @@ describe('overlays loader', () => {
 
     // Then
     expect(sentry.captureException).toHaveBeenCalledWith(expect.any(Error), {
-      kind: 'overlays_load_error',
+      flow: 'ui',
+      step: 'root_load',
+      tags: { root: 'overlays', kind: 'overlays_load_error' },
     });
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(confirm).toHaveBeenCalledWith('Asset failed to load\n\nA new version may have been deployed.');

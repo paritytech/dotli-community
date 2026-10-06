@@ -252,6 +252,7 @@ function createCore(product: PageProduct): Core {
   if (modalCoordinator === null) {
     throw new Error('TrUAPI page core used before initPageCore');
   }
+  log.event('wallet core create', { flow: 'wallet', landing: product === LANDING_PRODUCT });
   const coordinator = modalCoordinator;
   const blockingModalScope = coordinator.createScope();
   const connectionDisposers = new Set<() => void>();
@@ -390,6 +391,9 @@ function createCore(product: PageProduct): Core {
       booted = await createWebWorkerPairingHostRuntime(worker, callbacks, { hostConfig });
       assertCurrent();
       const pairing = booted;
+      log.event('wallet core booted', { flow: 'wallet' });
+      // Another tab logging in or out lands in the shared session store; the
+      // core reads it again. Once now too, for a session stored before boot.
       unsubscribeStore = onStoredSessionChanged(() => {
         // Fence both local and cross-tab changes before the worker reloads auth.
         setNotificationAccount(product.label, undefined);
@@ -507,6 +511,7 @@ function createCore(product: PageProduct): Core {
           });
         });
       });
+      log.event('wallet core booted', { flow: 'wallet', experimental: true });
       walletAuthReady = true;
       if (pendingWalletAuthState !== undefined) {
         forwardAuthState(pendingWalletAuthState);
@@ -571,6 +576,7 @@ function createCore(product: PageProduct): Core {
       if (current === core) {
         current = null;
       }
+      log.event('wallet core disposed', { flow: 'wallet', faulted: core.faulted });
       unsubscribeStore?.();
       unsubscribeIdentity?.();
       unsubscribeClose?.();
@@ -594,6 +600,7 @@ function createCore(product: PageProduct): Core {
   cores.add(core);
   void runtime.catch((error: unknown) => {
     const report = !disposed && context !== undefined && isCurrentLocalWallet(context);
+    log.warn('[dot.li page-core] wallet core failed to boot:', error);
     core.faulted = true;
     core.dispose();
     // A runtime factory may resolve after an early dispose. Retire it too.
@@ -619,6 +626,7 @@ async function connect(
   try {
     provider = await runtime.createProvider({ productId, executionKind }, callbacks.callbacks);
   } catch (error) {
+    log.warn('[dot.li page-core] wallet core refused a connection:', error);
     callbacks.dispose();
     core.faulted = true;
     throw error;
@@ -632,6 +640,7 @@ async function connect(
   provider.subscribeClose?.(() => {
     callbacks.dispose();
     if (!closing) {
+      log.event('wallet core went down under a connection', { flow: 'wallet' });
       core.faulted = true;
     }
   });
