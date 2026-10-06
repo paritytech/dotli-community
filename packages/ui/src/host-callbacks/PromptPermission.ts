@@ -18,10 +18,11 @@ import type { PermissionDecision, Permissions } from '@parity/truapi-host';
 import type { RemotePermission } from '@parity/truapi';
 import {
   getPermissionStatus,
+  hasTrustedRemotePermissions,
   isDevicePermission,
   isEnforceableDevicePermission,
   setPermissionStatus,
-  type EnforceablePermissionName,
+  type PromptPermissionName,
 } from '../permissions.js';
 import { showJamPeersPermissionModal, showPermissionRequestModal } from '../permission-modal.js';
 import { showNotification } from '../notification.js';
@@ -34,9 +35,7 @@ import { recordPermissionChange } from '../state/permissions.js';
 // by the iframe `allow` attribute, and `Remote` (HTTP/WS) can't be
 // reliably intercepted from inside the sandbox. Auto-grant either.
 // `JamPeers` carries its genesis and has its own prompt.
-function gatedRemotePermissionName(
-  tag: Exclude<RemotePermission['tag'], 'JamPeers'>,
-): EnforceablePermissionName | null {
+function gatedRemotePermissionName(tag: Exclude<RemotePermission['tag'], 'JamPeers'>): PromptPermissionName | null {
   switch (tag) {
     case 'ChainSubmit':
     case 'PreimageSubmit':
@@ -117,7 +116,7 @@ interface PromptOptions {
 
 export function decidePromptPermission(
   label: string,
-  name: EnforceablePermissionName,
+  name: PromptPermissionName,
   options: PromptOptions,
   modalScope: BlockingModalScope = createBlockingModalScope(),
 ): Promise<PermissionDecision> {
@@ -126,7 +125,7 @@ export function decidePromptPermission(
 
 async function decidePromptPermissionWhenActive(
   label: string,
-  name: EnforceablePermissionName,
+  name: PromptPermissionName,
   options: PromptOptions,
   signal: AbortSignal,
 ): Promise<PermissionDecision> {
@@ -151,6 +150,11 @@ async function decidePromptPermissionWhenActive(
       browserNotification: false,
     });
     return 'Deny';
+  }
+  if (name === 'Notifications' && hasTrustedRemotePermissions(label)) {
+    // Skip only this app-consent sheet. Notification delivery still owns the
+    // browser/OS permission gate, and stored refusals were resolved above.
+    return 'AllowOnce';
   }
   // status === "ask": show the modal and wait for the user.
   if (!limiter.allow()) {

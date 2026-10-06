@@ -1,10 +1,20 @@
-import type { UserConfirmationReview } from '@parity/truapi-host';
+import type { PreimageSubmitReview, UserConfirmationReview } from '@parity/truapi-host';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createUserConfirmationAdapters } from '../src/host-callbacks/UserConfirmation.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
 import * as network from '@dotli/config';
 import { hexToBytes } from '@parity/truapi/scale';
 import { must } from './support.js';
+
+const PREIMAGE_REVIEW: PreimageSubmitReview = {
+  size: 2048n,
+  productId: 'localhost:3000',
+  rootPublicKey: `0x${'01'.repeat(32)}`,
+  genesisHash: `0x${'02'.repeat(32)}`,
+  automaticMaxBytes: 262144n,
+  automaticMaxUploads: 4,
+  automaticWindowSeconds: 3600,
+};
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -658,13 +668,17 @@ describe('user confirmation modal', () => {
     // When
     const confirmation = confirmUserAction({
       tag: 'PreimageSubmit',
-      value: { size: 2048n },
+      value: PREIMAGE_REVIEW,
     });
     await overlaysReady();
 
     // Then
     expect(document.querySelector('.signing-modal h2')?.textContent).toBe('Submit Preimage');
-    expect(modalFields()).toEqual({ 'Data size': '2 KB' });
+    expect(modalFields()['Data size']).toBe('2 KiB');
+    expect(footerButtons()).toEqual([
+      { text: 'Deny', className: 'signing-btn-cancel' },
+      { text: 'Allow once', className: 'signing-btn-sign' },
+    ]);
 
     // When
     document.querySelector<HTMLButtonElement>('.signing-btn-sign')?.click();
@@ -679,7 +693,7 @@ describe('user confirmation modal', () => {
     // When
     const confirmation = confirmUserAction({
       tag: 'PreimageSubmit',
-      value: { size: 512n },
+      value: { ...PREIMAGE_REVIEW, size: 512n },
     });
     await overlaysReady();
 
@@ -688,6 +702,18 @@ describe('user confirmation modal', () => {
 
     // Then
     await expect(confirmation).resolves.toBe(false);
+  });
+
+  it.each([
+    ['.signing-btn-sign', 'AllowOnce'],
+    ['.signing-btn-secondary', 'AllowAlways'],
+    ['.signing-btn-cancel', 'Deny'],
+  ] as const)('returns the actual preimage permission decision for %s', async (selector, expected) => {
+    const { confirmPermission } = createUserConfirmationAdapters('localhost:3000');
+    const confirmation = confirmPermission({ tag: 'PreimageSubmit', value: PREIMAGE_REVIEW });
+    await overlaysReady();
+    must(document.querySelector<HTMLButtonElement>(selector), 'upload decision button').click();
+    await expect(confirmation).resolves.toBe(expected);
   });
 
   it('As a dotli user, an account access prompt highlights Allow once', async () => {

@@ -336,6 +336,18 @@ export type CoreStorageKey =
  | {
     tag: "NotificationReceiving";
     value?: undefined;
+}
+/**
+ * Bounded upload consent and rolling quota. Revocation retains quota and
+ * advances a generation so outstanding confirmations cannot restore it.
+ */
+ | {
+    tag: "AutomaticPreimageUploads";
+    value: {
+        productId: string;
+        rootPublicKey: Bytes32;
+        genesisHash: Bytes32;
+    };
 };
 /**
  * Review shown before a product creates a ring-VRF proof (RFC 0004).
@@ -950,6 +962,16 @@ export type PermissionAuthorizationRequest =
  | {
     tag: "ProfileDisclosure";
     value?: undefined;
+}
+/**
+ * Bounded automatic Bulletin uploads for the rendered account. The core
+ * rejects an account that is no longer active; product and network are host-owned.
+ */
+ | {
+    tag: "AutomaticPreimageSubmit";
+    value: {
+        rootPublicKey: Bytes32;
+    };
 };
 /**
  * Authorization status for a permission request.
@@ -1057,6 +1079,30 @@ export interface PreimageSubmitReview {
      * Size of the preimage in bytes.
      */
     size: bigint;
+    /**
+     * Authenticated product requesting this upload.
+     */
+    productId: string;
+    /**
+     * Root account to which any durable approval is restricted.
+     */
+    rootPublicKey: Bytes32;
+    /**
+     * Host-selected Bulletin network covered by the approval.
+     */
+    genesisHash: Bytes32;
+    /**
+     * Maximum bytes per automatically approved upload.
+     */
+    automaticMaxBytes: bigint;
+    /**
+     * Maximum automatic upload attempts in the rolling window.
+     */
+    automaticMaxUploads: number;
+    /**
+     * Length of the rolling automatic-upload window in seconds.
+     */
+    automaticWindowSeconds: number;
 }
 /**
  * Host-only presentation of a contact's shared profile or its absence.

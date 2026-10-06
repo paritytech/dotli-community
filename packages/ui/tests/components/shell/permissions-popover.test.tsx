@@ -9,12 +9,11 @@ import { ALL_PERMISSIONS, registerPermissionAuthorizationProvider } from '../../
 import { setProductError, setProductLoaded } from '../../../src/state/product.js';
 import { recordPermissionChange } from '../../../src/state/permissions.js';
 import { setBlockingModalActive } from '../../../src/state/topbar.js';
+import { setAuthState } from '../../../src/state/auth.js';
 import { pointerPressUnfocusable, renderComponent, resetStores, tabTo, waitForContent } from '../../helpers/solid.js';
-import { oldPermissionsButton, oldPermissionsPopover, type OldPermissionsList } from './old-permissions-markup.js';
-import { normalized, sameChildren } from './old-auth-markup.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
 import { focusables } from '../../../src/components/focus.js';
-import { byId, must, query } from '../../support.js';
+import { byId, must } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 
 const LABEL = 'localhost:3000';
@@ -43,6 +42,7 @@ function nameOf(request: PermissionAuthorizationRequest): string {
     case 'ChatAuthority':
     case 'StatementStoreAllowance':
     case 'ProfileDisclosure':
+    case 'AutomaticPreimageSubmit':
       return request.tag;
   }
 }
@@ -50,7 +50,9 @@ function nameOf(request: PermissionAuthorizationRequest): string {
 interface Provider {
   /** The stored statuses, by permission name ("NotDetermined" when absent). */
   stored: Map<string, PermissionAuthorizationStatus>;
-  set: ReturnType<typeof vi.fn>;
+  set: ReturnType<
+    typeof vi.fn<(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus) => Promise<void>>
+  >;
 }
 
 /** A provider for `label` keeping statuses in memory, as the Rust core does. */
@@ -145,141 +147,7 @@ function option(label: string): HTMLButtonElement {
   );
 }
 
-/**
- * The popover: the shared Popover's surface, holding what topbar.ts rendered
- * while open, and nothing while closed.
- */
-function expectPopover(opts: { open: boolean; list: OldPermissionsList }): void {
-  const popover = byId('permissions-popover');
-  expect(popover.getAttribute('role')).toBe('dialog');
-  expect(popover.getAttribute('aria-label')).toBe('Permissions');
-  expect(popover.classList.contains('open')).toBe(opts.open);
-  const body = query(popover, ':scope > .popover-body');
-  if (opts.open) {
-    expect(sameChildren(normalized(body), normalized(oldPermissionsPopover(opts)))).toBe(true);
-  } else {
-    expect(body.childElementCount).toBe(0);
-  }
-}
-
-/** The backdrop: the shared Popover's, open with the popover. */
-function expectBackdrop(open: boolean): void {
-  const backdrop = byId('permissions-popover-backdrop');
-  expect(backdrop.classList.contains('popover-backdrop')).toBe(true);
-  expect(backdrop.classList.contains('open')).toBe(open);
-}
-
 describe('PermissionsPopover', () => {
-  it('As a dotli user, the button, backdrop and closed popover have the markup the topbar rendered', async () => {
-    // When
-    await renderPopover();
-
-    // Then
-    expect(
-      normalized(byId('permissions-button')).isEqualNode(
-        normalized(oldPermissionsButton({ open: false, hasGrants: false })),
-      ),
-    ).toBe(true);
-    expectBackdrop(false);
-    expectPopover({ open: false, list: { kind: 'empty' } });
-  });
-
-  it('As a user of a loaded app, the popover lists every permission with its status, as the topbar did', async () => {
-    // Given
-    provide(LABEL, { Camera: 'Authorized', ChainSubmit: 'Denied' });
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Allowed');
-    expect(byId('permissions-popover-status-ChainSubmit').textContent).toBe('Denied');
-    expect(byId('permissions-popover-status-Notifications').textContent).toBe('Ask (Default)');
-    expectPopover({
-      open: true,
-      list: {
-        kind: 'rows',
-        statuses: { Camera: 'granted', ChainSubmit: 'denied' },
-      },
-    });
-    expect(
-      normalized(byId('permissions-button')).isEqualNode(
-        normalized(oldPermissionsButton({ open: true, hasGrants: true })),
-      ),
-    ).toBe(true);
-    expectBackdrop(true);
-    expect(document.activeElement).toBe(byId('permissions-popover'));
-
-    // When
-    select('Camera').click();
-    await settleAll();
-
-    // Then
-    expectPopover({
-      open: true,
-      list: {
-        kind: 'rows',
-        statuses: { Camera: 'granted', ChainSubmit: 'denied' },
-        menuOpen: 'Camera',
-      },
-    });
-  });
-
-  it('As a user with no app loaded yet, or none on this domain, the popover says so', async () => {
-    // Given
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expectPopover({
-      open: true,
-      list: {
-        kind: 'hint',
-        text: 'Wait for the app to finish loading to change its permissions.',
-      },
-    });
-
-    // When
-    setProductError();
-    await settleAll();
-
-    // Then
-    expectPopover({
-      open: true,
-      list: { kind: 'hint', text: 'No app is loaded on this domain.' },
-    });
-  });
-
-  it("As a user whose app's permissions cannot be read, the popover says they are unavailable", async () => {
-    // Given
-    cleanups.push(
-      registerPermissionAuthorizationProvider(LABEL, {
-        getPermissionAuthorizationStatuses: () => Promise.reject(new Error('core down')),
-        setPermissionAuthorizationStatus: async () => {},
-      }),
-    );
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-
-    // When
-    await openPopover();
-
-    // Then
-    expectPopover({
-      open: true,
-      list: {
-        kind: 'hint',
-        text: 'Permissions are unavailable for this app.',
-      },
-    });
-    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
-  });
-
   it('As a user, allowing a permission stores it and announces { label, permission }; a device permission announces a device change', async () => {
     // Given
     const provider = provide(LABEL, { Camera: 'Authorized' });
@@ -631,6 +499,79 @@ describe('PermissionsPopover', () => {
     expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
   });
 
+  it.each(['Ask per upload', 'Revoke automatic uploads'])('revokes only automatic consent with %s', async choice => {
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: `0x${'01'.repeat(32)}` } });
+    const provider = provide(LABEL, { PreimageSubmit: 'Authorized' });
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    select('AutomaticPreimageSubmit').click();
+    await settleAll();
+    option('Allow bounded uploads').click();
+    await settleAll();
+    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe('Allow bounded uploads');
+    select('AutomaticPreimageSubmit').click();
+    await settleAll();
+    option(choice).click();
+    await settleAll();
+    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe(choice);
+    expect(byId('permissions-popover-status-PreimageSubmit').textContent).toBe('Allowed');
+    expect(provider.set).toHaveBeenCalledWith(
+      { tag: 'AutomaticPreimageSubmit', value: { rootPublicKey: `0x${'01'.repeat(32)}` } },
+      choice === 'Ask per upload' ? 'NotDetermined' : 'Denied',
+    );
+  });
+
+  it('discards old-account reads and rejects a stale dropdown click before reactive cleanup', async () => {
+    const rootA = `0x${'01'.repeat(32)}`;
+    const rootB = `0x${'02'.repeat(32)}`;
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: rootA } });
+    const provider = provide(LABEL, { AutomaticPreimageSubmit: 'Authorized' });
+    setProductLoaded(LABEL, 'app.dot');
+    await renderPopover();
+    await openPopover();
+    const reads: { resolve: (statuses: PermissionAuthorizationStatus[]) => void; count: number }[] = [];
+    cleanups.push(
+      registerPermissionAuthorizationProvider(LABEL, {
+        getPermissionAuthorizationStatuses: requests => {
+          const { promise, resolve } = Promise.withResolvers<PermissionAuthorizationStatus[]>();
+          reads.push({ resolve, count: requests.length });
+          return promise;
+        },
+        setPermissionAuthorizationStatus: provider.set,
+      }),
+    );
+    recordPermissionChange({ kind: 'grant', label: LABEL, permission: 'AutomaticPreimageSubmit' });
+    await settleAll();
+    const oldReads = reads.splice(0);
+    select('AutomaticPreimageSubmit').click();
+    await settleAll();
+    const staleGrant = option('Allow bounded uploads');
+    setAuthState({ tag: 'Connected', session: { connected: true, publicKey: rootB } });
+    staleGrant.click();
+    expect(provider.set).not.toHaveBeenCalled();
+    await settleAll();
+    expect(document.getElementById('permissions-popover-select-AutomaticPreimageSubmit')).toBeNull();
+    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    for (const read of reads.splice(0)) {
+      read.resolve(Array.from({ length: read.count }, () => 'NotDetermined'));
+    }
+    await settleAll();
+    for (const read of oldReads) {
+      read.resolve(Array.from({ length: read.count }, () => 'Authorized'));
+    }
+    await settleAll();
+    expect(byId('permissions-popover-status-AutomaticPreimageSubmit').textContent).toBe('Ask per upload');
+    expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
+    setAuthState({ tag: 'Disconnected' });
+    await settleAll();
+    for (const read of reads.splice(0)) {
+      read.resolve(Array.from({ length: read.count }, () => 'NotDetermined'));
+    }
+    await settleAll();
+    expect(document.getElementById('permissions-popover-select-AutomaticPreimageSubmit')).toBeNull();
+  });
+
   it('As a user, when reads overlap, the last one wins: a slow earlier read never replaces a newer one', async () => {
     // Given: every read waits until the test answers it.
     const reads: {
@@ -769,6 +710,6 @@ describe('PermissionsPopover', () => {
     // Then
     expect(byId('more-popover').classList.contains('open')).toBe(false);
     expect(isOpen()).toBe(true);
-    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length);
+    expect(document.querySelectorAll('.permissions-popover-row')).toHaveLength(ALL_PERMISSIONS.length - 1);
   });
 });

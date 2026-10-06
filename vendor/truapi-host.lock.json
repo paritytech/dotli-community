@@ -2,28 +2,28 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "work/paseo-tommy-blockers",
-  "upstreamRevision": "ec4a489949506862707c4ea6398298e87d7841eb",
+  "upstreamRevision": "833884e43a448e361377252023780f97bcfec4d5",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1216",
   "baseRevision": "1f1443bd54fcf8ee4eb5805c36130a5d3d32409f",
-  "publication": "Reviewed identity and notification activation integration; SDK packages are vendored, not npm-published.",
+  "publication": "Tommy source fixes including correlated SSO decoding, bounded upload consent and canonical notification trust; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
       "sourceArchiveSha256": "f98bb80dcae8692963d579dcbb5778f082c26afda9eb7d8d985d785aff8a79a4",
-      "clientSha256": "f327dda7b159e40218e306fbcfc3823c861be08de2bcf40942523adb3d2d6a6e"
+      "clientSha256": "9f2aa73c6ab058542acf13cbdc65a59f7fd9ae7f1ecc166f5aa6a46523daa132"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "7084049e6e074a9b74790f1930b5688fef984e5ef0a55e1f14c0b52479181195",
+      "sourceArchiveSha256": "31a9e7bd90916005b0ffb5798d2c00761aced90f21077c77fb069a3059be1b20",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "27238654a4c8004411ed8420cabcf5f24dbb8690a90578acc83783f96b44ce0f",
-      "testingWasmSha256": "4e7fa77caa5550af24d9cedc96f71f01bf98cfa345ee627a1959ed8dcc9229f4",
+      "wasmSha256": "189953c605b5405fcf7ae983fda3686cc4a103edc2689477b40902534135e870",
+      "testingWasmSha256": "074731f67b91d228fc98594bbb2951af7dd4bb994dd26df36e34794030a24bf3",
       "wasmFeatures": [
-        "wasm-signing-host"
+        "runtime"
       ]
     }
   },
-  "wasmUpstreamRevision": "ec4a489949506862707c4ea6398298e87d7841eb"
+  "wasmUpstreamRevision": "833884e43a448e361377252023780f97bcfec4d5"
 }

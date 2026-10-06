@@ -68,7 +68,13 @@ import {
 } from './page-core.js';
 import type { InspectorProduct } from '@dotli/truapi-debug';
 import type { LocalIdentity, LocalIdentityProgress, WalletAllowanceSnapshot } from '@parity/truapi-host/web';
-import { ALL_PERMISSIONS, authorizationRequest, fromAuthorizationStatus } from './permissions.js';
+import {
+  ALL_PERMISSIONS,
+  automaticPreimageAccount,
+  authorizationRequest,
+  fromAuthorizationStatus,
+} from './permissions.js';
+import { getAuthState } from './state/auth.js';
 import {
   createLocalWalletSecret,
   deleteLocalWalletSecret,
@@ -444,11 +450,19 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
   if (context === null) {
     return null;
   }
+  const auth = getAuthState();
+  const rootPublicKey = automaticPreimageAccount(auth);
+  const permissions = ALL_PERMISSIONS.filter(
+    ({ name }) => name !== 'AutomaticPreimageSubmit' || rootPublicKey !== null,
+  );
   const statuses = await context.host.core.getPermissionAuthorizationStatuses(
-    ALL_PERMISSIONS.map(({ name }) => authorizationRequest(name)),
+    permissions.map(({ name }) => authorizationRequest(name, rootPublicKey)),
   );
   context.assertCurrent();
-  if (statuses.length !== ALL_PERMISSIONS.length) {
+  if (getAuthState() !== auth) {
+    throw new Error('The account changed during the permission lookup.');
+  }
+  if (statuses.length !== permissions.length) {
     throw new Error('Native permission status response was incomplete.');
   }
   let accountPublicKey: string | undefined;
@@ -472,6 +486,9 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     accountError = error instanceof Error ? error.message : 'Product account lookup failed.';
   }
   context.assertCurrent();
+  if (getAuthState() !== auth) {
+    throw new Error('The account changed during the permission lookup.');
+  }
   const defaults: AllocatableResource[] = [
     { tag: 'StatementStoreAllowance' },
     { tag: 'BulletinAllowance' },
@@ -487,7 +504,7 @@ async function getInspectorProduct(): Promise<InspectorProduct | null> {
     accountPublicKey,
     accountError,
     derivation: `ProductAccountId: ${context.id}; derivationIndex: Index 0 (native product-scoped account, not a BIP-44 path).`,
-    permissions: ALL_PERMISSIONS.map(({ name, label }, index) => {
+    permissions: permissions.map(({ name, label }, index) => {
       const status = statuses[index];
       if (status === undefined) {
         throw new Error('Native permission status response was incomplete.');

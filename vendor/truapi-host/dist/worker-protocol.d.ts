@@ -1,4 +1,5 @@
 import type { OptionalCapabilities } from "./generated/worker-callbacks.js";
+import type { ProductContext } from "./generated/host-callbacks.js";
 import type { LogLevel, NativeChatContactsSnapshot, PermissionAuthorizationStatus } from "./runtime.js";
 import type { WalletAllowanceSnapshot } from "./wallet-allowances.js";
 import type { CallbackName, SubscriptionName } from "./generated/worker-callbacks.js";
@@ -58,7 +59,7 @@ export type MainToWorker = {
 } | {
     kind: "createCore";
     coreId: number;
-    product: unknown;
+    product: Pick<ProductContext, "productId"> & Partial<Pick<ProductContext, "executionKind">>;
     capabilities?: OptionalCapabilities;
 } | {
     kind: "disposeCore";
@@ -246,6 +247,7 @@ export type WorkerToMain = {
 } | {
     kind: "coreReady";
     coreId: number;
+    trustedRemotePermissions: boolean;
 } | {
     kind: "coreError";
     coreId: number;

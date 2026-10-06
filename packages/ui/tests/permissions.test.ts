@@ -42,8 +42,9 @@ afterEach(() => {
   resetOverlays();
 });
 
-function registerTestProvider(label: string, store: Store): () => void {
+function registerTestProvider(label: string, store: Store, trustedRemotePermissions = false): () => void {
   return registerPermissionAuthorizationProvider(label, {
+    trustedRemotePermissions,
     getPermissionAuthorizationStatuses(requests) {
       return Promise.resolve(requests.map(request => store.get(requestKey(request)) ?? 'NotDetermined'));
     },
@@ -73,6 +74,8 @@ function requestKey(request: PermissionAuthorizationRequest): string {
       return 'IdentityDisclosure';
     case 'ProfileDisclosure':
       return 'ProfileDisclosure';
+    case 'AutomaticPreimageSubmit':
+      return `AutomaticPreimageSubmit:${request.value.rootPublicKey}`;
     case 'AccountAccess':
       return `AccountAccess:${request.value.targetProductId}`;
   }
@@ -487,6 +490,27 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'Notifications')).toBe('ask');
+  });
+
+  it('trusted notification app consent remains revocable and does not authorize capture', async () => {
+    const store: Store = new Map();
+    const unregister = registerTestProvider('peopl', store, true);
+    const product: ProductContext = { productId: 'peopl.paseo', executionKind: 'App' };
+    try {
+      const permissions = createPromptPermission('peopl');
+      await expect(permissions.devicePermission(product, 'Notifications')).resolves.toBe('AllowOnce');
+      expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      expect(await getPermissionStatus('peopl', 'Notifications')).toBe('ask');
+      await setPermissionStatus('peopl', 'Notifications', 'denied');
+      await expect(permissions.devicePermission(product, 'Notifications')).resolves.toBe('Deny');
+      for (const capability of ['Camera', 'Microphone'] as const) {
+        const pending = permissions.devicePermission(product, capability);
+        await clickPromptButton('Deny');
+        await expect(pending).resolves.toBe('Deny');
+      }
+    } finally {
+      unregister();
+    }
   });
 
   it('As a dotli user, a camera prompt offers no one-time grant because granting reloads the app', async () => {

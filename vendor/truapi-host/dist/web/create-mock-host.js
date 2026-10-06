@@ -629,10 +629,18 @@ export function createMockHost(config = {}) {
                 if (entry)
                     entry.cancelled = true;
             },
-            async receiverAuthority() { return undefined; },
-            async receiverConsent() { throw new Error("background receiving unsupported"); },
-            async receiverChanged() { throw new Error("background receiving unsupported"); },
-            async receiverCommand() { return undefined; },
+            async receiverAuthority() {
+                return undefined;
+            },
+            async receiverConsent() {
+                throw new Error("background receiving unsupported");
+            },
+            async receiverChanged() {
+                throw new Error("background receiving unsupported");
+            },
+            async receiverCommand() {
+                return undefined;
+            },
             async activationEvents() {
                 throw new Error("notification activation is unsupported");
             },
@@ -674,7 +682,9 @@ export function createMockHost(config = {}) {
                 }
                 // A hashed entry wins; an unhashed one takes whatever is left.
                 const proxy = chainProxies.find((candidate) => candidate.genesisHash !== undefined &&
-                    normalizeHash(candidate.genesisHash) === normalizeHash(genesisHash)) ?? chainProxies.find((candidate) => candidate.genesisHash === undefined);
+                    normalizeHash(candidate.genesisHash) ===
+                        normalizeHash(genesisHash)) ??
+                    chainProxies.find((candidate) => candidate.genesisHash === undefined);
                 if (proxy) {
                     // After the dial, not before: a proxy that fails to open must leave
                     // the status alone rather than report a connection that is not there.
@@ -740,7 +750,9 @@ export function createMockHost(config = {}) {
                 reviews.push(review);
                 if (faults.confirmationError)
                     throw new Error(faults.confirmationError);
-                return decision(confirmUserActions);
+                return review.tag === "PreimageSubmit" && confirmUserActions
+                    ? "AllowOnce"
+                    : decision(confirmUserActions);
             },
         },
         theme: {

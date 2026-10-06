@@ -7,7 +7,6 @@ import type {
   IdentityDisclosureReview,
   MainPurseChatPaymentReview,
   PermissionDecision,
-  PreimageSubmitReview,
   ProductSubtreeReview,
   ProfileDisclosureReview,
   ResourceAllocationReview,
@@ -30,7 +29,7 @@ import { hexToBytes } from '@parity/truapi/scale';
 import { getActiveServicesConfig } from '@dotli/config';
 import { showPreimageSubmitModal } from '../preimage-modal.js';
 import { ERRORS } from '../errors.js';
-import { createBlockingModalScope, throwIfAborted, type BlockingModalScope } from '../blocking-modal-queue.js';
+import { createBlockingModalScope, type BlockingModalScope } from '../blocking-modal-queue.js';
 import { presentModal } from '../overlays/load.js';
 import type { ModalButton, ModalField } from '../state/modals.js';
 
@@ -462,16 +461,6 @@ function confirmationCopy(review: ModalReview): ConfirmationCopy {
   }
 }
 
-async function handlePreimageSubmitReview(review: PreimageSubmitReview, signal: AbortSignal): Promise<boolean> {
-  try {
-    await showPreimageSubmitModal(Number(review.size), signal);
-    return true;
-  } catch {
-    throwIfAborted(signal);
-    return false;
-  }
-}
-
 async function handleConfirmationReview(
   label: string,
   review: ModalReview,
@@ -512,17 +501,14 @@ export function createUserConfirmationAdapters(
     confirmUserAction: review =>
       modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'
-          ? handlePreimageSubmitReview(review.value, signal)
+          ? (await showPreimageSubmitModal(review.value, signal, false)) === 'AllowOnce'
           : (await handleConfirmationReview(label, review, signal, false)) === 'accepted',
       ),
-    // Identity disclosure and account access: the core stores AllowAlways and
-    // Deny, and honours AllowOnce for this request only.
+    // Only the explicit lifetime decision may grant future operations.
     confirmPermission: review =>
       modalScope.enqueue(async signal =>
         review.tag === 'PreimageSubmit'
-          ? (await handlePreimageSubmitReview(review.value, signal))
-            ? 'AllowOnce'
-            : 'Deny'
+          ? showPreimageSubmitModal(review.value, signal)
           : permissionDecision(await handleConfirmationReview(label, review, signal, true)),
       ),
   };

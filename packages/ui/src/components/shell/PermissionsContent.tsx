@@ -5,6 +5,7 @@ import { createEffect, createSignal, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
+  automaticPreimageAccount,
   getPermissionStatuses,
   isDevicePermission,
   resetPermission,
@@ -14,6 +15,8 @@ import {
 } from '../../permissions.js';
 import { recordPermissionChange } from '../../state/permissions.js';
 import { productStore } from '../../state/product.js';
+import { authStore, getAuthState } from '../../state/auth.js';
+import type { DotliAuthState } from '../../host-callbacks/AuthState.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
 import { PermissionRow } from './PermissionRow.js';
@@ -22,7 +25,7 @@ import { usePopover } from './Popover.js';
 const PERMISSION_NAMES = ALL_PERMISSIONS.map(({ name }) => name);
 
 /** The last statuses read, for the product they were read for. */
-type Fetched = { label: string; statuses: PermissionStatus[] } | { label: string; failed: true };
+type Fetched = { label: string; auth: DotliAuthState } & ({ statuses: PermissionStatus[] } | { failed: true });
 
 /** The loaded product's label, or null while none is loaded. */
 function currentLabel(): string | null {
@@ -45,6 +48,7 @@ export function PermissionsContent(): JSX.Element {
   /** Each row's select, by permission. */
   const selects = new Map<EnforceablePermissionName, HTMLButtonElement>();
   const product = useStore(productStore);
+  const auth = useStore(authStore);
   const changes = createPermissionChanges();
   const [fetched, setFetched] = createSignal<Fetched | null>(null);
   const [openRow, setOpenRow] = createSignal<EnforceablePermissionName | null>(null);
@@ -82,7 +86,7 @@ export function PermissionsContent(): JSX.Element {
   // may have changed since.
   const [retries, setRetries] = createSignal(0);
   createEffect(
-    () => (popover.open() ? { label: label(), change: changes(), retry: retries() } : undefined),
+    () => (popover.open() ? { label: label(), auth: auth(), change: changes(), retry: retries() } : undefined),
     key => {
       closeDropdown();
       if (key === undefined) {
@@ -96,16 +100,16 @@ export function PermissionsContent(): JSX.Element {
       }
       let live = true;
       const land = (read: Fetched): void => {
-        if (live && currentLabel() === current) {
+        if (live && currentLabel() === current && getAuthState() === key.auth) {
           setFetched(read);
         }
       };
-      getPermissionStatuses(current, PERMISSION_NAMES).then(
+      getPermissionStatuses(current, PERMISSION_NAMES, automaticPreimageAccount(key.auth)).then(
         statuses => {
-          land({ label: current, statuses });
+          land({ label: current, auth: key.auth, statuses });
         },
         () => {
-          land({ label: current, failed: true });
+          land({ label: current, auth: key.auth, failed: true });
         },
       );
       return () => {
@@ -145,15 +149,15 @@ export function PermissionsContent(): JSX.Element {
   const choose = (name: EnforceablePermissionName, next: PermissionStatus): void => {
     closeDropdown();
     const read = untrack(fetched);
-    if (read === null) {
+    if (read?.auth !== getAuthState() || read.label !== currentLabel()) {
       return;
     }
     const { label } = read;
     void (async () => {
       if (next === 'ask') {
-        await resetPermission(label, name);
+        await resetPermission(label, name, automaticPreimageAccount(read.auth));
       } else {
-        await setPermissionStatus(label, name, next);
+        await setPermissionStatus(label, name, next, automaticPreimageAccount(read.auth));
       }
       // A device permission changes the iframe's `allow` attribute, so the
       // bridge reloads the product on its event; the others only re-render.
@@ -178,7 +182,7 @@ export function PermissionsContent(): JSX.Element {
       return 'No app is loaded on this domain.';
     }
     const read = fetched();
-    return read !== null && read.label === current.label && 'failed' in read
+    return read !== null && read.label === current.label && read.auth === auth() && 'failed' in read
       ? 'Permissions are unavailable for this app.'
       : undefined;
   };
@@ -186,7 +190,11 @@ export function PermissionsContent(): JSX.Element {
   const statuses = (): PermissionStatus[] | undefined => {
     const current = product();
     const read = fetched();
-    return current.status === 'loaded' && read !== null && read.label === current.label && 'statuses' in read
+    return current.status === 'loaded' &&
+      read !== null &&
+      read.label === current.label &&
+      read.auth === auth() &&
+      'statuses' in read
       ? read.statuses
       : undefined;
   };
@@ -201,19 +209,21 @@ export function PermissionsContent(): JSX.Element {
             <>
               <For each={ALL_PERMISSIONS}>
                 {(perm, index) => (
-                  <PermissionRow
-                    perm={perm}
-                    status={list()[index()] ?? 'ask'}
-                    open={openRow() === perm.name}
-                    toggleMenu={toggleDropdown}
-                    choose={choose}
-                    menuRef={el => {
-                      menu = el;
-                    }}
-                    selectRef={el => {
-                      selects.set(perm.name, el);
-                    }}
-                  />
+                  <Show when={perm.name !== 'AutomaticPreimageSubmit' || automaticPreimageAccount(auth()) !== null}>
+                    <PermissionRow
+                      perm={perm}
+                      status={list()[index()] ?? 'ask'}
+                      open={openRow() === perm.name}
+                      toggleMenu={toggleDropdown}
+                      choose={choose}
+                      menuRef={el => {
+                        menu = el;
+                      }}
+                      selectRef={el => {
+                        selects.set(perm.name, el);
+                      }}
+                    />
+                  </Show>
                 )}
               </For>
               <div class="permissions-popover-footer">Changing permissions will reload the app.</div>

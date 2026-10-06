@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { withActiveTld } from '@dotli/config';
-import { isDevicePermission, type EnforceablePermissionName } from './permissions.js';
+import { isDevicePermission, type PromptPermissionName } from './permissions.js';
 import { presentModal } from './overlays/load.js';
 import type { ModalButton } from './state/modals.js';
 
@@ -22,7 +22,7 @@ import type { ModalButton } from './state/modals.js';
 //
 // Rendered by the overlays root (components/overlays/SigningDialog.tsx).
 
-export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> = {
+export const PERMISSION_DESCRIPTIONS: Record<PromptPermissionName, string> = {
   Notifications: 'Show in-app and system notifications',
   Camera: 'Access your camera for photo and video capture',
   Microphone: 'Access your microphone for audio input',
@@ -40,7 +40,7 @@ export const PERMISSION_DESCRIPTIONS: Record<EnforceablePermissionName, string> 
   StatementSubmit: 'Submit signed statements to the statement store',
 };
 
-const PERMISSION_ICONS: Record<EnforceablePermissionName, string> = {
+const PERMISSION_ICONS: Record<PromptPermissionName, string> = {
   Notifications:
     '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>' +
@@ -141,7 +141,7 @@ export interface PermissionRequestModalOptions {
  */
 export async function showPermissionRequestModal(
   label: string,
-  permission: EnforceablePermissionName,
+  permission: PromptPermissionName,
   signal?: AbortSignal,
   options: PermissionRequestModalOptions = {},
 ): Promise<PermissionPromptDecision> {

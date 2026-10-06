@@ -862,7 +862,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
                 case "ready":
                     break;
                 case "coreReady":
-                    handleCoreReady(state, msg.coreId, runtime);
+                    handleCoreReady(state, msg.coreId, runtime, msg.trustedRemotePermissions);
                     break;
                 case "coreError":
                     handleCoreError(state, msg.coreId, msg.error);
@@ -1103,7 +1103,7 @@ function createWebWorkerHostRuntime(worker, host, options) {
         worker.addEventListener("message", onInitMessage);
     });
 }
-function handleCoreReady(state, coreId, runtime) {
+function handleCoreReady(state, coreId, runtime, trustedRemotePermissions) {
     const pending = state.pendingCores.get(coreId);
     if (!pending || !runtime)
         return;
@@ -1111,6 +1111,7 @@ function handleCoreReady(state, coreId, runtime) {
     const core = {
         coreId,
         productId: pending.productId,
+        trustedRemotePermissions,
         listeners: new Set(),
         closeListeners: new Set(),
         closedError: null,
@@ -1463,6 +1464,7 @@ function publishAction(state, core, kind, encode) {
 }
 function buildProvider(state, core, runtime) {
     const provider = {
+        trustedRemotePermissions: core.trustedRemotePermissions,
         postMessage(bytes) {
             if (state.disposed || core.disposed)
                 return;
