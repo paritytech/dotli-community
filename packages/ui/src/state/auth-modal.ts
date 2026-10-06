@@ -68,10 +68,15 @@ export function resetAuthModal(): void {
 
 /**
  * The account button (components/shell/AuthButton.tsx), the modal's
- * trigger. The two render as separate islands, so the button hands itself
+ * trigger: it gets the focus back as the modal closes. The two render as separate islands, so the button hands itself
  * over here.
  */
 let trigger: HTMLElement | undefined;
+
+/** The account button, while one is mounted. */
+export function getAuthModalTrigger(): HTMLElement | undefined {
+  return trigger;
+}
 
 /** Register `el` as the modal's trigger; returns the unregister. */
 export function setAuthModalTrigger(el: HTMLElement): () => void {

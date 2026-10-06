@@ -8,7 +8,7 @@ import { isMobileDevice, log } from '@dotli/shared';
 import { closeAuthModal, retryLogin } from '../../auth-controller.js';
 import { watchPhoneViewport } from '../../phone-viewport.js';
 import { revealTopbar } from '../../topbar-autohide.js';
-import { authModalStore, getAuthModalState, type AuthModalView } from '../../state/auth-modal.js';
+import { authModalStore, getAuthModalState, getAuthModalTrigger, type AuthModalView } from '../../state/auth-modal.js';
 import { shallowEqual } from '../../state/create-store.js';
 import { registerTopbarSurface } from '../../state/topbar-surfaces.js';
 import { useStore } from '../use-store.js';
@@ -162,9 +162,8 @@ function ErrorBody(props: { view: ErrorView; retry: () => void }): JSX.Element {
  *
  * While open it is a native modal dialog, driven by the store's `open`: it
  * focuses its first button (links skipped) or else the card, keeps Tab inside,
- * stops the page scrolling, and gives the focus back to what held it when it
- * opened. Escape, Cancel and a press on the scrim close it, which cancels the
- * login. It is itself a blocking modal (the controller opens it only once it
+ * stops the page scrolling, and gives the focus back to the auth button. Escape, Cancel and a press on
+ * the scrim close it, which cancels the login. It is itself a blocking modal (the controller opens it only once it
  * holds the blocking-modal lease), so it never closes on one coming up.
  *
  * Opening it reveals the topbar (revealTopbar) and the auto-hide holds the
@@ -291,7 +290,7 @@ export function AuthModal(): JSX.Element {
   };
 
   const showQr = (): void => {
-    // "Show QR instead" goes as the QR comes in: focus the dialog first, as
+    // "Show QR instead" goes as the QR comes in: focus the card first, as
     // Retry does, so focus stays in it rather than dropping to the body.
     card()?.focus();
     setQrShown(true);
@@ -318,6 +317,7 @@ export function AuthModal(): JSX.Element {
       placement="topbar-end"
       scrim="light"
       initialFocus={firstButton}
+      restoreFocus={getAuthModalTrigger}
       id="auth-modal-backdrop"
       class={s['surface']}
       testId="auth-modal"

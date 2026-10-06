@@ -18,6 +18,8 @@ export interface ModalProps {
   title: string;
   labelledBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
+  /** Where focus returns on close instead of what held it at opening (a trigger the browser may not focus on click). */
+  restoreFocus?: (() => HTMLElement | undefined) | undefined;
   placement?: 'center' | 'topbar-end';
   scrim?: 'dark' | 'light';
   id?: string | undefined;
@@ -79,6 +81,7 @@ function ModalRoot(props: ModalProps): JSX.Element {
       label={props.title}
       labelledBy={props.labelledBy}
       initialFocus={props.initialFocus}
+      restoreFocus={props.restoreFocus}
       scrim={props.scrim}
       layout={layout}
       ref={el => {

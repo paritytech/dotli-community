@@ -17,6 +17,8 @@ export interface ModalLayerProps {
   label?: string | undefined;
   labelledBy?: string | undefined;
   initialFocus?: (() => HTMLElement | undefined) | undefined;
+  /** Where focus returns on close, when it returns a connected element; else where it was at opening. */
+  restoreFocus?: (() => HTMLElement | undefined) | undefined;
   scrim?: 'dark' | 'light' | undefined;
   /** How the frame lays the surface out: centred card, sheet at the foot, under the topbar's end. */
   layout: Accessor<'center' | 'sheet' | 'topbar-end'>;
@@ -91,7 +93,8 @@ export function ModalLayer(props: ModalLayerProps): JSX.Element {
     }
     unlockScroll?.();
     unlockScroll = undefined;
-    restoreFocus(restoreTo);
+    const trigger = untrack(() => props.restoreFocus?.());
+    restoreFocus(trigger?.isConnected === true ? trigger : restoreTo);
   };
 
   const opening = (): { follows: boolean; restoreTo: HTMLElement | null } => ({

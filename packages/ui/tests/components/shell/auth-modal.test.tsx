@@ -583,7 +583,6 @@ describe('AuthModal login flow', () => {
     // Given
     const cancels = recordEvents('dotli:truapi-cancel-login');
     await renderModal();
-    byId('auth-button').focus();
 
     // When
     await authState(pairing());
@@ -689,7 +688,6 @@ describe('AuthModal login flow', () => {
   it('As a user, when my login completes the modal closes and focus goes back to the auth button', async () => {
     // Given
     await renderModal();
-    byId('auth-button').focus();
     await authState(pairing());
     expect(byId('auth-modal-backdrop').contains(document.activeElement)).toBe(true);
 
