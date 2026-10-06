@@ -119,6 +119,7 @@ interface ActiveHost {
   core: CoreProviderBase;
   wallet: LiveLocalWallet | undefined;
   generation: number;
+  productId: string;
   iframe: HTMLIFrameElement;
   receiving: ReceivingExecution;
   /** End host-owned calls now, before a replacement render settles. */
@@ -738,10 +739,14 @@ window.addEventListener('dotli:device-permission-changed', event => {
 
 window.addEventListener('dotli:permission-changed', event => {
   const detail = (event as CustomEvent<{ productId?: string; label?: string }>).detail;
-  if (currentProduct === null || (detail?.productId ?? detail?.label) !== currentProduct.label) {
+  if (
+    currentProduct === null ||
+    currentHost === null ||
+    (detail?.productId !== currentHost.productId && detail?.label !== currentProduct.label)
+  ) {
     return;
   }
-  void currentHost?.refreshPermissionPolicy().catch((error: unknown) => {
+  void currentHost.refreshPermissionPolicy().catch((error: unknown) => {
     log.warn('[dot.li] Permission policy refresh failed:', error);
   });
 });
@@ -1822,6 +1827,7 @@ async function createHost(args: {
       core: coreProvider,
       wallet: connection.wallet,
       generation: hostGeneration,
+      productId: connection.productId,
       receiving: connection.receiving,
       iframe: host.iframe,
       stopMedia() {
