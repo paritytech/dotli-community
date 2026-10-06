@@ -16,7 +16,7 @@ import { Switch } from '../primitives/Switch.js';
 import { Row, Well } from '../primitives/Well.js';
 import { useStore } from '../use-store.js';
 import { Diagnostics } from './Diagnostics.js';
-import { usePopover } from './Popover.js';
+import { usePopover } from '../floating/Popover.js';
 import s from './SettingsContent.module.css';
 
 interface Transport {

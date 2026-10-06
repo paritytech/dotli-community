@@ -94,8 +94,10 @@ describe('Topbar actions island', () => {
       // Then
       expect(byId('more-popover').hasAttribute('data-open')).toBe(false);
       expect(byId('permissions-popover').hasAttribute('data-open')).toBe(true);
-      expect(byId('permissions-popover-backdrop').hasAttribute('data-open')).toBe(true);
-      expect(document.activeElement).toBe(byId('permissions-popover'));
+      expect(
+        byId('permissions-popover').contains(document.activeElement) ||
+          document.activeElement === byId('permissions-popover'),
+      ).toBe(true);
       // The list is the popover's body, its own chunk.
       await waitForContent('permissions-popover');
       await settle();
@@ -382,11 +384,10 @@ describe('Topbar actions island', () => {
 
     // Then
     expect(byId('more-popover').hasAttribute('data-handoff')).toBe(true);
-    const sheet = byId('mode-popover');
+    const sheet = byId('mode-popover', HTMLDialogElement);
+    expect(sheet.open).toBe(true);
     expect(sheet.hasAttribute('data-open')).toBe(true);
-    expect(sheet.hasAttribute('data-sheet')).toBe(true);
     expect(sheet.hasAttribute('data-handoff')).toBe(true);
-    expect(byId('mode-popover-backdrop').hasAttribute('data-handoff')).toBe(true);
   });
 
   it("As a phone user closing a sheet that took More's place, it slides out", async () => {

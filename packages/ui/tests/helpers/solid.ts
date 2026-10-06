@@ -97,12 +97,29 @@ export function tabTo(next: HTMLElement): KeyboardEvent {
 }
 
 /**
+ * The content root of popover `#id`: the layer itself on a wide screen, the
+ * `data-sheet` wrapper inside a bottom sheet, or (the old Popover's) its
+ * `popover-body`.
+ */
+export function popoverBody(id: string): HTMLElement | null {
+  const root = document.getElementById(id);
+  if (root === null) {
+    return null;
+  }
+  return (
+    root.querySelector<HTMLElement>(':scope > [data-testid="popover-body"]') ??
+    root.querySelector<HTMLElement>('[data-sheet]') ??
+    root
+  );
+}
+
+/**
  * The body of popover `#id` once its lazy content has loaded: the content
  * chunk is a dynamic import, which resolves over several microtasks.
  */
 export async function waitForContent(id: string): Promise<HTMLElement> {
   const body = await vi.waitFor(() => {
-    const found = document.querySelector<HTMLElement>(`#${id} > [data-testid="popover-body"]`);
+    const found = popoverBody(id);
     const loaded =
       found !== null &&
       found.firstElementChild !== null &&

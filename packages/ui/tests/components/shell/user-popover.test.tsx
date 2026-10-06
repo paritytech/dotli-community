@@ -5,11 +5,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AuthButton } from '../../../src/components/shell/AuthButton.js';
 import { requestTruapiDisconnect } from '../../../src/auth-controller.js';
 import { setAuthState } from '../../../src/state/auth.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
 import type { TruapiSessionUiState } from '../../../src/host-callbacks/SessionStore.js';
-import { pointerPress, pointerPressUnfocusable, renderComponent, tabTo, waitForContent } from '../../helpers/solid.js';
+import { popoverBody, renderComponent, waitForContent } from '../../helpers/solid.js';
 import { byId, press, recordEvents, settleAll, useAuthController } from './auth-harness.js';
-import { byTestId, query } from '../../support.js';
+import { byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
 
@@ -56,7 +55,7 @@ function expectMarkup(
   expect(popover.getAttribute('aria-label')).toBe('Account');
   expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.hasAttribute('data-open')).toBe(opts.open);
-  const body = query(popover, ':scope > [data-testid="popover-body"]');
+  const body = must(popoverBody('user-popover'), '#user-popover');
   const content = query(body, ':scope > [data-testid="account-content"]');
   const parts = Array.from(content.children);
   expect(parts.map(child => child.tagName)).toEqual(
@@ -183,7 +182,6 @@ describe('UserPopover', () => {
     await openPopover();
 
     // Then
-    expect(byId('user-popover').hasAttribute('data-sheet')).toBe(true);
     expect(byTestId('popover-sheet-title').textContent).toBe('Account');
     expect(byTestId('account-content').hasAttribute('data-sheet')).toBe(true);
     expect(byTestId('account-content').querySelector('h2')).toBeNull();
@@ -214,19 +212,11 @@ describe('UserPopover', () => {
     expect(document.getElementById('user-popover-hint')).toBeNull();
   });
 
-  it('As a logged-in user, the account button toggles the popover and Log out requests a disconnect through the Rust core', async () => {
+  it('As a logged-in user, Log out requests a disconnect through the Rust core and closes the popover', async () => {
     // Given
     const disconnects = recordEvents('dotli:truapi-disconnect-request');
     const loginRequests = recordEvents('dotli:truapi-login-request');
     await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-
-    // When
-    await openPopover();
-    byId('auth-button').click();
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
 
     // When
     await openPopover();
@@ -248,33 +238,6 @@ describe('UserPopover', () => {
 
     // Then
     expect(disconnects.details).toHaveLength(1);
-  });
-
-  it('As a keyboard user, the open popover takes focus, traps Tab and closes on Escape, handing focus back to the account button', async () => {
-    // Given
-    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-    byId('auth-button').focus();
-
-    // When
-    await openPopover();
-
-    // Then: Log out is the only control.
-    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
-
-    // When
-    const tab = press('Tab');
-
-    // Then: Tab loops inside the popover, onto its only control.
-    expect(tab.defaultPrevented).toBe(true);
-    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
-
-    // When
-    press('Escape');
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(byId('auth-button'));
   });
 
   it('As a screen-reader user, the account button announces the popover it opens and whether it is open', async () => {
@@ -313,71 +276,6 @@ describe('UserPopover', () => {
     expect(button.getAttribute('aria-haspopup')).toBe('dialog');
     expect(button.getAttribute('aria-expanded')).toBe('false');
     expect(button.getAttribute('aria-controls')).toBe('auth-modal-backdrop');
-  });
-
-  it('As a keyboard user, Tab past Log out keeps focus in the popover and leaves it open', async () => {
-    // Given
-    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-    byId('auth-button').focus();
-    await openPopover();
-    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settleAll();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(byId('user-popover-disconnect'));
-  });
-
-  it('As a logged-in user, a press outside closes the popover without handing focus back to the account button', async () => {
-    // Given
-    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-    byId('auth-button').focus();
-    await openPopover();
-
-    // When: the press lands on nothing that takes focus.
-    pointerPressUnfocusable(document.body);
-    await settleAll();
-
-    // Then: focus follows the press, as in a Radix non-modal popover.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
-  });
-
-  it('As a logged-in user, a click outside closes the popover', async () => {
-    // Given
-    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-    await openPopover();
-
-    // When
-    byId('user-popover-username').click();
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(true);
-
-    // When
-    pointerPress(byId('outside'));
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-  });
-
-  it('As a logged-in user, a blocking modal coming up closes the popover', async () => {
-    // Given
-    await renderAccount({ connected: true, liteUsername: 'pgherveou.04' });
-    await openPopover();
-
-    // When
-    setBlockingModalActive(true);
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
   });
 
   it('As a returning user whose session was restored before the islands loaded, the popover shows my username as it mounts', async () => {

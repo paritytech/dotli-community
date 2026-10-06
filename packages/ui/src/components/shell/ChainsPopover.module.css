@@ -7,3 +7,7 @@
 .popover {
   width: var(--w-pop-md);
 }
+/* A sheet's wrapper takes the sheet's width. */
+.popover[data-sheet] {
+  width: auto;
+}

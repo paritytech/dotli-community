@@ -5,11 +5,11 @@ import { createEffect, createSignal, lazy } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { hasAnyGrant } from '../../permissions.js';
 import { productStore } from '../../state/product.js';
+import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
 import { createPermissionChanges } from './permission-changes.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './PermissionsPopover.module.css';
@@ -36,8 +36,7 @@ function LockIcon(): JSX.Element {
 
 /**
  * The permissions button (`#permissions-button`) and its popover
- * (`#permissions-popover`, a Popover with a backdrop, in the body; a bottom
- * sheet on phones), an item of the topbar's action group island (see
+ * (`#permissions-popover`, a floating Popover; a bottom sheet on phones), an item of the topbar's action group island (see
  * src/islands/), rendered with the host page and hydrated.
  *
  * The popover's body, PermissionsContent, is its own chunk: the loaded
@@ -47,7 +46,7 @@ function LockIcon(): JSX.Element {
  * permission granted, read again on a product loading or failing and on a
  * permission change.
  *
- * A press outside (the backdrop included), focus leaving it, Escape and a
+ * A press outside, focus leaving it, Escape and a
  * blocking modal close the popover, a non-modal one. The More menu's
  * Permissions row opens it while the topbar has collapsed the button.
  */
@@ -87,26 +86,26 @@ export function PermissionsPopover(): JSX.Element {
   );
 
   return (
-    <Popover
-      id="permissions-popover"
-      title="Permissions"
-      class={s['popover']}
-      backdrop
-      content={Permissions}
-      trigger={t => (
-        <TopbarItem
-          name="permissions"
-          label="Permissions"
-          icon={LockIcon}
-          aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
-          priority={TOPBAR_PRIORITY.permissions}
-          activate={t.onClick}
-        >
-          <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
-            <LockIcon />
-          </IconButton>
-        </TopbarItem>
-      )}
-    />
+    <Popover id="permissions-popover" title="Permissions">
+      <Popover.Trigger>
+        {(t, activate) => (
+          <TopbarItem
+            name="permissions"
+            label="Permissions"
+            icon={LockIcon}
+            aside={hasGrants() ? () => <StatusDot tone="info" size="sm" label="Has permissions" /> : undefined}
+            priority={TOPBAR_PRIORITY.permissions}
+            activate={activate}
+          >
+            <IconButton {...t} id="permissions-button" badge={hasGrants()} title="Permissions" aria-label="Permissions">
+              <LockIcon />
+            </IconButton>
+          </TopbarItem>
+        )}
+      </Popover.Trigger>
+      <Popover.Content class={s['popover']} preload={Permissions.preload}>
+        <Permissions />
+      </Popover.Content>
+    </Popover>
   );
 }

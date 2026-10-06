@@ -6,10 +6,10 @@ import type { JSX } from '@solidjs/web';
 import { SLIDERS_PATH } from '../../settings-glyph.js';
 import { settingsStore } from '../../state/settings.js';
 import { setSettingsOpen, topbarStore } from '../../state/topbar.js';
+import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './SettingsPopover.module.css';
@@ -34,9 +34,8 @@ function SlidersIcon(): JSX.Element {
 }
 
 /**
- * The settings button (`#mode-button`), its popover (`#mode-popover`, a
- * Popover with a backdrop, in the body) and the popover's backdrop, an item
- * of the topbar's action group island (see src/islands/), rendered with the
+ * The settings button (`#mode-button`) and its popover (`#mode-popover`, a
+ * floating Popover), an item of the topbar's action group island (see src/islands/), rendered with the
  * host page and hydrated.
  *
  * The popover's body, SettingsContent, is its own chunk: the network and
@@ -55,7 +54,7 @@ function SlidersIcon(): JSX.Element {
  * the saved value first.
  *
  * On a wide screen it is a non-modal popover: Tab loops inside it, and a
- * press outside (the backdrop included), focus moved out, Escape and a
+ * press outside, focus moved out, Escape and a
  * blocking modal close it. On a phone it is a modal bottom sheet, with a
  * header and a close button. The topbar store's `settingsOpen` follows it,
  * and openSettings() (an error page's "Open settings") opens it through
@@ -70,38 +69,36 @@ export function SettingsPopover(): JSX.Element {
     setSettingsOpen(false);
   });
   return (
-    <Popover
-      id="mode-popover"
-      title="Settings"
-      class={s['popover']}
-      backdrop
-      content={Settings}
-      open={open()}
-      onOpenChange={setSettingsOpen}
-      trigger={t => (
-        <TopbarItem
-          name="settings"
-          label="Settings"
-          icon={SlidersIcon}
-          aside={
-            settings()?.verified === false
-              ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
-              : undefined
-          }
-          priority={TOPBAR_PRIORITY.settings}
-          activate={t.onClick}
-        >
-          <IconButton
-            {...t}
-            id="mode-button"
-            badge={settings()?.verified === false}
-            title="Settings"
-            aria-label="Settings"
+    <Popover id="mode-popover" title="Settings" open={open()} onOpenChange={setSettingsOpen}>
+      <Popover.Trigger>
+        {(t, activate) => (
+          <TopbarItem
+            name="settings"
+            label="Settings"
+            icon={SlidersIcon}
+            aside={
+              settings()?.verified === false
+                ? () => <StatusDot tone="warn" size="sm" label="Unverified session" />
+                : undefined
+            }
+            priority={TOPBAR_PRIORITY.settings}
+            activate={activate}
           >
-            <SlidersIcon />
-          </IconButton>
-        </TopbarItem>
-      )}
-    />
+            <IconButton
+              {...t}
+              id="mode-button"
+              badge={settings()?.verified === false}
+              title="Settings"
+              aria-label="Settings"
+            >
+              <SlidersIcon />
+            </IconButton>
+          </TopbarItem>
+        )}
+      </Popover.Trigger>
+      <Popover.Content class={s['popover']} preload={Settings.preload}>
+        <Settings />
+      </Popover.Content>
+    </Popover>
   );
 }

@@ -3,7 +3,7 @@
 
 import { Show, useContext } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import { InSheet } from '../sheet/in-sheet.js';
+import { InSheet } from '../floating/in-sheet.js';
 import s from './Surface.module.css';
 
 export type SurfaceWidth = 'sm' | 'md' | 'lg' | 'xl';

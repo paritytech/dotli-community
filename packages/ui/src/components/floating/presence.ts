@@ -18,12 +18,20 @@ export function createPresence(open: Accessor<boolean>, exitMs: number): Accesso
   });
   const [lingering, setLingering] = createSignal(false);
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let wasOpen = false;
   createEffect(open, now => {
     clearTimeout(timer);
     if (now) {
+      wasOpen = true;
       setLingering(true);
       return;
     }
+    // Nothing is exiting before the first opening: no timer for a surface
+    // that mounts closed.
+    if (!wasOpen) {
+      return;
+    }
+    wasOpen = false;
     timer = setTimeout(() => {
       setLingering(false);
     }, exitMs);

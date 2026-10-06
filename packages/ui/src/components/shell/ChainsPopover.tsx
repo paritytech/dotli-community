@@ -6,10 +6,10 @@ import type { JSX } from '@solidjs/web';
 import { networkHealthStore } from '../../state/network-health.js';
 import { healthWord } from '../../network-health.js';
 import { topbarStore } from '../../state/topbar.js';
+import { Popover } from '../floating/Popover.js';
 import { IconButton } from '../primitives/IconButton.js';
 import { StatusDot } from '../primitives/StatusDot.js';
 import { useStore } from '../use-store.js';
-import { Popover } from './Popover.js';
 import { TOPBAR_PRIORITY } from './topbar/fit.js';
 import { TopbarItem } from './topbar/TopbarItem.js';
 import s from './ChainsPopover.module.css';
@@ -37,7 +37,7 @@ function GlobeIcon(): JSX.Element {
 
 /**
  * The network button (`#chains-button`) and its popover (`#chains-popover`,
- * a Popover in the body; a bottom sheet on phones), an item of the topbar's
+ * a floating Popover; a bottom sheet on phones), an item of the topbar's
  * action group island (see src/islands/), rendered with the host page and
  * hydrated.
  *
@@ -59,34 +59,35 @@ export function ChainsPopover(): JSX.Element {
   const topbar = useStore(topbarStore);
   const health = useStore(networkHealthStore);
   return (
-    <Popover
-      id="chains-popover"
-      title="Network"
-      class={s['popover']}
-      content={Chains}
-      trigger={t => (
-        <TopbarItem
-          name="network"
-          label="Network"
-          icon={GlobeIcon}
-          alert={
-            health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
-          }
-          aside={() => (
-            <>
-              <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
-              <span>{healthWord(health())}</span>
-            </>
-          )}
-          priority={TOPBAR_PRIORITY.network}
-          visible={topbar().chainsButtonVisible}
-          activate={t.onClick}
-        >
-          <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
-            <GlobeIcon />
-          </IconButton>
-        </TopbarItem>
-      )}
-    />
+    <Popover id="chains-popover" title="Network">
+      <Popover.Trigger>
+        {(t, activate) => (
+          <TopbarItem
+            name="network"
+            label="Network"
+            icon={GlobeIcon}
+            alert={
+              health() === 'ok' ? undefined : { tone: health(), label: `network ${healthWord(health()).toLowerCase()}` }
+            }
+            aside={() => (
+              <>
+                <StatusDot tone={health()} size="sm" pulse={health() === 'idle'} />
+                <span>{healthWord(health())}</span>
+              </>
+            )}
+            priority={TOPBAR_PRIORITY.network}
+            visible={topbar().chainsButtonVisible}
+            activate={activate}
+          >
+            <IconButton {...t} id="chains-button" title="Network" aria-label="Network" badge badgeTone={health()}>
+              <GlobeIcon />
+            </IconButton>
+          </TopbarItem>
+        )}
+      </Popover.Trigger>
+      <Popover.Content class={s['popover']} preload={Chains.preload}>
+        <Chains />
+      </Popover.Content>
+    </Popover>
   );
 }

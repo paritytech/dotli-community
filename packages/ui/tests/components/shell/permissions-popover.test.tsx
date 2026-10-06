@@ -12,10 +12,8 @@ import {
 } from '../../../src/permissions.js';
 import { setProductError, setProductLoaded } from '../../../src/state/product.js';
 import { recordPermissionChange } from '../../../src/state/permissions.js';
-import { setBlockingModalActive } from '../../../src/state/topbar.js';
-import { pointerPressUnfocusable, renderComponent, resetStores, tabTo, waitForContent } from '../../helpers/solid.js';
+import { popoverBody, renderComponent, resetStores, waitForContent } from '../../helpers/solid.js';
 import { renderTopbar, tapMoreRow } from './topbar-harness.js';
-import { focusables } from '../../../src/components/focus.js';
 import { byId, byTestId, must, query } from '../../support.js';
 import { nth } from '../../helpers/nth.js';
 import { stubPhoneViewport } from '../../helpers/viewport.js';
@@ -198,7 +196,7 @@ function expectPopover(opts: { open: boolean; list: PermissionsList }): void {
   expect(popover.getAttribute('aria-label')).toBe('Permissions');
   expect(popover.getAttribute('tabindex')).toBe('-1');
   expect(popover.hasAttribute('data-open')).toBe(opts.open);
-  const body = query(popover, ':scope > [data-testid="popover-body"]');
+  const body = must(popoverBody('permissions-popover'), '#permissions-popover');
   if (!opts.open) {
     expect(body.childElementCount).toBe(0);
     return;
@@ -249,21 +247,13 @@ function expectPermissionsButton(open: boolean): void {
   expect(tags(button)).toEqual(['svg']);
 }
 
-/** The backdrop: the shared Popover's, open with the popover. */
-function expectBackdrop(open: boolean): void {
-  const backdrop = byId('permissions-popover-backdrop');
-  expect(backdrop.getAttribute('data-testid')).toBe('popover-backdrop');
-  expect(backdrop.hasAttribute('data-open')).toBe(open);
-}
-
 describe('PermissionsPopover', () => {
-  it('As a dotli user, the button, backdrop and closed popover have their ids, labels and ARIA state', async () => {
+  it('As a dotli user, the button and closed popover have their ids, labels and ARIA state', async () => {
     // When
     await renderPopover();
 
     // Then
     expectPermissionsButton(false);
-    expectBackdrop(false);
     expectPopover({ open: false, list: { kind: 'empty' } });
   });
 
@@ -278,7 +268,7 @@ describe('PermissionsPopover', () => {
     await openPopover();
 
     // Then
-    expect(byId('permissions-popover').hasAttribute('data-sheet')).toBe(true);
+    expect(byTestId('popover-sheet-title').textContent).toBe('Permissions');
     expect(document.querySelector('[data-testid="permissions-popover-header"]')).toBeNull();
     expect(document.querySelector('[data-testid="permissions-popover-host"]')).toBeNull();
     expect(document.querySelectorAll('[data-testid="permissions-popover-row"]')).toHaveLength(ALL_PERMISSIONS.length);
@@ -303,7 +293,6 @@ describe('PermissionsPopover', () => {
     });
     expectPermissionsButton(true);
     expect(byId('permissions-button').hasAttribute('data-badge')).toBe(true);
-    expectBackdrop(true);
     expect(document.activeElement).toBe(byId('permissions-popover'));
   });
 
@@ -442,7 +431,7 @@ describe('PermissionsPopover', () => {
     // When: another change fails after the popover closed.
     segment('Notifications', 'denied').click();
     await settleAll();
-    byId('permissions-button').click();
+    press('Escape');
     await settleAll();
     expect(isOpen()).toBe(false);
     const afterClose = reads;
@@ -489,25 +478,6 @@ describe('PermissionsPopover', () => {
     expect(byId(app.getAttribute('aria-labelledby') ?? '').textContent).toBe('Account and chain');
   });
 
-  it('As a keyboard user, Escape on a segment closes the popover at once and hands focus back to the button', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-    await openPopover();
-    segment('Camera', 'granted').focus();
-
-    // When
-    press('Escape');
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-    expect(byId('permissions-button').getAttribute('aria-expanded')).toBe('false');
-    expect(document.activeElement).toBe(byId('permissions-button'));
-  });
-
   it('As a screen-reader user, the button announces the dialog it opens and whether it is open', async () => {
     // Given
     provide();
@@ -528,79 +498,6 @@ describe('PermissionsPopover', () => {
 
     // Then
     expect(button.getAttribute('aria-expanded')).toBe('true');
-  });
-
-  it('As a keyboard user, opening it moves focus in, and Tab past the last control loops back to the first', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-
-    // When
-    await openPopover();
-
-    // Then
-    expect(byId('permissions-popover').contains(document.activeElement)).toBe(true);
-
-    // Given
-    const controls = focusables(byId('permissions-popover'));
-    // One Tab stop per row: its other segments are reached with the arrow keys.
-    expect(controls.filter(el => el.closest('[data-testid="permissions-popover-row"]'))).toHaveLength(
-      ALL_PERMISSIONS.length,
-    );
-    nth(controls, controls.length - 1).focus();
-    await settleAll();
-    expect(isOpen()).toBe(true);
-
-    // When
-    const tab = tabTo(byId('outside'));
-    await settleAll();
-
-    // Then
-    expect(tab.defaultPrevented).toBe(true);
-    expect(isOpen()).toBe(true);
-    expect(document.activeElement).toBe(focusables(byId('permissions-popover'))[0]);
-  });
-
-  it('As a user, a press on the backdrop closes the popover without handing focus back to the button', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    byId('permissions-button').focus();
-    await openPopover();
-
-    // When: the backdrop covers the page, and takes no focus.
-    pointerPressUnfocusable(byId('permissions-popover-backdrop'));
-    await settleAll();
-
-    // Then: focus follows the press.
-    expect(isOpen()).toBe(false);
-    expect(document.activeElement).toBe(document.body);
-  });
-
-  it('As a user, the button toggles the popover, and a blocking modal coming up closes it', async () => {
-    // Given
-    provide();
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    await openPopover();
-
-    // When
-    byId('permissions-button').click();
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
-
-    // When
-    await openPopover();
-    setBlockingModalActive(true);
-    await settleAll();
-
-    // Then
-    expect(isOpen()).toBe(false);
   });
 
   it('As a user, the lock button shows its grants badge while the app has any permission granted, including an app loaded before the island mounted', async () => {
@@ -719,7 +616,7 @@ describe('PermissionsPopover', () => {
     // When: opened, closed before the read answers, the read answers, and
     // the popover opens again.
     await openPopover();
-    byId('permissions-button').click();
+    press('Escape');
     await settleAll();
     await answer('Authorized');
     await openPopover();

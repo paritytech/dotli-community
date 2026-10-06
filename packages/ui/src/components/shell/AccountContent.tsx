@@ -8,7 +8,7 @@ import { Button } from '../primitives/Button.js';
 import { Surface } from '../primitives/Surface.js';
 import { Callout, InfoIcon } from '../primitives/Well.js';
 import { sessionDisplayName, sessionInitials, sessionUsername, useAccount, UserIcon } from './account.js';
-import { usePopover } from './Popover.js';
+import { usePopover } from '../floating/Popover.js';
 import s from './AccountContent.module.css';
 
 function LogOutIcon(): JSX.Element {
