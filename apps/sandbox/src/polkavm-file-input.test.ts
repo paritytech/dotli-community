@@ -101,7 +101,7 @@ describe('runtime-registered local files', () => {
   });
 
   it('consents a stream Blob without reading the whole file', async () => {
-    const { controls, select, approve, send, menu } = fixture();
+    const { controls, select, approve, send, menu, surface } = fixture();
     controls.update([registration()]);
     controls.ready();
     const file = new File([new Uint8Array([1, 2, 3])], 'test.map');
@@ -116,6 +116,17 @@ describe('runtime-registered local files', () => {
     expect(send).toHaveBeenCalledWith({ type: 'file-input', handle: 7, name: 'test.map', mimeType: '', file });
     expect(read).not.toHaveBeenCalled();
     expect(menu.changeFile.disabled).toBe(false);
+    const loading = surface.querySelector<HTMLElement>('#dotli-polkavm-loading');
+    expect(loading?.hidden).toBe(false);
+    expect(loading?.textContent).toBe('Loading test.map…');
+    expect(surface.hasAttribute('aria-busy')).toBe(true);
+    expect(menu.status.textContent).toBe('Loading test.map…');
+    menu.loadingReady();
+    expect(menu.status.textContent).toBe('Loading test.map… Resume to continue.');
+    expect([...surface.querySelectorAll('button')].some(button => button.textContent === 'Resume and load')).toBe(true);
+    menu.setLoadingFile(null);
+    expect(loading?.hidden).toBe(true);
+    expect(surface.hasAttribute('aria-busy')).toBe(false);
   });
 
   it.each(['inline', 'relaunch'] as const)('delivers bounded %s bytes without host-owned mounting', async delivery => {
