@@ -281,41 +281,6 @@ describe('PermissionsPopover', () => {
     expect(byId('permissions-button').classList.contains('has-grants')).toBe(false);
   });
 
-  it('As a user, allowing a permission stores it and announces { label, permission }; a device permission announces a device change', async () => {
-    // Given
-    const provider = provide(LABEL, { Camera: 'Authorized' });
-    const grants = recordEvents('dotli:permission-changed');
-    const devices = recordEvents('dotli:device-permission-changed');
-    setProductLoaded(LABEL, 'app.dot');
-    await renderPopover();
-    await openPopover();
-
-    // When
-    select('Notifications').click();
-    await settleAll();
-    option('Allowed').click();
-    await settleAll();
-
-    // Then
-    expect(provider.set).toHaveBeenCalledWith({ tag: 'Device', value: 'Notifications' }, 'Authorized');
-    expect(grants).toEqual([{ label: LABEL, permission: 'Notifications' }]);
-    expect(devices).toEqual([]);
-    expect(byId('permissions-popover-status-Notifications').textContent).toBe('Allowed');
-    expect(menu()).toBeNull();
-    expect(isOpen()).toBe(true);
-
-    // When: back to Ask resets it.
-    select('Camera').click();
-    await settleAll();
-    option('Ask (Default)').click();
-    await settleAll();
-
-    // Then
-    expect(provider.set).toHaveBeenLastCalledWith({ tag: 'Device', value: 'Camera' }, 'NotDetermined');
-    expect(devices).toEqual([{ label: LABEL, permission: 'Camera' }]);
-    expect(byId('permissions-popover-status-Camera').textContent).toBe('Ask (Default)');
-  });
-
   it('As a user, a change that fails re-reads the statuses while the popover is open, and not once it is closed', async () => {
     // Given: every change waits until the test fails it; reads are counted.
     const changes: ((err: Error) => void)[] = [];

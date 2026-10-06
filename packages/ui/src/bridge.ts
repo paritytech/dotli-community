@@ -46,7 +46,7 @@ import { chatCapabilityFor, log } from '@dotli/shared';
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
 import type { TrUApiProductProvider } from '@parity/truapi-host';
 import { createIframeHost } from '@parity/truapi-host/web';
-import { buildAllowAttribute, registerPermissionAuthorizationProvider } from './permissions.js';
+import { buildAllowAttribute, isDevicePermission, registerPermissionAuthorizationProvider } from './permissions.js';
 import { dispatchAuthState } from './host-callbacks/AuthState.js';
 import { createContactAvatars, installProfileDebugTrigger } from './host-callbacks/Profile.js';
 import type { AvatarSurfaceFit } from './profile/avatar-overlay.js';
@@ -170,6 +170,7 @@ const mediatedInputHost = new MediatedInputHost({
         'Camera',
         {
           kind: 'Device',
+          commit: 'host',
           limiter: mediatedInputPermissionLimiter,
           gatedByIframe: false,
         },
@@ -732,6 +733,34 @@ window.addEventListener('dotli:device-permission-changed', event => {
   ) {
     rerenderProduct(product);
   }
+});
+
+// Core-requested consent is committed by Rust, never by the prompt callback.
+// Refresh completion precedes a policy reload so the originating call can settle.
+window.addEventListener('dotli:permission-changed', event => {
+  const detail = (event as CustomEvent<{ productId?: string; request?: { tag?: string; value?: string } } | null>)
+    .detail;
+  const product = currentProduct;
+  const permission = detail?.request?.value;
+  if (
+    product === null ||
+    detail?.productId !==
+      (product.mode === 'iframe'
+        ? (product.productId ?? labelToProductId(product.label))
+        : labelToProductId(product.label)) ||
+    detail.request?.tag !== 'Device' ||
+    permission === undefined ||
+    !isDevicePermission(permission) ||
+    (mediaOwnsCapture(product.label) && (permission === 'Camera' || permission === 'Microphone'))
+  ) {
+    return;
+  }
+  const generation = renderGeneration;
+  setTimeout(() => {
+    if (currentProduct === product && renderGeneration === generation) {
+      rerenderProduct(product);
+    }
+  }, 0);
 });
 
 window.addEventListener('dotli:receiving-account-changed', () => {
@@ -1731,13 +1760,15 @@ async function createHost(args: {
     lease.release();
   };
   try {
-    const granted = await buildAllowAttribute(args.label);
-    // A protected container never receives raw capture, whatever was granted.
+    const granted = await buildAllowAttribute(args.label, args.allowedOrigin);
+    // Protected Media denies capture even when a legacy grant names an origin.
     const productAllow =
       media === undefined
         ? granted
         : [
-            ...granted.split('; ').filter(directive => directive !== 'camera' && directive !== 'microphone'),
+            ...granted
+              .split('; ')
+              .filter(directive => !/^(?:camera|microphone|display-capture)(?:\s|$)/.test(directive)),
             PROTECTED_MEDIA_ALLOW,
           ].join('; ');
     const allow = [productAllow, ...(args.extraAllow ?? []), 'cross-origin-isolated'].join('; ');
@@ -2192,10 +2223,14 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
   }
   currentHost = host;
   const product = currentProduct;
-  if (product?.mode === 'subdomain') {
+  if (product !== null) {
     const generation = renderGeneration;
     const unregister = registerProductNotificationTarget(product.label, {
-      artifact: product.cid,
+      // Preview URLs identify a host-accepted source, not immutable CID content.
+      artifact:
+        product.mode === 'subdomain'
+          ? product.cid
+          : `preview:${JSON.stringify([product.productId ?? labelToProductId(product.label), new URL(product.url, window.location.href).href])}`,
       entryUrl: new URL('/', window.location.origin).href,
       isActive: () => currentHost === host && renderGeneration === generation,
       focus: () => {

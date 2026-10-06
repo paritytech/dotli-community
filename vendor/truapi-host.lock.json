@@ -2,30 +2,30 @@
   "schemaVersion": 1,
   "upstreamRepository": "https://github.com/paritytech/trinity-user-agents",
   "upstreamBranch": "feat/media-on-jam-seity",
-  "upstreamRevision": "6d424c208b26900ed30945b5d726346cb0ad5a5d",
-  "upstreamRevisionNote": "--no-ff merge of feat/media-sessions (d8105398ba24431357d7dc169682902d69e86bc0, the Media service at prototype wire trait 218 on #709 a78944c23) into 795a4082023abd952041c784c9f9e81714aab999, the #1011 integration revision #291 vendors.",
+  "upstreamRevision": "509b854239b049af4abcfbfc7d1433bf33d3e365",
+  "upstreamRevisionNote": "--no-ff merge of Tommy blockers #1216 (ec4a489949506862707c4ea6398298e87d7841eb) into Media integration #1217 (6d424c208b26900ed30945b5d726346cb0ad5a5d), preserving the Media service at prototype wire trait 218 above #1011.",
   "pullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1217",
   "basePullRequest": "https://github.com/paritytech/trinity-user-agents/pull/1011",
   "baseRevision": "795a4082023abd952041c784c9f9e81714aab999",
-  "publication": "Media integration above #1011; SDK packages are vendored, not npm-published.",
+  "publication": "Media and Tommy-blocker integration above #1011; SDK packages are vendored, not npm-published.",
   "packages": {
     "vendor/truapi": {
       "name": "@parity/truapi",
       "version": "0.23.0",
-      "sourceArchiveSha256": "e403327a7dbd3e9b6f2bb25145755685330f4c6dfb0c833f3a8894d6e7eb6d34",
+      "sourceArchiveSha256": "3efbb0ecd66aafc34775b159b4ff7521f10b0439963bf10437de95fb52acc892",
       "clientSha256": "27adb6baddd524db3a8c490ea7e32ecf9dd3fa14ba1407cf104e5a0428d94208"
     },
     "vendor/truapi-host": {
       "name": "@parity/truapi-host",
       "version": "0.23.0",
-      "sourceArchiveSha256": "07064569b50c31a2869c1713aa9a57b47a4e09c76cba5e610ead2a834cb23878",
+      "sourceArchiveSha256": "7457beab5a31233fe402af27ae58274fb5fbd8de3b458ac71bc51aeed6b85a33",
       "dependencyOverride": "@parity/truapi=file:../truapi",
-      "wasmSha256": "b784128e9123acc9730adbbd026770f6b71ef2df1388bb2045ae7d44ac23bf09",
-      "testingWasmSha256": "7122b181c57618e2c562f12e1d0739725594f295620c7541e65ca8c55a190954",
+      "wasmSha256": "d1bd2954374a2d8cea01255753a60e99dba8b87e13735ef76d60ddbec1979bcf",
+      "testingWasmSha256": "1a6317ea41d956d33eac103035326c85b1971a5d8af98f90d0d7eebe052b6bcd",
       "wasmFeatures": [
         "wasm-signing-host"
       ]
     }
   },
-  "wasmUpstreamRevision": "6d424c208b26900ed30945b5d726346cb0ad5a5d"
+  "wasmUpstreamRevision": "509b854239b049af4abcfbfc7d1433bf33d3e365"
 }

@@ -54,8 +54,8 @@ import {
   type LocalWalletIdentityBinding,
 } from './host-callbacks/SessionStore.js';
 import { createTruapiRuntimeConfig, labelToProductId } from './runtime-config.js';
+import { setNotificationAccount, setNotificationHostAccount } from './notification-activation.js';
 import { showNotification } from './notification.js';
-import { setNotificationAccount } from './notification-activation.js';
 import type { ContactAvatarOverlay } from './profile/avatar-overlay.js';
 import type { ContactLabelOverlay } from './contacts/label-overlay.js';
 import { setReceivingAccount } from './receiving.js';
@@ -156,6 +156,7 @@ export function initPageCore(coordinator: BlockingModalCoordinator): void {
 export function setPageProduct(product: PageProduct): void {
   pageProduct = product;
   if (current !== null && !isPageProduct(current)) {
+    setNotificationHostAccount(undefined);
     // A navigation must not retain a second signing authority under the old
     // product. Same-product iframe replacements keep their existing core.
     if (current.persistent) {
@@ -420,6 +421,11 @@ function createCore(product: PageProduct): Core {
     const presentAuthState = callbacks.auth.authStateChanged;
     // Media fences its operations on every accepted authority change.
     const forwardAuthState = (state: AuthState): void => {
+      if (current === core && isPageProduct(core)) {
+        setNotificationHostAccount(
+          state.tag === 'Connected' ? (state.value.identityAccountId ?? state.value.publicKey) : undefined,
+        );
+      }
       if (isPageProduct(core) && state.tag === 'Connected') {
         setReceivingAccount(state.value.identityAccountId);
       }
@@ -469,8 +475,8 @@ function createCore(product: PageProduct): Core {
       assertCurrent();
       const pairing = booted;
       unsubscribeStore = onStoredSessionChanged(() => {
-        // Fence both local and cross-tab changes before the worker reloads auth.
-        setNotificationAccount(product.label, undefined);
+        // Storage is a reload hint, not an auth transition. The core may retain
+        // the same session without re-emitting its change-only AuthState.
         pairing.notifySessionStoreChanged();
       });
       queueMicrotask(() => {
@@ -671,7 +677,11 @@ function createCore(product: PageProduct): Core {
       disposed = true;
       profileLifetime.abort();
       cores.delete(core);
+      if (current === core || current?.product.label !== product.label) {
+        setNotificationAccount(product.label, undefined);
+      }
       if (current === core) {
+        setNotificationHostAccount(undefined);
         current = null;
       }
       unsubscribeStore?.();

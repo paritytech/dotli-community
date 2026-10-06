@@ -251,34 +251,9 @@ describe('isEnforceableDevicePermission', () => {
 });
 
 describe('device permission prompts', () => {
-  async function grantAndCountReloads(permission: 'Camera' | 'Notifications'): Promise<number> {
-    let reloads = 0;
-    const onReload = (): void => {
-      reloads += 1;
-    };
-    window.addEventListener('dotli:device-permission-changed', onReload);
-
-    const response = createPromptPermission('myapp').devicePermission(PRODUCT, permission);
-    await clickPromptButton(permission === 'Camera' ? 'Allow' : 'Always allow');
-    await expect(response).resolves.toEqual('AllowAlways');
-    await new Promise(resolve => setTimeout(resolve, 0));
-
-    window.removeEventListener('dotli:device-permission-changed', onReload);
-    document.body.replaceChildren();
-    return reloads;
-  }
-
   it('As a product, an auto-granted OpenUrl is answered once without a prompt', async () => {
     await expect(createPromptPermission('myapp').devicePermission(PRODUCT, 'OpenUrl')).resolves.toBe('AllowOnce');
     expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
-  });
-
-  it('As a product, my iframe stays alive when notifications are granted', async () => {
-    expect(await grantAndCountReloads('Notifications')).toBe(0);
-  });
-
-  it('As a product, my iframe reloads when a grant changes its allow attribute', async () => {
-    expect(await grantAndCountReloads('Camera')).toBe(1);
   });
 });
 
@@ -311,8 +286,11 @@ describe('getGrantedDevicePermissions', () => {
 });
 
 describe('buildAllowAttribute', () => {
-  it('As a product, my iframe always receives clipboard-write access', async () => {
-    expect(await buildAllowAttribute('myapp')).toBe('clipboard-write');
+  it('As a product, I can request browser-mediated screen capture without a stored device grant', async () => {
+    expect((await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort()).toEqual([
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+    ]);
   });
 
   it('As a product, my granted device permissions appear in iframe policy', async () => {
@@ -322,10 +300,15 @@ describe('buildAllowAttribute', () => {
 
     // When
     // Order follows JSON insertion order, so assert on the directive set.
-    const directives = (await buildAllowAttribute('myapp')).split('; ').sort();
+    const directives = (await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).split('; ').sort();
 
     // Then
-    expect(directives).toEqual(['camera', 'clipboard-write', 'microphone']);
+    expect(directives).toEqual([
+      'camera',
+      'clipboard-write',
+      'display-capture https://myapp.sandbox.example',
+      'microphone',
+    ]);
   });
 
   it('As a product, denied and submit permissions stay out of iframe policy', async () => {
@@ -334,10 +317,29 @@ describe('buildAllowAttribute', () => {
     await setPermissionStatus('myapp', 'ChainSubmit', 'granted');
 
     // When
-    const allow = await buildAllowAttribute('myapp');
+    const allow = await buildAllowAttribute('myapp', 'https://myapp.sandbox.example');
 
     // Then
-    expect(allow).toBe('clipboard-write');
+    expect(allow.split('; ').sort()).toEqual(['clipboard-write', 'display-capture https://myapp.sandbox.example']);
+  });
+
+  it('As a host, I scope capture to the verified target origin rather than deriving authority from a label', async () => {
+    const first = await buildAllowAttribute('myapp', 'https://first.app.example');
+    const second = await buildAllowAttribute('myapp', 'https://second.app.example:8443');
+
+    expect(first).toBe('clipboard-write; display-capture https://first.app.example');
+    expect(second).toBe('clipboard-write; display-capture https://second.app.example:8443');
+  });
+
+  it('As a product user, revoking camera and resetting microphone removes their delegation', async () => {
+    await setPermissionStatus('myapp', 'Camera', 'granted');
+    await setPermissionStatus('myapp', 'Microphone', 'granted');
+    await setPermissionStatus('myapp', 'Camera', 'denied');
+    await resetPermission('myapp', 'Microphone');
+
+    expect(await buildAllowAttribute('myapp', 'https://myapp.sandbox.example')).toBe(
+      'clipboard-write; display-capture https://myapp.sandbox.example',
+    );
   });
 });
 
@@ -384,41 +386,6 @@ describe('three-way permission prompts', () => {
     // Then
     await expect(response).resolves.toBe('AllowOnce');
     expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('ask');
-  });
-
-  it('As a dotli user, always allowing transactions saves the grant', async () => {
-    // Given
-    const events: unknown[] = [];
-    const onPermissionChanged = (e: Event): void => {
-      events.push((e as CustomEvent).detail);
-    };
-    window.addEventListener('dotli:permission-changed', onPermissionChanged);
-    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
-      permission: { tag: 'ChainSubmit' },
-    });
-
-    // When
-    await clickPromptButton('Always allow');
-
-    // Then
-    await expect(response).resolves.toBe('AllowAlways');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('granted');
-    expect(events).toEqual([{ label: 'myapp', permission: 'ChainSubmit' }]);
-    window.removeEventListener('dotli:permission-changed', onPermissionChanged);
-  });
-
-  it('As a dotli user, denying transactions saves the refusal', async () => {
-    // Given
-    const response = createPromptPermission('myapp').remotePermission(PRODUCT, {
-      permission: { tag: 'ChainSubmit' },
-    });
-
-    // When
-    await clickPromptButton('Deny');
-
-    // Then
-    await expect(response).resolves.toBe('Deny');
-    expect(await getPermissionStatus('myapp', 'ChainSubmit')).toBe('denied');
   });
 
   it('As a dotli user, I am asked which JAM network an app may reach', async () => {
@@ -480,6 +447,7 @@ describe('three-way permission prompts', () => {
   it('As a mediated camera user, I can allow one scan without making the grant durable', async () => {
     const response = decidePromptPermission('myapp', 'Camera', {
       kind: 'Device',
+      commit: 'host',
       limiter: { allow: () => true },
       gatedByIframe: false,
     });

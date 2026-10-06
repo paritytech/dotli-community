@@ -1,7 +1,7 @@
 // Permission prompt. The Rust core awaits the typed response before encoding
 // the product reply, so a slow modal blocks the product just as long as the
-// user takes to dismiss it. Device grants also schedule an iframe reload so
-// the browser sees the refreshed Permissions Policy `allow` attribute.
+// user takes to dismiss it. The core commits its own decisions; the committed
+// policy notification schedules any required Permissions Policy iframe reload.
 //
 // "Always allow" and "Deny" are durable. Generic permission grants appear in
 // the topbar permissions menu; JAM peer decisions are keyed by product and
@@ -66,7 +66,7 @@ export function createPromptPermission(
     if (!isEnforceableDevicePermission(tag)) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, tag, { kind: 'Device', limiter }, modalScope);
+    return decidePromptPermission(label, tag, { kind: 'Device', limiter, commit: 'core' }, modalScope);
   };
 
   const remotePermission: Permissions['remotePermission'] = async (_product, request) => {
@@ -87,7 +87,7 @@ export function createPromptPermission(
     if (name === null) {
       return 'AllowOnce';
     }
-    return decidePromptPermission(label, name, { kind: 'Remote', limiter }, modalScope);
+    return decidePromptPermission(label, name, { kind: 'Remote', limiter, commit: 'core' }, modalScope);
   };
 
   return { devicePermission, remotePermission };
@@ -122,6 +122,7 @@ async function decideJamPeersPermission(
 
 interface PromptOptions {
   kind: 'Device' | 'Remote';
+  commit: 'core' | 'host';
   limiter: { allow: () => boolean };
   gatedByIframe?: boolean;
 }
@@ -173,6 +174,11 @@ async function decidePromptPermissionWhenActive(
   throwIfAborted(signal);
   if (decision === 'dismissed') {
     throw new Error(ERRORS.PERMISSION_DIALOG_DISMISSED);
+  }
+  // The core fences its own answer against the generation shown to the user.
+  // An admin write here would invalidate that snapshot before it can commit.
+  if (options.commit === 'core') {
+    return decision === 'denied' ? 'Deny' : decision === 'granted-once' ? 'AllowOnce' : 'AllowAlways';
   }
   if (decision === 'denied') {
     await setPermissionStatus(label, name, 'denied');

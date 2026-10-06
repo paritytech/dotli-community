@@ -6,7 +6,6 @@ import type { JSX } from '@solidjs/web';
 import {
   ALL_PERMISSIONS,
   getPermissionStatuses,
-  isDevicePermission,
   resetPermission,
   setPermissionStatus,
   type EnforceablePermissionName,
@@ -167,10 +166,9 @@ export function PermissionsContent(): JSX.Element {
       } else {
         await setPermissionStatus(label, name, next);
       }
-      // A device permission changes the iframe's `allow` attribute, so the
-      // bridge reloads the product on its event; the others only re-render.
+      // The core's committed-policy event owns any required iframe reload.
       recordPermissionChange({
-        kind: isDevicePermission(name) ? 'device' : 'grant',
+        kind: 'grant',
         label,
         permission: name,
       });

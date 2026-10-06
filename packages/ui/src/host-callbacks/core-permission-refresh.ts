@@ -215,7 +215,11 @@ export function createCorePermissionRefreshGroup(slotFor: (key: CoreStorageKey) 
           }
         }),
     );
-    window.dispatchEvent(new CustomEvent('dotli:permission-changed', { detail: { productId: key.value.productId } }));
+    window.dispatchEvent(
+      new CustomEvent('dotli:permission-changed', {
+        detail: { productId: key.value.productId, request: key.value.request },
+      }),
+    );
     if (outcomes.some(outcome => outcome.status === 'rejected')) {
       throw new Error('Permission policy refresh failed');
     }

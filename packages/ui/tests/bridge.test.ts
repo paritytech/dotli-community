@@ -15,6 +15,7 @@ import {
   scale,
 } from '@parity/truapi';
 import { ACCOUNT_REQUEST_LOGIN } from '@parity/truapi/wire-table';
+import type { RequiredHostCallbacks } from '@parity/truapi-host';
 import { nth } from './helpers/nth.js';
 import { POLKAVM_APPS_KEY } from '@dotli/config';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
@@ -123,6 +124,7 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
 
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
+    count: vi.fn(),
     measure: vi.fn(),
     timer: vi.fn(() => mocks.timerStop),
   },
@@ -282,6 +284,7 @@ describe('bridge render lifecycle', () => {
         // As the real host: Media checks the attached frame's src and sandbox.
         iframe.src = args.iframeUrl;
         iframe.setAttribute('sandbox', args.sandbox);
+        iframe.allow = args.allow;
         args.container.appendChild(iframe);
         const dispose = vi.fn(() => {
           iframe.remove();
@@ -306,6 +309,152 @@ describe('bridge render lifecycle', () => {
     bridgeListeners = spy.mock.calls.map(([type, listener]) => [type, listener]);
     spy.mockRestore();
   });
+
+  it('keeps notifications live across a session-store rewrite until the core changes auth state', async () => {
+    // This suite reloads the real page-lifetime bridge modules for each case.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+    const connected = {
+      tag: 'Connected' as const,
+      value: { publicKey: `0x${'11'.repeat(32)}` as const, identityAccountId: `0x${'22'.repeat(32)}` as const },
+    };
+    callbacks.auth.authStateChanged(connected);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+    const pushed = await callbacks.notifications.pushNotification({ text: 'Before refresh' });
+    expect(pushed.id).toBeTypeOf('number');
+    window.dispatchEvent(new Event('dotli:truapi-session-store-changed'));
+    const refreshed = await callbacks.notifications.pushNotification({ text: 'After refresh' });
+    expect(refreshed.id).not.toBe(pushed.id);
+    callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+    await expect(callbacks.notifications.pushNotification({ text: 'After disconnect' })).rejects.toThrow(
+      'authenticated account',
+    );
+  }, 10_000);
+
+  // Fresh imports are required after this suite's resetModules: the real bridge
+  // and scheduler each retain page-lifetime state.
+  it('gives preview frames a host-derived notification binding rather than the supplied product id', async () => {
+    const [{ renderIframe }, activation, { createNotificationAdapters }] = await Promise.all([
+      import('../src/bridge.js'),
+      import('../src/notification-activation.js'),
+      import('../src/host-callbacks/PushNotification.js'),
+    ]);
+    const render = renderIframe('https://product.example/app', 'product', { productId: 'other.paseo' });
+    await waitForProviderRequests(1);
+    const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+    callbacks.auth.authStateChanged({
+      tag: 'Connected',
+      value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+    });
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+    const pushed = await createNotificationAdapters('product').pushNotification({ text: 'Preview', deeplink: '/dm/a' });
+    expect(pushed.id).toEqual(expect.any(Number));
+    const { scope, target } = activation.notificationContext('product');
+    expect(scope.product).toBe('product');
+    expect(scope.artifact).not.toBe('other.paseo');
+    expect(scope.artifact).toContain('https://product.example/app');
+    expect(target.entryUrl).toBe(new URL('/', window.location.origin).href);
+  }, 10_000);
+
+  it('allows ordinary notifications for Connected sessions without an optional identity account', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    const callbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+    callbacks.auth.authStateChanged({ tag: 'Connected', value: { publicKey: `0x${'33'.repeat(32)}` } });
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+    const pushed = await callbacks.notifications.pushNotification({ text: 'Connected' });
+    expect(pushed.id).toBeTypeOf('number');
+    callbacks.auth.authStateChanged({ tag: 'Disconnected' });
+    await expect(callbacks.notifications.pushNotification({ text: 'Disconnected' })).rejects.toThrow(
+      'authenticated account',
+    );
+  }, 10_000);
+
+  it.each(['same account', 'different account'] as const)(
+    'delivers unmounted product schedules only under live host authority: %s',
+    async state => {
+      const [
+        { renderAppSubdomain },
+        { initScheduledNotifications },
+        { toastsStore },
+        { listAll, removeById },
+        activation,
+      ] = await Promise.all([
+        import('../src/bridge.js'),
+        import('../src/scheduled-notifications.js'),
+        import('../src/state/toasts.js'),
+        import('@dotli/storage'),
+        import('../src/notification-activation.js'),
+      ]);
+      for (const record of await listAll()) {
+        await removeById(record.hostId);
+      }
+      vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+      const first = renderAppSubdomain('first-cid', 'first');
+      await waitForProviderRequests(1);
+      const firstCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 0)[1] as RequiredHostCallbacks;
+      firstCallbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: { publicKey: `0x${'11'.repeat(32)}`, identityAccountId: `0x${'22'.repeat(32)}` },
+      });
+      nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+      await first;
+      const now = Date.now();
+      await firstCallbacks.notifications.pushNotification({
+        text: 'Unmounted reminder',
+        deeplink: '/dm/a',
+        scheduledAt: BigInt(now + 60_000),
+      });
+      const second = renderAppSubdomain('second-cid', 'second');
+      await waitForProviderRequests(2);
+      nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+      await second;
+      const secondCallbacks = nth(mocks.createWebWorkerPairingHostRuntime.mock.calls, 1)[1] as RequiredHostCallbacks;
+      secondCallbacks.auth.authStateChanged({
+        tag: 'Connected',
+        value: {
+          publicKey: `0x${'11'.repeat(32)}`,
+          identityAccountId: `0x${(state === 'different account' ? '44' : '22').repeat(32)}`,
+        },
+      });
+      if (state === 'different account') {
+        // A real receiving-account transition rebuilds the product frame.
+        await waitForProviderRequests(3);
+        nth(mocks.coreProviderDefers, 2).resolve(makeProvider());
+        await vi.waitFor(() => {
+          expect(activation.notificationContext('second').scope.account).toBe('44'.repeat(32));
+        });
+      }
+      await secondCallbacks.notifications.pushNotification({
+        text: 'Mounted reminder',
+        scheduledAt: BigInt(now + 60_000),
+      });
+      const clock = vi.spyOn(Date, 'now').mockReturnValue(now + 60_001);
+      try {
+        initScheduledNotifications({ label: 'test' });
+        await vi.waitFor(() => {
+          expect(toastsStore.get().items.map(item => item.text)).toContain('Mounted reminder');
+        });
+        expect(
+          toastsStore
+            .get()
+            .items.map(item => item.text)
+            .includes('Unmounted reminder'),
+        ).toBe(state === 'same account');
+        expect((await listAll()).some(record => record.productId === 'first')).toBe(state !== 'same account');
+      } finally {
+        window.dispatchEvent(new Event('pagehide'));
+        clock.mockRestore();
+      }
+    },
+    10_000,
+  );
 
   it('does not enable experimental custody through stored state or a debug URL in production', async () => {
     localStorage.setItem('dotli:local-wallet-enabled', '1');
@@ -349,6 +498,97 @@ describe('bridge render lifecycle', () => {
     expect(firstProvider.dispose).toHaveBeenCalledTimes(1);
     expect(secondProvider.dispose).not.toHaveBeenCalled();
     expect(document.querySelector('iframe')?.dataset['src']).toBe('https://second.example/app');
+  }, 10_000);
+
+  it('keeps origin-scoped capture grants out of protected Media containers', async () => {
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp');
+    await waitForProviderRequests(1);
+    const provider = makeProvider();
+    provider.getPermissionAuthorizationStatuses.mockImplementation((requests: { tag: string; value?: string }[]) =>
+      Promise.resolve(
+        requests.map(request =>
+          request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+            ? 'Authorized'
+            : 'NotDetermined',
+        ),
+      ),
+    );
+    nth(mocks.coreProviderDefers, 0).resolve(provider);
+    await render;
+
+    const directives = nth(mocks.iframeHosts, 0).iframe.allow.split('; ');
+    for (const feature of ['camera', 'microphone', 'display-capture']) {
+      expect(directives.filter(directive => directive.split(' ', 1)[0] === feature)).toEqual([`${feature} 'none'`]);
+    }
+  });
+
+  it('As a product user, legacy media grants reload the sandbox with origin-scoped capture and revocation removes device access', async () => {
+    // Re-import after resetModules so the test exercises this render's listener state.
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('verified-cid', 'myapp', null, { legacyCapture: true });
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await render;
+
+    const initial = nth(mocks.iframeHosts, 0);
+    const origin = new URL(initial.iframeUrl).origin;
+    expect(initial.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'cross-origin-isolated',
+    ]);
+    expect(initial.allowedOrigin).toBe(origin);
+
+    window.dispatchEvent(
+      new CustomEvent('dotli:permission-changed', {
+        detail: { productId: 'myapp.paseo', request: { tag: 'Device', value: 'Camera' } },
+      }),
+    );
+    await waitForProviderRequests(2);
+    expect(initial.iframe.isConnected).toBe(true);
+    const grantedProvider = makeProvider();
+    grantedProvider.getPermissionAuthorizationStatuses.mockImplementation(
+      (requests: { tag: string; value?: string }[]) =>
+        Promise.resolve(
+          requests.map(request =>
+            request.tag === 'Device' && (request.value === 'Camera' || request.value === 'Microphone')
+              ? 'Authorized'
+              : 'NotDetermined',
+          ),
+        ),
+    );
+    nth(mocks.coreProviderDefers, 1).resolve(grantedProvider);
+    await vi.waitFor(() => {
+      expect(initial.dispose).toHaveBeenCalledTimes(1);
+    });
+    const granted = nth(mocks.iframeHosts, 1);
+    expect(granted.iframe.allow.split('; ')).toEqual([
+      'clipboard-write',
+      `display-capture ${origin}`,
+      'camera',
+      'microphone',
+      'cross-origin-isolated',
+    ]);
+
+    window.dispatchEvent(
+      new CustomEvent('dotli:permission-changed', {
+        detail: { productId: 'myapp.paseo', request: { tag: 'Device', value: 'Camera' } },
+      }),
+    );
+    await waitForProviderRequests(3);
+    const revokedProvider = makeProvider();
+    revokedProvider.getPermissionAuthorizationStatuses.mockImplementation((requests: unknown[]) =>
+      Promise.resolve(requests.map(() => 'Denied')),
+    );
+    nth(mocks.coreProviderDefers, 2).resolve(revokedProvider);
+    await vi.waitFor(() => {
+      expect(granted.dispose).toHaveBeenCalledTimes(1);
+    });
+    const revoked = nth(mocks.iframeHosts, 2);
+    expect(revoked.iframe.allow).toBe(initial.iframe.allow);
+    expect(new URL(revoked.iframeUrl).origin).toBe(origin);
+    expect(document.querySelectorAll('#app iframe')).toHaveLength(1);
   }, 10_000);
 
   it('As a dotli integrator, the host keeps the previous iframe visible while its replacement initializes', async () => {
