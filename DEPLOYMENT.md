@@ -284,8 +284,8 @@ provider credentials.
 The vendored `@parity/truapi-host` JS, generated bindings, and PVM web WASM must have compatible receiving-enabled
 contracts and exact recorded source provenance. Required exports are `browser-receiving-worker` and
 `WasmNotificationReceiver` from `wasm/web`. This top integration vendors both SDK archives and both WASM bundles from
-native `feat/media-on-jam-seity` `6d424c208b26900ed30945b5d726346cb0ad5a5d` (trinity-user-agents #1217), the Media layer
-merged into #1011 integration revision `795a4082023abd952041c784c9f9e81714aab999`. Archive and generated client/WASM
+native `feat/media-on-jam-seity` `674e9a8a17b3916b1eaf99a53baa71a73b2fb115` (trinity-user-agents #1217), the Media layer
+merged into #1011 integration revision `e4d0a15b5b74e7636ac50f2ee1563bf734c54c81`. Archive and generated client/WASM
 checksums are recorded in `vendor/truapi-host.lock.json`; the only package override is the host SDK's local
 `@parity/truapi` dependency. A clean #185-based receiving distribution needs its own SDK without Chat/Seity/Jam; never
 reuse this top integration artifact downward. The build bundles `host-receiving.js` as a standalone classic IIFE and

@@ -2719,9 +2719,10 @@ export interface Notifications {
      * Return at most 32 pending activations, ordered by sequence, without
      * consuming them. The embedding host binds this platform to the verified
      * product, authenticated account and environment; none is caller input.
-     * Admit only routes starting with exactly one slash, with no backslashes
-     * or control characters. Polling must not request permissions or enroll
-     * a background receiver. A missing implementation is an error.
+     * Destinations may be local absolute paths or HTTP(S)/`polkadot:` links.
+     * They remain opaque product data, never host navigation authority. Reject
+     * backslashes and control characters. Polling must not request permissions
+     * or enroll a background receiver. A missing implementation is an error.
      */
     activationEvents?(): Promise<NotificationActivations>;
     /**

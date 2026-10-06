@@ -6978,7 +6978,7 @@ export const types = [
             {
                 name: "route",
                 type: "string",
-                description: "Validated product-relative route beginning with exactly one slash.",
+                description: "Original product destination (local path or supported deep-link URI).\nOpaque data for the product router, never host navigation authority.",
             },
         ],
     },
