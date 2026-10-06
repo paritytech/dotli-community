@@ -17,6 +17,19 @@ export const TOPBAR_PRIORITY = {
   auth: PINNED,
 } as const;
 
+/**
+ * The nearest ancestor of `el` that lays out a box. An island hydrates inside
+ * an `<astro-island>` drawn with `display: contents`, which has no size of its
+ * own, so the pill row is the first ancestor past it.
+ */
+export function layoutParent(el: Element): HTMLElement | null {
+  let parent = el.parentElement;
+  while (parent !== null && getComputedStyle(parent).display === 'contents') {
+    parent = parent.parentElement;
+  }
+  return parent;
+}
+
 export interface FitItem {
   /** The item's own width, in pixels. */
   width: number;

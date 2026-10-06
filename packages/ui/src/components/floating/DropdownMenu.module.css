@@ -1,0 +1,68 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The menu is FloatingLayer's glass holding a column of rows. A plain class,
+   not :where(): the layer's reset (padding 0) is a :where() rule, and the
+   menu's inset must win over it whatever order the stylesheets load in.
+   The layout is on the base rule, not on [data-open], so it holds through
+   the close transition while allow-discrete keeps `display: flex`;
+   otherwise the rows briefly stack sideways on the way out. */
+.menu {
+  flex-direction: column;
+  gap: 0;
+  min-width: var(--w-pop-sm);
+  padding: 6px;
+}
+.menu[data-open] {
+  display: flex;
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+}
+
+:where(.row) {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-height: 36px;
+  margin: 0;
+  padding: 0 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--chrome-text);
+  font: var(--fw-regular) var(--fs-body) / 1 var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.row:hover {
+  background: var(--chrome-fill);
+  color: var(--chrome-text);
+}
+.row:focus-visible {
+  outline: var(--chrome-focus-ring);
+  outline-offset: -2px;
+}
+.row > svg {
+  flex: none;
+  color: var(--chrome-text-muted);
+}
+
+/* Phones: the boards' 8 px inset and 44 px rows. */
+@media (max-width: 560px) {
+  .menu {
+    padding: var(--sp-2);
+  }
+  :where(.row) {
+    gap: var(--sp-3);
+    min-height: var(--h-control);
+    padding: 0 var(--sp-3);
+    border-radius: var(--r-sm);
+  }
+}

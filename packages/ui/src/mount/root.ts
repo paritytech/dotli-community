@@ -30,7 +30,7 @@ export interface MountRootOptions {
  *
  * A throwing view is caught by an error boundary and renders nothing, so
  * other roots and the page keep working. The first error is reported to
- * Sentry with `{ root: name }`; the root is then broken: it is disposed a
+ * Sentry as a `root_render` failure tagged with the root's name; the root is then broken: it is disposed a
  * microtask later, then `options.onBroken` runs, so the owner can recover.
  * Solid may re-invoke the fallback, but a broken root is only handled once.
  */
@@ -48,7 +48,7 @@ export function mountRoot(
         fallback: (err: () => unknown) => {
           if (!broken) {
             broken = true;
-            captureException(err(), { root: name });
+            captureException(err(), { flow: 'ui', step: 'root_render', tags: { root: name } });
             options.onError?.();
             queueMicrotask(() => {
               dispose();

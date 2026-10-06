@@ -1,7 +1,7 @@
 {
-  "$schema": "https://v2-11-5.turborepo.dev/schema.json",
+  "$schema": "https://v2-11-7.turborepo.dev/schema.json",
   "agentGuidance": false,
-  "globalEnv": ["DEV", "BASE_URL", "VITE_*", "DOTLI_NETWORK"],
+  "globalEnv": ["DEV", "SSR", "BASE_URL", "NODE_ENV", "VITE_*", "DOTLI_NETWORK"],
   "globalDependencies": ["vendor/**"],
   "tasks": {
     "build": {

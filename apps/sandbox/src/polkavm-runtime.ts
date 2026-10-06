@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ArchiveFiles } from '@dotli/content';
+import { captureException } from '@dotli/metrics';
 import type { PolkaVmDebugMessage, PolkaVmDebugSnapshot } from '@dotli/truapi-debug';
 import {
   deliverFileInput,
@@ -156,6 +157,14 @@ interface WorkerMetrics {
   updateP50Ms: number;
   updateP95Ms: number;
   updateMaxMs: number;
+}
+
+interface PolkaVmFailureDetails {
+  backend: PolkaVmDebugSnapshot['backend'];
+  phase: 'startup' | 'running';
+  programSha256: string;
+  source: string;
+  startupStage: string;
 }
 
 export type UiPlatformRect = readonly [number, number, number, number];
@@ -1376,6 +1385,11 @@ function createShell(): {
     .dotli-polkavm-overlay{position:absolute;left:12px;background:#090b0de8;border:1px solid #ffffff2b;border-radius:4px;font:11px/1.35 ui-monospace,monospace;color:#f5f5f5}
     #dotli-polkavm-status{top:12px;padding:5px 8px;pointer-events:none}
     #dotli-polkavm-status:empty{display:none}
+    #dotli-polkavm-loading{position:absolute;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;gap:12px;background:#050505b8;color:#fff;font:600 15px/1.4 system-ui,sans-serif;pointer-events:none}
+    #dotli-polkavm-loading[hidden]{display:none}
+    .dotli-polkavm-loading-spinner{width:22px;height:22px;box-sizing:border-box;border:3px solid #ffffff45;border-top-color:#e6007a;border-radius:50%;animation:dotli-polkavm-spin .8s linear infinite}
+    @keyframes dotli-polkavm-spin{to{transform:rotate(360deg)}}
+    @media(prefers-reduced-motion:reduce){.dotli-polkavm-loading-spinner{animation:none;border-color:#e6007a}}
     #dotli-polkavm-menu-open{position:absolute;top:12px;right:12px;z-index:3;border:1px solid #ffffff30;border-radius:7px;padding:7px 11px;background:#090b0de8;color:#fff;font:600 12px/1.2 system-ui,sans-serif;cursor:pointer}
     #dotli-polkavm-menu-open:hover{border-color:#e6007a}
     .dotli-polkavm-menu{position:fixed;inset:52px 12px auto auto;margin:0;box-sizing:border-box;max-width:calc(100vw - 24px);max-height:calc(100dvh - 64px);overflow:auto;font:14px/1.5 system-ui,sans-serif}
@@ -1615,7 +1629,7 @@ export function installFileInputControls(
           const accepted =
             approved !== undefined || (await askFileInputConsent(file, [candidate.handler], signal)) !== null;
           if (accepted && !cancelled()) {
-            status.textContent = `Loading ${file.name}…`;
+            menu.setLoadingFile(file.name);
           }
           return accepted && !cancelled();
         },
@@ -1632,6 +1646,7 @@ export function installFileInputControls(
       if (result.status === 'delivered') {
         requestedHandle = undefined;
       } else {
+        menu.setLoadingFile(null);
         cancelRequest();
         status.textContent =
           result.status === 'rejected'
@@ -2658,11 +2673,37 @@ export async function runPolkaVmApplication(
     throw new Error('package is not a PolkaVM application');
   }
   validateFiles(files, descriptor);
+  const reportedErrors = new WeakSet<Error>();
+  const reportFailure = (error: unknown, details?: PolkaVmFailureDetails): void => {
+    const runtimeError = error instanceof Error ? error : new Error(String(error));
+    if (reportedErrors.has(runtimeError)) {
+      return;
+    }
+    reportedErrors.add(runtimeError);
+    const trapPc = /\btrapped at (\d+)\b/.exec(runtimeError.message)?.[1];
+    captureException(runtimeError, {
+      flow: 'content',
+      step: 'polkavm_runtime',
+      tags: {
+        surface: 'sandbox_polkavm_runtime',
+        cid,
+        polkavm_backend: details?.backend ?? 'starting',
+        polkavm_failure_source: details?.source ?? 'sandbox',
+        polkavm_graphics_profile: descriptor.graphicsProfile,
+        polkavm_phase: details?.phase ?? 'startup',
+        polkavm_program_sha256: details?.programSha256 ?? 'unavailable',
+        polkavm_runtime_source: POLKAVM_RUNTIME_SOURCE,
+        polkavm_startup_stage: details?.startupStage ?? 'pre-worker',
+        ...(trapPc === undefined ? {} : { polkavm_trap_pc: trapPc }),
+      },
+    });
+  };
   let cleanupRecovery = (): void => undefined;
   const launch = async (fileRelaunch?: FileRelaunch): Promise<void> => {
     cleanupRecovery();
     cleanupRecovery = () => undefined;
     const recover = (error: unknown): void => {
+      reportFailure(error);
       const { surface, canvas, status } = createShell();
       status.textContent = '';
       const menu = installPolkaVmMenu(surface, canvas, descriptor.controls, {
@@ -2680,7 +2721,7 @@ export async function runPolkaVmApplication(
       cleanupRecovery = menu.cleanup;
     };
     try {
-      await startPolkaVmApplication(files, cid, descriptor, fileRelaunch, launch, recover);
+      await startPolkaVmApplication(files, cid, descriptor, fileRelaunch, launch, recover, reportFailure);
     } catch (error) {
       recover(error);
     }
@@ -2695,6 +2736,7 @@ async function startPolkaVmApplication(
   fileRelaunch: FileRelaunch | undefined,
   launch: (fileRelaunch?: FileRelaunch) => Promise<void>,
   recover: (error: unknown) => void,
+  reportFailure: (error: unknown, details?: PolkaVmFailureDetails) => void,
 ): Promise<void> {
   const programBytes = validateFiles(files, descriptor);
   const forceInterpreter = new URLSearchParams(location.search).get('polkavmMode') === 'interpreter';
@@ -2720,7 +2762,8 @@ async function startPolkaVmApplication(
 
   const runtime = await runtimeBytes();
   const program = ownedBytes(programBytes);
-  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${await programDigest(program)}`;
+  const programSha256 = await programDigest(program);
+  const cacheKey = `${POLKAVM_RUNTIME_SOURCE}:${programSha256}`;
   const compiledProgram = forceInterpreter ? undefined : compiledPrograms.get(cacheKey);
   const compiledBytes = !forceInterpreter && compiledProgram === undefined ? await loadTranslation(cacheKey) : null;
   let saveIdentity = cid;
@@ -2777,7 +2820,7 @@ async function startPolkaVmApplication(
   };
   canvas.dataset['polkavmHostFrameRequests'] = '0';
   canvas.dataset['polkavmHostFrameResponses'] = '0';
-  let failRuntime = (error: Error): void => {
+  let failRuntime: (error: Error, source?: string) => void = error => {
     status.textContent = error.message;
     rejectStarted(error);
     void stopWorker();
@@ -2866,7 +2909,8 @@ async function startPolkaVmApplication(
     status.textContent = `PolkaVM startup: ${stage.replaceAll('-', ' ')}…`;
     updateMetrics();
   };
-  const presentedFrame = (): void => {
+  let finishFileLoading = (): void => undefined;
+  const presentedFrame = (newContent = true): void => {
     polkavmMetrics.frames++;
     canvas.dataset['polkavmFrames'] = String(polkavmMetrics.frames);
     frameWindowCount++;
@@ -2885,6 +2929,9 @@ async function startPolkaVmApplication(
       window.clearTimeout(timer);
       updateMetrics();
       resolveStarted(undefined);
+    }
+    if (newContent) {
+      finishFileLoading();
     }
   };
 
@@ -2964,6 +3011,8 @@ async function startPolkaVmApplication(
   let timer = window.setTimeout(onStartTimeout, START_TIMEOUT_MS);
   let webGpu: WebGpuBridge | null = null;
   let gpuCapabilities: Uint8Array | null = null;
+  let lastSubmittedGpuSequence = 0;
+  let loadingGpuSequence = 0;
   if (descriptor.graphicsProfile === 'webgpu-raster' || descriptor.graphicsProfile === 'webgpu') {
     if (descriptor.webGpuRequirements === null) {
       throw new Error('WebGPU requirements are missing');
@@ -2976,13 +3025,13 @@ async function startPolkaVmApplication(
       event: bytes => {
         worker.postMessage({ type: 'gpu-event', bytes }, [bytes.buffer]);
       },
-      presented: () => {
+      presented: sequence => {
         if (!paused && !backgroundPending) {
-          presentedFrame();
+          presentedFrame(sequence > loadingGpuSequence);
         }
       },
       error: error => {
-        failRuntime(error);
+        failRuntime(error, 'webgpu');
       },
     });
     try {
@@ -3203,10 +3252,17 @@ async function startPolkaVmApplication(
     closeHostFramePort();
     hostFrameQueue.close();
   };
-  failRuntime = (error: Error): void => {
+  failRuntime = (error: Error, source = 'host-runtime'): void => {
     if (stopped) {
       return;
     }
+    reportFailure(error, {
+      backend: polkavmMetrics.backend,
+      phase: firstFrame ? 'running' : 'startup',
+      programSha256,
+      source,
+      startupStage: polkavmMetrics.startupStage,
+    });
     status.textContent = error.message;
     stop();
     rejectStarted(error);
@@ -3220,6 +3276,13 @@ async function startPolkaVmApplication(
     if (stopped) {
       return;
     }
+    reportFailure(error, {
+      backend: polkavmMetrics.backend,
+      phase: firstFrame ? 'running' : 'startup',
+      programSha256,
+      source: 'tri2d-recovery',
+      startupStage: polkavmMetrics.startupStage,
+    });
     status.textContent = `${error.message}; restoring app…`;
     stop();
     rejectStarted(error);
@@ -3296,6 +3359,9 @@ async function startPolkaVmApplication(
       void stopWorker().then(() => launch());
     },
   });
+  finishFileLoading = () => {
+    menu.setLoadingFile(null);
+  };
   const fileControls = installFileInputControls(
     surface,
     menu.status,
@@ -3337,11 +3403,14 @@ async function startPolkaVmApplication(
           resolveStarted(undefined);
           stop();
           void stopWorker().then(() => launch(relaunch));
+        } else if (message['outcome'] === 'ready') {
+          // Resuming can display a retained GPU surface that was submitted
+          // before selection. Only a later batch can finish file loading.
+          loadingGpuSequence = lastSubmittedGpuSequence;
+          menu.loadingReady();
         } else {
-          menu.status.textContent =
-            message['outcome'] === 'ready'
-              ? 'File delivered. Resume to return to the app.'
-              : 'The app could not accept this file. Choose another file or resume.';
+          menu.setLoadingFile(null);
+          menu.status.textContent = 'The app could not accept this file. Choose another file or resume.';
         }
         break;
       }
@@ -3358,7 +3427,7 @@ async function startPolkaVmApplication(
         if (!paused) {
           try {
             if (tri2d?.setBackgrounded(false) === true) {
-              presentedFrame();
+              presentedFrame(false);
             }
           } catch (error) {
             recoverTri2d(error instanceof Error ? error : new Error('Tri2D resume failed'));
@@ -3665,12 +3734,15 @@ async function startPolkaVmApplication(
           webGpu === null ||
           !(batch.bytes instanceof Uint8Array) ||
           !(batch.bytes.buffer instanceof ArrayBuffer) ||
-          batch.bytes.byteLength === 0 ||
+          batch.bytes.byteLength < 24 ||
           batch.bytes.byteLength > 4 * 1024 * 1024
         ) {
           failRuntime(new Error('PolkaVM guest emitted an invalid WebGPU batch'));
           return;
         }
+        lastSubmittedGpuSequence = Number(
+          new DataView(batch.bytes.buffer, batch.bytes.byteOffset, batch.bytes.byteLength).getBigUint64(16, true),
+        );
         webGpu.submit(batch.bytes);
         break;
       }
@@ -3706,7 +3778,7 @@ async function startPolkaVmApplication(
           console.warn(text);
           menu.status.textContent = text;
         } else {
-          failRuntime(new Error(text));
+          failRuntime(new Error(text), 'worker-message');
         }
         break;
       }
@@ -3716,7 +3788,10 @@ async function startPolkaVmApplication(
     handleWorkerMessage(event.data);
   };
   worker.onerror = (event: ErrorEvent): void => {
-    failRuntime(new Error(event.message ? `PolkaVM worker failed: ${event.message}` : 'PolkaVM worker failed'));
+    failRuntime(
+      new Error(event.message ? `PolkaVM worker failed: ${event.message}` : 'PolkaVM worker failed'),
+      'worker-error-event',
+    );
   };
 
   const runtimeCopy = runtime.slice(0);

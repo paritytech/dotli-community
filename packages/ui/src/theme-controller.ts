@@ -47,7 +47,7 @@ function resolveTheme(pref: ThemePref): 'light' | 'dark' {
 
 function applyThemePref(pref: ThemePref): void {
   const resolved = resolveTheme(pref);
-  // data-theme-pref drives the toggle icon, data-theme the actual colours.
+  // data-theme-pref records the choice, data-theme the colours and the toggle icon.
   document.documentElement.setAttribute('data-theme-pref', pref);
   document.documentElement.setAttribute('data-theme', resolved);
   // The store notifies the Rust bridge to forward the new theme to the

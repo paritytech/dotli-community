@@ -13,7 +13,7 @@
 // failure is visible even though we still return a working DB.
 
 import { log } from '@dotli/shared';
-import { captureException } from '@dotli/metrics';
+import { captureException, recordExpected } from '@dotli/metrics';
 
 declare global {
   interface Window {
@@ -23,6 +23,8 @@ declare global {
 
 const DB_NAME = 'dotli';
 const DB_VERSION = 6;
+
+const BLOCKED_MESSAGE = 'Failed to open dotli DB: blocked by another tab';
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
@@ -102,9 +104,27 @@ function openFresh(): Promise<IDBDatabase> {
     // A still-open tab on an older schema blocks the upgrade. Blocked fires
     // neither onsuccess nor onerror, so reject rather than hang forever.
     req.onblocked = () => {
-      reject(new Error('Failed to open dotli DB: blocked by another tab'));
+      reject(new Error(BLOCKED_MESSAGE));
     };
   });
+}
+
+/**
+ * Whether `err` is a database failure the app expects and recovers from,
+ * rather than a fault: the connection closing under a page that is unloading
+ * or under another tab's schema upgrade, or the open being blocked by a tab
+ * still on an older schema. The next access reopens the database.
+ */
+export function isExpectedDbError(err: unknown): boolean {
+  if (!(err instanceof Error)) {
+    return false;
+  }
+  if (err.message.includes('blocked by another tab')) {
+    return true;
+  }
+  // Browsers word it differently ("The database connection is closing.",
+  // "...is not, or is no longer, usable"); the name is what they share.
+  return (err.name === 'InvalidStateError' || err.name === 'AbortError') && /clos|no longer/i.test(err.message);
 }
 
 /**
@@ -122,10 +142,19 @@ export function getDb(): Promise<IDBDatabase> {
   }
 
   // Pick up the pre-opened connection from the inline HTML script
-  if (typeof window !== 'undefined' && window.__dotliDb) {
-    dbPromise = window.__dotliDb.catch((err: unknown) => {
-      log.error('[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:', err);
-      captureException(err, { kind: 'db_pre_opened_rejected' });
+  const preOpened = typeof window !== 'undefined' ? window.__dotliDb : undefined;
+  if (preOpened !== undefined) {
+    // One use only: once this handle closes, the next access must open a new
+    // one rather than be handed the closed handle again, and a rejected
+    // pre-open is reported once rather than on every reopen.
+    delete window.__dotliDb;
+    dbPromise = preOpened.catch((err: unknown) => {
+      if (isExpectedDbError(err)) {
+        recordExpected(err, { flow: 'storage', step: 'db_open' });
+      } else {
+        log.error('[dot.li db] Pre-opened DB handle rejected; falling back to fresh open:', err);
+        captureException(err, { flow: 'storage', step: 'db_open', tags: { kind: 'db_pre_opened_rejected' } });
+      }
       return openFresh();
     });
   } else {
@@ -147,14 +176,11 @@ export function getDb(): Promise<IDBDatabase> {
         }
       };
       // Another tab wants to upgrade the schema. Close so it is not blocked
-      // and drop the cached handles so the next access reopens.
+      // and drop the cached handle so the next access reopens.
       db.onversionchange = () => {
         db.close();
         if (dbGeneration === thisGeneration) {
           dbPromise = null;
-        }
-        if (typeof window !== 'undefined') {
-          delete window.__dotliDb;
         }
       };
     })

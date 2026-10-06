@@ -15,15 +15,11 @@ export const CALLBACK_NAMES = [
     "readCoreStorage",
     "writeCoreStorage",
     "clearCoreStorage",
-    "compareExchangeCoreStorage",
-    "coreStorageChanged",
     "featureSupported",
     "supportedChains",
     "allowedHopEndpoints",
     "identityUsernameCandidates",
     "localizeTimestamps",
-    "mediaBackendCapabilities",
-    "mediaBackendCommand",
     "pickChatFiles",
     "readChatFile",
     "releaseChatFile",
@@ -51,7 +47,6 @@ export const CALLBACK_NAMES = [
 export const SUBSCRIPTION_NAMES = [
     "subscribeChatRooms",
     "subscribeLocale",
-    "mediaBackendEvents",
     "subscribePocketCards",
     "lookupPreimage",
     "subscribeStorage",
@@ -63,8 +58,6 @@ function rawCallbacks(bridge) {
         readCoreStorage: (key) => bridge.callbackRequest("readCoreStorage", [key]),
         writeCoreStorage: (key, value) => bridge.callbackRequest("writeCoreStorage", [key, value]),
         clearCoreStorage: (key) => bridge.callbackRequest("clearCoreStorage", [key]),
-        compareExchangeCoreStorage: (key, expected, replacement, notifyOnSuccess) => bridge.callbackRequest("compareExchangeCoreStorage", [key, expected, replacement, notifyOnSuccess]),
-        coreStorageChanged: (key) => void bridge.callbackRequest("coreStorageChanged", [key]).catch(() => { }),
         featureSupported: (request) => bridge.callbackRequest("featureSupported", [request]),
         supportedChains: () => bridge.callbackRequest("supportedChains", []),
         allowedHopEndpoints: (bulletinGenesisHash) => bridge.callbackRequest("allowedHopEndpoints", [bulletinGenesisHash]),
@@ -94,10 +87,10 @@ function rawCallbacks(bridge) {
 }
 function subscriptionRawCallbacks(bridge) {
     return {
-        subscribeLocale: (sendItem, sendError) => bridge.startSubscription("subscribeLocale", [], sendItem, sendError),
-        lookupPreimage: (key, sendItem, sendError) => bridge.startSubscription("lookupPreimage", [key], sendItem, sendError),
-        subscribeStorage: (key, sendItem, sendError) => bridge.startSubscription("subscribeStorage", [key], sendItem, sendError),
-        subscribeTheme: (sendItem, sendError) => bridge.startSubscription("subscribeTheme", [], sendItem, sendError),
+        subscribeLocale: (sendItem, sendError) => bridge.startSubscription("subscribeLocale", null, sendItem, sendError),
+        lookupPreimage: (key, sendItem, sendError) => bridge.startSubscription("lookupPreimage", key, sendItem, sendError),
+        subscribeStorage: (key, sendItem, sendError) => bridge.startSubscription("subscribeStorage", key, sendItem, sendError),
+        subscribeTheme: (sendItem, sendError) => bridge.startSubscription("subscribeTheme", null, sendItem, sendError),
     };
 }
 function chatRawCallbacks(bridge) {
@@ -105,7 +98,7 @@ function chatRawCallbacks(bridge) {
         createChatRoom: (product, request) => bridge.callbackRequest("createChatRoom", [product, request]),
         registerChatBot: (product, request) => bridge.callbackRequest("registerChatBot", [product, request]),
         postChatMessage: (product, request) => bridge.callbackRequest("postChatMessage", [product, request]),
-        subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", [product], sendItem, sendError),
+        subscribeChatRooms: (product, sendItem, sendError) => bridge.startSubscription("subscribeChatRooms", product, sendItem, sendError),
     };
 }
 function coinageWalletRawCallbacks(bridge) {
@@ -124,13 +117,6 @@ function identityBackendRawCallbacks(bridge) {
         identityUsernameCandidates: (username, peopleChainGenesisHash) => bridge.callbackRequest("identityUsernameCandidates", [username, peopleChainGenesisHash]),
     };
 }
-function mediaRawCallbacks(bridge) {
-    return {
-        mediaBackendCapabilities: (product) => bridge.callbackRequest("mediaBackendCapabilities", [product]),
-        mediaBackendEvents: (product, runtimeId, sendItem, sendError) => bridge.startSubscription("mediaBackendEvents", [product, runtimeId], sendItem, sendError),
-        mediaBackendCommand: (product, runtimeId, command) => bridge.callbackRequest("mediaBackendCommand", [product, runtimeId, command]),
-    };
-}
 function permissionStatusRawCallbacks(bridge) {
     return {
         devicePermissionStatus: (request) => bridge.callbackRequest("devicePermissionStatus", [request]),
@@ -138,7 +124,7 @@ function permissionStatusRawCallbacks(bridge) {
 }
 function pocketRawCallbacks(bridge) {
     return {
-        subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", [product], sendItem, sendError),
+        subscribePocketCards: (product, sendItem, sendError) => bridge.startSubscription("subscribePocketCards", product, sendItem, sendError),
         removePocketCard: (product, request) => bridge.callbackRequest("removePocketCard", [product, request]),
     };
 }
@@ -157,57 +143,41 @@ export function createWorkerRawCallbacks(bridge, capabilities = {}) {
         Object.assign(callbacks, contactsRawCallbacks(bridge));
     if (capabilities.identityBackend)
         Object.assign(callbacks, identityBackendRawCallbacks(bridge));
-    if (capabilities.media)
-        Object.assign(callbacks, mediaRawCallbacks(bridge));
     if (capabilities.permissionStatus)
         Object.assign(callbacks, permissionStatusRawCallbacks(bridge));
     if (capabilities.pocket)
         Object.assign(callbacks, pocketRawCallbacks(bridge));
     return callbacks;
 }
-export function startRawSubscription(callbacks, name, args, sendItem, sendError) {
+export function startRawSubscription(callbacks, name, payload, sendItem, sendError) {
     switch (name) {
         case "subscribeChatRooms":
-            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
-                sendError({ reason: "invalid subscription arguments" });
+            if (!(payload instanceof Uint8Array)) {
+                console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
-            return callbacks.subscribeChatRooms?.(args[0], sendItem, sendError);
+            return callbacks.subscribeChatRooms?.(payload, sendItem, sendError);
         case "subscribeLocale":
-            if (args.length !== 0) {
-                sendError({ reason: "invalid subscription arguments" });
-                return undefined;
-            }
             return callbacks.subscribeLocale(sendItem, sendError);
-        case "mediaBackendEvents":
-            if (args.length !== 2 || !(args[0] instanceof Uint8Array) || typeof args[1] !== "bigint") {
-                sendError({ reason: "invalid subscription arguments" });
-                return undefined;
-            }
-            return callbacks.mediaBackendEvents?.(args[0], args[1], sendItem, sendError);
         case "subscribePocketCards":
-            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
-                sendError({ reason: "invalid subscription arguments" });
+            if (!(payload instanceof Uint8Array)) {
+                console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
-            return callbacks.subscribePocketCards?.(args[0], sendItem, sendError);
+            return callbacks.subscribePocketCards?.(payload, sendItem, sendError);
         case "lookupPreimage":
-            if (args.length !== 1 || !(args[0] instanceof Uint8Array)) {
-                sendError({ reason: "invalid subscription arguments" });
+            if (!(payload instanceof Uint8Array)) {
+                console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
-            return callbacks.lookupPreimage(args[0], sendItem, sendError);
+            return callbacks.lookupPreimage(payload, sendItem, sendError);
         case "subscribeStorage":
-            if (args.length !== 1 || typeof args[0] !== "string") {
-                sendError({ reason: "invalid subscription arguments" });
+            if (typeof payload !== "string") {
+                console.warn(`[truapi worker] ${name} requires payload`);
                 return undefined;
             }
-            return callbacks.subscribeStorage(args[0], sendItem, sendError);
+            return callbacks.subscribeStorage(payload, sendItem, sendError);
         case "subscribeTheme":
-            if (args.length !== 0) {
-                sendError({ reason: "invalid subscription arguments" });
-                return undefined;
-            }
             return callbacks.subscribeTheme(sendItem, sendError);
     }
 }

@@ -6,6 +6,8 @@
  * is an occurrence, not state, so it is announced as a window event.
  */
 
+import { isDevicePermission } from '../permissions.js';
+
 export type PermissionChange =
   { kind: 'grant'; label: string; permission: string } | { kind: 'device'; label: string; permission: string };
 
@@ -22,4 +24,20 @@ export function recordPermissionChange(change: PermissionChange): void {
       detail: { label: change.label, permission: change.permission },
     }),
   );
+}
+
+/**
+ * Announce that `permissions` of `label` changed together, as one change.
+ *
+ * One of them that sets the iframe's `allow` attribute makes it a device
+ * change, so the bridge reloads the app once for all of them. Nothing changed
+ * announces nothing.
+ */
+export function recordPermissionsChanged(label: string, permissions: readonly string[]): void {
+  const device = permissions.find(name => isDevicePermission(name));
+  const permission = device ?? permissions[0];
+  if (permission === undefined) {
+    return;
+  }
+  recordPermissionChange({ kind: device === undefined ? 'grant' : 'device', label, permission });
 }

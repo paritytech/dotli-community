@@ -14,6 +14,7 @@ import { onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import type { DockPosition } from '@dotli/truapi-debug';
 import { startDrag } from '../drag.js';
+import s from './Resizers.module.css';
 
 /** Events list / top pane: filter chips and tabs need room. */
 const MIN_PRIMARY_PX = 220;
@@ -74,7 +75,10 @@ export function ResizeHandle(props: {
 
   return (
     <div
-      class="td-resize-handle"
+      class={s['handle']}
+      data-testid="td-resize-handle"
+      data-dock={props.dock}
+      data-collapsed={props.collapsed ? '' : undefined}
       role="separator"
       aria-orientation="horizontal"
       ref={el => {
@@ -95,7 +99,12 @@ export function ResizeHandle(props: {
  * on the panel element. Clamped to keep either side from collapsing so far
  * that its controls become unusable. Double-click restores the default.
  */
-export function BodySplitter(props: { panel: () => HTMLElement | undefined; stacked: boolean }): JSX.Element {
+export function BodySplitter(props: {
+  panel: () => HTMLElement | undefined;
+  stacked: boolean;
+  /** A view that takes the whole width has no detail pane to resize. */
+  hidden: boolean;
+}): JSX.Element {
   const panelEl = untrack(() => props.panel);
   let splitter: HTMLDivElement | undefined;
   let stopDrag: (() => void) | undefined;
@@ -126,7 +135,10 @@ export function BodySplitter(props: { panel: () => HTMLElement | undefined; stac
 
   return (
     <div
-      class="td-body-splitter"
+      class={s['splitter']}
+      data-testid="td-body-splitter"
+      data-layout={props.stacked ? 'stacked' : undefined}
+      hidden={props.hidden}
       role="separator"
       aria-orientation={props.stacked ? 'horizontal' : 'vertical'}
       tabindex="-1"
@@ -140,13 +152,13 @@ export function BodySplitter(props: { panel: () => HTMLElement | undefined; stac
         if (el === undefined || body === undefined) {
           return;
         }
-        el.classList.add('dragging');
+        el.setAttribute('data-dragging', '');
         stopDrag = startDrag(el, e, {
           move: m => {
             move(m, body);
           },
           end: () => {
-            el.classList.remove('dragging');
+            el.removeAttribute('data-dragging');
           },
         });
       }}

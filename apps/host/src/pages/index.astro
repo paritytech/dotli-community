@@ -12,6 +12,7 @@ import { LandingPage } from '@dotli/ui/islands/LandingPage';
 import { LoadingScreen } from '@dotli/ui/islands/LoadingScreen';
 import { TopbarReveal } from '@dotli/ui/islands/TopbarReveal';
 import Shell from '../components/Shell.astro';
+import s from './index.module.css';
 
 const TITLE = 'Polkadot - The decentralized web, in your browser';
 const base = import.meta.env.BASE_URL.endsWith('/') ? import.meta.env.BASE_URL : `${import.meta.env.BASE_URL}/`;
@@ -89,13 +90,25 @@ const socialMeta = socialMetaAttributes({
           resolve(req.result);
         };
         req.onerror = function () {
-          reject(new Error('IDB open failed'));
+          // The name in the message, the whole DOMException as the cause:
+          // src/db.ts reports it, and only the cause keeps its message.
+          const cause = req.error;
+          reject(
+            new Error(
+              'Failed to open dotli DB: ' + (cause ? cause.name : 'unknown'),
+              cause ? { cause: cause } : undefined,
+            ),
+          );
         };
         // A still-open tab on an older schema blocks the upgrade;
         // reject instead of leaving the promise pending forever.
         req.onblocked = function () {
-          reject(new Error('IDB open blocked by another tab'));
+          reject(new Error('Failed to open dotli DB: blocked by another tab'));
         };
+      });
+      window.__dotliDb.catch(function () {
+        // src/db.ts reports a rejection once it takes the promise; a rejection
+        // before then must not also surface as an unhandled one.
       });
     </script>
     {/* Keeps the islands' failures (Astro's `astro:hydration-error`) from
@@ -153,7 +166,7 @@ const socialMeta = socialMetaAttributes({
     <LandingPage client:load />
 
     <!-- App Content -->
-    <div id="app"></div>
+    <div id="app" class={s['app']}></div>
     {/* The auto-hiding topbar's reveal control: one Tab past the app frame. */}
     <TopbarReveal client:idle />
     <script src="../main.ts"></script>

@@ -10,6 +10,7 @@ import * as dagPb from '@ipld/dag-pb';
 import { UnixFS } from 'ipfs-unixfs';
 import type { CID } from 'multiformats/cid';
 import { concatBytes } from '@noble/hashes/utils.js';
+import { log } from '@dotli/shared';
 import { assertBlockMatchesCid, assertSameContentId, verifyingBlockSource } from './verify.js';
 
 export type ArchiveFiles = Record<string, Uint8Array>;
@@ -243,16 +244,22 @@ export async function parseCarFile(buffer: Uint8Array, expectedRoot?: CID): Prom
     assertSameContentId(rootCid, expectedRoot);
   }
 
-  return walkUnixFsDag(
+  let blocks = 0;
+  let bytes = 0;
+  const files = await walkUnixFsDag(
     rootCid,
     verifyingBlockSource(async (cid: CID) => {
       const block = await reader.get(cid);
       if (!block) {
         throw new Error(`CAR is missing block for ${cid.toString()}`);
       }
+      blocks += 1;
+      bytes += block.bytes.length;
       return block.bytes;
     }),
   );
+  log.event(`CAR ${rootCid.toString()} verified: ${String(blocks)} blocks`, { flow: 'content', blocks, bytes });
+  return files;
 }
 
 /**
@@ -269,6 +276,7 @@ export async function parseIpfsResponse(buffer: Uint8Array, expectedRoot?: CID):
   }
   if (expectedRoot !== undefined) {
     assertBlockMatchesCid(expectedRoot, buffer);
+    log.event(`Block ${expectedRoot.toString()} verified`, { flow: 'content', bytes: buffer.length });
   }
   return { 'index.html': buffer };
 }

@@ -7,15 +7,17 @@
 // store main.ts writes (bindUrlPill in @dotli/ui), which fills in the
 // product's label and TLD or a local product's host. The verification
 // shield and its explainer are an island in the pill (UrlPillShield),
-// hydrated once the browser is idle.
+// hydrated once the browser is idle. bindUrlPill finds the pill and the name
+// by their ids, and marks a local product's pill `data-localhost`.
 import { UrlPillShield } from '@dotli/ui/islands/UrlPillShield';
+import s from './UrlPill.module.css';
 ---
 
-<div class="topbar-url" id="topbar-url" hidden>
-  <div class="topbar-url-pill" id="url-pill">
+<div class={s['url']} id="topbar-url" hidden>
+  <div class={s['pill']} id="url-pill">
     <UrlPillShield client:idle />
     <svg
-      class="localhost-icon"
+      class={s['localhostIcon']}
       width="12"
       height="12"
       viewBox="0 0 24 24"
@@ -25,12 +27,11 @@ import { UrlPillShield } from '@dotli/ui/islands/UrlPillShield';
       stroke-linecap="round"
       stroke-linejoin="round"
     >
-      <polyline points="4 17 10 11 4 5"></polyline>
-      <line x1="12" y1="19" x2="20" y2="19"></line>
+      <path d="m4 17 6-6-6-6m8 14h8" />
     </svg>
-    <span class="topbar-url-text">
-      <span class="dot-domain"></span>
-      <span class="dot-tld"></span>
+    <span class={s['text']} data-testid="url-pill-text">
+      <span class={s['domain']} id="url-pill-domain"></span>
+      <span class={s['tld']} id="url-pill-tld"></span>
     </span>
   </div>
 </div>

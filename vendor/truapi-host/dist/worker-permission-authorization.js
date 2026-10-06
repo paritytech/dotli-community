@@ -82,24 +82,3 @@ export async function handleSetPermissionAuthorizationStatus(runtime, postToMain
         });
     }
 }
-export async function handleRefreshPermissionAuthorization(runtime, postToMain, productId, requestId, request) {
-    try {
-        if (!runtime) {
-            throw new Error("refreshPermissionAuthorization received before runtime is ready");
-        }
-        await runtime.refreshPermissionAuthorization(productId, request);
-        postToMain({
-            kind: "refreshPermissionAuthorizationResponse",
-            requestId,
-            ok: true,
-        });
-    }
-    catch (err) {
-        postToMain({
-            kind: "refreshPermissionAuthorizationResponse",
-            requestId,
-            ok: false,
-            error: errorMessage(err),
-        });
-    }
-}

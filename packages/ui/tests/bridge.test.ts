@@ -1,7 +1,8 @@
 // @vitest-environment-options {"settings":{"navigation":{"disableChildFrameNavigation":true}}}
 // The product and protocol frames are never navigated in these tests, and
 // happy-dom would otherwise try to fetch their pages from a dev server.
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import 'fake-indexeddb/auto';
+import { afterEach, assert, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { fireEvent } from '@solidjs/testing-library';
 import {
   type WireProvider,
@@ -120,6 +121,9 @@ vi.mock('@parity/truapi-host/worker-runtime?worker', () => ({
   default: mocks.HostWorker,
 }));
 
+const sentry = vi.hoisted(() => ({ captureException: vi.fn(), recordExpected: vi.fn() }));
+vi.mock('../../metrics/src/sentry.js', () => sentry);
+
 vi.mock('../../metrics/src/metrics.js', () => ({
   m: {
     measure: vi.fn(),
@@ -201,7 +205,8 @@ function loginResponseFrame(
   result:
     | { success: true; value: 'Success' | 'AlreadyConnected' | 'Rejected' }
     | { success: false; reason: string }
-    | { success: false; hostFailure: string },
+    | { success: false; hostFailure: string }
+    | { success: false; cancelled: true },
 ): Uint8Array {
   // Codec 2 legs carry Result outside and the version wrapper inside.
   const responseCodec = scale.Result(
@@ -211,27 +216,29 @@ function loginResponseFrame(
   const value = responseCodec.enc(
     result.success
       ? { success: true, value: { tag: 'V1', value: result.value } }
-      : 'hostFailure' in result
-        ? {
-            success: false,
-            value: {
-              tag: 'HostFailure',
-              value: { reason: result.hostFailure },
-            },
-          }
-        : {
-            success: false,
-            value: {
-              tag: 'Domain',
+      : 'cancelled' in result
+        ? { success: false, value: { tag: 'Cancelled' } }
+        : 'hostFailure' in result
+          ? {
+              success: false,
               value: {
-                tag: 'V1',
+                tag: 'HostFailure',
+                value: { reason: result.hostFailure },
+              },
+            }
+          : {
+              success: false,
+              value: {
+                tag: 'Domain',
                 value: {
-                  tag: 'Unknown',
-                  value: { reason: result.reason },
+                  tag: 'V1',
+                  value: {
+                    tag: 'Unknown',
+                    value: { reason: result.reason },
+                  },
                 },
               },
             },
-          },
   );
   const frame = encodeWireMessage({
     requestId,
@@ -318,6 +325,55 @@ describe('bridge render lifecycle', () => {
     await expect(experimentalWalletControls.importMnemonic('abandon '.repeat(11) + 'about')).rejects.toThrow();
     expect(localStorage.getItem('dotli:local-wallet-enabled')).toBe('1');
   });
+
+  it('delivers direct-frame notifications without carrying activations into a replacement execution', async ({
+    onTestFinished,
+  }) => {
+    const focus = vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    onTestFinished(() => {
+      focus.mockRestore();
+    });
+    const { renderIframe } = await import('../src/bridge.js');
+    const { createNotificationAdapters } = await import('../src/host-callbacks/PushNotification.js');
+    const { setNotificationAccount } = await import('../src/notification-activation.js');
+    const { findNotification } = await import('@dotli/storage/notification-activations');
+    const label = 'preview-notifications';
+    window.history.replaceState(null, '', '/__preview?url=https%3A%2F%2Fpreview.example%2Fapp');
+    const first = renderIframe('https://preview.example/app', label);
+    await waitForProviderRequests(1);
+    nth(mocks.coreProviderDefers, 0).resolve(makeProvider());
+    await first;
+    setNotificationAccount(label, '11'.repeat(32));
+
+    const api = createNotificationAdapters(label);
+    const pushed = await api.pushNotification({ text: 'Preview notification', deeplink: '/message/1' });
+    const record = await findNotification(label, pushed.id);
+    assert.isDefined(record);
+    expect(record.entryUrl).toBe(window.location.href);
+    await overlaysReady();
+    const notification = document.querySelector<HTMLButtonElement>('[data-testid="notif-body"]');
+    expect(notification?.textContent).toBe('Preview notification');
+    notification?.click();
+    await vi.waitFor(async () => {
+      expect((await api.activationEvents()).events).toEqual([
+        { sequence: BigInt(record.sequence), notificationId: pushed.id, route: '/message/1' },
+      ]);
+    });
+
+    const replacement = renderIframe('https://preview.example/app', label);
+    await waitForProviderRequests(2);
+    nth(mocks.coreProviderDefers, 1).resolve(makeProvider());
+    await replacement;
+    setNotificationAccount(label, '11'.repeat(32));
+    expect((await api.activationEvents()).events).toEqual([]);
+    const next = await api.pushNotification({ text: 'New execution', deeplink: '/message/2' });
+    const nextRecord = await findNotification(label, next.id);
+    assert.isDefined(nextRecord);
+    expect(nextRecord.scope.artifact).not.toBe(record.scope.artifact);
+
+    window.dispatchEvent(new Event('dotli:logged-out'));
+    await expect(api.pushNotification({ text: 'After logout' })).rejects.toThrow('authenticated account');
+  }, 10_000);
 
   it('As a dotli integrator, the host disposes a host that resolves after a newer render has started', async () => {
     // Given
@@ -417,7 +473,8 @@ describe('bridge render lifecycle', () => {
       () => renderAppSubdomain('cid', 'product'),
     ];
     for (const [index, render] of renders.entries()) {
-      layout.setTopbarLayout({ offset: true, shown: true, transition: '' });
+      // When
+      layout.setTopbarLayout({ offset: true });
       const rendered = render();
       await waitForProviderRequests(index + 1);
       nth(mocks.coreProviderDefers, index).resolve(makeProvider());
@@ -429,8 +486,10 @@ describe('bridge render lifecycle', () => {
       expect(compositor?.classList.contains('host-media-compositor')).toBe(true);
       expect(compositor?.style.position).toBe('fixed');
       expect(iframe.style.position).toBe('absolute');
-      layout.setTopbarLayout({ offset: false, shown: false, transition: '' });
-      expect(compositor?.style.transform).toBe('translateY(0)');
+
+      // And later layout changes reach it
+      layout.setTopbarLayout({ offset: false });
+      expect(compositor?.style.top).toBe('var(--safe-top, 0px)');
     }
   }, 10_000);
 
@@ -516,8 +575,8 @@ describe('bridge render lifecycle', () => {
       }),
     );
     await overlaysReady();
-    expect(document.querySelectorAll('.notif-action')).toHaveLength(1);
-    const enable = document.querySelector<HTMLButtonElement>('.notif-action');
+    expect(document.querySelectorAll('[data-testid="notif-action"]')).toHaveLength(1);
+    const enable = document.querySelector<HTMLButtonElement>('[data-testid="notif-action"]');
     enable?.click();
     enable?.click();
     await vi.waitFor(() => {
@@ -527,7 +586,7 @@ describe('bridge render lifecycle', () => {
         created.allowedOrigin,
       );
     });
-    const prompt = enable?.closest('.notif-card');
+    const prompt = enable?.closest('[data-testid="notif-card"]');
     if (prompt === null || prompt === undefined) {
       throw new Error('motion permission prompt is missing');
     }
@@ -542,7 +601,7 @@ describe('bridge render lifecycle', () => {
       }),
     );
     await settleSolid();
-    expect(document.querySelector('.notif-action')).toBeNull();
+    expect(document.querySelector('[data-testid="notif-action"]')).toBeNull();
 
     window.dispatchEvent(new TestDeviceMotionEvent('devicemotion'));
     expect(postMessage).toHaveBeenCalledWith(
@@ -749,6 +808,130 @@ describe('bridge render lifecycle', () => {
     showNotification.mockRestore();
   });
 
+  async function renderWithProductPort(label: string): Promise<{
+    core: MockProvider;
+    productPort: MessagePort;
+    ready: (connectionId?: string) => void;
+    inits: () => MessagePort[];
+  }> {
+    const channel = new MessageChannel();
+    let allowedOrigin = '';
+    mocks.createIframeHost.mockImplementationOnce(
+      (args: {
+        iframeUrl: string;
+        allowedOrigin: string;
+        container: HTMLElement;
+        sandbox: string;
+        onPort: (port: MessagePort) => void;
+      }) => {
+        // The real iframe host hands its port over at once and answers the
+        // first ready itself with the other end.
+        allowedOrigin = args.allowedOrigin;
+        args.onPort(channel.port1);
+        const iframe = document.createElement('iframe');
+        // As the real host: Media checks the attached frame's src and sandbox.
+        iframe.src = args.iframeUrl;
+        iframe.setAttribute('sandbox', args.sandbox);
+        args.container.appendChild(iframe);
+        return {
+          iframe,
+          dispose: vi.fn(() => {
+            iframe.remove();
+          }),
+        };
+      },
+    );
+    const { renderAppSubdomain } = await import('../src/bridge.js');
+    const render = renderAppSubdomain('cid', label);
+    await waitForProviderRequests(1);
+    const core = makeProvider();
+    nth(mocks.coreProviderDefers, 0).resolve(core);
+    await render;
+    const targetWindow = document.querySelector('iframe')?.contentWindow;
+    if (!targetWindow) {
+      throw new Error('app frame has no content window');
+    }
+    const inits: MessagePort[] = [];
+    vi.spyOn(targetWindow, 'postMessage').mockImplementation((...args: unknown[]) => {
+      const [message, targetOrigin, transfer] = args;
+      expect(message).toEqual({ type: 'truapi-init' });
+      expect(targetOrigin).toBe(allowedOrigin);
+      if (Array.isArray(transfer)) {
+        // The bridge's MessageChannel is Node's, not happy-dom's, so check by shape.
+        inits.push(
+          ...transfer.filter(
+            (port): port is MessagePort => typeof port === 'object' && port !== null && 'postMessage' in port,
+          ),
+        );
+      }
+    });
+    return {
+      core,
+      productPort: channel.port2,
+      ready(connectionId) {
+        window.dispatchEvent(
+          new MessageEvent('message', {
+            data: connectionId === undefined ? { type: 'truapi-ready' } : { type: 'truapi-ready', connectionId },
+            origin: allowedOrigin,
+            source: targetWindow,
+          }),
+        );
+      },
+      inits: () => [...inits],
+    };
+  }
+
+  it('treats connectionId-less ready repeats as retries until the product uses its port', async () => {
+    const product = await renderWithProductPort('legacy-ready');
+    // Pre-0.23 clients retry ready every 50 ms without a connectionId and
+    // adopt only the first truapi-init port.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      product.ready();
+    }
+    expect(product.inits()).toEqual([]);
+
+    const frame = new Uint8Array([7, 7, 7]);
+    product.productPort.postMessage(frame);
+    await vi.waitFor(() => {
+      expect(product.core.postMessage).toHaveBeenCalledWith(frame);
+    });
+
+    // After the product used its port, a new ready is a replaced document.
+    product.ready();
+    expect(product.inits()).toHaveLength(1);
+    product.ready();
+    expect(product.inits()).toHaveLength(1);
+
+    const replacement = nth(product.inits(), 0);
+    const replacementFrame = new Uint8Array([9, 9]);
+    replacement.postMessage(replacementFrame);
+    await vi.waitFor(() => {
+      expect(product.core.postMessage).toHaveBeenCalledWith(replacementFrame);
+    });
+    product.ready();
+    expect(product.inits()).toHaveLength(2);
+    product.productPort.close();
+    for (const port of product.inits()) {
+      port.close();
+    }
+  });
+
+  it('replaces the product port once per new ready connectionId', async () => {
+    const product = await renderWithProductPort('modern-ready');
+    product.ready('first');
+    product.ready('first');
+    expect(product.inits()).toEqual([]);
+    product.ready('second');
+    product.ready('second');
+    expect(product.inits()).toHaveLength(1);
+    product.ready();
+    expect(product.inits()).toHaveLength(2);
+    product.productPort.close();
+    for (const port of product.inits()) {
+      port.close();
+    }
+  });
+
   it('forwards a sandbox schema mismatch as a host PWA update request', async () => {
     const { renderAppSubdomain } = await import('../src/bridge.js');
     const render = renderAppSubdomain('manifest-cid', 'manifest-app');
@@ -935,6 +1118,52 @@ describe('bridge render lifecycle', () => {
     });
   }, 10_000);
 
+  it('As an operator, a login that fails before the core answers is reported under the wallet flow', async () => {
+    // Given: a topbar login whose core connection drops once the request is sent
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const failure = new Error('worker fatal error: boom');
+    const login = makeLoginProvider({
+      onPostMessage() {
+        login.closeListener?.(failure);
+      },
+    });
+
+    // When
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.captureException).toHaveBeenCalledWith(failure, { flow: 'wallet', step: 'login' });
+    });
+    expect(sentry.recordExpected).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it('As an operator, a login the user cancels leaves a breadcrumb, not an issue', async () => {
+    // Given: a topbar login
+    await import('../src/bridge.js');
+    window.dispatchEvent(new CustomEvent('dotli:truapi-login-request', { detail: {} }));
+    await waitForProviderRequests(1);
+    const login = makeLoginProvider({
+      onPostMessage(message) {
+        login.listener?.(loginResponseFrame(requestIdFromFrame(message), { success: false, cancelled: true }));
+      },
+    });
+
+    // When: the user cancels it
+    nth(mocks.coreProviderDefers, 0).resolve(login);
+
+    // Then
+    await vi.waitFor(() => {
+      expect(sentry.recordExpected).toHaveBeenCalledWith(expect.objectContaining({ name: 'LoginRequestError' }), {
+        flow: 'wallet',
+        step: 'login',
+      });
+    });
+    expect(sentry.captureException).not.toHaveBeenCalled();
+  }, 10_000);
+
   it('As a dotli integrator, the host boots the page core to disconnect a stored session without a product', async () => {
     // Given
     await import('../src/bridge.js');
@@ -958,7 +1187,7 @@ describe('bridge app roots', () => {
     mocks.coreProviderDefers.length = 0;
     mocks.coreRuntimes.length = 0;
     mocks.iframeHosts.length = 0;
-    document.body.innerHTML = `<div id="app"><div class="loading"></div></div>`;
+    document.body.innerHTML = `<div id="app"><div data-testid="loading-stand-in"></div></div>`;
     window.history.replaceState(null, '', '/');
     mocks.createWebWorkerPairingHostRuntime.mockImplementation(() => Promise.resolve(makeRuntime()));
     mocks.createIframeHost.mockImplementation(
@@ -1001,9 +1230,9 @@ describe('bridge app roots', () => {
   }> {
     const { registerAppRoot } = await import('../src/mount/app-roots.js');
     const app = document.getElementById('app');
-    const loading = app?.querySelector<HTMLElement>('.loading');
+    const loading = app?.querySelector<HTMLElement>('[data-testid="loading-stand-in"]');
     if (app === null || loading === null || loading === undefined) {
-      throw new Error('fixture has no #app > .loading');
+      throw new Error('fixture has no loading stand-in in #app');
     }
     const page = document.createElement('div');
     page.id = 'app-view';
@@ -1083,7 +1312,7 @@ describe('bridge app roots', () => {
   it('As a visitor on a preview or local target, the first iframe render takes the static screen down', async () => {
     // Given the static screen, with no phases started, and the loading
     // controller loaded over it as the host's startup bundle loads it
-    document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
+    document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
     const [{ renderIframe }, loading] = await Promise.all([
       import('../src/bridge.js'),
       import('../src/state/loading.js'),
@@ -1113,14 +1342,14 @@ describe('bridge app roots', () => {
     expect(previousFrame).not.toBeNull();
     showErrorPage({ title: 'Failed' });
 
-    expect(document.querySelector('#app > .error-page')).not.toBeNull();
+    expect(document.querySelector('#app > [data-testid="error-page"]')).not.toBeNull();
 
     // An error page replaces the frame, so recovery now comes from the host,
     // not a fabricated sandbox message with the detached frame's null source.
     await renderAppSubdomain('cid', 'reloaded');
 
     const frame = document.querySelector('#app > .host-media-compositor > iframe');
-    expect(document.querySelector('#app > .error-page')).toBeNull();
+    expect(document.querySelector('#app > [data-testid="error-page"]')).toBeNull();
     expect(frame?.isConnected).toBe(true);
     expect(frame).not.toBe(previousFrame);
     expect(document.querySelectorAll('#app iframe')).toHaveLength(1);

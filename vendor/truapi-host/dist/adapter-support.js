@@ -45,69 +45,49 @@ function toAsyncIterator(stream) {
  * callback streams where the Rust core owns cancellation but JS owns the
  * iterator and any transport cleanup behind `return()`.
  */
-function pumpIterator(iterator, onItem, label, onError, onComplete, privateMedia = false) {
+function pumpIterator(iterator, onItem, label, onError, onComplete) {
     let stopped = false;
-    const close = () => {
+    void (async () => {
+        try {
+            while (!stopped) {
+                const next = await iterator.next();
+                if (stopped || next.done)
+                    return;
+                onItem(next.value);
+            }
+        }
+        catch (err) {
+            if (!stopped) {
+                console.error(`[truapi host callbacks] ${label} failed`);
+                onError?.({ reason: errorMessage(err) });
+            }
+        }
+        finally {
+            if (!stopped)
+                onComplete?.();
+        }
+    })();
+    return () => {
         if (stopped)
             return;
         stopped = true;
         try {
             void Promise.resolve(iterator.return?.()).catch(() => {
-                if (!privateMedia)
-                    console.error(`[truapi host callbacks] ${label} cleanup failed`);
+                console.error(`[truapi host callbacks] ${label} cleanup failed`);
             });
         }
         catch {
-            if (!privateMedia)
-                console.error(`[truapi host callbacks] ${label} cleanup failed`);
+            console.error(`[truapi host callbacks] ${label} cleanup failed`);
         }
     };
-    void (async () => {
-        try {
-            while (!stopped) {
-                const next = await iterator.next();
-                if (stopped)
-                    return;
-                if (next.done) {
-                    if (privateMedia)
-                        onError?.({ reason: "media backend failure" });
-                    return;
-                }
-                onItem(next.value);
-            }
-        }
-        catch (err) {
-            if (stopped)
-                return;
-            if (!privateMedia)
-                console.error(`[truapi host callbacks] ${label} failed`);
-            const reason = privateMedia
-                ? errorMessage(err) === "media event overflow"
-                    ? "media event overflow"
-                    : "media backend failure"
-                : errorMessage(err);
-            onError?.({ reason });
-        }
-        finally {
-            if (!stopped) {
-                try {
-                    onComplete?.();
-                }
-                finally {
-                    close();
-                }
-            }
-        }
-    })();
-    return close;
 }
 /**
  * Drive a typed host stream of `Result` items into the core's `sendItem`
  * sink, unwrapping each `Result` (or throwing on its error). Returns a
  * disposer that stops iteration.
  */
-export function driveResultStream(stream, sendItem, sendError, privateMedia = false) {
-    return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError, undefined, privateMedia);
+export function driveResultStream(stream, sendItem, sendError) {
+    return pumpIterator(toAsyncIterator(stream), (value) => sendItem(unwrapStreamResult(value)), "subscription", sendError);
 }
 /**
  * Bridge the typed `ChainProvider.connect` callback onto the raw

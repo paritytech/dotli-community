@@ -6,6 +6,8 @@ export interface PolkaVmMenu {
   status: HTMLElement;
   open: () => void;
   setBusy: (busy: boolean) => void;
+  setLoadingFile: (fileName: string | null) => void;
+  loadingReady: () => void;
   setFileInputAvailable: (available: boolean) => void;
   cleanup: () => void;
 }
@@ -43,7 +45,8 @@ export function installPolkaVmMenu(
   heading.textContent = options.error === undefined ? 'App menu' : 'Unable to run app';
   const message = document.createElement('p');
   message.setAttribute('role', 'status');
-  message.textContent = options.error ?? 'Display, sound and controls are paused. Network updates continue.';
+  const pausedMessage = options.error ?? 'Display, sound and controls are paused. Network updates continue.';
+  message.textContent = pausedMessage;
   const resume = button('Resume');
   resume.hidden = options.error !== undefined;
   const help = document.createElement('details');
@@ -71,7 +74,18 @@ export function installPolkaVmMenu(
   dialog.append(heading, message, resume, help);
   dialog.append(changeFile);
   dialog.append(retry, launcher);
-  surface.append(toggle, dialog);
+  const loading = document.createElement('div');
+  loading.id = 'dotli-polkavm-loading';
+  loading.hidden = true;
+  loading.setAttribute('role', 'status');
+  loading.setAttribute('aria-live', 'polite');
+  const spinner = document.createElement('span');
+  spinner.className = 'dotli-polkavm-loading-spinner';
+  spinner.setAttribute('aria-hidden', 'true');
+  const loadingText = document.createElement('span');
+  loading.append(spinner, loadingText);
+  surface.append(toggle, dialog, loading);
+  let loadingFileName: string | null = null;
   let busy = false;
   let previousFocus: HTMLElement | null = null;
   const open = (): void => {
@@ -154,6 +168,34 @@ export function installPolkaVmMenu(
       launcher.disabled = value;
       changeFile.disabled = value;
     },
+    setLoadingFile: fileName => {
+      if (loadingFileName === fileName) {
+        return;
+      }
+      loadingFileName = fileName;
+      loading.hidden = fileName === null;
+      if (fileName === null) {
+        surface.removeAttribute('aria-busy');
+      } else {
+        surface.setAttribute('aria-busy', 'true');
+      }
+      resume.textContent = 'Resume';
+      if (fileName === null) {
+        loadingText.textContent = '';
+        if (options.error === undefined) {
+          message.textContent = pausedMessage;
+        }
+      } else {
+        loadingText.textContent = `Loading ${fileName}…`;
+        message.textContent = `Loading ${fileName}…`;
+      }
+    },
+    loadingReady: () => {
+      if (loadingFileName !== null) {
+        message.textContent = `Loading ${loadingFileName}… Resume to continue.`;
+        resume.textContent = 'Resume and load';
+      }
+    },
     setFileInputAvailable: available => {
       changeFile.hidden = !available;
       launcher.hidden = !available && options.hasLauncher !== true;
@@ -163,6 +205,7 @@ export function installPolkaVmMenu(
       dialog.close();
       dialog.remove();
       toggle.remove();
+      loading.remove();
     },
   };
 }

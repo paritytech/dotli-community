@@ -40,7 +40,7 @@ import {
   withActiveTld,
 } from '@dotli/config';
 
-import { getResolutionId, m, spans as S } from '@dotli/metrics';
+import { captureException, getResolutionId, m, recordExpected, spans as S } from '@dotli/metrics';
 import { chatCapabilityFor, log } from '@dotli/shared';
 
 import { emitDotliDebugEvent, hasDotliDebugListeners } from '@dotli/truapi-debug';
@@ -1140,6 +1140,7 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
     );
   }
   window.addEventListener('dotli:truapi-disconnect-request', () => {
+    log.event('logout requested', { flow: 'wallet' });
     if (isExperimentalWalletActive()) {
       void experimentalWalletControls.disconnect();
       return;
@@ -1150,25 +1151,50 @@ export function initBridgeEventListeners(modalCoordinator: BlockingModalCoordina
   // User closed the pairing modal: the page's core runs every pairing,
   // whether the product or the topbar asked for it.
   window.addEventListener('dotli:truapi-cancel-login', () => {
+    log.event('pairing cancelled', { flow: 'wallet' });
     cancelPairing();
   });
 
   window.addEventListener('dotli:truapi-login-request', (event: Event) => {
     const detail = (event as CustomEvent<{ reason?: string }>).detail;
-    void topbarLogin(detail.reason).catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      // A `LoginRequestError` came back over the wire, so the core already
-      // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
-      // a second login while one is pairing). Synthesize a state only for
-      // failures the core never saw: host boot, encode, transport errors.
-      if (!(error instanceof LoginRequestError)) {
-        dispatchAuthState({
-          tag: 'LoginFailed',
-          kind: 'Other',
-          reason: message,
-        });
-      }
-    });
+    log.event('login requested', { flow: 'wallet' });
+    void topbarLogin(detail.reason).then(
+      () => {
+        log.event('login completed', { flow: 'wallet' });
+      },
+      (error: unknown) => {
+        reportLoginFailure(error);
+        const message = error instanceof Error ? error.message : String(error);
+        // A `LoginRequestError` came back over the wire, so the core already
+        // rendered its own `LoginFailed` (or deliberately stayed silent, e.g.
+        // a second login while one is pairing). Synthesize a state only for
+        // failures the core never saw: host boot, encode, transport errors.
+        if (!(error instanceof LoginRequestError)) {
+          dispatchAuthState({
+            tag: 'LoginFailed',
+            kind: 'Other',
+            reason: message,
+          });
+        }
+      },
+    );
+  });
+}
+
+/**
+ * A login the user called off, or one denied permission, is an outcome, not
+ * a fault. Everything else is reported, the core's own refusals included:
+ * its `LoginFailed` is only what the user sees.
+ */
+function reportLoginFailure(error: unknown): void {
+  if (error instanceof LoginRequestError && (error.error.tag === 'Cancelled' || error.error.tag === 'Denied')) {
+    recordExpected(error, { flow: 'wallet', step: 'login' });
+    return;
+  }
+  captureException(error, {
+    flow: 'wallet',
+    step: 'login',
+    ...(error instanceof LoginRequestError ? { tags: { login_error: error.error.tag } } : {}),
   });
 }
 
@@ -1195,9 +1221,10 @@ async function disconnectSession(): Promise<void> {
   let lease;
   try {
     lease = await acquireCore();
-  } catch {
+  } catch (err) {
     // If the core cannot boot, keep the UI responsive even though persisted
     // core session state could not be cleared.
+    log.warn('[dot.li] disconnect skipped, the wallet core did not boot:', err);
     dispatchAuthState({ tag: 'Disconnected' });
     return;
   }
@@ -1545,7 +1572,9 @@ async function createHost(args: {
     // The capability is primed by the host shell before rendering, so
     // this await settles from cache or the in-flight manifest read.
     chatCapable = await chatCapabilityFor(args.label);
+    log.event('chat capability resolved', { flow: 'chat', capable: chatCapable });
     connection = await lease.connect(chatCapable ? 'Worker' : 'App', media);
+    log.event('product connected to wallet core', { flow: 'wallet', kind: chatCapable ? 'Worker' : 'App' });
   } catch (error) {
     disposeMedia();
     lease.release();
@@ -1559,12 +1588,18 @@ async function createHost(args: {
   let disposePipe: (() => void) | null = null;
   let productProbeCleanup: (() => void) | null = null;
   let disposeViewInsets: (() => void) | null = null;
+  // Whether the product has sent a frame on the current port, which proves
+  // it adopted that port's `truapi-init`.
+  let productPortUsed = false;
+  let unsubscribeProductPortUse: (() => void) | null = null;
   const pipeArgs = {
     flowId: args.debugFlowId,
     label: args.label,
     productId: connection.productId,
   };
   const cleanupProductSide = (): void => {
+    unsubscribeProductPortUse?.();
+    unsubscribeProductPortUse = null;
     disposePipe?.();
     productProvider?.dispose();
     disposePipe = null;
@@ -1572,8 +1607,15 @@ async function createHost(args: {
   };
   const connectProductPort = (port: MessagePort): void => {
     cleanupProductSide();
-    productProvider = createMessagePortProvider(port);
-    disposePipe = pipeProviders(productProvider, coreProvider, pipeArgs);
+    productPortUsed = false;
+    const provider = createMessagePortProvider(port);
+    productProvider = provider;
+    unsubscribeProductPortUse = provider.subscribe(() => {
+      productPortUsed = true;
+      unsubscribeProductPortUse?.();
+      unsubscribeProductPortUse = null;
+    });
+    disposePipe = pipeProviders(provider, coreProvider, pipeArgs);
   };
   const cleanupCoreSide = (): void => {
     unregisterPermissions();
@@ -1621,14 +1663,26 @@ async function createHost(args: {
       if (!targetWindow || event.source !== targetWindow || event.origin !== args.allowedOrigin) {
         return;
       }
-      if ((event.data as { type?: unknown } | null)?.type === 'truapi-ready') {
-        const connectionId = (event.data as { connectionId?: unknown }).connectionId;
-        // Ready is retried while the first port transfer is in flight. Replacing
-        // that port strands the client, which accepts only the first transfer.
-        if (typeof connectionId === 'string' && connectionId === probeConnectionId) {
-          return;
+      const data: unknown = event.data;
+      if (typeof data === 'object' && data !== null && 'type' in data && data.type === 'truapi-ready') {
+        const connectionId = 'connectionId' in data ? data.connectionId : undefined;
+        if (typeof connectionId === 'string') {
+          // Ready is retried while the first port transfer is in flight. Replacing
+          // that port strands the client, which accepts only the first transfer.
+          if (connectionId === probeConnectionId) {
+            return;
+          }
+          probeConnectionId = connectionId;
+        } else {
+          // Clients before @parity/truapi 0.23 retry ready without a
+          // connectionId and also accept only the first transfer. Until the
+          // product uses the current port, a repeat is a retry of that
+          // handshake; afterwards it means a replaced product document.
+          if (probeMode === 'modern' && probeConnectionId === null && !productPortUsed) {
+            return;
+          }
+          probeConnectionId = null;
         }
-        probeConnectionId = typeof connectionId === 'string' ? connectionId : null;
         if (probeMode === 'modern') {
           // A second handshake means the product document was replaced.
           media?.dispose();
@@ -2023,16 +2077,18 @@ function activateHost(host: ActiveHost, previousHost: ActiveHost | null, keepLoa
   // The one untracked child: an error page written over a product whose frame
   // was already up (a failure after `activateHost`), which a later rebuild of
   // that product has to clear.
-  for (const stray of app.querySelectorAll(':scope > .error-page')) {
+  for (const stray of app.querySelectorAll(':scope > [data-error-page]')) {
     stray.remove();
   }
   currentHost = host;
   const product = currentProduct;
-  if (product?.mode === 'subdomain') {
+  if (product !== null) {
     const generation = renderGeneration;
     const unregister = registerProductNotificationTarget(product.label, {
-      artifact: product.cid,
-      entryUrl: new URL('/', window.location.origin).href,
+      // Direct frames have mutable, unverified content: activations belong to
+      // this execution, not a later visit to the same URL.
+      artifact: product.mode === 'subdomain' ? product.cid : `iframe:${crypto.randomUUID()}`,
+      entryUrl: product.mode === 'subdomain' ? new URL('/', window.location.origin).href : window.location.href,
       isActive: () => currentHost === host && renderGeneration === generation,
       focus: () => {
         window.focus();

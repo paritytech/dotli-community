@@ -1,0 +1,9 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Fixed, not shrink-to-fit: the loading spinner sits in a surface of the
+   menu's own width, and the bar strips growing as blocks arrive never widen
+   it while the visitor reads it. */
+.popover {
+  width: var(--w-pop-md);
+}

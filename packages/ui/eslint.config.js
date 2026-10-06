@@ -7,6 +7,7 @@ import { defineConfig } from 'eslint/config';
 import { config } from '@config/eslint/vite';
 
 export default defineConfig([
+  { ignores: ['storybook-static/**'] },
   ...config,
   {
     languageOptions: {

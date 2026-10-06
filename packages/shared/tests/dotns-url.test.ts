@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, afterEach } from 'vitest';
-import { NetworkName, setNetworkOverride } from '@dotli/config';
+import { setNetworkOverride } from '@dotli/config';
+import { NetworkName } from '../../config/src/network.js';
 import { dotNsUrl } from '../src/dotns-url.js';
 
 describe('parseDotNsDomain', () => {

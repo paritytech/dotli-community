@@ -76,7 +76,7 @@ describe('raw capture in a protected Media container', () => {
 
       // Then: refused by error, so the core records nothing; no prompt either
       await expect(raw).rejects.toThrow(ERRORS.MEDIA_RAW_CAPTURE_REFUSED);
-      expect(document.querySelector('.signing-modal-backdrop')).toBeNull();
+      expect(document.querySelector('[data-testid="signing-modal-backdrop"]')).toBeNull();
       expect(store.has(tag)).toBe(false);
       expect(await getPermissionStatus('myapp', tag)).toBe('ask');
 
@@ -96,9 +96,9 @@ describe('raw capture in a protected Media container', () => {
       // Then: the user is asked and can allow it
       await overlaysReady();
       await vi.waitFor(() => {
-        expect(document.querySelector('.signing-modal-footer button')).not.toBeNull();
+        expect(document.querySelector('[data-testid="signing-modal-footer"] button')).not.toBeNull();
       });
-      Array.from(document.querySelectorAll<HTMLButtonElement>('.signing-modal-footer button'))
+      Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="signing-modal-footer"] button'))
         .find(button => button.textContent === 'Allow')
         ?.click();
       await expect(consent).resolves.toBe(true);

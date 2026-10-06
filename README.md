@@ -181,6 +181,12 @@ the user clicks **Open file** to supply the browser activation required for the 
 explicit consent and routes the file to that execution's current registration, not to another product or a stale
 handler.
 
+After file approval, a host-owned loading overlay names the selected file. Once delivery is ready, the paused menu
+offers **Resume and load**; the overlay clears when the guest presents new content after delivery. Restoring an old
+WebGPU/Tri2D surface on Resume does not finish loading. Guests that decode before switching levels must defer gameplay
+frames during preparation. Delivery rejection clears the overlay and keeps the recovery menu available. This is an
+activity indicator, not a percentage estimate of guest-side decoding.
+
 Inline and relaunch handlers receive bounded bytes. Stream handlers receive the original browser `Blob`, without a
 whole-file read or upload by the host; the runtime manages bounded reads and private OPFS caches. Cache creation and
 cleanup errors are recoverable and reported separately from fatal runtime errors. Stopping cancels pending selection,
@@ -220,6 +226,11 @@ The Doom performance gate measures presented frames over 30 seconds against the 
 frame of sampling-boundary tolerance. The displayed short-window FPS remains unrounded and is not the acceptance sample.
 Update p95 must remain below 28.6ms; cold/warm first-frame limits remain 3,000/1,000ms, with audio and translation cache
 checks unchanged. This replaces the instantaneous `FPS >= 35` gate explicitly; earlier failures remain recorded.
+
+Runtime failures are reported from the sandbox to Sentry with the resolved CID, program SHA-256, pinned browser-runtime
+revision, active backend, startup stage, graphics profile, and trap program counter when present. The existing
+resolution ID correlates the failure with the host and protocol events for the same load; app bytes and imported file
+contents are never attached.
 
 ## Caching and verification
 
@@ -271,7 +282,7 @@ Loaded SPAs communicate with dotli through a postMessage-based protocol. The bri
 ### Ordinary notification activation
 
 Ordinary notification clicks do not require background receiver enrollment or a relay. The host retains each click in
-host-owned IndexedDB, scoped to the verified product, authenticated account, network and executable artifact. OS
+host-owned IndexedDB, scoped to the product execution, authenticated account, network and executable artifact. OS
 notifications carry only an opaque token; the existing host service worker records activation before focusing or opening
 the host entry page. It does not navigate the product's route.
 
@@ -279,6 +290,10 @@ The matching foreground product polls `notifications.activationEvents()` and rec
 `{ events }`. After handling an event, it calls `notifications.acknowledgeActivation({ sequence })`. Reads do not
 consume events; acknowledgements are exact and idempotent. Account changes invalidate the live scope, and another
 product, account, network or artifact cannot read or acknowledge the retained activation.
+
+Direct-iframe products, including localhost previews, use the same permission and account gates. Because their mutable
+URLs do not identify verified executable content, each execution receives a fresh artifact identity. Reloading or
+replacing a direct iframe cannot inherit an earlier execution's notification activations.
 
 Destinations may be local absolute paths or existing HTTP(S)/`polkadot:` deep links. They are returned unchanged as
 opaque product data; neither toast nor service worker follows the supplied URL. Retention expires after seven days and

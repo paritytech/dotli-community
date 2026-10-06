@@ -215,10 +215,10 @@ test('As a user using smoldot directly, when the light client panics mid-resolut
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -234,10 +234,10 @@ test('As a user using smoldot in shared worker, when the light client panics mid
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.FATAL_PANIC);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -260,8 +260,10 @@ test('As a user, when executable-manifest resolution fails, I see the original r
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, { timeout: 10_000 });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+    timeout: 10_000,
+  });
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
 
@@ -286,7 +288,7 @@ test('As a user, when the app executable manifest is invalid, I see its validati
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByTestId('error-page-title')).toBeVisible({ timeout: 10_000 });
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
   await expect(page.locator('#app iframe')).toHaveCount(0);
 });
@@ -345,10 +347,10 @@ test("As a user using smoldot in shared worker, when the browser can't create a 
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.SW_FAILED_TO_START);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.SW_FAILED_TO_START);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -364,10 +366,10 @@ test('As a user using smoldot in shared worker, when the worker dies silently, I
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.SW_TIMED_OUT);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.SW_TIMED_OUT);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -390,10 +392,10 @@ test('As a user using smoldot directly, when the sync times out (>45s) I see the
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -422,10 +424,10 @@ test('As a user using smoldot directly, when every peer WebSocket is unavailable
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 30_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
   expect(blockedSockets).toBeGreaterThan(0);
 });
@@ -448,10 +450,10 @@ test('As a user using smoldot in shared worker, when the sync times out (>45s) I
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.HUB_SYNC_TIMEOUT);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -467,10 +469,10 @@ test('As a user, when the app chunks fail to load mid-session, I see the appropr
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.MODULE_FETCH_FAILED);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.MODULE_FETCH_FAILED);
   await expect(page.locator('#error-retry-btn')).toContainText('Reload');
 });
 
@@ -485,10 +487,10 @@ test('As a user using smoldot directly, when smoldot rejects the chain spec, I s
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.CHAIN_SPEC_REJECTED);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CHAIN_SPEC_REJECTED);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -504,10 +506,10 @@ test('As a user using smoldot in shared worker, when smoldot rejects the chain s
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.CHAIN_SPEC_REJECTED);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CHAIN_SPEC_REJECTED);
   await expect(page.locator('#error-retry-btn')).toContainText(RELOAD_BTN_LABEL);
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
 });
@@ -523,9 +525,9 @@ test('As a user, when I visit a domain that has no content set, I see the approp
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText("This app can't be reached", { timeout: 10_000 });
-  await expect(page.locator('.error-page-domain')).toHaveText(`${DOMAIN}${TLD_SUFFIX}`);
-  await expect(page.locator('.error-page-detail')).toContainText('Check if there is a typo');
+  await expect(page.getByTestId('error-page-title')).toHaveText("This app can't be reached", { timeout: 10_000 });
+  await expect(page.getByTestId('error-page-domain')).toHaveText(`${DOMAIN}${TLD_SUFFIX}`);
+  await expect(page.getByTestId('error-page-detail')).toContainText('Check if there is a typo');
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
 });
 
@@ -540,10 +542,10 @@ test("As a user, when the domain's contenthash is unsupported or malformed, I se
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
-  await expect(page.locator('.error-page-detail')).toHaveText(HOST_ERRORS.CONTENTHASH_UNSUPPORTED);
+  await expect(page.getByTestId('error-page-detail')).toHaveText(HOST_ERRORS.CONTENTHASH_UNSUPPORTED);
   await expect(page.locator('#error-retry-btn')).toHaveCount(0);
 });
 
@@ -554,7 +556,7 @@ test('As a user, when the same failure survives a reload, the error page escalat
   await setBackend(page, 'smoldot-direct');
   await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
   await expect(page.locator('#error-retry-btn-1')).toContainText(OPEN_SETTINGS_BTN_LABEL);
@@ -568,7 +570,7 @@ test('As a user, when the same failure survives a reload, the error page escalat
   await reloaded;
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
   await expect(page.locator('#error-retry-btn-1')).toContainText(RETRY_LABEL_FROM_SMOLDOT);
@@ -581,7 +583,7 @@ test('As a user, after a resolution failure, clicking retry switches backend and
   await setBackend(page, 'smoldot-direct');
   await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
   // The switch is only offered on the second sighting, so reload into the
@@ -613,7 +615,7 @@ test('As a user, after a resolution failure, I can refresh instead of switching 
   await setBackend(page, 'smoldot-direct');
   await mockProtocolIframe(page, fatalOnResolve('smoldot panic'));
   await page.goto(HOST_URL, { waitUntil: 'domcontentloaded' });
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
   const refresh = page.locator('#error-retry-btn');
@@ -625,7 +627,7 @@ test('As a user, after a resolution failure, I can refresh instead of switching 
   await page.waitForLoadState('domcontentloaded');
 
   // Then
-  await expect(page.locator('.error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
+  await expect(page.getByTestId('error-page-title')).toHaveText(ERROR_TITLES.DOMAIN_UNREACHABLE, {
     timeout: 10_000,
   });
   const backendAfter = await page.evaluate(() => localStorage.getItem('dotli:chain-backend'));

@@ -8,7 +8,7 @@ export { ResultAsync, SubscriptionError };
 export type { CallOptions, HostInitiatedSubscriptionHandler, ObservableLike, Observer, Result, Subscription, TrUApiTransport };
 export declare const TRUAPI_VERSION: 2;
 export declare const TRUAPI_CODEC_VERSION: 3;
-export declare const TRUAPI_WIRE_SCHEMA_HASH: "90c2d0c1b44449fc";
+export declare const TRUAPI_WIRE_SCHEMA_HASH: "3c7318d3d065630c";
 /** Account lookup, aliasing, and proof generation. */
 export declare class AccountClient {
     #private;
@@ -246,120 +246,6 @@ export declare class LocaleClient {
     subscribe(): ObservableLike<T.HostLocaleSubscribeItem, S.CallErrorValue<T.VersionedHostLocaleSubscribeError>>;
     /** Localize a bounded batch of UTC instants in a host locale snapshot. */
     localizeTimestamps(request: T.HostLocaleLocalizeTimestampsRequest, options?: CallOptions): ResultAsync<T.HostLocaleLocalizeTimestampsResponse, S.CallErrorValue<T.VersionedHostLocaleLocalizeTimestampsError>>;
-}
-/**
- * Host-owned real-time media, eligible in both foreground App and Worker runtimes.
- *
- * Ownership is immutable to the authenticated product/account/network authority
- * and runtime. Calling consent is distinct from browser WebRTC permission; local
- * microphone/camera additionally require their capture grants, and screen capture
- * always uses the trusted picker. Revoking any calling/microphone/camera grant or
- * losing identity ends affected sessions, including receive-only sessions. A host
- * indicator and hangup control remain visible until termination, even without a
- * product view. Host screen-stop ends only that track and fences old intent work.
- *
- * Subscribe and receive the first snapshot before mutations. Known-resource
- * teardown, refusal, cancellation, and all-off intent remain possible after
- * subscription loss. Passive incoming delivery does not prompt, capture, or wake
- * a cold product. Dropping a listener never implicitly hangs up sessions.
- *
- * Correlated mutations reserve finite capacity before effects. Identical requests
- * under one operation key join/replay; different requests conflict. A lost reply
- * is recovered through get_operation, never by retrying with a fresh key or
- * guessing from session enumeration. Host timeouts cancel pending work; a client
- * wait timeout alone is not host cancellation. No late callback may resurrect a
- * cancelled, superseded, or ended resource.
- *
- * Prototype trait 218 (Contacts owns 20 on main) and these ordinals are assigned
- * on this implementation branch pending upstream review; they are not a claim of
- * globally reserved or shipped support.
- */
-export declare class MediaClient {
-    #private;
-    constructor(transport: TrUApiTransport);
-    /**
-     * Discover the complete service without permission, capture, or signaling.
-     * Hosts missing any mandatory V1 facility return framework Unsupported.
-     */
-    getCapabilities(options?: CallOptions): ResultAsync<T.MediaCapabilities, S.CallErrorValue<T.VersionedHostMediaGetCapabilitiesError>>;
-    /**
-     * Subscribe runtime-wide, including before any session exists.
-     * The initial snapshot is atomic with event publication; future sequences
-     * strictly increase. Overflow interrupts with EventOverflow rather than
-     * dropping state. Resubscribe to recover a fresh authoritative snapshot.
-     */
-    sessionSubscribe(): ObservableLike<T.MediaEvent, S.CallErrorValue<T.VersionedHostMediaSessionSubscribeError>>;
-    /**
-     * Create a ready session after calling and requested capture consent.
-     * No peer is connected or signaled. Local self-preview can start only after
-     * consent and stays in unreadable host composition; no view is required.
-     */
-    createSession(request: T.HostMediaCreateSessionRequest, options?: CallOptions): ResultAsync<T.HostMediaCreateSessionResponse, S.CallErrorValue<T.VersionedHostMediaCreateSessionError>>;
-    /**
-     * Admit an invitation after peer, authority, consent, and capacity checks.
-     * Returns an inviting participant, not the remote answer. A duplicate live
-     * peer returns its participant without another capacity slot. Invitations
-     * expire in 60 seconds, then initial connection has a 30-second bound;
-     * identical retries never extend either deadline. One local plus five
-     * remote endpoints is the mandatory floor, not six remote participants.
-     */
-    addParticipant(request: T.HostMediaAddParticipantRequest, options?: CallOptions): ResultAsync<T.HostMediaAddParticipantResponse, S.CallErrorValue<T.VersionedHostMediaAddParticipantError>>;
-    /**
-     * Atomically decide an authenticated, expiring single-use incoming offer.
-     * Failed preconditions do not consume it; once acceptance/consent begins,
-     * cancellation or denial resolves it without replay. AcceptExisting must
-     * match the offer's existing session and cannot merge arbitrary calls.
-     * Refusal is cleanup and needs neither subscription nor operation quota.
-     */
-    respondIncoming(request: T.HostMediaRespondIncomingRequest, options?: CallOptions): ResultAsync<T.MediaIncomingResponse, S.CallErrorValue<T.VersionedHostMediaRespondIncomingError>>;
-    /**
-     * Remove an owned endpoint without ending the other participants or session.
-     * Repeated removal of a previously owned terminal capability succeeds without
-     * new events, permission, subscription, quota, or successful network exchange.
-     */
-    removeParticipant(request: T.HostMediaRemoveParticipantRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostMediaRemoveParticipantError>>;
-    /**
-     * Replace complete capture intent, ordered at admission before async consent.
-     * New intent supersedes older uncommitted work with InvalidState; its consent,
-     * picker, and device work must stop, and late capture must be released. If the
-     * newer intent is denied, retain the last committed intent, not the superseded
-     * request. All-off intent is allowed without a listener. Picker cancellation
-     * leaves the last accepted intent unchanged; committed Off stops sending.
-     */
-    setLocalTracks(request: T.HostMediaSetLocalTracksRequest, options?: CallOptions): ResultAsync<T.HostMediaSetLocalTracksResponse, S.CallErrorValue<T.VersionedHostMediaSetLocalTracksError>>;
-    /**
-     * Queue one atomic complete session layout on the authorized runtime viewport.
-     * Validate every handle, rectangle, key, bound, and revision before changing
-     * anything. Identical current-revision retries succeed, conflicting reuse is
-     * InvalidSurface, and older layouts are StaleLayout. Viewport changes discard
-     * the whole stale queued set; detach clears all runtime layouts. Empty sets
-     * clear pictures. No attachment yields SurfaceUnavailable, also for workers.
-     * Host clipping may reduce but never expand the submitted visible region;
-     * pictures remain unreadable siblings below trusted UI, not product textures.
-     */
-    setSurfaces(request: T.HostMediaSetSurfacesRequest, options?: CallOptions): ResultAsync<T.HostMediaSetSurfacesResponse, S.CallErrorValue<T.VersionedHostMediaSetSurfacesError>>;
-    /**
-     * End an owned session, linearizing before concurrent track/layout mutations.
-     * Release capture, playback, decoders, signaling, and surfaces, resolve pending
-     * offers, and emit one terminal snapshot. Repeated known teardown succeeds
-     * without permission or new quota. Tombstones last until runtime destruction;
-     * random and unowned handles both return InvalidHandle without ownership leaks.
-     */
-    endSession(request: T.HostMediaEndSessionRequest, options?: CallOptions): ResultAsync<undefined, S.CallErrorValue<T.VersionedHostMediaEndSessionError>>;
-    /**
-     * Recover the exact authoritative operation outcome after a lost reply.
-     * Unknown keys return InvalidOperation; discovery of another runtime's keys
-     * is never possible. Does not require an active listener or new consent.
-     */
-    getOperation(request: T.HostMediaGetOperationRequest, options?: CallOptions): ResultAsync<T.MediaOperationSnapshot, S.CallErrorValue<T.VersionedHostMediaGetOperationError>>;
-    /**
-     * Cancel pending work authoritatively, including consent and late capture.
-     * Linearizes against commit: if commit won, return Committed without undoing
-     * or lying about it. Cancelling an unknown key reserves a Cancelled tombstone
-     * so a delayed original request cannot act; budget exhaustion precedes effects.
-     * Known cancellation needs no subscription, new quota, or permission prompt.
-     */
-    cancelOperation(request: T.HostMediaCancelOperationRequest, options?: CallOptions): ResultAsync<T.MediaOperationSnapshot, S.CallErrorValue<T.VersionedHostMediaCancelOperationError>>;
 }
 /** Notification methods for locally-rendered push notifications. */
 export declare class NotificationsClient {
@@ -661,7 +547,6 @@ export interface TrUApiClient {
     readonly entropy: EntropyClient;
     readonly localStorage: LocalStorageClient;
     readonly locale: LocaleClient;
-    readonly media: MediaClient;
     readonly notifications: NotificationsClient;
     readonly payment: PaymentClient;
     readonly permissions: PermissionsClient;

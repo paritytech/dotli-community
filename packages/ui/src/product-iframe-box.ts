@@ -11,7 +11,7 @@
  * position from this box.
  *
  * Every value carries a px fallback because these are set as inline styles.
- * Unlike the rules in `styles.css`, they do not ship with the file that defines
+ * Unlike the rules in `global.css`, they do not ship with the file that defines
  * the tokens, so a stylesheet that has not applied yet must not break layout.
  */
 
@@ -19,7 +19,7 @@ const SAFE_TOP = 'var(--safe-top, 0px)';
 const SAFE_BOTTOM = 'var(--safe-bottom, 0px)';
 const SAFE_LEFT = 'var(--safe-left, 0px)';
 const SAFE_RIGHT = 'var(--safe-right, 0px)';
-const TOPBAR_HEIGHT = 'var(--topbar-height, 56px)';
+const TOPBAR_HEIGHT = 'var(--topbar-height, 68px)';
 
 export interface ProductIframeBox {
   top: string;

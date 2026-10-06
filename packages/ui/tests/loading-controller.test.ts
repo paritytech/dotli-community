@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { getActiveTldSuffix } from '@dotli/config';
 import type { LoadingPhase } from '../src/loading-controller.js';
 import type * as LoadingControllerModule from '../src/loading-controller.js';
 import type * as LoadingModule from '../src/state/loading.js';
@@ -32,7 +33,7 @@ function stubMotionPreference(): void {
 function installLoadingDom(): void {
   // As the host page paints it: the LoadingScreen island's screen, beside
   // `#app`.
-  document.body.innerHTML = `<div class="loading" id="app-loading"></div><div id="app"></div>`;
+  document.body.innerHTML = `<div id="app-loading"></div><div id="app"></div>`;
 }
 
 describe('The loading controller drives the loading store', () => {
@@ -56,13 +57,14 @@ describe('The loading controller drives the loading store', () => {
   });
 
   const progress = (): number => store.getLoadingState().progress;
-  const status = (): string => store.getLoadingState().statusText;
+  const explanation = (): string => store.getLoadingState().explanation;
+  const step = (): readonly LoadingModule.StepPart[] => store.getLoadingState().step;
 
-  /** Every distinct headline the store held, in order. */
-  function recordHeadlines(): string[] {
-    const seen: string[] = [status()];
+  /** Every distinct explanation the store held, in order. */
+  function recordExplanations(): string[] {
+    const seen: string[] = [explanation()];
     store.loadingStore.subscribe(() => {
-      const text = status();
+      const text = explanation();
       if (text !== seen[seen.length - 1]) {
         seen.push(text);
       }
@@ -118,82 +120,109 @@ describe('The loading controller drives the loading store', () => {
     expect(progress()).toBe(99);
   });
 
-  it("As a visitor, the headline rotation never repeats a step's opening line", () => {
+  it("As a visitor, a stage's step line stays up while its explanations cycle under it", () => {
     // Given
     reducedMotion = true;
-    const seen = recordHeadlines();
+    const seen = recordExplanations();
 
     // When
     ctl.setLoadingStage('relay');
-    vi.advanceTimersByTime(ROTATE_MS * 10);
+
+    // Then the step line shows at once, with no explanation yet
+    expect(step()).toEqual(['Connecting to Polkadot']);
+    expect(explanation()).toBe('');
+    expect(store.getLoadingState().srText).toBe('Connecting to Polkadot');
+
+    // When
+    vi.advanceTimersByTime(ROTATE_MS * 5);
 
     // Then
-    expect(seen.filter(s => s === 'Connecting to Polkadot')).toHaveLength(1);
+    expect(step()).toEqual(['Connecting to Polkadot']);
     expect(seen.slice(1)).toEqual([
-      'Connecting to Polkadot',
       'Looking for other computers to talk to',
       'Your browser does the checking itself, not a server',
       'Looking for other computers to talk to',
       'Your browser does the checking itself, not a server',
       'Looking for other computers to talk to',
-      'Your browser does the checking itself, not a server',
-      'Looking for other computers to talk to',
-      'Your browser does the checking itself, not a server',
-      'Looking for other computers to talk to',
-      'Your browser does the checking itself, not a server',
     ]);
+    expect(store.getLoadingState().srText).toBe('Looking for other computers to talk to');
   });
 
-  it('As a visitor, the headline types in frame by frame', () => {
+  it('As a visitor, the step line names the domain with its TLD apart, and a screen reader hears it whole', () => {
     // Given
-    const seen = recordHeadlines();
+    ctl.setLoadingDomain('myapp');
 
     // When
-    ctl.setLoadingStage('relay');
-    vi.advanceTimersByTime(ERASE_MS + TYPE_MS + 100);
+    ctl.setLoadingStage('assetHub');
 
-    // Then the old line was erased and the new one typed a piece at a time
-    expect(seen).toContain('Reach');
-    expect(seen).toContain('Conn');
-    expect(status()).toBe('Connecting to Polkadot');
-    expect(store.getLoadingState().statusOpacity).toBe(1);
+    // Then
+    expect(step()).toEqual(['Looking up ', { host: 'myapp', tld: getActiveTldSuffix() }]);
+    expect(store.getLoadingState().srText).toBe(`Looking up myapp${getActiveTldSuffix()}`);
   });
 
-  it('As a visitor on a quick load, only the newest waiting line is typed after the current one', () => {
+  it('As a visitor on the preview path, the step line says "the name" when there is no domain', () => {
+    // When
+    ctl.setLoadingStage('assetHub');
+
+    // Then
+    expect(step()).toEqual(['Looking up ', 'the name']);
+  });
+
+  it('As a visitor, the explanation types in frame by frame, and the next one erases it first', () => {
     // Given
-    const seen = recordHeadlines();
-    ctl.setLoadingDomain('myapp');
+    const seen = recordExplanations();
     ctl.setLoadingStage('relay');
 
-    // When two more stages land while the first line is still typing
-    vi.advanceTimersByTime(500);
-    ctl.setLoadingStage('assetHub');
+    // When the first explanation is due and has had time to type
+    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS + 100);
+
+    // Then it typed in a piece at a time from empty
+    expect(seen).toContain('Look');
+    expect(explanation()).toBe('Looking for other computers to talk to');
+    expect(store.getLoadingState().explanationOpacity).toBe(1);
+
+    // When the next turn has erased the line and typed the next one
+    vi.advanceTimersByTime(ROTATE_MS + ERASE_MS);
+
+    // Then
+    expect(seen).toContain('Looking for');
+    expect(seen).toContain('Your');
+    expect(explanation()).toBe('Your browser does the checking itself, not a server');
+  });
+
+  it("As a visitor, a new stage swaps the step line at once and drops the last stage's explanation mid-type", () => {
+    // Given an explanation half typed
+    ctl.setLoadingStage('relay');
+    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS / 2);
+    expect(explanation()).not.toBe('');
+
+    // When
     ctl.setLoadingStage('resolving');
 
-    // Then the screen reader hears the newest at once
+    // Then
+    expect(step()).toEqual(['Found it']);
+    expect(explanation()).toBe('');
+    expect(store.getLoadingState().explanationOpacity).toBe(1);
     expect(store.getLoadingState().srText).toBe('Found it');
 
-    // When both lines have had time to type
-    vi.advanceTimersByTime(2 * (ERASE_MS + TYPE_MS));
+    // When time passes short of the next turn
+    vi.advanceTimersByTime(ROTATE_MS - 100);
 
-    // Then the running line finished, then the newest, and the skipped one
-    // never showed
-    const running = seen.indexOf('Connecting to Polkadot');
-    expect(running).toBeGreaterThan(0);
-    expect(seen.indexOf('Found it')).toBeGreaterThan(running);
-    expect(seen.some(s => s.startsWith('Looking up'))).toBe(false);
+    // Then nothing of the old stage was typed back in
+    expect(explanation()).toBe('');
   });
 
-  it('As a visitor who prefers reduced motion, the headline changes at once', () => {
+  it('As a visitor who prefers reduced motion, the explanation changes at once', () => {
     // Given
     reducedMotion = true;
-
-    // When
     ctl.setLoadingStage('relay');
 
+    // When
+    vi.advanceTimersByTime(ROTATE_MS);
+
     // Then
-    expect(status()).toBe('Connecting to Polkadot');
-    expect(store.getLoadingState().srText).toBe('Connecting to Polkadot');
+    expect(explanation()).toBe('Looking for other computers to talk to');
+    expect(store.getLoadingState().srText).toBe('Looking for other computers to talk to');
   });
 
   it('As a visitor whose load parked, the stall watch fires with the percentage', () => {
@@ -259,7 +288,63 @@ describe('The loading controller drives the loading store', () => {
     expect(store.getLoadingState().phase).toBe('gone');
   });
 
-  it("As a visitor, the sandbox's done message dismisses the loading screen and runs the done callbacks", () => {
+  it("As a visitor, the sandbox's done message dismisses the loading screen and runs the done callbacks with its outcome", () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('loaded', undefined);
+  });
+
+  it('As the shell, a sandbox that failed to load its content reports the failure and the step it stopped at', () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'failed', failedStep: 'content_fetch' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(store.getLoadingState().phase).toBe('dismissing');
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed', 'content_fetch');
+  });
+
+  it('As the shell, a failed step that is not a short token is dropped before it can become a tag', () => {
+    // Given
+    const onDone = vi.fn();
+    ctl.listenForSandboxStatus();
+    ctl.onSandboxDone(onDone);
+
+    // When
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: { type: 'dotli:loading-status', done: true, outcome: 'failed', failedStep: 'Failed: <script>' },
+        origin: SANDBOX_ORIGIN,
+      }),
+    );
+
+    // Then
+    expect(onDone).toHaveBeenCalledExactlyOnceWith('failed', undefined);
+  });
+
+  it('As a visitor at a password prompt, the loading screen is dismissed while the done callbacks keep waiting for the content', () => {
     // Given
     const onDone = vi.fn();
     ctl.listenForSandboxStatus();
@@ -275,7 +360,7 @@ describe('The loading controller drives the loading store', () => {
 
     // Then
     expect(store.getLoadingState().phase).toBe('dismissing');
-    expect(onDone).toHaveBeenCalledTimes(1);
+    expect(onDone).not.toHaveBeenCalled();
   });
 
   it('As a visitor, a done message from any other origin is ignored', () => {
@@ -287,7 +372,7 @@ describe('The loading controller drives the loading store', () => {
     // When
     window.dispatchEvent(
       new MessageEvent('message', {
-        data: { type: 'dotli:loading-status', done: true },
+        data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
         origin: 'https://attacker.example',
       }),
     );
@@ -298,7 +383,7 @@ describe('The loading controller drives the loading store', () => {
   });
 
   it('As the shell, disposing the loading root stops every loading timer and marks the screen gone', async () => {
-    // Given a crawling bar, a rotating headline and an armed stall watch
+    // Given a crawling bar, a rotating explanation and an armed stall watch
     const onStall = vi.fn();
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.onProgressStall(onStall);
@@ -390,12 +475,12 @@ describe('The loading controller drives the loading store', () => {
     expect(freshStore.getLoadingState().phase).toBe('gone');
   });
 
-  it('As a visitor whose app loaded, the dismiss stops the headline rotation and the typing', () => {
-    // Given a headline mid-turn
+  it('As a visitor whose app loaded, the dismiss stops the explanation rotation and the typing', () => {
+    // Given an explanation mid-turn
     ctl.initPhases([{ label: 'a', base: 5, target: 90, expectedMs: 60_000, stage: 'relay' }]);
     ctl.advancePhase(0);
-    vi.advanceTimersByTime(ROTATE_MS + ERASE_MS / 2);
-    const midTurn = status();
+    vi.advanceTimersByTime(ROTATE_MS + TYPE_MS / 2);
+    const midTurn = explanation();
 
     // When
     ctl.dismissLoading();
@@ -404,10 +489,10 @@ describe('The loading controller drives the loading store', () => {
     // Then nothing is left running and the line no longer changes
     expect(store.getLoadingState().phase).toBe('gone');
     expect(vi.getTimerCount()).toBe(0);
-    const settled = status();
+    const settled = explanation();
     vi.advanceTimersByTime(ROTATE_MS * 3);
-    expect(status()).toBe(settled);
-    expect(store.getLoadingState().statusOpacity).toBe(1);
+    expect(explanation()).toBe(settled);
+    expect(store.getLoadingState().explanationOpacity).toBe(1);
     expect(midTurn).not.toBe('');
   });
 
@@ -419,7 +504,7 @@ describe('The loading controller drives the loading store', () => {
     const done = (): void => {
       window.dispatchEvent(
         new MessageEvent('message', {
-          data: { type: 'dotli:loading-status', done: true },
+          data: { type: 'dotli:loading-status', done: true, outcome: 'loaded' },
           origin: SANDBOX_ORIGIN,
         }),
       );

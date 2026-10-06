@@ -52,6 +52,13 @@ describe('assertBlockMatchesCid', () => {
     }).toThrow(/hash mismatch/i);
   });
 
+  it('names a mismatch as a verification failure, so a caller can tell it from a transport one', () => {
+    const cid = sha256Cid(enc('the real index.html'));
+    expect(() => {
+      assertBlockMatchesCid(cid, enc('something else'));
+    }).toThrow(expect.objectContaining({ name: 'ContentVerificationError' }) as Error);
+  });
+
   it('rejects a single flipped byte', () => {
     const bytes = enc('a'.repeat(1000));
     const cid = sha256Cid(bytes);

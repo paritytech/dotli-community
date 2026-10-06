@@ -1,0 +1,102 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Defaults: the layout and colors a product picks arrive as inline styles
+   (chat/custom-styles.ts) and win over them. */
+
+.box {
+  display: grid;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.column {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: flex;
+  flex-direction: row;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.spacer {
+  flex: 1;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.image {
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+/* Positioned and isolated, so the tint blends with the effect's own content
+   and nothing behind it. */
+.effect {
+  position: relative;
+  isolation: isolate;
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+/* A decorative constant, the same in both themes. The hue turns in Effect
+   (CustomNode.tsx), unless the user prefers reduced motion. */
+.tint {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: color;
+  background: linear-gradient(90deg, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00);
+}
+
+.text {
+  box-sizing: border-box;
+  overflow-wrap: anywhere;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+.field-label {
+  color: var(--chat-fg-secondary);
+  font-size: 0.7rem;
+}
+
+.field-input {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--chat-bg-surface-nested);
+  border-radius: 8px;
+  background: var(--chat-bg-surface-container);
+  color: var(--chat-fg-primary);
+  font-family: inherit;
+  font-size: 0.78rem;
+}
+.field-input:focus {
+  outline: none;
+  border-color: var(--text-faint);
+}
+.field-input:disabled {
+  opacity: 0.5;
+}

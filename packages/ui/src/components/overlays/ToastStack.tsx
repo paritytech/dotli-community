@@ -5,13 +5,15 @@ import { createEffect, createMemo, For, Show, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
 import { dismissAllToasts, setToastsExpanded, toastsStore } from '../../state/toasts.js';
 import { useStore } from '../use-store.js';
-import { CLOSE_SVG, ToastCard } from './ToastCard.js';
+import { CloseIcon } from '../primitives/IconButton.js';
+import { ToastCard } from './ToastCard.js';
+import s from './ToastStack.module.css';
 
 const MAX_STACK = 3;
 
 export function ToastStack(): JSX.Element {
-  const items = useStore(toastsStore, s => s.items);
-  const expanded = useStore(toastsStore, s => s.expanded);
+  const items = useStore(toastsStore, state => state.items);
+  const expanded = useStore(toastsStore, state => state.expanded);
   let root: HTMLDivElement | undefined;
   let cards: HTMLDivElement | undefined;
 
@@ -69,7 +71,7 @@ export function ToastStack(): JSX.Element {
 
   const onStackClick = (event: MouseEvent): void => {
     const target = event.target as HTMLElement;
-    if (!expanded() && many() && target.closest('.notif-cards') !== null && target.closest('button') === null) {
+    if (!expanded() && many() && cards !== undefined && cards.contains(target) && target.closest('button') === null) {
       setToastsExpanded(true);
     }
   };
@@ -80,14 +82,18 @@ export function ToastStack(): JSX.Element {
         ref={el => {
           root = el;
         }}
-        class={['notif-stack', { expanded: expanded(), single: !many() }]}
+        class={s['stack']}
+        data-chrome=""
+        data-testid="notif-stack"
+        data-expanded={expanded() ? '' : undefined}
         onClick={onStackClick}
       >
         <div
           ref={el => {
             cards = el;
           }}
-          class="notif-cards"
+          class={s['cards']}
+          data-testid="notif-cards"
           role="status"
           aria-live="polite"
           style={{
@@ -100,23 +106,26 @@ export function ToastStack(): JSX.Element {
                 entry={entry()}
                 hidden={!depths().has(entry().id)}
                 depth={depths().get(entry().id) ?? (expanded() ? 0 : visible().length)}
+                expanded={expanded()}
+                single={!many()}
               />
             )}
           </For>
         </div>
         <button
           type="button"
-          class="notif-close-all"
+          class={s['closeAll']}
+          data-testid="notif-close-all"
           aria-label="Dismiss all"
-          // eslint-disable-next-line solid/no-innerhtml -- trusted SVG from host code
-          innerHTML={CLOSE_SVG}
           style={{ display: many() ? '' : 'none' }}
           onClick={event => {
             event.stopPropagation();
             dismissAllToasts();
             setToastsExpanded(false);
           }}
-        />
+        >
+          <CloseIcon />
+        </button>
       </div>
     </Show>
   );

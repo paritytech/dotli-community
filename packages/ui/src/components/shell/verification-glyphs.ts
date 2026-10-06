@@ -8,11 +8,12 @@ import type { ShieldState } from '../../verification-shield.js';
 
 export const TOOLTIP_TITLE = 'How was this site loaded?';
 
-const SHIELD_OUTLINE = 'M12 2L3 7v5c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7l-9-5z';
+const SHIELD_OUTLINE =
+  'M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z';
 
-// Material "gpp_good" / "gpp_maybe" vocabulary: a check for verified, an
-// exclamation mark for "protected, but take note". Both cut out of one fill.
-export const GLYPH_PATHS: Record<ShieldState, string> = {
-  verified: `${SHIELD_OUTLINE}m-1 14.59l-3.29-3.3 1.41-1.41L11 13.76l4.88-4.88 1.41 1.41L11 16.59z`,
-  trusted: `${SHIELD_OUTLINE}M11 7.5h2v6h-2zM11 15.5h2v2h-2z`,
+// The board's outlined shields, drawn with a stroke: a check for verified, an
+// exclamation mark for "protected, but take note".
+export const GLYPH_PATHS: Record<ShieldState, readonly string[]> = {
+  verified: [SHIELD_OUTLINE, 'm9 12 2 2 4-4'],
+  trusted: [SHIELD_OUTLINE, 'M12 8v4', 'M12 16h.01'],
 };

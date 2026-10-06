@@ -73,20 +73,20 @@ afterEach(() => {
 });
 
 describe('store equality', () => {
-  it('As the loading screen, a frame that rewrites the same headline notifies nobody', () => {
+  it('As the loading screen, a frame that rewrites the same explanation notifies nobody', () => {
     // Given
-    updateLoading({ statusText: 'Reaching out', statusOpacity: 0.5 });
+    updateLoading({ explanation: 'Reaching out', explanationOpacity: 0.5 });
     const loading = countNotifications(loadingStore);
 
     // When: the typing loop writes the same frame again, twice.
-    updateLoading({ statusText: 'Reaching out', statusOpacity: 0.5 });
+    updateLoading({ explanation: 'Reaching out', explanationOpacity: 0.5 });
     updateLoading({ ...getLoadingState() });
 
     // Then
     expect(loading.count()).toBe(0);
 
     // When
-    updateLoading({ statusOpacity: 1 });
+    updateLoading({ explanationOpacity: 1 });
 
     // Then
     expect(loading.count()).toBe(1);

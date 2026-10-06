@@ -15,27 +15,20 @@ export function dispatchSubscriptionItem(subId, value, listeners, postToMain) {
     catch (err) {
         listeners.delete(subId);
         postToMain({ kind: "subscriptionStop", subId });
-        reportDispatchFailure(postToMain, `subscription ${subId}`, listener.privateMedia ? new Error("media backend failure") : err);
-    }
-    if (listener.privateMedia) {
-        postToMain({ kind: "mediaSubscriptionAck", subId });
+        reportDispatchFailure(postToMain, `subscription ${subId}`, err);
     }
 }
 export function dispatchSubscriptionError(subId, error, listeners, postToMain) {
     const listener = listeners.get(subId);
     if (!listener)
         return;
-    if (listener.privateMedia) {
-        listeners.delete(subId);
-        postToMain({ kind: "subscriptionStop", subId });
-    }
     try {
         listener.sendError(error);
     }
     catch (err) {
         listeners.delete(subId);
         postToMain({ kind: "subscriptionStop", subId });
-        reportDispatchFailure(postToMain, `subscription ${subId} error`, listener.privateMedia ? new Error("media backend failure") : err);
+        reportDispatchFailure(postToMain, `subscription ${subId} error`, err);
     }
 }
 export function dispatchChainResponse(connId, json, listeners, postToMain) {

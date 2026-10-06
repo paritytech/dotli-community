@@ -3,21 +3,18 @@
 
 // Timeline view of the TrUAPI debug panel.
 //
-// Drawn by `@dotli/truapi-debug/timeline`, which reconciles its SVG by key so
-// hover state and in-flight clicks survive streaming traffic. This component
-// owns the container and decides when to redraw; it never rebuilds the SVG
-// itself. A click flips the selection in place rather than redrawing.
+// Owns the scrolling container and decides when to redraw: whenever the
+// filtered events change while the view is on screen. `Timeline` draws the
+// swimlanes from the geometry `buildTimeline` makes, keyed so a redraw
+// updates the nodes already there. The selection is reactive, so a click
+// redraws nothing.
 
-import { createEffect, onCleanup, untrack } from 'solid-js';
+import { createEffect, createSignal, onCleanup, untrack } from 'solid-js';
 import type { JSX } from '@solidjs/web';
-import type { EventSeq, StoredEvent } from '@dotli/truapi-debug';
-import {
-  applyTimelineSelection,
-  buildTimelineContainer,
-  renderSwimlanes,
-  resolveTimelineClick,
-} from '@dotli/truapi-debug';
+import { buildTimeline, type EventSeq, type StoredEvent, type TimelineLane } from '@dotli/truapi-debug';
 import { wireHoverTooltips } from './hover-tooltip.js';
+import { Timeline } from './timeline/Timeline.js';
+import s from './TimelineView.module.css';
 
 export function TimelineView(props: {
   active: boolean;
@@ -28,52 +25,51 @@ export function TimelineView(props: {
   panel: () => HTMLElement | undefined;
   onSelect: (seq: EventSeq) => void;
 }): JSX.Element {
-  const { container } = buildTimelineContainer();
-
-  createEffect(
-    () => props.active,
-    active => {
-      container.classList.toggle('hidden', !active);
-    },
-  );
+  const [lanes, setLanes] = createSignal<readonly TimelineLane[]>([], {
+    // Written from the redraw effect below.
+    ownedWrite: true,
+  });
 
   // Redrawn while visible whenever the filtered events change. The panel
   // hands over the same array when a refresh changed nothing visible (and
-  // takes no refresh while collapsed), so such a frame lays nothing out. The
-  // selection is read at draw time only: a click is applied in place below,
-  // not by redrawing.
+  // takes no refresh while collapsed), so such a frame lays nothing out.
   createEffect(
     () => (props.active ? props.events : null),
     events => {
       if (events !== null) {
-        renderSwimlanes(
-          container,
-          events,
-          untrack(() => props.selectedSeq),
-        );
+        setLanes(buildTimeline(events));
       }
     },
   );
 
-  const onClick = (e: MouseEvent): void => {
-    const seq = resolveTimelineClick(e.target);
-    if (seq === null) {
-      return;
-    }
-    container.focus({ preventScroll: true });
-    applyTimelineSelection(container, props.selectedSeq, seq);
+  let container: HTMLDivElement | undefined;
+  const select = (seq: EventSeq, el: Element): void => {
+    container?.focus({ preventScroll: true });
     props.onSelect(seq);
+    el.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   };
-  container.addEventListener('click', onClick);
-  const unwireTooltips = wireHoverTooltips(
-    container,
-    untrack(() => props.tooltip),
-    untrack(() => props.panel),
-  );
+
+  let unwireTooltips: (() => void) | undefined;
   onCleanup(() => {
-    container.removeEventListener('click', onClick);
-    unwireTooltips();
+    unwireTooltips?.();
   });
 
-  return container;
+  return (
+    <div
+      class={s['timeline']}
+      data-testid="td-timeline"
+      tabindex="0"
+      hidden={!props.active}
+      ref={el => {
+        container = el;
+        unwireTooltips = wireHoverTooltips(
+          el,
+          untrack(() => props.tooltip),
+          untrack(() => props.panel),
+        );
+      }}
+    >
+      <Timeline lanes={lanes()} selectedSeq={props.selectedSeq} onSelect={select} />
+    </div>
+  );
 }

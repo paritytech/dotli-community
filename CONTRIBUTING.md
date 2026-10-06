@@ -12,6 +12,11 @@
   `As a <role>, <observable property>` for invariants.
 - **Structure with Given / When / Then.** Every multi-step test body uses `// Given`, `// When`, `// Then` comments to
   separate setup, action, and assertions.
+- **Test selectors, not styles.** Tests find elements by `data-testid`, ARIA role or id, never by CSS class, because
+  module class names are hashed. Reusable components take an optional `testId` prop that becomes `data-testid` on their
+  root. In ui tests, use `byTestId(id, root)` from `tests/support.ts`. In Playwright, use `page.getByTestId(id)`.
+- **Don't check CSS in tests.** Don't write tests that check CSS (stylesheets, computed styles or class names). Check
+  styling visually.
 
 ```ts
 test('As a user using per-product smoldot, the host must only spawn one instance of the light client', async ({
@@ -63,6 +68,23 @@ uses 4.3.0, outside [GHSA-ch52-4w7c-c8xp](https://github.com/advisories/GHSA-ch5
 reported `max-stale` behavior remains in that version. The
 [maintainer disputes the advisory](https://github.com/kornelski/http-cache-semantics/issues/56#issuecomment-5975759591);
 do not describe the version bump as a security patch or use this dependency as a shared authenticated-response cache.
+
+### Styling
+
+Each component's styles live in a CSS module beside it (`Foo.module.css` next to `Foo.tsx`), imported as
+`import s from './Foo.module.css'`. Class names are kebab-case in CSS and read camelCase in TypeScript with bracket
+access (`s['signingModal']`). Bracket access is required by `noPropertyAccessFromIndexSignature` in tsconfig.
+
+- A module styles only the elements its component renders. To react to page-level state, use the attribute on `<html>`
+  or `<body>` through `:global(...)`, for example `:global([data-theme-pref='light']) .icon`. Never target another
+  component's classes.
+- Colors come from the tokens in `packages/ui/src/global.css` (`var(--text-muted)`, `var(--surface)`, ...). Modules
+  contain no `[data-theme]` selectors, because the tokens switch with the theme.
+- `global.css` holds tokens and the page base only. It resets nothing. Each class sets its own `box-sizing`, margins and
+  padding where its element needs them. Don't use `*` or `.root *`.
+- Styles used by several components become a primitive in `packages/ui/src/components/primitives/` with its own module,
+  rather than a shared class.
+- State that tests or logic read is a `data-*` attribute, not a class.
 
 ### Commit hook
 

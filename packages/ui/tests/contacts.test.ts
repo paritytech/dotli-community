@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createContactsPlatform, NativeChatContactsDirectory } from '../src/host-callbacks/Contacts.js';
 import { createBlockingModalCoordinator, type BlockingModalCoordinator } from '../src/blocking-modal-queue.js';
 import { overlaysReady, resetOverlays } from './helpers/overlays.js';
-import { must } from './support.js';
+import { byTestId, must } from './support.js';
 
 const walletPublicKey = `0x${'11'.repeat(32)}` as const;
 const genesisHash = `0x${'55'.repeat(32)}` as const;
@@ -81,8 +81,8 @@ function fixture(): {
 
 async function choices(): Promise<HTMLButtonElement[]> {
   await overlaysReady();
-  await expect.poll(() => document.querySelector('.contacts-picker-choice')).not.toBeNull();
-  return Array.from(document.querySelectorAll<HTMLButtonElement>('.contacts-picker-choice'));
+  await expect.poll(() => document.querySelector('[data-testid="prompt-choice"]')).not.toBeNull();
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('[data-testid="prompt-choice"]'));
 }
 
 describe('native Chat contacts', () => {
@@ -122,15 +122,16 @@ describe('native Chat contacts', () => {
     const buttons = await choices();
     expect(must(buttons[0], 'Alice choice').textContent).toContain('<img src=x onerror=alert(1)>');
     expect(must(buttons[0], 'Alice choice').querySelector('img')).toBeNull();
-    expect(document.querySelector('[role=dialog]')?.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
-    expect(document.querySelector('[role=dialog]')?.textContent).toContain(product.productId);
+    const dialog = byTestId('signing-modal');
+    expect(dialog.textContent).not.toMatch(/0x[0-9a-f]{64}/i);
+    expect(dialog.textContent).toContain(product.productId);
     must(buttons[1], 'Bob choice').click();
     await expect(picked).resolves.toEqual({
       tag: 'Picked',
       value: { account: bob },
     });
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
   });
 
   it('does not return a contact removed while the picker was open', async () => {
@@ -150,7 +151,7 @@ describe('native Chat contacts', () => {
     state.snapshot = { ...state.snapshot, [field]: `0x${'77'.repeat(32)}` };
     await expect(state.adapter.callbacks.pickContact(product)).rejects.toThrow();
     await expect(state.adapter.callbacks.contacts({ handleKey, handles: [aliceHandle] })).rejects.toThrow();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
   });
 
   it('distinguishes an authenticated empty roster from an unavailable signing session', async () => {
@@ -188,7 +189,7 @@ describe('native Chat contacts', () => {
     state.adapter.dispose();
     await rejected;
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     const other = createContactsPlatform(state.directory, state.coordinator.createScope());
     cleanups.push(() => {
       other.dispose();
@@ -211,7 +212,7 @@ describe('native Chat contacts', () => {
     await rejected;
     blocker.resolve(undefined);
     await blocking;
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     blockerScope.dispose();
   });
 
@@ -244,7 +245,7 @@ describe('native Chat contacts', () => {
     );
     await rejectedPick;
     await overlaysReady();
-    expect(document.querySelector('[role=dialog]')).toBeNull();
+    expect(document.querySelector('[data-testid="signing-modal"]')).toBeNull();
     const pending = Promise.withResolvers<NativeChatContactsSnapshot>();
     state.setRead(() => pending.promise);
     const lookup = state.adapter.callbacks.contacts({
@@ -277,7 +278,7 @@ describe('native Chat contacts', () => {
         cancelable: true,
       }),
     );
-    expect(document.activeElement).toBe(document.querySelector('.signing-btn-cancel'));
+    expect(document.activeElement).toBe(document.querySelector('[data-testid="signing-btn-cancel"]'));
     must(document.activeElement, 'Focused picker action').dispatchEvent(
       new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
     );

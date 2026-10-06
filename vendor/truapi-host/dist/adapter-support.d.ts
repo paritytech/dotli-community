@@ -15,7 +15,7 @@ type MaybeAsyncIterable<T> = AsyncIterable<T> | Iterable<T>;
  * sink, unwrapping each `Result` (or throwing on its error). Returns a
  * disposer that stops iteration.
  */
-export declare function driveResultStream<T>(stream: MaybeAsyncIterable<StreamResult<T, GenericError>>, sendItem: (value: T) => void, sendError: (error: GenericError) => void, privateMedia?: boolean): () => void;
+export declare function driveResultStream<T>(stream: MaybeAsyncIterable<StreamResult<T, GenericError>>, sendItem: (value: T) => void, sendError: (error: GenericError) => void): () => void;
 /**
  * Bridge the typed `ChainProvider.connect` callback onto the raw
  * `chainConnect` the WASM core invokes: decode the genesis hash, pump the

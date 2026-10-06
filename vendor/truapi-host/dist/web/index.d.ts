@@ -7,5 +7,3 @@ export type { NativeChatContact, NativeChatContactsSnapshot, } from "../runtime.
 export { createBrowserNativeChatFilesHost } from "./native-chat-files.js";
 export type { BrowserNativeChatFilesHost, BrowserNativeChatFileSourceStore, } from "./native-chat-files.js";
 export type { AllowanceCollection, AllowanceObservation, AllowanceSection, AllowanceSlot, AllowancePool, AllowanceClaims, StatementAllowanceSnapshot, PgasClaimsSnapshot, PgasBalancesSnapshot, BulletinQuota, WalletAllowanceSnapshot, } from "../wallet-allowances.js";
-export type { BrowserMediaBackend, BrowserMediaBackendOptions, BrowserMediaConsentContext, BrowserMediaGeometry, } from "./browser-media-backend.js";
-export { createBrowserMediaBackend } from "./browser-media-backend.js";

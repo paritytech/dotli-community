@@ -1,0 +1,109 @@
+/* Copyright 2026 Parity Technologies (UK) Ltd. */
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* dot.li — TrUAPI debug panel Timeline */
+
+.row {
+  display: flex;
+  align-items: stretch;
+  min-width: 100%;
+}
+
+.col {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 240px;
+  box-sizing: border-box;
+  min-width: 160px;
+  border-right: 1px solid var(--td-bg-chip);
+}
+.col:last-child {
+  border-right: none;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--td-bg-raised);
+  border-bottom: 1px solid var(--td-line);
+  padding: 4px 8px;
+  font-family: system-ui, sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--td-fg);
+  box-shadow: inset 3px 0 0 var(--lane-accent);
+}
+
+.label {
+  display: inline-block;
+}
+
+.body {
+  flex: 1 1 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.svg {
+  display: block;
+}
+
+.divider {
+  stroke: var(--td-bg-chip);
+  stroke-width: 1;
+}
+
+.rail {
+  stroke-width: 3;
+  opacity: 0.8;
+  cursor: pointer;
+}
+.rail:hover {
+  opacity: 1;
+}
+
+.tick {
+  cursor: pointer;
+  opacity: 0.85;
+}
+.tick:hover {
+  opacity: 1;
+  r: 4;
+}
+
+/* The outline is the text colour the panel sets, on every box. */
+.segment {
+  cursor: pointer;
+  fill-opacity: 0.25;
+  stroke: currentColor;
+  stroke-opacity: 0.8;
+  stroke-width: 1;
+  transition: fill-opacity 0.1s;
+}
+.segment:hover {
+  fill-opacity: 0.4;
+}
+.segment[data-pending] {
+  fill-opacity: 0.18;
+}
+.segment[data-selected] {
+  fill-opacity: 0.55;
+}
+
+.pendingEdge {
+  stroke: var(--td-fg-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.connector {
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.5;
+  pointer-events: none;
+}

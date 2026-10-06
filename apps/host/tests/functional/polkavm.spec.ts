@@ -3,6 +3,7 @@
 
 import { expect, test, type Page } from '@playwright/test';
 import { CarReader } from '@ipld/car';
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 // Node-loaded specs use the side-effect-free contract, not the browser config barrel.
@@ -109,6 +110,27 @@ async function webGpuFallbackCar(): Promise<TestCar & { manifest: string }> {
 
 async function waitForHostInitialization(page: Page): Promise<void> {
   await page.waitForFunction(() => performance.getEntriesByName('dotli:main:end').length > 0);
+}
+
+interface CapturedSentryEvent {
+  exception?: {
+    values?: { value?: string }[];
+  };
+  tags?: Record<string, string>;
+}
+
+function sentryEventsFromEnvelope(body: string): CapturedSentryEvent[] {
+  const events: CapturedSentryEvent[] = [];
+  for (const line of body.split('\n')) {
+    if (line === '') {
+      continue;
+    }
+    const value = JSON.parse(line) as CapturedSentryEvent;
+    if (Array.isArray(value.exception?.values)) {
+      events.push(value);
+    }
+  }
+  return events;
 }
 
 test('a verified PolkaVM package translates and renders in the sandbox', async ({ page }) => {
@@ -254,6 +276,90 @@ test('a verified PolkaVM package translates and renders in the sandbox', async (
   expect(teardown).toEqual({ captured: 'false', releases: 1 });
 });
 
+test('a running PolkaVM worker failure reaches Sentry with runtime identity', async ({ page }) => {
+  test.skip(process.env['VITE_METRICS'] !== 'true', 'needs a VITE_METRICS=true build');
+  const fixture = await polkavmCar();
+  const program = await readFile(join(import.meta.dirname, 'fixtures/polkavm/framebuffer-test.polkavm'));
+  const programSha256 = createHash('sha256').update(program).digest('hex');
+  const trapMessage = 'translated PolkaVM execution trapped at 279599';
+  const sentryEvents: CapturedSentryEvent[] = [];
+  const devtools = await page.context().newCDPSession(page);
+  await devtools.send('Network.enable');
+  devtools.on('Network.requestWillBeSent', event => {
+    if (new URL(event.request.url).pathname !== '/t' || event.request.postData === undefined) {
+      return;
+    }
+    sentryEvents.push(...sentryEventsFromEnvelope(event.request.postData));
+  });
+  await page.route('**/polkavm-runtime/polkavm-worker.js?*', async route => {
+    const response = await route.fetch();
+    const worker = await response.text();
+    await route.fulfill({
+      response,
+      body: `
+const __dotliPostMessage = self.postMessage.bind(self);
+let __dotliInjectedTrap = false;
+self.postMessage = function (message) {
+  __dotliPostMessage.apply(self, arguments);
+  if (!__dotliInjectedTrap && message?.type === "frame") {
+    __dotliInjectedTrap = true;
+    setTimeout(() => {
+      __dotliPostMessage({
+        type: "error",
+        message: ${JSON.stringify(trapMessage)}
+      });
+    }, 0);
+  }
+};
+${worker}`,
+    });
+  });
+  await page.route(`**/ipfs/${fixture.cid}?format=car`, async route => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/vnd.ipld.car',
+      body: Buffer.from(fixture.bytes),
+    });
+  });
+
+  await page.goto('http://polkavm-sentry.localhost:5173/', {
+    waitUntil: 'domcontentloaded',
+  });
+  await waitForHostInitialization(page);
+  await installTruapiPortResponder(page);
+  await page.evaluate(
+    ({ cid, schemaVersion }) => {
+      const iframe = document.createElement('iframe');
+      iframe.id = 'polkavm-sentry-product';
+      iframe.src = `http://polkavm-sentry.app.localhost:5173/?cid=${cid}&v=${String(schemaVersion)}&chainBackend=rpc-gateway&network=paseo-next-v2&polkaVmEnabled=1&fullReset=1`;
+      document.body.replaceChildren(iframe);
+    },
+    { cid: fixture.cid, schemaVersion: SANDBOX_SCHEMA_VERSION },
+  );
+
+  const product = page.frameLocator('#polkavm-sentry-product');
+  await expect(product.locator('.dotli-polkavm-menu')).toContainText(trapMessage);
+  await expect
+    .poll(
+      () =>
+        sentryEvents.find(event => event.exception?.values?.some(exception => exception.value === trapMessage) === true)
+          ?.tags,
+      { timeout: 10_000 },
+    )
+    .toMatchObject({
+      surface: 'sandbox_polkavm_runtime',
+      cid: fixture.cid,
+      polkavm_backend: 'compiler',
+      polkavm_failure_source: 'worker-message',
+      polkavm_graphics_profile: 'framebuffer',
+      polkavm_phase: 'running',
+      polkavm_program_sha256: programSha256,
+      polkavm_startup_stage: 'first-frame',
+      polkavm_trap_pc: '279599',
+    });
+  await devtools.detach();
+});
+
 test('a PolkaVM package starts only after the user enables the experimental runtime', async ({ page }) => {
   const fixture = await polkavmCar();
   await page.route(`**/ipfs/${fixture.cid}?format=car`, async route => {
@@ -277,8 +383,8 @@ test('a PolkaVM package starts only after the user enables the experimental runt
   );
 
   const product = page.frameLocator('#polkavm-disabled-product');
-  await expect(product.locator('.error-page-title')).toHaveText('Experimental PolkaVM apps are disabled');
-  await expect(product.locator('.error-page-detail')).toContainText('Enable PolkaVM apps in dot.li Settings');
+  await expect(product.getByTestId('error-page-title')).toHaveText('Experimental PolkaVM apps are disabled');
+  await expect(product.getByTestId('error-page-detail')).toContainText('Enable PolkaVM apps in dot.li Settings');
   await expect(product.locator('#dotli-polkavm-canvas')).toHaveCount(0);
 
   await page.locator('#polkavm-disabled-product').evaluate(element => {
@@ -418,17 +524,17 @@ test('shows PolkaVM diagnostics inside the docked debug panel', async ({ page })
   });
   await expect(product.locator('#dotli-polkavm-metrics')).toHaveCount(0);
 
-  const runtimeBadge = panel.locator('.td-runtime-badge');
+  const runtimeBadge = panel.getByTestId('td-runtime-badge');
   await expect(runtimeBadge).toHaveAttribute('title', /PolkaVM \/ JIT · first frame/);
   await runtimeBadge.click();
 
-  const runtime = panel.locator('.td-runtime');
+  const runtime = panel.getByTestId('td-runtime');
   await expect(runtime).toBeVisible();
   await expect(runtime.locator('[data-runtime-metric="backend"]')).toHaveText('JIT');
   await expect(runtime.locator('[data-runtime-metric="first-frame"]')).not.toHaveText('pending');
 
-  await panel.locator('.td-dock').click();
-  await expect(panel).toHaveClass(/docked-right/);
+  await panel.getByTestId('td-dock').click();
+  await expect(panel).toHaveAttribute('data-dock', 'right');
   await expect(runtime).toBeVisible();
 });
 

@@ -1013,7 +1013,7 @@ describe('session-store host callbacks', () => {
 
   it('hides experimental display outside its network and invalidates it during replacement and deletion', async () => {
     const getNetwork = vi.spyOn(network, 'getNetwork');
-    getNetwork.mockReturnValue(network.NetworkName.PASEO);
+    getNetwork.mockReturnValue('paseo-next-v2');
     buildFlags.debug = true;
     await deleteLocalWalletSecret();
     const { secret } = await createLocalWalletSecret();
@@ -1022,9 +1022,9 @@ describe('session-store host callbacks', () => {
     try {
       await writeUiStateCache(CONNECTED_DETAIL);
       expect(readLocalWalletDisplay()?.identityAccountId).toBe(SESSION_IDENTITY_ACCOUNT_ID);
-      getNetwork.mockReturnValue(network.NetworkName.PREVIEWNET);
+      getNetwork.mockReturnValue('previewnet');
       expect(readLocalWalletDisplay()).toBeUndefined();
-      getNetwork.mockReturnValue(network.NetworkName.PASEO);
+      getNetwork.mockReturnValue('paseo-next-v2');
       expect(readLocalWalletDisplay()?.identityAccountId).toBe(SESSION_IDENTITY_ACCOUNT_ID);
       await importLocalWalletMnemonic('abandon '.repeat(11) + 'about', () => {
         expect(readLocalWalletDisplay()).toBeUndefined();
