@@ -505,11 +505,11 @@ export interface InitOutput {
     readonly wasmsigninghostruntime_setPermissionAuthorizationStatus: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => number;
     readonly wasmsigninghostruntime_setWithheldResources: (a: number, b: number, c: number) => void;
     readonly wireSchemaHash: (a: number) => void;
-    readonly __wasm_bindgen_func_elem_10532: (a: number, b: number, c: number, d: number) => void;
-    readonly __wasm_bindgen_func_elem_10588: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10533: (a: number, b: number, c: number, d: number) => void;
+    readonly __wasm_bindgen_func_elem_10589: (a: number, b: number, c: number, d: number) => void;
     readonly __wasm_bindgen_func_elem_4749: (a: number, b: number, c: number) => void;
     readonly __wasm_bindgen_func_elem_4742: (a: number, b: number, c: number) => void;
-    readonly __wasm_bindgen_func_elem_10401: (a: number, b: number) => void;
+    readonly __wasm_bindgen_func_elem_10402: (a: number, b: number) => void;
     readonly __wasm_bindgen_func_elem_4746: (a: number, b: number) => void;
     readonly __wbindgen_export: (a: number, b: number) => number;
     readonly __wbindgen_export2: (a: number, b: number, c: number, d: number) => number;
