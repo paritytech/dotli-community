@@ -332,6 +332,12 @@ In-page toasts remain actionable when OS permission or service-worker notificati
 window opening remain browser-controlled. Native hosts need their own activation adapter; this browser change does not
 supply one.
 
+### Background receiving activation
+
+Startup republication of unchanged, already-enabled watches in the current authorized receiver scope preserves its
+revision, retained events, display receipts and transport synchronization state. A cold notification click therefore
+survives product startup. Genuine watch changes still advance the revision and reject clicks from the previous policy.
+
 ### Product chat
 
 Products that declare `includes.chat` in their `worker.<label>.<tld>` executable manifest get a Worker-kind TrUAPI
